@@ -1,0 +1,82 @@
+# 全局设置
+default_stages: [pre-commit, pre-push]
+fail_fast: false
+minimum_prek_version: "0.3.1"
+
+repos:
+  # 1. prek 内置钩子 (最高优先级，Rust 原生实现，无依赖)
+  - repo: builtin
+    hooks:
+      - id: trailing-whitespace
+        args: ["--markdown-linebreak-ext=md"]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: check-executables-have-shebangs
+      - id: check-case-conflict
+
+  # 2. Rust 代码检查 (改用 local，性能最好且最可靠)
+  - repo: local
+    hooks:
+      - id: cargo-check
+        name: cargo check
+        entry: cargo check
+        args: ["--manifest-path=rust/tgbot/Cargo.toml"]
+        language: system
+        files: ^rust/tgbot/
+        pass_filenames: false # cargo 必须针对整个项目运行，不能只针对单个文件
+
+      - id: clippy
+        name: cargo clippy
+        entry: cargo clippy
+        # 使用 -W warnings 显示警告但不阻止提交
+        args: ["--manifest-path=rust/tgbot/Cargo.toml", "--", "-W", "warnings"]
+        language: system
+        files: ^rust/tgbot/
+        pass_filenames: false
+
+      - id: rustfmt
+        name: cargo fmt
+        entry: cargo fmt
+        args: ["--manifest-path=rust/tgbot/Cargo.toml", "--"]
+        language: system
+        files: ^rust/tgbot/
+        pass_filenames: false
+
+      - id: sync-version
+        name: sync version to install.sh (Rust)
+        entry: cargo run --manifest-path=rust/version-sync/Cargo.toml --bin sync-version
+        language: system
+        files: ^(rust/tgbot/Cargo.toml|install.sh)$
+        pass_filenames: false
+
+  # 3. GitHub Actions 验证 (保持现状)
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.10
+    hooks:
+      - id: actionlint
+        files: ^\.github/workflows/
+
+    # Shell 脚本检查与格式化（只影响 6 个 .sh 文件，性能无感）
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1 # 最新稳定版（2026 年常用，autoupdate 会升）
+    hooks:
+      - id: shellcheck
+        name: ShellCheck - lint .sh files
+        files: \.sh$|\.bash$|\.ksh$ # 覆盖常见 shell 扩展名
+        args: ["--severity=error"] # 只关注错误
+
+  - repo: https://github.com/MaxWinterstein/shfmt-py # 活跃维护的 shfmt wrapper
+    rev: v3.12.0.1 # 匹配 shfmt v3.12.x
+    hooks:
+      - id: shfmt
+        name: shfmt - indent 2 spaces, simplify, write changes
+        files: \.sh$|\.bash$|\.ksh$
+        args: ["-i", "2", "-w", "-s"]
+        # -i 2: 2 空格缩进
+        # -w: 直接写回文件（自动格式化）
+        # -s: 简化代码（如去掉不必要的大括号）

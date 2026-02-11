@@ -1,0 +1,20 @@
+=============== Feb 10, 2026 (CST) ===============
+22:03:58.971207 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+22:03:59.032966 db@open opening
+22:03:59.033759 version@stat F·[] S·0B[] Sc·[]
+22:03:59.043742 db@janitor F·2 G·0
+22:03:59.043800 db@open done T·10.776946ms
+22:09:51.260416 db@close closing
+22:09:51.260588 db@close done T·165.714µs
+=============== Feb 11, 2026 (CST) ===============
+09:27:00.207395 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+09:27:00.209237 version@stat F·[] S·0B[] Sc·[]
+09:27:00.209269 db@open opening
+09:27:00.209321 journal@recovery F·1
+09:27:00.209775 journal@recovery recovering @1
+09:27:00.238730 memdb@flush created L0@2 N·22402 S·372KiB "000..com,v7987":"zzux.com,v12728"
+09:27:00.239254 version@stat F·[1] S·372KiB[372KiB] Sc·[0.25]
+09:27:00.259057 db@janitor F·3 G·0
+09:27:00.259128 db@open done T·49.839621ms
+09:31:11.275212 db@close closing
+09:31:11.275359 db@close done T·145.118µs
