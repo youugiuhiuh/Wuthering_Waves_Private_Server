@@ -18,3 +18,21 @@
 09:27:00.259128 db@open done T·49.839621ms
 09:31:11.275212 db@close closing
 09:31:11.275359 db@close done T·145.118µs
+=============== Feb 11, 2026 (CST) ===============
+15:18:49.596710 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+15:18:49.597683 version@stat F·[1] S·372KiB[372KiB] Sc·[0.25]
+15:18:49.597695 db@open opening
+15:18:49.597729 journal@recovery F·1
+15:18:49.608634 journal@recovery recovering @3
+15:18:49.624681 memdb@flush created L0@5 N·14117 S·242KiB "000..com,v28618":"zzp..com,v28223"
+15:18:49.624850 version@stat F·[2] S·614KiB[614KiB] Sc·[0.50]
+15:18:49.631720 db@janitor F·4 G·0
+15:18:49.631771 db@open done T·34.057894ms
+15:18:49.637397 table@compaction L0·2 -> L1·0 S·614KiB Q·36521
+15:18:49.649687 table@build created L1@8 N·36519 S·625KiB "000..com,v28618":"zzux.com,v12728"
+15:18:49.649736 version@stat F·[0 1] S·625KiB[0B 625KiB] Sc·[0.00 0.01]
+15:18:49.652063 table@compaction committed F-1 S+10KiB Ke·0 D·0 T·14.622888ms
+15:18:49.652219 table@remove removed @5
+15:18:49.652320 table@remove removed @2
+15:25:05.161291 db@close closing
+15:25:05.161413 db@close done T·116.025µs

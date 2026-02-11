@@ -7,3 +7,8 @@ helsenorge.no
 skatteetaten.no
 norkon.net
 medietall.no
+matprat.no
+smp.no
+hiof.no
+datatilsynet.no
+fiken.no
