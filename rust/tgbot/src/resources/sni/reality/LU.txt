@@ -6,3 +6,4 @@ dns.lu
 fundora.ru
 eetgroup.com
 nanosupercloud.com
+nomachine.com

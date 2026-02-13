@@ -51,3 +51,6 @@ calliope.style
 walashop.com
 knx.org
 prowise.com
+uhasselt.be
+kansspelautoriteit.nl
+globus.ch

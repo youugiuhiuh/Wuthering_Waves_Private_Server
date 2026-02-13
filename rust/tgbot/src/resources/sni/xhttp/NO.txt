@@ -12,3 +12,6 @@ smp.no
 hiof.no
 datatilsynet.no
 fiken.no
+fsweb.no
+upstreamonline.com
+uia.no

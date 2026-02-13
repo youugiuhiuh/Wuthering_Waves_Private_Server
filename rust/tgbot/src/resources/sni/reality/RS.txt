@@ -3,3 +3,8 @@ informer.rs
 telegraf.rs
 bg.ac.rs
 cock.li
+paragraf.rs
+naxi.rs
+merkurxtip.rs
+superhosting.rs
+mojnovisad.com

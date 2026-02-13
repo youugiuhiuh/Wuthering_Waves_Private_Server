@@ -4,3 +4,4 @@ gov.si
 telekom.si
 um.si
 drnameservice.com
+reporter.si

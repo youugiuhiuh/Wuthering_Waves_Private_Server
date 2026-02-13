@@ -4,3 +4,5 @@ blend.school
 weizmann.ac.il
 bgu.ac.il
 sun-clinic.co.il
+hvr.co.il
+mybf.co.il
