@@ -131,6 +131,7 @@ impl RealityInstallerInternal {
                 "cron",
                 "ca-certificates",
                 "lsb-release",
+                "chrony",
             ],
             PackageManager::Yum => vec![
                 "sudo",
@@ -142,25 +143,37 @@ impl RealityInstallerInternal {
                 "net-tools",
                 "cronie",
                 "ca-certificates",
+                "chrony",
             ],
             PackageManager::Apk => vec![
-                "sudo", "curl", "wget", "jq", "tar", "unzip", "bash", "openrc",
+                "sudo", "curl", "wget", "jq", "tar", "unzip", "bash", "openrc", "chrony",
             ],
         };
+
+        let mut missing_packages = Vec::new();
         for pkg in packages {
-            manager
-                .install(&[&pkg])
-                .await
-                .with_context(|| format!("安装 {} 失败", pkg))?;
+            if !manager.check_installed(pkg).await {
+                missing_packages.push(pkg);
+            }
         }
+
+        if !missing_packages.is_empty() {
+            manager
+                .install(&missing_packages)
+                .await
+                .with_context(|| format!("安装依赖 {:?} 失败", missing_packages))?;
+        }
+
         if crate::logic::firewall::FirewallManager::detect_backend()
             .await
             .is_none()
         {
-            manager
-                .install(&["firewalld"])
-                .await
-                .with_context(|| "安装 firewalld 失败")?;
+            if !manager.check_installed("firewalld").await {
+                manager
+                    .install(&["firewalld"])
+                    .await
+                    .with_context(|| "安装 firewalld 失败")?;
+            }
         }
         Ok(())
     }
@@ -257,6 +270,7 @@ impl RealityInstallerInternal {
                 "cron",
                 "ca-certificates",
                 "lsb-release",
+                "chrony",
             ],
             PackageManager::Yum => vec![
                 "sudo",
@@ -268,29 +282,38 @@ impl RealityInstallerInternal {
                 "net-tools",
                 "cronie",
                 "ca-certificates",
+                "chrony",
             ],
             PackageManager::Apk => vec![
-                "sudo", "curl", "wget", "jq", "tar", "unzip", "bash", "openrc",
+                "sudo", "curl", "wget", "jq", "tar", "unzip", "bash", "openrc", "chrony",
             ],
         };
 
         for (i, pkg) in packages.iter().enumerate() {
-            let desc = format!("正在安装依赖 ({}/{}): {}", i + 1, packages.len(), pkg);
-            self.update_progress(1, &desc).await?;
-            manager
-                .install(&[pkg])
-                .await
-                .with_context(|| format!("安装 {} 失败", pkg))?;
+            let desc = format!("正在检查依赖 ({}/{}): {}", i + 1, packages.len(), pkg);
+            self.update_progress(1, &desc).await?; // Stay on step 1
+
+            if !manager.check_installed(pkg).await {
+                let desc = format!("正在安装依赖 ({}/{}): {}", i + 1, packages.len(), pkg);
+                self.update_progress(1, &desc).await?;
+                manager
+                    .install(&[pkg])
+                    .await
+                    .with_context(|| format!("安装 {} 失败", pkg))?;
+            }
         }
         if crate::logic::firewall::FirewallManager::detect_backend()
             .await
             .is_none()
         {
-            self.update_progress(1, "正在安装 firewalld...").await?;
-            manager
-                .install(&["firewalld"])
-                .await
-                .with_context(|| "安装 firewalld 失败")?;
+            self.update_progress(1, "正在检查防火墙组件...").await?;
+            if !manager.check_installed("firewalld").await {
+                self.update_progress(1, "正在安装 firewalld...").await?;
+                manager
+                    .install(&["firewalld"])
+                    .await
+                    .with_context(|| "安装 firewalld 失败")?;
+            }
         }
         Ok(())
     }
@@ -370,6 +393,44 @@ impl PackageManager {
                 let mut args = vec!["add", "--no-progress"];
                 args.extend_from_slice(packages);
                 run_command("apk", &args).await
+            }
+        }
+    }
+
+    async fn check_installed(&self, pkg: &str) -> bool {
+        match self {
+            PackageManager::Apt => {
+                // dpkg -s <pkg>
+                Command::new("dpkg")
+                    .args(&["-s", pkg])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .await
+                    .map(|s| s.success())
+                    .unwrap_or(false)
+            }
+            PackageManager::Yum => {
+                // rpm -q <pkg>
+                Command::new("rpm")
+                    .args(&["-q", pkg])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .await
+                    .map(|s| s.success())
+                    .unwrap_or(false)
+            }
+            PackageManager::Apk => {
+                // apk info -e <pkg>
+                Command::new("apk")
+                    .args(&["info", "-e", pkg])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .await
+                    .map(|s| s.success())
+                    .unwrap_or(false)
             }
         }
     }
