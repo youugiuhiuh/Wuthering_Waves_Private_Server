@@ -971,6 +971,14 @@ fn handle_callback(
                             format!("⚙️ 模式: {}", current_mode.as_str()),
                             "a_warp_switch_mode",
                         )],
+                        vec![InlineKeyboardButton::callback(
+                            "📊 状态检测",
+                            "a_warp_status",
+                        )],
+                        vec![
+                            InlineKeyboardButton::callback("🔄 重启服务", "a_warp_restart"),
+                            InlineKeyboardButton::callback("🗑️ 卸载服务", "a_warp_uninstall"),
+                        ],
                         vec![InlineKeyboardButton::callback("🗑️ 清除规则", "a_del_warp")],
                         vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
                     ]);
@@ -1107,6 +1115,88 @@ fn handle_callback(
                     Err(e) => {
                         bot.answer_callback_query(q.id)
                             .text(format!("❌ 清除失败: {}", e))
+                            .await?;
+                    }
+                }
+            }
+            "a_warp_status" => match WarpInstaller::status().await {
+                Ok(status) => {
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!("📊 <b>WARP 状态检测</b>\n\n{}", status),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(vec![vec![
+                        InlineKeyboardButton::callback("⬅️ 返回", "m_warp"),
+                    ]]))
+                    .await?;
+                }
+                Err(e) => {
+                    bot.answer_callback_query(q.id)
+                        .text(format!("❌ 检测失败: {}", e))
+                        .await?;
+                }
+            },
+            "a_warp_restart" => {
+                bot.answer_callback_query(q.id.clone())
+                    .text("⏳ 正在重启服务...")
+                    .await?;
+                match WarpInstaller::restart_service().await {
+                    Ok(_) => {
+                        bot.answer_callback_query(q.id)
+                            .text("✅ 服务重启成功且连接正常")
+                            .await?;
+                    }
+                    Err(e) => {
+                        bot.send_message(chat_id, format!("❌ <b>重启失败</b>\n原因: {}", e))
+                            .parse_mode(ParseMode::Html)
+                            .await?;
+                    }
+                }
+            }
+            "a_warp_uninstall" => {
+                let keyboard = InlineKeyboardMarkup::new(vec![
+                    vec![InlineKeyboardButton::callback(
+                        "⚠️ 确认卸载",
+                        "a_warp_uninstall_confirm",
+                    )],
+                    vec![InlineKeyboardButton::callback("🔙 取消", "m_warp")],
+                ]);
+                bot.edit_message_text(
+                    chat_id,
+                    msg_id,
+                    "⚠️ <b>卸载确认</b>\n\n确定要卸载 Cloudflare WARP 吗？\n这将移除所有相关组件和配置。"
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
+            }
+            "a_warp_uninstall_confirm" => {
+                bot.answer_callback_query(q.id.clone())
+                    .text("⏳ 正在卸载...")
+                    .await?;
+                bot.edit_message_text(chat_id, msg_id, "⏳ <b>正在卸载...</b>")
+                    .parse_mode(ParseMode::Html)
+                    .await?;
+
+                match WarpInstaller::uninstall().await {
+                    Ok(_) => {
+                        bot.send_message(
+                            chat_id,
+                            "✅ <b>卸载成功</b>\nCloudflare WARP 已从系统中移除。",
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .await?;
+
+                        // Return to maint menu
+                        let mut new_q = q.clone();
+                        new_q.data = Some("m_warp".to_string());
+                        return handle_callback(bot, new_q, state).await;
+                    }
+                    Err(e) => {
+                        bot.send_message(chat_id, format!("❌ <b>卸载失败</b>\n原因: {}", e))
+                            .parse_mode(ParseMode::Html)
                             .await?;
                     }
                 }

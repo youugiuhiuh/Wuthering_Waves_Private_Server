@@ -28,9 +28,25 @@ impl WarpInstaller {
     }
 
     pub async fn install() -> Result<()> {
+        Self::enable_ipv6_support().await.ok(); // Attempt to enable IPv6 support
+
         let pm = PackageManager::detect().await?;
         match pm {
             PackageManager::Apt => {
+                // Install dependencies including wireguard-tools
+                let _ = run_command("apt-get", &["update"]).await?;
+                let _ = run_command(
+                    "apt-get",
+                    &[
+                        "install",
+                        "gnupg",
+                        "apt-transport-https",
+                        "wireguard-tools",
+                        "-y",
+                    ],
+                )
+                .await?;
+
                 // Add GPG key
                 let _ = run_command_shell("curl https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg").await?;
 
@@ -40,7 +56,6 @@ impl WarpInstaller {
                 // Install
                 let _ = run_command("apt-get", &["update"]).await?;
                 let _ = run_command("apt-get", &["install", "cloudflare-warp", "-y"]).await?;
-                Ok(())
             }
             PackageManager::Yum => {
                 // RHEL/CentOS
@@ -52,13 +67,165 @@ impl WarpInstaller {
                     ],
                 )
                 .await?;
-                let _ = run_command("yum", &["install", "cloudflare-warp", "-y"]).await?;
-                Ok(())
+                let _ = run_command("yum", &["install", "epel-release", "-y"])
+                    .await
+                    .ok();
+                let _ = run_command(
+                    "yum",
+                    &["install", "wireguard-tools", "cloudflare-warp", "-y"],
+                )
+                .await?;
             }
-            PackageManager::Apk => Err(anyhow!(
-                "Alpine Linux 目前暂不支持自动安装 Cloudflare WARP (依赖 glibc)。请尝试手动尝试安装或更换系统。"
-            )),
+            PackageManager::Apk => {
+                return Err(anyhow!(
+                    "Alpine Linux 目前暂不支持自动安装 Cloudflare WARP (依赖 glibc)。请尝试手动尝试安装或更换系统。"
+                ));
+            }
         }
+
+        // Ensure service is running
+        if is_systemd().await {
+            let _ = run_command("systemctl", &["enable", "--now", "warp-svc"]).await;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+
+        // Initialize WARP
+        // Check registration
+        let account_output = Command::new("warp-cli")
+            .args(&["--accept-tos", "account"])
+            .output()
+            .await?;
+        let account_str = String::from_utf8_lossy(&account_output.stdout);
+
+        if account_str.contains("Missing") || !account_str.contains("Account type") {
+            // Register
+            let _ = run_command("warp-cli", &["--accept-tos", "register"]).await?;
+        }
+
+        // Configure Proxy Mode
+        let _ = run_command("warp-cli", &["--accept-tos", "set-mode", "proxy"]).await?;
+        let _ = run_command("warp-cli", &["--accept-tos", "set-proxy-port", "40000"]).await?;
+
+        // Connect
+        let _ = run_command("warp-cli", &["--accept-tos", "connect"]).await?;
+        let _ = run_command("warp-cli", &["--accept-tos", "enable-always-on"]).await?;
+
+        Ok(())
+    }
+
+    pub async fn uninstall() -> Result<()> {
+        let pm = PackageManager::detect().await?;
+        match pm {
+            PackageManager::Apt => {
+                let _ = run_command("apt-get", &["purge", "cloudflare-warp", "-y"]).await;
+                let _ = fs::remove_file("/etc/apt/sources.list.d/cloudflare-client.list").await;
+                let _ = fs::remove_file("/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg")
+                    .await;
+                let _ = run_command("apt-get", &["autoremove", "-y"]).await;
+            }
+            PackageManager::Yum => {
+                let _ = run_command("yum", &["remove", "cloudflare-warp", "-y"]).await;
+            }
+            PackageManager::Apk => {}
+        }
+
+        // Clean up config
+        let _ = fs::remove_dir_all("/var/lib/cloudflare-warp").await;
+
+        Ok(())
+    }
+
+    pub async fn restart_service() -> Result<()> {
+        if is_systemd().await {
+            run_command("systemctl", &["restart", "warp-svc"]).await?;
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+            // Check if connected
+            let status = Command::new("warp-cli")
+                .args(&["--accept-tos", "status"])
+                .output()
+                .await?;
+            let status_str = String::from_utf8_lossy(&status.stdout);
+            if status_str.to_lowercase().contains("connected") {
+                Ok(())
+            } else {
+                Err(anyhow!("重启后 WARP 未能自动连接，状态: {}", status_str))
+            }
+        } else {
+            Err(anyhow!("仅支持 Systemd 系统重启服务"))
+        }
+    }
+
+    pub async fn status() -> Result<String> {
+        let svc_active = if is_systemd().await {
+            let out = Command::new("systemctl")
+                .args(&["is-active", "warp-svc"])
+                .output()
+                .await?;
+            String::from_utf8_lossy(&out.stdout).trim() == "active"
+        } else {
+            false
+        };
+
+        if !svc_active {
+            return Ok("🔴 服务未运行 (warp-svc)".to_string());
+        }
+
+        let cli_out = Command::new("warp-cli")
+            .args(&["--accept-tos", "status"])
+            .output()
+            .await?;
+        let cli_status = String::from_utf8_lossy(&cli_out.stdout).trim().to_string();
+
+        let conn_test = Command::new("curl")
+            .args(&[
+                "-x",
+                "socks5://127.0.0.1:40000",
+                "-s",
+                "-o",
+                "/dev/null",
+                "-w",
+                "%{http_code}",
+                "https://www.cloudflare.com/cdn-cgi/trace",
+            ])
+            .output()
+            .await;
+
+        let proxy_status = match conn_test {
+            Ok(o) if String::from_utf8_lossy(&o.stdout).trim() == "200" => "🟢 代理连通",
+            _ => "🔴 代理不通",
+        };
+
+        Ok(format!(
+            "⚙️ <b>系统服务</b>: {}\n📡 <b>客户端状态</b>: {}\n🔌 <b>代理测试</b>: {}",
+            if svc_active {
+                "🟢 运行中"
+            } else {
+                "🔴 停止"
+            },
+            cli_status,
+            proxy_status
+        ))
+    }
+
+    async fn enable_ipv6_support() -> Result<()> {
+        let sysctl_conf = "/etc/sysctl.conf";
+        if PathBuf::from(sysctl_conf).exists() {
+            if let Ok(content) = fs::read_to_string(sysctl_conf).await {
+                if content.contains("net.ipv6.conf.all.disable_ipv6 = 1") {
+                    // Remove or comment out
+                    let new_content = content.replace(
+                        "net.ipv6.conf.all.disable_ipv6 = 1",
+                        "# net.ipv6.conf.all.disable_ipv6 = 1",
+                    );
+                    let _ = fs::write(sysctl_conf, new_content).await;
+                }
+            }
+        }
+
+        // Force enable
+        let _ = run_command_shell("sysctl -w net.ipv6.conf.all.disable_ipv6=0").await;
+        Ok(())
     }
 }
 
