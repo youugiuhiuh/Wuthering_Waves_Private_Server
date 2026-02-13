@@ -15,6 +15,60 @@ const WWPS_CORE_INSTALL_DIR: &str = "/etc/wwps/wwps-core";
 const WWPS_CORE_BACKUP_DIR: &str = "/etc/wwps/wwps-core/backup";
 const WWPS_CORE_TEMP_DIR: &str = "/tmp/wwps-core-installer";
 
+pub struct WarpInstaller;
+
+impl WarpInstaller {
+    pub async fn is_installed() -> bool {
+        Command::new("which")
+            .arg("warp-cli")
+            .output()
+            .await
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    pub async fn install() -> Result<()> {
+        let pm = PackageManager::detect().await;
+        match pm {
+            PackageManager::Apt => {
+                 // Add GPG key
+                 let _ = run_command_shell("curl https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg").await?;
+                 
+                 // Add repo
+                 let _ = run_command_shell("echo \"deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main\" | tee /etc/apt/sources.list.d/cloudflare-client.list").await?;
+                 
+                 // Install
+                 let _ = run_command("apt-get", &["update"]).await?;
+                 let _ = run_command("apt-get", &["install", "cloudflare-warp", "-y"]).await?;
+                 Ok(())
+            },
+            PackageManager::Yum => {
+                 // RHEL/CentOS
+                 let _ = run_command("rpm", &["-ivh", "https://pkg.cloudflareclient.com/cloudflare-release-el8.rpm"]).await?;
+                 let _ = run_command("yum", &["install", "cloudflare-warp", "-y"]).await?;
+                 Ok(())
+            },
+            PackageManager::Apk => {
+                 Err(anyhow!("Alpine Linux 目前暂不支持自动安装 Cloudflare WARP (依赖 glibc)。请尝试手动尝试安装或更换系统。"))
+            }
+        }
+    }
+}
+
+async fn run_command_shell(cmd: &str) -> Result<()> {
+    let status = Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .status()
+        .await?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!("Command failed: {}", cmd))
+    }
+}
+
+
 static PROGRESS_STATE: Lazy<Mutex<ProgressState>> = Lazy::new(|| {
     Mutex::new(ProgressState {
         running: false,

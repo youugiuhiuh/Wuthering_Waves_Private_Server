@@ -650,6 +650,122 @@ impl ConfigManager {
         crate::logic::maintenance::MaintenanceManager::reload_core().await?;
         Ok(())
     }
+
+    pub async fn update_warp_routing_rules(rules: Vec<String>, mode: WarpMode) -> Result<()> {
+        let config_path = "/etc/wwps/wwps-core/conf/10_warp_routing.json";
+        
+        if rules.is_empty() {
+             let _ = fs::remove_file(config_path).await;
+             crate::logic::maintenance::MaintenanceManager::reload_core().await?;
+             return Ok(());
+        }
+
+        let outbounds = match mode {
+            WarpMode::Default => json!([
+                {
+                    "tag": "warp",
+                    "protocol": "socks",
+                    "settings": {
+                        "servers": [{ "address": "127.0.0.1", "port": 40000 }]
+                    }
+                }
+            ]),
+            WarpMode::IPv4 => json!([
+                {
+                    "tag": "warp-socks",
+                    "protocol": "socks",
+                    "settings": {
+                        "servers": [{ "address": "127.0.0.1", "port": 40000 }]
+                    }
+                },
+                {
+                    "tag": "warp",
+                    "protocol": "freedom",
+                    "settings": { "domainStrategy": "UseIPv4" },
+                    "streamSettings": { "sockopt": { "dialerProxy": "warp-socks" } }
+                }
+            ]),
+            WarpMode::IPv6 => json!([
+                {
+                    "tag": "warp-socks",
+                    "protocol": "socks",
+                    "settings": {
+                        "servers": [{ "address": "127.0.0.1", "port": 40000 }]
+                    }
+                },
+                {
+                    "tag": "warp",
+                    "protocol": "freedom",
+                    "settings": { "domainStrategy": "UseIPv6" },
+                    "streamSettings": { "sockopt": { "dialerProxy": "warp-socks" } }
+                }
+            ]),
+        };
+
+        let config = json!({
+            "outbounds": outbounds,
+            "routing": {
+                "rules": [
+                    {
+                        "type": "field",
+                        "outboundTag": "warp",
+                        "domain": rules
+                    }
+                ]
+            }
+        });
+
+        let content = serde_json::to_string_pretty(&config)?;
+        fs::write(config_path, content).await?;
+        crate::logic::maintenance::MaintenanceManager::reload_core().await?;
+        Ok(())
+    }
+
+    pub async fn get_warp_routing_rules() -> Result<(Vec<String>, WarpMode)> {
+        let config_path = "/etc/wwps/wwps-core/conf/10_warp_routing.json";
+        if !Path::new(config_path).exists() {
+             return Ok((Vec::new(), WarpMode::Default));
+        }
+        
+        let content = fs::read_to_string(config_path).await?;
+        let v: Value = serde_json::from_str(&content)?;
+        
+        // Extract rules
+        let rules = if let Some(rules) = v["routing"]["rules"].as_array() {
+            if let Some(first_rule) = rules.first() {
+                if let Some(domains) = first_rule["domain"].as_array() {
+                    domains.iter().filter_map(|d| d.as_str().map(String::from)).collect()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        // Extract IP mode
+        let mode = if let Some(outbounds) = v["outbounds"].as_array() {
+            if outbounds.len() == 2 {
+                 if let Some(freedom) = outbounds.iter().find(|o| o["protocol"] == "freedom") {
+                     match freedom["settings"]["domainStrategy"].as_str() {
+                         Some("UseIPv4") => WarpMode::IPv4,
+                         Some("UseIPv6") => WarpMode::IPv6,
+                         _ => WarpMode::Default,
+                     }
+                 } else {
+                     WarpMode::Default
+                 }
+            } else {
+                WarpMode::Default
+            }
+        } else {
+            WarpMode::Default
+        };
+        
+        Ok((rules, mode))
+    }
 }
 
 async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
@@ -750,5 +866,30 @@ mod tests {
         assert_eq!(vless["streamSettings"]["xhttpSettings"]["mode"], "auto");
         // 验证 XHTTP 没有 flow
         assert!(vless["settings"]["clients"][0].get("flow").is_none());
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WarpMode {
+    Default,
+    IPv4,
+    IPv6,
+}
+
+impl WarpMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            WarpMode::Default => "默认 (自动)",
+            WarpMode::IPv4 => "IPv4 优先",
+            WarpMode::IPv6 => "IPv6 优先",
+        }
+    }
+    
+    pub fn next(&self) -> Self {
+        match self {
+            WarpMode::Default => WarpMode::IPv4,
+            WarpMode::IPv4 => WarpMode::IPv6,
+            WarpMode::IPv6 => WarpMode::Default,
+        }
     }
 }
