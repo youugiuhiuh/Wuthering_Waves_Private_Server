@@ -657,9 +657,8 @@ impl ConfigManager {
         let account_path = "/etc/wwps/wwps-core/warp_account.json";
 
         if rules.is_empty() {
-            let _ = fs::remove_file(config_path).await;
-            crate::logic::maintenance::MaintenanceManager::reload_core().await?;
-            return Ok(());
+            // Do not delete file; keep SOCKS5 inbound active even if no routing rules are set.
+            // Just proceed to generate config with empty domain rules.
         }
 
         // Read account config
