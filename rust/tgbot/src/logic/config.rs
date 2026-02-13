@@ -652,8 +652,9 @@ impl ConfigManager {
         Ok(())
     }
 
-    pub async fn update_warp_routing_rules(rules: Vec<String>, mode: WarpMode) -> Result<()> {
+    pub async fn update_warp_routing_rules(rules: Vec<String>, _mode: WarpMode) -> Result<()> {
         let config_path = "/etc/wwps/wwps-core/conf/10_warp_routing.json";
+        let account_path = "/etc/wwps/wwps-core/warp_account.json";
 
         if rules.is_empty() {
             let _ = fs::remove_file(config_path).await;
@@ -661,50 +662,47 @@ impl ConfigManager {
             return Ok(());
         }
 
-        let outbounds = match mode {
-            WarpMode::Default => json!([
-                {
-                    "tag": "warp",
-                    "protocol": "socks",
-                    "settings": {
-                        "servers": [{ "address": "127.0.0.1", "port": 40000 }]
-                    }
-                }
-            ]),
-            WarpMode::IPv4 => json!([
-                {
-                    "tag": "warp-socks",
-                    "protocol": "socks",
-                    "settings": {
-                        "servers": [{ "address": "127.0.0.1", "port": 40000 }]
-                    }
-                },
-                {
-                    "tag": "warp",
-                    "protocol": "freedom",
-                    "settings": { "domainStrategy": "UseIPv4" },
-                    "streamSettings": { "sockopt": { "dialerProxy": "warp-socks" } }
-                }
-            ]),
-            WarpMode::IPv6 => json!([
-                {
-                    "tag": "warp-socks",
-                    "protocol": "socks",
-                    "settings": {
-                        "servers": [{ "address": "127.0.0.1", "port": 40000 }]
-                    }
-                },
-                {
-                    "tag": "warp",
-                    "protocol": "freedom",
-                    "settings": { "domainStrategy": "UseIPv6" },
-                    "streamSettings": { "sockopt": { "dialerProxy": "warp-socks" } }
-                }
-            ]),
+        // Read account config
+        let account_content = fs::read_to_string(account_path)
+            .await
+            .context("WARP 未安装 (配置文件 warp_account.json 缺失)")?;
+        let account: Value = serde_json::from_str(&account_content)?;
+
+        let priv_key = account["private_key"].as_str().unwrap_or_default();
+        let v4 = account["address_v4"].as_str().unwrap_or("");
+        let v6 = account["address_v6"].as_str().unwrap_or("");
+
+        let reserved: Vec<u8> = if let Some(arr) = account["reserved"].as_array() {
+            arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect()
+        } else {
+            vec![0, 0, 0]
         };
 
+        // Construct WireGuard outbound
+        // Standard Cloudflare WARP Endpoint & PublicKey
+        let peer_pub_key = "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=";
+        let peer_endpoint = "engage.cloudflareclient.com:2408";
+
+        let outbound = json!({
+            "tag": "warp",
+            "protocol": "wireguard",
+            "settings": {
+                "secretKey": priv_key,
+                "address": [v4, v6],
+                "peers": [
+                    {
+                        "publicKey": peer_pub_key,
+                        "endpoint": peer_endpoint,
+                        "keepAlive": 30
+                    }
+                ],
+                "reserved": reserved,
+                "mtu": 1280
+            }
+        });
+
         let config = json!({
-            "outbounds": outbounds,
+            "outbounds": [outbound],
             "routing": {
                 "rules": [
                     {

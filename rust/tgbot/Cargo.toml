@@ -1,6 +1,6 @@
 [package]
 name = "tgbot"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 
 [dependencies]
@@ -38,6 +38,7 @@ regex = "1"
 self-replace = "1.3"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 zbus = { version = "4", features = ["tokio"] }
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
 log = "0.4.29"
 rust-embed = "8.11.0"
 
