@@ -28,7 +28,7 @@ impl WarpInstaller {
     }
 
     pub async fn install() -> Result<()> {
-        let pm = PackageManager::detect().await;
+        let pm = PackageManager::detect().await?;
         match pm {
             PackageManager::Apt => {
                 // Add GPG key

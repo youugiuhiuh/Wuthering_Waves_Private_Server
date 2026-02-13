@@ -457,7 +457,7 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Respons
 
     // Check if user is in WARP input flow
     let warp_timeout_check = {
-        let mut warp_inputs = state.pending_warp_inputs.lock().await;
+        let warp_inputs = state.pending_warp_inputs.lock().await;
         if let Some(start_time) = warp_inputs.get(&chat_id) {
             if start_time.elapsed() > Duration::from_secs(60) {
                 Some(true)
