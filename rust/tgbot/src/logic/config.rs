@@ -701,10 +701,27 @@ impl ConfigManager {
             }
         });
 
+        // SOCKS5 Inbound (Listening on 127.0.0.1:40000)
+        let socks_inbound = json!({
+            "tag": "warp-in",
+            "port": 40000,
+            "listen": "127.0.0.1",
+            "protocol": "socks",
+            "settings": {
+                "udp": true
+            }
+        });
+
         let config = json!({
+            "inbounds": [socks_inbound],
             "outbounds": [outbound],
             "routing": {
                 "rules": [
+                    {
+                        "type": "field",
+                        "inboundTag": ["warp-in"],
+                        "outboundTag": "warp"
+                    },
                     {
                         "type": "field",
                         "outboundTag": "warp",
