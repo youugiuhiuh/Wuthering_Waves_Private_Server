@@ -459,11 +459,11 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Respons
     let warp_timeout_check = {
         let mut warp_inputs = state.pending_warp_inputs.lock().await;
         if let Some(start_time) = warp_inputs.get(&chat_id) {
-             if start_time.elapsed() > Duration::from_secs(60) {
-                 Some(true)
-             } else {
-                 Some(false)
-             }
+            if start_time.elapsed() > Duration::from_secs(60) {
+                Some(true)
+            } else {
+                Some(false)
+            }
         } else {
             None
         }
@@ -472,9 +472,10 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Respons
     if let Some(is_timeout) = warp_timeout_check {
         let mut warp_inputs = state.pending_warp_inputs.lock().await;
         warp_inputs.remove(&chat_id);
-        
+
         if is_timeout {
-            bot.send_message(chat_id, "⏳ 输入超时 (60s)，已自动取消。").await?;
+            bot.send_message(chat_id, "⏳ 输入超时 (60s)，已自动取消。")
+                .await?;
             return Ok(());
         } else {
             // Process input
@@ -484,25 +485,30 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Respons
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
                     .collect();
-                
+
                 if rules.is_empty() {
-                    bot.send_message(chat_id, "⚠️ 输入为空，请重新输入或使用 /menu 返回。").await?;
-                    // Keep waiting (re-insert start time or just return to let them try again? 
+                    bot.send_message(chat_id, "⚠️ 输入为空，请重新输入或使用 /menu 返回。")
+                        .await?;
+                    // Keep waiting (re-insert start time or just return to let them try again?
                     // Let's re-insert to reset timeout or just let them retry.
-                    // Actually we removed it above. Let's re-add it if we want them to retry. 
+                    // Actually we removed it above. Let's re-add it if we want them to retry.
                     // Or just cancel. Let's cancel to avoid stuck loop.
                     return Ok(());
                 }
 
                 // Get current mode to preserve it
-                let (_, current_mode) = ConfigManager::get_warp_routing_rules().await.unwrap_or((Vec::new(), WarpMode::Default));
+                let (_, current_mode) = ConfigManager::get_warp_routing_rules()
+                    .await
+                    .unwrap_or((Vec::new(), WarpMode::Default));
 
                 match ConfigManager::update_warp_routing_rules(rules, current_mode).await {
                     Ok(_) => {
-                        bot.send_message(chat_id, "✅ WARP 分流规则已更新并重载核心。").await?;
+                        bot.send_message(chat_id, "✅ WARP 分流规则已更新并重载核心。")
+                            .await?;
                     }
                     Err(e) => {
-                        bot.send_message(chat_id, format!("❌ 更新失败: {}", e)).await?;
+                        bot.send_message(chat_id, format!("❌ 更新失败: {}", e))
+                            .await?;
                     }
                 }
             }
@@ -932,22 +938,27 @@ fn handle_callback(
             }
             "m_warp" => {
                 let is_installed = WarpInstaller::is_installed().await;
-                
+
                 if !is_installed {
                     let keyboard = InlineKeyboardMarkup::new(vec![
-                        vec![InlineKeyboardButton::callback("🚀 安装 Cloudflare WARP", "a_inst_warp")],
+                        vec![InlineKeyboardButton::callback(
+                            "🚀 安装 Cloudflare WARP",
+                            "a_inst_warp",
+                        )],
                         vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
                     ]);
                     bot.edit_message_text(
-                        chat_id, 
-                        msg_id, 
+                        chat_id,
+                        msg_id,
                         "⚠️ <b>未检测到 Cloudflare WARP</b>\n\n系统未安装 WARP 服务，无法配置分流规则。\n是否立即安装？"
                     )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(keyboard)
                     .await?;
                 } else {
-                    let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules().await.unwrap_or((Vec::new(), WarpMode::Default));
+                    let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules()
+                        .await
+                        .unwrap_or((Vec::new(), WarpMode::Default));
                     let rule_display = if current_rules.is_empty() {
                         "<i>(无规则)</i>".to_string()
                     } else {
@@ -957,16 +968,16 @@ fn handle_callback(
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![InlineKeyboardButton::callback("✏️ 设置规则", "a_set_warp")],
                         vec![InlineKeyboardButton::callback(
-                            format!("⚙️ 模式: {}", current_mode.as_str()), 
-                            "a_warp_switch_mode"
+                            format!("⚙️ 模式: {}", current_mode.as_str()),
+                            "a_warp_switch_mode",
                         )],
                         vec![InlineKeyboardButton::callback("🗑️ 清除规则", "a_del_warp")],
                         vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
                     ]);
-                    
+
                     bot.edit_message_text(
-                        chat_id, 
-                        msg_id, 
+                        chat_id,
+                        msg_id,
                         format!("🌩 <b>WARP 分流设置</b>\n\n当前模式: <b>{}</b>\n当前规则: {}\n\n说明: \n• 默认: 由 WARP 自动选择 IP\n• IPv4/IPv6: 强制 WARP 出口 IP 版本\n• 仅规则匹配的域名走 WARP。", current_mode.as_str(), rule_display)
                     )
                     .parse_mode(ParseMode::Html)
@@ -975,13 +986,17 @@ fn handle_callback(
                 }
             }
             "a_warp_switch_mode" => {
-                let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules().await.unwrap_or((Vec::new(), WarpMode::Default));
+                let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules()
+                    .await
+                    .unwrap_or((Vec::new(), WarpMode::Default));
                 let next_mode = current_mode.next();
-                
-                match ConfigManager::update_warp_routing_rules(current_rules.clone(), next_mode).await {
+
+                match ConfigManager::update_warp_routing_rules(current_rules.clone(), next_mode)
+                    .await
+                {
                     Ok(_) => {
-                         // Refresh view
-                         let rule_display = if current_rules.is_empty() {
+                        // Refresh view
+                        let rule_display = if current_rules.is_empty() {
                             "<i>(无规则)</i>".to_string()
                         } else {
                             current_rules.join(", ")
@@ -990,16 +1005,16 @@ fn handle_callback(
                         let keyboard = InlineKeyboardMarkup::new(vec![
                             vec![InlineKeyboardButton::callback("✏️ 设置规则", "a_set_warp")],
                             vec![InlineKeyboardButton::callback(
-                                format!("⚙️ 模式: {}", next_mode.as_str()), 
-                                "a_warp_switch_mode"
+                                format!("⚙️ 模式: {}", next_mode.as_str()),
+                                "a_warp_switch_mode",
                             )],
                             vec![InlineKeyboardButton::callback("🗑️ 清除规则", "a_del_warp")],
                             vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
                         ]);
-                        
+
                         bot.edit_message_text(
-                            chat_id, 
-                            msg_id, 
+                            chat_id,
+                            msg_id,
                             format!("🌩 <b>WARP 分流设置</b>\n\n当前模式: <b>{}</b>\n当前规则: {}\n\n说明: \n• 默认: 由 WARP 自动选择 IP\n• IPv4/IPv6: 强制 WARP 出口 IP 版本\n• 仅规则匹配的域名走 WARP。", next_mode.as_str(), rule_display)
                         )
                         .parse_mode(ParseMode::Html)
@@ -1007,7 +1022,9 @@ fn handle_callback(
                         .await?;
                     }
                     Err(e) => {
-                        bot.answer_callback_query(q.id).text(format!("❌ 切换失败: {}", e)).await?;
+                        bot.answer_callback_query(q.id)
+                            .text(format!("❌ 切换失败: {}", e))
+                            .await?;
                     }
                 }
             }
@@ -1015,22 +1032,29 @@ fn handle_callback(
                 bot.answer_callback_query(q.id.clone())
                     .text("⏳ 正在安装 Cloudflare WARP...")
                     .await?;
-                bot.edit_message_text(chat_id, msg_id, "⏳ <b>正在安装 Cloudflare WARP...</b>\n请稍候，这可能需要几分钟。")
-                    .parse_mode(ParseMode::Html)
-                    .await?;
+                bot.edit_message_text(
+                    chat_id,
+                    msg_id,
+                    "⏳ <b>正在安装 Cloudflare WARP...</b>\n请稍候，这可能需要几分钟。",
+                )
+                .parse_mode(ParseMode::Html)
+                .await?;
 
                 match WarpInstaller::install().await {
                     Ok(_) => {
-                         bot.send_message(chat_id, "✅ <b>Cloudflare WARP 安装成功！</b>\n现在您可以配置分流规则了。")
-                            .parse_mode(ParseMode::Html)
-                            .await?;
-                        
+                        bot.send_message(
+                            chat_id,
+                            "✅ <b>Cloudflare WARP 安装成功！</b>\n现在您可以配置分流规则了。",
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .await?;
+
                         // Re-trigger m_warp to show config menu
                         let mut new_q = q.clone();
                         new_q.data = Some("m_warp".to_string());
-                        // We need to pass the state recursively, or just let the user navigate back. 
+                        // We need to pass the state recursively, or just let the user navigate back.
                         // But recursive call is cleaner for UX.
-                        // However, handle_callback is async recursive? No, it returns BoxFuture. 
+                        // However, handle_callback is async recursive? No, it returns BoxFuture.
                         // It's safe to call it.
                         return handle_callback(bot, new_q, state).await;
                     }
@@ -1042,40 +1066,49 @@ fn handle_callback(
                 }
             }
             "a_set_warp" => {
-                state.pending_warp_inputs.lock().await.insert(chat_id, Instant::now());
+                state
+                    .pending_warp_inputs
+                    .lock()
+                    .await
+                    .insert(chat_id, Instant::now());
                 bot.send_message(
-                    chat_id, 
+                    chat_id,
                     "✏️ <b>请输入分流规则</b>\n\n支持格式: `geosite:google, domain:reddit.com`\n多个规则请用逗号分隔。\n\n(请在 60 秒内输入)"
                 )
                 .parse_mode(ParseMode::Html)
                 .await?;
             }
             "a_del_warp" => {
-                match ConfigManager::update_warp_routing_rules(Vec::new(), WarpMode::Default).await {
-                     Ok(_) => {
-                        bot.answer_callback_query(q.id).text("✅ 规则已清除").await?;
+                match ConfigManager::update_warp_routing_rules(Vec::new(), WarpMode::Default).await
+                {
+                    Ok(_) => {
+                        bot.answer_callback_query(q.id)
+                            .text("✅ 规则已清除")
+                            .await?;
                         // Refresh view
                         let keyboard = InlineKeyboardMarkup::new(vec![
                             vec![InlineKeyboardButton::callback("✏️ 设置规则", "a_set_warp")],
-                             vec![InlineKeyboardButton::callback(
-                                format!("⚙️ 模式: {}", WarpMode::Default.as_str()), 
-                                "a_warp_switch_mode"
+                            vec![InlineKeyboardButton::callback(
+                                format!("⚙️ 模式: {}", WarpMode::Default.as_str()),
+                                "a_warp_switch_mode",
                             )],
                             vec![InlineKeyboardButton::callback("🗑️ 清除规则", "a_del_warp")],
                             vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
                         ]);
                         bot.edit_message_text(
-                            chat_id, 
-                            msg_id, 
+                            chat_id,
+                            msg_id,
                             format!("🌩 <b>WARP 分流设置</b>\n\n当前模式: <b>{}</b>\n当前规则: <i>(无规则)</i>\n\n说明: \n• 默认: 由 WARP 自动选择 IP\n• IPv4/IPv6: 强制 WARP 出口 IP 版本\n• 仅规则匹配的域名走 WARP。", WarpMode::Default.as_str())
                         )
                         .parse_mode(ParseMode::Html)
                         .reply_markup(keyboard)
                         .await?;
-                     }
-                     Err(e) => {
-                         bot.answer_callback_query(q.id).text(format!("❌ 清除失败: {}", e)).await?;
-                     }
+                    }
+                    Err(e) => {
+                        bot.answer_callback_query(q.id)
+                            .text(format!("❌ 清除失败: {}", e))
+                            .await?;
+                    }
                 }
             }
             "a_destroy_ask" => {
