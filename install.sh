@@ -9539,7 +9539,7 @@ manageTGBot() {
 
     if [[ -z ${github_version} ]]; then
       # 如果 API 失败，尝试从当前运行的脚本解析
-      github_version=$(grep -oP '当前版本：\Kv[0-9]+\.[0-9]+\.[0-9]+' "$0" 2>/dev/null || echo "v0.2.6")
+      github_version=$(grep -oP '当前版本：\Kv[0-9]+\.[0-9]+\.[0-9]+' "$0" 2>/dev/null || echo "v0.2.7")
     fi
 
     # 创建临时目录
@@ -9675,7 +9675,7 @@ menu() {
   cd "$HOME" || exit
   echoContent red "\n=============================================================="
   echoContent green "作者：youugiuhiuh"
-  echoContent green "当前版本：v0.2.6"
+  echoContent green "当前版本：v0.2.7"
   echoContent green "Github：https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server"
   echoContent green "描述：Wuthering Waves 私服服务端模拟器\c"
   showInstallStatus
