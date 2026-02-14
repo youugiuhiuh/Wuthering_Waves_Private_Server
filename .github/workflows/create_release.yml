@@ -7,7 +7,6 @@ on:
       - master
       - main
     paths:
-      - "install.sh"
       - "rust/tgbot/Cargo.toml"
       - "rust/tgbot/Cargo.lock"
 

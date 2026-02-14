@@ -1216,6 +1216,49 @@ fn handle_callback(
                     .await
                     .unwrap_or_default();
 
+                let rule_to_delete = current_rules.iter().find(|r| {
+                    let mut hasher = Sha256::new();
+                    hasher.update(r.as_bytes());
+                    let hash = hex::encode(hasher.finalize());
+                    &hash[..8] == hash_prefix
+                });
+
+                if let Some(rule) = rule_to_delete {
+                    // Show confirmation
+                    let keyboard = InlineKeyboardMarkup::new(vec![
+                        vec![InlineKeyboardButton::callback(
+                            "⚠️ 确认删除",
+                            format!("a_warp_del_confirm:{}", hash_prefix),
+                        )],
+                        vec![InlineKeyboardButton::callback("🔙 取消", "a_warp_del_menu")],
+                    ]);
+
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!(
+                            "⚠️ <b>删除确认</b>\n\n您确定要删除分流规则 <code>{}</code> 吗？",
+                            rule
+                        ),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
+                } else {
+                    bot.answer_callback_query(q.id.clone())
+                        .text("❌ 规则未找到")
+                        .await?;
+                    let mut new_q = q.clone();
+                    new_q.data = Some("a_warp_del_menu".to_string());
+                    return handle_callback(bot, new_q, state).await;
+                }
+            }
+            d if d.starts_with("a_warp_del_confirm:") => {
+                let hash_prefix = d.strip_prefix("a_warp_del_confirm:").unwrap_or("");
+                let (current_rules, _) = ConfigManager::get_warp_routing_rules()
+                    .await
+                    .unwrap_or_default();
+
                 let rule_to_delete = current_rules.into_iter().find(|r| {
                     let mut hasher = Sha256::new();
                     hasher.update(r.as_bytes());
@@ -1229,24 +1272,21 @@ fn handle_callback(
                             bot.answer_callback_query(q.id.clone())
                                 .text("✅ 规则已删除")
                                 .await?;
-                            let mut new_q = q.clone();
-                            new_q.data = Some("a_warp_del_menu".to_string());
-                            return handle_callback(bot, new_q, state).await;
                         }
                         Err(e) => {
-                            bot.answer_callback_query(q.id)
+                            bot.answer_callback_query(q.id.clone())
                                 .text(format!("❌ 删除失败: {}", e))
                                 .await?;
                         }
                     }
                 } else {
                     bot.answer_callback_query(q.id.clone())
-                        .text("⚠️ 规则未找到 (可能已被删除)")
+                        .text("❌ 规则未找到")
                         .await?;
-                    let mut new_q = q.clone();
-                    new_q.data = Some("a_warp_del_menu".to_string());
-                    return handle_callback(bot, new_q, state).await;
                 }
+                let mut new_q = q.clone();
+                new_q.data = Some("a_warp_del_menu".to_string());
+                return handle_callback(bot, new_q, state).await;
             }
             "a_warp_clear_confirm" => {
                 let keyboard = InlineKeyboardMarkup::new(vec![
@@ -1699,6 +1739,7 @@ fn handle_callback(
                 }
             }
             // 删除特定用户逻辑
+            // 删除特定用户逻辑
             d if d.starts_with("u_d:") => {
                 let parts: Vec<&str> = d.strip_prefix("u_d:").unwrap().split(':').collect();
                 if parts.len() == 2 {
@@ -1707,14 +1748,43 @@ fn handle_callback(
                     let inbounds = ConfigManager::list_all_inbound_files()
                         .await
                         .unwrap_or_default();
+
                     if let Some(_path) = inbounds.get(idx) {
-                        // TODO: Implement delete specific client in config if needed
-                        // For now, let's just show a placeholder or handle file deletion if it's a standalone one
-                        bot.answer_callback_query(q.id.clone())
-                            .text(format!("🗑 暂不支持删除单个用户: {}", email))
-                            .show_alert(true)
+                        let keyboard = InlineKeyboardMarkup::new(vec![
+                            vec![InlineKeyboardButton::callback(
+                                "⚠️ 确认删除",
+                                format!("u_d_confirm:{}:{}", idx, email),
+                            )],
+                            vec![InlineKeyboardButton::callback(
+                                "🔙 取消",
+                                format!("u_l:{}", idx),
+                            )],
+                        ]);
+
+                        bot.edit_message_text(
+                            chat_id,
+                            msg_id,
+                            format!("⚠️ <b>删除确认</b>\n\n您确定要删除用户 <code>{}</code> 吗？\n(注意：当前版本暂未实现单个用户删除逻辑，此操作可能仅用于演示 UI)", email)
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .reply_markup(keyboard)
+                        .await?;
+                    } else {
+                        bot.answer_callback_query(q.id)
+                            .text("❌ 配置文件不存在")
                             .await?;
                     }
+                }
+            }
+            d if d.starts_with("u_d_confirm:") => {
+                let parts: Vec<&str> = d.strip_prefix("u_d_confirm:").unwrap().split(':').collect();
+                if parts.len() == 2 {
+                    let email = parts[1];
+                    // TODO: call actual delete logic
+                    bot.answer_callback_query(q.id.clone())
+                        .text(format!("🗑 暂不支持删除单个用户: {}", email))
+                        .show_alert(true)
+                        .await?;
                 }
             }
             "m_del_cfg" => {
@@ -1834,7 +1904,7 @@ fn handle_callback(
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
                 .await?;
             }
-            // 执行特定文件删除
+            // 确认删除配置
             d if d.starts_with("cfg_del_file:") => {
                 let idx: usize = d
                     .strip_prefix("cfg_del_file:")
@@ -1844,11 +1914,51 @@ fn handle_callback(
                 let inbounds = ConfigManager::list_all_inbound_files()
                     .await
                     .unwrap_or_default();
+
+                if let Some(path) = inbounds.get(idx) {
+                    let filename = path.split('/').next_back().unwrap_or("Unknown");
+
+                    let keyboard = InlineKeyboardMarkup::new(vec![
+                        vec![InlineKeyboardButton::callback(
+                            "⚠️ 确认删除",
+                            format!("cfg_del_confirm:{}", idx),
+                        )],
+                        vec![InlineKeyboardButton::callback("🔙 取消", "cfg_del_select")],
+                    ]);
+
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!("⚠️ <b>删除确认</b>\n\n您确定要删除配置文件 <code>{}</code> 吗？\n此操作不可恢复！", filename)
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
+                } else {
+                    bot.answer_callback_query(q.id)
+                        .text("❌ 文件不存在或已被删除")
+                        .await?;
+                }
+            }
+            // 执行配置删除
+            d if d.starts_with("cfg_del_confirm:") => {
+                let idx: usize = d
+                    .strip_prefix("cfg_del_confirm:")
+                    .unwrap()
+                    .parse()
+                    .unwrap_or(0);
+                let inbounds = ConfigManager::list_all_inbound_files()
+                    .await
+                    .unwrap_or_default();
+
                 if let Some(path) = inbounds.get(idx) {
                     let _ = ConfigManager::delete_specific_configuration(path).await;
                     bot.answer_callback_query(q.id.clone())
-                        .text("✅ 选择的文件已永久删除")
-                        .show_alert(true)
+                        .text("✅ 文件已永久删除")
+                        .await?;
+                } else {
+                    bot.answer_callback_query(q.id.clone())
+                        .text("❌ 文件不存在")
                         .await?;
                 }
                 // 刷新选择菜单
@@ -2347,6 +2457,47 @@ fn handle_callback(
             }
             d if d.starts_with("s_del:") => {
                 let idx: usize = d.strip_prefix("s_del:").unwrap().parse().unwrap_or(0);
+                let manager_guard = logic::scheduler::SCHEDULER.lock().await;
+
+                if let Some(manager) = manager_guard.as_ref() {
+                    let state = manager.state.lock().await;
+                    if let Some(task) = state.tasks.get(idx) {
+                        let task_name = task.task_type.get_display_name().to_string();
+                        drop(state); // Release lock before await
+
+                        let keyboard = InlineKeyboardMarkup::new(vec![
+                            vec![InlineKeyboardButton::callback(
+                                "⚠️ 确认删除",
+                                format!("s_del_confirm:{}", idx),
+                            )],
+                            vec![InlineKeyboardButton::callback("🔙 取消", "s_del_menu")],
+                        ]);
+
+                        bot.edit_message_text(
+                            chat_id,
+                            msg_id,
+                            format!(
+                                "⚠️ <b>删除确认</b>\n\n您确定要删除定时任务 <code>{}</code> 吗？",
+                                task_name
+                            ),
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .reply_markup(keyboard)
+                        .await?;
+                    } else {
+                        drop(state);
+                        bot.answer_callback_query(q.id)
+                            .text("❌ 任务不存在")
+                            .await?;
+                    }
+                }
+            }
+            d if d.starts_with("s_del_confirm:") => {
+                let idx: usize = d
+                    .strip_prefix("s_del_confirm:")
+                    .unwrap()
+                    .parse()
+                    .unwrap_or(0);
                 let manager_guard = logic::scheduler::SCHEDULER.lock().await;
                 if let Some(manager) = manager_guard.as_ref() {
                     let _ = manager

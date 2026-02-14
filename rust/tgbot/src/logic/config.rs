@@ -652,14 +652,9 @@ impl ConfigManager {
         Ok(())
     }
 
-    pub async fn update_warp_routing_rules(rules: Vec<String>, _mode: WarpMode) -> Result<()> {
+    pub async fn update_warp_routing_rules(rules: Vec<String>, mode: WarpMode) -> Result<()> {
         let config_path = "/etc/wwps/wwps-core/conf/10_warp_routing.json";
         let account_path = "/etc/wwps/wwps-core/warp_account.json";
-
-        if rules.is_empty() {
-            // Do not delete file; keep SOCKS5 inbound active even if no routing rules are set.
-            // Just proceed to generate config with empty domain rules.
-        }
 
         // Read account config
         let account_content = fs::read_to_string(account_path)
@@ -670,20 +665,27 @@ impl ConfigManager {
         let priv_key = account["private_key"].as_str().unwrap_or_default();
         let v4 = account["address_v4"].as_str().unwrap_or("");
         let v6 = account["address_v6"].as_str().unwrap_or("");
-
         let reserved: Vec<u8> = if let Some(arr) = account["reserved"].as_array() {
             arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect()
         } else {
             vec![0, 0, 0]
         };
 
-        // Construct WireGuard outbound
         // Standard Cloudflare WARP Endpoint & PublicKey
         let peer_pub_key = "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=";
         let peer_endpoint = "engage.cloudflareclient.com:2408";
 
-        let outbound = json!({
-            "tag": "warp",
+        // Define WireGuard outbound
+        // If mode is Default -> tag: "warp", no extra freedom outbound
+        // If mode is IPv4/IPv6 -> tag: "proxy-warp", add extra freedom outbound "warp" -> dialerProxy "proxy-warp"
+        let wg_tag = if mode == WarpMode::Default {
+            "warp"
+        } else {
+            "proxy-warp"
+        };
+
+        let wg_outbound = json!({
+            "tag": wg_tag,
             "protocol": "wireguard",
             "settings": {
                 "secretKey": priv_key,
@@ -700,6 +702,29 @@ impl ConfigManager {
             }
         });
 
+        let mut outbounds = vec![wg_outbound];
+
+        // If specific IP version required, add Freedom outbound with dialerProxy
+        if mode != WarpMode::Default {
+            let strategy = match mode {
+                WarpMode::IPv4 => "UseIPv4",
+                WarpMode::IPv6 => "UseIPv6",
+                _ => "UseIP",
+            };
+            outbounds.push(json!({
+                "tag": "warp", // The tag used by routing rules
+                "protocol": "freedom",
+                "settings": {
+                    "domainStrategy": strategy
+                },
+                "streamSettings": {
+                    "sockopt": {
+                        "dialerProxy": "proxy-warp"
+                    }
+                }
+            }));
+        }
+
         // SOCKS5 Inbound (Listening on 127.0.0.1:40000)
         let socks_inbound = json!({
             "tag": "warp-in",
@@ -711,22 +736,26 @@ impl ConfigManager {
             }
         });
 
+        // Routing Rules
+        let mut routing_rules = vec![json!({
+            "type": "field",
+            "inboundTag": ["warp-in"],
+            "outboundTag": "warp"
+        })];
+
+        if !rules.is_empty() {
+            routing_rules.push(json!({
+                "type": "field",
+                "outboundTag": "warp",
+                "domain": rules
+            }));
+        }
+
         let config = json!({
             "inbounds": [socks_inbound],
-            "outbounds": [outbound],
+            "outbounds": outbounds,
             "routing": {
-                "rules": [
-                    {
-                        "type": "field",
-                        "inboundTag": ["warp-in"],
-                        "outboundTag": "warp"
-                    },
-                    {
-                        "type": "field",
-                        "outboundTag": "warp",
-                        "domain": rules
-                    }
-                ]
+                "rules": routing_rules
             }
         });
 
@@ -745,35 +774,34 @@ impl ConfigManager {
         let content = fs::read_to_string(config_path).await?;
         let v: Value = serde_json::from_str(&content)?;
 
-        // Extract rules
-        let rules = if let Some(rules) = v["routing"]["rules"].as_array() {
-            if let Some(first_rule) = rules.first() {
-                if let Some(domains) = first_rule["domain"].as_array() {
+        // Extract rules: Find the rule with "domain" field
+        let rules = if let Some(rules_arr) = v["routing"]["rules"].as_array() {
+            rules_arr
+                .iter()
+                .find_map(|r| r["domain"].as_array())
+                .map(|domains| {
                     domains
                         .iter()
                         .filter_map(|d| d.as_str().map(String::from))
                         .collect()
-                } else {
-                    Vec::new()
-                }
-            } else {
-                Vec::new()
-            }
+                })
+                .unwrap_or_default()
         } else {
             Vec::new()
         };
 
         // Extract IP mode
+        // Logic: Check if there is a "freedom" outbound with tag "warp".
+        // If yes, check its domainStrategy. If no, it's Default.
         let mode = if let Some(outbounds) = v["outbounds"].as_array() {
-            if outbounds.len() == 2 {
-                if let Some(freedom) = outbounds.iter().find(|o| o["protocol"] == "freedom") {
-                    match freedom["settings"]["domainStrategy"].as_str() {
-                        Some("UseIPv4") => WarpMode::IPv4,
-                        Some("UseIPv6") => WarpMode::IPv6,
-                        _ => WarpMode::Default,
-                    }
-                } else {
-                    WarpMode::Default
+            if let Some(freedom) = outbounds
+                .iter()
+                .find(|o| o["tag"] == "warp" && o["protocol"] == "freedom")
+            {
+                match freedom["settings"]["domainStrategy"].as_str() {
+                    Some("UseIPv4") => WarpMode::IPv4,
+                    Some("UseIPv6") => WarpMode::IPv6,
+                    _ => WarpMode::Default,
                 }
             } else {
                 WarpMode::Default
