@@ -683,11 +683,15 @@ async fn is_authorized(state: &Arc<AppState>, user_id: i64) -> bool {
 
 async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
     let keyboard = InlineKeyboardMarkup::new(vec![
-        vec![InlineKeyboardButton::callback("📊 系统监控", "m_mon")],
-        vec![InlineKeyboardButton::callback("👥 用户管理", "m_usr")],
-        vec![InlineKeyboardButton::callback("📄 日志管理", "m_log")],
-        vec![InlineKeyboardButton::callback("🛠 运维工具", "m_maint")],
-        vec![InlineKeyboardButton::callback("⏰ 定时任务", "m_sched")],
+        vec![
+            InlineKeyboardButton::callback("📊 系统状态", "m_mon"),
+            InlineKeyboardButton::callback("👥 用户管理", "m_usr"),
+        ],
+        vec![InlineKeyboardButton::callback(
+            "🛠 运维中心 (Ops)",
+            "m_ops_center",
+        )],
+        vec![InlineKeyboardButton::callback("⚙️ 系统设置", "m_settings")],
     ]);
     bot.send_message(chat_id, "🏠 <b>主菜单</b>\n请选择操作类目:")
         .parse_mode(ParseMode::Html)
