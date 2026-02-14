@@ -522,7 +522,8 @@ impl ConfigManager {
             },
             "dns": {
                 "servers": [
-                    "https+local://dns.google/dns-query"
+                    "https+local://1.1.1.1/dns-query",
+                    "https+local://8.8.8.8/dns-query"
                 ],
                 "tag": "dns"
             },

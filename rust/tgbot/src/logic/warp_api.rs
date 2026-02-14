@@ -32,7 +32,8 @@ pub async fn register_account() -> Result<WarpAccountConfig> {
     // Register
     let reg_url = format!("{}/reg", API_ENDPOINT);
     let mut headers = header::HeaderMap::new();
-    headers.insert("User-Agent", "okhttp/3.12.1".parse()?);
+    // Emulate official client UA to potentially get better IP reputation
+    headers.insert("User-Agent", "2024.2.62.0".parse()?);
     headers.insert("Content-Type", "application/json; charset=UTF-8".parse()?);
 
     // Generate random install_id (22 chars)
