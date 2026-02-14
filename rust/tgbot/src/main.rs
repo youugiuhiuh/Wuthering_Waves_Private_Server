@@ -1271,17 +1271,20 @@ fn handle_callback(
                         Ok(_) => {
                             bot.answer_callback_query(q.id.clone())
                                 .text("✅ 规则已删除")
+                                .show_alert(true)
                                 .await?;
                         }
                         Err(e) => {
                             bot.answer_callback_query(q.id.clone())
                                 .text(format!("❌ 删除失败: {}", e))
+                                .show_alert(true)
                                 .await?;
                         }
                     }
                 } else {
                     bot.answer_callback_query(q.id.clone())
                         .text("❌ 规则未找到")
+                        .show_alert(true)
                         .await?;
                 }
                 let mut new_q = q.clone();
@@ -1955,10 +1958,12 @@ fn handle_callback(
                     let _ = ConfigManager::delete_specific_configuration(path).await;
                     bot.answer_callback_query(q.id.clone())
                         .text("✅ 文件已永久删除")
+                        .show_alert(true)
                         .await?;
                 } else {
                     bot.answer_callback_query(q.id.clone())
                         .text("❌ 文件不存在")
+                        .show_alert(true)
                         .await?;
                 }
                 // 刷新选择菜单
@@ -2505,6 +2510,7 @@ fn handle_callback(
                         .await;
                     bot.answer_callback_query(q.id.clone())
                         .text("✅ 任务删除成功")
+                        .show_alert(true)
                         .await?;
 
                     // Refresh UI

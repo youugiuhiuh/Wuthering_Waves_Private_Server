@@ -35,11 +35,20 @@ pub async fn register_account() -> Result<WarpAccountConfig> {
     headers.insert("User-Agent", "okhttp/3.12.1".parse()?);
     headers.insert("Content-Type", "application/json; charset=UTF-8".parse()?);
 
+    // Generate random install_id (22 chars)
+    let install_id: String = std::iter::repeat_with(|| {
+        let charset = b"abcdefghijklmnopqrstuvwxyz0123456789";
+        let idx = rand::Rng::gen_range(&mut OsRng, 0..charset.len());
+        charset[idx] as char
+    })
+    .take(22)
+    .collect();
+
     let body = json!({
         "key": pub_key_b64,
-        "install_id": "",
+        "install_id": install_id,
         "fcm_token": "",
-        "tos":  chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S.000+01:00").to_string(),
+        "tos": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "model": "PC",
         "serial_number": "",
         "locale": "en_US"
@@ -53,7 +62,9 @@ pub async fn register_account() -> Result<WarpAccountConfig> {
         .await?;
 
     if !resp.status().is_success() {
-        return Err(anyhow!("WARP API 注册失败: Status {}", resp.status()));
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("WARP API 注册失败: Status {} - {}", status, text));
     }
 
     let json: Value = resp.json().await?;
@@ -63,20 +74,16 @@ pub async fn register_account() -> Result<WarpAccountConfig> {
     let v4 = account["v4"].as_str().context("No IPv4 address")?;
     let v6 = account["v6"].as_str().context("No IPv6 address")?;
 
-    // Reserved bytes (client_id logical equivalent in config)
-    // The API returns "client_id" in the config object, which is base64 encoded.
-    // This MUST be used for the reserved bytes in WireGuard handshake.
-
+    // Reserved bytes logic (Critical for handshake)
     let client_id = json["config"]["client_id"]
         .as_str()
         .context("No client_id in config")?
         .to_string();
 
-    // Cloudflare specific: reserved bytes are decoded from client_id
-    let client_id_bytes = match general_purpose::STANDARD.decode(&client_id) {
-        Ok(b) => b,
-        Err(_) => vec![0, 0, 0], // Fallback
-    };
+    // specific: reserved bytes are decoded from client_id (base64)
+    let client_id_bytes = general_purpose::STANDARD
+        .decode(&client_id)
+        .context("Failed to decode client_id base64")?;
 
     // The reserved field in wireguard config is usually 3 bytes.
     let reserved = if client_id_bytes.len() >= 3 {
