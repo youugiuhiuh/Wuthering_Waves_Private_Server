@@ -1,0 +1,14 @@
+# Created by .ignore support plugin (hsz.mobi)
+.idea
+fodder/.DS_Store
+.github/FUNDING.yml
+.DS_Store
+GEMINI.md
+GEMINI.zh-CN.md
+rust/tgbot/target
+rust/version-sync/target
+参考文件夹
+sni_tester/*.txt
+sni_tester/GeoLite2-Country.mmdb
+sni_tester/*.csv
+sni_tester/sni_tester

@@ -1,0 +1,6 @@
+{
+    "rust-analyzer.server.path": "~/.cargo/bin/rust-analyzer",
+    "rust-analyzer.linkedProjects": [
+        "rust/tgbot/Cargo.toml"
+    ]
+}

@@ -1,0 +1,53 @@
+[package]
+name = "tgbot"
+version = "0.3.4"
+edition = "2024"
+
+[dependencies]
+teloxide = { version = "0.13", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+aes-gcm = "0.10"
+secrecy = { version = "0.8", features = ["serde"] }
+zeroize = { version = "1.7", features = ["derive"] }
+totp-rs = { version = "5.5", features = [
+    "serde_support",
+    "qr",
+    "otpauth",
+    "gen_secret",
+] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+base64 = "0.22"
+rand = "0.8"
+libc = "0.2"
+sysinfo = "0.30"
+tokio-cron-scheduler = "0.10.0"
+chrono = { version = "0.4", features = ["serde"] }
+once_cell = "1.18"
+sha2 = "0.10"
+hex = "0.4"
+reqwest = { version = "0.11", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+percent-encoding = "2.3"
+
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+regex = "1"
+self-replace = "1.3"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+zbus = { version = "4", features = ["tokio"] }
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+log = "0.4.29"
+rust-embed = "8.11.0"
+
+[dev-dependencies]
+env_logger = "0.11.8"
+tempfile = "3.8"
+[profile.release]
+opt-level = "z"   # 优化大小，减少特征
+lto = true        # 链接时优化
+codegen-units = 1
+panic = "abort"   # 减少标准库符号残留
+strip = true      # 移除符号信息
