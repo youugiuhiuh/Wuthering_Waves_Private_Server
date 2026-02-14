@@ -784,6 +784,31 @@ impl ConfigManager {
 
         Ok((rules, mode))
     }
+
+    pub async fn add_warp_routing_rules(new_rules: Vec<String>) -> Result<()> {
+        let (mut current_rules, mode) = Self::get_warp_routing_rules().await?;
+        let mut updated = false;
+        for rule in new_rules {
+            if !current_rules.contains(&rule) {
+                current_rules.push(rule);
+                updated = true;
+            }
+        }
+        if updated {
+            Self::update_warp_routing_rules(current_rules, mode).await
+        } else {
+            Ok(())
+        }
+    }
+
+    pub async fn remove_warp_routing_rule(rule_to_remove: &str) -> Result<()> {
+        let (current_rules, mode) = Self::get_warp_routing_rules().await?;
+        let new_rules: Vec<String> = current_rules
+            .into_iter()
+            .filter(|r| r != rule_to_remove)
+            .collect();
+        Self::update_warp_routing_rules(new_rules, mode).await
+    }
 }
 
 async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
@@ -887,8 +912,9 @@ mod tests {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WarpMode {
+    #[default]
     Default,
     IPv4,
     IPv6,

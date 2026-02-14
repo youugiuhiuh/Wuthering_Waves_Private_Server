@@ -154,11 +154,11 @@ net.ipv4.ip_local_port_range = 10000 65535
         let sources = [
             (
                 "geoip.dat",
-                "https://raw.githubusercontent.com/youugiuhiuh/Wuthering_Waves_Private_Server/master/fodder/geoip.dat",
+                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat",
             ),
             (
                 "geosite.dat",
-                "https://raw.githubusercontent.com/youugiuhiuh/Wuthering_Waves_Private_Server/master/fodder/geosite.dat",
+                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat",
             ),
         ];
 

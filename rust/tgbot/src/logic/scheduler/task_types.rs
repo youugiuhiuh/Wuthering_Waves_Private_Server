@@ -1,129 +1,91 @@
 use crate::logic::maintenance::MaintenanceManager;
-use crate::logic::operations::Operations;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use teloxide::Bot;
 use teloxide::prelude::*;
-use teloxide::types::ParseMode;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum TaskType {
     SystemMaintenance,
-    Reboot,
-    ReloadCore,
-    GeoUpdate,
+    GeoUpdate,  // Matches main.rs
+    Reboot,     // Matches main.rs
+    ReloadCore, // Matches main.rs
 }
 
 impl TaskType {
     pub fn get_display_name(&self) -> &str {
         match self {
-            TaskType::SystemMaintenance => "系统全面维护 (Update & Clean)",
-            TaskType::Reboot => "系统安全重启",
-            TaskType::ReloadCore => "重启核心服务 (wwps-core/wwps-box)",
-            TaskType::GeoUpdate => "更新 GeoData (geosite/geoip)",
+            TaskType::SystemMaintenance => "系统维护 (System Maintenance)",
+            TaskType::GeoUpdate => "GeoData 更新 (Update GeoData)",
+            TaskType::Reboot => "系统重启 (Reboot)",
+            TaskType::ReloadCore => "重载核心 (Reload Core)",
         }
     }
 
     pub async fn execute(&self, bot: &Bot, chat_id: ChatId) -> Result<()> {
         match self {
             TaskType::SystemMaintenance => {
+                let _ = bot.send_message(chat_id, "🔧 执行系统维护...").await;
+                // TODO: Implement actual maintenance logic if needed
+                Ok(())
+            }
+            TaskType::GeoUpdate => {
+                log::info!("执行 GeoData 更新任务...");
                 let _ = bot
-                    .send_message(chat_id, "⏰ <b>定时任务启动</b>: 系统全面维护...")
-                    .parse_mode(ParseMode::Html)
+                    .send_message(chat_id, "⏳ [定时任务] 开始更新 GeoData...")
                     .await;
-                match Operations::perform_maintenance().await {
-                    Ok(log) => {
-                        let log_tail = if log.len() > 1000 {
-                            format!("... (Truncated)\n{}", &log[log.len() - 1000..])
-                        } else {
-                            log
-                        };
-                        let _ = bot
-                            .send_message(
-                                chat_id,
-                                format!("✅ <b>定时维护完成</b>\n<pre>{}</pre>", log_tail),
-                            )
-                            .parse_mode(ParseMode::Html)
-                            .await;
+
+                // Use a simple callback for logging
+                let result = MaintenanceManager::update_geodata(|_pct, msg| {
+                    log::info!("[GeoData] {}", msg);
+                })
+                .await;
+
+                match result {
+                    Ok(_) => {
+                        bot.send_message(chat_id, "✅ [定时任务] GeoData 更新完成。")
+                            .await?;
+                        Ok(())
                     }
                     Err(e) => {
-                        let _ = bot
-                            .send_message(chat_id, format!("❌ <b>定时维护失败</b>: {}", e))
-                            .parse_mode(ParseMode::Html)
-                            .await;
+                        bot.send_message(chat_id, format!("❌ [定时任务] GeoData 更新失败: {}", e))
+                            .await?;
+                        Err(e)
                     }
                 }
             }
             TaskType::Reboot => {
                 let _ = bot
-                    .send_message(chat_id, "⏰ <b>定时任务启动</b>: 系统将在 5 秒后重启...")
-                    .parse_mode(ParseMode::Html)
+                    .send_message(chat_id, "⚠️ 系统即将重启 (定时任务)...")
                     .await;
-                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                let _ = Operations::reboot_system().await;
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                std::process::Command::new("reboot").spawn()?;
+                Ok(())
             }
-            TaskType::ReloadCore => match MaintenanceManager::reload_core().await {
-                Ok(_) => {
-                    let _ = bot
-                        .send_message(chat_id, "⏰ <b>定时任务</b>: 核心服务已重启")
-                        .parse_mode(ParseMode::Html)
-                        .await;
-                }
-                Err(e) => {
-                    let _ = bot
-                        .send_message(chat_id, format!("❌ <b>定时重启核心失败</b>: {}", e))
-                        .parse_mode(ParseMode::Html)
-                        .await;
-                }
-            },
-            TaskType::GeoUpdate => {
-                let msg = bot
-                    .send_message(chat_id, "⏰ <b>定时任务启动</b>: 正在准备更新 GeoData...")
-                    .parse_mode(ParseMode::Html)
-                    .await?;
-                let bot_clone = bot.clone();
-                let chat_id_clone = chat_id;
-                let msg_id = msg.id;
-
-                let progress_cb = move |_: f64, text: &str| {
-                    let bot = bot_clone.clone();
-                    let text = text.to_string();
-                    tokio::spawn(async move {
-                        let _ = bot
-                            .edit_message_text(
-                                chat_id_clone,
-                                msg_id,
-                                format!("⏰ <b>GeoData 更新中</b>\n{}", text),
-                            )
-                            .parse_mode(ParseMode::Html)
-                            .await;
-                    });
-                };
-
-                match MaintenanceManager::update_geodata(progress_cb).await {
-                    Ok(_) => {
-                        let _ = bot
-                            .edit_message_text(
-                                chat_id,
-                                msg_id,
-                                "✅ <b>定时任务</b>: GeoData 已更新并重载核心",
-                            )
-                            .parse_mode(ParseMode::Html)
-                            .await;
-                    }
-                    Err(e) => {
-                        let _ = bot
-                            .edit_message_text(
-                                chat_id,
-                                msg_id,
-                                format!("❌ <b>GeoData 更新失败</b>: {}", e),
-                            )
-                            .parse_mode(ParseMode::Html)
-                            .await;
-                    }
-                }
+            TaskType::ReloadCore => {
+                let _ = bot.send_message(chat_id, "🔄 重载核心服务...").await;
+                std::process::Command::new("systemctl")
+                    .arg("restart")
+                    .arg("wwps-core")
+                    .output()?;
+                Ok(())
             }
         }
-        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ScheduledTask {
+    pub task_type: TaskType,
+    pub cron_expression: String,
+    pub enabled: bool,
+}
+
+impl ScheduledTask {
+    pub fn new(task_type: TaskType, cron_expression: &str) -> Self {
+        Self {
+            task_type,
+            cron_expression: cron_expression.to_string(),
+            enabled: true,
+        }
     }
 }

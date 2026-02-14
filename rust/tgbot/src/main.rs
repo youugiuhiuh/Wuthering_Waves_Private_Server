@@ -496,18 +496,14 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Respons
                     return Ok(());
                 }
 
-                // Get current mode to preserve it
-                let (_, current_mode) = ConfigManager::get_warp_routing_rules()
-                    .await
-                    .unwrap_or((Vec::new(), WarpMode::Default));
-
-                match ConfigManager::update_warp_routing_rules(rules, current_mode).await {
+                // Add new rules (append)
+                match ConfigManager::add_warp_routing_rules(rules).await {
                     Ok(_) => {
-                        bot.send_message(chat_id, "✅ WARP 分流规则已更新并重载核心。")
+                        bot.send_message(chat_id, "✅ WARP 分流规则已添加并重载核心。")
                             .await?;
                     }
                     Err(e) => {
-                        bot.send_message(chat_id, format!("❌ 更新失败: {}", e))
+                        bot.send_message(chat_id, format!("❌ 添加失败: {}", e))
                             .await?;
                     }
                 }
@@ -753,16 +749,128 @@ fn handle_callback(
         match data.as_str() {
             "m_main" => {
                 let keyboard = InlineKeyboardMarkup::new(vec![
-                    vec![InlineKeyboardButton::callback("📊 系统监控", "m_mon")],
-                    vec![InlineKeyboardButton::callback("👥 用户管理", "m_usr")],
-                    vec![InlineKeyboardButton::callback("📄 日志管理", "m_log")],
-                    vec![InlineKeyboardButton::callback("🛠 运维工具", "m_maint")],
-                    vec![InlineKeyboardButton::callback("🌩 WARP 分流", "m_warp")],
+                    vec![
+                        InlineKeyboardButton::callback("📊 状态监控", "m_mon"),
+                        InlineKeyboardButton::callback("👥 用户管理", "m_usr"),
+                    ],
+                    vec![
+                        InlineKeyboardButton::callback("🛠 运维中心", "m_ops_center"),
+                        InlineKeyboardButton::callback("⚙️ 系统设置", "m_settings"),
+                    ],
                 ]);
-                bot.edit_message_text(chat_id, msg_id, "🏠 <b>主菜单</b>\n选择操作:")
+                bot.edit_message_text(chat_id, msg_id, "🏠 <b>主菜单</b>\n请选择功能模块:")
                     .parse_mode(ParseMode::Html)
                     .reply_markup(keyboard)
                     .await?;
+            }
+            "m_ops_center" => {
+                let keyboard = InlineKeyboardMarkup::new(vec![
+                    vec![
+                        InlineKeyboardButton::callback("🌩 网络优化", "m_net_opt"),
+                        InlineKeyboardButton::callback("🛡 安全防护", "m_security"),
+                    ],
+                    vec![
+                        InlineKeyboardButton::callback("💻 系统指令", "m_sys_cmd"),
+                        InlineKeyboardButton::callback("📄 日志审计", "m_log"),
+                    ],
+                    vec![InlineKeyboardButton::callback("⬅️ 返回主菜单", "m_main")],
+                ]);
+                bot.edit_message_text(
+                    chat_id,
+                    msg_id,
+                    "🛠 <b>运维中心</b>\n集成网络、安全及系统管理工具:",
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
+            }
+            "m_settings" => {
+                let keyboard = InlineKeyboardMarkup::new(vec![
+                    vec![
+                        InlineKeyboardButton::callback("🛰 核心管理", "a_wwps_core_menu"),
+                        InlineKeyboardButton::callback("⏰ 定时任务", "m_sched"),
+                    ],
+                    vec![
+                        InlineKeyboardButton::callback("🌍 Geo数据", "a_geo_menu"), // New intermediate menu for Geo
+                        InlineKeyboardButton::callback("⚙️ Bot更新", "a_upgrade"),
+                    ],
+                    vec![InlineKeyboardButton::callback("⚠️ 危险区域", "m_danger")],
+                    vec![InlineKeyboardButton::callback("⬅️ 返回主菜单", "m_main")],
+                ]);
+                bot.edit_message_text(
+                    chat_id,
+                    msg_id,
+                    "⚙️ <b>系统设置</b>\n管理核心版本、任务调度及数据更新:",
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
+            }
+            "m_net_opt" => {
+                let keyboard = InlineKeyboardMarkup::new(vec![
+                    vec![
+                        InlineKeyboardButton::callback("🌩 WARP 分流", "m_warp"),
+                        InlineKeyboardButton::callback("🚀 BBR+FQ", "a_bbr_fq"),
+                    ],
+                    vec![InlineKeyboardButton::callback("⚡ 1C1G 优化", "a_tune")],
+                    vec![InlineKeyboardButton::callback(
+                        "⬅️ 返回运维中心",
+                        "m_ops_center",
+                    )],
+                ]);
+                bot.edit_message_text(chat_id, msg_id, "🌩 <b>网络优化</b>\n选择优化方案:")
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
+            }
+            "m_security" => {
+                let keyboard = InlineKeyboardMarkup::new(vec![
+                    vec![InlineKeyboardButton::callback("🛡 防火墙加固", "a_fw")],
+                    // Future: Add Fail2ban check etc.
+                    vec![InlineKeyboardButton::callback(
+                        "⬅️ 返回运维中心",
+                        "m_ops_center",
+                    )],
+                ]);
+                bot.edit_message_text(chat_id, msg_id, "🛡 <b>安全防护</b>\n系统安全配置:")
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
+            }
+            "m_sys_cmd" => {
+                let keyboard = InlineKeyboardMarkup::new(vec![
+                    vec![
+                        InlineKeyboardButton::callback("🔄 重启系统", "a_sys_reboot"),
+                        InlineKeyboardButton::callback("♻️ 重启核心", "a_reload"),
+                    ],
+                    vec![InlineKeyboardButton::callback("🧹 系统维护", "a_sys_maint")],
+                    vec![InlineKeyboardButton::callback(
+                        "⬅️ 返回运维中心",
+                        "m_ops_center",
+                    )],
+                ]);
+                bot.edit_message_text(chat_id, msg_id, "💻 <b>系统指令</b>\n执行系统级操作:")
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
+            }
+            "a_geo_menu" => {
+                let keyboard = InlineKeyboardMarkup::new(vec![
+                    vec![InlineKeyboardButton::callback("🔄 立即更新", "a_geo")],
+                    vec![InlineKeyboardButton::callback(
+                        "⏰ 自动调度",
+                        "a_geo_sched_menu",
+                    )],
+                    vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
+                ]);
+                bot.edit_message_text(
+                    chat_id,
+                    msg_id,
+                    "🌍 <b>Geo数据管理</b>\n管理 GeoIP/GeoSite 数据库:",
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
             }
             "m_mon" => {
                 let report = SystemMonitor::get_status_report()
@@ -872,7 +980,10 @@ fn handle_callback(
                         InlineKeyboardButton::callback("📝 查看 Error 日志", "l_tail_err"),
                         InlineKeyboardButton::callback("🔄 刷新日志", "m_log"),
                     ],
-                    vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")],
+                    vec![InlineKeyboardButton::callback(
+                        "⬅️ 返回运维中心",
+                        "m_ops_center",
+                    )],
                 ]);
                 bot.edit_message_text(
                     chat_id,
@@ -890,42 +1001,13 @@ fn handle_callback(
                 .reply_markup(keyboard)
                 .await?;
             }
-            "m_maint" => {
-                let keyboard = InlineKeyboardMarkup::new(vec![
-                    vec![
-                        InlineKeyboardButton::callback("🧹 系统维护", "a_sys_maint"),
-                        InlineKeyboardButton::callback("🔄 重启系统", "a_sys_reboot"),
-                    ],
-                    vec![InlineKeyboardButton::callback("♻️ 重启核心", "a_reload")],
-                    vec![
-                        InlineKeyboardButton::callback("🚀 BBR+FQ", "a_bbr_fq"),
-                        InlineKeyboardButton::callback("⚡ 1C1G 优化", "a_tune"),
-                    ],
-                    vec![
-                        InlineKeyboardButton::callback("⚙️ 更新 Bot", "a_upgrade"),
-                        InlineKeyboardButton::callback("🛰️ wwps-core 管理", "a_wwps_core_menu"),
-                    ],
-                    vec![
-                        InlineKeyboardButton::callback("🌍 更新 GeoData", "a_geo"),
-                        InlineKeyboardButton::callback("⏰ Geo 自动更新", "a_geo_sched_menu"),
-                        InlineKeyboardButton::callback("🛡️ 安全加固", "a_fw"),
-                    ],
-                    vec![InlineKeyboardButton::callback("⚠️ 危险区域", "m_danger")],
-                    vec![InlineKeyboardButton::callback("🌩 WARP 分流", "m_warp")],
-                    vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")],
-                ]);
-                bot.edit_message_text(chat_id, msg_id, "🛠 <b>运维工具</b>\n高级系统维护指令:")
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(keyboard)
-                    .await?;
-            }
             "m_danger" => {
                 let keyboard = InlineKeyboardMarkup::new(vec![
                     vec![InlineKeyboardButton::callback(
                         "💥 立即自毁 (VPS过期一键删)",
                         "a_destroy_ask",
                     )],
-                    vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
+                    vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
                 ]);
                 bot.edit_message_text(
                     chat_id,
@@ -936,62 +1018,91 @@ fn handle_callback(
                 .reply_markup(keyboard)
                 .await?;
             }
+
+            // ... Skipping a_warp_switch_mode and a_del_warp updates for brevity in this chunk if tool allows multiple replacements via array OR I will make separate calls.
+            // The tool allows LIST of chunks. I will provide multiple chunks.
             "m_warp" => {
                 let is_installed = WarpInstaller::is_installed().await;
-
                 if !is_installed {
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![InlineKeyboardButton::callback(
                             "🚀 安装 Cloudflare WARP",
                             "a_inst_warp",
                         )],
-                        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
+                        vec![InlineKeyboardButton::callback(
+                            "⬅️ 返回网络优化",
+                            "m_net_opt",
+                        )],
                     ]);
                     bot.edit_message_text(
                         chat_id,
                         msg_id,
-                        "⚠️ <b>未检测到 Cloudflare WARP</b>\n\n系统未安装 WARP 服务，无法配置分流规则。\n是否立即安装？"
+                        "⚠️ <b>未检测到 Cloudflare WARP</b>\n\n系统未安装 WARP 服务，无法配置分流规则。\n是否立即安装？",
                     )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(keyboard)
                     .await?;
+                    return Ok(());
+                }
+
+                let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules()
+                    .await
+                    .unwrap_or((Vec::new(), WarpMode::Default));
+
+                let rule_display = if current_rules.is_empty() {
+                    "<i>(无规则)</i>".to_string()
                 } else {
-                    let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules()
-                        .await
-                        .unwrap_or((Vec::new(), WarpMode::Default));
-                    let rule_display = if current_rules.is_empty() {
-                        "<i>(无规则)</i>".to_string()
+                    if current_rules.len() > 5 {
+                        format!(
+                            "{} (共 {} 条)",
+                            current_rules
+                                .iter()
+                                .take(5)
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                            current_rules.len()
+                        )
                     } else {
                         current_rules.join(", ")
-                    };
+                    }
+                };
 
-                    let keyboard = InlineKeyboardMarkup::new(vec![
-                        vec![InlineKeyboardButton::callback("✏️ 设置规则", "a_set_warp")],
-                        vec![InlineKeyboardButton::callback(
-                            format!("⚙️ 模式: {}", current_mode.as_str()),
-                            "a_warp_switch_mode",
-                        )],
-                        vec![InlineKeyboardButton::callback(
-                            "📊 状态检测",
-                            "a_warp_status",
-                        )],
-                        vec![
-                            InlineKeyboardButton::callback("🔄 重启服务", "a_warp_restart"),
-                            InlineKeyboardButton::callback("🗑️ 卸载服务", "a_warp_uninstall"),
-                        ],
-                        vec![InlineKeyboardButton::callback("🗑️ 清除规则", "a_del_warp")],
-                        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
-                    ]);
+                let keyboard = InlineKeyboardMarkup::new(vec![
+                    vec![
+                        InlineKeyboardButton::callback("➕ 添加规则", "a_warp_add_input"),
+                        InlineKeyboardButton::callback("➖ 删除规则", "a_warp_del_menu"),
+                    ],
+                    vec![InlineKeyboardButton::callback(
+                        format!("⚙️ 模式: {}", current_mode.as_str()),
+                        "a_warp_switch_mode",
+                    )],
+                    vec![InlineKeyboardButton::callback(
+                        "📊 状态检测",
+                        "a_warp_status",
+                    )],
+                    vec![
+                        InlineKeyboardButton::callback("🔄 重启服务", "a_warp_restart"),
+                        InlineKeyboardButton::callback("🗑️ 卸载服务", "a_warp_uninstall"),
+                    ],
+                    vec![InlineKeyboardButton::callback(
+                        "🗑️ 清空所有规则",
+                        "a_warp_clear_confirm",
+                    )],
+                    vec![InlineKeyboardButton::callback(
+                        "⬅️ 返回网络优化",
+                        "m_net_opt",
+                    )],
+                ]);
 
-                    bot.edit_message_text(
-                        chat_id,
-                        msg_id,
-                        format!("🌩 <b>WARP 分流设置</b>\n\n当前模式: <b>{}</b>\n当前规则: {}\n\n说明: \n• 默认: 由 WARP 自动选择 IP\n• IPv4/IPv6: 强制 WARP 出口 IP 版本\n• 仅规则匹配的域名走 WARP。", current_mode.as_str(), rule_display)
-                    )
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(keyboard)
-                    .await?;
-                }
+                bot.edit_message_text(
+                    chat_id,
+                    msg_id,
+                    format!("🌩 <b>WARP 分流管理</b>\n\n当前模式: <b>{}</b>\n当前规则: {}\n\n您可以添加或删除特定的域名/GeoSite规则。", current_mode.as_str(), rule_display)
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
             }
             "a_warp_switch_mode" => {
                 let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules()
@@ -999,35 +1110,11 @@ fn handle_callback(
                     .unwrap_or((Vec::new(), WarpMode::Default));
                 let next_mode = current_mode.next();
 
-                match ConfigManager::update_warp_routing_rules(current_rules.clone(), next_mode)
-                    .await
-                {
+                match ConfigManager::update_warp_routing_rules(current_rules, next_mode).await {
                     Ok(_) => {
-                        // Refresh view
-                        let rule_display = if current_rules.is_empty() {
-                            "<i>(无规则)</i>".to_string()
-                        } else {
-                            current_rules.join(", ")
-                        };
-
-                        let keyboard = InlineKeyboardMarkup::new(vec![
-                            vec![InlineKeyboardButton::callback("✏️ 设置规则", "a_set_warp")],
-                            vec![InlineKeyboardButton::callback(
-                                format!("⚙️ 模式: {}", next_mode.as_str()),
-                                "a_warp_switch_mode",
-                            )],
-                            vec![InlineKeyboardButton::callback("🗑️ 清除规则", "a_del_warp")],
-                            vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
-                        ]);
-
-                        bot.edit_message_text(
-                            chat_id,
-                            msg_id,
-                            format!("🌩 <b>WARP 分流设置</b>\n\n当前模式: <b>{}</b>\n当前规则: {}\n\n说明: \n• 默认: 由 WARP 自动选择 IP\n• IPv4/IPv6: 强制 WARP 出口 IP 版本\n• 仅规则匹配的域名走 WARP。", next_mode.as_str(), rule_display)
-                        )
-                        .parse_mode(ParseMode::Html)
-                        .reply_markup(keyboard)
-                        .await?;
+                        let mut new_q = q.clone();
+                        new_q.data = Some("m_warp".to_string());
+                        return handle_callback(bot, new_q, state).await;
                     }
                     Err(e) => {
                         bot.answer_callback_query(q.id)
@@ -1057,13 +1144,8 @@ fn handle_callback(
                         .parse_mode(ParseMode::Html)
                         .await?;
 
-                        // Re-trigger m_warp to show config menu
                         let mut new_q = q.clone();
                         new_q.data = Some("m_warp".to_string());
-                        // We need to pass the state recursively, or just let the user navigate back.
-                        // But recursive call is cleaner for UX.
-                        // However, handle_callback is async recursive? No, it returns BoxFuture.
-                        // It's safe to call it.
                         return handle_callback(bot, new_q, state).await;
                     }
                     Err(e) => {
@@ -1073,7 +1155,7 @@ fn handle_callback(
                     }
                 }
             }
-            "a_set_warp" => {
+            "a_warp_add_input" => {
                 state
                     .pending_warp_inputs
                     .lock()
@@ -1081,40 +1163,118 @@ fn handle_callback(
                     .insert(chat_id, Instant::now());
                 bot.send_message(
                     chat_id,
-                    "✏️ <b>请输入分流规则</b>\n\n支持格式: `geosite:google, domain:reddit.com`\n多个规则请用逗号分隔。\n\n(请在 60 秒内输入)"
+                    "✏️ <b>请输入要添加的分流规则</b>\n\n支持格式: `geosite:google, domain:reddit.com`\n多个规则请用逗号或换行分隔。\n\n(输入将在 60 秒后超时)",
                 )
                 .parse_mode(ParseMode::Html)
                 .await?;
             }
-            "a_del_warp" => {
+            "a_warp_del_menu" => {
+                let (current_rules, _) = ConfigManager::get_warp_routing_rules()
+                    .await
+                    .unwrap_or((Vec::new(), WarpMode::Default));
+
+                if current_rules.is_empty() {
+                    bot.answer_callback_query(q.id)
+                        .text("⚠️ 暂无规则可删除")
+                        .await?;
+                    return Ok(());
+                }
+
+                let mut buttons = Vec::new();
+                for rule in current_rules.iter() {
+                    let mut hasher = Sha256::new();
+                    hasher.update(rule.as_bytes());
+                    let hash = hex::encode(hasher.finalize());
+                    let short_hash = &hash[..8];
+
+                    // Truncate display rule if too long
+                    let display_rule = if rule.len() > 30 {
+                        format!("{}...", &rule[..27])
+                    } else {
+                        rule.clone()
+                    };
+
+                    buttons.push(vec![InlineKeyboardButton::callback(
+                        format!("🗑 {}", display_rule),
+                        format!("a_warp_del:{}", short_hash),
+                    )]);
+                }
+                buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_warp")]);
+
+                bot.edit_message_text(chat_id, msg_id, "➖ <b>删除规则</b>\n点击以删除对应规则:")
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+            }
+            d if d.starts_with("a_warp_del:") => {
+                let hash_prefix = d.strip_prefix("a_warp_del:").unwrap_or("");
+                let (current_rules, _) = ConfigManager::get_warp_routing_rules()
+                    .await
+                    .unwrap_or_default();
+
+                let rule_to_delete = current_rules.into_iter().find(|r| {
+                    let mut hasher = Sha256::new();
+                    hasher.update(r.as_bytes());
+                    let hash = hex::encode(hasher.finalize());
+                    &hash[..8] == hash_prefix
+                });
+
+                if let Some(rule) = rule_to_delete {
+                    match ConfigManager::remove_warp_routing_rule(&rule).await {
+                        Ok(_) => {
+                            bot.answer_callback_query(q.id.clone())
+                                .text("✅ 规则已删除")
+                                .await?;
+                            let mut new_q = q.clone();
+                            new_q.data = Some("a_warp_del_menu".to_string());
+                            return handle_callback(bot, new_q, state).await;
+                        }
+                        Err(e) => {
+                            bot.answer_callback_query(q.id)
+                                .text(format!("❌ 删除失败: {}", e))
+                                .await?;
+                        }
+                    }
+                } else {
+                    bot.answer_callback_query(q.id.clone())
+                        .text("⚠️ 规则未找到 (可能已被删除)")
+                        .await?;
+                    let mut new_q = q.clone();
+                    new_q.data = Some("a_warp_del_menu".to_string());
+                    return handle_callback(bot, new_q, state).await;
+                }
+            }
+            "a_warp_clear_confirm" => {
+                let keyboard = InlineKeyboardMarkup::new(vec![
+                    vec![InlineKeyboardButton::callback(
+                        "⚠️ 确认清空",
+                        "a_warp_clear_exec",
+                    )],
+                    vec![InlineKeyboardButton::callback("🔙 取消", "m_warp")],
+                ]);
+                bot.edit_message_text(
+                    chat_id,
+                    msg_id,
+                    "⚠️ <b>清空确认</b>\n此操作将删除所有分流规则，且不可恢复。",
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
+            }
+            "a_warp_clear_exec" => {
                 match ConfigManager::update_warp_routing_rules(Vec::new(), WarpMode::Default).await
                 {
                     Ok(_) => {
-                        bot.answer_callback_query(q.id)
-                            .text("✅ 规则已清除")
+                        bot.answer_callback_query(q.id.clone())
+                            .text("✅ 所有规则已清空")
                             .await?;
-                        // Refresh view
-                        let keyboard = InlineKeyboardMarkup::new(vec![
-                            vec![InlineKeyboardButton::callback("✏️ 设置规则", "a_set_warp")],
-                            vec![InlineKeyboardButton::callback(
-                                format!("⚙️ 模式: {}", WarpMode::Default.as_str()),
-                                "a_warp_switch_mode",
-                            )],
-                            vec![InlineKeyboardButton::callback("🗑️ 清除规则", "a_del_warp")],
-                            vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
-                        ]);
-                        bot.edit_message_text(
-                            chat_id,
-                            msg_id,
-                            format!("🌩 <b>WARP 分流设置</b>\n\n当前模式: <b>{}</b>\n当前规则: <i>(无规则)</i>\n\n说明: \n• 默认: 由 WARP 自动选择 IP\n• IPv4/IPv6: 强制 WARP 出口 IP 版本\n• 仅规则匹配的域名走 WARP。", WarpMode::Default.as_str())
-                        )
-                        .parse_mode(ParseMode::Html)
-                        .reply_markup(keyboard)
-                        .await?;
+                        let mut new_q = q.clone();
+                        new_q.data = Some("m_warp".to_string());
+                        return handle_callback(bot, new_q, state).await;
                     }
                     Err(e) => {
                         bot.answer_callback_query(q.id)
-                            .text(format!("❌ 清除失败: {}", e))
+                            .text(format!("❌ 清空失败: {}", e))
                             .await?;
                     }
                 }
@@ -1250,7 +1410,7 @@ fn handle_callback(
                         "💥 立即自毁",
                         "a_destroy_ask",
                     )],
-                    vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
+                    vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
                 ]);
                 bot.edit_message_text(
                     chat_id,
@@ -1839,7 +1999,10 @@ fn handle_callback(
                         "⛔️ 停止 Geo 自动更新",
                         "geo_sched_off",
                     )],
-                    vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
+                    vec![InlineKeyboardButton::callback(
+                        "⬅️ 返回 Geo 数据",
+                        "a_geo_menu",
+                    )],
                 ]);
 
                 bot.edit_message_text(chat_id, msg_id, summary)
@@ -1914,7 +2077,7 @@ fn handle_callback(
                         "📜 选择版本 (最近 5 个)",
                         "a_wwps_core_tags",
                     )],
-                    vec![InlineKeyboardButton::callback("⬅️ 返回", "m_maint")],
+                    vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
                 ]);
 
                 bot.edit_message_text(
@@ -2095,7 +2258,7 @@ fn handle_callback(
                         InlineKeyboardButton::callback("➕ 添加任务", "s_add_menu"),
                         InlineKeyboardButton::callback("➖ 删除任务", "s_del_menu"),
                     ],
-                    vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")],
+                    vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
                 ]);
 
                 bot.edit_message_text(chat_id, msg_id, summary)
@@ -2302,16 +2465,12 @@ async fn main() -> Result<()> {
         .branch(Update::filter_message().endpoint(handle_message))
         .branch(Update::filter_callback_query().endpoint(handle_callback));
 
-    let scheduler_state_path = config_dir
-        .join("scheduler_state.json")
-        .to_str()
-        .unwrap()
-        .to_string();
-    logic::scheduler::init_scheduler(bot.clone(), admin_id, scheduler_state_path)
+    logic::scheduler::start_scheduler(bot.clone(), ChatId(admin_id))
         .await
         .context("❌ 初始化调度器失败")?;
 
     let _ = notify_upgrade_success(&bot, admin_id).await;
+    let _ = notify_online(&bot, admin_id).await;
 
     println!("🚀 Bot is starting...");
     Dispatcher::builder(bot, handler)
@@ -2321,6 +2480,36 @@ async fn main() -> Result<()> {
         .dispatch()
         .await;
 
+    Ok(())
+}
+
+async fn notify_online(bot: &Bot, admin_id: i64) -> Result<()> {
+    let ip = SystemMonitor::get_public_ip().await;
+
+    // IP Masking: 1.2.3.4 -> 1.2.*.*
+    let masked_ip = if ip.contains('.') {
+        let parts: Vec<&str> = ip.split('.').collect();
+        if parts.len() == 4 {
+            format!("{}.{}.*.*", parts[0], parts[1])
+        } else {
+            ip.clone()
+        }
+    } else {
+        ip.clone() // IPv6 or other formatted IP, leave as is or apply specific logic if needed
+    };
+
+    // 获取简单的系统信息
+    let sys_info = "Linux"; // 可以扩展调用 SystemMonitor 获取更详细信息
+
+    let msg = format!(
+        "🤖 **Bot 已上线**\n\n🌍 IP: `{}`\n💻 系统: {}",
+        masked_ip, sys_info
+    );
+
+    let _ = bot
+        .send_message(ChatId(admin_id), msg)
+        .parse_mode(ParseMode::MarkdownV2)
+        .await;
     Ok(())
 }
 
