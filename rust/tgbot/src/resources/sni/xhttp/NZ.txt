@@ -1,0 +1,7 @@
+myhost.nz
+spark.co.nz
+sitehost.co.nz
+aut.ac.nz
+compassnet.co.nz
+webslice.co.nz
+inspire.net.nz

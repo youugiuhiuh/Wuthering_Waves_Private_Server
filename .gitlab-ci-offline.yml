@@ -1,0 +1,98 @@
+# GitLab 不联网版：使用预装 Rust/Go/UPX/Garble 的镜像，不执行任何外网下载
+# 将默认的 .gitlab-ci.yml 临时重命名，将此文件重命名为 .gitlab-ci.yml 使用；或在此项目启用此 pipeline
+# 镜像需包含: rustc, cargo, go, upx, garble, git, jq, curl（仅访问本实例 API）
+
+variables:
+  PUBLIC_OWNER: ${PUBLIC_REPO_OWNER:-youugiuhiuh}
+  PUBLIC_REPO: ${PUBLIC_REPO_NAME:-Wuthering_Waves_Private_Server}
+  # 使用预装工具链的镜像，例如: image: registry.example.com/ci/wwps-builder:offline
+  IMAGE_OFFLINE: ${CI_OFFLINE_IMAGE:-ubuntu:22.04}
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_MESSAGE =~ /\[skip ci\]/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "web" && $VERSION
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - rust/tgbot/Cargo.toml
+
+stages:
+  - build
+  - release
+
+build:
+  stage: build
+  image: $IMAGE_OFFLINE
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web" && $VERSION
+    - if: $CI_PIPELINE_SOURCE == "push"
+      changes:
+        - rust/tgbot/Cargo.toml
+  before_script:
+    - git config --global user.email "ci@gitlab.com"
+    - git config --global user.name "GitLab CI"
+  script:
+    - |
+      if [ -n "$VERSION" ]; then NEW_VERSION="${VERSION#v}"; else
+        NEW_VERSION=$(grep -m1 '^version' rust/tgbot/Cargo.toml | sed 's/.*"\(.*\)"/\1/' | sed 's/^v//'); fi
+      echo "NEW_VERSION=$NEW_VERSION" >> build.env
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "web" ] && [ -n "$VERSION" ]; then
+        sed -i 's/^version = .*/version = "'"$NEW_VERSION"'"/' rust/tgbot/Cargo.toml
+        git add rust/tgbot/Cargo.toml
+        git commit -m "chore: bump version to $NEW_VERSION [skip ci]" || true
+        git push "https://${SOURCE_REPO_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:${CI_DEFAULT_BRANCH}
+      fi
+    - git tag -f "v${NEW_VERSION}"
+    - git push "https://${SOURCE_REPO_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "v${NEW_VERSION}" --force
+    - cd rust/tgbot && RUSTFLAGS="--remap-path-prefix $(pwd)=/project" cargo build --release --locked
+    - upx --best --lzma rust/tgbot/target/release/tgbot || true
+    - cd go/installer && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+    - mkdir -p dist && cp rust/tgbot/target/release/tgbot go/installer/installer dist/
+    - cp README.public.md dist/README.md
+  artifacts:
+    paths:
+      - dist/
+      - build.env
+
+release:
+  stage: release
+  image: $IMAGE_OFFLINE
+  needs: [build]
+  before_script:
+    - apk add --no-cache git curl jq 2>/dev/null || apt-get update -qq && apt-get install -y -qq git curl jq 2>/dev/null || true
+    - source build.env
+  script:
+    - |
+      set +x
+      git clone --depth 0 "https://${PUBLIC_REPO_TOKEN}@${CI_SERVER_HOST}/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" public-repo
+      set -x
+    - cd public-repo && git config user.email "ci@gitlab.com" && git config user.name "GitLab CI"
+    - rm -rf public-repo/* && cp -r dist/* public-repo/
+    - cd public-repo && git add . && git commit -m "Publish v${NEW_VERSION}" || true
+    - cd public-repo && git tag -f "v${NEW_VERSION}"
+    - cd public-repo && git push "https://${PUBLIC_REPO_TOKEN}@${CI_SERVER_HOST}/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" HEAD:${CI_DEFAULT_BRANCH} --force
+    - cd public-repo && git push "https://${PUBLIC_REPO_TOKEN}@${CI_SERVER_HOST}/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" "v${NEW_VERSION}" --force
+    - |
+      PROJ="${PUBLIC_OWNER}%2F${PUBLIC_REPO}"
+      API="${CI_SERVER_URL}/api/v4/projects/${PROJ}"
+      AUTH="PRIVATE-TOKEN: ${PUBLIC_REPO_TOKEN}"
+      for tag in $(curl -sS -H "$AUTH" "${API}/releases?per_page=100" | jq -r '.[].tag_name // empty'); do
+        curl -sS -X DELETE -H "$AUTH" "${API}/releases/${tag}" || true
+      done
+    - |
+      PROJ="${PUBLIC_OWNER}%2F${PUBLIC_REPO}"
+      API="${CI_SERVER_URL}/api/v4/projects/${PROJ}"
+      AUTH="PRIVATE-TOKEN: ${PUBLIC_REPO_TOKEN}"
+      JSON=$(jq -n --arg tag "v${NEW_VERSION}" --arg name "v${NEW_VERSION}" --arg body "Public distribution package v${NEW_VERSION}." '{tag_name:$tag,name:$name,description:$body}')
+      curl -sS -X POST -H "$AUTH" -H "Content-Type: application/json" -d "$JSON" "${API}/releases"
+      RAW="${CI_SERVER_URL}/${PUBLIC_OWNER}/${PUBLIC_REPO}/-/raw/main"
+      for f in tgbot installer; do
+        curl -sS -X POST -H "$AUTH" -d "name=${f}&url=${RAW}/${f}&link_type=other" "${API}/releases/v${NEW_VERSION}/assets/links"
+      done
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web" && $VERSION
+    - if: $CI_PIPELINE_SOURCE == "push"
+      changes:
+        - rust/tgbot/Cargo.toml

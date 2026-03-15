@@ -1,0 +1,3 @@
+marnet.mk
+tocka.com.mk
+megawin.mk

@@ -1,0 +1,104 @@
+# Bitbucket Pipelines：与 GitHub Actions public-release 等效
+# 变量/Secrets: SOURCE_REPO_TOKEN, PUBLIC_REPO_TOKEN
+# 可选: PUBLIC_REPO_OWNER, PUBLIC_REPO_NAME (默认 youugiuhiuh, Wuthering_Waves_Private_Server)
+
+pipelines:
+  branches:
+    main:
+      - step:
+          name: Build and Release
+          image: ubuntu:22.04
+          script:
+            - export PUBLIC_OWNER="${PUBLIC_REPO_OWNER:-youugiuhiuh}"
+            - export PUBLIC_REPO="${PUBLIC_REPO_NAME:-Wuthering_Waves_Private_Server}"
+            - apt-get update -qq && apt-get install -y -qq curl git ca-certificates upx-ucl jq
+            - |
+              if [ -n "${VERSION}" ]; then
+                NEW_VERSION="${VERSION#v}"
+              else
+                NEW_VERSION=$(grep -m1 '^version' rust/tgbot/Cargo.toml | sed 's/.*"\(.*\)"/\1/' | sed 's/^v//')
+              fi
+              echo "Resolved version: $NEW_VERSION"
+            - |
+              if [ -n "${VERSION}" ]; then
+                sed -i 's/^version = .*/version = "'"$NEW_VERSION"'"/' rust/tgbot/Cargo.toml
+                git config user.email "ci@bitbucket.org"
+                git config user.name "Bitbucket Pipelines"
+                git add rust/tgbot/Cargo.toml
+                git commit -m "chore: bump version to $NEW_VERSION [skip ci]" || true
+                git push "https://x-token-auth:${SOURCE_REPO_TOKEN}@bitbucket.org/${BITBUCKET_REPO_FULL_SLUG}.git" HEAD:main
+              fi
+            - git tag -f "v${NEW_VERSION}"
+            - git push "https://x-token-auth:${SOURCE_REPO_TOKEN}@bitbucket.org/${BITBUCKET_REPO_FULL_SLUG}.git" "v${NEW_VERSION}" --force
+            - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+            - export PATH="$HOME/.cargo/bin:$PATH"
+            - curl -sL "https://go.dev/dl/go1.22.4.linux-amd64.tar.gz" | tar -C /usr/local -xz
+            - export PATH="/usr/local/go/bin:$PATH"
+            - go install mvdan.cc/garble@latest
+            - export PATH="$PATH:$(go env GOPATH)/bin"
+            - cd rust/tgbot && RUSTFLAGS="--remap-path-prefix $(pwd)=/project" cargo build --release --locked
+            - upx --best --lzma rust/tgbot/target/release/tgbot || true
+            - cd go/installer && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+            - mkdir -p dist && cp rust/tgbot/target/release/tgbot go/installer/installer dist/
+            - cp README.public.md dist/README.md
+            - |
+              git clone --depth 0 "https://x-token-auth:${PUBLIC_REPO_TOKEN}@bitbucket.org/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" public-repo
+              cd public-repo && git config user.email "ci@bitbucket.org" && git config user.name "Bitbucket Pipelines"
+              rm -rf public-repo/* && cp -r dist/* public-repo/
+              cd public-repo && git add . && git commit -m "Publish v${NEW_VERSION}" || true
+              cd public-repo && git tag -f "v${NEW_VERSION}"
+              cd public-repo && git push origin main --force && git push origin "v${NEW_VERSION}" --force
+            - |
+              # Bitbucket Downloads API: upload files (no "releases" like GitHub, files go to Downloads)
+              for f in dist/tgbot dist/installer; do
+                curl -sS -u "${PUBLIC_REPO_TOKEN}:x-token-auth" -X POST \
+                  "https://api.bitbucket.org/2.0/repositories/${PUBLIC_OWNER}/${PUBLIC_REPO}/downloads" \
+                  -F "files=@${f}"
+              done
+          artifacts:
+            - dist/**
+  custom:
+    public-release-manual:
+      - variables:
+          - name: VERSION
+            default: "0.4.4"
+      - step:
+          name: Build and Release
+          image: ubuntu:22.04
+          script:
+            - export PUBLIC_OWNER="${PUBLIC_REPO_OWNER:-youugiuhiuh}"
+            - export PUBLIC_REPO="${PUBLIC_REPO_NAME:-Wuthering_Waves_Private_Server}"
+            - apt-get update -qq && apt-get install -y -qq curl git ca-certificates upx-ucl jq
+            - export NEW_VERSION="${VERSION#v}"
+            - echo "Version: $NEW_VERSION"
+            - sed -i 's/^version = .*/version = "'"$NEW_VERSION"'"/' rust/tgbot/Cargo.toml
+            - git config user.email "ci@bitbucket.org"
+            - git config user.name "Bitbucket Pipelines"
+            - git add rust/tgbot/Cargo.toml
+            - git commit -m "chore: bump version to $NEW_VERSION [skip ci]" || true
+            - git push "https://x-token-auth:${SOURCE_REPO_TOKEN}@bitbucket.org/${BITBUCKET_REPO_FULL_SLUG}.git" HEAD:main
+            - git tag -f "v${NEW_VERSION}"
+            - git push "https://x-token-auth:${SOURCE_REPO_TOKEN}@bitbucket.org/${BITBUCKET_REPO_FULL_SLUG}.git" "v${NEW_VERSION}" --force
+            - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+            - export PATH="$HOME/.cargo/bin:$PATH"
+            - curl -sL "https://go.dev/dl/go1.22.4.linux-amd64.tar.gz" | tar -C /usr/local -xz
+            - export PATH="/usr/local/go/bin:$PATH"
+            - go install mvdan.cc/garble@latest
+            - export PATH="$PATH:$(go env GOPATH)/bin"
+            - cd rust/tgbot && RUSTFLAGS="--remap-path-prefix $(pwd)=/project" cargo build --release --locked
+            - upx --best --lzma rust/tgbot/target/release/tgbot || true
+            - cd go/installer && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+            - mkdir -p dist && cp rust/tgbot/target/release/tgbot go/installer/installer dist/
+            - cp README.public.md dist/README.md
+            - |
+              git clone --depth 0 "https://x-token-auth:${PUBLIC_REPO_TOKEN}@bitbucket.org/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" public-repo
+              cd public-repo && git config user.email "ci@bitbucket.org" && git config user.name "Bitbucket Pipelines"
+              rm -rf public-repo/* && cp -r dist/* public-repo/
+              cd public-repo && git add . && git commit -m "Publish v${NEW_VERSION}" || true
+              cd public-repo && git tag -f "v${NEW_VERSION}"
+              cd public-repo && git push origin main --force && git push origin "v${NEW_VERSION}" --force
+            - |
+              for f in dist/tgbot dist/installer; do
+                curl -sS -u "${PUBLIC_REPO_TOKEN}:x-token-auth" -X POST \
+                  "https://api.bitbucket.org/2.0/repositories/${PUBLIC_OWNER}/${PUBLIC_REPO}/downloads" -F "files=@${f}"
+              done

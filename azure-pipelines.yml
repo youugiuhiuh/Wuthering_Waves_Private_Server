@@ -1,0 +1,144 @@
+# Azure Pipelines：与 GitHub Actions public-release 等效
+# 变量/Secrets: SOURCE_REPO_TOKEN, PUBLIC_REPO_TOKEN
+# 可选: PUBLIC_REPO_OWNER, PUBLIC_REPO_NAME, PUBLIC_SERVER_URL (默认 GitHub API)
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - rust/tgbot/Cargo.toml
+
+parameters:
+  - name: VERSION
+    displayName: Release version (manual run)
+    type: string
+    default: ''
+
+variables:
+  PUBLIC_OWNER: $(PUBLIC_REPO_OWNER)
+  PUBLIC_REPO: $(PUBLIC_REPO_NAME)
+  PUBLIC_SERVER: $(PUBLIC_SERVER_URL)
+  # Default public repo to GitHub
+  ${{ if eq(variables['PUBLIC_OWNER'], '') }}:
+    PUBLIC_OWNER: youugiuhiuh
+  ${{ if eq(variables['PUBLIC_REPO'], '') }}:
+    PUBLIC_REPO: Wuthering_Waves_Private_Server
+  ${{ if eq(variables['PUBLIC_SERVER'], '') }}:
+    PUBLIC_SERVER: https://api.github.com
+
+stages:
+  - stage: Build
+    jobs:
+      - job: build_release
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            persistCredentials: true
+          - script: |
+              if [ -n "$(VERSION)" ]; then
+                NEW_VERSION="$(echo $(VERSION) | sed 's/^v//')"
+              else
+                NEW_VERSION=$(grep -m1 '^version' rust/tgbot/Cargo.toml | sed 's/.*"\(.*\)"/\1/' | sed 's/^v//')
+              fi
+              echo "##vso[task.setvariable variable=NEW_VERSION]$NEW_VERSION"
+            displayName: Set NEW_VERSION
+          - script: |
+              if [ -n "$(VERSION)" ]; then
+                sed -i 's/^version = .*/version = "'"$(NEW_VERSION)"'"/' rust/tgbot/Cargo.toml
+                git config user.email "ci@azure.com"
+                git config user.name "Azure Pipelines"
+                git add rust/tgbot/Cargo.toml
+                git commit -m "chore: bump version to $(NEW_VERSION) [skip ci]" || true
+                git push origin HEAD:main
+              fi
+              git tag -f "v$(NEW_VERSION)"
+              git push origin "v$(NEW_VERSION)" --force
+            displayName: Sync version and tag
+            env:
+              SOURCE_REPO_TOKEN: $(SOURCE_REPO_TOKEN)
+          - script: |
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+              echo "##vso[task.prependpath]$HOME/.cargo/bin"
+            displayName: Install Rust
+          - script: |
+              sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl jq
+            displayName: Install UPX and jq
+          - script: |
+              cd rust/tgbot
+              RUSTFLAGS="--remap-path-prefix $(Build.SourcesDirectory)=/project" cargo build --release --locked
+              ls -la target/release/tgbot
+              upx --best --lzma target/release/tgbot || true
+            displayName: Build tgbot
+          - task: GoTool@0
+            inputs:
+              version: '1.22.x'
+            displayName: Install Go
+          - script: |
+              go install mvdan.cc/garble@latest
+              echo "##vso[task.prependpath]$(go env GOPATH)/bin"
+            displayName: Install Garble
+          - script: |
+              cd go/installer
+              CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+            displayName: Build installer
+          - script: |
+              mkdir -p dist
+              cp rust/tgbot/target/release/tgbot go/installer/installer dist/
+              cp README.public.md dist/README.md
+            displayName: Prepare dist
+          - script: |
+              set +x
+              # When using GitHub API, clone from github.com
+              if echo "$(PUBLIC_SERVER)" | grep -q github; then
+                GIT_HOST="github.com"
+              else
+                GIT_HOST=$(echo "$(PUBLIC_SERVER)" | sed 's|https://||' | sed 's|/.*||')
+              fi
+              git clone --depth 0 "https://$(PUBLIC_REPO_TOKEN)@${GIT_HOST}/$(PUBLIC_OWNER)/$(PUBLIC_REPO).git" public-repo
+              set -x
+            displayName: Clone public repo
+            env:
+              PUBLIC_REPO_TOKEN: $(PUBLIC_REPO_TOKEN)
+          - script: |
+              cd public-repo
+              git config user.email "ci@azure.com"
+              git config user.name "Azure Pipelines"
+              rm -rf *
+              cp -r ../dist/* .
+              git add .
+              git commit -m "Publish v$(NEW_VERSION)" || true
+              git tag -f "v$(NEW_VERSION)"
+              if echo "$(PUBLIC_SERVER)" | grep -q github; then GIT_HOST="github.com"; else GIT_HOST=$(echo "$(PUBLIC_SERVER)" | sed 's|https://||' | sed 's|/.*||'); fi
+              git push "https://$(PUBLIC_REPO_TOKEN)@${GIT_HOST}/$(PUBLIC_OWNER)/$(PUBLIC_REPO).git" HEAD:main --force
+              git push "https://$(PUBLIC_REPO_TOKEN)@${GIT_HOST}/$(PUBLIC_OWNER)/$(PUBLIC_REPO).git" "v$(NEW_VERSION)" --force
+            displayName: Push to public repo
+            env:
+              PUBLIC_REPO_TOKEN: $(PUBLIC_REPO_TOKEN)
+          - script: |
+              BASE="$(PUBLIC_SERVER)"
+              AUTH="Authorization: token $(PUBLIC_REPO_TOKEN)"
+              API="${BASE}/repos/$(PUBLIC_OWNER)/$(PUBLIC_REPO)"
+              if [ "${BASE#*github}" != "$BASE" ]; then
+                for tag in $(curl -sS -H "$AUTH" "${API}/releases?per_page=100" | jq -r '.[].tag_name // empty'); do
+                  echo "Deleting release: $tag"
+                  curl -sS -X DELETE -H "$AUTH" "${API}/releases/tags/${tag}" || true
+                done
+                for tag in $(curl -sS -H "$AUTH" "${API}/tags?per_page=100" | jq -r '.[].name // empty'); do
+                  curl -sS -X DELETE -H "$AUTH" "${API}/git/refs/tags/${tag}" || true
+                done
+                BODY="Public distribution package v$(NEW_VERSION)."
+                JSON=$(jq -n --arg tag "v$(NEW_VERSION)" --arg name "v$(NEW_VERSION)" --arg body "$BODY" '{tag_name:$tag,name:$name,body:$body}')
+                RES=$(curl -sS -X POST -H "$AUTH" -H "Content-Type: application/json" -d "$JSON" "${API}/releases")
+                RID=$(echo "$RES" | jq -r '.id // empty')
+                for f in dist/tgbot dist/installer; do
+                  [ -f "$f" ] && curl -sS -X POST -H "$AUTH" -H "Content-Type: application/octet-stream" --data-binary "@${f}" "${API}/releases/${RID}/assets?name=$(basename $f)"
+                done
+              else
+                echo "Non-GitHub public server: set PUBLIC_SERVER_URL to GitHub API for release step, or add logic for GitLab etc."
+              fi
+            displayName: Cleanup and create release (GitHub API)
+            env:
+              PUBLIC_REPO_TOKEN: $(PUBLIC_REPO_TOKEN)
