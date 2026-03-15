@@ -462,7 +462,6 @@ pub mod wwps_core {
     const WWPS_CORE_DEFAULT_INSTALL_DIR: &str = "/etc/wwps/wwps-core";
     const WWPS_CORE_DEFAULT_TEMP_DIR: &str = "/tmp/wwps-core-upgrade";
     const WWPS_CORE_DEFAULT_BACKUP_PREFIX: &str = "wwps-core-backup";
-    const WWPS_CORE_RELEASE_API: &str = "https://api.github.com/repos";
 
     /// wwps-core Release API 根地址列表（含 /repos），按顺序尝试
     fn wwps_core_release_api_bases() -> Vec<String> {
