@@ -2925,9 +2925,17 @@ async fn main() -> Result<()> {
     }
 
     let config_dir = Path::new(CONFIG_DIR);
-    let security =
-        SecurityManager::new(&config_dir.join(KEY_FILE)).context("Security manager failed")?;
-    let config_data = fs::read(config_dir.join(CONFIG_FILE)).context("Config file miss")?;
+    let key_path = config_dir.join(KEY_FILE);
+    let config_path = config_dir.join(CONFIG_FILE);
+    if config_path.exists() && !key_path.exists() {
+        anyhow::bail!(
+            "配置文件 {} 存在，但 {} 不存在。请将 setup 时生成的 .key 与 config.enc 一并部署到本机，或在本机重新执行 tgbot --setup 完成初始化。",
+            config_path.display(),
+            key_path.display()
+        );
+    }
+    let security = SecurityManager::new(&key_path).context("Security manager failed")?;
+    let config_data = fs::read(&config_path).context("Config file miss")?;
     let encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
 
     let token_vec = security.decrypt(&encrypted_config.token)?;
@@ -2936,7 +2944,9 @@ async fn main() -> Result<()> {
 
     let token: String = String::from_utf8(token_vec.expose_secret().to_vec())?.into();
     let admin_id_str: String = String::from_utf8(admin_id_vec.expose_secret().to_vec())?;
-    let totp_secret: String = String::from_utf8(totp_sec_vec.expose_secret().to_vec())?.into();
+    let totp_secret: String = String::from_utf8(totp_sec_vec.expose_secret().to_vec())?
+        .trim()
+        .to_string();
 
     let admin_id: i64 = admin_id_str
         .trim()
@@ -3031,6 +3041,26 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(3)).await;
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn format_duration_human_seconds() {
+        assert_eq!(format_duration_human(0), "0秒");
+        assert_eq!(format_duration_human(45), "45秒");
+    }
+
+    #[test]
+    fn format_duration_human_minutes() {
+        assert_eq!(format_duration_human(60), "1分钟");
+        assert_eq!(format_duration_human(90), "1分钟");
+        assert_eq!(format_duration_human(120), "2分钟");
+    }
+
+    #[test]
+    fn format_duration_human_hours_and_days() {
+        assert_eq!(format_duration_human(3600), "1小时");
+        assert_eq!(format_duration_human(3661), "1小时1分");
+        assert!(format_duration_human(86400).starts_with("1天"));
     }
 }
 

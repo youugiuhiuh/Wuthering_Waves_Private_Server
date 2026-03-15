@@ -135,3 +135,43 @@ impl SNISelector {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_for_country_returns_selector_with_domains() {
+        let selector = SNISelector::get_for_country("US", RealityProto::Vision);
+        let mut s = selector;
+        let first = s.next();
+        assert!(!first.is_empty());
+        assert!(first.contains('.'));
+    }
+
+    #[test]
+    fn get_for_country_unknown_falls_back_to_default() {
+        let selector = SNISelector::get_for_country("XX", RealityProto::Vision);
+        let mut s = selector;
+        let d = s.next();
+        assert!(!d.is_empty());
+    }
+
+    #[test]
+    fn next_returns_fallback_for_empty_list() {
+        let mut selector = SNISelector::new_from_list(vec![]);
+        assert_eq!(selector.next(), "www.google.com");
+    }
+
+    #[test]
+    fn next_rotates_through_domains() {
+        let mut selector = SNISelector::new_from_list(vec![
+            "a.example.com".to_string(),
+            "b.example.com".to_string(),
+        ]);
+        let a = selector.next();
+        let b = selector.next();
+        let c = selector.next();
+        assert!(a != b || b != c || a != c);
+    }
+}

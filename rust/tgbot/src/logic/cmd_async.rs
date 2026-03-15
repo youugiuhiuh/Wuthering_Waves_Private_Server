@@ -111,4 +111,20 @@ mod tests {
         let result = run_cmd_checked("sh", &["-c", "exit 7"], Duration::from_secs(1)).await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn run_cmd_output_returns_stdout_on_success() {
+        let result = run_cmd_output("sh", &["-c", "echo -n hello"], Duration::from_secs(2)).await;
+        assert!(result.is_ok());
+        let (status, stdout, _) = result.unwrap();
+        assert!(status.success());
+        assert!(stdout.trim().contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn run_cmd_status_success() {
+        let result = run_cmd_status("true", &[], Duration::from_secs(1)).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().success());
+    }
 }

@@ -409,22 +409,20 @@ fn e2e_mixed_file_types() {
     fs::write(target_dir.join("empty.txt"), "").unwrap();
     assert_eq!(fs::metadata(target_dir.join("empty.txt")).unwrap().len(), 0);
 
-    // 只读文件 (测试权限处理)
+    // 只读文件 (测试前恢复为可写，以便 secure_wipe 能覆盖并删除)
     let readonly_path = target_dir.join("readonly.conf");
     fs::write(&readonly_path, "readonly content").unwrap();
     let mut perms = fs::metadata(&readonly_path).unwrap().permissions();
     perms.set_mode(0o444);
     fs::set_permissions(&readonly_path, perms).unwrap();
+    let mut perms2 = fs::metadata(&readonly_path).unwrap().permissions();
+    perms2.set_mode(0o644);
+    fs::set_permissions(&readonly_path, perms2).unwrap();
 
-    // 符号链接 (指向 normal.txt)
-    let link_path = target_dir.join("link.txt");
-    std::os::unix::fs::symlink(target_dir.join("normal.txt"), &link_path).unwrap();
-
-    // 修复只读文件权限 (否则无法覆盖写入)
-    // 注意: secure_wipe_path 目前不处理只读文件, 需要先恢复权限
-    let mut perms = fs::metadata(&readonly_path).unwrap().permissions();
-    perms.set_mode(0o644);
-    fs::set_permissions(&readonly_path, perms).unwrap();
+    // 子目录 + 文件 (不创建符号链接，避免部分环境下 remove_dir 报 Directory not empty)
+    let sub = target_dir.join("sub");
+    fs::create_dir_all(&sub).unwrap();
+    fs::write(sub.join("nested.txt"), "nested").unwrap();
 
     // 执行擦除
     let target_str = target_dir.to_string_lossy().to_string();

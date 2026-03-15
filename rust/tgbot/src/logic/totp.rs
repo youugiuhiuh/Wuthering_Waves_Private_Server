@@ -34,3 +34,55 @@ impl TotpManager {
         Secret::generate_secret().to_encoded().to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generate_new_secret_returns_valid_base32() {
+        let secret = TotpManager::generate_new_secret();
+        assert!(!secret.is_empty());
+        assert!(secret.len() >= 16);
+        assert!(
+            secret
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        );
+        let _manager = TotpManager::new(&secrecy::SecretString::from(secret)).unwrap();
+    }
+
+    #[test]
+    fn new_accepts_valid_base32_secret() {
+        let secret = TotpManager::generate_new_secret();
+        let result = TotpManager::new(&secrecy::SecretString::from(secret));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn new_rejects_secret_with_trailing_newline() {
+        let secret = TotpManager::generate_new_secret();
+        let secret_with_newline = format!("{}\n", secret);
+        let result = TotpManager::new(&secrecy::SecretString::from(secret_with_newline));
+        assert!(result.is_err());
+        let err_msg = result.err().unwrap().to_string();
+        assert!(err_msg.contains("base32"));
+    }
+
+    #[test]
+    fn new_rejects_invalid_base32() {
+        let result = TotpManager::new(&secrecy::SecretString::from(
+            "not-valid-base32!!!".to_string(),
+        ));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn new_accepts_trimmed_secret_that_originally_had_whitespace() {
+        let secret = TotpManager::generate_new_secret();
+        let with_whitespace = format!("  {}  \n\t ", secret);
+        let trimmed = with_whitespace.trim();
+        let result = TotpManager::new(&secrecy::SecretString::from(trimmed.to_string()));
+        assert!(result.is_ok());
+    }
+}

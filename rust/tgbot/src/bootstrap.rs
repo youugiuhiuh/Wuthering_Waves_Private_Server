@@ -75,6 +75,9 @@ impl BotSettings {
 }
 
 pub async fn run_setup(token: &str, admin_id: &str, totp_secret: &str) -> Result<()> {
+    let token = token.trim();
+    let admin_id = admin_id.trim();
+    let totp_secret = totp_secret.trim();
     let config_dir = Path::new(CONFIG_DIR);
     fs::create_dir_all(config_dir)?;
     let security = SecurityManager::new(&config_dir.join(KEY_FILE))?;
