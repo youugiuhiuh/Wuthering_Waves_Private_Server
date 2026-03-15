@@ -245,7 +245,8 @@ impl UpgradeManager {
             {
                 hash
             } else if let Some(body) = release.body.as_deref() {
-                extract_sha256_from_body(body).ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
+                extract_sha256_from_body(body)
+                    .ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
             } else {
                 anyhow::bail!("Release 中缺少 SHA256 信息");
             };
@@ -649,7 +650,10 @@ pub mod wwps_core {
             }
 
             let config = &self.config;
-            let path = format!("/{}/{}/releases?per_page={}", config.owner, config.repo, limit);
+            let path = format!(
+                "/{}/{}/releases?per_page={}",
+                config.owner, config.repo, limit
+            );
             let bases = wwps_core_release_api_bases();
             let mut last_err = None::<anyhow::Error>;
 
