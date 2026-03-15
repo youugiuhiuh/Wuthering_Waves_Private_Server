@@ -20,7 +20,7 @@
 
 - **SOURCE_REPO_TOKEN**：拉取/推送**当前源码仓库**的 token（写权限）。
 - **PUBLIC_REPO_TOKEN**：推送到**公开仓库**并创建/删除 Release 的 token。
-- （可选）**PUBLIC_REPO_OWNER** / **PUBLIC_REPO_NAME**：公开仓库，默认 `youugiuhiuh` / `Wuthering_Waves_Private_Server`。
+- （可选）**PUBLIC_REPO_OWNER** / **PUBLIC_REPO_NAME**：公开仓库，默认 `NicholasDewar` / `Wuthering_Waves_Private_Server`。
 - （可选）**PUBLIC_SERVER_URL**：公开仓所在实例 API 根（如 `https://api.github.com` 或 GitLab 地址），用于 Azure / 部分 Gitea 场景。
 
 ## 触发方式

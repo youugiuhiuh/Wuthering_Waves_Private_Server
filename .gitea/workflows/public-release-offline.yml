@@ -24,7 +24,7 @@ jobs:
       - name: Set API and Public Repo
         run: |
           echo "API_BASE=${GITHUB_SERVER_URL}" >> $GITHUB_ENV
-          echo "PUBLIC_OWNER=youugiuhiuh" >> $GITHUB_ENV
+          echo "PUBLIC_OWNER=NicholasDewar" >> $GITHUB_ENV
           echo "PUBLIC_REPO=Wuthering_Waves_Private_Server" >> $GITHUB_ENV
 
       - name: Checkout Source

@@ -108,7 +108,7 @@ jobs:
       - name: Checkout Distribution Repo
         uses: actions/checkout@v4
         with:
-          repository: youugiuhiuh/Wuthering_Waves_Private_Server
+          repository: NicholasDewar/Wuthering_Waves_Private_Server
           token: ${{ secrets.PUBLIC_REPO_TOKEN }}
           path: public-repo
 
@@ -133,23 +133,23 @@ jobs:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
           # List all releases and delete each one
-          RELEASES=$(gh release list --repo youugiuhiuh/Wuthering_Waves_Private_Server --limit 100 | cut -f 1)
+          RELEASES=$(gh release list --repo NicholasDewar/Wuthering_Waves_Private_Server --limit 100 | cut -f 1)
           for tag in $RELEASES; do
             echo "Deleting release: $tag"
-            gh release delete "$tag" --repo youugiuhiuh/Wuthering_Waves_Private_Server --yes --cleanup-tag
+            gh release delete "$tag" --repo NicholasDewar/Wuthering_Waves_Private_Server --yes --cleanup-tag
           done
 
           # Double check for any wandering tags that don't have releases
-          TAGS=$(gh api repos/youugiuhiuh/Wuthering_Waves_Private_Server/tags --jq '.[].name')
+          TAGS=$(gh api repos/NicholasDewar/Wuthering_Waves_Private_Server/tags --jq '.[].name')
           for tag in $TAGS; do
             echo "Deleting tag: $tag"
-            gh api -X DELETE "repos/youugiuhiuh/Wuthering_Waves_Private_Server/git/refs/tags/$tag"
+            gh api -X DELETE "repos/NicholasDewar/Wuthering_Waves_Private_Server/git/refs/tags/$tag"
           done
 
       - name: Create Public Release
         uses: softprops/action-gh-release@v2
         with:
-          repository: youugiuhiuh/Wuthering_Waves_Private_Server
+          repository: NicholasDewar/Wuthering_Waves_Private_Server
           token: ${{ secrets.PUBLIC_REPO_TOKEN }}
           tag_name: v${{ env.NEW_VERSION }}
           name: v${{ env.NEW_VERSION }}

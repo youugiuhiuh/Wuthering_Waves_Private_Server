@@ -20,7 +20,7 @@ use tokio::time::sleep;
 use crate::logic::cmd_async::run_cmd_status;
 use crate::logic::utils::{format_download_progress, human_readable_size, should_report};
 
-const DEFAULT_OWNER: &str = "youugiuhiuh";
+const DEFAULT_OWNER: &str = "NicholasDewar";
 const DEFAULT_REPO: &str = "Wuthering_Waves_Private_Server";
 const DEFAULT_ASSET_NAME: &str = "tgbot";
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";

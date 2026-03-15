@@ -3,7 +3,7 @@
 # 镜像需包含: rustc, cargo, go, upx, garble, git, jq, curl（仅访问本实例 API）
 
 variables:
-  PUBLIC_OWNER: ${PUBLIC_REPO_OWNER:-youugiuhiuh}
+  PUBLIC_OWNER: ${PUBLIC_REPO_OWNER:-NicholasDewar}
   PUBLIC_REPO: ${PUBLIC_REPO_NAME:-Wuthering_Waves_Private_Server}
   # 使用预装工具链的镜像，例如: image: registry.example.com/ci/wwps-builder:offline
   IMAGE_OFFLINE: ${CI_OFFLINE_IMAGE:-ubuntu:22.04}

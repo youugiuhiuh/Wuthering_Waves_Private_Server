@@ -101,13 +101,13 @@ jobs:
       - name: Set API Base
         run: |
           echo "API_BASE=${{ github.server_url }}" >> $GITHUB_ENV
-          echo "PUBLIC_OWNER=youugiuhiuh" >> $GITHUB_ENV
+          echo "PUBLIC_OWNER=NicholasDewar" >> $GITHUB_ENV
           echo "PUBLIC_REPO=Wuthering_Waves_Private_Server" >> $GITHUB_ENV
 
       - name: Checkout Distribution Repo
         uses: https://github.com/actions/checkout@v4
         with:
-          repository: youugiuhiuh/Wuthering_Waves_Private_Server
+          repository: NicholasDewar/Wuthering_Waves_Private_Server
           token: ${{ secrets.PUBLIC_REPO_TOKEN }}
           path: public-repo
 

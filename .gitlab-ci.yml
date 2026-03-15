@@ -2,7 +2,7 @@
 # 变量/Secrets: SOURCE_REPO_TOKEN, PUBLIC_REPO_TOKEN, 可选 PUBLIC_REPO_OWNER, PUBLIC_REPO_NAME
 
 variables:
-  PUBLIC_OWNER: ${PUBLIC_REPO_OWNER:-youugiuhiuh}
+  PUBLIC_OWNER: ${PUBLIC_REPO_OWNER:-NicholasDewar}
   PUBLIC_REPO: ${PUBLIC_REPO_NAME:-Wuthering_Waves_Private_Server}
 
 workflow:

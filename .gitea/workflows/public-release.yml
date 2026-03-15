@@ -2,7 +2,7 @@
 # 使用方式：放入 .gitea/workflows/ 或（若实例支持）复制到 .github/workflows/
 # 需在仓库/组织配置 Secrets: SOURCE_REPO_TOKEN, PUBLIC_REPO_TOKEN
 # 可选 Secret: PUBLIC_SERVER_URL（公开仓库在另一台 Gitea/Forgejo 时填写，如 https://codeberg.org）
-# 可选 Var: PUBLIC_REPO_OWNER, PUBLIC_REPO_NAME（默认 youugiuhiuh, Wuthering_Waves_Private_Server）
+# 可选 Var: PUBLIC_REPO_OWNER, PUBLIC_REPO_NAME（默认 NicholasDewar, Wuthering_Waves_Private_Server）
 
 name: Public Distribution Sync (Gitea/Forgejo)
 
@@ -26,7 +26,7 @@ jobs:
       - name: Set API and Public Repo
         run: |
           echo "API_BASE=${GITHUB_SERVER_URL}" >> $GITHUB_ENV
-          echo "PUBLIC_OWNER=youugiuhiuh" >> $GITHUB_ENV
+          echo "PUBLIC_OWNER=NicholasDewar" >> $GITHUB_ENV
           echo "PUBLIC_REPO=Wuthering_Waves_Private_Server" >> $GITHUB_ENV
           # 若公开仓在另一实例，在 Secrets 中设 PUBLIC_SERVER_URL 后取消下一行注释并重跑
           # [ -n "${{ secrets.PUBLIC_SERVER_URL }}" ] && echo "API_BASE=${{ secrets.PUBLIC_SERVER_URL }}" >> $GITHUB_ENV

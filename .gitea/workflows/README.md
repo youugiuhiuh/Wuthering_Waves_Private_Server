@@ -19,7 +19,7 @@
    - （可选）`PUBLIC_SERVER_URL`：公开仓库所在实例地址（如 `https://codeberg.org`）。与当前实例一致可不设。
 
 2. **公开仓库**  
-   默认：`youugiuhiuh/Wuthering_Waves_Private_Server`。  
+   默认：`NicholasDewar/Wuthering_Waves_Private_Server`。  
    若不同，在 **public-release.yml** 的 “Set API and Public Repo” 步骤里改 `PUBLIC_OWNER` / `PUBLIC_REPO`，或在支持的环境里用变量覆盖。
 
 3. **放置位置**  

@@ -18,7 +18,7 @@ sources:
 #   - your-source-repo-token-uuid
 #   - your-public-repo-token-uuid
 environment:
-  PUBLIC_OWNER: youugiuhiuh
+  PUBLIC_OWNER: NicholasDewar
   PUBLIC_REPO: Wuthering_Waves_Private_Server
 tasks:
   - resolve-and-sync: |

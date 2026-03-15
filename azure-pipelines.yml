@@ -22,7 +22,7 @@ variables:
   PUBLIC_SERVER: $(PUBLIC_SERVER_URL)
   # Default public repo to GitHub
   ${{ if eq(variables['PUBLIC_OWNER'], '') }}:
-    PUBLIC_OWNER: youugiuhiuh
+    PUBLIC_OWNER: NicholasDewar
   ${{ if eq(variables['PUBLIC_REPO'], '') }}:
     PUBLIC_REPO: Wuthering_Waves_Private_Server
   ${{ if eq(variables['PUBLIC_SERVER'], '') }}:
