@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono_tz::Tz;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -91,12 +91,17 @@ pub struct SchedulerManager {
 
 impl SchedulerManager {
     pub async fn new(bot: Bot, chat_id: ChatId, state_path: String) -> Result<Arc<Self>> {
-        let state = SchedulerState::load_from_file(&state_path)
-            .unwrap_or_else(|_| SchedulerState::default());
-
-        if !Path::new(&state_path).exists() {
-            let _ = state.save_to_file(&state_path);
-        }
+        let path = state_path.clone();
+        let state = tokio::task::spawn_blocking(move || {
+            let s =
+                SchedulerState::load_from_file(&path).unwrap_or_else(|_| SchedulerState::default());
+            if !Path::new(&path).exists() {
+                let _ = s.save_to_file(&path);
+            }
+            s
+        })
+        .await
+        .context("scheduler state load")?;
 
         let sched = JobScheduler::new().await?;
         let scheduler = Arc::new(Mutex::new(Some(sched)));

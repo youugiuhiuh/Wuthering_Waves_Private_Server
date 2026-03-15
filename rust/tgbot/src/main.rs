@@ -2974,15 +2974,20 @@ async fn main() -> Result<()> {
         .branch(Update::filter_message().endpoint(handle_message))
         .branch(Update::filter_callback_query().endpoint(handle_callback));
 
-    logic::scheduler::start_scheduler(bot.clone(), ChatId(admin_id))
-        .await
-        .context("❌ 初始化调度器失败")?;
-
-    let _ = notify_upgrade_success(&bot, admin_id).await;
-    let _ = notify_bbr3_reboot_result(&bot, admin_id).await;
-    let _ = notify_online(&bot, admin_id).await;
-
+    // 先启动 Dispatcher，再在后台初始化调度器与通知，避免 /start 等命令因启动阻塞而无响应
     println!("🚀 Bot is starting...");
+    let bot_for_init = bot.clone();
+    tokio::spawn(async move {
+        if let Err(e) =
+            logic::scheduler::start_scheduler(bot_for_init.clone(), ChatId(admin_id)).await
+        {
+            log::error!("❌ 初始化调度器失败: {}", e);
+        }
+        let _ = notify_upgrade_success(&bot_for_init, admin_id).await;
+        let _ = notify_bbr3_reboot_result(&bot_for_init, admin_id).await;
+        let _ = notify_online(&bot_for_init, admin_id).await;
+    });
+
     Dispatcher::builder(bot, handler)
         .dependencies(dptree::deps![state])
         .enable_ctrlc_handler()
