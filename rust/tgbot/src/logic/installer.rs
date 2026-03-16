@@ -603,7 +603,7 @@ fn build_progress_text(step: u8, total: u8, desc: &str, existing: bool) -> Strin
         "🚀 <b>Reality 初始化</b>"
     };
     format!(
-        "{}\n{}\n\n📍 {}\n\n请勿关闭窗口，完成后将自动返回批量界面。",
+        "{}\n{}\n\n📍 {}\n\n🔐 本次将自动生成 Reality PQ (ML-DSA-65) 密钥对，用于 mldsa65Verify / pqv。\n\n请勿关闭窗口，完成后将自动返回批量界面。",
         heading, bar, desc
     )
 }

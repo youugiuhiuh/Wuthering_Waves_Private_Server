@@ -122,10 +122,6 @@ fn sync_reality_pq_pub_on_setup() {
     if let Err(e) = fs::write(PQ_KEY_PATH, sk_b64.as_bytes()) {
         log::error!("❌ 写入 Reality PQ 私钥失败: {}", e);
     }
-
-    // 提示一次，用于安装流程中的“进度条”感知；不打印密钥内容，只提示已生成。
-    // 使用 stderr 避免影响 CLI stdout 单行约束测试。
-    eprintln!("✅ 已自动生成 Reality PQ (ML-DSA-65) 密钥对。");
 }
 
 pub async fn run_setup(token: &str, admin_id: &str, totp_secret: &str) -> Result<()> {
