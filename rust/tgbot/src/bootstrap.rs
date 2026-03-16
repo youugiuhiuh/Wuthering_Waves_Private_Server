@@ -129,7 +129,7 @@ pub async fn verify_integrity() -> Result<()> {
     hasher.update(&content);
     let hash = hex::encode(hasher.finalize());
 
-    println!("Binary Integrity Hash: {}", hash);
+    eprintln!("Binary Integrity Hash: {}", hash);
     Ok(())
 }
 

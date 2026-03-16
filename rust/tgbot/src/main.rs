@@ -2901,28 +2901,31 @@ async fn main() -> Result<()> {
     // 立即执行防调试检查
     crate::logic::anti_debug::check_debugger();
 
-    // Run integrity check
-    verify_integrity().await?;
-
-    // Load config...
+    // CLI 仅输出模式：先处理，避免 verify_integrity 向 stdout 打印导致安装器把整段输出当成 TOTP 密钥
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
+        if args[1] == "--generate-totp-secret" {
+            println!("{}", TotpManager::generate_new_secret());
+            return Ok(());
+        }
+        if args[1] == "-v" || args[1] == "--version" {
+            println!("tgbot {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
         if args[1] == "--setup" {
             if args.len() < 5 {
                 println!("Usage: tgbot --setup <token> <admin_id> <totp_secret>");
                 return Ok(());
             }
             return run_setup(&args[2], &args[3], &args[4]).await;
-        } else if args[1] == "--setup-stdin" {
+        }
+        if args[1] == "--setup-stdin" {
             return run_setup_from_stdin().await;
-        } else if args[1] == "--generate-totp-secret" {
-            println!("{}", TotpManager::generate_new_secret());
-            return Ok(());
-        } else if args[1] == "-v" || args[1] == "--version" {
-            println!("tgbot {}", env!("CARGO_PKG_VERSION"));
-            return Ok(());
         }
     }
+
+    // 正常启动：校验完整性后再加载配置
+    verify_integrity().await?;
 
     let config_dir = Path::new(CONFIG_DIR);
     let key_path = config_dir.join(KEY_FILE);

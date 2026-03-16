@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	version     = "v0.0.4"
+	version     = "v0.0.5"
 	repoOwner   = "NicholasDewar"
 	repoName    = "Wuthering_Waves_Private_Server"
 	installDir  = "/etc/wwps/tgbot"
@@ -141,6 +141,20 @@ func runCmdOutputBytes(name string, args ...string) ([]byte, error) {
 		return nil, err
 	}
 	return bytes.TrimSpace(out), nil
+}
+
+func extractBase32Secret(output []byte) ([]byte, error) {
+	// 兼容旧版本 tgbot 可能输出多行日志；仅提取最后一行合法 Base32 密钥。
+	// TOTP secret 通常至少 16 位，由 A-Z2-7 组成。
+	re := regexp.MustCompile(`^[A-Z2-7]{16,}$`)
+	lines := strings.Split(string(output), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if re.MatchString(line) {
+			return []byte(line), nil
+		}
+	}
+	return nil, fmt.Errorf("未在输出中找到合法 TOTP Base32 密钥")
 }
 
 func zeroBytes(data []byte) {
@@ -517,9 +531,16 @@ func firstTimeSetup(binaryPath string) {
 	adminIDEnclave := readSecureInput("请输入管理员 ID (TG User ID): ")
 
 	// 生成 TOTP 密钥
-	totpSecretRaw, err := runCmdOutputBytes(binaryPath, "--generate-totp-secret")
+	totpSecretOutput, err := runCmdOutputBytes(binaryPath, "--generate-totp-secret")
 	if err != nil {
 		printRed("生成 TOTP 密钥失败: " + err.Error())
+		return
+	}
+	defer zeroBytes(totpSecretOutput)
+
+	totpSecretRaw, err := extractBase32Secret(totpSecretOutput)
+	if err != nil {
+		printRed("解析 TOTP 密钥失败: " + err.Error())
 		return
 	}
 	defer zeroBytes(totpSecretRaw)
