@@ -39,6 +39,16 @@ description: >
 
 - **go/installer/main_test.go**：`TestExtractBase32Secret` 表驱动单测，覆盖多行含 hash、仅一行 base32、空、无合法行、trim、不足 16 位等，防止 TOTP 输出解析逻辑倒退。
 
+## Reality / XHTTP 双栈分离测试要点
+
+- **IpVersion 模式**：
+  - `IPv4` / `IPv6`：只使用单栈 IP 生成 Reality + XHTTP 配置与链接。
+  - `SplitStackV6Primary`：主地址使用 IPv6，`extra.downloadSettings.address` 使用 IPv4，对应“v6 上 v4 下”。
+  - `SplitStackV4Primary`：主地址使用 IPv4，`extra.downloadSettings.address` 使用 IPv6，对应“v4 上 v6 下”。
+- **建议增加的测试（示例）**：
+  - 单元测 `resolve_public_hosts`：对两种 split 模式断言 `(primary, secondary)` 顺序正确。
+  - 链接生成测试：检查 XHTTP 链接中 `remote-host` 与 `extra.downloadSettings.address` 是否符合上述语义。
+
 ## 回归防护要点
 
 1. **CLI 仅输出模式**：凡会进入「仅 stdout 输出」的路径（如 `-v`、`--generate-totp-secret`、`--setup` 成功），都应断言 **stdout 行数（通常为 1）与关键内容**，避免混入 `Binary Integrity Hash` 等导致安装器或管道误用。
