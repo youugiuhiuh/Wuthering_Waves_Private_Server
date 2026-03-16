@@ -81,6 +81,31 @@ impl BotSettings {
     }
 }
 
+/// 在管理初始化（tgbot --setup / --setup-stdin）时同步 Reality PQ 公钥。
+/// 约定：若环境变量 TGBOT_REALITY_PQ_PUB 存在且非空，且默认路径不存在，则写入 /etc/wwps/reality_pq.pub。
+fn sync_reality_pq_pub_on_setup() {
+    const PQ_PUB_ENV: &str = "TGBOT_REALITY_PQ_PUB";
+    const PQ_PUB_PATH: &str = "/etc/wwps/reality_pq.pub";
+
+    let env_val = match std::env::var(PQ_PUB_ENV) {
+        Ok(v) => v.trim().to_owned(),
+        Err(_) => return,
+    };
+    if env_val.is_empty() {
+        return;
+    }
+
+    let path = PathBuf::from(PQ_PUB_PATH);
+    if path.exists() {
+        return;
+    }
+
+    if let Some(dir) = path.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let _ = fs::write(&path, env_val.as_bytes());
+}
+
 pub async fn run_setup(token: &str, admin_id: &str, totp_secret: &str) -> Result<()> {
     let token = token.trim();
     let admin_id = admin_id.trim();
@@ -106,6 +131,8 @@ pub async fn run_setup(token: &str, admin_id: &str, totp_secret: &str) -> Result
             fs::Permissions::from_mode(0o600),
         )?;
     }
+    // 管理初始化时同步 PQ 公钥到默认路径（若通过环境变量提供且尚未写入）。
+    sync_reality_pq_pub_on_setup();
     println!("✅ Setup completed successfully.");
     Ok(())
 }
