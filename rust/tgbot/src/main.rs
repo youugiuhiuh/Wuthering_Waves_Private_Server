@@ -105,10 +105,16 @@ async fn show_reality_batch_prompt(
 
         // XHTTP 双栈分离选项也依赖 IPv6
         if proto == RealityProto::XHTTP {
-            buttons.push(vec![InlineKeyboardButton::callback(
-                "🚀 双栈分离 (v6上v4下)",
-                format!("{}s", ip_prefix),
-            )]);
+            buttons.push(vec![
+                InlineKeyboardButton::callback(
+                    "🚀 双栈分离 (v6上v4下)",
+                    format!("{}s6", ip_prefix),
+                ),
+                InlineKeyboardButton::callback(
+                    "🚀 双栈分离 (v4上v6下)",
+                    format!("{}s4", ip_prefix),
+                ),
+            ]);
         }
     }
 
@@ -138,12 +144,14 @@ async fn show_reality_qty_prompt(
     let ip_ver_code = match ip_version {
         tgbot::logic::config::IpVersion::IPv4 => "4",
         tgbot::logic::config::IpVersion::IPv6 => "6",
-        tgbot::logic::config::IpVersion::SplitStack => "s",
+        tgbot::logic::config::IpVersion::SplitStackV6Primary => "s6",
+        tgbot::logic::config::IpVersion::SplitStackV4Primary => "s4",
     };
     let ip_display = match ip_version {
         tgbot::logic::config::IpVersion::IPv4 => "IPv4",
         tgbot::logic::config::IpVersion::IPv6 => "IPv6",
-        tgbot::logic::config::IpVersion::SplitStack => "双栈分离 (v6上v4下)",
+        tgbot::logic::config::IpVersion::SplitStackV6Primary => "双栈分离 (v6上v4下)",
+        tgbot::logic::config::IpVersion::SplitStackV4Primary => "双栈分离 (v4上v6下)",
     };
 
     let (exec_prefix, title) = match proto {
@@ -1605,7 +1613,8 @@ fn handle_callback(
                 let ip_ver_code = d.strip_prefix(prefix).unwrap();
                 let ip_version = match ip_ver_code {
                     "6" => logic::config::IpVersion::IPv6,
-                    "s" => logic::config::IpVersion::SplitStack,
+                    "s6" => logic::config::IpVersion::SplitStackV6Primary,
+                    "s4" => logic::config::IpVersion::SplitStackV4Primary,
                     _ => logic::config::IpVersion::IPv4,
                 };
                 // 进入第二步：选择数量
@@ -1621,12 +1630,13 @@ fn handle_callback(
                 if parts.len() != 2 {
                     return Ok(());
                 }
-                let ip_ver_code = parts[0]; // "4" or "6"
+                let ip_ver_code = parts[0]; // "4" / "6" / "s6" / "s4"
                 let n: usize = parts[1].parse().unwrap_or(0);
 
                 let ip_version = match ip_ver_code {
                     "6" => logic::config::IpVersion::IPv6,
-                    "s" => logic::config::IpVersion::SplitStack,
+                    "s6" => logic::config::IpVersion::SplitStackV6Primary,
+                    "s4" => logic::config::IpVersion::SplitStackV4Primary,
                     _ => logic::config::IpVersion::IPv4,
                 };
 
@@ -1642,7 +1652,8 @@ fn handle_callback(
                 let ip_str = match ip_version {
                     logic::config::IpVersion::IPv4 => "IPv4",
                     logic::config::IpVersion::IPv6 => "IPv6",
-                    logic::config::IpVersion::SplitStack => "双栈分离",
+                    logic::config::IpVersion::SplitStackV6Primary => "双栈分离 (v6上v4下)",
+                    logic::config::IpVersion::SplitStackV4Primary => "双栈分离 (v4上v6下)",
                 };
 
                 let proto_str = match proto {

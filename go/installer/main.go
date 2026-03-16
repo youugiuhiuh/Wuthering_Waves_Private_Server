@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	version     = "v0.0.6"
+	version     = "v0.0.7"
 	repoOwner   = "NicholasDewar"
 	repoName    = "Wuthering_Waves_Private_Server"
 	installDir  = "/etc/wwps/tgbot"

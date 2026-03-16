@@ -13,7 +13,10 @@ use crate::logic::cmd_async::run_cmd_output;
 pub enum IpVersion {
     IPv4,
     IPv6,
-    SplitStack, // 新增: 上行 v6, 下行 v4 (Split-Traffic)
+    /// 双栈分离：上行优先使用 IPv6，下行可使用 IPv4（兼容现有行为）
+    SplitStackV6Primary,
+    /// 双栈分离：上行优先使用 IPv4，下行可使用 IPv6（新增）
+    SplitStackV4Primary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -150,7 +153,9 @@ impl ConfigManager {
     ) -> Value {
         let listen_ip = match ip_version {
             IpVersion::IPv4 => "0.0.0.0",
-            IpVersion::IPv6 | IpVersion::SplitStack => "::", // SplitStack 模式上行为 v6，所以监听 ::
+            IpVersion::IPv6 | IpVersion::SplitStackV6Primary | IpVersion::SplitStackV4Primary => {
+                "::"
+            }
         };
 
         let client = if proto == RealityProto::Vision {
@@ -357,7 +362,8 @@ impl ConfigManager {
         match ip_version {
             IpVersion::IPv4 => Ok((ipv4?, None)),
             IpVersion::IPv6 => Ok((ipv6?, None)),
-            IpVersion::SplitStack => Ok((ipv6?, Some(ipv4?))),
+            IpVersion::SplitStackV6Primary => Ok((ipv6?, Some(ipv4?))),
+            IpVersion::SplitStackV4Primary => Ok((ipv4?, Some(ipv6?))),
         }
     }
 
@@ -437,11 +443,11 @@ impl ConfigManager {
         ip_version: IpVersion,
         proto: RealityProto,
         path: Option<&str>,
-        host_v4_secondary: Option<&str>, // 仅在 SplitStack 模式下使用
+        host_v4_secondary: Option<&str>, // 仅在双栈分离模式下使用（secondary host）
     ) -> String {
         let fmt_host = match ip_version {
-            IpVersion::IPv6 | IpVersion::SplitStack => format!("[{}]", host),
-            IpVersion::IPv4 => host.to_string(),
+            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => format!("[{}]", host),
+            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => host.to_string(),
         };
 
         let encoded_sni = utf8_percent_encode(sni, NON_ALPHANUMERIC).to_string();
@@ -464,33 +470,31 @@ impl ConfigManager {
                     uuid, fmt_host, port, encoded_sni, encoded_pbk, short_id, encoded_path
                 );
 
-                if ip_version == IpVersion::SplitStack {
-                    if let Some(v4) = host_v4_secondary {
-                        // 构建 extra.downloadSettings JSON 并进行 URL 编码
-                        let extra_json = json!({
-                            "downloadSettings": {
-                                "address": v4,
-                                "port": port,
-                                "network": "xhttp",
-                                "security": "reality",
-                                "realitySettings": {
-                                    "serverName": sni,
-                                    "fingerprint": "chrome",
-                                    "publicKey": pub_key,
-                                    "shortId": short_id
-                                },
-                                "xhttpSettings": {
-                                    "host": "",
-                                    "path": actual_path,
-                                    "mode": "auto"
-                                }
+                if let Some(secondary) = host_v4_secondary {
+                    // 构建 extra.downloadSettings JSON 并进行 URL 编码
+                    let extra_json = json!({
+                        "downloadSettings": {
+                            "address": secondary,
+                            "port": port,
+                            "network": "xhttp",
+                            "security": "reality",
+                            "realitySettings": {
+                                "serverName": sni,
+                                "fingerprint": "chrome",
+                                "publicKey": pub_key,
+                                "shortId": short_id
+                            },
+                            "xhttpSettings": {
+                                "host": "",
+                                "path": actual_path,
+                                "mode": "auto"
                             }
-                        });
-                        if let Ok(extra_str) = serde_json::to_string(&extra_json) {
-                            let encoded_extra =
-                                utf8_percent_encode(&extra_str, NON_ALPHANUMERIC).to_string();
-                            link.push_str(&format!("&extra={}", encoded_extra));
                         }
+                    });
+                    if let Ok(extra_str) = serde_json::to_string(&extra_json) {
+                        let encoded_extra =
+                            utf8_percent_encode(&extra_str, NON_ALPHANUMERIC).to_string();
+                        link.push_str(&format!("&extra={}", encoded_extra));
                     }
                 }
 
@@ -950,9 +954,20 @@ mod tests {
     #[test]
     fn test_resolve_public_hosts_requires_both_families_for_split_stack() {
         let result = ConfigManager::resolve_public_hosts(
-            IpVersion::SplitStack,
+            IpVersion::SplitStackV6Primary,
             Err(anyhow!("missing ipv4")),
             Ok("2001:db8::1".to_string()),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_public_hosts_requires_both_families_for_split_stack_v4_primary() {
+        let result = ConfigManager::resolve_public_hosts(
+            IpVersion::SplitStackV4Primary,
+            Ok("198.51.100.1".to_string()),
+            Err(anyhow!("missing ipv6")),
         );
 
         assert!(result.is_err());
