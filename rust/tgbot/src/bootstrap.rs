@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use base64::Engine as _;
+use base64::{Engine as _, engine::general_purpose};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
@@ -109,8 +109,8 @@ fn sync_reality_pq_pub_on_setup() {
         }
     };
 
-    let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.into_bytes());
-    let sk_b64 = base64::engine::general_purpose::STANDARD.encode(sk.into_bytes());
+    let pk_b64 = general_purpose::STANDARD.encode(pk.into_bytes());
+    let sk_b64 = general_purpose::STANDARD.encode(sk.into_bytes());
 
     if let Some(dir) = path.parent() {
         let _ = fs::create_dir_all(dir);
