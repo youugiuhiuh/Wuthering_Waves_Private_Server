@@ -68,6 +68,13 @@ cargo test cli_
 # 仅集成（security / setup / totp）
 cargo test integration_
 
+# 为 tgbot 添加/更新第三方 Rust 依赖时
+cd rust/tgbot
+# 使用 cargo 管理依赖而不是手改 Cargo.toml
+cargo add <crate-name>            # 新增依赖
+cargo update -p <crate-name>      # 更新单个依赖
+cargo update                      # 按需整体更新依赖
+
 # Go 安装器 extractBase32Secret
 cd go/installer && go test -v -run TestExtractBase32Secret
 ```

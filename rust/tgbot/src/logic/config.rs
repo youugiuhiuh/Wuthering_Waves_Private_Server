@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use once_cell::sync::Lazy;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -8,6 +9,26 @@ use std::time::Duration;
 use tokio::fs;
 
 use crate::logic::cmd_async::run_cmd_output;
+
+/// 全局 REALITY PQ 公钥（ML-DSA-65），用于 mldsa65Verify / pqv。
+/// 优先读取环境变量 `TGBOT_REALITY_PQ_PUB`，否则尝试 `/etc/wwps/reality_pq.pub`。
+static REALITY_PQ_PUB: Lazy<String> = Lazy::new(|| {
+    if let Ok(v) = std::env::var("TGBOT_REALITY_PQ_PUB") {
+        let trimmed = v.trim().to_string();
+        if !trimmed.is_empty() {
+            return trimmed;
+        }
+    }
+
+    if let Ok(content) = std::fs::read_to_string("/etc/wwps/reality_pq.pub") {
+        let trimmed = content.trim().to_string();
+        if !trimmed.is_empty() {
+            return trimmed;
+        }
+    }
+
+    String::new()
+});
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IpVersion {
@@ -187,6 +208,12 @@ impl ConfigManager {
                 "shortIds": ["", short_id]
             }
         });
+
+        // 如已配置 PQ 公钥，则下发 mldsa65Verify。
+        if !REALITY_PQ_PUB.is_empty() {
+            stream_settings["realitySettings"]["mldsa65Verify"] =
+                serde_json::Value::String(REALITY_PQ_PUB.clone());
+        }
 
         if proto == RealityProto::XHTTP {
             let actual_path = path.unwrap_or("/xhttp_client_upload");
@@ -457,10 +484,18 @@ impl ConfigManager {
 
         match proto {
             RealityProto::Vision => {
-                format!(
-                    "vless://{}@{}:{}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={}&fp=chrome&pbk={}&sid={}&type=tcp&headerType=none#{}",
-                    uuid, fmt_host, port, encoded_sni, encoded_pbk, short_id, encoded_email
-                )
+                let mut link = format!(
+                    "vless://{}@{}:{}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={}&fp=chrome&pbk={}&sid={}&type=tcp&headerType=none",
+                    uuid, fmt_host, port, encoded_sni, encoded_pbk, short_id,
+                );
+
+                if !REALITY_PQ_PUB.is_empty() {
+                    let encoded_pqv =
+                        utf8_percent_encode(&REALITY_PQ_PUB, NON_ALPHANUMERIC).to_string();
+                    link.push_str(&format!("&pqv={}", encoded_pqv));
+                }
+
+                format!("{}#{}", link, encoded_email)
             }
             RealityProto::XHTTP => {
                 // 参考 GitHub #716 标准提案
@@ -497,6 +532,12 @@ impl ConfigManager {
                             utf8_percent_encode(&extra_str, NON_ALPHANUMERIC).to_string();
                         link.push_str(&format!("&extra={}", encoded_extra));
                     }
+                }
+
+                if !REALITY_PQ_PUB.is_empty() {
+                    let encoded_pqv =
+                        utf8_percent_encode(&REALITY_PQ_PUB, NON_ALPHANUMERIC).to_string();
+                    link.push_str(&format!("&pqv={}", encoded_pqv));
                 }
 
                 format!("{}#{}", link, encoded_email)

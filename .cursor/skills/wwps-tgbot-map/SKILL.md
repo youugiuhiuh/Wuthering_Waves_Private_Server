@@ -30,7 +30,7 @@ description: >
 
 - **启动**：config.enc 存在且 .key 不存在会直接报错；TOTP 解密后做 trim 再交给 TotpManager；调度器与通知在后台 spawn，不阻塞 /start。
 - **认证**：TOTP 验证 → record_auth_success / record_auth_failure；失败次数与锁定时长见 main 中 LOCKOUT_DURATIONS。
-- **Reality 批量**：用户管理 → 选协议与 IP 版本（IPv4 / IPv6 / 双栈分离 v6上v4下 / v4上v6下） → 选数量 → 回调 u_batch_exec: 等 → ConfigManager::batch_create_* → SNISelector + 端口放行 + 写配置。
+- **Reality 批量**：用户管理 → 选协议与 IP 版本（IPv4 / IPv6 / 双栈分离 v6上v4下 / v4上v6下） → 选数量 → 回调 u_batch_exec: 等 → ConfigManager::batch_create_* → SNISelector + 端口放行 + 写配置；如存在 `/etc/wwps/reality_pq.pub` 或环境变量 `TGBOT_REALITY_PQ_PUB`，ConfigManager 会自动把 ML-DSA-65 公钥写入 `mldsa65Verify` / 分享链接的 `pqv`。
 - **自毁**：危险区域 → begin_destruct → 两轮 TOTP + 确认 + 文件 SHA256 校验 → executor（wipe_targets + 服务与自毁脚本）。
 - **调度器**：start_scheduler 在后台执行；get_manager() 取 Arc<SchedulerManager>；任务持久化在 scheduler_state.json。
 
