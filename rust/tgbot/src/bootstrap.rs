@@ -2,12 +2,19 @@ use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::PathBuf;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::logic::security::SecurityManager;
 
 pub const CONFIG_DIR: &str = "/etc/wwps/tgbot";
+
+/// 配置目录；测试可通过环境变量 TGBOT_CONFIG_DIR 覆盖。
+pub fn config_dir() -> PathBuf {
+    std::env::var("TGBOT_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(CONFIG_DIR))
+}
 pub const KEY_FILE: &str = ".key";
 pub const CONFIG_FILE: &str = "config.enc";
 pub const BOT_SETTINGS_FILE: &str = "bot_settings.json";
@@ -50,7 +57,7 @@ impl BotSettings {
     }
 
     pub fn load() -> Self {
-        let path = Path::new(CONFIG_DIR).join(BOT_SETTINGS_FILE);
+        let path = config_dir().join(BOT_SETTINGS_FILE);
         if path.exists() {
             if let Ok(data) = fs::read_to_string(&path) {
                 if let Ok(s) = serde_json::from_str::<BotSettings>(&data) {
@@ -64,8 +71,8 @@ impl BotSettings {
     }
 
     pub fn save(&self) -> Result<()> {
-        let dir = Path::new(CONFIG_DIR);
-        fs::create_dir_all(dir)?;
+        let dir = config_dir();
+        fs::create_dir_all(&dir)?;
         fs::write(
             dir.join(BOT_SETTINGS_FILE),
             serde_json::to_string_pretty(self)?,
@@ -78,8 +85,8 @@ pub async fn run_setup(token: &str, admin_id: &str, totp_secret: &str) -> Result
     let token = token.trim();
     let admin_id = admin_id.trim();
     let totp_secret = totp_secret.trim();
-    let config_dir = Path::new(CONFIG_DIR);
-    fs::create_dir_all(config_dir)?;
+    let config_dir = config_dir();
+    fs::create_dir_all(&config_dir)?;
     let security = SecurityManager::new(&config_dir.join(KEY_FILE))?;
     let encrypted_config = EncryptedConfig {
         token: security.encrypt(token.as_bytes())?,
@@ -114,7 +121,7 @@ pub async fn run_setup_from_stdin() -> Result<()> {
 }
 
 pub async fn verify_integrity() -> Result<()> {
-    let config_dir = Path::new(CONFIG_DIR);
+    let config_dir = config_dir();
     if !config_dir.exists() {
         eprintln!(
             "❌ 配置文件目录不存在。请运行 `tgbot --setup <token> <admin_id> <totp_secret>` 进行初始化。"

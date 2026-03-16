@@ -10,8 +10,8 @@ use crate::app::auth;
 use crate::app::destruct_flow::{self, MessageFlowOutcome};
 use crate::app::state::{AppState, ScheduleFrequency, ScheduleInputState, TimeoutStatus};
 use crate::bootstrap::{
-    BOT_VERSION, BotSettings, CONFIG_DIR, CONFIG_FILE, DEFAULT_SESSION_TIMEOUT_SECS,
-    EncryptedConfig, KEY_FILE, harden_process, run_setup, run_setup_from_stdin, verify_integrity,
+    BOT_VERSION, BotSettings, CONFIG_FILE, DEFAULT_SESSION_TIMEOUT_SECS, EncryptedConfig, KEY_FILE,
+    config_dir, harden_process, run_setup, run_setup_from_stdin, verify_integrity,
 };
 use anyhow::{Context, Result};
 use futures_util::future::BoxFuture;
@@ -2880,7 +2880,7 @@ fn handle_callback(
 }
 
 async fn save_config(state: &Arc<AppState>) -> Result<()> {
-    let config_dir = Path::new(CONFIG_DIR);
+    let config_dir = config_dir();
     let _ = SecurityManager::new(&config_dir.join(KEY_FILE))?;
     let path = config_dir.join(CONFIG_FILE);
 
@@ -2927,7 +2927,7 @@ async fn main() -> Result<()> {
     // 正常启动：校验完整性后再加载配置
     verify_integrity().await?;
 
-    let config_dir = Path::new(CONFIG_DIR);
+    let config_dir = config_dir();
     let key_path = config_dir.join(KEY_FILE);
     let config_path = config_dir.join(CONFIG_FILE);
     if config_path.exists() && !key_path.exists() {

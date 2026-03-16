@@ -38,5 +38,6 @@ description: >
 
 - **[references/project-map.md](references/project-map.md)**：目录树、模块表、静态/全局、配置路径、测试分布。
 - **[references/flows.md](references/flows.md)**：启动、命令、消息、回调、Reality、调度器、自毁、自更新与 wwps-core、配置持久化、阻塞注意点。
+- **测试覆盖与规范**：见 **tgbot-testing** Skill 与 `rust/tgbot/docs/TEST_COVERAGE.md`；补 CLI/bootstrap/安装器测试时按其中约定（如 TGBOT_CONFIG_DIR、stdout 行数断言）执行。
 
 修改或扩展功能时，按“入口 → state/flow → logic 模块”顺序追踪即可。
