@@ -152,8 +152,11 @@ impl ConfigManager {
         path: Option<&str>,
     ) -> Value {
         let listen_ip = match ip_version {
-            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => "0.0.0.0",
-            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => "::",
+            IpVersion::IPv4 => "0.0.0.0",
+            // 双栈分离需要同时服务 IPv4/IPv6 上下行，优先使用 IPv6 wildcard。
+            IpVersion::IPv6 | IpVersion::SplitStackV6Primary | IpVersion::SplitStackV4Primary => {
+                "::"
+            }
         };
 
         let client = if proto == RealityProto::Vision {
@@ -287,7 +290,7 @@ impl ConfigManager {
         standalone: bool,
         ip_version: IpVersion,
     ) -> Result<BatchCreationResult> {
-        let (host, host_v4) = Self::resolve_public_hosts(
+        let (host, host_secondary) = Self::resolve_public_hosts(
             ip_version,
             crate::logic::system::SystemMonitor::get_public_ip().await,
             crate::logic::system::SystemMonitor::get_public_ipv6().await,
@@ -338,7 +341,7 @@ impl ConfigManager {
                 ip_version,
                 RealityProto::XHTTP,
                 path.as_deref(),
-                host_v4.as_deref(),
+                host_secondary.as_deref(),
             );
             links.push(link);
 
@@ -441,7 +444,7 @@ impl ConfigManager {
         ip_version: IpVersion,
         proto: RealityProto,
         path: Option<&str>,
-        host_v4_secondary: Option<&str>, // 仅在双栈分离模式下使用（secondary host）
+        host_secondary: Option<&str>, // 仅在双栈分离模式下使用（secondary host）
     ) -> String {
         let fmt_host = match ip_version {
             IpVersion::IPv6 | IpVersion::SplitStackV6Primary => format!("[{}]", host),
@@ -468,7 +471,7 @@ impl ConfigManager {
                     uuid, fmt_host, port, encoded_sni, encoded_pbk, short_id, encoded_path
                 );
 
-                if let Some(secondary) = host_v4_secondary {
+                if let Some(secondary) = host_secondary {
                     // 构建 extra.downloadSettings JSON 并进行 URL 编码
                     let extra_json = json!({
                         "downloadSettings": {
@@ -856,6 +859,7 @@ async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
 mod tests {
     use super::*;
     use anyhow::anyhow;
+    use percent_encoding::percent_decode_str;
 
     #[test]
     fn test_build_reality_vless_inbound_architecture() {
@@ -969,6 +973,120 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_generate_client_link_xhttp_split_v6_primary_formats_remote_and_download_address() {
+        let uuid = "11111111-1111-1111-1111-111111111111";
+        let host_v6 = "2001:db8::10";
+        let port = 443;
+        let sni = "example.com";
+        let pbk = "pub_key";
+        let sid = "abcd1234";
+        let email = "test-user";
+        let path = "/xhttp_path";
+        let host_v4_secondary = "198.51.100.10";
+
+        let link = ConfigManager::generate_client_link(
+            uuid,
+            host_v6,
+            port,
+            sni,
+            pbk,
+            sid,
+            email,
+            IpVersion::SplitStackV6Primary,
+            RealityProto::XHTTP,
+            Some(path),
+            Some(host_v4_secondary),
+        );
+
+        assert!(
+            link.contains(&format!("vless://{}@[{}]:{}", uuid, host_v6, port)),
+            "remote-host 应为方括号包裹的 IPv6"
+        );
+        assert!(link.contains("type=xhttp"));
+        assert!(link.contains("security=reality"));
+        assert!(link.contains("mode=auto"));
+        assert!(link.contains("&extra="));
+
+        let extra_encoded = link
+            .split("&extra=")
+            .nth(1)
+            .and_then(|s| s.split('#').next())
+            .expect("应存在 extra 参数");
+        let extra_decoded = percent_decode_str(extra_encoded)
+            .decode_utf8()
+            .expect("extra 应可解码");
+        let extra_json: Value = serde_json::from_str(&extra_decoded).expect("extra 应为合法 JSON");
+
+        assert_eq!(
+            extra_json["downloadSettings"]["address"], host_v4_secondary,
+            "v6上v4下时，downloadSettings.address 应为 IPv4"
+        );
+        assert_eq!(extra_json["downloadSettings"]["port"], port);
+        assert_eq!(extra_json["downloadSettings"]["network"], "xhttp");
+        assert_eq!(extra_json["downloadSettings"]["security"], "reality");
+        assert_eq!(
+            extra_json["downloadSettings"]["realitySettings"]["serverName"],
+            sni
+        );
+    }
+
+    #[test]
+    fn test_generate_client_link_xhttp_split_v4_primary_formats_remote_and_download_address() {
+        let uuid = "22222222-2222-2222-2222-222222222222";
+        let host_v4 = "198.51.100.20";
+        let port = 443;
+        let sni = "example.org";
+        let pbk = "pub_key_2";
+        let sid = "ef567890";
+        let email = "test-user-2";
+        let path = "/xhttp_path2";
+        let host_v6_secondary = "2001:db8::20";
+
+        let link = ConfigManager::generate_client_link(
+            uuid,
+            host_v4,
+            port,
+            sni,
+            pbk,
+            sid,
+            email,
+            IpVersion::SplitStackV4Primary,
+            RealityProto::XHTTP,
+            Some(path),
+            Some(host_v6_secondary),
+        );
+
+        assert!(
+            link.contains(&format!("vless://{}@{}:{}", uuid, host_v4, port)),
+            "remote-host 应为 IPv4 且不带方括号"
+        );
+        assert!(!link.contains(&format!("@[{}]:", host_v4)));
+        assert!(link.contains("&extra="));
+
+        let extra_encoded = link
+            .split("&extra=")
+            .nth(1)
+            .and_then(|s| s.split('#').next())
+            .expect("应存在 extra 参数");
+        let extra_decoded = percent_decode_str(extra_encoded)
+            .decode_utf8()
+            .expect("extra 应可解码");
+        let extra_json: Value = serde_json::from_str(&extra_decoded).expect("extra 应为合法 JSON");
+
+        assert_eq!(
+            extra_json["downloadSettings"]["address"], host_v6_secondary,
+            "v4上v6下时，downloadSettings.address 应为 IPv6"
+        );
+        assert_eq!(extra_json["downloadSettings"]["port"], port);
+        assert_eq!(extra_json["downloadSettings"]["network"], "xhttp");
+        assert_eq!(extra_json["downloadSettings"]["security"], "reality");
+        assert_eq!(
+            extra_json["downloadSettings"]["realitySettings"]["serverName"],
+            sni
+        );
     }
 }
 
