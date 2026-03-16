@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use base64::Engine as _;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
@@ -81,29 +82,46 @@ impl BotSettings {
     }
 }
 
-/// 在管理初始化（tgbot --setup / --setup-stdin）时同步 Reality PQ 公钥。
-/// 约定：若环境变量 TGBOT_REALITY_PQ_PUB 存在且非空，且默认路径不存在，则写入 /etc/wwps/reality_pq.pub。
+/// 在管理初始化（tgbot --setup / --setup-stdin）时自动生成 Reality PQ 密钥对并落盘。
+/// 优先级：
+/// 1. 若 /etc/wwps/reality_pq.pub 已存在，则不再改动（尊重已有配置）。
+/// 2. 否则使用 fips204::ml_dsa_65 自动生成一对密钥，并以 Base64 写入：
+///    - /etc/wwps/reality_pq.pub
+///    - /etc/wwps/reality_pq.key
 fn sync_reality_pq_pub_on_setup() {
-    const PQ_PUB_ENV: &str = "TGBOT_REALITY_PQ_PUB";
     const PQ_PUB_PATH: &str = "/etc/wwps/reality_pq.pub";
-
-    let env_val = match std::env::var(PQ_PUB_ENV) {
-        Ok(v) => v.trim().to_owned(),
-        Err(_) => return,
-    };
-    if env_val.is_empty() {
-        return;
-    }
+    const PQ_KEY_PATH: &str = "/etc/wwps/reality_pq.key";
 
     let path = PathBuf::from(PQ_PUB_PATH);
     if path.exists() {
         return;
     }
 
+    // 自动生成 ML-DSA-65 密钥对
+    use fips204::ml_dsa_65;
+    use fips204::traits::{KeyGen, SerDes};
+
+    let (pk, sk) = match ml_dsa_65::KG::try_keygen() {
+        Ok(pair) => pair,
+        Err(e) => {
+            log::error!("❌ 生成 ML-DSA-65 密钥对失败: {}", e);
+            return;
+        }
+    };
+
+    let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.into_bytes());
+    let sk_b64 = base64::engine::general_purpose::STANDARD.encode(sk.into_bytes());
+
     if let Some(dir) = path.parent() {
         let _ = fs::create_dir_all(dir);
     }
-    let _ = fs::write(&path, env_val.as_bytes());
+
+    if let Err(e) = fs::write(&path, pk_b64.as_bytes()) {
+        log::error!("❌ 写入 Reality PQ 公钥失败: {}", e);
+    }
+    if let Err(e) = fs::write(PQ_KEY_PATH, sk_b64.as_bytes()) {
+        log::error!("❌ 写入 Reality PQ 私钥失败: {}", e);
+    }
 }
 
 pub async fn run_setup(token: &str, admin_id: &str, totp_secret: &str) -> Result<()> {
