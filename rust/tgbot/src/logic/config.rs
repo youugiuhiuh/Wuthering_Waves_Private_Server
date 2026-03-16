@@ -152,10 +152,8 @@ impl ConfigManager {
         path: Option<&str>,
     ) -> Value {
         let listen_ip = match ip_version {
-            IpVersion::IPv4 => "0.0.0.0",
-            IpVersion::IPv6 | IpVersion::SplitStackV6Primary | IpVersion::SplitStackV4Primary => {
-                "::"
-            }
+            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => "0.0.0.0",
+            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => "::",
         };
 
         let client = if proto == RealityProto::Vision {
