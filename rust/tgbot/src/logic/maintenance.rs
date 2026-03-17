@@ -535,7 +535,7 @@ async fn download_xanmod_gpg_key() -> Result<()> {
         .context("写入临时密钥文件失败")?;
 
     let status = tokio::process::Command::new("gpg")
-        .args(&["--dearmor", "-o", gpg_path, temp_key])
+        .args(&["--batch", "--no-tty", "--dearmor", "-o", gpg_path, temp_key])
         .output()
         .await
         .context("执行 gpg dearmor 失败")?;
