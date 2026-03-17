@@ -128,7 +128,10 @@ impl MaintenanceManager {
         Ok(())
     }
 
-    pub async fn install_bbr3() -> Result<BbrInstallStatus> {
+    pub async fn install_bbr3<F>(progress_callback: F) -> Result<BbrInstallStatus>
+    where
+        F: Fn(&str) + Send + Sync + 'static,
+    {
         match detect_bbrv3_support().await? {
             BbrInstallerSupport::Supported => {}
             BbrInstallerSupport::UnsupportedArch => {
@@ -139,9 +142,16 @@ impl MaintenanceManager {
             }
         }
 
+        progress_callback("🔧 修复主机名解析...");
         fix_local_hostname_resolution().await?;
+
+        progress_callback("📦 检查并安装依赖...");
         ensure_bbr3_dependencies().await?;
+
+        progress_callback("⬇️ 下载并安装 BBR3/XanMod 内核...");
         run_bbr_install_flow().await?;
+
+        progress_callback("⚙️ 应用网络优化参数...");
         apply_combined_network_optimization().await?;
 
         let kernel_version = current_kernel_version().await;

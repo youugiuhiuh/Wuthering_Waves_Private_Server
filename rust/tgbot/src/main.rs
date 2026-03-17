@@ -1434,13 +1434,46 @@ fn handle_callback(
             },
             "a_bbr3" => {
                 bot.answer_callback_query(q.id.clone())
-                    .text("⏳ 正在安装 BBR3/XanMod 并应用通用优化...")
+                    .text("🚀 正在启动 BBR3 安装...")
                     .await?;
 
                 let bot_clone = bot.clone();
                 let chat_id_clone = chat_id;
+
+                let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(10);
+
+                let bot_for_task = bot_clone.clone();
+                let chat_for_task = chat_id_clone;
+
                 tokio::spawn(async move {
-                    match MaintenanceManager::install_bbr3().await {
+                    let _ = bot_for_task
+                        .send_message(
+                            chat_for_task,
+                            "🚀 <b>BBR3 + 通用优化安装已启动</b>\n\n请稍候，进度将实时更新...",
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .await;
+
+                    let update_task = tokio::spawn(async move {
+                        while let Some(progress_msg) = rx.recv().await {
+                            let _ = bot_for_task
+                                .send_message(chat_for_task, progress_msg)
+                                .parse_mode(ParseMode::Html)
+                                .await;
+                            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                        }
+                    });
+
+                    let tx_clone = tx.clone();
+                    let result = MaintenanceManager::install_bbr3(move |msg| {
+                        let _ = tx_clone.blocking_send(msg.to_string());
+                    })
+                    .await;
+
+                    drop(tx);
+                    let _ = update_task.await;
+
+                    match result {
                         Ok(result) => {
                             let reboot_notice = if result.reboot_required {
                                 "需要重启系统后切换到新内核并生效。"
