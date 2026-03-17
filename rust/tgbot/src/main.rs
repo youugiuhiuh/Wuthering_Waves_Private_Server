@@ -1440,38 +1440,72 @@ fn handle_callback(
                 let bot_clone = bot.clone();
                 let chat_id_clone = chat_id;
 
-                let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(10);
-
-                let bot_for_task = bot_clone.clone();
-                let chat_for_task = chat_id_clone;
-
                 tokio::spawn(async move {
-                    let _ = bot_for_task
+                    let total_steps = 8u8;
+
+                    let send_result = bot_clone
                         .send_message(
-                            chat_for_task,
-                            "🚀 <b>BBR3 + 通用优化安装已启动</b>\n\n请稍候，进度将实时更新...",
+                            chat_id_clone,
+                            "🚀 <b>BBR3 + 通用优化安装</b>\n\n⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛ 0%\n\n步骤 1/8: 准备中...",
                         )
                         .parse_mode(ParseMode::Html)
                         .await;
 
-                    let update_task = tokio::spawn(async move {
-                        while let Some(progress_msg) = rx.recv().await {
-                            let _ = bot_for_task
-                                .send_message(chat_for_task, progress_msg)
-                                .parse_mode(ParseMode::Html)
-                                .await;
-                            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                        }
-                    });
+                    if let Err(e) = send_result {
+                        eprintln!("[ERROR] 发送初始消息失败: {}", e);
+                        let _ = bot_clone
+                            .send_message(chat_id_clone, format!("❌ 启动失败: {}", e))
+                            .await;
+                        return;
+                    }
 
-                    let tx_clone = tx.clone();
-                    let result = MaintenanceManager::install_bbr3(move |msg| {
-                        let _ = tx_clone.blocking_send(msg.to_string());
-                    })
+                    let init_msg = send_result.unwrap();
+                    let msg_id = init_msg.id;
+
+                    let step_labels = [
+                        "🔧 修复主机名解析...",
+                        "📦 安装依赖...",
+                        "🔍 检测 CPU 级别...",
+                        "⬇️ 添加 XanMod GPG...",
+                        "📦 添加 APT 源...",
+                        "🔄 更新软件包列表...",
+                        "📥 安装 XanMod 内核...",
+                        "⚙️ 应用网络优化...",
+                    ];
+
+                    let bot_for_progress = bot_clone.clone();
+                    let chat_for_progress = chat_id_clone;
+                    let msg_id_for_progress = msg_id;
+
+                    let result = MaintenanceManager::install_bbr3_with_progress(
+                        move |step: u8, desc: &str| {
+                            let filled = "🟩".repeat(step as usize);
+                            let empty = "⬛".repeat((total_steps - step) as usize);
+                            let percent = (step as f64 / total_steps as f64 * 100.0) as u32;
+
+                            let step_label = if ((step - 1) as usize) < step_labels.len() {
+                                step_labels[(step - 1) as usize]
+                            } else {
+                                desc
+                            };
+
+                            let text = format!(
+                                "🚀 <b>BBR3 + 通用优化安装</b>\n\n{}{} {}%\n\n步骤 {}/{}: {}",
+                                filled, empty, percent, step, total_steps, step_label
+                            );
+
+                            let bot = bot_for_progress.clone();
+                            let chat = chat_for_progress;
+                            let msg = msg_id_for_progress;
+                            tokio::spawn(async move {
+                                let _ = bot
+                                    .edit_message_text(chat, msg, text)
+                                    .parse_mode(ParseMode::Html)
+                                    .await;
+                            });
+                        },
+                    )
                     .await;
-
-                    drop(tx);
-                    let _ = update_task.await;
 
                     match result {
                         Ok(result) => {
@@ -1503,8 +1537,9 @@ fn handle_callback(
                                 ]])
                             };
                             let _ = bot_clone
-                                .send_message(
+                                .edit_message_text(
                                     chat_id_clone,
+                                    msg_id,
                                     format!(
                                         "✅ <b>BBR3 + 通用优化流程已完成</b>\n\n当前内核: <code>{}</code>\n当前拥塞控制算法: <code>{}</code>\n\n已写入合并后的网络优化参数。\n\n<b>注意:</b> {}",
                                         result.kernel_version, result.congestion_control, reboot_notice
@@ -1516,8 +1551,9 @@ fn handle_callback(
                         }
                         Err(e) => {
                             let _ = bot_clone
-                                .send_message(
+                                .edit_message_text(
                                     chat_id_clone,
+                                    msg_id,
                                     format!("❌ <b>BBR3 + 通用优化失败</b>\n原因: {}", e),
                                 )
                                 .parse_mode(ParseMode::Html)

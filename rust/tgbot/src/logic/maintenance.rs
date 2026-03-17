@@ -17,7 +17,6 @@ pub struct MaintenanceManager;
 
 const TIMEOUT_SHORT: Duration = Duration::from_secs(30);
 const TIMEOUT_LONG: Duration = Duration::from_secs(60);
-const TIMEOUT_BBR_INSTALL: Duration = Duration::from_secs(30 * 60);
 const TIMEOUT_PACKAGE_INSTALL: Duration = Duration::from_secs(30 * 60);
 const BBR3_OPTIMIZE_CONF_PATH: &str = "/etc/sysctl.d/90-wwps-bbr3-optimize.conf";
 const COMBINED_NETWORK_OPTIMIZE_CONF: &str = r#"fs.file-max = 1000000
@@ -105,6 +104,16 @@ impl MaintenanceManager {
     where
         F: Fn(&str) + Send + Sync + 'static,
     {
+        Self::install_bbr3_with_progress(move |_step: u8, desc: &str| {
+            progress_callback(desc);
+        })
+        .await
+    }
+
+    pub async fn install_bbr3_with_progress<F>(progress_callback: F) -> Result<BbrInstallStatus>
+    where
+        F: Fn(u8, &str) + Send + Sync + 'static,
+    {
         match detect_bbrv3_support().await? {
             BbrInstallerSupport::Supported => {}
             BbrInstallerSupport::UnsupportedArch => {
@@ -115,33 +124,33 @@ impl MaintenanceManager {
             }
         }
 
-        progress_callback("🔧 修复主机名解析...");
+        progress_callback(1, "🔧 修复主机名解析...");
         fix_local_hostname_resolution().await?;
 
-        progress_callback("📦 检查并安装依赖...");
+        progress_callback(2, "📦 检查并安装依赖...");
         ensure_bbr3_dependencies().await?;
 
-        progress_callback("🔍 检测 CPU 级别...");
+        progress_callback(3, "🔍 检测 CPU 级别...");
         let cpu_level = detect_cpu_level().await?;
 
-        progress_callback("⬇️ 添加 XanMod GPG 密钥...");
+        progress_callback(4, "⬇️ 添加 XanMod GPG 密钥...");
         download_xanmod_gpg_key().await?;
 
-        progress_callback("📦 添加 XanMod APT 源...");
+        progress_callback(5, "📦 添加 XanMod APT 源...");
         add_xanmod_apt_source().await?;
 
-        progress_callback("🔄 更新软件包列表...");
+        progress_callback(6, "🔄 更新软件包列表...");
         run_cmd_status("apt-get", &["update"], TIMEOUT_LONG)
             .await
             .context("更新 apt 软件源失败")?;
 
-        progress_callback(&format!("📥 安装 XanMod v{} 内核...", cpu_level));
+        progress_callback(7, &format!("📥 安装 XanMod v{} 内核...", cpu_level));
         install_xanmod_kernel(cpu_level).await?;
 
-        progress_callback("🔄 更新 GRUB 引导配置...");
+        progress_callback(8, "🔄 更新 GRUB 引导配置...");
         update_grub().await?;
 
-        progress_callback("⚙️ 应用网络优化参数...");
+        progress_callback(8, "⚙️ 应用网络优化参数...");
         apply_combined_network_optimization().await?;
 
         let kernel_version = current_kernel_version().await;
