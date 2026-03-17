@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use teloxide::net::Download;
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, MessageId, ParseMode};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode};
 use teloxide::utils::command::BotCommands;
 use tgbot::logic::config::{ConfigManager, RealityProto, WarpMode};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
@@ -1689,22 +1689,58 @@ fn handle_callback(
 
                 match res {
                     Ok(result) => {
-                        // 发送链接
+                        // 收集所有消息 ID，用于后续自动删除
+                        let mut message_ids: Vec<MessageId> = Vec::new();
+
+                        // 发送链接（每条消息包含 2 条链接）
                         let mut combined_links = String::new();
                         for (i, link) in result.links.iter().enumerate() {
                             combined_links.push_str(&format!("<code>{}</code>\n\n", link));
-                            if (i + 1) % 5 == 0 {
-                                let _ = bot
+                            if (i + 1) % 2 == 0 {
+                                if let Ok(msg) = bot
                                     .send_message(chat_id, combined_links.clone())
                                     .parse_mode(ParseMode::Html)
-                                    .await;
+                                    .await
+                                {
+                                    message_ids.push(msg.id);
+                                }
                                 combined_links.clear();
                             }
                         }
                         if !combined_links.is_empty() {
-                            bot.send_message(chat_id, combined_links)
+                            if let Ok(msg) = bot
+                                .send_message(chat_id, combined_links)
                                 .parse_mode(ParseMode::Html)
-                                .await?;
+                                .await
+                            {
+                                message_ids.push(msg.id);
+                            }
+                        }
+
+                        // 生成 .txt 附件文件
+                        let links_text = result.links.join("\n");
+                        let timestamp = chrono::Utc::now().timestamp();
+                        let temp_file_path = format!("/tmp/wwps_reality_links_{}.txt", timestamp);
+
+                        // 写入临时文件
+                        if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await {
+                            log::warn!("写入临时文件失败: {}", e);
+                        } else {
+                            // 发送文档
+                            let document_sent = bot
+                                .send_document(chat_id, InputFile::file(&temp_file_path))
+                                .caption("完整链接列表，建议尽快复制/导入")
+                                .await;
+
+                            // 无论发送成功或失败，都立即删除临时文件
+                            if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
+                                log::warn!("删除临时文件失败: {}", e);
+                            }
+
+                            // 如果发送成功，收集文档消息的 ID
+                            if let Ok(msg) = document_sent {
+                                message_ids.push(msg.id);
+                            }
                         }
 
                         // 发送结果信息
@@ -1721,7 +1757,20 @@ fn handle_callback(
                             result_msg.push_str(&format!("\n💾 原配置备份: {}", backup_file));
                         }
 
-                        bot.send_message(chat_id, result_msg).await?;
+                        let summary_msg = bot.send_message(chat_id, result_msg).await?;
+                        message_ids.push(summary_msg.id);
+
+                        // 启动后台任务，60秒后自动删除所有消息
+                        let bot_clone = bot.clone();
+                        let chat_id_clone = *chat_id;
+                        tokio::spawn(async move {
+                            tokio::time::sleep(Duration::from_secs(60)).await;
+                            for msg_id in message_ids {
+                                if let Err(e) = bot_clone.delete_message(chat_id_clone, msg_id).await {
+                                    log::warn!("删除消息失败 (chat_id: {}, msg_id: {}): {}", chat_id_clone, msg_id, e);
+                                }
+                            }
+                        });
                     }
                     Err(e) => {
                         let err_msg = e.to_string();
