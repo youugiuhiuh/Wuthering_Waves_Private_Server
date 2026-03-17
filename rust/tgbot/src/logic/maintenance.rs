@@ -449,10 +449,10 @@ async fn detect_bbrv3_support() -> Result<BbrInstallerSupport> {
     }
 }
 
-const CPU_V1_FLAGS: &[&str] = &["lm", "cmov", "cx8", "fpu", "fxsr", "mmx", "sse2"];
-const CPU_V2_FLAGS: &[&str] = &["cx16", "lahf", "popcnt", "sse4_1", "sse4_2", "ssse3"];
+const CPU_V1_FLAGS: &[&str] = &["lm", "cmov", "cx8", "fpu", "fxsr", "mmx", "syscall", "sse2"];
+const CPU_V2_FLAGS: &[&str] = &["cx16", "lahf_lm", "popcnt", "sse4_1", "sse4_2", "ssse3"];
 const CPU_V3_FLAGS: &[&str] = &[
-    "avx", "avx2", "bmi1", "bmi2", "f16c", "fma", "movbe", "xsave",
+    "avx", "avx2", "bmi1", "bmi2", "f16c", "fma", "abm", "movbe", "xsave",
 ];
 const CPU_V4_FLAGS: &[&str] = &["avx512f", "avx512bw", "avx512cd", "avx512dq", "avx512vl"];
 
