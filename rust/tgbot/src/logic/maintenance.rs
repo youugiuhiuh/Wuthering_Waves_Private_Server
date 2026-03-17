@@ -1,6 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 
 use futures_util::StreamExt;
+use std::collections::HashSet;
 use std::process::Command;
 use std::time::{Duration, Instant};
 use tokio::fs;
@@ -11,19 +12,13 @@ use crate::logic::utils::{format_download_progress, should_report};
 
 pub const WWPS_CORE_BINARY: &str = "/etc/wwps/wwps-core/wwps-core";
 pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/tgbot/bbr3_pending.flag";
-const PRIMARY_BBR_SCRIPT_URL: &str =
-    "https://raw.githubusercontent.com/opiran-club/VPS-Optimizer/main/bbrv3.sh";
-const PRIMARY_BBR_SCRIPT_PATH: &str = "/tmp/wwps-bbrv3.sh";
-const BACKUP_BBR_SCRIPT_URL: &str =
-    "https://raw.githubusercontent.com/jinwyp/one_click_script/master/install_kernel.sh";
-const BACKUP_BBR_SCRIPT_PATH: &str = "/tmp/wwps-install_kernel.sh";
 
 pub struct MaintenanceManager;
 
 const TIMEOUT_SHORT: Duration = Duration::from_secs(30);
 const TIMEOUT_LONG: Duration = Duration::from_secs(60);
 const TIMEOUT_BBR_INSTALL: Duration = Duration::from_secs(30 * 60);
-const TIMEOUT_PACKAGE_INSTALL: Duration = Duration::from_secs(10 * 60);
+const TIMEOUT_PACKAGE_INSTALL: Duration = Duration::from_secs(30 * 60);
 const BBR3_OPTIMIZE_CONF_PATH: &str = "/etc/sysctl.d/90-wwps-bbr3-optimize.conf";
 const COMBINED_NETWORK_OPTIMIZE_CONF: &str = r#"fs.file-max = 1000000
 fs.inotify.max_user_instances = 8192
@@ -74,28 +69,6 @@ enum BbrInstallerSupport {
     UnsupportedDistro,
 }
 
-#[derive(Clone, Copy)]
-struct BbrScriptSource {
-    name: &'static str,
-    url: &'static str,
-    path: &'static str,
-    input_builder: fn() -> String,
-}
-
-const PRIMARY_BBR_SOURCE: BbrScriptSource = BbrScriptSource {
-    name: "opiran-bbrv3",
-    url: PRIMARY_BBR_SCRIPT_URL,
-    path: PRIMARY_BBR_SCRIPT_PATH,
-    input_builder: build_bbrv3_script_input,
-};
-
-const BACKUP_BBR_SOURCE: BbrScriptSource = BbrScriptSource {
-    name: "jinwyp-install-kernel",
-    url: BACKUP_BBR_SCRIPT_URL,
-    path: BACKUP_BBR_SCRIPT_PATH,
-    input_builder: build_backup_bbr_script_input,
-};
-
 impl MaintenanceManager {
     pub async fn is_reality_base_ready() -> bool {
         fs::try_exists(WWPS_CORE_BINARY).await.unwrap_or(false)
@@ -128,7 +101,10 @@ impl MaintenanceManager {
         Ok(())
     }
 
-    pub async fn install_bbr3() -> Result<BbrInstallStatus> {
+    pub async fn install_bbr3<F>(progress_callback: F) -> Result<BbrInstallStatus>
+    where
+        F: Fn(&str) + Send + Sync + 'static,
+    {
         match detect_bbrv3_support().await? {
             BbrInstallerSupport::Supported => {}
             BbrInstallerSupport::UnsupportedArch => {
@@ -139,9 +115,33 @@ impl MaintenanceManager {
             }
         }
 
+        progress_callback("🔧 修复主机名解析...");
         fix_local_hostname_resolution().await?;
+
+        progress_callback("📦 检查并安装依赖...");
         ensure_bbr3_dependencies().await?;
-        run_bbr_install_flow().await?;
+
+        progress_callback("🔍 检测 CPU 级别...");
+        let cpu_level = detect_cpu_level().await?;
+
+        progress_callback("⬇️ 添加 XanMod GPG 密钥...");
+        download_xanmod_gpg_key().await?;
+
+        progress_callback("📦 添加 XanMod APT 源...");
+        add_xanmod_apt_source().await?;
+
+        progress_callback("🔄 更新软件包列表...");
+        run_cmd_status("apt-get", &["update"], TIMEOUT_LONG)
+            .await
+            .context("更新 apt 软件源失败")?;
+
+        progress_callback(&format!("📥 安装 XanMod v{} 内核...", cpu_level));
+        install_xanmod_kernel(cpu_level).await?;
+
+        progress_callback("🔄 更新 GRUB 引导配置...");
+        update_grub().await?;
+
+        progress_callback("⚙️ 应用网络优化参数...");
         apply_combined_network_optimization().await?;
 
         let kernel_version = current_kernel_version().await;
@@ -437,6 +437,153 @@ async fn detect_bbrv3_support() -> Result<BbrInstallerSupport> {
     }
 }
 
+const CPU_V1_FLAGS: &[&str] = &["lm", "cmov", "cx8", "fpu", "fxsr", "mmx", "sse2"];
+const CPU_V2_FLAGS: &[&str] = &["cx16", "lahf", "popcnt", "sse4_1", "sse4_2", "ssse3"];
+const CPU_V3_FLAGS: &[&str] = &["avx", "avx2", "bmi1", "bmi2", "f16c", "fma", "movbe"];
+const CPU_V4_FLAGS: &[&str] = &["avx512f", "avx512bw", "avx512cd", "avx512dq", "avx512vl"];
+
+async fn detect_cpu_level() -> Result<u8> {
+    let cpuinfo = fs::read_to_string("/proc/cpuinfo")
+        .await
+        .context("读取 /proc/cpuinfo 失败")?;
+
+    let flags = cpuinfo
+        .lines()
+        .find(|l| l.starts_with("flags"))
+        .ok_or_else(|| anyhow!("无法找到 CPU flags"))?;
+
+    let flags: HashSet<&str> = flags.split_whitespace().skip(1).collect();
+
+    if has_all_flags(&flags, CPU_V4_FLAGS) {
+        return Ok(4);
+    }
+    if has_all_flags(&flags, CPU_V3_FLAGS) {
+        return Ok(3);
+    }
+    if has_all_flags(&flags, CPU_V2_FLAGS) {
+        return Ok(2);
+    }
+    if has_all_flags(&flags, CPU_V1_FLAGS) {
+        return Ok(1);
+    }
+
+    anyhow::bail!("无法确定 CPU 级别，当前 CPU 不支持 x86-64-v1 及以上")
+}
+
+fn has_all_flags(flags: &HashSet<&str>, required: &[&str]) -> bool {
+    required.iter().all(|f| flags.contains(f))
+}
+
+async fn download_xanmod_gpg_key() -> Result<()> {
+    let client = reqwest::Client::builder()
+        .timeout(TIMEOUT_LONG)
+        .build()
+        .context("构建 HTTP 客户端失败")?;
+
+    let key_content = client
+        .get("https://gitlab.com/xanmod.org/packages/-/raw/main/archive.key")
+        .send()
+        .await
+        .context("下载 XanMod GPG 密钥失败")?
+        .error_for_status()
+        .context("GPG 密钥下载返回错误状态")?
+        .bytes()
+        .await
+        .context("读取 GPG 密钥内容失败")?;
+
+    let gpg_path = "/usr/share/keyrings/xanmod-archive-keyring.gpg";
+    fs::create_dir_all(std::path::Path::new(gpg_path).parent().unwrap())
+        .await
+        .context("创建 keyrings 目录失败")?;
+
+    let mut child = tokio::process::Command::new("gpg")
+        .args(&["--dearmor", "-o", gpg_path])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("启动 gpg dearmor 失败")?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        stdin.write_all(&key_content).await?;
+        drop(stdin);
+    }
+
+    let output = child
+        .wait_with_output()
+        .await
+        .context("gpg dearmor 执行失败")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("GPG 密钥处理失败: {}", stderr);
+    }
+
+    Ok(())
+}
+
+async fn add_xanmod_apt_source() -> Result<()> {
+    let source_content = "deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main";
+
+    fs::write(
+        "/etc/apt/sources.list.d/xanmod-release.list",
+        source_content,
+    )
+    .await
+    .context("写入 XanMod APT 源失败")?;
+
+    Ok(())
+}
+
+async fn install_xanmod_kernel(level: u8) -> Result<()> {
+    let package_name = match level {
+        1 => "linux-xanmod-x64v1",
+        2 => "linux-xanmod-x64v2",
+        3 => "linux-xanmod-x64v3",
+        4 => "linux-xanmod-x64v4",
+        _ => anyhow::bail!("不支持的 CPU 级别: {}", level),
+    };
+
+    let status = run_cmd_status(
+        "apt-get",
+        &["install", "-y", package_name],
+        TIMEOUT_PACKAGE_INSTALL,
+    )
+    .await
+    .with_context(|| format!("安装 {} 失败", package_name))?;
+
+    if !status.success() {
+        anyhow::bail!("安装内核包 {} 失败", package_name);
+    }
+
+    Ok(())
+}
+
+async fn update_grub() -> Result<()> {
+    if std::path::Path::new("/usr/sbin/update-grub").exists() {
+        let status = run_cmd_status("update-grub", &[], TIMEOUT_SHORT)
+            .await
+            .context("更新 GRUB 失败")?;
+        if !status.success() {
+            anyhow::bail!("update-grub 执行失败");
+        }
+    } else if std::path::Path::new("/usr/sbin/grub-mkconfig").exists() {
+        let status = run_cmd_status(
+            "grub-mkconfig",
+            &["-o", "/boot/grub/grub.cfg"],
+            TIMEOUT_SHORT,
+        )
+        .await
+        .context("更新 GRUB 失败")?;
+        if !status.success() {
+            anyhow::bail!("grub-mkconfig 执行失败");
+        }
+    }
+
+    Ok(())
+}
+
 async fn ensure_bbr3_dependencies() -> Result<()> {
     if !command_exists("sudo").await {
         install_apt_package(&["sudo"]).await?;
@@ -561,60 +708,6 @@ async fn apply_combined_network_optimization() -> Result<()> {
     Ok(())
 }
 
-async fn run_bbr_install_flow() -> Result<()> {
-    match run_script_source(PRIMARY_BBR_SOURCE).await {
-        Ok(()) => Ok(()),
-        Err(primary_err) => match run_script_source(BACKUP_BBR_SOURCE).await {
-            Ok(()) => Ok(()),
-            Err(backup_err) => {
-                anyhow::bail!("主脚本失败: {}; 备用脚本失败: {}", primary_err, backup_err)
-            }
-        },
-    }
-}
-
-async fn run_script_source(source: BbrScriptSource) -> Result<()> {
-    download_script(source).await?;
-    let status = run_script(source).await?;
-    if !status.success() {
-        anyhow::bail!("{} 执行失败", source.name);
-    }
-    if !has_xanmod_installation_markers().await? {
-        anyhow::bail!("{} 执行完成，但未检测到 XanMod 安装痕迹", source.name);
-    }
-    Ok(())
-}
-
-async fn download_script(source: BbrScriptSource) -> Result<()> {
-    let client = reqwest::Client::builder()
-        .timeout(TIMEOUT_LONG)
-        .build()
-        .context("构建 BBR3 下载客户端失败")?;
-    let content = client
-        .get(source.url)
-        .send()
-        .await
-        .context("下载 BBR3 脚本失败")?
-        .error_for_status()
-        .context("BBR3 脚本源返回错误状态")?
-        .text()
-        .await
-        .context("读取 BBR3 脚本内容失败")?;
-
-    fs::write(source.path, content)
-        .await
-        .context("写入 BBR3 脚本失败")?;
-
-    let chmod_status = run_cmd_status("chmod", &["+x", source.path], TIMEOUT_SHORT)
-        .await
-        .context("设置 BBR3 脚本权限失败")?;
-    if !chmod_status.success() {
-        anyhow::bail!("设置 BBR3 脚本权限失败");
-    }
-
-    Ok(())
-}
-
 async fn write_bbr3_pending_flag() -> Result<()> {
     if let Some(parent) = std::path::Path::new(BBR3_PENDING_FLAG_FILE).parent() {
         fs::create_dir_all(parent)
@@ -625,66 +718,6 @@ async fn write_bbr3_pending_flag() -> Result<()> {
     fs::write(BBR3_PENDING_FLAG_FILE, b"pending")
         .await
         .context("写入 BBR3 重启标记失败")
-}
-
-async fn run_script(source: BbrScriptSource) -> Result<std::process::ExitStatus> {
-    let mut child = tokio::process::Command::new("bash")
-        .arg(source.path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .context("启动 BBR3 安装脚本失败")?;
-
-    let mut stdin = child.stdin.take().context("无法打开 BBR3 脚本 stdin")?;
-    let script_input = (source.input_builder)();
-    tokio::spawn(async move {
-        let _ = stdin.write_all(script_input.as_bytes()).await;
-    });
-
-    let output = tokio::time::timeout(TIMEOUT_BBR_INSTALL, child.wait_with_output())
-        .await
-        .context("执行 BBR3 安装脚本超时")?
-        .context("等待 BBR3 安装脚本结束失败")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let combined = if !stderr.trim().is_empty() {
-            stderr.trim().to_string()
-        } else {
-            stdout.trim().to_string()
-        };
-        anyhow::bail!("BBR3 脚本失败: {}", combined);
-    }
-
-    Ok(output.status)
-}
-
-fn build_bbrv3_script_input() -> String {
-    [
-        "1", // 安装 XanMod + BBRv3
-        "y", // 确认安装
-        "",  // continue after kernel installation
-        "y", // update-grub
-        "y", // apply sysctl tuning
-        "n", // do not reboot immediately
-        "",  // continue loop
-        "e", // exit script menu
-    ]
-    .join("\n")
-        + "\n"
-}
-
-fn build_backup_bbr_script_input() -> String {
-    [
-        "52", // 安装 XanMod 6.11
-        "y",  // continue operation if prompted
-        "n",  // do not reboot immediately
-        "0",  // exit menu
-    ]
-    .join("\n")
-        + "\n"
 }
 
 async fn current_congestion_control() -> String {
@@ -699,79 +732,5 @@ async fn current_kernel_version() -> String {
     match run_cmd_output("uname", &["-r"], TIMEOUT_SHORT).await {
         Ok((status, stdout, _)) if status.success() => stdout.trim().to_string(),
         _ => "unknown".to_string(),
-    }
-}
-
-async fn has_xanmod_installation_markers() -> Result<bool> {
-    if dir_contains_xanmod("/boot").await? {
-        return Ok(true);
-    }
-
-    if dir_contains_xanmod("/lib/modules").await? {
-        return Ok(true);
-    }
-
-    if file_contains_xanmod("/boot/grub/grub.cfg").await? {
-        return Ok(true);
-    }
-
-    if file_contains_xanmod("/boot/grub2/grub.cfg").await? {
-        return Ok(true);
-    }
-
-    Ok(false)
-}
-
-async fn dir_contains_xanmod(path: &str) -> Result<bool> {
-    let exists = fs::try_exists(path).await.unwrap_or(false);
-    if !exists {
-        return Ok(false);
-    }
-
-    let mut entries = fs::read_dir(path)
-        .await
-        .with_context(|| format!("读取目录 {} 失败", path))?;
-    while let Some(entry) = entries.next_entry().await? {
-        let name = entry.file_name();
-        if name
-            .to_string_lossy()
-            .to_ascii_lowercase()
-            .contains("xanmod")
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-async fn file_contains_xanmod(path: &str) -> Result<bool> {
-    let exists = fs::try_exists(path).await.unwrap_or(false);
-    if !exists {
-        return Ok(false);
-    }
-
-    let content = fs::read_to_string(path)
-        .await
-        .with_context(|| format!("读取文件 {} 失败", path))?;
-    Ok(content.to_ascii_lowercase().contains("xanmod"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{build_backup_bbr_script_input, build_bbrv3_script_input};
-
-    #[test]
-    fn test_bbrv3_script_input_sequence() {
-        let input = build_bbrv3_script_input();
-        assert!(input.starts_with("1\ny\n"));
-        assert!(input.contains("\ny\ny\nn\n"));
-        assert!(input.ends_with("\ne\n"));
-    }
-
-    #[test]
-    fn test_backup_bbr_script_input_sequence() {
-        let input = build_backup_bbr_script_input();
-        assert!(input.starts_with("52\ny\n"));
-        assert!(input.ends_with("\n0\n"));
     }
 }
