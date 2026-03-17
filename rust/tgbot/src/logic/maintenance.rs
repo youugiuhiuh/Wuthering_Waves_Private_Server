@@ -490,89 +490,70 @@ fn has_all_flags(flags: &HashSet<&str>, required: &[&str]) -> bool {
 }
 
 async fn download_xanmod_gpg_key() -> Result<()> {
-    let client = reqwest::Client::builder()
-        .timeout(TIMEOUT_LONG)
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .context("构建 HTTP 客户端失败")?;
-
-    let key_urls = [
-        "https://dl.xanmod.org/archive.key",
-        "https://mirror.xanmod.org/releases/gpg/key.pub",
-        "https://xanmod.org/archive.key",
-        "https://deb.xanmod.org/archive.key",
-    ];
-
-    let mut key_content: Option<Vec<u8>> = None;
-    let mut last_error = String::new();
-
-    for url in key_urls {
-        match client.get(url).send().await {
-            Ok(resp) => {
-                let status = resp.status();
-                if status.is_success() || status.as_u16() == 301 || status.as_u16() == 302 {
-                    match resp.bytes().await {
-                        Ok(bytes) => {
-                            let bytes_vec = bytes.to_vec();
-                            let check_str = String::from_utf8_lossy(&bytes_vec);
-                            if check_str.contains("BEGIN PGP") || bytes_vec.len() > 100 {
-                                key_content = Some(bytes_vec);
-                                break;
-                            }
-                            last_error = "返回内容不是有效的 GPG 密钥".to_string();
-                            continue;
-                        }
-                        Err(e) => {
-                            last_error = format!("读取密钥失败: {}", e);
-                            continue;
-                        }
-                    }
-                }
-                last_error = format!("HTTP {}", status);
-                continue;
-            }
-            Err(e) => {
-                last_error = format!("请求失败: {}", e);
-                continue;
-            }
-        }
-    }
-
-    let key_content = key_content.context(format!("所有 GPG 密钥源均失败: {}", last_error))?;
-
     let gpg_path = "/etc/apt/keyrings/xanmod-archive-keyring.gpg";
     fs::create_dir_all(std::path::Path::new(gpg_path).parent().unwrap())
         .await
         .context("创建 keyrings 目录失败")?;
 
-    let key_str = String::from_utf8_lossy(&key_content);
-    let is_ascii_armored = key_str.contains("-----BEGIN");
+    let key_urls = [
+        ("https://dl.xanmod.org/archive.key", "wget -qO -"),
+        (
+            "https://mirror.xanmod.org/releases/gpg/key.pub",
+            "wget -qO -",
+        ),
+    ];
 
-    if is_ascii_armored {
-        let temp_key = "/tmp/xanmod-key.asc";
-        fs::write(temp_key, &key_content)
-            .await
-            .context("写入临时密钥文件失败")?;
+    let mut last_error = String::new();
 
-        let status = tokio::process::Command::new("gpg")
-            .args(&["--batch", "--no-tty", "--dearmor", "-o", gpg_path, temp_key])
+    for (url, cmd) in key_urls {
+        let output = tokio::process::Command::new("sh")
+            .args(&["-c", &format!("{} '{}' | head -10", cmd, url)])
             .output()
-            .await
-            .context("执行 gpg dearmor 失败")?;
+            .await;
 
-        let _ = fs::remove_file(temp_key).await;
+        match output {
+            Ok(out) if out.status.success() => {
+                let content = String::from_utf8_lossy(&out.stdout);
+                if content.contains("BEGIN PGP") {
+                    let full_output = tokio::process::Command::new("sh")
+                        .args(&[
+                            "-c",
+                            &format!(
+                                "{} '{}' | gpg --batch --no-tty --dearmor -vo {}",
+                                cmd, url, gpg_path
+                            ),
+                        ])
+                        .output()
+                        .await;
 
-        if !status.status.success() {
-            let stderr = String::from_utf8_lossy(&status.stderr);
-            anyhow::bail!("GPG 密钥处理失败: {}", stderr);
+                    match full_output {
+                        Ok(result) if result.status.success() => {
+                            return Ok(());
+                        }
+                        Ok(result) => {
+                            last_error = format!(
+                                "GPG 处理失败: {}",
+                                String::from_utf8_lossy(&result.stderr)
+                            );
+                            continue;
+                        }
+                        Err(e) => {
+                            last_error = format!("执行命令失败: {}", e);
+                            continue;
+                        }
+                    }
+                }
+            }
+            Ok(out) => {
+                last_error = format!("下载失败: {}", String::from_utf8_lossy(&out.stderr));
+            }
+            Err(e) => {
+                last_error = format!("执行失败: {}", e);
+            }
         }
-    } else {
-        fs::write(gpg_path, &key_content)
-            .await
-            .context("写入 GPG 密钥失败")?;
     }
 
-    Ok(())
+    anyhow::bail!("GPG 密钥下载失败: {}", last_error)
 }
 
 async fn add_xanmod_apt_source() -> Result<()> {
@@ -612,15 +593,32 @@ async fn install_xanmod_dependencies() -> Result<()> {
 
 async fn install_xanmod_kernel(level: u8) -> Result<()> {
     let package_names = match level {
-        1 => vec!["linux-xanmod-x64v1", "linux-xanmod"],
-        2 => vec!["linux-xanmod-x64v2", "linux-xanmod-x64v1", "linux-xanmod"],
+        1 => vec![
+            "linux-xanmod-lts-x64v1",
+            "linux-xanmod-lts",
+            "linux-xanmod-x64v1",
+            "linux-xanmod",
+        ],
+        2 => vec![
+            "linux-xanmod-lts-x64v2",
+            "linux-xanmod-lts",
+            "linux-xanmod-x64v2",
+            "linux-xanmod-x64v1",
+            "linux-xanmod",
+        ],
         3 => vec![
+            "linux-xanmod-lts-x64v3",
+            "linux-xanmod-lts-x64v2",
+            "linux-xanmod-lts",
             "linux-xanmod-x64v3",
             "linux-xanmod-x64v2",
             "linux-xanmod-x64v1",
             "linux-xanmod",
         ],
         4 => vec![
+            "linux-xanmod-lts-x64v4",
+            "linux-xanmod-lts-x64v3",
+            "linux-xanmod-lts",
             "linux-xanmod-x64v4",
             "linux-xanmod-x64v3",
             "linux-xanmod-x64v2",
