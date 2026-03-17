@@ -486,11 +486,12 @@ fn has_all_flags(flags: &HashSet<&str>, required: &[&str]) -> bool {
 async fn download_xanmod_gpg_key() -> Result<()> {
     let client = reqwest::Client::builder()
         .timeout(TIMEOUT_LONG)
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .context("构建 HTTP 客户端失败")?;
 
     let key_urls = [
-        "https://dl.xanmod.org/gpg.key",
+        "https://dl.xanmod.org/archive.key",
         "https://mirror.xanmod.org/releases/gpg/key.pub",
         "https://xanmod.org/archive.key",
         "https://deb.xanmod.org/archive.key",
@@ -501,18 +502,27 @@ async fn download_xanmod_gpg_key() -> Result<()> {
 
     for url in key_urls {
         match client.get(url).send().await {
-            Ok(resp) if resp.status().is_success() => match resp.bytes().await {
-                Ok(bytes) => {
-                    key_content = Some(bytes.to_vec());
-                    break;
-                }
-                Err(e) => {
-                    last_error = format!("读取密钥失败: {}", e);
-                    continue;
-                }
-            },
             Ok(resp) => {
-                last_error = format!("HTTP {}", resp.status());
+                let status = resp.status();
+                if status.is_success() || status.as_u16() == 301 || status.as_u16() == 302 {
+                    match resp.bytes().await {
+                        Ok(bytes) => {
+                            let bytes_vec = bytes.to_vec();
+                            let check_str = String::from_utf8_lossy(&bytes_vec);
+                            if check_str.contains("BEGIN PGP") || bytes_vec.len() > 100 {
+                                key_content = Some(bytes_vec);
+                                break;
+                            }
+                            last_error = "返回内容不是有效的 GPG 密钥".to_string();
+                            continue;
+                        }
+                        Err(e) => {
+                            last_error = format!("读取密钥失败: {}", e);
+                            continue;
+                        }
+                    }
+                }
+                last_error = format!("HTTP {}", status);
                 continue;
             }
             Err(e) => {
@@ -529,22 +539,31 @@ async fn download_xanmod_gpg_key() -> Result<()> {
         .await
         .context("创建 keyrings 目录失败")?;
 
-    let temp_key = "/tmp/xanmod-key.asc";
-    fs::write(temp_key, &key_content)
-        .await
-        .context("写入临时密钥文件失败")?;
+    let key_str = String::from_utf8_lossy(&key_content);
+    let is_ascii_armored = key_str.contains("-----BEGIN");
 
-    let status = tokio::process::Command::new("gpg")
-        .args(&["--batch", "--no-tty", "--dearmor", "-o", gpg_path, temp_key])
-        .output()
-        .await
-        .context("执行 gpg dearmor 失败")?;
+    if is_ascii_armored {
+        let temp_key = "/tmp/xanmod-key.asc";
+        fs::write(temp_key, &key_content)
+            .await
+            .context("写入临时密钥文件失败")?;
 
-    let _ = fs::remove_file(temp_key).await;
+        let status = tokio::process::Command::new("gpg")
+            .args(&["--batch", "--no-tty", "--dearmor", "-o", gpg_path, temp_key])
+            .output()
+            .await
+            .context("执行 gpg dearmor 失败")?;
 
-    if !status.status.success() {
-        let stderr = String::from_utf8_lossy(&status.stderr);
-        anyhow::bail!("GPG 密钥处理失败: {}", stderr);
+        let _ = fs::remove_file(temp_key).await;
+
+        if !status.status.success() {
+            let stderr = String::from_utf8_lossy(&status.stderr);
+            anyhow::bail!("GPG 密钥处理失败: {}", stderr);
+        }
+    } else {
+        fs::write(gpg_path, &key_content)
+            .await
+            .context("写入 GPG 密钥失败")?;
     }
 
     Ok(())
