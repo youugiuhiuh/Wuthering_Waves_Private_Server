@@ -23,7 +23,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use teloxide::net::Download;
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode};
+use teloxide::types::{
+    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode,
+};
 use teloxide::utils::command::BotCommands;
 use tgbot::logic::config::{ConfigManager, RealityProto, WarpMode};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
@@ -1762,12 +1764,19 @@ fn handle_callback(
 
                         // 启动后台任务，60秒后自动删除所有消息
                         let bot_clone = bot.clone();
-                        let chat_id_clone = *chat_id;
+                        let chat_id_clone = chat_id.clone();
                         tokio::spawn(async move {
                             tokio::time::sleep(Duration::from_secs(60)).await;
                             for msg_id in message_ids {
-                                if let Err(e) = bot_clone.delete_message(chat_id_clone, msg_id).await {
-                                    log::warn!("删除消息失败 (chat_id: {}, msg_id: {}): {}", chat_id_clone, msg_id, e);
+                                if let Err(e) =
+                                    bot_clone.delete_message(chat_id_clone, msg_id).await
+                                {
+                                    log::warn!(
+                                        "删除消息失败 (chat_id: {}, msg_id: {}): {}",
+                                        chat_id_clone,
+                                        msg_id,
+                                        e
+                                    );
                                 }
                             }
                         });
