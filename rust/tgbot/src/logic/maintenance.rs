@@ -495,57 +495,39 @@ async fn download_xanmod_gpg_key() -> Result<()> {
         .await
         .context("创建 keyrings 目录失败")?;
 
+    let _ = fs::remove_file(gpg_path).await;
+
     let key_urls = [
-        ("https://dl.xanmod.org/archive.key", "wget -qO -"),
-        (
-            "https://mirror.xanmod.org/releases/gpg/key.pub",
-            "wget -qO -",
-        ),
+        "https://dl.xanmod.org/archive.key",
+        "https://mirror.xanmod.org/releases/gpg/key.pub",
     ];
 
     let mut last_error = String::new();
 
-    for (url, cmd) in key_urls {
-        let output = tokio::process::Command::new("sh")
-            .args(&["-c", &format!("{} '{}' | head -10", cmd, url)])
+    for url in key_urls {
+        let result = tokio::process::Command::new("sh")
+            .args(&[
+                "-c",
+                &format!(
+                    "wget -qO - '{}' | gpg --batch --yes --no-tty --dearmor -vo {}",
+                    url, gpg_path
+                ),
+            ])
             .output()
             .await;
 
-        match output {
+        match result {
             Ok(out) if out.status.success() => {
-                let content = String::from_utf8_lossy(&out.stdout);
-                if content.contains("BEGIN PGP") {
-                    let full_output = tokio::process::Command::new("sh")
-                        .args(&[
-                            "-c",
-                            &format!(
-                                "{} '{}' | gpg --batch --no-tty --dearmor -vo {}",
-                                cmd, url, gpg_path
-                            ),
-                        ])
-                        .output()
-                        .await;
-
-                    match full_output {
-                        Ok(result) if result.status.success() => {
-                            return Ok(());
-                        }
-                        Ok(result) => {
-                            last_error = format!(
-                                "GPG 处理失败: {}",
-                                String::from_utf8_lossy(&result.stderr)
-                            );
-                            continue;
-                        }
-                        Err(e) => {
-                            last_error = format!("执行命令失败: {}", e);
-                            continue;
-                        }
+                if fs::try_exists(gpg_path).await.unwrap_or(false) {
+                    let content = fs::read(gpg_path).await?;
+                    if !content.is_empty() {
+                        return Ok(());
                     }
                 }
+                last_error = "GPG 文件为空".to_string();
             }
             Ok(out) => {
-                last_error = format!("下载失败: {}", String::from_utf8_lossy(&out.stderr));
+                last_error = format!("GPG 处理失败: {}", String::from_utf8_lossy(&out.stderr));
             }
             Err(e) => {
                 last_error = format!("执行失败: {}", e);
