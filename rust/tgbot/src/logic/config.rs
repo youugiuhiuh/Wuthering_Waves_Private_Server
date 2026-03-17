@@ -292,6 +292,7 @@ impl ConfigManager {
         ip_version: IpVersion,
         proto: RealityProto,
         path: Option<&str>,
+        enable_pq: bool,
     ) -> Value {
         let listen_ip = match ip_version {
             IpVersion::IPv4 => "0.0.0.0",
@@ -330,8 +331,8 @@ impl ConfigManager {
             }
         });
 
-        // 服务端：如已配置 PQ seed，则下发 mldsa65Seed（Xray 标准，与 mldsa65 命令输出一致）。
-        if !REALITY_PQ_SEED.is_empty() {
+        // 服务端：仅在当前 SNI 通过 TLS 探测且存在 PQ seed 时，下发 mldsa65Seed。
+        if enable_pq && !REALITY_PQ_SEED.is_empty() {
             stream_settings["realitySettings"]["mldsa65Seed"] =
                 serde_json::Value::String(REALITY_PQ_SEED.clone());
         }
@@ -389,6 +390,9 @@ impl ConfigManager {
         for i in 0..count {
             let sni = selector.next();
 
+            // 判断当前 SNI 是否适合启用 PQ（证书链长度 + 公钥算法）。
+            let pq_ok = crate::logic::tls_probe::sni_is_pq_friendly(&sni).await;
+
             let (port, uuid, priv_key, pub_key, short_id, sni, email, tag, path) =
                 Self::generate_enhanced_config(&mut rng, sni, i, RealityProto::Vision).await?;
 
@@ -404,6 +408,7 @@ impl ConfigManager {
                 ip_version,
                 RealityProto::Vision,
                 path.as_deref(),
+                pq_ok,
             );
 
             batch_configs.push(config);
@@ -420,6 +425,7 @@ impl ConfigManager {
                 RealityProto::Vision,
                 path.as_deref(),
                 None,
+                pq_ok,
             );
             links.push(link);
 
@@ -459,6 +465,8 @@ impl ConfigManager {
         for i in 0..count {
             let sni = selector.next();
 
+            let pq_ok = crate::logic::tls_probe::sni_is_pq_friendly(&sni).await;
+
             let (port, uuid, priv_key, pub_key, short_id, sni, email, tag, path) =
                 Self::generate_enhanced_config(&mut rng, sni, i, RealityProto::XHTTP).await?;
 
@@ -474,6 +482,7 @@ impl ConfigManager {
                 ip_version,
                 RealityProto::XHTTP,
                 path.as_deref(),
+                pq_ok,
             );
 
             batch_configs.push(config);
@@ -490,6 +499,7 @@ impl ConfigManager {
                 RealityProto::XHTTP,
                 path.as_deref(),
                 host_secondary.as_deref(),
+                pq_ok,
             );
             links.push(link);
 
@@ -593,6 +603,7 @@ impl ConfigManager {
         proto: RealityProto,
         path: Option<&str>,
         host_secondary: Option<&str>, // 仅在双栈分离模式下使用（secondary host）
+        enable_pq: bool,
     ) -> String {
         let fmt_host = match ip_version {
             IpVersion::IPv6 | IpVersion::SplitStackV6Primary => format!("[{}]", host),
@@ -610,9 +621,11 @@ impl ConfigManager {
                     uuid, fmt_host, port, encoded_sni, encoded_pbk, short_id,
                 );
 
-                if let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
-                    let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
-                    link.push_str(&format!("&pqv={}", encoded_pqv));
+                if enable_pq {
+                    if let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
+                        let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
+                        link.push_str(&format!("&pqv={}", encoded_pqv));
+                    }
                 }
 
                 format!("{}#{}", link, encoded_email)
@@ -654,9 +667,11 @@ impl ConfigManager {
                     }
                 }
 
-                if let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
-                    let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
-                    link.push_str(&format!("&pqv={}", encoded_pqv));
+                if enable_pq {
+                    if let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
+                        let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
+                        link.push_str(&format!("&pqv={}", encoded_pqv));
+                    }
                 }
 
                 format!("{}#{}", link, encoded_email)
@@ -1019,7 +1034,7 @@ async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
 mod tests {
     use super::*;
     use anyhow::anyhow;
-    use base64::{Engine as _, engine::general_purpose};
+    use base64::engine::general_purpose;
     use percent_encoding::percent_decode_str;
 
     #[test]
@@ -1068,6 +1083,7 @@ mod tests {
             IpVersion::IPv4,
             RealityProto::Vision,
             None,
+            false,
         );
 
         // 验证架构合规性
@@ -1117,6 +1133,7 @@ mod tests {
             IpVersion::IPv4,
             RealityProto::XHTTP,
             Some(path),
+            false,
         );
 
         assert_eq!(vless["streamSettings"]["network"], "xhttp");
@@ -1183,6 +1200,7 @@ mod tests {
             RealityProto::XHTTP,
             Some(path),
             Some(host_v4_secondary),
+            false,
         );
 
         assert!(
@@ -1243,6 +1261,7 @@ mod tests {
             RealityProto::XHTTP,
             Some(path),
             Some(host_v6_secondary),
+            false,
         );
 
         assert!(
