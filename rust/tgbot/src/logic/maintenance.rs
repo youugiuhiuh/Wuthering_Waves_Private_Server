@@ -529,27 +529,21 @@ async fn download_xanmod_gpg_key() -> Result<()> {
         .await
         .context("创建 keyrings 目录失败")?;
 
-    let mut child = tokio::process::Command::new("gpg")
-        .args(&["--dearmor", "-o", gpg_path])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .context("启动 gpg dearmor 失败")?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(&key_content).await?;
-        drop(stdin);
-    }
-
-    let output = child
-        .wait_with_output()
+    let temp_key = "/tmp/xanmod-key.asc";
+    fs::write(temp_key, &key_content)
         .await
-        .context("gpg dearmor 执行失败")?;
+        .context("写入临时密钥文件失败")?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    let status = tokio::process::Command::new("gpg")
+        .args(&["--dearmor", "-o", gpg_path, temp_key])
+        .output()
+        .await
+        .context("执行 gpg dearmor 失败")?;
+
+    let _ = fs::remove_file(temp_key).await;
+
+    if !status.status.success() {
+        let stderr = String::from_utf8_lossy(&status.stderr);
         anyhow::bail!("GPG 密钥处理失败: {}", stderr);
     }
 
