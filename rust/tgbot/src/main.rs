@@ -1436,56 +1436,62 @@ fn handle_callback(
                 bot.answer_callback_query(q.id.clone())
                     .text("⏳ 正在安装 BBR3/XanMod 并应用通用优化...")
                     .await?;
-                match MaintenanceManager::install_bbr3().await {
-                    Ok(result) => {
-                        let reboot_notice = if result.reboot_required {
-                            "需要重启系统后切换到新内核并生效。"
-                        } else {
-                            "当前无需重启。"
-                        };
-                        let reply_markup = if result.reboot_required {
-                            InlineKeyboardMarkup::new(vec![
-                                vec![
-                                    InlineKeyboardButton::callback(
-                                        "🔄 立即重启",
-                                        "a_bbr3_reboot_now",
+
+                let bot_clone = bot.clone();
+                let chat_id_clone = chat_id;
+                tokio::spawn(async move {
+                    match MaintenanceManager::install_bbr3().await {
+                        Ok(result) => {
+                            let reboot_notice = if result.reboot_required {
+                                "需要重启系统后切换到新内核并生效。"
+                            } else {
+                                "当前无需重启。"
+                            };
+                            let reply_markup = if result.reboot_required {
+                                InlineKeyboardMarkup::new(vec![
+                                    vec![
+                                        InlineKeyboardButton::callback(
+                                            "🔄 立即重启",
+                                            "a_bbr3_reboot_now",
+                                        ),
+                                        InlineKeyboardButton::callback(
+                                            "🕒 稍后重启",
+                                            "a_bbr3_reboot_later",
+                                        ),
+                                    ],
+                                    vec![InlineKeyboardButton::callback(
+                                        "⬅️ 返回网络优化",
+                                        "m_net_opt",
+                                    )],
+                                ])
+                            } else {
+                                InlineKeyboardMarkup::new(vec![vec![
+                                    InlineKeyboardButton::callback("⬅️ 返回网络优化", "m_net_opt"),
+                                ]])
+                            };
+                            let _ = bot_clone
+                                .send_message(
+                                    chat_id_clone,
+                                    format!(
+                                        "✅ <b>BBR3 + 通用优化流程已完成</b>\n\n当前内核: <code>{}</code>\n当前拥塞控制算法: <code>{}</code>\n\n已写入合并后的网络优化参数。\n\n<b>注意:</b> {}",
+                                        result.kernel_version, result.congestion_control, reboot_notice
                                     ),
-                                    InlineKeyboardButton::callback(
-                                        "🕒 稍后重启",
-                                        "a_bbr3_reboot_later",
-                                    ),
-                                ],
-                                vec![InlineKeyboardButton::callback(
-                                    "⬅️ 返回网络优化",
-                                    "m_net_opt",
-                                )],
-                            ])
-                        } else {
-                            InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-                                "⬅️ 返回网络优化",
-                                "m_net_opt",
-                            )]])
-                        };
-                        bot.send_message(
-                            chat_id,
-                            format!(
-                                "✅ <b>BBR3 + 通用优化流程已完成</b>\n\n当前内核: <code>{}</code>\n当前拥塞控制算法: <code>{}</code>\n\n已写入合并后的网络优化参数。\n\n<b>注意:</b> {}",
-                                result.kernel_version, result.congestion_control, reboot_notice
-                            ),
-                        )
-                        .parse_mode(ParseMode::Html)
-                        .reply_markup(reply_markup)
-                        .await?;
+                                )
+                                .parse_mode(ParseMode::Html)
+                                .reply_markup(reply_markup)
+                                .await;
+                        }
+                        Err(e) => {
+                            let _ = bot_clone
+                                .send_message(
+                                    chat_id_clone,
+                                    format!("❌ <b>BBR3 + 通用优化失败</b>\n原因: {}", e),
+                                )
+                                .parse_mode(ParseMode::Html)
+                                .await;
+                        }
                     }
-                    Err(e) => {
-                        bot.send_message(
-                            chat_id,
-                            format!("❌ <b>BBR3 + 通用优化失败</b>\n原因: {}", e),
-                        )
-                        .parse_mode(ParseMode::Html)
-                        .await?;
-                    }
-                }
+                });
             }
             "a_bbr3_reboot_now" => {
                 bot.answer_callback_query(q.id.clone())
