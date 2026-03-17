@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use base64::{Engine as _, engine::general_purpose};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
+use std::process::Command;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::logic::security::SecurityManager;
@@ -82,45 +82,50 @@ impl BotSettings {
     }
 }
 
-/// 在管理初始化（tgbot --setup / --setup-stdin）时自动生成 Reality PQ 密钥对并落盘。
-/// 优先级：
-/// 1. 若 /etc/wwps/reality_pq.pub 已存在，则不再改动（尊重已有配置）。
-/// 2. 否则使用 fips204::ml_dsa_65 自动生成一对密钥，并以 Base64 写入：
-///    - /etc/wwps/reality_pq.pub
-///    - /etc/wwps/reality_pq.key
-fn sync_reality_pq_pub_on_setup() {
-    const PQ_PUB_PATH: &str = "/etc/wwps/reality_pq.pub";
-    const PQ_KEY_PATH: &str = "/etc/wwps/reality_pq.key";
+const PQ_SEED_PATH: &str = "/etc/wwps/reality_pq.seed";
+const PQ_PUB_PATH: &str = "/etc/wwps/reality_pq.pub";
+const WWPS_CORE_BIN: &str = "/etc/wwps/wwps-core/wwps-core";
 
-    let path = PathBuf::from(PQ_PUB_PATH);
-    if path.exists() {
+/// 同步执行 wwps-core/xray mldsa65，解析 Seed/Verify 并写入文件。供 setup 时调用（无 tokio）。
+pub fn generate_reality_pq_keys_sync() -> Result<()> {
+    let output = Command::new(WWPS_CORE_BIN)
+        .arg("mldsa65")
+        .output()
+        .or_else(|_| Command::new("xray").arg("mldsa65").output())
+        .context("执行 wwps-core/xray mldsa65 失败（请确保已安装 wwps-core 或 xray）")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("mldsa65 执行失败: {}", stderr);
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let seed = stdout
+        .lines()
+        .find(|l| l.starts_with("Seed:"))
+        .and_then(|l| l.strip_prefix("Seed:").map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("mldsa65 输出未包含 Seed"))?;
+    let verify = stdout
+        .lines()
+        .find(|l| l.starts_with("Verify:"))
+        .and_then(|l| l.strip_prefix("Verify:").map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("mldsa65 输出未包含 Verify"))?;
+    let dir = PathBuf::from("/etc/wwps");
+    if !dir.exists() {
+        fs::create_dir_all(&dir).context("创建 /etc/wwps 失败")?;
+    }
+    fs::write(PQ_SEED_PATH, seed.as_bytes()).context("写入 reality_pq.seed 失败")?;
+    fs::write(PQ_PUB_PATH, verify.as_bytes()).context("写入 reality_pq.pub 失败")?;
+    Ok(())
+}
+
+/// 在管理初始化（tgbot --setup）时如无现有 PQ 配置则调用 mldsa65 生成。
+fn sync_reality_pq_pub_on_setup() {
+    if PathBuf::from(PQ_SEED_PATH).exists() || PathBuf::from(PQ_PUB_PATH).exists() {
         return;
     }
-
-    // 自动生成 ML-DSA-65 密钥对
-    use fips204::ml_dsa_65;
-    use fips204::traits::{KeyGen, SerDes};
-
-    let (pk, sk) = match ml_dsa_65::KG::try_keygen() {
-        Ok(pair) => pair,
-        Err(e) => {
-            log::error!("❌ 生成 ML-DSA-65 密钥对失败: {}", e);
-            return;
-        }
-    };
-
-    let pk_b64 = general_purpose::STANDARD.encode(pk.into_bytes());
-    let sk_b64 = general_purpose::STANDARD.encode(sk.into_bytes());
-
-    if let Some(dir) = path.parent() {
-        let _ = fs::create_dir_all(dir);
-    }
-
-    if let Err(e) = fs::write(&path, pk_b64.as_bytes()) {
-        log::error!("❌ 写入 Reality PQ 公钥失败: {}", e);
-    }
-    if let Err(e) = fs::write(PQ_KEY_PATH, sk_b64.as_bytes()) {
-        log::error!("❌ 写入 Reality PQ 私钥失败: {}", e);
+    if let Err(e) = generate_reality_pq_keys_sync() {
+        log::error!("❌ Reality PQ 初始化: {}", e);
     }
 }
 

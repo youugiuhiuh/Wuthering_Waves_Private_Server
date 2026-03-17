@@ -918,8 +918,12 @@ fn handle_callback(
                                 "u_xhttp_batch_init",
                             ),
                         ]);
+                        buttons.push(vec![InlineKeyboardButton::callback(
+                            "🔐 ML-DSA-65 管理",
+                            "m_pq_mgmt",
+                        )]);
                         bot.edit_message_text(chat_id, msg_id,
-                        "👥 <b>用户管理</b>\n\n⚠️ <b>未找到用户配置文件</b>\n\n检测到 wwps 已安装，但没有找到用户配置文件(*_inbounds.json)。\n\n您可以：\n• 创建 Reality 批量备份\n• 创建 Xhttp 批量备份\n• 检查配置文件是否正确放置")
+                        "👥 <b>用户管理</b>\n\n⚠️ <b>未找到用户配置文件</b>\n\n检测到 wwps 已安装，但没有找到用户配置文件(*_inbounds.json)。\n\n您可以：\n• 创建 Reality 批量备份\n• 创建 Xhttp 批量备份\n• 管理 ML-DSA-65 (Reality PQ)\n• 检查配置文件是否正确放置")
                         .parse_mode(ParseMode::Html)
                         .reply_markup(InlineKeyboardMarkup::new(buttons))
                         .await?;
@@ -941,6 +945,10 @@ fn handle_callback(
                         InlineKeyboardButton::callback("🚀 Reality 批量备份", "u_batch_init"),
                         InlineKeyboardButton::callback("🚀 Xhttp 批量备份", "u_xhttp_batch_init"),
                     ]);
+                    buttons.push(vec![InlineKeyboardButton::callback(
+                        "🔐 ML-DSA-65 管理",
+                        "m_pq_mgmt",
+                    )]);
                     buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")]);
                     bot.edit_message_text(
                         chat_id,
@@ -1906,6 +1914,71 @@ fn handle_callback(
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
+            }
+            "m_pq_mgmt" => {
+                let configured = ConfigManager::is_reality_pq_configured();
+                let status = if configured {
+                    "🟢 已启用（新生成的 Reality 链接将包含 pqv/mldsa65Verify）"
+                } else {
+                    "🔴 未配置（Reality 链接不含 PQ 后量子签名）"
+                };
+                let keyboard = InlineKeyboardMarkup::new(vec![
+                    vec![InlineKeyboardButton::callback("🗑 删除并禁用", "m_pq_del")],
+                    vec![InlineKeyboardButton::callback(
+                        "🔄 初始化 (生成新密钥对)",
+                        "m_pq_init",
+                    )],
+                    vec![InlineKeyboardButton::callback("⬅️ 返回用户管理", "m_usr")],
+                ]);
+                bot.edit_message_text(
+                    chat_id,
+                    msg_id,
+                    format!(
+                        "🔐 <b>ML-DSA-65 管理</b>\n\n当前状态: {}\n\n• <b>删除并禁用</b>: 删除 seed/verify 文件，之后新链接不再带 pqv。\n• <b>初始化</b>: 执行 <code>wwps-core mldsa65</code>（或 xray mldsa65）生成 seed/verify 并写入 /etc/wwps/，与 Xray 完全兼容。\n\n⚠️ 删除或初始化后需<b>重启 Bot</b> 或<b>重新生成批量配置</b>后生效。",
+                        status
+                    ),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
+            }
+            "m_pq_del" => {
+                match ConfigManager::delete_reality_pq().await {
+                    Ok(()) => {
+                        bot.answer_callback_query(q.id.clone())
+                            .text("✅ 已删除 ML-DSA-65 密钥文件，PQ 已禁用。请重启 Bot 或重新生成配置后生效。")
+                            .show_alert(true)
+                            .await?;
+                    }
+                    Err(e) => {
+                        bot.answer_callback_query(q.id.clone())
+                            .text(format!("❌ 删除失败: {}", e))
+                            .show_alert(true)
+                            .await?;
+                    }
+                }
+                let mut new_q = q.clone();
+                new_q.data = Some("m_pq_mgmt".to_string());
+                return handle_callback(bot, new_q, state).await;
+            }
+            "m_pq_init" => {
+                match ConfigManager::generate_reality_pq_keys().await {
+                    Ok(()) => {
+                        bot.answer_callback_query(q.id.clone())
+                            .text("✅ ML-DSA-65 seed/verify 已通过 wwps-core mldsa65 生成并写入 /etc/wwps/。请重启 Bot 或重新生成配置后生效。")
+                            .show_alert(true)
+                            .await?;
+                    }
+                    Err(e) => {
+                        bot.answer_callback_query(q.id.clone())
+                            .text(format!("❌ 初始化失败: {}", e))
+                            .show_alert(true)
+                            .await?;
+                    }
+                }
+                let mut new_q = q.clone();
+                new_q.data = Some("m_pq_mgmt".to_string());
+                return handle_callback(bot, new_q, state).await;
             }
             "cfg_del_all_confirm" => {
                 let keyboard = InlineKeyboardMarkup::new(vec![

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use base64::{Engine as _, engine::general_purpose};
 use once_cell::sync::Lazy;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rand::rngs::StdRng;
@@ -10,25 +11,63 @@ use tokio::fs;
 
 use crate::logic::cmd_async::run_cmd_output;
 
-/// 全局 REALITY PQ 公钥（ML-DSA-65），用于 mldsa65Verify / pqv。
-/// 优先读取环境变量 `TGBOT_REALITY_PQ_PUB`，否则尝试 `/etc/wwps/reality_pq.pub`。
-static REALITY_PQ_PUB: Lazy<String> = Lazy::new(|| {
-    if let Ok(v) = std::env::var("TGBOT_REALITY_PQ_PUB") {
-        let trimmed = v.trim().to_string();
-        if !trimmed.is_empty() {
-            return trimmed;
+/// 服务端 mldsa65Seed（32 字节 seed 的 base64url），来自 xray/wwps-core mldsa65 输出。
+/// 优先环境变量 `TGBOT_REALITY_PQ_SEED`，否则 `/etc/wwps/reality_pq.seed`。
+static REALITY_PQ_SEED: Lazy<String> = Lazy::new(|| {
+    if let Ok(v) = std::env::var("TGBOT_REALITY_PQ_SEED") {
+        let t = v.trim().to_string();
+        if !t.is_empty() {
+            return t;
         }
     }
-
-    if let Ok(content) = std::fs::read_to_string("/etc/wwps/reality_pq.pub") {
-        let trimmed = content.trim().to_string();
-        if !trimmed.is_empty() {
-            return trimmed;
+    if let Ok(c) = std::fs::read_to_string("/etc/wwps/reality_pq.seed") {
+        let t = c.trim().to_string();
+        if !t.is_empty() {
+            return t;
         }
     }
-
     String::new()
 });
+
+/// 客户端 mldsa65Verify / pqv（公钥 base64url），来自 xray/wwps-core mldsa65 输出。
+/// 优先环境变量 `TGBOT_REALITY_PQ_VERIFY` 或 `TGBOT_REALITY_PQ_PUB`，否则 `/etc/wwps/reality_pq.pub`。
+static REALITY_PQ_VERIFY: Lazy<String> = Lazy::new(|| {
+    if let Ok(v) = std::env::var("TGBOT_REALITY_PQ_VERIFY") {
+        let t = v.trim().to_string();
+        if !t.is_empty() {
+            return t;
+        }
+    }
+    if let Ok(v) = std::env::var("TGBOT_REALITY_PQ_PUB") {
+        let t = v.trim().to_string();
+        if !t.is_empty() {
+            return t;
+        }
+    }
+    if let Ok(c) = std::fs::read_to_string("/etc/wwps/reality_pq.pub") {
+        let t = c.trim().to_string();
+        if !t.is_empty() {
+            return t;
+        }
+    }
+    String::new()
+});
+
+/// 将 PQ verify（Standard 或 URL-safe Base64）转为 URL-safe 输出，兼容链接与 JSON。
+fn reality_pq_verify_as_base64url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let bytes = general_purpose::STANDARD
+        .decode(s)
+        .or_else(|_| general_purpose::URL_SAFE_NO_PAD.decode(s))
+        .ok()?;
+    if bytes.is_empty() {
+        return None;
+    }
+    Some(general_purpose::URL_SAFE_NO_PAD.encode(&bytes))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IpVersion {
@@ -96,6 +135,88 @@ impl ConfigManager {
             }
         }
         Ok(out)
+    }
+
+    /// 是否已配置 ML-DSA-65（Reality PQ）：seed 或 verify 的环境变量/文件存在即视为已配置。
+    pub fn is_reality_pq_configured() -> bool {
+        if std::env::var("TGBOT_REALITY_PQ_SEED")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        if std::env::var("TGBOT_REALITY_PQ_VERIFY")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        if std::env::var("TGBOT_REALITY_PQ_PUB")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        Path::new("/etc/wwps/reality_pq.seed").exists()
+            || Path::new("/etc/wwps/reality_pq.pub").exists()
+    }
+
+    /// 删除 ML-DSA-65 相关文件（禁用）。删除后需重启 Bot 或重新生成配置后生效。
+    pub async fn delete_reality_pq() -> Result<()> {
+        const PQ_SEED_PATH: &str = "/etc/wwps/reality_pq.seed";
+        const PQ_PUB_PATH: &str = "/etc/wwps/reality_pq.pub";
+        const PQ_KEY_PATH: &str = "/etc/wwps/reality_pq.key";
+        for path in [PQ_SEED_PATH, PQ_PUB_PATH, PQ_KEY_PATH] {
+            if Path::new(path).exists() {
+                let _ = fs::remove_file(path).await;
+            }
+        }
+        Ok(())
+    }
+
+    /// 通过执行 wwps-core mldsa65（或 xray mldsa65）生成 seed/verify 并写入文件，与 Xray 完全兼容。
+    pub async fn generate_reality_pq_keys() -> Result<()> {
+        const PQ_SEED_PATH: &str = "/etc/wwps/reality_pq.seed";
+        const PQ_PUB_PATH: &str = "/etc/wwps/reality_pq.pub";
+        let stdout = match run_wwps_core_cmd(&["mldsa65"]).await {
+            Ok(out) => out,
+            Err(_) => {
+                let (status, out, err) =
+                    run_cmd_output("xray", &["mldsa65"], Self::TIMEOUT_WWPS_CORE).await?;
+                if !status.success() {
+                    anyhow::bail!("xray mldsa65 执行失败: {}", err);
+                }
+                out
+            }
+        };
+        let seed = stdout
+            .lines()
+            .find(|l| l.starts_with("Seed:"))
+            .and_then(|l| l.strip_prefix("Seed:").map(|s| s.trim().to_string()))
+            .ok_or_else(|| anyhow!("❌ mldsa65 输出未包含 Seed"))?;
+        let verify = stdout
+            .lines()
+            .find(|l| l.starts_with("Verify:"))
+            .and_then(|l| l.strip_prefix("Verify:").map(|s| s.trim().to_string()))
+            .ok_or_else(|| anyhow!("❌ mldsa65 输出未包含 Verify"))?;
+        if seed.is_empty() || verify.is_empty() {
+            anyhow::bail!("❌ mldsa65 输出 Seed/Verify 为空");
+        }
+        let dir = Path::new(PQ_SEED_PATH)
+            .parent()
+            .unwrap_or(Path::new("/etc/wwps"));
+        if !dir.exists() {
+            tokio::fs::create_dir_all(dir)
+                .await
+                .context("创建 /etc/wwps 失败")?;
+        }
+        fs::write(PQ_SEED_PATH, seed.as_bytes())
+            .await
+            .context("写入 reality_pq.seed 失败")?;
+        fs::write(PQ_PUB_PATH, verify.as_bytes())
+            .await
+            .context("写入 reality_pq.pub 失败")?;
+        Ok(())
     }
 
     async fn generate_wwps_uuid() -> Result<String> {
@@ -209,10 +330,10 @@ impl ConfigManager {
             }
         });
 
-        // 如已配置 PQ 公钥，则下发 mldsa65Verify。
-        if !REALITY_PQ_PUB.is_empty() {
-            stream_settings["realitySettings"]["mldsa65Verify"] =
-                serde_json::Value::String(REALITY_PQ_PUB.clone());
+        // 服务端：如已配置 PQ seed，则下发 mldsa65Seed（Xray 标准，与 mldsa65 命令输出一致）。
+        if !REALITY_PQ_SEED.is_empty() {
+            stream_settings["realitySettings"]["mldsa65Seed"] =
+                serde_json::Value::String(REALITY_PQ_SEED.clone());
         }
 
         if proto == RealityProto::XHTTP {
@@ -489,9 +610,8 @@ impl ConfigManager {
                     uuid, fmt_host, port, encoded_sni, encoded_pbk, short_id,
                 );
 
-                if !REALITY_PQ_PUB.is_empty() {
-                    let encoded_pqv =
-                        utf8_percent_encode(&REALITY_PQ_PUB, NON_ALPHANUMERIC).to_string();
+                if let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
+                    let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
                     link.push_str(&format!("&pqv={}", encoded_pqv));
                 }
 
@@ -534,9 +654,8 @@ impl ConfigManager {
                     }
                 }
 
-                if !REALITY_PQ_PUB.is_empty() {
-                    let encoded_pqv =
-                        utf8_percent_encode(&REALITY_PQ_PUB, NON_ALPHANUMERIC).to_string();
+                if let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
+                    let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
                     link.push_str(&format!("&pqv={}", encoded_pqv));
                 }
 
@@ -900,7 +1019,31 @@ async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
 mod tests {
     use super::*;
     use anyhow::anyhow;
+    use base64::{Engine as _, engine::general_purpose};
     use percent_encoding::percent_decode_str;
+
+    #[test]
+    fn test_reality_pq_verify_as_base64url() {
+        // Standard base64 含 +/ 的输入应转为 URL-safe 输出
+        let bytes_with_special = b"\xfc\xfd\xfe\xff";
+        let std_b64 = general_purpose::STANDARD.encode(bytes_with_special);
+        let out = reality_pq_verify_as_base64url(&std_b64).expect("应成功转换");
+        assert!(!out.contains('+'));
+        assert!(!out.contains('/'));
+        assert_eq!(
+            general_purpose::URL_SAFE_NO_PAD.decode(&out).ok(),
+            Some(bytes_with_special.to_vec())
+        );
+
+        // URL-safe 输入应保持 URL-safe
+        let url_b64 = general_purpose::URL_SAFE_NO_PAD.encode(b"world");
+        let out2 = reality_pq_verify_as_base64url(&url_b64).expect("应成功转换");
+        assert_eq!(out2, url_b64);
+
+        // 空或无效输入应返回 None
+        assert!(reality_pq_verify_as_base64url("").is_none());
+        assert!(reality_pq_verify_as_base64url("!!!").is_none());
+    }
 
     #[test]
     fn test_build_reality_vless_inbound_architecture() {
@@ -1051,10 +1194,12 @@ mod tests {
         assert!(link.contains("mode=auto"));
         assert!(link.contains("&extra="));
 
+        // 提取 extra 参数值（可能其后有 &pqv=，需只取到下一个 &）
         let extra_encoded = link
             .split("&extra=")
             .nth(1)
             .and_then(|s| s.split('#').next())
+            .and_then(|s| s.split('&').next())
             .expect("应存在 extra 参数");
         let extra_decoded = percent_decode_str(extra_encoded)
             .decode_utf8()
@@ -1107,10 +1252,12 @@ mod tests {
         assert!(!link.contains(&format!("@[{}]:", host_v4)));
         assert!(link.contains("&extra="));
 
+        // 提取 extra 参数值（可能其后有 &pqv=，需只取到下一个 &）
         let extra_encoded = link
             .split("&extra=")
             .nth(1)
             .and_then(|s| s.split('#').next())
+            .and_then(|s| s.split('&').next())
             .expect("应存在 extra 参数");
         let extra_decoded = percent_decode_str(extra_encoded)
             .decode_utf8()
