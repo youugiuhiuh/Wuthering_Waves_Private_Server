@@ -144,7 +144,10 @@ impl MaintenanceManager {
             .await
             .context("更新 apt 软件源失败")?;
 
-        progress_callback(7, &format!("📥 安装 XanMod v{} 内核...", cpu_level));
+        progress_callback(7, "📦 安装内核依赖...");
+        install_xanmod_dependencies().await?;
+
+        progress_callback(8, &format!("📥 安装 XanMod v{} 内核...", cpu_level));
         install_xanmod_kernel(cpu_level).await?;
 
         progress_callback(8, "🔄 更新 GRUB 引导配置...");
@@ -448,7 +451,9 @@ async fn detect_bbrv3_support() -> Result<BbrInstallerSupport> {
 
 const CPU_V1_FLAGS: &[&str] = &["lm", "cmov", "cx8", "fpu", "fxsr", "mmx", "sse2"];
 const CPU_V2_FLAGS: &[&str] = &["cx16", "lahf", "popcnt", "sse4_1", "sse4_2", "ssse3"];
-const CPU_V3_FLAGS: &[&str] = &["avx", "avx2", "bmi1", "bmi2", "f16c", "fma", "movbe"];
+const CPU_V3_FLAGS: &[&str] = &[
+    "avx", "avx2", "bmi1", "bmi2", "f16c", "fma", "movbe", "xsave",
+];
 const CPU_V4_FLAGS: &[&str] = &["avx512f", "avx512bw", "avx512cd", "avx512dq", "avx512vl"];
 
 async fn detect_cpu_level() -> Result<u8> {
@@ -463,16 +468,17 @@ async fn detect_cpu_level() -> Result<u8> {
 
     let flags: HashSet<&str> = flags.split_whitespace().skip(1).collect();
 
-    if has_all_flags(&flags, CPU_V4_FLAGS) {
-        return Ok(4);
-    }
-    if has_all_flags(&flags, CPU_V3_FLAGS) {
-        return Ok(3);
-    }
-    if has_all_flags(&flags, CPU_V2_FLAGS) {
-        return Ok(2);
-    }
+    // 检测顺序: v1 → v2 → v3 → v4 (从低到高)
     if has_all_flags(&flags, CPU_V1_FLAGS) {
+        if has_all_flags(&flags, CPU_V2_FLAGS) {
+            if has_all_flags(&flags, CPU_V3_FLAGS) {
+                if has_all_flags(&flags, CPU_V4_FLAGS) {
+                    return Ok(4);
+                }
+                return Ok(3);
+            }
+            return Ok(2);
+        }
         return Ok(1);
     }
 
@@ -534,7 +540,7 @@ async fn download_xanmod_gpg_key() -> Result<()> {
 
     let key_content = key_content.context(format!("所有 GPG 密钥源均失败: {}", last_error))?;
 
-    let gpg_path = "/usr/share/keyrings/xanmod-archive-keyring.gpg";
+    let gpg_path = "/etc/apt/keyrings/xanmod-archive-keyring.gpg";
     fs::create_dir_all(std::path::Path::new(gpg_path).parent().unwrap())
         .await
         .context("创建 keyrings 目录失败")?;
@@ -570,7 +576,15 @@ async fn download_xanmod_gpg_key() -> Result<()> {
 }
 
 async fn add_xanmod_apt_source() -> Result<()> {
-    let source_content = "deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main";
+    let codename = run_cmd_output("lsb_release", &["-sc"], TIMEOUT_SHORT)
+        .await
+        .map(|(_, out, _)| out.trim().to_string())
+        .unwrap_or_else(|_| "noble".to_string());
+
+    let source_content = format!(
+        "deb [signed-by=/etc/apt/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org {} main",
+        codename
+    );
 
     fs::write(
         "/etc/apt/sources.list.d/xanmod-release.list",
@@ -582,28 +596,54 @@ async fn add_xanmod_apt_source() -> Result<()> {
     Ok(())
 }
 
+async fn install_xanmod_dependencies() -> Result<()> {
+    let deps = ["dkms", "libdw-dev", "clang", "lld", "llvm"];
+
+    let dep_list = deps.join(" ");
+    let _ = run_cmd_checked(
+        "apt-get",
+        &["install", "-y", "--no-install-recommends", &dep_list],
+        TIMEOUT_PACKAGE_INSTALL,
+    )
+    .await;
+
+    Ok(())
+}
+
 async fn install_xanmod_kernel(level: u8) -> Result<()> {
-    let package_name = match level {
-        1 => "linux-xanmod-x64v1",
-        2 => "linux-xanmod-x64v2",
-        3 => "linux-xanmod-x64v3",
-        4 => "linux-xanmod-x64v4",
+    let package_names = match level {
+        1 => vec!["linux-xanmod-x64v1", "linux-xanmod"],
+        2 => vec!["linux-xanmod-x64v2", "linux-xanmod-x64v1", "linux-xanmod"],
+        3 => vec![
+            "linux-xanmod-x64v3",
+            "linux-xanmod-x64v2",
+            "linux-xanmod-x64v1",
+            "linux-xanmod",
+        ],
+        4 => vec![
+            "linux-xanmod-x64v4",
+            "linux-xanmod-x64v3",
+            "linux-xanmod-x64v2",
+            "linux-xanmod-x64v1",
+            "linux-xanmod",
+        ],
         _ => anyhow::bail!("不支持的 CPU 级别: {}", level),
     };
 
-    let status = run_cmd_status(
-        "apt-get",
-        &["install", "-y", package_name],
-        TIMEOUT_PACKAGE_INSTALL,
-    )
-    .await
-    .with_context(|| format!("安装 {} 失败", package_name))?;
+    for package_name in &package_names {
+        let result = run_cmd_checked(
+            "apt-get",
+            &["install", "-y", package_name],
+            TIMEOUT_PACKAGE_INSTALL,
+        )
+        .await;
 
-    if !status.success() {
-        anyhow::bail!("安装内核包 {} 失败", package_name);
+        if result.is_ok() {
+            return Ok(());
+        }
     }
 
-    Ok(())
+    anyhow::bail!("所有 XanMod 内核包安装失败")
 }
 
 async fn update_grub() -> Result<()> {
