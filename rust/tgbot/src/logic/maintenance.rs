@@ -575,37 +575,21 @@ async fn install_xanmod_dependencies() -> Result<()> {
 
 async fn install_xanmod_kernel(level: u8) -> Result<()> {
     let package_names = match level {
-        1 => vec![
-            "linux-xanmod-lts-x64v1",
-            "linux-xanmod-lts",
-            "linux-xanmod-x64v1",
-            "linux-xanmod",
-        ],
+        1 => vec!["linux-xanmod-lts-x64v1", "linux-xanmod-lts"],
         2 => vec![
             "linux-xanmod-lts-x64v2",
+            "linux-xanmod-lts-x64v1",
             "linux-xanmod-lts",
-            "linux-xanmod-x64v2",
-            "linux-xanmod-x64v1",
-            "linux-xanmod",
         ],
         3 => vec![
             "linux-xanmod-lts-x64v3",
             "linux-xanmod-lts-x64v2",
             "linux-xanmod-lts",
-            "linux-xanmod-x64v3",
-            "linux-xanmod-x64v2",
-            "linux-xanmod-x64v1",
-            "linux-xanmod",
         ],
         4 => vec![
             "linux-xanmod-lts-x64v4",
             "linux-xanmod-lts-x64v3",
             "linux-xanmod-lts",
-            "linux-xanmod-x64v4",
-            "linux-xanmod-x64v3",
-            "linux-xanmod-x64v2",
-            "linux-xanmod-x64v1",
-            "linux-xanmod",
         ],
         _ => anyhow::bail!("不支持的 CPU 级别: {}", level),
     };
