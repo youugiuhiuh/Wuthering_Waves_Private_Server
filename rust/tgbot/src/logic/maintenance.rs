@@ -489,16 +489,40 @@ async fn download_xanmod_gpg_key() -> Result<()> {
         .build()
         .context("构建 HTTP 客户端失败")?;
 
-    let key_content = client
-        .get("https://gitlab.com/xanmod.org/packages/-/raw/main/archive.key")
-        .send()
-        .await
-        .context("下载 XanMod GPG 密钥失败")?
-        .error_for_status()
-        .context("GPG 密钥下载返回错误状态")?
-        .bytes()
-        .await
-        .context("读取 GPG 密钥内容失败")?;
+    let key_urls = [
+        "https://dl.xanmod.org/gpg.key",
+        "https://mirror.xanmod.org/releases/gpg/key.pub",
+        "https://xanmod.org/archive.key",
+        "https://deb.xanmod.org/archive.key",
+    ];
+
+    let mut key_content: Option<Vec<u8>> = None;
+    let mut last_error = String::new();
+
+    for url in key_urls {
+        match client.get(url).send().await {
+            Ok(resp) if resp.status().is_success() => match resp.bytes().await {
+                Ok(bytes) => {
+                    key_content = Some(bytes.to_vec());
+                    break;
+                }
+                Err(e) => {
+                    last_error = format!("读取密钥失败: {}", e);
+                    continue;
+                }
+            },
+            Ok(resp) => {
+                last_error = format!("HTTP {}", resp.status());
+                continue;
+            }
+            Err(e) => {
+                last_error = format!("请求失败: {}", e);
+                continue;
+            }
+        }
+    }
+
+    let key_content = key_content.context(format!("所有 GPG 密钥源均失败: {}", last_error))?;
 
     let gpg_path = "/usr/share/keyrings/xanmod-archive-keyring.gpg";
     fs::create_dir_all(std::path::Path::new(gpg_path).parent().unwrap())
