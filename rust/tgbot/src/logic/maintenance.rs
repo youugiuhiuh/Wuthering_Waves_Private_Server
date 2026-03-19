@@ -491,9 +491,11 @@ fn has_all_flags(flags: &HashSet<&str>, required: &[&str]) -> bool {
 
 async fn download_xanmod_gpg_key() -> Result<()> {
     let gpg_path = "/etc/apt/keyrings/xanmod-archive-keyring.gpg";
-    fs::create_dir_all(std::path::Path::new(gpg_path).parent().unwrap())
-        .await
-        .context("创建 keyrings 目录失败")?;
+    if let Some(parent) = std::path::Path::new(gpg_path).parent() {
+        fs::create_dir_all(parent)
+            .await
+            .context("创建 keyrings 目录失败")?;
+    }
 
     let _ = fs::remove_file(gpg_path).await;
 

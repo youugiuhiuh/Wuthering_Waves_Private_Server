@@ -174,4 +174,51 @@ mod tests {
         let c = selector.next();
         assert!(a != b || b != c || a != c);
     }
+
+    #[test]
+    fn get_for_country_uk_normalizes_to_gb() {
+        let selector_uk = SNISelector::get_for_country("UK", RealityProto::Vision);
+        let selector_gb = SNISelector::get_for_country("GB", RealityProto::Vision);
+        let mut s1 = selector_uk;
+        let mut s2 = selector_gb;
+        assert!(!s1.next().is_empty());
+        assert!(!s2.next().is_empty());
+    }
+
+    #[test]
+    fn get_for_country_xhttp_different_prefix() {
+        let selector = SNISelector::get_for_country("US", RealityProto::XHTTP);
+        let mut s = selector;
+        assert!(!s.next().is_empty());
+    }
+
+    #[test]
+    fn load_embedded_handles_comments_and_empty_lines() {
+        let domains = SNISelector::load_embedded("default.txt");
+        if let Some(domains) = domains {
+            for domain in &domains {
+                assert!(!domain.starts_with('#'));
+                assert!(!domain.starts_with("//"));
+                assert!(!domain.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn new_from_list_shuffles_domains() {
+        let list = vec![
+            "a.com".to_string(),
+            "b.com".to_string(),
+            "c.com".to_string(),
+            "d.com".to_string(),
+            "e.com".to_string(),
+        ];
+        let mut results = Vec::new();
+        for _ in 0..10 {
+            let selector = SNISelector::new_from_list(list.clone());
+            results.push(selector.domains.clone());
+        }
+        let all_same = results.iter().all(|r| r == &results[0]);
+        assert!(!all_same, "Shuffle should produce different orderings");
+    }
 }

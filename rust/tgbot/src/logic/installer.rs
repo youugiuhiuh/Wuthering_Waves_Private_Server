@@ -1,9 +1,9 @@
 use crate::logic::maintenance::MaintenanceManager;
 use crate::logic::upgrade::wwps_core::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
 use anyhow::{Context, Result, anyhow};
-use once_cell::sync::Lazy;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::{ChatId, MessageId, ParseMode};
 use tokio::fs;
@@ -14,6 +14,9 @@ const TOTAL_STEPS: u8 = 6;
 const WWPS_CORE_INSTALL_DIR: &str = "/etc/wwps/wwps-core";
 const WWPS_CORE_BACKUP_DIR: &str = "/etc/wwps/wwps-core/backup";
 const WWPS_CORE_TEMP_DIR: &str = "/tmp/wwps-core-installer";
+const BASE_PACKAGES_APK: &[&str] = &[
+    "sudo", "curl", "wget", "jq", "tar", "unzip", "bash", "openrc", "chrony",
+];
 
 pub struct WarpInstaller;
 
@@ -75,20 +78,22 @@ impl WarpInstaller {
     }
 }
 
-static PROGRESS_STATE: Lazy<Mutex<ProgressState>> = Lazy::new(|| {
-    Mutex::new(ProgressState {
-        running: false,
-        step: 0,
-        total: TOTAL_STEPS,
-        description: String::new(),
-    })
-});
-
 struct ProgressState {
     running: bool,
     step: u8,
     total: u8,
     description: String,
+}
+
+impl ProgressState {
+    fn new() -> Self {
+        Self {
+            running: false,
+            step: 0,
+            total: TOTAL_STEPS,
+            description: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,7 +103,12 @@ pub enum RealityInstallOutcome {
     InProgress,
 }
 
-pub struct RealityInstaller;
+pub struct RealityInstaller {
+    bot: Bot,
+    chat_id: ChatId,
+    msg_id: MessageId,
+    progress_state: Arc<Mutex<ProgressState>>,
+}
 
 impl RealityInstaller {
     pub async fn run(
@@ -110,27 +120,18 @@ impl RealityInstaller {
             return Ok(RealityInstallOutcome::AlreadyReady);
         }
 
+        let progress_state = Arc::new(Mutex::new(ProgressState::new()));
+
         {
-            let mut state = PROGRESS_STATE.lock().await;
-            if state.running {
-                let text = build_progress_text(state.step, state.total, &state.description, true);
-                drop(state);
-                let _ = bot
-                    .edit_message_text(chat_id, msg_id, text)
-                    .parse_mode(ParseMode::Html)
-                    .await;
-                return Ok(RealityInstallOutcome::InProgress);
-            }
+            let mut state = progress_state.lock().await;
             state.running = true;
-            state.step = 0;
-            state.total = TOTAL_STEPS;
-            state.description.clear();
         }
 
         let installer = RealityInstallerInternal {
             bot: bot.clone(),
             chat_id,
             msg_id,
+            progress_state: progress_state.clone(),
         };
 
         let outcome = match installer.execute().await {
@@ -138,7 +139,7 @@ impl RealityInstaller {
             Err(err) => {
                 installer.report_failure(&err).await;
                 {
-                    let mut state = PROGRESS_STATE.lock().await;
+                    let mut state = progress_state.lock().await;
                     state.running = false;
                 }
                 return Err(err);
@@ -146,7 +147,7 @@ impl RealityInstaller {
         };
 
         {
-            let mut state = PROGRESS_STATE.lock().await;
+            let mut state = progress_state.lock().await;
             state.running = false;
             state.step = TOTAL_STEPS;
             state.description = "✅ 初始化完成".to_string();
@@ -160,6 +161,7 @@ pub struct RealityInstallerInternal {
     bot: Bot,
     chat_id: ChatId,
     msg_id: MessageId,
+    progress_state: Arc<Mutex<ProgressState>>,
 }
 
 impl RealityInstallerInternal {
@@ -205,9 +207,7 @@ impl RealityInstallerInternal {
                 "ca-certificates",
                 "chrony",
             ],
-            PackageManager::Apk => vec![
-                "sudo", "curl", "wget", "jq", "tar", "unzip", "bash", "openrc", "chrony",
-            ],
+            PackageManager::Apk => BASE_PACKAGES_APK.to_vec(),
         };
 
         let mut missing_packages = Vec::new();
@@ -301,7 +301,7 @@ impl RealityInstallerInternal {
 
     async fn update_progress(&self, step: u8, desc: &str) -> Result<()> {
         {
-            let mut state = PROGRESS_STATE.lock().await;
+            let mut state = self.progress_state.lock().await;
             state.step = step.min(TOTAL_STEPS);
             state.description = desc.to_string();
         }
@@ -344,9 +344,7 @@ impl RealityInstallerInternal {
                 "ca-certificates",
                 "chrony",
             ],
-            PackageManager::Apk => vec![
-                "sudo", "curl", "wget", "jq", "tar", "unzip", "bash", "openrc", "chrony",
-            ],
+            PackageManager::Apk => BASE_PACKAGES_APK.to_vec(),
         };
 
         for (i, pkg) in packages.iter().enumerate() {

@@ -127,4 +127,63 @@ mod tests {
         assert!(result.is_ok());
         assert!(result.unwrap().success());
     }
+
+    #[tokio::test]
+    async fn run_cmd_output_captures_stderr() {
+        let result = run_cmd_output("sh", &["-c", "echo error >&2"], Duration::from_secs(2)).await;
+        assert!(result.is_ok());
+        let (_, _, stderr) = result.unwrap();
+        assert!(stderr.contains("error"));
+    }
+
+    #[tokio::test]
+    async fn run_cmd_checked_fails_on_non_zero_with_error_message() {
+        let result = run_cmd_checked(
+            "sh",
+            &["-c", "echo fail >&2; exit 1"],
+            Duration::from_secs(2),
+        )
+        .await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("fail") || err.to_string().contains("exit"));
+    }
+
+    #[tokio::test]
+    async fn run_cmd_output_nonexistent_command_fails() {
+        let result = run_cmd_output("nonexistent_command_xyz", &[], Duration::from_secs(1)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn run_cmd_stream_callback_receives_lines() {
+        let mut lines = Vec::new();
+        let result = run_cmd_stream(
+            "sh",
+            &["-c", "echo line1; echo line2; echo line3"],
+            Duration::from_secs(2),
+            |line| {
+                lines.push(line);
+            },
+        )
+        .await;
+        assert!(result.is_ok());
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("line1") || l.contains("line2") || l.contains("line3"))
+        );
+    }
+
+    #[tokio::test]
+    async fn run_cmd_stream_timeout_returns_error() {
+        let result = run_cmd_stream(
+            "sh",
+            &["-c", "sleep 10"],
+            Duration::from_millis(100),
+            |_line| {},
+        )
+        .await;
+        assert!(result.is_err());
+    }
 }

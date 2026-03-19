@@ -11,18 +11,13 @@ pub struct SystemMonitor;
 impl SystemMonitor {
     /// 获取系统完整状态报告 (formatted string)
     pub async fn get_status_report() -> Result<String> {
-        tokio::task::spawn_blocking(|| {
+        let interval = sysinfo::MINIMUM_CPU_UPDATE_INTERVAL;
+
+        let (sys_data, cpu_usage) = tokio::task::spawn_blocking(move || {
             let mut sys = System::new_all();
             sys.refresh_all();
             sys.refresh_all();
 
-            // 为了准确计算 CPU 使用率，需要至少采样两次
-            std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-            sys.refresh_cpu();
-
-            let cpu_usage = sys.global_cpu_info().cpu_usage();
-
-            // 内存
             let total_mem = sys.total_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
             let used_mem = sys.used_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
             let mem_percent = if total_mem > 0.0 {
@@ -31,11 +26,9 @@ impl SystemMonitor {
                 0.0
             };
 
-            // 交换分区
             let total_swap = sys.total_swap() as f64 / 1024.0 / 1024.0 / 1024.0;
             let used_swap = sys.used_swap() as f64 / 1024.0 / 1024.0 / 1024.0;
 
-            // 磁盘 (0.30 change: Disks struct)
             let disks = Disks::new_with_refreshed_list();
             let total_disk: u64 = disks.list().iter().map(|d| d.total_space()).sum();
             let used_disk: u64 = disks
@@ -51,7 +44,6 @@ impl SystemMonitor {
                 0.0
             };
 
-            // 网络 (0.30 change: Networks struct)
             let networks = Networks::new_with_refreshed_list();
             let mut rx_total = 0;
             let mut tx_total = 0;
@@ -62,49 +54,104 @@ impl SystemMonitor {
             let rx_gb = rx_total as f64 / 1024.0 / 1024.0 / 1024.0;
             let tx_gb = tx_total as f64 / 1024.0 / 1024.0 / 1024.0;
 
-            // 运行时间
             let uptime = System::uptime();
             let days = uptime / 86400;
             let hours = (uptime % 86400) / 3600;
             let minutes = (uptime % 3600) / 60;
 
-            Ok(format!(
-                "🖥 **系统状态**:\n\
+            (
+                (
+                    total_mem,
+                    used_mem,
+                    mem_percent,
+                    total_swap,
+                    used_swap,
+                    total_disk_gb,
+                    used_disk_gb,
+                    disk_percent,
+                    rx_gb,
+                    tx_gb,
+                    days,
+                    hours,
+                    minutes,
+                ),
+                sys.global_cpu_info().cpu_usage(),
+            )
+        })
+        .await?;
+
+        tokio::time::sleep(interval).await;
+
+        let cpu_usage = tokio::task::spawn_blocking(move || {
+            let mut sys = System::new();
+            sys.refresh_cpu();
+            sys.refresh_cpu();
+            sys.global_cpu_info().cpu_usage()
+        })
+        .await?;
+
+        let (
+            total_mem,
+            used_mem,
+            mem_percent,
+            total_swap,
+            used_swap,
+            total_disk_gb,
+            used_disk_gb,
+            disk_percent,
+            rx_gb,
+            tx_gb,
+            days,
+            hours,
+            minutes,
+        ) = sys_data;
+
+        Ok(format!(
+            "🖥 **系统状态**:\n\
             ⏱ 运行时间: {}天 {}小时 {}分\n\
             💹 CPU使用: {:.1}%\n\
             🧠 内存: {:.2} / {:.2} GB ({:.1}%)\n\
             🔁 Swap: {:.2} / {:.2} GB\n\
             💾 硬盘: {:.2} / {:.2} GB ({:.1}%)\n\
             🌐 网络流量: ⬇️ {:.2} GB | ⬆️ {:.2} GB",
-                days,
-                hours,
-                minutes,
-                cpu_usage,
-                used_mem,
-                total_mem,
-                mem_percent,
-                used_swap,
-                total_swap,
-                used_disk_gb,
-                total_disk_gb,
-                disk_percent,
-                rx_gb,
-                tx_gb
-            ))
-        })
-        .await?
+            days,
+            hours,
+            minutes,
+            cpu_usage,
+            used_mem,
+            total_mem,
+            mem_percent,
+            used_swap,
+            total_swap,
+            used_disk_gb,
+            total_disk_gb,
+            disk_percent,
+            rx_gb,
+            tx_gb
+        ))
     }
 
     /// 兼容旧 API: 获取 CPU 使用率字符串
     pub async fn get_cpu_usage() -> Result<String> {
+        let interval = sysinfo::MINIMUM_CPU_UPDATE_INTERVAL;
+
         tokio::task::spawn_blocking(|| {
             let mut sys = System::new();
             sys.refresh_cpu();
-            std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-            sys.refresh_cpu();
-            Ok(format!("{:.1}%", sys.global_cpu_info().cpu_usage()))
         })
-        .await?
+        .await?;
+
+        tokio::time::sleep(interval).await;
+
+        let cpu_usage = tokio::task::spawn_blocking(|| {
+            let mut sys = System::new();
+            sys.refresh_cpu();
+            sys.refresh_cpu();
+            sys.global_cpu_info().cpu_usage()
+        })
+        .await?;
+
+        Ok(format!("{:.1}%", cpu_usage))
     }
 
     /// 兼容旧 API: 获取内存使用率字符串

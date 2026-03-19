@@ -9,6 +9,8 @@ use crate::logic::scheduler::task_types::TaskType;
 use crate::logic::self_destruct::SelfDestructExecutor;
 use crate::logic::totp::TotpManager;
 
+const RECENT_AUTH_WINDOW_SECS: u64 = 5 * 60;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DestructStep {
     AwaitFirstTotp,
@@ -125,6 +127,18 @@ impl AppState {
             .unwrap_or(false)
     }
 
+    pub async fn is_recently_authenticated(&self, user_id: i64) -> bool {
+        if !self.is_admin_user(user_id) {
+            return false;
+        }
+
+        let sessions = self.sessions.lock().await;
+        sessions
+            .get(&user_id)
+            .map(|t| t.elapsed() < Duration::from_secs(RECENT_AUTH_WINDOW_SECS))
+            .unwrap_or(false)
+    }
+
     pub async fn session_timeout_secs(&self) -> u64 {
         *self.session_timeout_secs.lock().await
     }
@@ -180,7 +194,8 @@ impl AppState {
             let duration = lockout_durations
                 .get(rec.lock_level)
                 .copied()
-                .unwrap_or(*lockout_durations.last().unwrap());
+                .or_else(|| lockout_durations.last().copied())
+                .unwrap_or(Duration::from_secs(3600));
 
             rec.cooldown_until = Some(now + duration);
             rec.count = 0;
@@ -500,5 +515,131 @@ mod tests {
                 .await,
             TimeoutStatus::Expired
         );
+    }
+
+    #[tokio::test]
+    async fn is_authorized_returns_false_for_non_admin() {
+        let state = make_state();
+        assert!(!state.is_authorized(999).await);
+    }
+
+    #[tokio::test]
+    async fn is_authorized_returns_false_for_expired_session() {
+        let state = make_state();
+        let past = Instant::now() - Duration::from_secs(601);
+        state.record_auth_success(42, past).await;
+        assert!(!state.is_authorized(42).await);
+    }
+
+    #[tokio::test]
+    async fn auth_cooldown_remaining_returns_none_when_not_locked() {
+        let state = make_state();
+        let remaining = state.auth_cooldown_remaining(42, Instant::now()).await;
+        assert!(remaining.is_none());
+    }
+
+    #[tokio::test]
+    async fn auth_cooldown_remaining_returns_duration_when_locked() {
+        let state = make_state();
+        let now = Instant::now();
+        let lockouts = [Duration::from_secs(60)];
+        for _ in 0..5 {
+            state
+                .record_auth_failure(42, now, 5, Duration::from_secs(600), &lockouts)
+                .await;
+        }
+        let remaining = state.auth_cooldown_remaining(42, now).await;
+        assert!(remaining.is_some());
+        assert!(remaining.unwrap().as_secs() <= 60);
+    }
+
+    #[tokio::test]
+    async fn schedule_timeout_returns_not_tracked_for_unknown_chat() {
+        let state = make_state();
+        let status = state
+            .schedule_timeout_status(ChatId(123), Duration::from_secs(60))
+            .await;
+        assert_eq!(status, TimeoutStatus::NotTracked);
+    }
+
+    #[tokio::test]
+    async fn schedule_input_insert_and_snapshot() {
+        let state = make_state();
+        let chat_id = ChatId(100);
+        let input = ScheduleInputState {
+            updated_at: Instant::now(),
+            task_type: TaskType::Reboot,
+            frequency: ScheduleFrequency::Daily,
+            timezone: "UTC".to_string(),
+            day_of_week: None,
+            hour: Some(3),
+            minute: Some(0),
+            return_to: "m_main".to_string(),
+        };
+        state.insert_schedule_input(chat_id, input.clone()).await;
+        let snapshot = state.schedule_input_snapshot(chat_id).await;
+        assert!(snapshot.is_some());
+        let snap = snapshot.unwrap();
+        assert_eq!(snap.task_type, TaskType::Reboot);
+        assert_eq!(snap.hour, Some(3));
+    }
+
+    #[tokio::test]
+    async fn cancel_destruct_returns_true_when_exists() {
+        let state = make_state();
+        let chat_id = ChatId(5);
+        state.begin_destruct(chat_id, Instant::now()).await;
+        assert!(state.cancel_destruct(chat_id).await);
+    }
+
+    #[tokio::test]
+    async fn cancel_destruct_returns_false_when_not_exists() {
+        let state = make_state();
+        assert!(!state.cancel_destruct(ChatId(999)).await);
+    }
+
+    #[tokio::test]
+    async fn warp_input_timeout_tracking() {
+        let state = make_state();
+        let chat_id = ChatId(200);
+        state.start_warp_input(chat_id, Instant::now()).await;
+        let status = state
+            .take_warp_input_status(chat_id, Duration::from_secs(60))
+            .await;
+        assert_eq!(status, TimeoutStatus::Active);
+    }
+
+    #[tokio::test]
+    async fn auth_failure_window_resets_count() {
+        let state = make_state();
+        let now = Instant::now();
+        let lockouts = [Duration::from_secs(60)];
+        state
+            .record_auth_failure(42, now, 5, Duration::from_secs(600), &lockouts)
+            .await;
+        state
+            .record_auth_failure(42, now, 5, Duration::from_secs(600), &lockouts)
+            .await;
+        let far_future = now + Duration::from_secs(601);
+        let outcome = state
+            .record_auth_failure(42, far_future, 5, Duration::from_secs(600), &lockouts)
+            .await;
+        if let AuthFailureOutcome::Invalid { attempts, .. } = outcome {
+            assert_eq!(attempts, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn session_timeout_set_and_get() {
+        let state = make_state();
+        state.set_session_timeout_secs(3600).await;
+        assert_eq!(state.session_timeout_secs().await, 3600);
+    }
+
+    #[tokio::test]
+    async fn destruct_snapshot_returns_none_for_unknown_chat() {
+        let state = make_state();
+        let snapshot = state.destruct_snapshot(ChatId(999)).await;
+        assert!(snapshot.is_none());
     }
 }

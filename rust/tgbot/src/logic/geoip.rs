@@ -97,3 +97,34 @@ impl GeoIPService {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_geoip_location_country_code() {
+        let json = r#"{"ip":"1.1.1.1","location":{"city":"Test","country_code":"AU","country_name":"Australia"}}"#;
+        let loc: GeoIPLocation = serde_json::from_str(json).unwrap();
+        assert_eq!(loc.country_code(), "AU");
+        assert_eq!(loc.ip, "1.1.1.1");
+    }
+
+    #[test]
+    fn test_ip_sb_location_conversion() {
+        let json = r#"{"ip":"8.8.8.8","country_code":"US","country":"United States","city":"Mountain View"}"#;
+        let sb_loc: IpSbLocation = serde_json::from_str(json).unwrap();
+        let loc: GeoIPLocation = sb_loc.into();
+        assert_eq!(loc.ip, "8.8.8.8");
+        assert_eq!(loc.location.country_code, "US");
+        assert_eq!(loc.location.country_name, "United States");
+        assert_eq!(loc.location.city, "Mountain View");
+    }
+
+    #[test]
+    fn test_geoip_location_missing_fields() {
+        let json = r#"{"ip":"127.0.0.1"}"#;
+        let result: Result<GeoIPLocation, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+}

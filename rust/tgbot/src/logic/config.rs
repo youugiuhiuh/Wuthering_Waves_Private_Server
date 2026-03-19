@@ -245,12 +245,12 @@ impl ConfigManager {
     }
 
     fn generate_random_short_id() -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = StdRng::from_entropy();
         format!("{:016x}", rng.r#gen::<u64>())
     }
 
     fn generate_random_path() -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = StdRng::from_entropy();
         let suffix: String = (0..5)
             .map(|_| {
                 let charset = b"abcdefghijklmnopqrstuvwxyz0123456789";

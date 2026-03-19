@@ -128,3 +128,78 @@ impl ScheduledTask {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_task_type_display_names() {
+        assert_eq!(
+            TaskType::SystemMaintenance.get_display_name(),
+            "系统维护+重启 (Maintenance + Reboot)"
+        );
+        assert_eq!(
+            TaskType::GeoUpdate.get_display_name(),
+            "GeoData 更新 (Update GeoData)"
+        );
+        assert_eq!(TaskType::Reboot.get_display_name(), "系统重启 (Reboot)");
+        assert_eq!(
+            TaskType::ReloadCore.get_display_name(),
+            "重载核心 (Reload Core)"
+        );
+    }
+
+    #[test]
+    fn test_scheduled_task_new() {
+        let task = ScheduledTask::new(TaskType::Reboot, "0 3 * * *");
+        assert_eq!(task.cron_expression, "0 3 * * *");
+        assert_eq!(task.timezone, "UTC");
+        assert!(task.enabled);
+        assert_eq!(task.task_type, TaskType::Reboot);
+    }
+
+    #[test]
+    fn test_scheduled_task_new_with_timezone() {
+        let task =
+            ScheduledTask::new_with_timezone(TaskType::GeoUpdate, "0 6 * * *", "Asia/Shanghai");
+        assert_eq!(task.cron_expression, "0 6 * * *");
+        assert_eq!(task.timezone, "Asia/Shanghai");
+        assert!(task.enabled);
+        assert_eq!(task.task_type, TaskType::GeoUpdate);
+    }
+
+    #[test]
+    fn test_task_type_serialization() {
+        let json = r#""SystemMaintenance""#;
+        let task_type: TaskType = serde_json::from_str(json).unwrap();
+        assert_eq!(task_type, TaskType::SystemMaintenance);
+
+        let task = ScheduledTask::new(TaskType::ReloadCore, "*/5 * * * *");
+        let serialized = serde_json::to_string(&task).unwrap();
+        assert!(serialized.contains("ReloadCore"));
+        assert!(serialized.contains("*/5 * * * *"));
+    }
+
+    #[test]
+    fn test_scheduled_task_default_timezone() {
+        let json = r#"{"task_type":"GeoUpdate","cron_expression":"0 0 * * *","enabled":true}"#;
+        let task: ScheduledTask = serde_json::from_str(json).unwrap();
+        assert_eq!(task.timezone, "UTC");
+    }
+
+    #[test]
+    fn test_scheduled_task_deserialization() {
+        let json = r#"{
+            "task_type": "Reboot",
+            "cron_expression": "0 4 * * *",
+            "timezone": "America/New_York",
+            "enabled": false
+        }"#;
+        let task: ScheduledTask = serde_json::from_str(json).unwrap();
+        assert_eq!(task.task_type, TaskType::Reboot);
+        assert_eq!(task.cron_expression, "0 4 * * *");
+        assert_eq!(task.timezone, "America/New_York");
+        assert!(!task.enabled);
+    }
+}

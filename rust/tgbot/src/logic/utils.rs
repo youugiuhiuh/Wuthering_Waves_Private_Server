@@ -83,16 +83,92 @@ mod tests {
 
     #[test]
     fn test_human_readable_size() {
+        assert_eq!(human_readable_size(0), "0 B");
         assert_eq!(human_readable_size(512), "512 B");
         assert_eq!(human_readable_size(1024), "1.00 KB");
         assert_eq!(human_readable_size(1024 * 1024), "1.00 MB");
+        assert_eq!(human_readable_size(1024 * 1024 * 1024), "1.00 GB");
+        assert_eq!(
+            human_readable_size(2 * 1024 * 1024 * 1024 * 1024),
+            "2.00 TB"
+        );
     }
 
     #[test]
-    fn test_format_download_progress() {
+    fn test_format_download_progress_with_total() {
         let start = Instant::now() - Duration::from_secs(1);
         let text = format_download_progress(1024 * 1024, Some(2 * 1024 * 1024), start);
         assert!(text.contains("50.0%"));
         assert!(text.contains("速度"));
+        assert!(text.contains("/s"));
+    }
+
+    #[test]
+    fn test_format_download_progress_unknown_total() {
+        let start = Instant::now() - Duration::from_secs(1);
+        let text = format_download_progress(1024 * 1024, None, start);
+        assert!(text.contains("总大小未知"));
+        assert!(text.contains("速度"));
+    }
+
+    #[test]
+    fn test_should_report_triggers_on_percent_step() {
+        let mut last_pct = 0.0;
+        let mut last_size = 0u64;
+        let last_instant = Instant::now() - Duration::from_secs(3);
+
+        assert!(should_report(
+            5 * 1024 * 1024,
+            Some(100 * 1024 * 1024),
+            &mut last_pct,
+            &mut last_size,
+            last_instant
+        ));
+        assert_eq!(last_pct, 5.0);
+    }
+
+    #[test]
+    fn test_should_report_triggers_on_size_step() {
+        let mut last_pct = 0.0;
+        let mut last_size = 0u64;
+        let last_instant = Instant::now() - Duration::from_secs(3);
+
+        assert!(should_report(
+            5 * 1024 * 1024,
+            None,
+            &mut last_pct,
+            &mut last_size,
+            last_instant
+        ));
+    }
+
+    #[test]
+    fn test_should_report_triggers_on_completion() {
+        let mut last_pct = 0.0;
+        let mut last_size = 0u64;
+        let last_instant = Instant::now() - Duration::from_secs(3);
+
+        assert!(should_report(
+            100,
+            Some(100),
+            &mut last_pct,
+            &mut last_size,
+            last_instant
+        ));
+    }
+
+    #[test]
+    fn test_should_report_no_trigger_within_interval() {
+        let mut last_pct = 0.0;
+        let mut last_size = 0u64;
+        let last_instant = Instant::now();
+
+        assert!(!should_report(
+            1024,
+            Some(1024 * 1024),
+            &mut last_pct,
+            &mut last_size,
+            last_instant
+        ));
     }
 }

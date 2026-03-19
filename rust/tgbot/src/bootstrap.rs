@@ -209,3 +209,225 @@ pub fn harden_process() {
         }
     }
 }
+
+pub struct ConfigValidator;
+
+impl ConfigValidator {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn validate_decrypted_config(
+        &self,
+        token: &str,
+        admin_id: i64,
+        totp_secret: &str,
+        self_destruct_key_hash: &Option<String>,
+    ) -> Result<(), String> {
+        self.validate_token(token)?;
+        self.validate_admin_id(admin_id)?;
+        self.validate_totp_secret(totp_secret)?;
+        if let Some(hash) = self_destruct_key_hash {
+            self.validate_self_destruct_key_hash(hash)?;
+        }
+        Ok(())
+    }
+
+    fn validate_token(&self, token: &str) -> Result<(), String> {
+        let trimmed = token.trim();
+        if trimmed.is_empty() {
+            return Err("Token 不能为空".to_string());
+        }
+        let parts: Vec<&str> = trimmed.split(':').collect();
+        if parts.len() != 2 {
+            return Err(format!(
+                "Token 格式无效: 应为 `<bot_id>:<token>` 格式，实际为 {}",
+                trimmed
+            ));
+        }
+        if parts[0].is_empty() || !parts[0].chars().all(|c| c.is_ascii_digit()) {
+            return Err(format!("Token 的 bot_id 部分无效: {}", parts[0]));
+        }
+        if parts[1].is_empty() {
+            return Err("Token 的 token 部分不能为空".to_string());
+        }
+        Ok(())
+    }
+
+    fn validate_admin_id(&self, admin_id: i64) -> Result<(), String> {
+        if admin_id <= 0 {
+            return Err(format!("Admin ID 无效: {} (应大于 0)", admin_id));
+        }
+        Ok(())
+    }
+
+    fn validate_totp_secret(&self, totp_secret: &str) -> Result<(), String> {
+        let trimmed = totp_secret.trim();
+        if trimmed.is_empty() {
+            return Err("TOTP Secret 不能为空".to_string());
+        }
+        let secret_bytes =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, trimmed)
+                .map_err(|_| "TOTP Secret 不是有效的 base64 编码".to_string())?;
+        if secret_bytes.len() < 10 {
+            return Err("TOTP Secret 太短 (至少需要 10 字节)".to_string());
+        }
+        Ok(())
+    }
+
+    fn validate_self_destruct_key_hash(&self, hash: &str) -> Result<(), String> {
+        let trimmed = hash.trim();
+        if trimmed.len() != 64 {
+            return Err(format!(
+                "Self-destruct key hash 长度无效: {} (应为 64 字符的 SHA-256 十六进制)",
+                trimmed.len()
+            ));
+        }
+        if !trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err("Self-destruct key hash 包含无效的十六进制字符".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod config_validator_tests {
+    use super::*;
+
+    #[test]
+    fn validate_decrypted_config_accepts_valid_config() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_decrypted_config(
+            "123456:ABCdefGHIjklMNOpqrsTUVwxyz",
+            123456789,
+            "JBSWY3DPEHPK3PXP",
+            &None,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_decrypted_config_accepts_valid_config_with_hash() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_decrypted_config(
+            "123456:ABCdefGHIjklMNOpqrsTUVwxyz",
+            123456789,
+            "JBSWY3DPEHPK3PXP",
+            &Some("a".repeat(64)),
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_token_rejects_empty_token() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_token("");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Token 不能为空");
+    }
+
+    #[test]
+    fn validate_token_rejects_whitespace_only_token() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_token("   \n\t  ");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_token_rejects_invalid_format() {
+        let validator = ConfigValidator::new();
+        assert!(validator.validate_token("not-valid-format").is_err());
+        assert!(validator.validate_token("123456").is_err());
+        assert!(validator.validate_token("123456:").is_err());
+        assert!(validator.validate_token(":token").is_err());
+    }
+
+    #[test]
+    fn validate_token_rejects_non_numeric_bot_id() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_token("abc:token");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_admin_id_rejects_zero() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_admin_id(0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_admin_id_rejects_negative() {
+        let validator = ConfigValidator::new();
+        assert!(validator.validate_admin_id(-1).is_err());
+        assert!(validator.validate_admin_id(-987654321).is_err());
+    }
+
+    #[test]
+    fn validate_admin_id_accepts_positive() {
+        let validator = ConfigValidator::new();
+        assert!(validator.validate_admin_id(1).is_ok());
+        assert!(validator.validate_admin_id(123456789).is_ok());
+    }
+
+    #[test]
+    fn validate_totp_secret_rejects_empty_secret() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_totp_secret("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_totp_secret_rejects_invalid_base64() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_totp_secret("not-valid-base64!!!");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_totp_secret_rejects_too_short_secret() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_totp_secret("aB");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_self_destruct_key_hash_rejects_wrong_length() {
+        let validator = ConfigValidator::new();
+        assert!(validator.validate_self_destruct_key_hash("abc123").is_err());
+        assert!(
+            validator
+                .validate_self_destruct_key_hash(&"a".repeat(63))
+                .is_err()
+        );
+        assert!(
+            validator
+                .validate_self_destruct_key_hash(&"a".repeat(65))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn validate_self_destruct_key_hash_rejects_invalid_hex_chars() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_self_destruct_key_hash(&"g".repeat(64));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_self_destruct_key_hash_accepts_valid_sha256() {
+        let validator = ConfigValidator::new();
+        assert!(
+            validator
+                .validate_self_destruct_key_hash(&"a".repeat(64))
+                .is_ok()
+        );
+        assert!(
+            validator
+                .validate_self_destruct_key_hash(
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                )
+                .is_ok()
+        );
+    }
+}

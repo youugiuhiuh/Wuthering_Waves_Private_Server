@@ -42,14 +42,12 @@ pub async fn register_account() -> Result<WarpAccountConfig> {
     let reg_url = format!("{}{}", api_endpoint, reg_path);
     let mut headers = header::HeaderMap::new();
     // Emulate official client UA to potentially get better IP reputation
-    headers.insert(
-        "User-Agent",
-        header::HeaderValue::from_str(&ua_str).unwrap(),
-    );
-    headers.insert(
-        "Content-Type",
-        header::HeaderValue::from_str(&ct_str).unwrap(),
-    );
+    if let Ok(ua) = header::HeaderValue::from_str(&ua_str) {
+        headers.insert("User-Agent", ua);
+    }
+    if let Ok(ct) = header::HeaderValue::from_str(&ct_str) {
+        headers.insert("Content-Type", ct);
+    }
 
     // Generate random install_id (22 chars)
     let install_id_str: String = std::iter::repeat_with(|| {
