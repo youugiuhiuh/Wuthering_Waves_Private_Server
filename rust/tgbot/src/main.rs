@@ -79,10 +79,6 @@ fn escape_html(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn parse_usize(s: &str) -> Result<usize> {
-    s.parse().map_err(|_| anyhow::anyhow!("无效的数字: {}", s))
-}
-
 fn validate_hash_prefix(prefix: &str) -> Result<&str> {
     if prefix.is_empty() {
         anyhow::bail!("hash 前缀不能为空");

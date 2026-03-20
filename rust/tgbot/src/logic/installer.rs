@@ -78,6 +78,7 @@ impl WarpInstaller {
     }
 }
 
+#[allow(dead_code)]
 struct ProgressState {
     running: bool,
     step: u8,
@@ -103,6 +104,7 @@ pub enum RealityInstallOutcome {
     InProgress,
 }
 
+#[allow(dead_code)]
 pub struct RealityInstaller {
     bot: Bot,
     chat_id: ChatId,
