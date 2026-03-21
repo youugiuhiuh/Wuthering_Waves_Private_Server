@@ -21,8 +21,8 @@ static SNI_PERSISTENCE: Lazy<Option<SNIPersistence>> = Lazy::new(|| match SNIPer
 
 pub struct SNISelector {
     domains: Vec<String>,
-    index: usize,
-    total_used: usize,
+    shuffled_indices: Vec<usize>,
+    used_count: usize,
     cache_key: String,
 }
 
@@ -44,24 +44,24 @@ impl SNISelector {
         if let Some(ref persistence) = *SNI_PERSISTENCE {
             if let Some(state) = persistence.load(&cache_key) {
                 log::info!(
-                    "Loaded persisted SNI state for {}: {} domains, index={}, total_used={}",
+                    "Loaded persisted SNI state for {}: {} domains, remaining={}, used={}",
                     cache_key,
                     state.domains.len(),
-                    state.index,
-                    state.total_used
+                    state.shuffled_indices.len(),
+                    state.used_count
                 );
                 return Self {
                     domains: state.domains,
-                    index: state.index,
-                    total_used: state.total_used,
+                    shuffled_indices: state.shuffled_indices,
+                    used_count: state.used_count,
                     cache_key,
                 };
             }
         }
 
         let domains = Self::load_domains(proto_prefix, &code);
-
         let state = SNIState::new(domains.clone());
+
         if let Some(ref persistence) = *SNI_PERSISTENCE {
             if let Err(e) = persistence.save(&cache_key, &state) {
                 log::warn!("Failed to save initial SNI state: {}", e);
@@ -70,8 +70,8 @@ impl SNISelector {
 
         Self {
             domains: state.domains,
-            index: state.index,
-            total_used: state.total_used,
+            shuffled_indices: state.shuffled_indices,
+            used_count: state.used_count,
             cache_key,
         }
     }
@@ -92,38 +92,28 @@ impl SNISelector {
             .unwrap_or_else(|| vec!["www.google.com".to_string()])
     }
 
-    fn new_from_list(domains: Vec<String>) -> Self {
-        let mut rng = thread_rng();
-        let mut domains = domains;
-        domains.shuffle(&mut rng);
-        Self {
-            domains,
-            index: 0,
-            total_used: 0,
-            cache_key: String::new(),
-        }
-    }
-
     pub fn next(&mut self) -> String {
         if self.domains.is_empty() {
             return "www.google.com".to_string();
         }
 
-        if self.index >= self.domains.len() {
-            self.index = 0;
-            self.total_used += self.domains.len();
-            self.shuffle();
+        if self.shuffled_indices.is_empty() {
+            self.reset_shuffled_indices();
             self.save_state();
         }
 
-        let domain = self.domains[self.index].clone();
-        self.index += 1;
-        domain
+        let idx = self.shuffled_indices.pop().unwrap();
+        self.used_count += 1;
+        self.save_state();
+
+        self.domains[idx].clone()
     }
 
-    fn shuffle(&mut self) {
+    fn reset_shuffled_indices(&mut self) {
+        let mut indices: Vec<usize> = (0..self.domains.len()).collect();
         let mut rng = thread_rng();
-        self.domains.shuffle(&mut rng);
+        indices.shuffle(&mut rng);
+        self.shuffled_indices = indices;
     }
 
     fn save_state(&self) {
@@ -133,8 +123,8 @@ impl SNISelector {
         if let Some(ref persistence) = *SNI_PERSISTENCE {
             let state = SNIState {
                 domains: self.domains.clone(),
-                index: self.index,
-                total_used: self.total_used,
+                shuffled_indices: self.shuffled_indices.clone(),
+                used_count: self.used_count,
                 created_at: chrono::Utc::now().to_rfc3339(),
             };
             if let Err(e) = persistence.save(&self.cache_key, &state) {
@@ -143,15 +133,12 @@ impl SNISelector {
         }
     }
 
-    pub fn domains_remaining(&self) -> usize {
-        if self.domains.is_empty() {
-            return 0;
-        }
-        self.domains.len() - self.index
+    pub fn remaining(&self) -> usize {
+        self.shuffled_indices.len()
     }
 
     pub fn total_used(&self) -> usize {
-        self.total_used
+        self.used_count
     }
 
     fn load_embedded(filename: &str) -> Option<Vec<String>> {
@@ -302,21 +289,45 @@ mod tests {
     }
 
     #[test]
-    fn next_returns_fallback_for_empty_list() {
-        let mut selector = SNISelector::new_from_list(vec![]);
-        assert_eq!(selector.next(), "www.google.com");
+    fn next_random_no_repeat() {
+        let mut selector = SNISelector {
+            domains: vec![
+                "a.com".to_string(),
+                "b.com".to_string(),
+                "c.com".to_string(),
+                "d.com".to_string(),
+                "e.com".to_string(),
+            ],
+            shuffled_indices: vec![0, 1, 2, 3, 4],
+            used_count: 0,
+            cache_key: String::new(),
+        };
+
+        let mut results = Vec::new();
+        for _ in 0..5 {
+            results.push(selector.next());
+        }
+
+        let unique: std::collections::HashSet<_> = results.iter().collect();
+        assert_eq!(unique.len(), 5, "Should have 5 unique domains");
+        assert_eq!(selector.remaining(), 0);
     }
 
     #[test]
-    fn next_rotates_through_domains() {
-        let mut selector = SNISelector::new_from_list(vec![
-            "a.example.com".to_string(),
-            "b.example.com".to_string(),
-        ]);
-        let a = selector.next();
-        let b = selector.next();
-        let c = selector.next();
-        assert!(a != b || b != c || a != c);
+    fn next_resets_when_exhausted() {
+        let mut selector = SNISelector {
+            domains: vec!["a.com".to_string(), "b.com".to_string()],
+            shuffled_indices: vec![0, 1],
+            used_count: 0,
+            cache_key: String::new(),
+        };
+
+        selector.next();
+        selector.next();
+        assert_eq!(selector.remaining(), 0);
+
+        selector.next();
+        assert_eq!(selector.remaining(), 1);
     }
 
     #[test]
@@ -347,24 +358,6 @@ mod tests {
                 assert!(domain.contains('.'));
             }
         }
-    }
-
-    #[test]
-    fn new_from_list_shuffles_domains() {
-        let list = vec![
-            "a.com".to_string(),
-            "b.com".to_string(),
-            "c.com".to_string(),
-            "d.com".to_string(),
-            "e.com".to_string(),
-        ];
-        let mut results = Vec::new();
-        for _ in 0..10 {
-            let selector = SNISelector::new_from_list(list.clone());
-            results.push(selector.domains.clone());
-        }
-        let all_same = results.iter().all(|r| r == &results[0]);
-        assert!(!all_same, "Shuffle should produce different orderings");
     }
 
     #[test]
@@ -403,16 +396,22 @@ mod tests {
     }
 
     #[test]
-    fn domains_remaining() {
-        let mut selector = SNISelector::new_from_list(vec![
-            "a.com".to_string(),
-            "b.com".to_string(),
-            "c.com".to_string(),
-        ]);
-        assert_eq!(selector.domains_remaining(), 3);
+    fn remaining_count() {
+        let mut selector = SNISelector {
+            domains: vec![
+                "a.com".to_string(),
+                "b.com".to_string(),
+                "c.com".to_string(),
+            ],
+            shuffled_indices: vec![0, 1, 2],
+            used_count: 0,
+            cache_key: String::new(),
+        };
+
+        assert_eq!(selector.remaining(), 3);
         selector.next();
-        assert_eq!(selector.domains_remaining(), 2);
+        assert_eq!(selector.remaining(), 2);
         selector.next();
-        assert_eq!(selector.domains_remaining(), 1);
+        assert_eq!(selector.remaining(), 1);
     }
 }

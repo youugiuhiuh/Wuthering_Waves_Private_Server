@@ -12,10 +12,10 @@ const KEY_FILE: &str = ".key";
 pub struct SNIState {
     #[serde(rename = "d")]
     pub domains: Vec<String>,
-    #[serde(rename = "i")]
-    pub index: usize,
-    #[serde(rename = "t")]
-    pub total_used: usize,
+    #[serde(rename = "s")]
+    pub shuffled_indices: Vec<usize>,
+    #[serde(rename = "u")]
+    pub used_count: usize,
     #[serde(rename = "c")]
     pub created_at: String,
 }
@@ -24,23 +24,34 @@ impl SNIState {
     pub fn new(domains: Vec<String>) -> Self {
         Self {
             domains,
-            index: 0,
-            total_used: 0,
+            shuffled_indices: Vec::new(),
+            used_count: 0,
             created_at: chrono::Utc::now().to_rfc3339(),
         }
     }
 
-    pub fn increment(&mut self) {
-        self.index += 1;
-        self.total_used += 1;
+    pub fn is_exhausted(&self) -> bool {
+        self.shuffled_indices.is_empty() && !self.domains.is_empty()
     }
 
-    pub fn is_exhausted(&self) -> bool {
-        self.index >= self.domains.len()
+    pub fn remaining(&self) -> usize {
+        self.shuffled_indices.len()
+    }
+
+    pub fn pop_index(&mut self) -> Option<usize> {
+        let idx = self.shuffled_indices.pop()?;
+        self.used_count += 1;
+        Some(idx)
+    }
+
+    pub fn set_shuffled_indices(&mut self, indices: Vec<usize>) {
+        self.shuffled_indices = indices;
     }
 
     pub fn reset(&mut self) {
-        self.index = 0;
+        self.shuffled_indices.clear();
+        self.used_count = 0;
+        self.created_at = chrono::Utc::now().to_rfc3339();
     }
 }
 
@@ -104,11 +115,11 @@ impl SNIPersistence {
         match serde_json::from_slice::<SNIState>(&decrypted_vec) {
             Ok(state) => {
                 log::debug!(
-                    "Loaded SNI state for {}: {} domains, index={}, total_used={}",
+                    "Loaded SNI state for {}: {} domains, remaining={}, total_used={}",
                     key,
                     state.domains.len(),
-                    state.index,
-                    state.total_used
+                    state.shuffled_indices.len(),
+                    state.used_count
                 );
                 Some(state)
             }
@@ -136,11 +147,11 @@ impl SNIPersistence {
         }
 
         log::debug!(
-            "Saved SNI state for {}: {} domains, index={}, total_used={}",
+            "Saved SNI state for {}: {} domains, remaining={}, total_used={}",
             key,
             state.domains.len(),
-            state.index,
-            state.total_used
+            state.shuffled_indices.len(),
+            state.used_count
         );
 
         Ok(())
@@ -161,31 +172,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sni_state_serialization() {
+    fn test_sni_state_new() {
         let state = SNIState::new(vec!["a.com".to_string(), "b.com".to_string()]);
-        let json = serde_json::to_string(&state).unwrap();
-        let parsed: SNIState = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.domains, state.domains);
-        assert_eq!(parsed.index, state.index);
+        assert_eq!(state.domains.len(), 2);
+        assert!(state.shuffled_indices.is_empty());
+        assert_eq!(state.used_count, 0);
     }
 
     #[test]
-    fn test_sni_state_increment() {
+    fn test_sni_state_pop_index() {
         let mut state = SNIState::new(vec!["a.com".to_string(), "b.com".to_string()]);
-        assert_eq!(state.index, 0);
-        state.increment();
-        assert_eq!(state.index, 1);
-        assert_eq!(state.total_used, 1);
-        state.increment();
-        assert_eq!(state.index, 2);
-        assert_eq!(state.total_used, 2);
+        state.shuffled_indices = vec![1, 0];
+
+        let idx = state.pop_index();
+        assert_eq!(idx, Some(0)); // pop 从末尾取
+        assert_eq!(state.used_count, 1);
+        assert_eq!(state.shuffled_indices.len(), 1);
+
+        let idx = state.pop_index();
+        assert_eq!(idx, Some(1));
+        assert_eq!(state.used_count, 2);
+        assert_eq!(state.shuffled_indices.len(), 0);
     }
 
     #[test]
     fn test_sni_state_is_exhausted() {
         let mut state = SNIState::new(vec!["a.com".to_string(), "b.com".to_string()]);
+        assert!(state.is_exhausted()); // indices 为空，需要初始化
+
+        state.shuffled_indices = vec![0, 1];
         assert!(!state.is_exhausted());
-        state.index = 2;
+
+        state.pop_index();
+        state.pop_index();
         assert!(state.is_exhausted());
+    }
+
+    #[test]
+    fn test_sni_state_serialization() {
+        let mut state = SNIState::new(vec!["a.com".to_string(), "b.com".to_string()]);
+        state.shuffled_indices = vec![1, 0];
+
+        let json = serde_json::to_string(&state).unwrap();
+        let parsed: SNIState = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.domains, state.domains);
+        assert_eq!(parsed.shuffled_indices, state.shuffled_indices);
+        assert_eq!(parsed.used_count, state.used_count);
     }
 }
