@@ -165,7 +165,16 @@ func main() {
 	xhttpMode := flag.Bool("xhttp", false, "Enable XHTTP validation (H2 minimum)")
 	realityMode := flag.Bool("reality", false, "Enable Reality validation (TLS 1.3, X25519, H2)")
 
+	// Import mode
+	importFile := flag.String("import", "", "Import result JSON file from mobile app")
+
 	flag.Parse()
+
+	// Handle import mode
+	if *importFile != "" {
+		handleImport(*importFile)
+		return
+	}
 
 	if *inputFile == "" {
 		fmt.Println("Usage: sni_tester -f <input_file> [-dns <dns_server>] [-w <workers>] [-debug] [-p <proxy>] [-xhttp] [-reality] [-ttl <days>] [-max <lines>]")
@@ -1192,4 +1201,99 @@ func prepareGeoDB(proxyString string) {
 		}
 		fmt.Println("Download complete.")
 	}
+}
+
+type MobileResult struct {
+	Version   string `json:"version"`
+	Mode      string `json:"mode"`
+	Timestamp string `json:"timestamp"`
+	Results   []struct {
+		Domain  string `json:"domain"`
+		Success bool   `json:"success"`
+		IP      string `json:"ip"`
+		Country string `json:"country"`
+		Info    string `json:"info"`
+	} `json:"results"`
+}
+
+func handleImport(jsonFile string) {
+	data, err := os.ReadFile(jsonFile)
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		os.Exit(1)
+	}
+
+	var result MobileResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		fmt.Printf("Error parsing JSON: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Importing %d results (mode: %s)\n", len(result.Results), result.Mode)
+
+	baseTargetDir := findTargetDir()
+	if baseTargetDir == "" {
+		fmt.Println("Error: Could not find rust/tgbot/src/resources/sni directory.")
+		os.Exit(1)
+	}
+
+	subDir := ""
+	modeLower := strings.ToLower(result.Mode)
+	if modeLower == "reality" {
+		subDir = "reality"
+	} else if modeLower == "xhttp" {
+		subDir = "xhttp"
+	}
+
+	targetDir := baseTargetDir
+	if subDir != "" {
+		targetDir = filepath.Join(baseTargetDir, subDir)
+	}
+
+	os.MkdirAll(targetDir, 0755)
+
+	countryMap := make(map[string][]string)
+	for _, r := range result.Results {
+		if !r.Success {
+			continue
+		}
+		if r.Country == "" || r.Country == "UNKNOWN" {
+			continue
+		}
+		if isBlockedCountry(r.Country) {
+			continue
+		}
+		countryMap[r.Country] = append(countryMap[r.Country], r.Domain)
+	}
+
+	for country, domains := range countryMap {
+		filename := fmt.Sprintf("%s.txt", strings.ToUpper(country))
+		targetPath := filepath.Join(targetDir, filename)
+
+		existing := make(map[string]bool)
+		if f, err := os.Open(targetPath); err == nil {
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				existing[scanner.Text()] = true
+			}
+			f.Close()
+		}
+
+		file, err := os.OpenFile(targetPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Printf("Error writing %s: %v\n", filename, err)
+			continue
+		}
+		count := 0
+		for _, domain := range domains {
+			if !existing[domain] {
+				file.WriteString(domain + "\n")
+				count++
+			}
+		}
+		file.Close()
+		fmt.Printf("  %s: %d new domains added\n", country, count)
+	}
+
+	fmt.Printf("Import completed. Files saved to: %s\n", targetDir)
 }

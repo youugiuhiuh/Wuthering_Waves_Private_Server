@@ -1,6 +1,6 @@
 module sni_tester
 
-go 1.26.1
+go 1.25
 
 require (
 	github.com/oschwald/geoip2-golang v1.13.0
