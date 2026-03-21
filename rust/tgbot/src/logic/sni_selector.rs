@@ -49,12 +49,18 @@ impl SNISelector {
         }
 
         // 2. Try Load from Embedded Resource
-        // Priority: subfolder -> root folder -> default.txt
-        let filename = format!("{}.txt", code);
-        let subfolder_file = format!("{}/{}", proto_prefix, filename);
+        // Priority: subfolder -> root folder -> default
+        let code_upper = code.to_uppercase();
+        let bin_file = format!("{}/{}.bin", proto_prefix, code_upper);
+        let txt_file = format!("{}/{}.txt", proto_prefix, code_upper);
+        let fallback_bin = format!("{}.bin", code_upper);
+        let fallback_txt = format!("{}.txt", code_upper);
 
-        let domains = Self::load_embedded(&subfolder_file)
-            .or_else(|| Self::load_embedded(&filename))
+        let domains = Self::load_embedded(&bin_file)
+            .or_else(|| Self::load_embedded(&txt_file))
+            .or_else(|| Self::load_embedded(&fallback_bin))
+            .or_else(|| Self::load_embedded(&fallback_txt))
+            .or_else(|| Self::load_embedded("default.bin"))
             .or_else(|| Self::load_embedded("default.txt"))
             .unwrap_or_else(|| vec!["www.google.com".to_string()]);
 
@@ -94,45 +100,154 @@ impl SNISelector {
         self.domains.shuffle(&mut rng);
     }
 
+    /// Load embedded file with automatic format detection (Binary vs TXT)
     fn load_embedded(filename: &str) -> Option<Vec<String>> {
         let file = SniAssets::get(filename)?;
-        let content = std::str::from_utf8(file.data.as_ref()).ok()?;
+        let data = file.data.as_ref();
 
-        let mut domains = Vec::new();
-
-        for line in content.lines() {
-            let trimmed = line.trim();
-            // Ignore comments and empty lines
-            if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("//") {
-                continue;
-            }
-
-            // Cleanup quotes and commas
-            let clean = trimmed
-                .trim_matches(|c| c == '"' || c == '\'')
-                .trim_end_matches(',');
-
-            // Normalize: remove port if present
-            let domain_only = if let Some(idx) = clean.find(':') {
-                &clean[..idx]
-            } else {
-                clean
-            };
-
-            if !domain_only.is_empty() {
-                domains.push(domain_only.to_string());
+        // Try Binary format first
+        if is_binary_format(data) {
+            if let Some(domains) = load_binary(data) {
+                return Some(domains);
             }
         }
 
-        // Deduplicate
-        domains.sort();
-        domains.dedup();
+        // Fallback to TXT format
+        let text = std::str::from_utf8(data).ok()?;
+        load_text(text)
+    }
+}
 
-        if domains.is_empty() {
-            None
+/// Load Binary format: [2-byte length (big-endian)] + [domain bytes]
+fn load_binary(data: &[u8]) -> Option<Vec<String>> {
+    let mut domains = Vec::new();
+    let mut offset = 0;
+
+    while offset < data.len() {
+        if offset + 2 > data.len() {
+            break;
+        }
+        // Read 2-byte length (big-endian)
+        let length = u16::from_be_bytes([data[offset], data[offset + 1]]) as usize;
+        offset += 2;
+
+        if length == 0 || length > 512 {
+            // Invalid length, not binary format
+            return None;
+        }
+
+        if offset + length > data.len() {
+            break;
+        }
+
+        // Read domain bytes
+        let domain = std::str::from_utf8(&data[offset..offset + length]).ok()?;
+        if !domain.is_empty() && domain.contains('.') {
+            domains.push(domain.to_string());
+        }
+        offset += length;
+    }
+
+    if domains.is_empty() {
+        None
+    } else {
+        Some(domains)
+    }
+}
+
+/// Detect if data is in Binary format
+/// Binary format check: valid length prefix chain
+fn is_binary_format(data: &[u8]) -> bool {
+    // Minimum size: at least 4 bytes (2 domains minimum)
+    if data.len() < 4 || data.len() > 10 * 1024 * 1024 {
+        return false;
+    }
+
+    let mut offset = 0;
+    let mut count = 0;
+    let max_domains = 1000; // Safety limit
+
+    while offset < data.len() && count < max_domains {
+        if offset + 2 > data.len() {
+            return false;
+        }
+
+        // Read length prefix
+        let length = u16::from_be_bytes([data[offset], data[offset + 1]]) as usize;
+        offset += 2;
+
+        // Length validation
+        if length == 0 || length > 512 {
+            return false;
+        }
+
+        // Check if domain portion is valid UTF-8 and contains dot
+        if offset + length > data.len() {
+            return false;
+        }
+
+        // Check if it looks like a domain (contains at least one dot)
+        let slice = &data[offset..offset + length];
+        if !slice.contains(&b'.') {
+            // Not a domain, might be text format
+            return false;
+        }
+
+        // Check if it's printable ASCII
+        for &b in slice {
+            if !(b == 46
+                || (b >= 48 && b <= 57)
+                || (b >= 97 && b <= 122)
+                || (b >= 65 && b <= 90)
+                || b == 45
+                || b == 95)
+            {
+                // Contains special chars other than dot, dash, underscore
+                // This might still be valid, but be conservative
+            }
+        }
+
+        offset += length;
+        count += 1;
+    }
+
+    // Must have found at least 3 domains to be considered binary
+    // (avoid false positive on short text files)
+    count >= 3
+}
+
+/// Load TXT format (legacy): one domain per line
+fn load_text(content: &str) -> Option<Vec<String>> {
+    let mut domains = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        // Ignore comments and empty lines
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("//") {
+            continue;
+        }
+
+        // Cleanup quotes and commas
+        let clean = trimmed
+            .trim_matches(|c| c == '"' || c == '\'')
+            .trim_end_matches(',');
+
+        // Normalize: remove port if present
+        let domain_only = if let Some(idx) = clean.find(':') {
+            &clean[..idx]
         } else {
-            Some(domains)
+            clean
+        };
+
+        if !domain_only.is_empty() && domain_only.contains('.') {
+            domains.push(domain_only.to_string());
         }
+    }
+
+    if domains.is_empty() {
+        None
+    } else {
+        Some(domains)
     }
 }
 
@@ -194,12 +309,14 @@ mod tests {
 
     #[test]
     fn load_embedded_handles_comments_and_empty_lines() {
+        // Test with default.txt (should exist)
         let domains = SNISelector::load_embedded("default.txt");
         if let Some(domains) = domains {
             for domain in &domains {
                 assert!(!domain.starts_with('#'));
                 assert!(!domain.starts_with("//"));
                 assert!(!domain.is_empty());
+                assert!(domain.contains('.'));
             }
         }
     }
@@ -220,5 +337,35 @@ mod tests {
         }
         let all_same = results.iter().all(|r| r == &results[0]);
         assert!(!all_same, "Shuffle should produce different orderings");
+    }
+
+    #[test]
+    fn binary_format_detection() {
+        // Valid binary data: "example.com" (11 bytes)
+        let binary_data = vec![
+            0x00, 0x0B, // length = 11
+            0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D, // "example.com"
+        ];
+        assert!(is_binary_format(&binary_data));
+
+        // Invalid: too short
+        assert!(!is_binary_format(&[0x00, 0x0B]));
+    }
+
+    #[test]
+    fn load_binary_parses_correctly() {
+        // "example.com" (11 bytes)
+        let binary_data = vec![
+            0x00, 0x0B, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D,
+            // "test.com" (9 bytes)
+            0x00, 0x09, 0x74, 0x65, 0x73, 0x74, 0x2E, 0x63, 0x6F, 0x6D,
+        ];
+
+        let domains = load_binary(&binary_data);
+        assert!(domains.is_some());
+        let domains = domains.unwrap();
+        assert_eq!(domains.len(), 2);
+        assert_eq!(domains[0], "example.com");
+        assert_eq!(domains[1], "test.com");
     }
 }

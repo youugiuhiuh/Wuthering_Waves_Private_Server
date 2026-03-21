@@ -1,2 +1,0 @@
-study.tj
-tcell.tj

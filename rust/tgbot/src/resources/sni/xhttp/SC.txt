@@ -1,6 +1,0 @@
-google-cloud.services
-ipserver.su
-walletbot.me
-cloverpi.com
-xiuwushidai.com
-pinco419.win

@@ -1,3 +1,0 @@
-ethernet.edu.et
-hu.edu.et
-aau.edu.et
