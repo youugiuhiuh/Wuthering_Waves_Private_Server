@@ -168,11 +168,26 @@ func main() {
 	// Import mode
 	importFile := flag.String("import", "", "Import result JSON file from mobile app")
 
+	// ADB mode
+	adbMode := flag.Bool("adb", false, "Use ADB to run test on connected Android device")
+	adbWiFi := flag.Bool("adb-wifi", false, "Enable WiFi ADB and show QR code for wireless connection")
+
 	flag.Parse()
 
 	// Handle import mode
 	if *importFile != "" {
 		handleImport(*importFile)
+		return
+	}
+
+	// Handle ADB mode
+	if *adbMode || *adbWiFi {
+		if *inputFile == "" {
+			fmt.Println("Usage: sni_tester -adb -f <input_file> [-xhttp] [-reality]")
+			fmt.Println("  Example: sni_tester -adb -f domains.txt -reality")
+			os.Exit(1)
+		}
+		runADBMode(*adbWiFi, *inputFile, *realityMode, *xhttpMode)
 		return
 	}
 
