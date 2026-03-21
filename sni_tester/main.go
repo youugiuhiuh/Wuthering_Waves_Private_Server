@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -952,23 +953,46 @@ func loadExistingIntoMap(dir string, m map[string]struct{}) {
 
 func batchSave(targetDir string, m map[string][]string) {
 	for country, list := range m {
-		writeTargetFile(targetDir, country, list)
+		writeBinaryDomainFile(targetDir, country, list)
 	}
 }
 
-func writeTargetFile(targetDir string, countryCode string, domains []string) error {
-	filename := fmt.Sprintf("%s.txt", strings.ToUpper(countryCode))
+func writeBinaryDomainFile(targetDir string, countryCode string, domains []string) error {
+	filename := fmt.Sprintf("%s.bin", strings.ToUpper(countryCode))
 	targetPath := filepath.Join(targetDir, filename)
 	os.MkdirAll(targetDir, 0o755)
-	f, err := os.OpenFile(targetPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+
+	if len(domains) == 0 {
+		return nil
+	}
+
+	sort.Strings(domains)
+	domains = dedupeStrings(domains)
+
+	f, err := os.Create(targetPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+
 	for _, d := range domains {
-		f.WriteString(d + "\n")
+		binary.Write(f, binary.BigEndian, uint16(len(d)))
+		f.WriteString(d)
 	}
 	return nil
+}
+
+func dedupeStrings(sorted []string) []string {
+	if len(sorted) == 0 {
+		return sorted
+	}
+	result := []string{sorted[0]}
+	for i := 1; i < len(sorted); i++ {
+		if sorted[i] != result[len(result)-1] {
+			result = append(result, sorted[i])
+		}
+	}
+	return result
 }
 
 // --- Utils ---
