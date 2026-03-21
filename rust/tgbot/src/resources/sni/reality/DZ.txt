@@ -6,3 +6,4 @@ univ-saida.dz
 univ-setif2.dz
 ouedkniss.com
 competition.dz
+cnas.dz

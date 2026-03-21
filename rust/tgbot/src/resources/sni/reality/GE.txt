@@ -8,3 +8,4 @@ proservice.ge
 primetime.ge
 sportall.ge
 crystalsport.ge
+bog.ge

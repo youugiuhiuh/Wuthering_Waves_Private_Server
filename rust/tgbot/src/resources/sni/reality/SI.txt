@@ -15,3 +15,5 @@ svet24.si
 gov.si
 hribi.net
 babycenter.hr
+um.si
+companywall.hr

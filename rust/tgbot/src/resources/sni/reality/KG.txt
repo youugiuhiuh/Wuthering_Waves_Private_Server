@@ -3,3 +3,4 @@ salyk.kg
 asiainfo.kg
 trade.kg
 aknet.kg
+oshsu.kg

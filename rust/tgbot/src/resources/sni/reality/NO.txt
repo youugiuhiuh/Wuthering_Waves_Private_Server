@@ -43,3 +43,13 @@ sparkjop.no
 fsweb.no
 upstreamonline.com
 anycast.no
+adressa.no
+lovdata.no
+fvn.no
+grida.no
+smp.no
+europris.no
+similarama.com
+agderposten.no
+bib.no
+rechargenews.com
