@@ -2,29 +2,32 @@ use once_cell::sync::Lazy;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rust_embed::RustEmbed;
-use std::collections::HashMap;
-use std::sync::RwLock;
 
 use crate::logic::config::RealityProto;
+use crate::logic::sni_state::{SNIPersistence, SNIState};
 
 // Embedded SNI resources
 #[derive(RustEmbed)]
 #[folder = "src/resources/sni/"]
 struct SniAssets;
 
-// Cache map: Country Code -> List of Domains
-static SNI_CACHE: Lazy<RwLock<HashMap<String, Vec<String>>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
+static SNI_PERSISTENCE: Lazy<Option<SNIPersistence>> = Lazy::new(|| match SNIPersistence::new() {
+    Ok(p) => Some(p),
+    Err(e) => {
+        log::warn!("SNIPersistence init failed, using memory-only: {}", e);
+        None
+    }
+});
 
 pub struct SNISelector {
     domains: Vec<String>,
     index: usize,
+    total_used: usize,
+    cache_key: String,
 }
 
 impl SNISelector {
-    /// Create a new selector for the given country code and protocol.
     pub fn get_for_country(country_code: &str, proto: RealityProto) -> Self {
-        // Normalize country code (e.g., UK -> GB)
         let upper = country_code.to_uppercase();
         let code = match upper.as_str() {
             "UK" => "GB",
@@ -36,58 +39,81 @@ impl SNISelector {
             RealityProto::XHTTP => "xhttp",
         };
 
-        let cache_key = format!("{}:{}", proto_prefix, code);
+        let cache_key = format!("{}_{}", proto_prefix, code);
 
-        // 1. Try Memory Cache
-        {
-            let cache = SNI_CACHE.read().unwrap();
-            if let Some(domains) = cache.get(&cache_key) {
-                if !domains.is_empty() {
-                    return Self::new_from_list(domains.clone());
-                }
+        if let Some(ref persistence) = *SNI_PERSISTENCE {
+            if let Some(state) = persistence.load(&cache_key) {
+                log::info!(
+                    "Loaded persisted SNI state for {}: {} domains, index={}, total_used={}",
+                    cache_key,
+                    state.domains.len(),
+                    state.index,
+                    state.total_used
+                );
+                return Self {
+                    domains: state.domains,
+                    index: state.index,
+                    total_used: state.total_used,
+                    cache_key,
+                };
             }
         }
 
-        // 2. Try Load from Embedded Resource
-        // Priority: subfolder -> root folder -> default
+        let domains = Self::load_domains(proto_prefix, &code);
+
+        let state = SNIState::new(domains.clone());
+        if let Some(ref persistence) = *SNI_PERSISTENCE {
+            if let Err(e) = persistence.save(&cache_key, &state) {
+                log::warn!("Failed to save initial SNI state: {}", e);
+            }
+        }
+
+        Self {
+            domains: state.domains,
+            index: state.index,
+            total_used: state.total_used,
+            cache_key,
+        }
+    }
+
+    fn load_domains(proto_prefix: &str, code: &str) -> Vec<String> {
         let code_upper = code.to_uppercase();
         let bin_file = format!("{}/{}.bin", proto_prefix, code_upper);
         let txt_file = format!("{}/{}.txt", proto_prefix, code_upper);
         let fallback_bin = format!("{}.bin", code_upper);
         let fallback_txt = format!("{}.txt", code_upper);
 
-        let domains = Self::load_embedded(&bin_file)
+        Self::load_embedded(&bin_file)
             .or_else(|| Self::load_embedded(&txt_file))
             .or_else(|| Self::load_embedded(&fallback_bin))
             .or_else(|| Self::load_embedded(&fallback_txt))
             .or_else(|| Self::load_embedded("default.bin"))
             .or_else(|| Self::load_embedded("default.txt"))
-            .unwrap_or_else(|| vec!["www.google.com".to_string()]);
-
-        // 3. Update Cache
-        {
-            let mut cache = SNI_CACHE.write().unwrap();
-            cache.insert(cache_key, domains.clone());
-        }
-
-        Self::new_from_list(domains)
+            .unwrap_or_else(|| vec!["www.google.com".to_string()])
     }
 
-    fn new_from_list(mut domains: Vec<String>) -> Self {
+    fn new_from_list(domains: Vec<String>) -> Self {
         let mut rng = thread_rng();
+        let mut domains = domains;
         domains.shuffle(&mut rng);
-        Self { domains, index: 0 }
+        Self {
+            domains,
+            index: 0,
+            total_used: 0,
+            cache_key: String::new(),
+        }
     }
 
-    /// Get the next domain in the rotation.
     pub fn next(&mut self) -> String {
         if self.domains.is_empty() {
-            return "www.google.com".to_string(); // Ultimate fallback
+            return "www.google.com".to_string();
         }
 
         if self.index >= self.domains.len() {
             self.index = 0;
+            self.total_used += self.domains.len();
             self.shuffle();
+            self.save_state();
         }
 
         let domain = self.domains[self.index].clone();
@@ -100,25 +126,49 @@ impl SNISelector {
         self.domains.shuffle(&mut rng);
     }
 
-    /// Load embedded file with automatic format detection (Binary vs TXT)
+    fn save_state(&self) {
+        if self.cache_key.is_empty() {
+            return;
+        }
+        if let Some(ref persistence) = *SNI_PERSISTENCE {
+            let state = SNIState {
+                domains: self.domains.clone(),
+                index: self.index,
+                total_used: self.total_used,
+                created_at: chrono::Utc::now().to_rfc3339(),
+            };
+            if let Err(e) = persistence.save(&self.cache_key, &state) {
+                log::warn!("Failed to save SNI state: {}", e);
+            }
+        }
+    }
+
+    pub fn domains_remaining(&self) -> usize {
+        if self.domains.is_empty() {
+            return 0;
+        }
+        self.domains.len() - self.index
+    }
+
+    pub fn total_used(&self) -> usize {
+        self.total_used
+    }
+
     fn load_embedded(filename: &str) -> Option<Vec<String>> {
         let file = SniAssets::get(filename)?;
         let data = file.data.as_ref();
 
-        // Try Binary format first
         if is_binary_format(data) {
             if let Some(domains) = load_binary(data) {
                 return Some(domains);
             }
         }
 
-        // Fallback to TXT format
         let text = std::str::from_utf8(data).ok()?;
         load_text(text)
     }
 }
 
-/// Load Binary format: [2-byte length (big-endian)] + [domain bytes]
 fn load_binary(data: &[u8]) -> Option<Vec<String>> {
     let mut domains = Vec::new();
     let mut offset = 0;
@@ -127,12 +177,10 @@ fn load_binary(data: &[u8]) -> Option<Vec<String>> {
         if offset + 2 > data.len() {
             break;
         }
-        // Read 2-byte length (big-endian)
         let length = u16::from_be_bytes([data[offset], data[offset + 1]]) as usize;
         offset += 2;
 
         if length == 0 || length > 512 {
-            // Invalid length, not binary format
             return None;
         }
 
@@ -140,7 +188,6 @@ fn load_binary(data: &[u8]) -> Option<Vec<String>> {
             break;
         }
 
-        // Read domain bytes
         let domain = std::str::from_utf8(&data[offset..offset + length]).ok()?;
         if !domain.is_empty() && domain.contains('.') {
             domains.push(domain.to_string());
@@ -155,45 +202,36 @@ fn load_binary(data: &[u8]) -> Option<Vec<String>> {
     }
 }
 
-/// Detect if data is in Binary format
-/// Binary format check: valid length prefix chain
 fn is_binary_format(data: &[u8]) -> bool {
-    // Minimum size: at least 4 bytes (2 domains minimum)
     if data.len() < 4 || data.len() > 10 * 1024 * 1024 {
         return false;
     }
 
     let mut offset = 0;
     let mut count = 0;
-    let max_domains = 1000; // Safety limit
+    let max_domains = 1000;
 
     while offset < data.len() && count < max_domains {
         if offset + 2 > data.len() {
             return false;
         }
 
-        // Read length prefix
         let length = u16::from_be_bytes([data[offset], data[offset + 1]]) as usize;
         offset += 2;
 
-        // Length validation
         if length == 0 || length > 512 {
             return false;
         }
 
-        // Check if domain portion is valid UTF-8 and contains dot
         if offset + length > data.len() {
             return false;
         }
 
-        // Check if it looks like a domain (contains at least one dot)
         let slice = &data[offset..offset + length];
         if !slice.contains(&b'.') {
-            // Not a domain, might be text format
             return false;
         }
 
-        // Check if it's printable ASCII
         for &b in slice {
             if !(b == 46
                 || (b >= 48 && b <= 57)
@@ -201,38 +239,29 @@ fn is_binary_format(data: &[u8]) -> bool {
                 || (b >= 65 && b <= 90)
                 || b == 45
                 || b == 95)
-            {
-                // Contains special chars other than dot, dash, underscore
-                // This might still be valid, but be conservative
-            }
+            {}
         }
 
         offset += length;
         count += 1;
     }
 
-    // Must have found at least 3 domains to be considered binary
-    // (avoid false positive on short text files)
     count >= 3
 }
 
-/// Load TXT format (legacy): one domain per line
 fn load_text(content: &str) -> Option<Vec<String>> {
     let mut domains = Vec::new();
 
     for line in content.lines() {
         let trimmed = line.trim();
-        // Ignore comments and empty lines
         if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("//") {
             continue;
         }
 
-        // Cleanup quotes and commas
         let clean = trimmed
             .trim_matches(|c| c == '"' || c == '\'')
             .trim_end_matches(',');
 
-        // Normalize: remove port if present
         let domain_only = if let Some(idx) = clean.find(':') {
             &clean[..idx]
         } else {
@@ -309,7 +338,6 @@ mod tests {
 
     #[test]
     fn load_embedded_handles_comments_and_empty_lines() {
-        // Test with default.txt (should exist)
         let domains = SNISelector::load_embedded("default.txt");
         if let Some(domains) = domains {
             for domain in &domains {
@@ -342,12 +370,9 @@ mod tests {
     #[test]
     fn binary_format_detection() {
         let binary_data = vec![
-            0x00, 0x0B, // length = 11
-            0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D, // "example.com"
-            0x00, 0x08, // length = 8
-            0x74, 0x65, 0x73, 0x74, 0x2E, 0x63, 0x6F, 0x6D, // "test.com"
-            0x00, 0x07, // length = 7
-            0x66, 0x6F, 0x6F, 0x2E, 0x63, 0x6F, 0x6D, // "foo.com"
+            0x00, 0x0B, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D, 0x00,
+            0x08, 0x74, 0x65, 0x73, 0x74, 0x2E, 0x63, 0x6F, 0x6D, 0x00, 0x07, 0x66, 0x6F, 0x6F,
+            0x2E, 0x63, 0x6F, 0x6D,
         ];
         assert!(is_binary_format(&binary_data));
 
@@ -375,5 +400,19 @@ mod tests {
         assert_eq!(domains[0], "example.com");
         assert_eq!(domains[1], "test.com");
         assert_eq!(domains[2], "foo.com");
+    }
+
+    #[test]
+    fn domains_remaining() {
+        let mut selector = SNISelector::new_from_list(vec![
+            "a.com".to_string(),
+            "b.com".to_string(),
+            "c.com".to_string(),
+        ]);
+        assert_eq!(selector.domains_remaining(), 3);
+        selector.next();
+        assert_eq!(selector.domains_remaining(), 2);
+        selector.next();
+        assert_eq!(selector.domains_remaining(), 1);
     }
 }
