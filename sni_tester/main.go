@@ -10,18 +10,21 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
@@ -97,6 +100,131 @@ var dnsCache sync.Map
 // Round-robin counter for DNS pool
 var dnsIndex uint32
 
+// DNS Prefetch
+var dnsPrefetchQueue = make(chan string, 500)
+var dnsPrefetchCache sync.Map
+
+// Adaptive Timeout Controller
+type TimeoutController struct {
+	mu         sync.Mutex
+	samples    []float64
+	dnsSamples []float64
+	tlsSamples []float64
+	index      int
+	baseDNS    time.Duration
+	baseTLS    time.Duration
+}
+
+var timeoutCtrl = TimeoutController{
+	samples:    make([]float64, 100),
+	dnsSamples: make([]float64, 100),
+	tlsSamples: make([]float64, 100),
+	baseDNS:    3 * time.Second,
+	baseTLS:    10 * time.Second,
+}
+
+func (t *TimeoutController) Record(duration time.Duration, kind string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var samples []float64
+	switch kind {
+	case "dns":
+		samples = t.dnsSamples
+	case "tls":
+		samples = t.tlsSamples
+	default:
+		samples = t.samples
+	}
+
+	samples[t.index] = duration.Seconds()
+	t.index = (t.index + 1) % len(samples)
+}
+
+func (t *TimeoutController) GetTimeout(kind string) time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var samples []float64
+	var base time.Duration
+	switch kind {
+	case "dns":
+		samples = t.dnsSamples
+		base = t.baseDNS
+	case "tls":
+		samples = t.tlsSamples
+		base = t.baseTLS
+	default:
+		samples = t.samples
+		base = t.baseDNS
+	}
+
+	sum := 0.0
+	count := 0
+	for _, s := range samples {
+		if s > 0 {
+			sum += s
+			count++
+		}
+	}
+	if count == 0 {
+		return base
+	}
+
+	avg := sum / float64(count)
+
+	variance := 0.0
+	for _, s := range samples {
+		if s > 0 {
+			diff := s - avg
+			variance += diff * diff
+		}
+	}
+	std := 0.0
+	if count > 1 {
+		std = variance / float64(count-1)
+	}
+	std = math.Sqrt(std)
+
+	timeout := avg + 2*std
+
+	minTimeout := base
+	maxTimeout := base * 5
+	if timeout < minTimeout.Seconds() {
+		timeout = minTimeout.Seconds()
+	}
+	if timeout > maxTimeout.Seconds() {
+		timeout = maxTimeout.Seconds()
+	}
+
+	return time.Duration(timeout * 1e9)
+}
+
+// Graceful shutdown
+var isShuttingDown atomic.Bool
+var dbRef *badger.DB
+
+func triggerGracefulShutdown() {
+	if isShuttingDown.Load() {
+		return
+	}
+	isShuttingDown.Store(true)
+	fmt.Println("\n\n收到退出信号，正在优雅关闭...")
+	fmt.Println("正在保存数据...")
+	gracefulShutdown(dbRef)
+	os.Exit(0)
+}
+
+func gracefulShutdown(db *badger.DB) {
+	close(dnsPrefetchQueue)
+	if db != nil {
+		fmt.Println("正在关闭数据库...")
+		db.RunValueLogGC(0.5)
+		db.Close()
+	}
+	fmt.Println("再见!")
+}
+
 // randIndex returns a 随机下标 in [0, n).
 func randIndex(n int) int {
 	if n <= 1 {
@@ -134,6 +262,18 @@ const (
 	GeoASNFile         = "GeoLite2-ASN.mmdb"
 	GeoASNURL          = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-ASN.mmdb"
 	BadgerDBDir        = "badger_db" // 统一的 BadgerDB 目录
+)
+
+// BadgerDB GC config
+const (
+	GCInterval = 15 * time.Minute // 定期GC间隔
+	GCRatio    = 0.3              // GC清理比例
+)
+
+// IDM-style download config
+const (
+	DownloadChunkSize = 1024 * 1024 // 1MB per chunk
+	DownloadWorkers   = 8           // Parallel download threads
 )
 
 // ASNInfo represents an ASN entry in the blacklist
@@ -208,6 +348,16 @@ func main() {
 	// 强制使用 Go 内置解析器，避免并发 CGO 解析限制
 	os.Setenv("GODEBUG", "netdns=go")
 
+	// 优雅退出信号通道
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// 启动信号监听 goroutine
+	go func() {
+		<-sigChan
+		triggerGracefulShutdown()
+	}()
+
 	inputFile := flag.String("f", "", "Input TXT/CSV file containing SNIs")
 	debugMode := flag.Bool("debug", false, "Enable debug logging")
 	proxyString := flag.String("p", "", "Proxy for Geo download (http://127.0.0.1:10808 or socks5://127.0.0.1:10808)")
@@ -224,31 +374,7 @@ func main() {
 	xhttpMode := flag.Bool("xhttp", false, "Enable XHTTP validation (H2 minimum)")
 	realityMode := flag.Bool("reality", false, "Enable Reality validation (TLS 1.3, X25519, H2)")
 
-	// Import mode
-	importFile := flag.String("import", "", "Import result JSON file from mobile app")
-
-	// ADB mode
-	adbMode := flag.Bool("adb", false, "Use ADB to run test on connected Android device")
-	adbWiFi := flag.Bool("adb-wifi", false, "Enable WiFi ADB and show QR code for wireless connection")
-
 	flag.Parse()
-
-	// Handle import mode
-	if *importFile != "" {
-		handleImport(*importFile)
-		return
-	}
-
-	// Handle ADB mode
-	if *adbMode || *adbWiFi {
-		if *inputFile == "" {
-			fmt.Println("Usage: sni_tester -adb -f <input_file> [-xhttp] [-reality]")
-			fmt.Println("  Example: sni_tester -adb -f domains.txt -reality")
-			os.Exit(1)
-		}
-		runADBMode(*adbWiFi, *inputFile, *realityMode, *xhttpMode)
-		return
-	}
 
 	if *inputFile == "" {
 		fmt.Println("Usage: sni_tester -f <input_file> [-dns <dns_server>] [-w <workers>] [-debug] [-p <proxy>] [-xhttp] [-reality] [-ttl <days>] [-max <lines>]")
@@ -332,8 +458,8 @@ func main() {
 		}
 	}
 
-	// 0.1 GeoIP DB Handling
-	prepareGeoDB(*proxyString)
+	// 0.1 GeoIP/ASN DB Handling (download with network switch if needed)
+	prepareGeoDBs(*proxyString)
 
 	geoDB, err := geoip2.Open(GeoDBFile)
 	if err != nil {
@@ -344,8 +470,6 @@ func main() {
 	defer os.Remove(GeoDBFile)
 
 	// 0.2 ASN DB Handling
-	prepareGeoASNDB(*proxyString)
-
 	asnDB, err := geoip2.Open(GeoASNFile)
 	if err != nil {
 		fmt.Printf("Error opening ASN DB: %v\n", err)
@@ -360,16 +484,59 @@ func main() {
 		WithMemTableSize(64 << 20).      // 64MB
 		WithValueLogFileSize(256 << 20). // 256MB
 		WithCompression(options.ZSTD).
-		WithNumVersionsToKeep(1))
+		WithNumVersionsToKeep(1).
+		WithCompactL0OnClose(true)) // 关闭时压缩L0层
 	if err != nil {
 		fmt.Printf("Error opening BadgerDB: %v\n", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	dbRef = db
+
+	// 2. 启动时抽样验证数据完整性
+	var corruptCount int
+	db.View(func(txn *badger.Txn) error {
+		iter := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer iter.Close()
+		count := 0
+		for iter.Seek([]byte("failed:")); count < 100; iter.Next() {
+			if !iter.Valid() {
+				break
+			}
+			_, err := iter.Item().ValueCopy(nil)
+			if err != nil {
+				corruptCount++
+			}
+			count++
+		}
+		return nil
+	})
+	if corruptCount > 0 {
+		fmt.Printf("[Startup] Warning: %d corrupted entries found\n", corruptCount)
+	}
+
+	// 1. 启动定期 GC goroutine
+	go func() {
+		ticker := time.NewTicker(GCInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if isShuttingDown.Load() {
+					return
+				}
+				fmt.Println("[GC] Running value log garbage collection...")
+				if err := db.RunValueLogGC(GCRatio); err != nil {
+					fmt.Printf("[GC] Error: %v\n", err)
+				}
+			}
+		}
+	}()
 
 	// 程序结束时运行 GC 清理过期数据
 	defer func() {
-		db.RunValueLogGC(0.5)
+		if dbRef != nil {
+			dbRef.RunValueLogGC(0.5)
+		}
 	}()
 
 	now := time.Now().Unix()
@@ -461,7 +628,37 @@ func main() {
 		fmt.Printf("DoH enabled: %s\n", *dohURL)
 	}
 
-	// 3. Setup Dynamic Workers (AIMD Concurrency Controller)
+	// 3. Setup DNS Prefetch Workers
+	fmt.Println("Starting DNS prefetch workers...")
+	for i := 0; i < 3; i++ {
+		go func(workerID int) {
+			for domain := range dnsPrefetchQueue {
+				if isShuttingDown.Load() {
+					return
+				}
+				if _, exists := dnsPrefetchCache.Load(domain); exists {
+					continue
+				}
+				if _, exists := dnsCache.Load(domain); exists {
+					continue
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				var ips []string
+				var err error
+				if useDoH {
+					ips, err = lookupHostDoH(dohClient, *dohURL, domain)
+				} else {
+					ips, err = resolver.LookupHost(ctx, domain)
+				}
+				cancel()
+				if err == nil && len(ips) > 0 {
+					dnsPrefetchCache.Store(domain, ips[0])
+				}
+			}
+		}(i)
+	}
+
+	// 4. Setup Dynamic Workers (AIMD Concurrency Controller)
 	jobs := make(chan string, JobBuffer)
 
 	maxConcurrent := MaxWorkers
@@ -503,17 +700,25 @@ func main() {
 					return
 				}
 
-				// 1. DNS Resolution (Check cache first)
+				// 1. DNS Resolution (Check cache first, then prefetch)
 				var ip string
 				if cachedIP, hit := dnsCache.Load(domain); hit {
 					ip = cachedIP.(string)
+				} else if prefetchedIP, exists := dnsPrefetchCache.LoadAndDelete(domain); exists {
+					ip = prefetchedIP.(string)
+					dnsCache.Store(domain, ip)
 				} else {
 					var ips []string
 					var err error
+					dnsTimeout := timeoutCtrl.GetTimeout("dns")
 					if useDoH {
 						ips, err = lookupHostDoH(dohClient, *dohURL, domain)
 					} else {
-						ips, err = resolver.LookupHost(context.Background(), domain)
+						ctx, cancel := context.WithTimeout(context.Background(), dnsTimeout)
+						start := time.Now()
+						ips, err = resolver.LookupHost(ctx, domain)
+						timeoutCtrl.Record(time.Since(start), "dns")
+						cancel()
 					}
 					if err != nil || len(ips) == 0 {
 						errMsg := "DNS resolution failed"
@@ -563,7 +768,8 @@ func main() {
 				}
 
 				// 3. Perform TLS Handshake
-				success, finalIP, info := checkSNI(domain, ip, *debugMode, *xhttpMode, *realityMode, resolver)
+				tlsTimeout := timeoutCtrl.GetTimeout("tls")
+				success, finalIP, info := checkSNI(domain, ip, *debugMode, *xhttpMode, *realityMode, resolver, tlsTimeout)
 				if finalIP != "" {
 					ip = finalIP
 				}
@@ -817,6 +1023,12 @@ func main() {
 			skippedCount = 0
 		}
 
+		// Trigger DNS prefetch for this domain
+		select {
+		case dnsPrefetchQueue <- domain:
+		default:
+		}
+
 		jobs <- domain
 	}
 	if err := scanner.Err(); err != nil {
@@ -889,6 +1101,9 @@ $notify.Dispose()
 			fmt.Println("Auto-shutdown is not supported on this OS.")
 		}
 	}
+
+	// 正常结束，优雅关闭
+	gracefulShutdown(dbRef)
 }
 
 // deduplicateTargetDir reads all .txt files in the given directory and removes duplicate lines.
@@ -1116,6 +1331,16 @@ func appendFailureHistoryDB(db *badger.DB, domains []string) {
 		})
 	}
 	wb.Flush()
+
+	// 3. 写入后验证 - 抽样检查最后一条
+	lastKey := append(keyPrefixFailed(), domains[len(domains)-1]...)
+	err := db.View(func(txn *badger.Txn) error {
+		_, err := txn.Get(lastKey)
+		return err
+	})
+	if err != nil {
+		fmt.Printf("[WriteVerify] Warning: failed to verify write for %s: %v\n", domains[len(domains)-1], err)
+	}
 }
 
 func loadExistingIntoMap(dir string, m map[string]struct{}) {
@@ -1276,7 +1501,7 @@ func findTargetDir() string {
 	return ""
 }
 
-func checkSNI(domain string, targetIP string, debug bool, xhttp bool, reality bool, resolver *net.Resolver) (bool, string, string) {
+func checkSNI(domain string, targetIP string, debug bool, xhttp bool, reality bool, resolver *net.Resolver, tlsTimeout time.Duration) (bool, string, string) {
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 
 	// 始终使用已解析的 IP 地址进行连接，不再通过域名拨号
@@ -1298,10 +1523,12 @@ func checkSNI(domain string, targetIP string, debug bool, xhttp bool, reality bo
 	helloID := pickClientHelloID()
 	uConn := utls.UClient(rawConn, config, helloID)
 	defer uConn.Close()
-	uConn.SetDeadline(time.Now().Add(10 * time.Second))
+	uConn.SetDeadline(time.Now().Add(tlsTimeout))
+	start := time.Now()
 	if err := uConn.Handshake(); err != nil {
 		return false, "", err.Error()
 	}
+	timeoutCtrl.Record(time.Since(start), "tls")
 	state := uConn.ConnectionState()
 
 	if state.Version != utls.VersionTLS13 && (reality || xhttp) {
@@ -1457,7 +1684,7 @@ func lookupHostDoH(client *http.Client, endpoint string, name string) ([]string,
 	return ips, nil
 }
 
-func downloadFile(filepath string, urlStr string, proxyString string) error {
+func downloadFile(filePath string, urlStr string, proxyString string) error {
 	transport := &http.Transport{}
 	if proxyString != "" {
 		pu, _ := url.Parse(proxyString)
@@ -1470,6 +1697,341 @@ func downloadFile(filepath string, urlStr string, proxyString string) error {
 		}
 	}
 	client := &http.Client{Transport: transport, Timeout: 10 * time.Minute}
+
+	contentLength, err := getContentLength(client, urlStr)
+	if err != nil {
+		return fmt.Errorf("failed to get file size: %w", err)
+	}
+
+	if contentLength <= 0 || !supportsRange(client, urlStr) {
+		fmt.Println("服务器不支持断点续传，使用单线程下载...")
+		return downloadSingle(client, filePath, urlStr)
+	}
+
+	fmt.Printf("文件大小: %.2f MB, 启用 %d 线程并行下载...\n", float64(contentLength)/1024/1024, DownloadWorkers)
+
+	// Quick Range test before starting parallel download
+	testReq, _ := http.NewRequest("GET", urlStr, nil)
+	testReq.Header.Set("Range", "bytes=0-1023")
+	testResp, err := client.Do(testReq)
+	if err != nil || (testResp.StatusCode != http.StatusPartialContent && testResp.StatusCode != http.StatusOK) {
+		if testResp != nil {
+			testResp.Body.Close()
+		}
+		fmt.Println("Range请求测试失败，切换单线程下载...")
+		return downloadSingle(client, filePath, urlStr)
+	}
+	testResp.Body.Close()
+
+	tmpDir := filepath.Dir(filePath) + "/.download_tmp_" + filepath.Base(filePath)
+	os.MkdirAll(tmpDir, 0755)
+	defer os.RemoveAll(tmpDir)
+
+	chunkSize := DownloadChunkSize
+	numChunks := int((contentLength + int64(chunkSize) - 1) / int64(chunkSize))
+	if numChunks < DownloadWorkers {
+		numChunks = DownloadWorkers
+		chunkSize = int((contentLength + int64(numChunks) - 1) / int64(numChunks))
+	}
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, numChunks)
+	chunkPaths := make([]string, numChunks)
+
+	for i := 0; i < numChunks; i++ {
+		wg.Add(1)
+		go func(chunkIdx int) {
+			defer wg.Done()
+
+			start := int64(chunkIdx) * int64(chunkSize)
+			end := start + int64(chunkSize) - 1
+			if end >= contentLength {
+				end = contentLength - 1
+			}
+			if start >= contentLength {
+				chunkPaths[chunkIdx] = ""
+				return
+			}
+
+			req, _ := http.NewRequest("GET", urlStr, nil)
+			req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+
+			resp, err := client.Do(req)
+			if err != nil {
+				errChan <- fmt.Errorf("chunk %d download failed: %w", chunkIdx, err)
+				return
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+				errChan <- fmt.Errorf("chunk %d: unexpected status %d", chunkIdx, resp.StatusCode)
+				return
+			}
+
+			chunkPath := tmpDir + fmt.Sprintf("/chunk_%d", chunkIdx)
+			out, err := os.Create(chunkPath)
+			if err != nil {
+				errChan <- fmt.Errorf("chunk %d: failed to create file: %w", chunkIdx, err)
+				return
+			}
+
+			_, err = io.Copy(out, resp.Body)
+			out.Close()
+			if err != nil {
+				errChan <- fmt.Errorf("chunk %d: failed to write: %w", chunkIdx, err)
+				return
+			}
+
+			chunkPaths[chunkIdx] = chunkPath
+		}(i)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to create final file: %w", err)
+	}
+	defer out.Close()
+
+	for i := 0; i < numChunks; i++ {
+		if chunkPaths[i] == "" {
+			continue
+		}
+		data, err := os.ReadFile(chunkPaths[i])
+		if err != nil {
+			return fmt.Errorf("failed to read chunk %d: %w", i, err)
+		}
+		out.Write(data)
+	}
+
+	return out.Close()
+}
+
+func notifyUser(title, message string) {
+	fmt.Printf("\n========================================\n")
+	fmt.Printf("通知: %s\n", title)
+	fmt.Printf("========================================\n")
+	fmt.Printf("%s\n", message)
+	fmt.Printf("========================================\n")
+
+	if runtime.GOOS == "windows" {
+		psScript := fmt.Sprintf(`
+Add-Type -AssemblyName System.Windows.Forms
+$notify = New-Object System.Windows.Forms.NotifyIcon
+$notify.Icon = [System.Drawing.SystemIcons]::Warning
+$notify.BalloonTipTitle = '%s'
+$notify.BalloonTipText = '%s'
+$notify.Visible = $True
+$notify.ShowBalloonTip(10000)
+Start-Sleep -Seconds 10
+$notify.Dispose()
+`, title, message)
+		exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psScript).Start()
+	} else if runtime.GOOS == "darwin" {
+		exec.Command("osascript", "-e", fmt.Sprintf(`display notification "%s" with title "%s"`, message, title)).Run()
+	} else {
+		fmt.Printf("\n[提示] 请查看上方通知消息\n")
+	}
+}
+
+func waitForNetworkChange() bool {
+	fmt.Println("\n等待网络切换检测...")
+	fmt.Println("请切换到下载网络 (如开启代理/vpn)...")
+
+	initialIPs := getCurrentPublicIPs()
+	timeout := time.After(60 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			fmt.Println("等待超时 (60秒)，继续下载...")
+			return false
+		case <-ticker.C:
+			currentIPs := getCurrentPublicIPs()
+			if len(currentIPs) > 0 && !sameIPSets(initialIPs, currentIPs) {
+				fmt.Printf("检测到网络切换: %v\n", currentIPs)
+				return true
+			}
+		}
+	}
+}
+
+func getCurrentPublicIPs() []string {
+	var ips []string
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ips
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok {
+				ip := ipnet.IP
+				if ip != nil && ip.To4() != nil && !ip.IsLoopback() {
+					ips = append(ips, ip.String())
+				}
+			}
+		}
+	}
+	return ips
+}
+
+func sameIPSets(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	set := make(map[string]bool)
+	for _, ip := range a {
+		set[ip] = true
+	}
+	for _, ip := range b {
+		if !set[ip] {
+			return false
+		}
+	}
+	return true
+}
+
+func checkConnectivity(url string) bool {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+func validateTestNetwork() bool {
+	fmt.Println("正在验证测试网络...")
+
+	domesticSites := []struct {
+		url  string
+		name string
+	}{
+		{"https://www.baidu.com", "百度"},
+		{"https://www.qq.com", "腾讯"},
+		{"https://www.aliyun.com", "阿里云"},
+		{"https://www.taobao.com", "淘宝"},
+		{"https://www.jd.com", "京东"},
+		{"https://www.so.com", "360搜索"},
+		{"https://www.sina.com.cn", "新浪"},
+		{"https://www.163.com", "网易"},
+		{"https://www.bilibili.com", "哔哩哔哩"},
+		{"https://www.douyin.com", "抖音"},
+	}
+
+	foreignSites := []struct {
+		url  string
+		name string
+	}{
+		{"https://www.google.com", "Google"},
+		{"https://www.youtube.com", "YouTube"},
+		{"https://twitter.com", "Twitter"},
+		{"https://www.facebook.com", "Facebook"},
+		{"https://www.instagram.com", "Instagram"},
+		{"https://www.reddit.com", "Reddit"},
+	}
+
+	domesticOK := 0
+	domesticChecked := 0
+	for _, site := range domesticSites {
+		if checkConnectivity(site.url) {
+			domesticOK++
+			fmt.Printf("  [✓] %s 可访问\n", site.name)
+		}
+		domesticChecked++
+		if domesticOK >= 3 {
+			break
+		}
+	}
+	if domesticOK < 3 && domesticChecked < len(domesticSites) {
+		for _, site := range domesticSites[domesticChecked:] {
+			if checkConnectivity(site.url) {
+				domesticOK++
+				fmt.Printf("  [✓] %s 可访问\n", site.name)
+			}
+			domesticChecked++
+			if domesticOK >= 3 {
+				break
+			}
+		}
+	}
+
+	foreignBlocked := 0
+	for _, site := range foreignSites {
+		if !checkConnectivity(site.url) {
+			foreignBlocked++
+			fmt.Printf("  [✗] %s 已封锁\n", site.name)
+		} else {
+			fmt.Printf("  [⚠] %s 可访问 (异常)\n", site.name)
+		}
+	}
+
+	fmt.Printf("\n  国内网站: %d/3 最低要求\n", domesticOK)
+	fmt.Printf("  国外网站: %d/%d 已封锁\n", foreignBlocked, len(foreignSites))
+
+	if domesticOK >= 3 && foreignBlocked >= 2 {
+		fmt.Println("  结论: 测试网络验证通过!")
+		return true
+	}
+
+	if domesticOK < 3 {
+		fmt.Println("  结论: 国内网站访问不足3个，请检查网络")
+	} else {
+		fmt.Println("  结论: 国外网站封锁不足，测试网络隔离失败")
+	}
+	return false
+}
+
+func getContentLength(client *http.Client, urlStr string) (int64, error) {
+	resp, err := client.Head(urlStr)
+	if err != nil {
+		return 0, err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("HEAD status: %d", resp.StatusCode)
+	}
+	return resp.ContentLength, nil
+}
+
+func supportsRange(client *http.Client, urlStr string) bool {
+	req, _ := http.NewRequest("GET", urlStr, nil)
+	req.Header.Set("Range", "bytes=0-0")
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusPartialContent
+}
+
+func downloadSingle(client *http.Client, filePath string, urlStr string) error {
+	return downloadWithSpeedMonitor(client, filePath, urlStr, 0)
+}
+
+func downloadWithSpeedMonitor(client *http.Client, filePath string, urlStr string, minSpeedBps int64) error {
+	const slowSpeedThreshold = 10 * 1024 // 10 KB/s
+	const checkInterval = 3 * time.Second
+	const stallTimeout = 30 * time.Second
+
 	resp, err := client.Get(urlStr)
 	if err != nil {
 		return err
@@ -1477,41 +2039,209 @@ func downloadFile(filepath string, urlStr string, proxyString string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected HTTP status: %d", resp.StatusCode)
+		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
 
-	out, err := os.Create(filepath)
+	out, err := os.Create(filePath)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
 
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		return err
-	}
+	var totalWritten int64
+	var lastWritten int64
+	var lastCheckTime = time.Now()
 
-	return out.Close()
+	progressTicker := time.NewTicker(checkInterval)
+	defer progressTicker.Stop()
+	stallTimer := time.NewTimer(stallTimeout)
+	defer stallTimer.Stop()
+
+	buf := make([]byte, 32*1024)
+	for {
+		select {
+		case <-progressTicker.C:
+			now := time.Now()
+			elapsed := now.Sub(lastCheckTime).Seconds()
+			if elapsed > 0 {
+				speed := float64(totalWritten-lastWritten) / elapsed
+				speedKB := speed / 1024
+				progress := float64(totalWritten) / float64(resp.ContentLength) * 100
+				fmt.Printf("\r下载进度: %.1f%% (%.1f KB/s)", progress, speedKB)
+
+				if speed < float64(slowSpeedThreshold) && totalWritten > 1024*1024 {
+					stallTimer.Stop()
+					fmt.Println()
+					return fmt.Errorf("download stall: speed too slow (%.1f KB/s < %d KB/s)", speedKB, slowSpeedThreshold/1024)
+				}
+
+				if speed < float64(minSpeedBps) && minSpeedBps > 0 {
+					stallTimer.Stop()
+					fmt.Println()
+					return fmt.Errorf("download below minimum speed requirement")
+				}
+			}
+			lastWritten = totalWritten
+			lastCheckTime = now
+			stallTimer.Reset(stallTimeout)
+
+		case <-stallTimer.C:
+			fmt.Println()
+			return fmt.Errorf("download stall: no data received for %v", stallTimeout)
+
+		default:
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				written, wErr := out.Write(buf[:n])
+				if wErr != nil {
+					return wErr
+				}
+				totalWritten += int64(written)
+			}
+			if err != nil {
+				if err == io.EOF {
+					fmt.Printf("\r下载进度: 100.0%%\n")
+					return nil
+				}
+				return err
+			}
+		}
+	}
 }
 
-func prepareGeoDB(proxyString string) {
+func prepareGeoDBs(proxyString string) {
+	needCountry := false
+	needASN := false
+
 	if _, err := os.Stat(GeoDBFile); os.IsNotExist(err) {
-		fmt.Println("GeoLite2-Country.mmdb not found. Trying download...")
-		if err := downloadFile(GeoDBFile, GeoDBURL, proxyString); err != nil {
-			fmt.Printf("GeoIP download failed: %v\n", err)
-			os.Exit(1)
+		needCountry = true
+	}
+	if _, err := os.Stat(GeoASNFile); os.IsNotExist(err) {
+		needASN = true
+	}
+
+	if !needCountry && !needASN {
+		fmt.Println("Geo数据库已存在，跳过下载。")
+		return
+	}
+
+	fmt.Println("\n========================================")
+	fmt.Println("          Geo数据库准备阶段              ")
+	fmt.Println("========================================")
+	fmt.Println("步骤1: 请切换到下载专用网络 (高带宽)")
+	fmt.Println("       (如开启代理下载数据库文件)")
+	fmt.Println("========================================")
+	fmt.Println("\n切换好后按 Enter 继续下载...")
+	fmt.Scanln()
+
+	if needCountry {
+		downloadGeoFileWithNetworkSwitch(GeoDBFile, GeoDBURL, proxyString, "GeoLite2-Country.mmdb")
+	}
+	if needASN {
+		downloadGeoFileWithNetworkSwitch(GeoASNFile, GeoASNURL, proxyString, "GeoLite2-ASN.mmdb")
+	}
+
+	fmt.Println("\n========================================")
+	fmt.Println("          Geo数据库准备阶段              ")
+	fmt.Println("========================================")
+	fmt.Println("步骤2: 请切换到测试专用网络")
+	fmt.Println("       (关闭代理，使用ISP直连)")
+	fmt.Println("========================================")
+	waitForTestNetwork()
+}
+
+func waitForTestNetwork() {
+	notifyUser("下载完成", "Geo数据库下载完成！\n请切换到测试专用网络，完成后程序将自动继续...")
+
+	initialIPs := getCurrentPublicIPs()
+	lastValidIPs := initialIPs
+	hasSwitched := false
+	timeout := time.After(120 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	recheckTimer := time.NewTimer(0)
+	defer recheckTimer.Stop()
+
+	fmt.Println("等待切换到测试网络...")
+	for {
+		select {
+		case <-timeout:
+			fmt.Println("\n等待超时 (120秒)")
+			fmt.Println("按 Enter 继续运行，或 Ctrl+C 退出...")
+			fmt.Scanln()
+			return
+
+		case <-recheckTimer.C:
+			if validateTestNetwork() {
+				return
+			}
+			fmt.Println("\n验证失败，请确保已切换到正确的测试网络")
+			fmt.Println("切换好后按 Enter 继续验证，或 Ctrl+C 退出...")
+			fmt.Scanln()
+			hasSwitched = true
+			recheckTimer.Reset(1 * time.Second)
+
+		case <-ticker.C:
+			currentIPs := getCurrentPublicIPs()
+			if !sameIPSets(initialIPs, currentIPs) {
+				fmt.Printf("\n检测到网络已切换: %v\n", currentIPs)
+				fmt.Println("正在等待网络稳定 (5秒)...")
+				recheckTimer.Stop()
+				recheckTimer.Reset(5 * time.Second)
+				initialIPs = currentIPs
+				hasSwitched = true
+			} else if hasSwitched && !sameIPSets(lastValidIPs, currentIPs) {
+				fmt.Printf("\n检测到网络再次切换: %v\n", currentIPs)
+				fmt.Println("正在等待网络稳定 (5秒)...")
+				recheckTimer.Stop()
+				recheckTimer.Reset(5 * time.Second)
+				lastValidIPs = currentIPs
+			}
 		}
-		fmt.Println("Download complete.")
 	}
 }
 
-func prepareGeoASNDB(proxyString string) {
-	if _, err := os.Stat(GeoASNFile); os.IsNotExist(err) {
-		fmt.Println("GeoLite2-ASN.mmdb not found. Trying download...")
-		if err := downloadFile(GeoASNFile, GeoASNURL, proxyString); err != nil {
-			fmt.Printf("GeoASN download failed: %v\n", err)
+func prepareGeoDB(proxyString string) {}
+
+func prepareGeoASNDB(proxyString string) {}
+
+func downloadGeoFileWithNetworkSwitch(filePath, urlStr, proxyString, displayName string) {
+	maxRetries := 3
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		fmt.Printf("\n[%d/%d] 正在下载 %s...\n", attempt, maxRetries, displayName)
+
+		err := downloadFile(filePath, urlStr, proxyString)
+		if err == nil {
+			fmt.Printf("%s 下载成功!\n", displayName)
+			return
+		}
+
+		errMsg := err.Error()
+		isSlowDown := strings.Contains(errMsg, "stall") || strings.Contains(errMsg, "slow")
+
+		if attempt < maxRetries {
+			if isSlowDown {
+				notifyUser("下载速度太慢", fmt.Sprintf("%s 下载速度太慢，请切换到更快的网络后继续。\n系统将在检测到网络切换后自动继续...", displayName))
+			} else {
+				notifyUser("下载失败", fmt.Sprintf("%s 下载失败: %v\n请检查网络后继续，系统将在检测到网络切换后自动重试...", displayName, err))
+			}
+
+			networkChanged := waitForNetworkChange()
+			if networkChanged {
+				fmt.Println("检测到网络切换，正在重试...")
+				continue
+			}
+		} else {
+			notifyUser("下载多次失败", fmt.Sprintf("%s 下载多次失败: %v\n请手动下载并放置到程序目录。\nURL: %s", displayName, err, urlStr))
+			fmt.Printf("\n下载失败，请手动下载: %s\n保存为: %s\n", urlStr, filePath)
+			fmt.Println("\n按 Ctrl+C 退出，或手动放置文件后按 Enter 继续...")
+			fmt.Scanln()
+			if _, statErr := os.Stat(filePath); statErr == nil {
+				fmt.Printf("检测到文件，继续运行...\n")
+				return
+			}
 			os.Exit(1)
 		}
-		fmt.Println("Download complete.")
 	}
 }
 
@@ -1607,99 +2337,4 @@ func getASNBlocklistCount(asnMap *sync.Map) int {
 		return true
 	})
 	return count
-}
-
-type MobileResult struct {
-	Version   string `json:"version"`
-	Mode      string `json:"mode"`
-	Timestamp string `json:"timestamp"`
-	Results   []struct {
-		Domain  string `json:"domain"`
-		Success bool   `json:"success"`
-		IP      string `json:"ip"`
-		Country string `json:"country"`
-		Info    string `json:"info"`
-	} `json:"results"`
-}
-
-func handleImport(jsonFile string) {
-	data, err := os.ReadFile(jsonFile)
-	if err != nil {
-		fmt.Printf("Error reading file: %v\n", err)
-		os.Exit(1)
-	}
-
-	var result MobileResult
-	if err := json.Unmarshal(data, &result); err != nil {
-		fmt.Printf("Error parsing JSON: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Importing %d results (mode: %s)\n", len(result.Results), result.Mode)
-
-	baseTargetDir := findTargetDir()
-	if baseTargetDir == "" {
-		fmt.Println("Error: Could not find rust/tgbot/src/resources/sni directory.")
-		os.Exit(1)
-	}
-
-	subDir := ""
-	modeLower := strings.ToLower(result.Mode)
-	if modeLower == "reality" {
-		subDir = "reality"
-	} else if modeLower == "xhttp" {
-		subDir = "xhttp"
-	}
-
-	targetDir := baseTargetDir
-	if subDir != "" {
-		targetDir = filepath.Join(baseTargetDir, subDir)
-	}
-
-	os.MkdirAll(targetDir, 0755)
-
-	countryMap := make(map[string][]string)
-	for _, r := range result.Results {
-		if !r.Success {
-			continue
-		}
-		if r.Country == "" || r.Country == "UNKNOWN" {
-			continue
-		}
-		if isBlockedCountry(r.Country) {
-			continue
-		}
-		countryMap[r.Country] = append(countryMap[r.Country], r.Domain)
-	}
-
-	for country, domains := range countryMap {
-		filename := fmt.Sprintf("%s.txt", strings.ToUpper(country))
-		targetPath := filepath.Join(targetDir, filename)
-
-		existing := make(map[string]bool)
-		if f, err := os.Open(targetPath); err == nil {
-			scanner := bufio.NewScanner(f)
-			for scanner.Scan() {
-				existing[scanner.Text()] = true
-			}
-			f.Close()
-		}
-
-		file, err := os.OpenFile(targetPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			fmt.Printf("Error writing %s: %v\n", filename, err)
-			continue
-		}
-		count := 0
-		for _, domain := range domains {
-			if !existing[domain] {
-				file.WriteString(domain + "\n")
-				count++
-			}
-		}
-		file.Close()
-		fmt.Printf("  %s: %d new domains added\n", country, count)
-	}
-
-	fmt.Printf("Import completed. Files saved to: %s\n", targetDir)
 }

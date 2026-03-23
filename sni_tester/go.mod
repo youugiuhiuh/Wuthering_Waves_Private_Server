@@ -7,8 +7,7 @@ require (
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/schollz/progressbar/v3 v3.19.0
-	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	golang.org/x/net v0.49.0
+	golang.org/x/net v0.51.0
 )
 
 require (
@@ -23,12 +22,13 @@ require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel v1.37.0 // indirect
 	go.opentelemetry.io/otel/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
-	golang.org/x/crypto v0.47.0 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/term v0.39.0 // indirect
-	google.golang.org/protobuf v1.36.7 // indirect
+	golang.org/x/term v0.40.0 // indirect
+	google.golang.org/protobuf v1.36.10 // indirect
 )
