@@ -131,7 +131,46 @@ const (
 	StreamingThreshold = 10 * 1024 * 1024 // 10MB threshold for streaming mode
 	GeoDBFile          = "GeoLite2-Country.mmdb"
 	GeoDBURL           = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-Country.mmdb"
+	GeoASNFile         = "GeoLite2-ASN.mmdb"
+	GeoASNURL          = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-ASN.mmdb"
+	ASNHistoryDB       = "asn_blacklist.db"
 )
+
+// ASNInfo represents an ASN entry in the blacklist
+type ASNInfo struct {
+	Org     string
+	Country string
+	AddedAt int64
+}
+
+// Seed blocked ASN list (CN/HK/MO/IR/RU/KP)
+var SeedBlockedASNs = map[uint32]string{
+	45102:  "Alibaba US Technology Co., Ltd.",
+	55967:  "Beijing Baidu Netcom Science and Technology Co., Ltd.",
+	132203: "Tencent Building, Kejizhongyi Avenue",
+	4808:   "China Unicom Beijing Province Network",
+	4134:   "Chinanet",
+	4811:   "China Telecom Group",
+	38283:  "CHINANET SiChuan Telecom Internet Data Center",
+	24151:  "China Internet Network Infomation Center",
+	21859:  "Zenlayer Inc",
+	17623:  "China Telecom (Beijing) IDC",
+	4837:   "China Unicom IP network",
+	58466:  "Shanghai Bell Networks",
+	45275:  "Tencent Cloud Computing (Beijing)",
+	58772:  "Alibaba (Beijing) Technology",
+	24542:  "Chinanet IDC",
+	23650:  "Chinanet Jiangsu Province Network",
+	23764:  "Chinanet Guangdong Province Network",
+	4538:   "China Telecom Group",
+	38176:  "Tencent Cloud",
+	17429:  "Tencent Cloud Computing",
+	149979: "Tencent Cloud Computing",
+	45081:  "Tencent Cloud Computing",
+	141024: "Tencent Cloud Computing",
+	136190: "Tencent Cloud",
+	212238: "Tencent Cloud",
+}
 
 type ValidationResult struct {
 	Domain  string
@@ -281,6 +320,49 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+	defer os.Remove(GeoDBFile)
+
+	// 0.2 ASN DB Handling
+	prepareGeoASNDB(*proxyString)
+
+	asnDB, err := geoip2.Open(GeoASNFile)
+	if err != nil {
+		fmt.Printf("Error opening ASN DB: %v\n", err)
+		os.Exit(1)
+	}
+	defer asnDB.Close()
+	defer os.Remove(GeoASNFile)
+
+	// 0.3 ASN Blacklist DB
+	asnBlocklistDB, err := leveldb.OpenFile(ASNHistoryDB, &opt.Options{
+		WriteBuffer:            8 * 1024 * 1024,
+		CompactionTableSize:    4 * 1024 * 1024,
+		BlockCacheCapacity:     4 * 1024 * 1024,
+		OpenFilesCacheCapacity: 32,
+	})
+	if err != nil {
+		fmt.Printf("Error opening ASN blacklist DB: %v\n", err)
+		os.Exit(1)
+	}
+	defer asnBlocklistDB.Close()
+
+	now := time.Now().Unix()
+	ttlSec := int64(*ttlDays * 24 * 3600)
+
+	// 加载种子 ASN 黑名单到内存
+	var asnBlocklist sync.Map
+	for asn, org := range SeedBlockedASNs {
+		asnBlocklist.Store(asn, ASNInfo{Org: org, Country: "SEED", AddedAt: now})
+	}
+
+	// 清理并加载持久化 ASN 黑名单
+	asnPurged := cleanASNBlacklist(asnBlocklistDB, now, ttlSec)
+	if asnPurged > 0 {
+		fmt.Printf("Purged %d expired entries from ASN blacklist.\n", asnPurged)
+	}
+	loadASNBlacklist(asnBlocklistDB, &asnBlocklist)
+
+	fmt.Printf("ASN blacklist loaded: %d entries\n", getASNBlocklistCount(&asnBlocklist))
 
 	// 1. 自适应模式识别
 	fileInfo, err := os.Stat(*inputFile)
@@ -331,9 +413,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer failDB.Close()
-
-	now := time.Now().Unix()
-	ttlSec := int64(*ttlDays * 24 * 3600)
 
 	failCount, purged := cleanAndCountFailureHistory(failDB, now, ttlSec)
 	if purged > 0 {
@@ -454,8 +533,21 @@ func main() {
 
 				// 2. Early Skip if blocked country
 				if isBlockedCountry(country) {
+					// 动态学习 ASN: 查询该 IP 的 ASN 并加入黑名单
+					asn, org := getASN(net.ParseIP(ip), asnDB)
+					if asn > 0 {
+						addASNToBlacklist(asnBlocklistDB, asn, org, country)
+					}
 					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: country, Info: fmt.Sprintf("Skipped (Country: %s)", country)}
 					workerSemaphore <- struct{}{} // Return the token
+					continue
+				}
+
+				// 2.1 ASN Check - 跳过黑名单中的 ASN
+				asn, org := getASN(net.ParseIP(ip), asnDB)
+				if asn > 0 && isASNBlocked(asn, &asnBlocklist) {
+					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: country, Info: fmt.Sprintf("Skipped (ASN: %d %s)", asn, org)}
+					workerSemaphore <- struct{}{}
 					continue
 				}
 
@@ -1240,6 +1332,89 @@ func prepareGeoDB(proxyString string) {
 		}
 		fmt.Println("Download complete.")
 	}
+}
+
+func prepareGeoASNDB(proxyString string) {
+	if _, err := os.Stat(GeoASNFile); os.IsNotExist(err) {
+		fmt.Println("GeoLite2-ASN.mmdb not found. Trying download...")
+		if err := downloadFile(GeoASNFile, GeoASNURL, proxyString); err != nil {
+			fmt.Printf("GeoASN download failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Download complete.")
+	}
+}
+
+func getASN(ip net.IP, db *geoip2.Reader) (uint32, string) {
+	record, err := db.ASN(ip)
+	if err != nil {
+		return 0, ""
+	}
+	return uint32(record.AutonomousSystemNumber), record.AutonomousSystemOrganization
+}
+
+func loadASNBlacklist(db *leveldb.DB, asnMap *sync.Map) {
+	iter := db.NewIterator(nil, nil)
+	for iter.Next() {
+		key := string(iter.Key())
+		var info ASNInfo
+		if err := json.Unmarshal(iter.Value(), &info); err == nil {
+			var asn uint64
+			fmt.Sscanf(key, "%d", &asn)
+			asnMap.Store(uint32(asn), info)
+		}
+	}
+	iter.Release()
+}
+
+func isASNBlocked(asn uint32, asnMap *sync.Map) bool {
+	_, ok := asnMap.Load(asn)
+	return ok
+}
+
+func addASNToBlacklist(db *leveldb.DB, asn uint32, org, country string) {
+	info := ASNInfo{
+		Org:     org,
+		Country: country,
+		AddedAt: time.Now().Unix(),
+	}
+	data, _ := json.Marshal(info)
+	key := fmt.Sprintf("%d", asn)
+	db.Put([]byte(key), data, nil)
+}
+
+func cleanASNBlacklist(db *leveldb.DB, now int64, ttlSec int64) int {
+	purged := 0
+	batch := new(leveldb.Batch)
+
+	iter := db.NewIterator(nil, nil)
+	for iter.Next() {
+		var info ASNInfo
+		if err := json.Unmarshal(iter.Value(), &info); err == nil {
+			if (now - info.AddedAt) >= ttlSec {
+				batch.Delete(iter.Key())
+				purged++
+			}
+		} else {
+			batch.Delete(iter.Key())
+			purged++
+		}
+	}
+	iter.Release()
+
+	if purged > 0 {
+		db.Write(batch, nil)
+	}
+	return purged
+}
+
+func getASNBlocklistCount(asnMap *sync.Map) int {
+	count := 0
+	asnMap.Range(func(key, value interface{}) bool {
+		count++
+		return true
+	})
+	return count
 }
 
 type MobileResult struct {
