@@ -24,11 +24,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dgraph-io/badger/v4"
+	"github.com/dgraph-io/badger/v4/options"
 	"github.com/oschwald/geoip2-golang"
 	utls "github.com/refraction-networking/utls"
 	"github.com/schollz/progressbar/v3"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 	"golang.org/x/net/proxy"
 )
 
@@ -133,7 +133,7 @@ const (
 	GeoDBURL           = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-Country.mmdb"
 	GeoASNFile         = "GeoLite2-ASN.mmdb"
 	GeoASNURL          = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-ASN.mmdb"
-	ASNHistoryDB       = "asn_blacklist.db"
+	BadgerDBDir        = "badger_db" // 统一的 BadgerDB 目录
 )
 
 // ASNInfo represents an ASN entry in the blacklist
@@ -141,6 +141,23 @@ type ASNInfo struct {
 	Org     string
 	Country string
 	AddedAt int64
+}
+
+// SuccessInfo represents a successful domain entry
+type SuccessInfo struct {
+	Domain   string
+	Country  string
+	ASN      uint32
+	Org      string
+	TestedAt int64
+}
+
+// BlockedInfo represents a blocked domain entry
+type BlockedInfo struct {
+	Domain   string
+	Reason   string // "COUNTRY" 或 "ASN"
+	Code     string // 国家代码或ASN
+	TestedAt int64
 }
 
 // Seed blocked ASN list (CN/HK/MO/IR/RU/KP)
@@ -269,12 +286,14 @@ func main() {
 		dnsUDP = "udp4" // Built-in pool are all IPv4
 	}
 
-	// 0. 确定存储子目录
+	// 0. 确定存储子目录和模式前缀
 	subDir := ""
 	if *realityMode {
 		subDir = "reality"
+		modePrefix = "reality"
 	} else if *xhttpMode {
 		subDir = "xhttp"
+		modePrefix = "xhttp"
 	}
 
 	baseTargetDir := findTargetDir()
@@ -316,12 +335,12 @@ func main() {
 	// 0.1 GeoIP DB Handling
 	prepareGeoDB(*proxyString)
 
-	db, err := geoip2.Open(GeoDBFile)
+	geoDB, err := geoip2.Open(GeoDBFile)
 	if err != nil {
 		fmt.Printf("Error opening GeoIP DB: %v\n", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer geoDB.Close()
 	defer os.Remove(GeoDBFile)
 
 	// 0.2 ASN DB Handling
@@ -335,21 +354,27 @@ func main() {
 	defer asnDB.Close()
 	defer os.Remove(GeoASNFile)
 
-	// 0.3 ASN Blacklist DB
-	asnBlocklistDB, err := leveldb.OpenFile(ASNHistoryDB, &opt.Options{
-		WriteBuffer:            8 * 1024 * 1024,
-		CompactionTableSize:    4 * 1024 * 1024,
-		BlockCacheCapacity:     4 * 1024 * 1024,
-		OpenFilesCacheCapacity: 32,
-	})
+	// 0.3 Unified BadgerDB for all data storage
+	db, err := badger.Open(badger.DefaultOptions(BadgerDBDir).
+		WithSyncWrites(true).            // 数据安全
+		WithMemTableSize(64 << 20).      // 64MB
+		WithValueLogFileSize(256 << 20). // 256MB
+		WithCompression(options.ZSTD).
+		WithNumVersionsToKeep(1))
 	if err != nil {
-		fmt.Printf("Error opening ASN blacklist DB: %v\n", err)
+		fmt.Printf("Error opening BadgerDB: %v\n", err)
 		os.Exit(1)
 	}
-	defer asnBlocklistDB.Close()
+	defer db.Close()
+
+	// 程序结束时运行 GC 清理过期数据
+	defer func() {
+		db.RunValueLogGC(0.5)
+	}()
 
 	now := time.Now().Unix()
-	ttlSec := int64(*ttlDays * 24 * 3600)
+	ttlDaysValue = *ttlDays
+	ttlSec := int64(ttlDaysValue * 24 * 3600)
 
 	// 加载种子 ASN 黑名单到内存
 	var asnBlocklist sync.Map
@@ -357,12 +382,8 @@ func main() {
 		asnBlocklist.Store(asn, ASNInfo{Org: org, Country: "SEED", AddedAt: now})
 	}
 
-	// 清理并加载持久化 ASN 黑名单
-	asnPurged := cleanASNBlacklist(asnBlocklistDB, now, ttlSec)
-	if asnPurged > 0 {
-		fmt.Printf("Purged %d expired entries from ASN blacklist.\n", asnPurged)
-	}
-	loadASNBlacklist(asnBlocklistDB, &asnBlocklist)
+	// 加载持久化 ASN 黑名单 (BadgerDB 使用 TTL，无需手动清理)
+	loadASNBlacklist(db, &asnBlocklist)
 
 	fmt.Printf("ASN blacklist loaded: %d entries\n", getASNBlocklistCount(&asnBlocklist))
 
@@ -394,29 +415,13 @@ func main() {
 	}
 	fmt.Printf("Total lines to process: %d\n", totalLines)
 
-	// 2. Setup Memory Indices (Success Map) and LevelDB Failure History
+	// 2. Setup Memory Indices (Success Map) and BadgerDB Failure History
 	successMap := make(map[string]struct{})
 	loadExistingIntoMap(targetDir, successMap)
+	loadSuccessHistory(db, successMap)
+	loadBlockedHistory(db, successMap)
 
-	// LevelDB path per protocol mode (reality/xhttp/default)
-	historyDBDir := "failed_history.db"
-	if subDir != "" {
-		historyDBDir = fmt.Sprintf("failed_history_%s.db", subDir)
-	}
-
-	failDB, err := leveldb.OpenFile(historyDBDir, &opt.Options{
-		WriteBuffer:            16 * 1024 * 1024, // 16MB write buffer
-		CompactionTableSize:    8 * 1024 * 1024,  // 8MB per table
-		BlockCacheCapacity:     8 * 1024 * 1024,  // 8MB block cache
-		OpenFilesCacheCapacity: 64,
-	})
-	if err != nil {
-		fmt.Printf("Error opening LevelDB: %v\n", err)
-		os.Exit(1)
-	}
-	defer failDB.Close()
-
-	failCount, purged := cleanAndCountFailureHistory(failDB, now, ttlSec)
+	failCount, purged := cleanAndCountFailureHistory(db, now, ttlSec)
 	if purged > 0 {
 		fmt.Printf("Purged %d expired entries from failure history.\n", purged)
 	}
@@ -524,7 +529,7 @@ func main() {
 				}
 
 				countryCode := "UNKNOWN"
-				record, geoErr := db.Country(net.ParseIP(ip))
+				record, geoErr := geoDB.Country(net.ParseIP(ip))
 				if geoErr == nil {
 					if record.Country.IsoCode != "" {
 						countryCode = record.Country.IsoCode
@@ -538,8 +543,10 @@ func main() {
 					// 动态学习 ASN: 查询该 IP 的 ASN 并加入黑名单
 					asn, org := getASN(net.ParseIP(ip), asnDB)
 					if asn > 0 {
-						addASNToBlacklist(asnBlocklistDB, asn, org, countryCode)
+						addASNToBlacklist(db, asn, org, countryCode)
 					}
+					// 记录到被阻止数据库
+					addBlockedDomain(db, domain, "COUNTRY", countryCode)
 					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, Info: fmt.Sprintf("Skipped (Country: %s)", countryCode)}
 					workerSemaphore <- struct{}{} // Return the token
 					continue
@@ -548,6 +555,8 @@ func main() {
 				// 2.1 ASN Check - 跳过黑名单中的 ASN
 				asn, org := getASN(net.ParseIP(ip), asnDB)
 				if asn > 0 && isASNBlocked(asn, &asnBlocklist) {
+					// 记录到被阻止数据库
+					addBlockedDomain(db, domain, "ASN", fmt.Sprintf("%d", asn))
 					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, ASN: asn, Org: org, Info: fmt.Sprintf("Skipped (ASN: %d %s)", asn, org)}
 					workerSemaphore <- struct{}{}
 					continue
@@ -560,7 +569,7 @@ func main() {
 				}
 
 				if countryCode == "UNKNOWN" && finalIP != "" {
-					record, geoErr := db.Country(net.ParseIP(finalIP))
+					record, geoErr := geoDB.Country(net.ParseIP(finalIP))
 					if geoErr == nil {
 						if record.Country.IsoCode != "" {
 							countryCode = record.Country.IsoCode
@@ -635,18 +644,18 @@ func main() {
 					validDomainsMap[res.Country] = append(validDomainsMap[res.Country], res.Domain)
 					newSuccessCount++
 					if newSuccessCount >= 100 {
-						batchSave(targetDir, validDomainsMap)
+						batchSave(targetDir, validDomainsMap, db)
 						for k := range validDomainsMap {
 							delete(validDomainsMap, k)
 						}
 						newSuccessCount = 0
 					}
 				} else {
-					// 虽然验证成功，但因为区域问题（CN/HK/MO/UNKNOWN）被废弃，记入 LevelDB
+					// 虽然验证成功，但因为区域问题（CN/HK/MO/UNKNOWN）被废弃，记入 BadgerDB
 					failureList = append(failureList, res.Domain)
 					newFailureCount++
 					if newFailureCount >= 500 {
-						appendFailureHistoryDB(failDB, failureList)
+						appendFailureHistoryDB(db, failureList)
 						failureList = failureList[:0]
 						newFailureCount = 0
 					}
@@ -657,8 +666,8 @@ func main() {
 					fmt.Printf("\r\033[K%s\n", msg)
 				}
 			} else {
-				// 明确逻辑：所有失败（包含 CN/HK/MO 跳过）都必须记入 LevelDB 失败库
-				// CRITICAL: All failures AND skipped CN/HK/MO domains MUST be recorded in LevelDB failure history.
+				// 明确逻辑：所有失败（包含 CN/HK/MO 跳过）都必须记入 BadgerDB 失败库
+				// CRITICAL: All failures AND skipped CN/HK/MO domains MUST be recorded in BadgerDB failure history.
 				// Record Failure
 				msg := ""
 				stats.mu.Lock()
@@ -677,7 +686,7 @@ func main() {
 				failureList = append(failureList, res.Domain)
 				newFailureCount++
 				if newFailureCount >= 500 {
-					appendFailureHistoryDB(failDB, failureList)
+					appendFailureHistoryDB(db, failureList)
 					failureList = failureList[:0]
 					newFailureCount = 0
 				}
@@ -746,10 +755,10 @@ func main() {
 
 		// Final Batch Save
 		if len(validDomainsMap) > 0 {
-			batchSave(targetDir, validDomainsMap)
+			batchSave(targetDir, validDomainsMap, db)
 		}
 		if len(failureList) > 0 {
-			appendFailureHistoryDB(failDB, failureList)
+			appendFailureHistoryDB(db, failureList)
 		}
 
 		if !*debugMode && bar != nil {
@@ -791,8 +800,8 @@ func main() {
 			continue
 		}
 
-		// 2. Skip if failed recently (LevelDB lookup)
-		if isFailedRecently(failDB, domain, now, ttlSec) {
+		// 2. Skip if failed recently (BadgerDB lookup)
+		if isFailedRecently(db, domain, now, ttlSec) {
 			if !*debugMode {
 				skippedCount++
 			}
@@ -1007,66 +1016,106 @@ func countLines(path string, limit int) (int, error) {
 	return count, nil
 }
 
-// --- Persistence & History (LevelDB) ---
+// --- Persistence & History (BadgerDB) ---
 
-// cleanAndCountFailureHistory iterates all LevelDB entries once,
-// deletes expired ones, and returns (activeCount, purgedCount).
-func cleanAndCountFailureHistory(db *leveldb.DB, now int64, ttlSec int64) (int, int) {
-	active := 0
-	purged := 0
-	batch := new(leveldb.Batch)
+// Key prefixes for unified BadgerDB
+// Mode-specific prefixes (default/xhttp/reality)
+var modePrefix = "default"
 
-	iter := db.NewIterator(nil, nil)
-	for iter.Next() {
-		val := iter.Value()
-		if len(val) == 8 {
-			ts := int64(binary.LittleEndian.Uint64(val))
-			if (now - ts) >= ttlSec {
-				batch.Delete(iter.Key())
-				purged++
-				continue
-			}
-		} else {
-			// Malformed entry, remove it
-			batch.Delete(iter.Key())
-			purged++
-			continue
-		}
-		active++
-	}
-	iter.Release()
-
-	if purged > 0 {
-		db.Write(batch, nil)
-	}
-
-	return active, purged
+// Helper functions for mode-specific key prefixes
+func keyPrefixFailed() []byte {
+	return []byte("failed:" + modePrefix + ":")
+}
+func keyPrefixSuccess() []byte {
+	return []byte("success:" + modePrefix + ":")
+}
+func keyPrefixBlockedCountry() []byte {
+	return []byte("blocked:country:")
+}
+func keyPrefixBlockedASN() []byte {
+	return []byte("blocked:asn:")
+}
+func keyPrefixASN() []byte {
+	return []byte("asn:")
 }
 
-// isFailedRecently checks LevelDB for a domain and returns true if it failed within the TTL.
-func isFailedRecently(db *leveldb.DB, domain string, now int64, ttlSec int64) bool {
-	val, err := db.Get([]byte(domain), nil)
+// String versions for TrimPrefix (include trailing colon)
+func strKeyPrefixSuccess() string {
+	return "success:" + modePrefix + ":"
+}
+func strKeyPrefixASN() string {
+	return "asn:"
+}
+func strKeyPrefixBlockedCountry() string {
+	return "blocked:country:"
+}
+func strKeyPrefixBlockedASN() string {
+	return "blocked:asn:"
+}
+
+// Package-level variable for TTL days (set from flag)
+var ttlDaysValue int
+
+// cleanAndCountFailureHistory - BadgerDB 使用 TTL，无需手动清理过期数据
+// 只统计数量即可
+func cleanAndCountFailureHistory(db *badger.DB, now int64, ttlSec int64) (int, int) {
+	active := 0
+	_ = db.View(func(txn *badger.Txn) error {
+		iter := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer iter.Close()
+		prefix := keyPrefixFailed()
+		for iter.Seek(prefix); iter.ValidForPrefix(prefix); iter.Next() {
+			active++
+		}
+		return nil
+	})
+	return active, 0 // BadgerDB 自动清理过期数据
+}
+
+// isFailedRecently checks BadgerDB for a domain and returns true if it failed within the TTL.
+func isFailedRecently(db *badger.DB, domain string, now int64, ttlSec int64) bool {
+	key := append(keyPrefixFailed(), domain...)
+	var lastFail int64
+	err := db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
+		val, err := item.ValueCopy(nil)
+		if err != nil || len(val) != 8 {
+			return err
+		}
+		lastFail = int64(binary.LittleEndian.Uint64(val))
+		return nil
+	})
 	if err != nil {
-		return false // not found or error
-	}
-	if len(val) != 8 {
 		return false
 	}
-	lastFail := int64(binary.LittleEndian.Uint64(val))
 	return (now - lastFail) < ttlSec
 }
 
-// appendFailureHistoryDB writes a batch of failed domains into LevelDB.
-func appendFailureHistoryDB(db *leveldb.DB, domains []string) {
-	now := time.Now().Unix()
-	buf := make([]byte, 8)
-	binary.LittleEndian.PutUint64(buf, uint64(now))
-
-	batch := new(leveldb.Batch)
-	for _, d := range domains {
-		batch.Put([]byte(d), buf)
+// appendFailureHistoryDB writes a batch of failed domains into BadgerDB with TTL.
+func appendFailureHistoryDB(db *badger.DB, domains []string) {
+	if len(domains) == 0 {
+		return
 	}
-	db.Write(batch, nil)
+	now := time.Now().Unix()
+	ttl := time.Duration(ttlDaysValue) * 24 * time.Hour
+
+	wb := db.NewWriteBatch()
+	defer wb.Cancel()
+
+	for _, d := range domains {
+		key := append(keyPrefixFailed(), d...)
+		buf := make([]byte, 8)
+		binary.LittleEndian.PutUint64(buf, uint64(now))
+		wb.SetEntry(&badger.Entry{
+			Key:       key,
+			Value:     buf,
+			ExpiresAt: uint64(now) + uint64(ttl.Seconds()),
+		})
+	}
+	wb.Flush()
 }
 
 func loadExistingIntoMap(dir string, m map[string]struct{}) {
@@ -1091,9 +1140,82 @@ func loadExistingIntoMap(dir string, m map[string]struct{}) {
 	}
 }
 
-func batchSave(targetDir string, m map[string][]string) {
+func loadSuccessHistory(db *badger.DB, m map[string]struct{}) {
+	if db == nil {
+		return
+	}
+	_ = db.View(func(txn *badger.Txn) error {
+		iter := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer iter.Close()
+		prefix := keyPrefixSuccess()
+		for iter.Seek(prefix); iter.ValidForPrefix(prefix); iter.Next() {
+			key := string(iter.Item().Key())
+			domain := strings.TrimPrefix(key, strKeyPrefixSuccess())
+			m[domain] = struct{}{}
+		}
+		return nil
+	})
+	fmt.Printf("Loaded %d successful domains from history\n", len(m))
+}
+
+func loadBlockedHistory(db *badger.DB, m map[string]struct{}) {
+	if db == nil {
+		return
+	}
+	_ = db.View(func(txn *badger.Txn) error {
+		iter := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer iter.Close()
+
+		// Load country-blocked domains (shared across modes)
+		prefixCountry := keyPrefixBlockedCountry()
+		for iter.Seek(prefixCountry); iter.ValidForPrefix(prefixCountry); iter.Next() {
+			key := string(iter.Item().Key())
+			domain := strings.TrimPrefix(key, strKeyPrefixBlockedCountry())
+			m[domain] = struct{}{}
+		}
+
+		// Load ASN-blocked domains (shared across modes)
+		prefixASN := keyPrefixBlockedASN()
+		iter.Seek(prefixASN)
+		for iter.Seek(prefixASN); iter.ValidForPrefix(prefixASN); iter.Next() {
+			key := string(iter.Item().Key())
+			domain := strings.TrimPrefix(key, strKeyPrefixBlockedASN())
+			m[domain] = struct{}{}
+		}
+		return nil
+	})
+	fmt.Printf("Loaded %d blocked domains from history\n", len(m))
+}
+
+func batchSave(targetDir string, m map[string][]string, db *badger.DB) {
 	for country, list := range m {
 		writeBinaryDomainFile(targetDir, country, list)
+	}
+	// 保存到成功历史数据库
+	if db != nil && len(m) > 0 {
+		now := time.Now().Unix()
+		ttl := time.Duration(ttlDaysValue) * 24 * time.Hour
+
+		wb := db.NewWriteBatch()
+		defer wb.Cancel()
+
+		for country, list := range m {
+			for _, domain := range list {
+				info := SuccessInfo{
+					Domain:   domain,
+					Country:  country,
+					TestedAt: now,
+				}
+				data, _ := json.Marshal(info)
+				key := append(keyPrefixSuccess(), domain...)
+				wb.SetEntry(&badger.Entry{
+					Key:       key,
+					Value:     data,
+					ExpiresAt: uint64(now) + uint64(ttl.Seconds()),
+				})
+			}
+		}
+		wb.Flush()
 	}
 }
 
@@ -1401,18 +1523,25 @@ func getASN(ip net.IP, db *geoip2.Reader) (uint32, string) {
 	return uint32(record.AutonomousSystemNumber), record.AutonomousSystemOrganization
 }
 
-func loadASNBlacklist(db *leveldb.DB, asnMap *sync.Map) {
-	iter := db.NewIterator(nil, nil)
-	for iter.Next() {
-		key := string(iter.Key())
-		var info ASNInfo
-		if err := json.Unmarshal(iter.Value(), &info); err == nil {
-			var asn uint64
-			fmt.Sscanf(key, "%d", &asn)
-			asnMap.Store(uint32(asn), info)
+func loadASNBlacklist(db *badger.DB, asnMap *sync.Map) {
+	_ = db.View(func(txn *badger.Txn) error {
+		iter := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer iter.Close()
+		prefix := keyPrefixASN()
+		for iter.Seek(prefix); iter.ValidForPrefix(prefix); iter.Next() {
+			item := iter.Item()
+			key := string(item.Key())
+			asnStr := strings.TrimPrefix(key, strKeyPrefixASN())
+			var asn uint32
+			fmt.Sscanf(asnStr, "%d", &asn)
+			val, _ := item.ValueCopy(nil)
+			var info ASNInfo
+			if err := json.Unmarshal(val, &info); err == nil {
+				asnMap.Store(asn, info)
+			}
 		}
-	}
-	iter.Release()
+		return nil
+	})
 }
 
 func isASNBlocked(asn uint32, asnMap *sync.Map) bool {
@@ -1420,40 +1549,55 @@ func isASNBlocked(asn uint32, asnMap *sync.Map) bool {
 	return ok
 }
 
-func addASNToBlacklist(db *leveldb.DB, asn uint32, org, country string) {
+func addASNToBlacklist(db *badger.DB, asn uint32, org, country string) {
 	info := ASNInfo{
 		Org:     org,
 		Country: country,
 		AddedAt: time.Now().Unix(),
 	}
 	data, _ := json.Marshal(info)
-	key := fmt.Sprintf("%d", asn)
-	db.Put([]byte(key), data, nil)
+	key := append(keyPrefixASN(), fmt.Sprintf("%d", asn)...)
+
+	ttl := time.Duration(ttlDaysValue) * 24 * time.Hour
+	now := time.Now().Unix()
+
+	_ = db.Update(func(txn *badger.Txn) error {
+		return txn.SetEntry(&badger.Entry{
+			Key:       key,
+			Value:     data,
+			ExpiresAt: uint64(now) + uint64(ttl.Seconds()),
+		})
+	})
 }
 
-func cleanASNBlacklist(db *leveldb.DB, now int64, ttlSec int64) int {
-	purged := 0
-	batch := new(leveldb.Batch)
-
-	iter := db.NewIterator(nil, nil)
-	for iter.Next() {
-		var info ASNInfo
-		if err := json.Unmarshal(iter.Value(), &info); err == nil {
-			if (now - info.AddedAt) >= ttlSec {
-				batch.Delete(iter.Key())
-				purged++
-			}
-		} else {
-			batch.Delete(iter.Key())
-			purged++
-		}
+func addBlockedDomain(db *badger.DB, domain, reason, code string) {
+	info := BlockedInfo{
+		Domain:   domain,
+		Reason:   reason,
+		Code:     code,
+		TestedAt: time.Now().Unix(),
 	}
-	iter.Release()
+	data, _ := json.Marshal(info)
 
-	if purged > 0 {
-		db.Write(batch, nil)
+	var key []byte
+	if reason == "COUNTRY" {
+		key = append(keyPrefixBlockedCountry(), domain...)
+	} else if reason == "ASN" {
+		key = append(keyPrefixBlockedASN(), domain...)
+	} else {
+		key = append(keyPrefixBlockedCountry(), domain...)
 	}
-	return purged
+
+	ttl := time.Duration(ttlDaysValue) * 24 * time.Hour
+	now := time.Now().Unix()
+
+	_ = db.Update(func(txn *badger.Txn) error {
+		return txn.SetEntry(&badger.Entry{
+			Key:       key,
+			Value:     data,
+			ExpiresAt: uint64(now) + uint64(ttl.Seconds()),
+		})
+	})
 }
 
 func getASNBlocklistCount(asnMap *sync.Map) int {
