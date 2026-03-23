@@ -177,6 +177,8 @@ type ValidationResult struct {
 	Success bool
 	IP      string
 	Country string
+	ASN     uint32
+	Org     string
 	Info    string
 }
 
@@ -521,24 +523,24 @@ func main() {
 					dnsCache.Store(domain, ip) // Store in cache for future hits
 				}
 
-				country := "UNKNOWN"
+				countryCode := "UNKNOWN"
 				record, geoErr := db.Country(net.ParseIP(ip))
 				if geoErr == nil {
 					if record.Country.IsoCode != "" {
-						country = record.Country.IsoCode
+						countryCode = record.Country.IsoCode
 					} else if record.RegisteredCountry.IsoCode != "" {
-						country = record.RegisteredCountry.IsoCode
+						countryCode = record.RegisteredCountry.IsoCode
 					}
 				}
 
-				// 2. Early Skip if blocked country
-				if isBlockedCountry(country) {
+				// 先检查国家黑名单 (使用 ISO 代码)
+				if isBlockedCountry(countryCode) {
 					// 动态学习 ASN: 查询该 IP 的 ASN 并加入黑名单
 					asn, org := getASN(net.ParseIP(ip), asnDB)
 					if asn > 0 {
-						addASNToBlacklist(asnBlocklistDB, asn, org, country)
+						addASNToBlacklist(asnBlocklistDB, asn, org, countryCode)
 					}
-					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: country, Info: fmt.Sprintf("Skipped (Country: %s)", country)}
+					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, Info: fmt.Sprintf("Skipped (Country: %s)", countryCode)}
 					workerSemaphore <- struct{}{} // Return the token
 					continue
 				}
@@ -546,7 +548,7 @@ func main() {
 				// 2.1 ASN Check - 跳过黑名单中的 ASN
 				asn, org := getASN(net.ParseIP(ip), asnDB)
 				if asn > 0 && isASNBlocked(asn, &asnBlocklist) {
-					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: country, Info: fmt.Sprintf("Skipped (ASN: %d %s)", asn, org)}
+					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, ASN: asn, Org: org, Info: fmt.Sprintf("Skipped (ASN: %d %s)", asn, org)}
 					workerSemaphore <- struct{}{}
 					continue
 				}
@@ -557,21 +559,21 @@ func main() {
 					ip = finalIP
 				}
 
-				if country == "UNKNOWN" && finalIP != "" {
+				if countryCode == "UNKNOWN" && finalIP != "" {
 					record, geoErr := db.Country(net.ParseIP(finalIP))
 					if geoErr == nil {
 						if record.Country.IsoCode != "" {
-							country = record.Country.IsoCode
+							countryCode = record.Country.IsoCode
 						} else if record.RegisteredCountry.IsoCode != "" {
-							country = record.RegisteredCountry.IsoCode
+							countryCode = record.RegisteredCountry.IsoCode
 						}
 					}
 				}
-				if country == "" {
-					country = "UNKNOWN"
+				if countryCode == "" {
+					countryCode = "UNKNOWN"
 				}
 
-				results <- ValidationResult{Domain: domain, Success: success, IP: ip, Country: country, Info: info}
+				results <- ValidationResult{Domain: domain, Success: success, IP: ip, Country: countryCode, ASN: asn, Org: org, Info: info}
 				workerSemaphore <- struct{}{} // Return the token
 			}
 		}()
@@ -591,6 +593,19 @@ func main() {
 	failureList := make([]string, 0, 100)
 
 	doneChan := make(chan bool)
+
+	// 统计变量
+	var stats struct {
+		mu             sync.Mutex
+		total          int
+		success        int
+		failed         int
+		skippedCountry int
+		skippedASN     int
+		countryStats   map[string]int
+	}
+	stats.countryStats = make(map[string]int)
+
 	go func() {
 		newSuccessCount := 0
 		newFailureCount := 0
@@ -600,12 +615,20 @@ func main() {
 		lastScaleDown := time.Now()
 
 		for res := range results {
+			stats.mu.Lock()
+			stats.total++
+			stats.mu.Unlock()
+
 			if !*debugMode && bar != nil {
 				bar.Add(1)
 			}
 
 			if res.Success {
 				msg := fmt.Sprintf("\033[32m[PASS] %s (IP: %s, Country: %s, Info: %s)\033[0m", res.Domain, res.IP, res.Country, res.Info)
+				stats.mu.Lock()
+				stats.success++
+				stats.countryStats[res.Country]++
+				stats.mu.Unlock()
 				// 明确逻辑：CN/HK/MO 或 UNKNOWN 域名绝对不写入任何输出文件，改为记入失败库废弃
 				// CRITICAL: Domains from CN/HK/MO or UNKNOWN MUST NOT be written to any output files.
 				if res.Country != "" && !isBlockedCountry(res.Country) && res.Country != "UNKNOWN" {
@@ -638,11 +661,18 @@ func main() {
 				// CRITICAL: All failures AND skipped CN/HK/MO domains MUST be recorded in LevelDB failure history.
 				// Record Failure
 				msg := ""
+				stats.mu.Lock()
 				if isBlockedCountry(res.Country) {
 					msg = fmt.Sprintf("\033[31m[SKIP] %s is in %s\033[0m", res.Domain, res.Country)
+					stats.skippedCountry++
+				} else if strings.Contains(res.Info, "ASN:") {
+					msg = fmt.Sprintf("\033[31m[SKIP] %s (ASN blocked)\033[0m", res.Domain)
+					stats.skippedASN++
 				} else {
 					msg = fmt.Sprintf("[FAIL] %s: %s", res.Domain, res.Info)
+					stats.failed++
 				}
+				stats.mu.Unlock()
 
 				failureList = append(failureList, res.Domain)
 				newFailureCount++
@@ -793,28 +823,46 @@ func main() {
 	fmt.Println("\nRunning post-scan deduplication on output files...")
 	deduplicateTargetDir(targetDir)
 
-	fmt.Println("Task completed successfully.")
+	// 输出统计信息
+	fmt.Println("\n========================================")
+	fmt.Println("              测试统计                  ")
+	fmt.Println("========================================")
+	fmt.Printf("  总计:     %d\n", stats.total)
+	fmt.Printf("  成功:     \033[32m%d\033[0m\n", stats.success)
+	fmt.Printf("  失败:     \033[31m%d\033[0m\n", stats.failed)
+	fmt.Printf("  跳过(CN): %d\n", stats.skippedCountry)
+	fmt.Printf("  跳过(ASN): %d\n", stats.skippedASN)
+	fmt.Println("----------------------------------------")
+	fmt.Println("  按国家分布:")
+	for country, count := range stats.countryStats {
+		fmt.Printf("    %s: %d\n", country, count)
+	}
+	fmt.Println("========================================")
+
+	// 构建通知消息
+	notifyMsg := fmt.Sprintf("成功: %d | 失败: %d | 跳过(CN): %d | 跳过(ASN): %d",
+		stats.success, stats.failed, stats.skippedCountry, stats.skippedASN)
 
 	// Emit desktop notification based on OS
 	if runtime.GOOS == "windows" {
-		psScript := `
+		psScript := fmt.Sprintf(`
 Add-Type -AssemblyName System.Windows.Forms
 $notify = New-Object System.Windows.Forms.NotifyIcon
 $notify.Icon = [System.Drawing.SystemIcons]::Information
 $notify.BalloonTipTitle = 'SNI Tester'
-$notify.BalloonTipText = 'Task completed and files deduplicated!'
+$notify.BalloonTipText = '%s'
 $notify.Visible = $True
 $notify.ShowBalloonTip(5000)
 Start-Sleep -Seconds 5
 $notify.Dispose()
-`
+`, notifyMsg)
 		exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psScript).Start()
 	} else if runtime.GOOS == "darwin" {
-		exec.Command("osascript", "-e", `display notification "Task completed and files deduplicated!" with title "SNI Tester"`).Start()
+		exec.Command("osascript", "-e", fmt.Sprintf(`display notification "%s" with title "SNI Tester"`, notifyMsg)).Start()
 	} else {
 		// Try to find notify-send and emit desktop notification for Linux
 		if path, err := exec.LookPath("notify-send"); err == nil {
-			exec.Command(path, "-u", "normal", "-t", "5000", "SNI Tester", "Task completed and files deduplicated!").Start()
+			exec.Command(path, "-u", "normal", "-t", "5000", "SNI Tester", notifyMsg).Start()
 		}
 	}
 
