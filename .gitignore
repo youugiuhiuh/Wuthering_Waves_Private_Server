@@ -15,3 +15,15 @@ sni_tester/sni_tester
 go/installer/installer
 .github/workflows/SETUP.md
 sni_tester/GeoLite2-ASN.mmdb
+
+# BadgerDB (SNI Tester)
+badger_db/
+
+# LevelDB databases
+*.db
+asn_blacklist.db
+blocked_history.db
+failed_history.db
+failed_history_reality.db
+failed_history_xhttp.db
+success_history.db
