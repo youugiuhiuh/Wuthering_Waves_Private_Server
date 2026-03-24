@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	crand "crypto/rand"
 	"crypto/tls"
@@ -45,6 +46,27 @@ const (
 	dnsRetryDelay    = 100 * time.Millisecond // Delay between retry rounds
 )
 
+// DNS Priority: DoH → DoT → UDP
+
+// DNSConfig separates DNS servers by protocol
+type DNSConfig struct {
+	DoH []string // DoH servers (RFC 8484 wire format)
+	DoT []string // DoT servers (TLS 853)
+	UDP []string // UDP DNS servers (IPv4 only)
+}
+
+// DNSRateLimiter tracks rate limits per DNS server
+type DNSRateLimiter struct {
+	mu       sync.Mutex
+	lastReq  map[string]time.Time
+	interval map[string]time.Duration // Dynamic interval based on server type
+}
+
+var rateLimiter = DNSRateLimiter{
+	lastReq:  make(map[string]time.Time),
+	interval: make(map[string]time.Duration),
+}
+
 // DNS Health Tracking Configuration
 const (
 	dnsHealthEpsilon      = 10.0 // Smoothing factor for new servers
@@ -65,40 +87,69 @@ type DnsHealth struct {
 // DnsHealthMap stores health data for all DNS servers
 var DnsHealthMap sync.Map
 
-// Internal DNS Pool (International Public DNS)
-var DnsPool = []string{
-	// --- 1级超大容量/超高并发 (优先) ---
-	"1.1.1.1", "1.0.0.1", "1.1.1.2", "1.0.0.2", "1.1.1.3", "1.0.0.3", // Cloudflare
-	"8.8.8.8", "8.8.4.4", // Google
-	"9.9.9.9", "149.112.112.112", "149.112.112.9", // Quad9
-	"208.67.222.222", "208.67.220.220", "208.67.222.123", "208.67.220.123", "208.67.222.220", "208.67.220.222", // OpenDNS (Cisco)
+// DNS server pools by protocol (IPv4 only)
+var DNS = DNSConfig{
+	DoH: []string{
+		// 国内 DoH
+		"https://doh.pub/dns-query",        // 腾讯 DNSPod
+		"https://dns.alidns.com/dns-query", // 阿里
+		"https://dns.360.cn/dns-query",     // 360
+		"https://dns.onedns.net/dns-query", // OneDNS
+		// 国外 DoH
+		"https://1.1.1.1/dns-query",         // Cloudflare
+		"https://dns.google/dns-query",      // Google
+		"https://dns.quad9.net/dns-query",   // Quad9
+		"https://doh.opendns.com/dns-query", // OpenDNS
+		"https://dns.adguard.com/dns-query", // AdGuard
+	},
+	DoT: []string{
+		// 国内 DoT
+		"dot.pub:853",        // 腾讯 DNSPod
+		"dns.alidns.com:853", // 阿里
+		"dns.360.cn:853",     // 360
+		"dot.onedns.net:853", // OneDNS
+		// 国外 DoT
+		"1.1.1.1:853",         // Cloudflare
+		"dns.google:853",      // Google
+		"dns.quad9.net:853",   // Quad9
+		"dns.adguard.com:853", // AdGuard
+	},
+	UDP: []string{
+		// 1级超大容量/超高并发 (优先)
+		"1.1.1.1", "1.0.0.1", // Cloudflare
+		"8.8.8.8", "8.8.4.4", // Google
+		"9.9.9.9", "149.112.112.112", // Quad9
+		"208.67.222.222", "208.67.220.220", // OpenDNS
 
-	// --- 2级优秀大型公共 DNS ---
-	"8.26.56.26", "8.20.247.20", // Comodo Secure DNS
-	"156.154.70.2", "156.154.71.2", "156.154.70.3", "156.154.71.3", // Neustar UltraDNS
-	"94.140.14.14", "94.140.15.15", "94.140.14.140", "94.140.14.141", "94.140.14.15", "94.140.15.16", // AdGuard DNS (高配)
-	"64.6.64.6", "64.6.65.6", // Verisign
+		// 2级优秀大型公共 DNS
+		"8.26.56.26", "8.20.247.20", // Comodo
+		"94.140.14.14", "94.140.15.15", // AdGuard
+		"64.6.64.6", "64.6.65.6", // Verisign
 
-	// --- 3级区域性/备用 DNS ---
-	"4.2.2.1", "4.2.2.2", "4.2.2.3", "4.2.2.4", "4.2.2.5", "4.2.2.6", // Level3
-	"77.88.8.1", "77.88.8.2", "77.88.8.3", "77.88.8.7", "77.88.8.8", "77.88.8.88", // Yandex (俄罗斯大厂)
-	"80.80.80.80", "80.80.81.81", // Freenom
-	"45.11.45.11",     // DNS.SB
-	"185.222.222.222", // DNS.SB (IPv4 secondary)
+		// 3级区域性/备用 DNS
+		"4.2.2.1", "4.2.2.2", "4.2.2.3", // Level3
+		"77.88.8.1", "77.88.8.2", "77.88.8.7", "77.88.8.8", // Yandex
+		"80.80.80.80", "80.80.81.81", // Freenom
+		"45.11.45.11", "185.222.222.222", // DNS.SB
 
-	// --- 4级国内骨干 DNS (防漏补强) ---
-	"1.12.12.12", "120.53.53.53", // Tencent Edge
-	"119.29.29.29", "119.28.28.28", // DNSPod
-	"223.5.5.5", "223.6.6.6", // AliDNS
-	"114.114.114.114", "114.114.115.115", // 114 DNS
-	"114.114.114.110", "114.114.115.110",
-	"114.114.114.119", "114.114.115.119",
-	"180.76.76.76",               // Baidu
-	"180.184.1.1", "180.184.2.2", // ByteDance
-	"101.226.4.6", "218.30.118.6", "123.125.81.6", // 360 DNS
-	"1.2.4.8", "210.2.4.8", // CNNIC
-	"117.50.22.22", "52.80.66.66", // OneDNS
+		// 4级国内骨干 DNS (IPv4 only)
+		"119.29.29.29", "119.28.28.28", // DNSPod 腾讯
+		"223.5.5.5", "223.6.6.6", // AliDNS 阿里
+		"114.114.114.114", "114.114.115.115", // 114DNS 纯净版
+		"114.114.114.110", "114.114.115.110", // 114DNS 家庭版
+		"114.114.114.119", "114.114.115.119", // 114DNS 安全版
+		"180.76.76.76",               // Baidu 百度
+		"180.184.1.1", "180.184.2.2", // ByteDance
+		"101.226.4.6", "218.30.118.6", "123.125.81.6", // 360 DNS
+		"1.2.4.8", "210.2.4.8", // CNNIC
+		"117.50.22.22", "117.50.11.11", // OneDNS
+		"52.80.66.66",                // OneDNS 备用
+		"120.53.53.53", "1.12.12.12", // 腾讯 Edge
+	},
 }
+
+// Legacy flat pool for backwards compatibility
+var DnsPool = DNS.UDP
 
 // Candidate TLS fingerprints (uTLS ClientHelloIDs) for 随机指纹
 var clientHelloProfiles = []utls.ClientHelloID{
@@ -129,9 +180,6 @@ var dnsCache sync.Map
 
 // Round-robin counter for DNS pool
 var dnsIndex uint32
-
-// DNS-over-HTTPS endpoint (set via -doh flag)
-var dohURL *string
 
 // Debug mode flag
 var isDebugMode bool
@@ -397,8 +445,7 @@ func main() {
 	inputFile := flag.String("f", "", "Input TXT/CSV file containing SNIs")
 	debugMode := flag.Bool("debug", false, "Enable debug logging")
 	proxyString := flag.String("p", "", "Proxy for Geo download (http://127.0.0.1:10808 or socks5://127.0.0.1:10808)")
-	dnsAddr := flag.String("dns", "", "DNS server address (optional, e.g. 119.29.29.29). If empty, uses built-in high-concurrency mainland DNS pool.")
-	dohURL = flag.String("doh", "", "DNS-over-HTTPS endpoint (e.g. https://cloudflare-dns.com/dns-query). If set, use DoH instead of UDP DNS.")
+	dnsAddr := flag.String("dns", "", "DNS server address (optional, e.g. 119.29.29.29). If empty, uses built-in DNS pool (DoH → DoT → UDP).")
 	ttlDays := flag.Int("ttl", 7, "Days to remember failures (default 7)")
 	maxLines := flag.Int("max", 0, "Max lines to read from input (0 = unlimited)")
 	fixedWorkers := flag.Int("w", 0, "Fixed worker count (disables AIMD automatic scaling)")
@@ -640,16 +687,6 @@ func main() {
 	// 2.1 Shared DNS Resolver (used for TLS connection dialing, not DNS lookups)
 	resolver := net.DefaultResolver
 
-	// Optional: DNS-over-HTTPS (DoH) client
-	useDoH := *dohURL != ""
-	var dohClient *http.Client
-	if useDoH {
-		dohClient = &http.Client{
-			Timeout: 5 * time.Second,
-		}
-		fmt.Printf("DoH enabled: %s\n", *dohURL)
-	}
-
 	// 3. Setup DNS Prefetch Workers
 	fmt.Println("Starting DNS prefetch workers...")
 	for i := 0; i < 3; i++ {
@@ -665,13 +702,7 @@ func main() {
 					continue
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-				var ips []string
-				var err error
-				if useDoH {
-					ips, err = lookupHostDoH(dohClient, *dohURL, domain)
-				} else {
-					ips, err = resolveWithFailover(ctx, domain)
-				}
+				ips, err := resolveWithFailover(ctx, domain)
 				cancel()
 				if err == nil && len(ips) > 0 {
 					dnsPrefetchCache.Store(domain, ips[0])
@@ -733,15 +764,11 @@ func main() {
 					var ips []string
 					var err error
 					dnsTimeout := timeoutCtrl.GetTimeout("dns")
-					if useDoH {
-						ips, err = lookupHostDoH(dohClient, *dohURL, domain)
-					} else {
-						ctx, cancel := context.WithTimeout(context.Background(), dnsTimeout)
-						start := time.Now()
-						ips, err = resolveWithFailover(ctx, domain)
-						timeoutCtrl.Record(time.Since(start), "dns")
-						cancel()
-					}
+					ctx, cancel := context.WithTimeout(context.Background(), dnsTimeout)
+					start := time.Now()
+					ips, err = resolveWithFailover(ctx, domain)
+					timeoutCtrl.Record(time.Since(start), "dns")
+					cancel()
 					if err != nil || len(ips) == 0 {
 						errMsg := "DNS resolution failed"
 						if err != nil {
@@ -1655,68 +1682,6 @@ func checkNetworkConnectivity(dnsAddr string, dnsUDP string) error {
 	return nil
 }
 
-// DoH JSON response structure (RFC 8484 JSON API used by Cloudflare, Google, etc.)
-type dohJSONResponse struct {
-	Answer []struct {
-		Data string `json:"data"`
-		Type int    `json:"type"`
-	} `json:"Answer"`
-}
-
-// lookupHostDoH resolves A records for the given name using a DNS-over-HTTPS JSON API.
-// It expects endpoints like https://cloudflare-dns.com/dns-query or https://dns.google/resolve.
-func lookupHostDoH(client *http.Client, endpoint string, name string) ([]string, error) {
-	if client == nil {
-		client = &http.Client{Timeout: 5 * time.Second}
-	}
-
-	u, err := url.Parse(endpoint)
-	if err != nil {
-		return nil, fmt.Errorf("invalid DoH endpoint: %w", err)
-	}
-	q := u.Query()
-	q.Set("name", name)
-	q.Set("type", "A")
-	u.RawQuery = q.Encode()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/dns-json")
-	req.Header.Set("User-Agent", pickUserAgent())
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("DoH HTTP status %d", resp.StatusCode)
-	}
-
-	var parsed dohJSONResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, err
-	}
-
-	var ips []string
-	for _, ans := range parsed.Answer {
-		// Type 1 = A record
-		if ans.Type == 1 && ans.Data != "" {
-			ips = append(ips, ans.Data)
-		}
-	}
-	if len(ips) == 0 {
-		return nil, fmt.Errorf("no A records in DoH response")
-	}
-	return ips, nil
-}
-
 func shuffleStrings(s []string) {
 	for i := len(s) - 1; i > 0; i-- {
 		j := randIndex(i + 1)
@@ -1816,10 +1781,7 @@ func selectWeightedServers(servers []string, count int) []string {
 }
 
 func resolveWithFailover(ctx context.Context, domain string) ([]string, error) {
-	if dohURL != nil && *dohURL != "" {
-		return resolveWithDoH(ctx, domain)
-	}
-	return resolveWithUDP(ctx, domain)
+	return resolveWithDNS(ctx, domain)
 }
 
 func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
@@ -1840,6 +1802,8 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 				return nil, fmt.Errorf("shutting down")
 			}
 
+			acquireRateLimit(server)
+
 			c := &dns.Client{
 				Timeout: baseTimeout,
 				Net:     "udp4",
@@ -1849,6 +1813,7 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 			in, _, err := c.ExchangeContext(ctx, msg, server+":53")
 			elapsed := time.Since(start)
 			timeoutCtrl.Record(elapsed, "dns")
+			adjustRateLimit(server, err == nil, elapsed)
 
 			if err != nil {
 				errStr := err.Error()
@@ -1880,42 +1845,6 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 	}
 
 	return nil, lastErr
-}
-
-func resolveWithDoH(ctx context.Context, domain string) ([]string, error) {
-	if dohURL == nil || *dohURL == "" {
-		return nil, fmt.Errorf("DoH not configured")
-	}
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	for round := 0; round < dnsRetryRounds; round++ {
-		if isShuttingDown.Load() {
-			return nil, fmt.Errorf("shutting down")
-		}
-
-		start := time.Now()
-		ips, err := lookupHostDoH(client, *dohURL, domain)
-		elapsed := time.Since(start)
-		timeoutCtrl.Record(elapsed, "dns")
-
-		if err == nil && len(ips) > 0 {
-			return ips, nil
-		}
-
-		errStr := ""
-		if err != nil {
-			errStr = err.Error()
-			if strings.Contains(errStr, "no such host") || strings.Contains(errStr, "NXDOMAIN") {
-				return nil, err
-			}
-		}
-
-		if round < dnsRetryRounds-1 {
-			time.Sleep(dnsRetryDelay * time.Duration(round+1))
-		}
-	}
-
-	return nil, fmt.Errorf("DoH resolution failed for %s", domain)
 }
 
 func downloadFile(filePath string, urlStr string, proxyString string) error {
@@ -2575,4 +2504,259 @@ func getASNBlocklistCount(asnMap *sync.Map) int {
 		return true
 	})
 	return count
+}
+
+// --- DNS Rate Limiting ---
+
+func getRateLimitInterval(server string) time.Duration {
+	rateLimiter.mu.Lock()
+	defer rateLimiter.mu.Unlock()
+
+	if interval, ok := rateLimiter.interval[server]; ok {
+		return interval
+	}
+
+	// Default intervals based on server type
+	var defaultInterval time.Duration
+	switch {
+	case strings.Contains(server, "alidns") || strings.Contains(server, "223.5"):
+		defaultInterval = 50 * time.Millisecond // 阿里: 30 QPS (33ms min interval)
+	case strings.Contains(server, "dnspod") || strings.Contains(server, "dot.pub") || strings.Contains(server, "119.29"):
+		defaultInterval = 50 * time.Millisecond // 腾讯: 20 QPS (50ms min interval)
+	case strings.Contains(server, "114.114"):
+		defaultInterval = 20 * time.Millisecond // 114DNS: looser limits
+	case strings.Contains(server, "360") || strings.Contains(server, "101.226") || strings.Contains(server, "123.125"):
+		defaultInterval = 20 * time.Millisecond // 360: looser limits
+	case strings.Contains(server, "1.1.1") || strings.Contains(server, "google") || strings.Contains(server, "cloudflare"):
+		defaultInterval = 5 * time.Millisecond // 国外大厂: high capacity
+	case strings.Contains(server, "quad9") || strings.Contains(server, "9.9.9"):
+		defaultInterval = 10 * time.Millisecond
+	case strings.Contains(server, "opendns") || strings.Contains(server, "208.67"):
+		defaultInterval = 10 * time.Millisecond
+	default:
+		defaultInterval = 20 * time.Millisecond
+	}
+
+	rateLimiter.interval[server] = defaultInterval
+	return defaultInterval
+}
+
+func acquireRateLimit(server string) bool {
+	interval := getRateLimitInterval(server)
+
+	rateLimiter.mu.Lock()
+	defer rateLimiter.mu.Unlock()
+
+	lastReq, ok := rateLimiter.lastReq[server]
+	if !ok {
+		rateLimiter.lastReq[server] = time.Now()
+		return true
+	}
+
+	elapsed := time.Since(lastReq)
+	if elapsed < interval {
+		sleepTime := interval - elapsed
+		time.Sleep(sleepTime)
+	}
+
+	rateLimiter.lastReq[server] = time.Now()
+	return true
+}
+
+func adjustRateLimit(server string, success bool, latency time.Duration) {
+	rateLimiter.mu.Lock()
+	defer rateLimiter.mu.Unlock()
+
+	currentInterval := rateLimiter.interval[server]
+	var newInterval time.Duration
+
+	if success {
+		if latency < 100*time.Millisecond {
+			newInterval = currentInterval * 8 / 10
+			if newInterval < 5*time.Millisecond {
+				newInterval = 5 * time.Millisecond
+			}
+		} else if latency > 500*time.Millisecond {
+			newInterval = currentInterval * 12 / 10
+			if newInterval > 200*time.Millisecond {
+				newInterval = 200 * time.Millisecond
+			}
+		} else {
+			return
+		}
+	} else {
+		newInterval = currentInterval * 15 / 10
+		if newInterval > 500*time.Millisecond {
+			newInterval = 500 * time.Millisecond
+		}
+	}
+
+	rateLimiter.interval[server] = newInterval
+}
+
+// --- DoH RFC 8484 Wire Format ---
+
+func lookupHostDoHWire(client *http.Client, endpoint string, name string) ([]string, error) {
+	if client == nil {
+		client = &http.Client{Timeout: 5 * time.Second}
+	}
+
+	msg := new(dns.Msg)
+	msg.SetQuestion(dns.Fqdn(name), dns.TypeA)
+
+	packed, err := msg.Pack()
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack DNS message: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(packed))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/dns-message")
+	req.Header.Set("Accept", "application/dns-message")
+	req.Header.Set("User-Agent", pickUserAgent())
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("DoH HTTP status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	respMsg := new(dns.Msg)
+	if err := respMsg.Unpack(body); err != nil {
+		return nil, fmt.Errorf("failed to unpack DNS response: %w", err)
+	}
+
+	var ips []string
+	for _, rr := range respMsg.Answer {
+		if a, ok := rr.(*dns.A); ok {
+			ips = append(ips, a.A.String())
+		}
+	}
+
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no A records in DoH response")
+	}
+	return ips, nil
+}
+
+// --- DoT Support ---
+
+func lookupHostDoT(server string, name string) ([]string, error) {
+	msg := new(dns.Msg)
+	msg.SetQuestion(dns.Fqdn(name), dns.TypeA)
+
+	timeout := 5 * time.Second
+
+	conn, err := dns.DialWithTLS("tcp", server, &tls.Config{
+		ServerName: strings.Split(server, ":")[0],
+		MinVersion: tls.VersionTLS12,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("DoT connection failed: %w", err)
+	}
+	defer conn.Close()
+
+	conn.SetDeadline(time.Now().Add(timeout))
+
+	if err := conn.WriteMsg(msg); err != nil {
+		return nil, fmt.Errorf("DoT write failed: %w", err)
+	}
+
+	resp, err := conn.ReadMsg()
+	if err != nil {
+		return nil, fmt.Errorf("DoT read failed: %w", err)
+	}
+
+	var ips []string
+	for _, rr := range resp.Answer {
+		if a, ok := rr.(*dns.A); ok {
+			ips = append(ips, a.A.String())
+		}
+	}
+
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no A records in DoT response")
+	}
+	return ips, nil
+}
+
+// --- Unified DNS Resolution with Priority DoH → DoT → UDP ---
+
+func resolveWithDNS(ctx context.Context, domain string) ([]string, error) {
+	// Try DoH first (RFC 8484 wire format)
+	if len(DNS.DoH) > 0 {
+		dohServers := selectWeightedServers(DNS.DoH, 3)
+		for _, server := range dohServers {
+			if isShuttingDown.Load() {
+				return nil, fmt.Errorf("shutting down")
+			}
+			acquireRateLimit(server)
+			start := time.Now()
+			ips, err := lookupHostDoHWire(nil, server, domain)
+			latency := time.Since(start)
+			adjustRateLimit(server, err == nil, latency)
+			timeoutCtrl.Record(latency, "dns")
+
+			if err == nil && len(ips) > 0 {
+				updateDnsHealth(server, true)
+				return ips, nil
+			}
+			errStr := ""
+			if err != nil {
+				errStr = err.Error()
+				if strings.Contains(errStr, "NXDOMAIN") || strings.Contains(errStr, "no such host") {
+					updateDnsHealth(server, false)
+					return nil, err
+				}
+			}
+			updateDnsHealth(server, false)
+		}
+	}
+
+	// Try DoT second
+	if len(DNS.DoT) > 0 {
+		dotServers := selectWeightedServers(DNS.DoT, 3)
+		for _, server := range dotServers {
+			if isShuttingDown.Load() {
+				return nil, fmt.Errorf("shutting down")
+			}
+			acquireRateLimit(server)
+			start := time.Now()
+			ips, err := lookupHostDoT(server, domain)
+			latency := time.Since(start)
+			adjustRateLimit(server, err == nil, latency)
+			timeoutCtrl.Record(latency, "dns")
+
+			if err == nil && len(ips) > 0 {
+				updateDnsHealth(server, true)
+				return ips, nil
+			}
+			errStr := ""
+			if err != nil {
+				errStr = err.Error()
+				if strings.Contains(errStr, "NXDOMAIN") || strings.Contains(errStr, "no such host") {
+					updateDnsHealth(server, false)
+					return nil, err
+				}
+			}
+			updateDnsHealth(server, false)
+		}
+	}
+
+	// Fall back to UDP
+	return resolveWithUDP(ctx, domain)
 }
