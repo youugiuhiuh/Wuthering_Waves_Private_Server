@@ -55,18 +55,6 @@ type DNSConfig struct {
 	UDP []string // UDP DNS servers (IPv4 only)
 }
 
-// DNSRateLimiter tracks rate limits per DNS server
-type DNSRateLimiter struct {
-	mu       sync.Mutex
-	lastReq  map[string]time.Time
-	interval map[string]time.Duration // Dynamic interval based on server type
-}
-
-var rateLimiter = DNSRateLimiter{
-	lastReq:  make(map[string]time.Time),
-	interval: make(map[string]time.Duration),
-}
-
 // DNS Health Tracking Configuration
 const (
 	dnsHealthEpsilon      = 10.0 // Smoothing factor for new servers
@@ -94,7 +82,6 @@ var DNS = DNSConfig{
 		"https://doh.pub/dns-query",        // 腾讯 DNSPod
 		"https://dns.alidns.com/dns-query", // 阿里
 		"https://dns.360.cn/dns-query",     // 360
-		"https://dns.onedns.net/dns-query", // OneDNS
 		// 国外 DoH
 		"https://1.1.1.1/dns-query",         // Cloudflare
 		"https://dns.google/dns-query",      // Google
@@ -107,7 +94,6 @@ var DNS = DNSConfig{
 		"dot.pub:853",        // 腾讯 DNSPod
 		"dns.alidns.com:853", // 阿里
 		"dns.360.cn:853",     // 360
-		"dot.onedns.net:853", // OneDNS
 		// 国外 DoT
 		"1.1.1.1:853",         // Cloudflare
 		"dns.google:853",      // Google
@@ -1802,8 +1788,6 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 				return nil, fmt.Errorf("shutting down")
 			}
 
-			acquireRateLimit(server)
-
 			c := &dns.Client{
 				Timeout: baseTimeout,
 				Net:     "udp4",
@@ -1813,7 +1797,6 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 			in, _, err := c.ExchangeContext(ctx, msg, server+":53")
 			elapsed := time.Since(start)
 			timeoutCtrl.Record(elapsed, "dns")
-			adjustRateLimit(server, err == nil, elapsed)
 
 			if err != nil {
 				errStr := err.Error()
@@ -2506,94 +2489,6 @@ func getASNBlocklistCount(asnMap *sync.Map) int {
 	return count
 }
 
-// --- DNS Rate Limiting ---
-
-func getRateLimitInterval(server string) time.Duration {
-	rateLimiter.mu.Lock()
-	defer rateLimiter.mu.Unlock()
-
-	if interval, ok := rateLimiter.interval[server]; ok {
-		return interval
-	}
-
-	// Default intervals based on server type
-	var defaultInterval time.Duration
-	switch {
-	case strings.Contains(server, "alidns") || strings.Contains(server, "223.5"):
-		defaultInterval = 50 * time.Millisecond // 阿里: 30 QPS (33ms min interval)
-	case strings.Contains(server, "dnspod") || strings.Contains(server, "dot.pub") || strings.Contains(server, "119.29"):
-		defaultInterval = 50 * time.Millisecond // 腾讯: 20 QPS (50ms min interval)
-	case strings.Contains(server, "114.114"):
-		defaultInterval = 20 * time.Millisecond // 114DNS: looser limits
-	case strings.Contains(server, "360") || strings.Contains(server, "101.226") || strings.Contains(server, "123.125"):
-		defaultInterval = 20 * time.Millisecond // 360: looser limits
-	case strings.Contains(server, "1.1.1") || strings.Contains(server, "google") || strings.Contains(server, "cloudflare"):
-		defaultInterval = 5 * time.Millisecond // 国外大厂: high capacity
-	case strings.Contains(server, "quad9") || strings.Contains(server, "9.9.9"):
-		defaultInterval = 10 * time.Millisecond
-	case strings.Contains(server, "opendns") || strings.Contains(server, "208.67"):
-		defaultInterval = 10 * time.Millisecond
-	default:
-		defaultInterval = 20 * time.Millisecond
-	}
-
-	rateLimiter.interval[server] = defaultInterval
-	return defaultInterval
-}
-
-func acquireRateLimit(server string) bool {
-	interval := getRateLimitInterval(server)
-
-	rateLimiter.mu.Lock()
-	defer rateLimiter.mu.Unlock()
-
-	lastReq, ok := rateLimiter.lastReq[server]
-	if !ok {
-		rateLimiter.lastReq[server] = time.Now()
-		return true
-	}
-
-	elapsed := time.Since(lastReq)
-	if elapsed < interval {
-		sleepTime := interval - elapsed
-		time.Sleep(sleepTime)
-	}
-
-	rateLimiter.lastReq[server] = time.Now()
-	return true
-}
-
-func adjustRateLimit(server string, success bool, latency time.Duration) {
-	rateLimiter.mu.Lock()
-	defer rateLimiter.mu.Unlock()
-
-	currentInterval := rateLimiter.interval[server]
-	var newInterval time.Duration
-
-	if success {
-		if latency < 100*time.Millisecond {
-			newInterval = currentInterval * 8 / 10
-			if newInterval < 5*time.Millisecond {
-				newInterval = 5 * time.Millisecond
-			}
-		} else if latency > 500*time.Millisecond {
-			newInterval = currentInterval * 12 / 10
-			if newInterval > 200*time.Millisecond {
-				newInterval = 200 * time.Millisecond
-			}
-		} else {
-			return
-		}
-	} else {
-		newInterval = currentInterval * 15 / 10
-		if newInterval > 500*time.Millisecond {
-			newInterval = 500 * time.Millisecond
-		}
-	}
-
-	rateLimiter.interval[server] = newInterval
-}
-
 // --- DoH RFC 8484 Wire Format ---
 
 func lookupHostDoHWire(client *http.Client, endpoint string, name string) ([]string, error) {
@@ -2704,11 +2599,9 @@ func resolveWithDNS(ctx context.Context, domain string) ([]string, error) {
 			if isShuttingDown.Load() {
 				return nil, fmt.Errorf("shutting down")
 			}
-			acquireRateLimit(server)
 			start := time.Now()
 			ips, err := lookupHostDoHWire(nil, server, domain)
 			latency := time.Since(start)
-			adjustRateLimit(server, err == nil, latency)
 			timeoutCtrl.Record(latency, "dns")
 
 			if err == nil && len(ips) > 0 {
@@ -2734,11 +2627,9 @@ func resolveWithDNS(ctx context.Context, domain string) ([]string, error) {
 			if isShuttingDown.Load() {
 				return nil, fmt.Errorf("shutting down")
 			}
-			acquireRateLimit(server)
 			start := time.Now()
 			ips, err := lookupHostDoT(server, domain)
 			latency := time.Since(start)
-			adjustRateLimit(server, err == nil, latency)
 			timeoutCtrl.Record(latency, "dns")
 
 			if err == nil && len(ips) > 0 {
