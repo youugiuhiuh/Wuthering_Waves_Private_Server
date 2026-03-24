@@ -29,10 +29,19 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
+	"github.com/miekg/dns"
 	"github.com/oschwald/geoip2-golang"
 	utls "github.com/refraction-networking/utls"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/net/proxy"
+)
+
+// DNS Failover Configuration
+const (
+	dnsServerTimeout = 800 * time.Millisecond // Single DNS server timeout
+	dnsMaxServers    = 5                      // Max DNS servers to try per domain
+	dnsRetryRounds   = 2                      // Retry rounds on failure
+	dnsRetryDelay    = 100 * time.Millisecond // Delay between retry rounds
 )
 
 // Internal DNS Pool (International Public DNS)
@@ -595,28 +604,8 @@ func main() {
 
 	fmt.Printf("Memory loaded: %d succeeded, %d failed in history.\n", len(successMap), failCount)
 
-	// 2.1 Shared DNS Resolver Initialization
-	var resolver *net.Resolver
-	if useBuiltInDNS {
-		resolver = &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{Timeout: 3 * time.Second}
-				// Round-robin index selection
-				idx := atomic.AddUint32(&dnsIndex, 1) % uint32(len(DnsPool))
-				targetDns := DnsPool[idx] + ":53"
-				return d.DialContext(ctx, "udp4", targetDns)
-			},
-		}
-	} else {
-		resolver = &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{Timeout: 5 * time.Second}
-				return d.DialContext(ctx, dnsUDP, *dnsAddr)
-			},
-		}
-	}
+	// 2.1 Shared DNS Resolver (used for TLS connection dialing, not DNS lookups)
+	resolver := net.DefaultResolver
 
 	// Optional: DNS-over-HTTPS (DoH) client
 	useDoH := *dohURL != ""
@@ -648,7 +637,7 @@ func main() {
 				if useDoH {
 					ips, err = lookupHostDoH(dohClient, *dohURL, domain)
 				} else {
-					ips, err = resolver.LookupHost(ctx, domain)
+					ips, err = resolveWithFailover(ctx, domain)
 				}
 				cancel()
 				if err == nil && len(ips) > 0 {
@@ -716,7 +705,7 @@ func main() {
 					} else {
 						ctx, cancel := context.WithTimeout(context.Background(), dnsTimeout)
 						start := time.Now()
-						ips, err = resolver.LookupHost(ctx, domain)
+						ips, err = resolveWithFailover(ctx, domain)
 						timeoutCtrl.Record(time.Since(start), "dns")
 						cancel()
 					}
@@ -1682,6 +1671,68 @@ func lookupHostDoH(client *http.Client, endpoint string, name string) ([]string,
 		return nil, fmt.Errorf("no A records in DoH response")
 	}
 	return ips, nil
+}
+
+func shuffleStrings(s []string) {
+	for i := len(s) - 1; i > 0; i-- {
+		j := randIndex(i + 1)
+		s[i], s[j] = s[j], s[i]
+	}
+}
+
+func resolveWithFailover(ctx context.Context, domain string) ([]string, error) {
+	msg := new(dns.Msg)
+	msg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+
+	servers := make([]string, len(DnsPool))
+	copy(servers, DnsPool)
+	shuffleStrings(servers)
+
+	var lastErr error
+
+	for round := 0; round < dnsRetryRounds; round++ {
+		for _, server := range servers[:dnsMaxServers] {
+			if isShuttingDown.Load() {
+				return nil, fmt.Errorf("shutting down")
+			}
+
+			c := &dns.Client{
+				Timeout: dnsServerTimeout,
+				Net:     "udp4",
+			}
+
+			in, _, err := c.ExchangeContext(ctx, msg, server+":53")
+			if err != nil {
+				errStr := err.Error()
+				if strings.Contains(errStr, "NXDOMAIN") ||
+					strings.Contains(errStr, "no such host") {
+					return nil, err
+				}
+				if strings.Contains(errStr, "timeout") {
+					lastErr = err
+					continue
+				}
+				lastErr = err
+				continue
+			}
+
+			var ips []string
+			for _, rr := range in.Answer {
+				if a, ok := rr.(*dns.A); ok {
+					ips = append(ips, a.A.String())
+				}
+			}
+			if len(ips) > 0 {
+				return ips, nil
+			}
+		}
+
+		if round < dnsRetryRounds-1 {
+			time.Sleep(dnsRetryDelay * time.Duration(round+1))
+		}
+	}
+
+	return nil, lastErr
 }
 
 func downloadFile(filePath string, urlStr string, proxyString string) error {
