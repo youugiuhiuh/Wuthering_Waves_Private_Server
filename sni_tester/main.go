@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -43,6 +44,26 @@ const (
 	dnsRetryRounds   = 2                      // Retry rounds on failure
 	dnsRetryDelay    = 100 * time.Millisecond // Delay between retry rounds
 )
+
+// DNS Health Tracking Configuration
+const (
+	dnsHealthEpsilon      = 10.0 // Smoothing factor for new servers
+	dnsMaxConsecutiveFail = 3    // Consecutive failures before decay
+	dnsWeightDecay        = 0.5  // Weight decay factor per consecutive fail
+	dnsMinWeight          = 0.05 // Minimum weight (5% floor)
+	dnsRecoveryBoost      = 1.5  // Weight recovery multiplier on success
+)
+
+// DnsHealth tracks DNS server health and weight
+type DnsHealth struct {
+	SuccessCount    uint32
+	FailCount       uint32
+	ConsecutiveFail uint32
+	Weight          float64
+}
+
+// DnsHealthMap stores health data for all DNS servers
+var DnsHealthMap sync.Map
 
 // Internal DNS Pool (International Public DNS)
 var DnsPool = []string{
@@ -109,6 +130,12 @@ var dnsCache sync.Map
 // Round-robin counter for DNS pool
 var dnsIndex uint32
 
+// DNS-over-HTTPS endpoint (set via -doh flag)
+var dohURL *string
+
+// Debug mode flag
+var isDebugMode bool
+
 // DNS Prefetch
 var dnsPrefetchQueue = make(chan string, 500)
 var dnsPrefetchCache sync.Map
@@ -128,7 +155,7 @@ var timeoutCtrl = TimeoutController{
 	samples:    make([]float64, 100),
 	dnsSamples: make([]float64, 100),
 	tlsSamples: make([]float64, 100),
-	baseDNS:    3 * time.Second,
+	baseDNS:    2 * time.Second,
 	baseTLS:    10 * time.Second,
 }
 
@@ -371,7 +398,7 @@ func main() {
 	debugMode := flag.Bool("debug", false, "Enable debug logging")
 	proxyString := flag.String("p", "", "Proxy for Geo download (http://127.0.0.1:10808 or socks5://127.0.0.1:10808)")
 	dnsAddr := flag.String("dns", "", "DNS server address (optional, e.g. 119.29.29.29). If empty, uses built-in high-concurrency mainland DNS pool.")
-	dohURL := flag.String("doh", "", "DNS-over-HTTPS endpoint (e.g. https://cloudflare-dns.com/dns-query). If set, use DoH instead of UDP DNS.")
+	dohURL = flag.String("doh", "", "DNS-over-HTTPS endpoint (e.g. https://cloudflare-dns.com/dns-query). If set, use DoH instead of UDP DNS.")
 	ttlDays := flag.Int("ttl", 7, "Days to remember failures (default 7)")
 	maxLines := flag.Int("max", 0, "Max lines to read from input (0 = unlimited)")
 	fixedWorkers := flag.Int("w", 0, "Fixed worker count (disables AIMD automatic scaling)")
@@ -384,6 +411,11 @@ func main() {
 	realityMode := flag.Bool("reality", false, "Enable Reality validation (TLS 1.3, X25519, H2)")
 
 	flag.Parse()
+
+	isDebugMode = *debugMode
+	if isDebugMode {
+		fmt.Println("[DEBUG] Debug mode enabled - skipping network isolation checks")
+	}
 
 	if *inputFile == "" {
 		fmt.Println("Usage: sni_tester -f <input_file> [-dns <dns_server>] [-w <workers>] [-debug] [-p <proxy>] [-xhttp] [-reality] [-ttl <days>] [-max <lines>]")
@@ -464,6 +496,7 @@ func main() {
 				fmt.Println("This program should only run when google.com is NOT accessible (unless -debug).")
 				os.Exit(1)
 			}
+			fmt.Println("[DEBUG] Skipping network isolation check")
 		}
 	}
 
@@ -1402,6 +1435,17 @@ func loadBlockedHistory(db *badger.DB, m map[string]struct{}) {
 }
 
 func batchSave(targetDir string, m map[string][]string, db *badger.DB) {
+	if isDebugMode {
+		total := 0
+		for country, list := range m {
+			total += len(list)
+			fmt.Printf("[DEBUG] Would save %d domains for country %s\n", len(list), country)
+		}
+		fmt.Printf("[DEBUG] Skipping BadgerDB persistence (%d total domains)\n", total)
+		fmt.Printf("[DEBUG] Skipping sni/ output\n")
+		return
+	}
+
 	for country, list := range m {
 		writeBinaryDomainFile(targetDir, country, list)
 	}
@@ -1680,7 +1724,105 @@ func shuffleStrings(s []string) {
 	}
 }
 
+func calcDnsWeight(h *DnsHealth) float64 {
+	if h == nil {
+		return 1.0 / dnsHealthEpsilon
+	}
+	total := float64(h.SuccessCount + h.FailCount)
+	if total == 0 {
+		return 1.0 / dnsHealthEpsilon
+	}
+	base := float64(h.SuccessCount) / (total + dnsHealthEpsilon)
+	if h.ConsecutiveFail >= dnsMaxConsecutiveFail {
+		decay := math.Pow(dnsWeightDecay, float64(h.ConsecutiveFail-dnsMaxConsecutiveFail+1))
+		base *= decay
+	}
+	if base < dnsMinWeight {
+		base = dnsMinWeight
+	}
+	return base
+}
+
+func updateDnsHealth(server string, success bool) {
+	h, _ := DnsHealthMap.LoadOrStore(server, &DnsHealth{})
+	hh := h.(*DnsHealth)
+	if success {
+		hh.ConsecutiveFail = 0
+		hh.SuccessCount++
+		newWeight := hh.Weight * dnsRecoveryBoost
+		if newWeight > 1.0 {
+			newWeight = 1.0
+		}
+		hh.Weight = newWeight
+	} else {
+		hh.ConsecutiveFail++
+		hh.FailCount++
+		hh.Weight = calcDnsWeight(hh)
+	}
+	DnsHealthMap.Store(server, hh)
+}
+
+var dnsRng = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+func selectWeightedServers(servers []string, count int) []string {
+	type weightedServer struct {
+		server string
+		weight float64
+	}
+	ws := make([]weightedServer, 0, len(servers))
+	var totalWeight float64
+	for _, s := range servers {
+		h, ok := DnsHealthMap.Load(s)
+		var w float64
+		if ok {
+			w = calcDnsWeight(h.(*DnsHealth))
+		} else {
+			w = 1.0 / dnsHealthEpsilon
+		}
+		ws = append(ws, weightedServer{s, w})
+		totalWeight += w
+	}
+	if totalWeight <= 0 {
+		return servers[:count]
+	}
+	selected := make([]string, 0, count)
+	used := make(map[string]bool)
+	for len(selected) < count && len(selected) < len(servers) {
+		r := dnsRng.Float64() * totalWeight
+		cumulative := 0.0
+		for _, w := range ws {
+			if used[w.server] {
+				continue
+			}
+			cumulative += w.weight
+			if r <= cumulative {
+				selected = append(selected, w.server)
+				used[w.server] = true
+				totalWeight -= w.weight
+				break
+			}
+		}
+	}
+	for _, s := range servers {
+		if len(selected) >= count {
+			break
+		}
+		if !used[s] {
+			selected = append(selected, s)
+			used[s] = true
+		}
+	}
+	return selected
+}
+
 func resolveWithFailover(ctx context.Context, domain string) ([]string, error) {
+	if dohURL != nil && *dohURL != "" {
+		return resolveWithDoH(ctx, domain)
+	}
+	return resolveWithUDP(ctx, domain)
+}
+
+func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
 
@@ -1688,31 +1830,35 @@ func resolveWithFailover(ctx context.Context, domain string) ([]string, error) {
 	copy(servers, DnsPool)
 	shuffleStrings(servers)
 
+	baseTimeout := timeoutCtrl.GetTimeout("dns")
 	var lastErr error
 
 	for round := 0; round < dnsRetryRounds; round++ {
-		for _, server := range servers[:dnsMaxServers] {
+		roundServers := selectWeightedServers(servers, dnsMaxServers)
+		for _, server := range roundServers {
 			if isShuttingDown.Load() {
 				return nil, fmt.Errorf("shutting down")
 			}
 
 			c := &dns.Client{
-				Timeout: dnsServerTimeout,
+				Timeout: baseTimeout,
 				Net:     "udp4",
 			}
 
+			start := time.Now()
 			in, _, err := c.ExchangeContext(ctx, msg, server+":53")
+			elapsed := time.Since(start)
+			timeoutCtrl.Record(elapsed, "dns")
+
 			if err != nil {
 				errStr := err.Error()
 				if strings.Contains(errStr, "NXDOMAIN") ||
 					strings.Contains(errStr, "no such host") {
+					updateDnsHealth(server, false)
 					return nil, err
 				}
-				if strings.Contains(errStr, "timeout") {
-					lastErr = err
-					continue
-				}
 				lastErr = err
+				updateDnsHealth(server, false)
 				continue
 			}
 
@@ -1723,6 +1869,7 @@ func resolveWithFailover(ctx context.Context, domain string) ([]string, error) {
 				}
 			}
 			if len(ips) > 0 {
+				updateDnsHealth(server, true)
 				return ips, nil
 			}
 		}
@@ -1733,6 +1880,42 @@ func resolveWithFailover(ctx context.Context, domain string) ([]string, error) {
 	}
 
 	return nil, lastErr
+}
+
+func resolveWithDoH(ctx context.Context, domain string) ([]string, error) {
+	if dohURL == nil || *dohURL == "" {
+		return nil, fmt.Errorf("DoH not configured")
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	for round := 0; round < dnsRetryRounds; round++ {
+		if isShuttingDown.Load() {
+			return nil, fmt.Errorf("shutting down")
+		}
+
+		start := time.Now()
+		ips, err := lookupHostDoH(client, *dohURL, domain)
+		elapsed := time.Since(start)
+		timeoutCtrl.Record(elapsed, "dns")
+
+		if err == nil && len(ips) > 0 {
+			return ips, nil
+		}
+
+		errStr := ""
+		if err != nil {
+			errStr = err.Error()
+			if strings.Contains(errStr, "no such host") || strings.Contains(errStr, "NXDOMAIN") {
+				return nil, err
+			}
+		}
+
+		if round < dnsRetryRounds-1 {
+			time.Sleep(dnsRetryDelay * time.Duration(round+1))
+		}
+	}
+
+	return nil, fmt.Errorf("DoH resolution failed for %s", domain)
 }
 
 func downloadFile(filePath string, urlStr string, proxyString string) error {
@@ -2195,10 +2378,14 @@ func prepareGeoDBs(proxyString string) {
 	fmt.Println("\n========================================")
 	fmt.Println("          Geo数据库准备阶段              ")
 	fmt.Println("========================================")
-	fmt.Println("步骤2: 请切换到测试专用网络")
-	fmt.Println("       (关闭代理，使用ISP直连)")
-	fmt.Println("========================================")
-	waitForTestNetwork()
+	if isDebugMode {
+		fmt.Println("[DEBUG] Skipping network isolation check")
+	} else {
+		fmt.Println("步骤2: 请切换到测试专用网络")
+		fmt.Println("       (关闭代理，使用ISP直连)")
+		fmt.Println("========================================")
+		waitForTestNetwork()
+	}
 }
 
 func waitForTestNetwork() {

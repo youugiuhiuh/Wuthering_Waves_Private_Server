@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/dgraph-io/badger/v4 v4.9.1
+	github.com/miekg/dns v1.1.72
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/schollz/progressbar/v3 v3.19.0
@@ -28,7 +29,10 @@ require (
 	go.opentelemetry.io/otel/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
+	golang.org/x/mod v0.31.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/term v0.40.0 // indirect
+	golang.org/x/tools v0.40.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
