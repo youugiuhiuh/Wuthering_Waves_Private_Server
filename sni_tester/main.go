@@ -438,6 +438,7 @@ func main() {
 
 	// Optional: auto-shutdown after task completion
 	autoShutdown := flag.Bool("shutdown", false, "Shutdown system immediately after task completion")
+	forceRetry := flag.Bool("force", false, "Force re-test domains that were previously skipped (ignores failure history)")
 
 	// XHTTP & Reality 专项校验参数
 	xhttpMode := flag.Bool("xhttp", false, "Enable XHTTP validation (H2 minimum)")
@@ -451,10 +452,11 @@ func main() {
 	}
 
 	if *inputFile == "" {
-		fmt.Println("Usage: sni_tester -f <input_file> [-dns <dns_server>] [-w <workers>] [-debug] [-p <proxy>] [-xhttp] [-reality] [-ttl <days>] [-max <lines>]")
-		fmt.Println("  Example: sni_tester -f domains.txt (uses built-in top international DNS pool)")
+		fmt.Println("Usage: sni_tester -f <input_file> [-dns <dns_server>] [-w <workers>] [-debug] [-force] [-p <proxy>] [-xhttp] [-reality] [-ttl <days>] [-max <lines>]")
+		fmt.Println("  Example: sni_tester -f domains.txt (uses built-in DNS pool)")
 		fmt.Println("  Example: sni_tester -f domains.txt -w 2000 (disables AIMD, forces 2000 workers)")
 		fmt.Println("  Example: sni_tester -f domains.txt -dns 1.1.1.1")
+		fmt.Println("  Example: sni_tester -f domains.txt -force (re-test previously skipped/failed domains)")
 		os.Exit(1)
 	}
 
@@ -1033,16 +1035,18 @@ func main() {
 			continue
 		}
 
-		// 1. Skip if already succeeded
-		if _, exists := successMap[domain]; exists {
-			if !*debugMode {
-				skippedCount++
+		// 1. Skip if already succeeded (unless -force is set)
+		if !*forceRetry {
+			if _, exists := successMap[domain]; exists {
+				if !*debugMode {
+					skippedCount++
+				}
+				continue
 			}
-			continue
 		}
 
 		// 2. Skip if failed recently (BadgerDB lookup)
-		if isFailedRecently(db, domain, now, ttlSec) {
+		if !*forceRetry && isFailedRecently(db, domain, now, ttlSec) {
 			if !*debugMode {
 				skippedCount++
 			}
