@@ -2755,7 +2755,7 @@ dependencies = [
 
 [[package]]
 name = "tgbot"
-version = "0.4.2"
+version = "0.4.4"
 dependencies = [
  "aes-gcm",
  "anyhow",
