@@ -80,7 +80,7 @@ jobs:
           cd rust/tgbot
           # 保持路径映射，并利用 Cargo.toml 里的 thin LTO 配置
           RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" \
-          cargo build --release --locked
+          cargo build --release
 
           # 加壳前打印一下大小，方便你在日志里确认混淆效果
           ls -lh target/release/tgbot
