@@ -578,10 +578,7 @@ async fn install_xanmod_dependencies() -> Result<()> {
 async fn install_xanmod_kernel(level: u8) -> Result<()> {
     let package_names = match level {
         1 => vec!["linux-xanmod-lts-x64v1"],
-        2 => vec![
-            "linux-xanmod-lts-x64v2",
-            "linux-xanmod-lts-x64v1",
-        ],
+        2 => vec!["linux-xanmod-lts-x64v2", "linux-xanmod-lts-x64v1"],
         3 => vec![
             "linux-xanmod-lts-x64v3",
             "linux-xanmod-lts-x64v2",

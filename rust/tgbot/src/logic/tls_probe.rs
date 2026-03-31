@@ -64,7 +64,6 @@ async fn rustls_handshake(
     .context("TLS probe handshake timeout")?
     .context("TLS probe handshake failed")?;
 
-    // 触发少量读写以完成握手并拿到证书
     let _ = timeout(Duration::from_secs(2), async {
         let _ = tls_stream.write_all(b"HEAD / HTTP/1.1\r\n\r\n").await;
         let mut buf = [0u8; 1];
@@ -98,8 +97,8 @@ pub async fn probe_tls_once(domain: &str, port: u16) -> Result<TlsProbeResult> {
                     let alg = parsed.public_key().algorithm.algorithm.clone();
                     let oid_str = alg.to_id_string();
                     leaf_alg = match oid_str.as_str() {
-                        "1.2.840.113549.1.1.1" => "RSA".to_string(), // rsaEncryption
-                        "1.2.840.10045.2.1" => "EC".to_string(),     // ecPublicKey
+                        "1.2.840.113549.1.1.1" => "RSA".to_string(),
+                        "1.2.840.10045.2.1" => "EC".to_string(),
                         _ => oid_str,
                     };
                 }
@@ -113,7 +112,6 @@ pub async fn probe_tls_once(domain: &str, port: u16) -> Result<TlsProbeResult> {
     })
 }
 
-/// 带缓存的 SNI 探测：只要同一个 SNI 检测过一次，就直接复用结果。
 pub async fn probe_tls_cached(sni: &str, port: u16) -> Result<TlsProbeResult> {
     if let Some(res) = TLS_PROBE_CACHE.get(sni) {
         return Ok(res.clone());
@@ -124,7 +122,6 @@ pub async fn probe_tls_cached(sni: &str, port: u16) -> Result<TlsProbeResult> {
     Ok(res)
 }
 
-/// 当前规则：证书链长度 > 3500 即视为适合启用 ML-DSA-65。
 pub async fn sni_is_pq_friendly(sni: &str) -> bool {
     match probe_tls_cached(sni, 443).await {
         Ok(res) => res.total_cert_len > 3500,
@@ -136,11 +133,8 @@ pub async fn sni_is_pq_friendly(sni: &str) -> bool {
 mod tests {
     #[test]
     fn test_oid_mapping_for_rsa_and_ec() {
-        // 只测试 OID 映射逻辑是否合理（通过构造 x509 证书 OID 字符串）
-        // 这里不做真实网络请求，以保证单测稳定。
         let rsa_oid = "1.2.840.113549.1.1.1";
         let ec_oid = "1.2.840.10045.2.1";
-        // 简单断言字符串常量，防止误改
         assert_eq!(rsa_oid, "1.2.840.113549.1.1.1");
         assert_eq!(ec_oid, "1.2.840.10045.2.1");
     }
