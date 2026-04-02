@@ -481,8 +481,9 @@ func probeDoHServers(ctx context.Context, wg *sync.WaitGroup, results chan<- pro
 
 			done := make(chan struct{})
 			go func() {
+				defer func() { recover() }()
+				defer close(done)
 				_, err := lookupHostDoHWire(srv, "www.google.com")
-				close(done)
 				if err == nil {
 					select {
 					case results <- probeResult{protocol: "DoH", server: srv, latency: time.Since(start)}:
@@ -520,8 +521,9 @@ func probeDoTServers(ctx context.Context, wg *sync.WaitGroup, results chan<- pro
 
 			done := make(chan struct{})
 			go func() {
+				defer func() { recover() }()
+				defer close(done)
 				_, err := lookupHostDoT(srv, "www.google.com")
-				close(done)
 				if err == nil {
 					select {
 					case results <- probeResult{protocol: "DoT", server: srv, latency: time.Since(start)}:
@@ -562,12 +564,13 @@ func probeUDPServers(ctx context.Context, wg *sync.WaitGroup, results chan<- pro
 
 			done := make(chan struct{})
 			go func() {
+				defer func() { recover() }()
+				defer close(done)
 				c := &dns.Client{
 					Timeout: 3 * time.Second,
 					Net:     "udp4",
 				}
 				_, _, err := c.Exchange(msg, srv+":53")
-				close(done)
 				if err == nil {
 					select {
 					case results <- probeResult{protocol: "UDP", server: srv + ":53", latency: time.Since(start)}:
