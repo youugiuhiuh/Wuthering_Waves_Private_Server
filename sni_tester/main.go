@@ -64,116 +64,6 @@ const (
 	dnsRecoveryBoost      = 1.5  // Weight recovery multiplier on success
 )
 
-// DoH Connection Pool
-type DoHClientPool struct {
-	mu       sync.Mutex
-	clients  map[string]*http.Client
-	maxConns int
-}
-
-var dohPool = &DoHClientPool{
-	clients:  make(map[string]*http.Client),
-	maxConns: 10,
-}
-
-func (p *DoHClientPool) GetClient(endpoint string) *http.Client {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if client, ok := p.clients[endpoint]; ok {
-		return client
-	}
-
-	transport := &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: p.maxConns,
-		MaxConnsPerHost:     100,
-		IdleConnTimeout:     30 * time.Second,
-		TLSHandshakeTimeout: 5 * time.Second,
-	}
-
-	client := &http.Client{
-		Timeout:   5 * time.Second,
-		Transport: transport,
-	}
-	p.clients[endpoint] = client
-	return client
-}
-
-func (p *DoHClientPool) CloseIdleConnections() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	for _, client := range p.clients {
-		client.CloseIdleConnections()
-	}
-}
-
-// DoT Connection Pool
-type DoTConnPool struct {
-	mu         sync.Mutex
-	conns      map[string][]*dns.Conn
-	maxConns   int
-	maxConnAge time.Duration
-}
-
-var dotPool = &DoTConnPool{
-	conns:      make(map[string][]*dns.Conn),
-	maxConns:   5,
-	maxConnAge: 30 * time.Second,
-}
-
-func (p *DoTConnPool) Get(server string) (*dns.Conn, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if conns, ok := p.conns[server]; ok && len(conns) > 0 {
-		conn := conns[len(conns)-1]
-		p.conns[server] = conns[:len(conns)-1]
-		return conn, nil
-	}
-
-	host := strings.Split(server, ":")[0]
-	conn, err := dns.DialWithTLS("tcp", server, &tls.Config{
-		ServerName:       host,
-		MinVersion:       tls.VersionTLS12,
-		CurvePreferences: []tls.CurveID{tls.X25519},
-	})
-	if err != nil {
-		return nil, err
-	}
-	return conn, nil
-}
-
-func (p *DoTConnPool) Put(server string, conn *dns.Conn) {
-	if conn == nil {
-		return
-	}
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if conns, ok := p.conns[server]; ok && len(conns) >= p.maxConns {
-		conn.Close()
-		return
-	}
-
-	conn.SetDeadline(time.Time{})
-	p.conns[server] = append(p.conns[server], conn)
-}
-
-func (p *DoTConnPool) CloseIdleConnections() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	for server, conns := range p.conns {
-		for _, conn := range conns {
-			conn.Close()
-		}
-		delete(p.conns, server)
-	}
-}
-
 // DnsHealth tracks DNS server health and weight
 type DnsHealth struct {
 	SuccessCount    uint32
@@ -402,198 +292,7 @@ func gracefulShutdown(db *badger.DB) {
 		db.RunValueLogGC(0.5)
 		db.Close()
 	}
-	fmt.Println("正在关闭 DNS 连接池...")
-	dohPool.CloseIdleConnections()
-	dotPool.CloseIdleConnections()
 	fmt.Println("再见!")
-}
-
-// --- DNS 服务器健康检查 ---
-
-type probeResult struct {
-	protocol string
-	server   string
-	latency  time.Duration
-	err      error
-}
-
-func performDnsHealthCheck(ctx context.Context) {
-	fmt.Println()
-	fmt.Println("=== DNS 服务器健康检查 ===")
-	fmt.Println()
-
-	var wg sync.WaitGroup
-	results := make(chan probeResult, 100)
-
-	totalServers := len(DNS.DoH) + len(DNS.DoT) + len(DNS.UDP)
-	fmt.Printf("正在探测 %d 个 DNS 服务器...\n\n", totalServers)
-
-	wg.Add(3)
-	go func() { defer wg.Done(); probeDoHServers(ctx, &wg, results) }()
-	go func() { defer wg.Done(); probeDoTServers(ctx, &wg, results) }()
-	go func() { defer wg.Done(); probeUDPServers(ctx, &wg, results) }()
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	successCount := 0
-	failCount := 0
-
-	for result := range results {
-		if result.err != nil {
-			failCount++
-			errMsg := result.err.Error()
-			if strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "Timed out") {
-				fmt.Printf("[%s] %-40s 警告: 连接超时 (%.2fs)\n", result.protocol, result.server, result.latency.Seconds())
-			} else if strings.Contains(errMsg, "TLS") {
-				fmt.Printf("[%s] %-40s 警告: TLS handshake failed\n", result.protocol, result.server)
-			} else {
-				fmt.Printf("[%s] %-40s 警告: %s\n", result.protocol, result.server, result.err.Error())
-			}
-		} else {
-			successCount++
-			if result.latency < 100*time.Millisecond {
-				fmt.Printf("[%s] %-40s %5dms ✓\n", result.protocol, result.server, result.latency.Milliseconds())
-			} else if result.latency < 500*time.Millisecond {
-				fmt.Printf("[%s] %-40s %5dms\n", result.protocol, result.server, result.latency.Milliseconds())
-			} else {
-				fmt.Printf("[%s] %-40s %5dms (较慢)\n", result.protocol, result.server, result.latency.Milliseconds())
-			}
-		}
-	}
-
-	fmt.Println()
-	fmt.Printf("检查完成: %d 个服务器正常, %d 个服务器无响应\n", successCount, failCount)
-	fmt.Println()
-}
-
-func probeDoHServers(ctx context.Context, wg *sync.WaitGroup, results chan<- probeResult) {
-	for _, server := range DNS.DoH {
-		wg.Add(1)
-		go func(srv string) {
-			defer wg.Done()
-			start := time.Now()
-
-			timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			defer cancel()
-
-			done := make(chan struct{})
-			go func() {
-				defer func() { recover() }()
-				defer close(done)
-				_, err := lookupHostDoHWire(srv, "www.google.com")
-				if err == nil {
-					select {
-					case results <- probeResult{protocol: "DoH", server: srv, latency: time.Since(start)}:
-					default:
-					}
-				} else {
-					select {
-					case results <- probeResult{protocol: "DoH", server: srv, latency: time.Since(start), err: err}:
-					default:
-					}
-				}
-			}()
-
-			select {
-			case <-done:
-			case <-timeoutCtx.Done():
-				select {
-				case results <- probeResult{protocol: "DoH", server: srv, latency: 3 * time.Second, err: fmt.Errorf("timeout")}:
-				default:
-				}
-			}
-		}(server)
-	}
-}
-
-func probeDoTServers(ctx context.Context, wg *sync.WaitGroup, results chan<- probeResult) {
-	for _, server := range DNS.DoT {
-		wg.Add(1)
-		go func(srv string) {
-			defer wg.Done()
-			start := time.Now()
-
-			timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			defer cancel()
-
-			done := make(chan struct{})
-			go func() {
-				defer func() { recover() }()
-				defer close(done)
-				_, err := lookupHostDoT(srv, "www.google.com")
-				if err == nil {
-					select {
-					case results <- probeResult{protocol: "DoT", server: srv, latency: time.Since(start)}:
-					default:
-					}
-				} else {
-					select {
-					case results <- probeResult{protocol: "DoT", server: srv, latency: time.Since(start), err: err}:
-					default:
-					}
-				}
-			}()
-
-			select {
-			case <-done:
-			case <-timeoutCtx.Done():
-				select {
-				case results <- probeResult{protocol: "DoT", server: srv, latency: 3 * time.Second, err: fmt.Errorf("timeout")}:
-				default:
-				}
-			}
-		}(server)
-	}
-}
-
-func probeUDPServers(ctx context.Context, wg *sync.WaitGroup, results chan<- probeResult) {
-	msg := new(dns.Msg)
-	msg.SetQuestion(dns.Fqdn("www.google.com"), dns.TypeA)
-
-	for _, server := range DNS.UDP {
-		wg.Add(1)
-		go func(srv string) {
-			defer wg.Done()
-			start := time.Now()
-
-			timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			defer cancel()
-
-			done := make(chan struct{})
-			go func() {
-				defer func() { recover() }()
-				defer close(done)
-				c := &dns.Client{
-					Timeout: 3 * time.Second,
-					Net:     "udp4",
-				}
-				_, _, err := c.Exchange(msg, srv+":53")
-				if err == nil {
-					select {
-					case results <- probeResult{protocol: "UDP", server: srv + ":53", latency: time.Since(start)}:
-					default:
-					}
-				} else {
-					select {
-					case results <- probeResult{protocol: "UDP", server: srv + ":53", latency: time.Since(start), err: err}:
-					default:
-					}
-				}
-			}()
-
-			select {
-			case <-done:
-			case <-timeoutCtx.Done():
-				select {
-				case results <- probeResult{protocol: "UDP", server: srv + ":53", latency: 3 * time.Second, err: fmt.Errorf("timeout")}:
-				default:
-				}
-			}
-		}(server)
-	}
 }
 
 // randIndex returns a 随机下标 in [0, n).
@@ -834,13 +533,6 @@ func main() {
 			}
 			fmt.Println("[DEBUG] Skipping network isolation check")
 		}
-	}
-
-	// DNS 服务器健康检查
-	if !*debugMode && *dnsAddr == "" {
-		healthCheckCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		performDnsHealthCheck(healthCheckCtx)
-		cancel()
 	}
 
 	// 0.1 GeoIP/ASN DB Handling (download with network switch if needed)
@@ -1915,15 +1607,6 @@ func checkSNI(domain string, targetIP string, debug bool, xhttp bool, reality bo
 		if state.NegotiatedProtocol != "h2" && !h3Supported {
 			return false, "", "XHTTP: Neither H2 nor H3 support detected"
 		}
-
-		// Post-quantum key exchange check
-		hs := uConn.HandshakeState
-		if hs.ServerHello != nil {
-			group := hs.ServerHello.ServerShare.Group
-			if group != utls.X25519 && group != utls.X25519MLKEM768 && group != utls.X25519Kyber768Draft00 {
-				return false, "", fmt.Sprintf("XHTTP: key exchange not X25519-based (got %d)", group)
-			}
-		}
 	}
 
 	// For XHTTP info display
@@ -2812,8 +2495,10 @@ func getASNBlocklistCount(asnMap *sync.Map) int {
 
 // --- DoH RFC 8484 Wire Format ---
 
-func lookupHostDoHWire(endpoint string, name string) ([]string, error) {
-	client := dohPool.GetClient(endpoint)
+func lookupHostDoHWire(client *http.Client, endpoint string, name string) ([]string, error) {
+	if client == nil {
+		client = &http.Client{Timeout: 5 * time.Second}
+	}
 
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn(name), dns.TypeA)
@@ -2870,24 +2555,28 @@ func lookupHostDoHWire(endpoint string, name string) ([]string, error) {
 // --- DoT Support ---
 
 func lookupHostDoT(server string, name string) ([]string, error) {
-	conn, err := dotPool.Get(server)
-	if err != nil {
-		return nil, fmt.Errorf("DoT connection failed: %w", err)
-	}
-
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn(name), dns.TypeA)
 
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	timeout := 5 * time.Second
+
+	conn, err := dns.DialWithTLS("tcp", server, &tls.Config{
+		ServerName: strings.Split(server, ":")[0],
+		MinVersion: tls.VersionTLS12,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("DoT connection failed: %w", err)
+	}
+	defer conn.Close()
+
+	conn.SetDeadline(time.Now().Add(timeout))
 
 	if err := conn.WriteMsg(msg); err != nil {
-		conn.Close()
 		return nil, fmt.Errorf("DoT write failed: %w", err)
 	}
 
 	resp, err := conn.ReadMsg()
 	if err != nil {
-		conn.Close()
 		return nil, fmt.Errorf("DoT read failed: %w", err)
 	}
 
@@ -2899,266 +2588,70 @@ func lookupHostDoT(server string, name string) ([]string, error) {
 	}
 
 	if len(ips) == 0 {
-		dotPool.Put(server, conn)
 		return nil, fmt.Errorf("no A records in DoT response")
 	}
-
-	dotPool.Put(server, conn)
 	return ips, nil
 }
 
-// --- Unified DNS Resolution with Priority DoH → DoT → UDP (Parallel) ---
-
-type dnsResult struct {
-	ips    []string
-	server string
-	err    error
-}
+// --- Unified DNS Resolution with Priority DoH → DoT → UDP ---
 
 func resolveWithDNS(ctx context.Context, domain string) ([]string, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// Channel to receive results from race goroutines
-	resultCh := make(chan dnsResult, 1)
-
-	// Start DoH, DoT, UDP race in parallel
+	// Try DoH first (RFC 8484 wire format)
 	if len(DNS.DoH) > 0 {
-		go func() {
-			resultCh <- resolveDoHRace(ctx, domain)
-		}()
-	} else {
-		go func() {
-			resultCh <- dnsResult{err: fmt.Errorf("no DoH servers")}
-		}()
-	}
-
-	if len(DNS.DoT) > 0 {
-		go func() {
-			resultCh <- resolveDoTRace(ctx, domain)
-		}()
-	} else {
-		go func() {
-			resultCh <- dnsResult{err: fmt.Errorf("no DoT servers")}
-		}()
-	}
-
-	go func() {
-		resultCh <- resolveUDPRace(ctx, domain)
-	}()
-
-	// Wait for first successful result
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("DNS resolution cancelled or timeout")
-		case result := <-resultCh:
-			if result.err == nil && len(result.ips) > 0 {
-				return result.ips, nil
-			}
-			// This protocol failed, wait for others
-			// Check if shutting down
+		dohServers := selectWeightedServers(DNS.DoH, 3)
+		for _, server := range dohServers {
 			if isShuttingDown.Load() {
 				return nil, fmt.Errorf("shutting down")
 			}
-		}
-	}
-}
-
-func resolveDoHRace(ctx context.Context, domain string) dnsResult {
-	servers := selectWeightedServers(DNS.DoH, len(DNS.DoH))
-	sem := make(chan struct{}, len(servers))
-	resultCh := make(chan dnsResult, 1)
-
-	for _, server := range servers {
-		go func(srv string) {
-			select {
-			case <-ctx.Done():
-				resultCh <- dnsResult{err: fmt.Errorf("cancelled")}
-				return
-			default:
-			}
-
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
 			start := time.Now()
-			ips, err := lookupHostDoHWire(srv, domain)
+			ips, err := lookupHostDoHWire(nil, server, domain)
 			latency := time.Since(start)
 			timeoutCtrl.Record(latency, "dns")
 
 			if err == nil && len(ips) > 0 {
-				updateDnsHealth(srv, true)
-				resultCh <- dnsResult{ips: ips, server: srv}
-				return
+				updateDnsHealth(server, true)
+				return ips, nil
 			}
-
 			errStr := ""
 			if err != nil {
 				errStr = err.Error()
 				if strings.Contains(errStr, "NXDOMAIN") || strings.Contains(errStr, "no such host") {
-					updateDnsHealth(srv, false)
-					resultCh <- dnsResult{err: err, server: srv}
-					return
+					updateDnsHealth(server, false)
+					return nil, err
 				}
 			}
-			updateDnsHealth(srv, false)
-			resultCh <- dnsResult{err: fmt.Errorf("DoH failed"), server: srv}
-		}(server)
-	}
-
-	// Wait for first successful result
-	timeout := time.NewTimer(5 * time.Second)
-	defer timeout.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return dnsResult{err: fmt.Errorf("DoH race cancelled")}
-		case <-timeout.C:
-			return dnsResult{err: fmt.Errorf("DoH race timeout")}
-		case result := <-resultCh:
-			if result.err == nil && len(result.ips) > 0 {
-				return result
-			}
+			updateDnsHealth(server, false)
 		}
 	}
-}
 
-func resolveDoTRace(ctx context.Context, domain string) dnsResult {
-	servers := selectWeightedServers(DNS.DoT, len(DNS.DoT))
-	sem := make(chan struct{}, len(servers))
-	resultCh := make(chan dnsResult, 1)
-
-	for _, server := range servers {
-		go func(srv string) {
-			select {
-			case <-ctx.Done():
-				resultCh <- dnsResult{err: fmt.Errorf("cancelled")}
-				return
-			default:
+	// Try DoT second
+	if len(DNS.DoT) > 0 {
+		dotServers := selectWeightedServers(DNS.DoT, 3)
+		for _, server := range dotServers {
+			if isShuttingDown.Load() {
+				return nil, fmt.Errorf("shutting down")
 			}
-
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
 			start := time.Now()
-			ips, err := lookupHostDoT(srv, domain)
+			ips, err := lookupHostDoT(server, domain)
 			latency := time.Since(start)
 			timeoutCtrl.Record(latency, "dns")
 
 			if err == nil && len(ips) > 0 {
-				updateDnsHealth(srv, true)
-				resultCh <- dnsResult{ips: ips, server: srv}
-				return
+				updateDnsHealth(server, true)
+				return ips, nil
 			}
-
 			errStr := ""
 			if err != nil {
 				errStr = err.Error()
 				if strings.Contains(errStr, "NXDOMAIN") || strings.Contains(errStr, "no such host") {
-					updateDnsHealth(srv, false)
-					resultCh <- dnsResult{err: err, server: srv}
-					return
+					updateDnsHealth(server, false)
+					return nil, err
 				}
 			}
-			updateDnsHealth(srv, false)
-			resultCh <- dnsResult{err: fmt.Errorf("DoT failed"), server: srv}
-		}(server)
-	}
-
-	// Wait for first successful result
-	timeout := time.NewTimer(5 * time.Second)
-	defer timeout.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return dnsResult{err: fmt.Errorf("DoT race cancelled")}
-		case <-timeout.C:
-			return dnsResult{err: fmt.Errorf("DoT race timeout")}
-		case result := <-resultCh:
-			if result.err == nil && len(result.ips) > 0 {
-				return result
-			}
+			updateDnsHealth(server, false)
 		}
 	}
-}
 
-func resolveUDPRace(ctx context.Context, domain string) dnsResult {
-	servers := selectWeightedServers(DNS.UDP, len(DNS.UDP))
-	sem := make(chan struct{}, len(servers))
-	resultCh := make(chan dnsResult, 1)
-
-	msg := new(dns.Msg)
-	msg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
-
-	for _, server := range servers {
-		go func(srv string) {
-			select {
-			case <-ctx.Done():
-				resultCh <- dnsResult{err: fmt.Errorf("cancelled")}
-				return
-			default:
-			}
-
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			c := &dns.Client{
-				Timeout: timeoutCtrl.GetTimeout("dns"),
-				Net:     "udp4",
-			}
-
-			start := time.Now()
-			in, _, err := c.ExchangeContext(ctx, msg, srv+":53")
-			latency := time.Since(start)
-			timeoutCtrl.Record(latency, "dns")
-
-			if err != nil {
-				errStr := err.Error()
-				if strings.Contains(errStr, "NXDOMAIN") || strings.Contains(errStr, "no such host") {
-					updateDnsHealth(srv, false)
-					resultCh <- dnsResult{err: err, server: srv}
-					return
-				}
-				updateDnsHealth(srv, false)
-				resultCh <- dnsResult{err: fmt.Errorf("UDP failed"), server: srv}
-				return
-			}
-
-			var ips []string
-			for _, rr := range in.Answer {
-				if a, ok := rr.(*dns.A); ok {
-					ips = append(ips, a.A.String())
-				}
-			}
-
-			if len(ips) > 0 {
-				updateDnsHealth(srv, true)
-				resultCh <- dnsResult{ips: ips, server: srv}
-				return
-			}
-
-			updateDnsHealth(srv, false)
-			resultCh <- dnsResult{err: fmt.Errorf("no A records"), server: srv}
-		}(server)
-	}
-
-	// Wait for first successful result
-	timeout := time.NewTimer(5 * time.Second)
-	defer timeout.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return dnsResult{err: fmt.Errorf("UDP race cancelled")}
-		case <-timeout.C:
-			return dnsResult{err: fmt.Errorf("UDP race timeout")}
-		case result := <-resultCh:
-			if result.err == nil && len(result.ips) > 0 {
-				return result
-			}
-		}
-	}
+	// Fall back to UDP
+	return resolveWithUDP(ctx, domain)
 }
