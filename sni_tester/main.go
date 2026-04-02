@@ -1885,6 +1885,15 @@ func checkSNI(domain string, targetIP string, debug bool, xhttp bool, reality bo
 		if state.NegotiatedProtocol != "h2" && !h3Supported {
 			return false, "", "XHTTP: Neither H2 nor H3 support detected"
 		}
+
+		// Post-quantum key exchange check
+		hs := uConn.HandshakeState
+		if hs.ServerHello != nil {
+			group := hs.ServerHello.ServerShare.Group
+			if group != utls.X25519 && group != utls.X25519MLKEM768 && group != utls.X25519Kyber768Draft00 {
+				return false, "", fmt.Sprintf("XHTTP: key exchange not X25519-based (got %d)", group)
+			}
+		}
 	}
 
 	// For XHTTP info display
