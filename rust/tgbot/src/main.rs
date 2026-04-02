@@ -2768,6 +2768,24 @@ fn handle_callback(
                     continue;
                 }
                 "a_sys_maint" => {
+                    if logic::operations::MAINTENANCE_FLAG.load(std::sync::atomic::Ordering::SeqCst)
+                    {
+                        bot.answer_callback_query(q.id.clone())
+                            .text("❌ 维护任务正在执行中，请稍后再试")
+                            .await?;
+                        return Ok(());
+                    }
+
+                    let keyboard =
+                        InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+                            "🔄 维护中... (请等待)",
+                            "a_sys_maint_disabled",
+                        )]]);
+                    let _ = bot
+                        .edit_message_reply_markup(chat_id, msg_id)
+                        .reply_markup(keyboard)
+                        .await;
+
                     bot.answer_callback_query(q.id.clone())
                         .text("🧹 正在执行系统维护...")
                         .await?;
@@ -2775,7 +2793,6 @@ fn handle_callback(
                     tokio::spawn(async move {
                         match Operations::perform_maintenance().await {
                             Ok(log) => {
-                                // 防止日志过长，取最后4000字符
                                 let log_tail = if log.len() > 4000 {
                                     format!("... (Truncated)\n{}", &log[log.len() - 3000..])
                                 } else {
@@ -2805,6 +2822,23 @@ fn handle_callback(
                     });
                 }
                 "a_sys_reboot" => {
+                    if logic::operations::REBOOT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+                        bot.answer_callback_query(q.id.clone())
+                            .text("❌ 重启任务正在执行中，请稍后再试")
+                            .await?;
+                        return Ok(());
+                    }
+
+                    let keyboard =
+                        InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+                            "⚠️ 重启中... (请等待)",
+                            "a_sys_reboot_disabled",
+                        )]]);
+                    let _ = bot
+                        .edit_message_reply_markup(chat_id, msg_id)
+                        .reply_markup(keyboard)
+                        .await;
+
                     bot.answer_callback_query(q.id.clone())
                         .text("⚠️ 系统将于 3 秒后重启...")
                         .await?;

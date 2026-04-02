@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
 
+use once_cell::sync::Lazy;
+use std::mem::ManuallyDrop;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::time::Duration;
 
 use crate::logic::cmd_async::{run_cmd_checked, run_cmd_output};
@@ -7,11 +10,27 @@ use crate::logic::cmd_async::{run_cmd_checked, run_cmd_output};
 const TIMEOUT_APT: Duration = Duration::from_secs(120);
 const TIMEOUT_REBOOT: Duration = Duration::from_secs(15);
 
+pub static MAINTENANCE_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
+pub static REBOOT_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
+
+struct FlagGuard(&'static AtomicBool);
+
+impl Drop for FlagGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 pub struct Operations;
 
 impl Operations {
     /// 执行完整的系统维护：更新、升级、清理
     pub async fn perform_maintenance() -> Result<String> {
+        if MAINTENANCE_FLAG.swap(true, Ordering::SeqCst) {
+            anyhow::bail!("❌ 维护任务正在执行中，请稍后再试");
+        }
+        let _guard = ManuallyDrop::new(FlagGuard(&MAINTENANCE_FLAG));
+
         let mut log = String::new();
 
         log.push_str("🔄 正在开始系统维护...\n");
@@ -51,6 +70,11 @@ impl Operations {
 
     /// 执行安全重启
     pub async fn reboot_system() -> Result<()> {
+        if REBOOT_FLAG.swap(true, Ordering::SeqCst) {
+            anyhow::bail!("❌ 重启任务正在执行中，请稍后再试");
+        }
+        let _guard = ManuallyDrop::new(FlagGuard(&REBOOT_FLAG));
+
         run_cmd_checked("reboot", &[], TIMEOUT_REBOOT)
             .await
             .context("❌ 执行重启命令失败")?;
