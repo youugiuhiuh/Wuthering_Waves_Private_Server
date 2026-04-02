@@ -484,16 +484,25 @@ func probeDoHServers(ctx context.Context, wg *sync.WaitGroup, results chan<- pro
 				_, err := lookupHostDoHWire(srv, "www.google.com")
 				close(done)
 				if err == nil {
-					results <- probeResult{protocol: "DoH", server: srv, latency: time.Since(start)}
+					select {
+					case results <- probeResult{protocol: "DoH", server: srv, latency: time.Since(start)}:
+					default:
+					}
 				} else {
-					results <- probeResult{protocol: "DoH", server: srv, latency: time.Since(start), err: err}
+					select {
+					case results <- probeResult{protocol: "DoH", server: srv, latency: time.Since(start), err: err}:
+					default:
+					}
 				}
 			}()
 
 			select {
 			case <-done:
 			case <-timeoutCtx.Done():
-				results <- probeResult{protocol: "DoH", server: srv, latency: 3 * time.Second, err: fmt.Errorf("timeout")}
+				select {
+				case results <- probeResult{protocol: "DoH", server: srv, latency: 3 * time.Second, err: fmt.Errorf("timeout")}:
+				default:
+				}
 			}
 		}(server)
 	}
@@ -514,16 +523,25 @@ func probeDoTServers(ctx context.Context, wg *sync.WaitGroup, results chan<- pro
 				_, err := lookupHostDoT(srv, "www.google.com")
 				close(done)
 				if err == nil {
-					results <- probeResult{protocol: "DoT", server: srv, latency: time.Since(start)}
+					select {
+					case results <- probeResult{protocol: "DoT", server: srv, latency: time.Since(start)}:
+					default:
+					}
 				} else {
-					results <- probeResult{protocol: "DoT", server: srv, latency: time.Since(start), err: err}
+					select {
+					case results <- probeResult{protocol: "DoT", server: srv, latency: time.Since(start), err: err}:
+					default:
+					}
 				}
 			}()
 
 			select {
 			case <-done:
 			case <-timeoutCtx.Done():
-				results <- probeResult{protocol: "DoT", server: srv, latency: 3 * time.Second, err: fmt.Errorf("timeout")}
+				select {
+				case results <- probeResult{protocol: "DoT", server: srv, latency: 3 * time.Second, err: fmt.Errorf("timeout")}:
+				default:
+				}
 			}
 		}(server)
 	}
@@ -551,16 +569,25 @@ func probeUDPServers(ctx context.Context, wg *sync.WaitGroup, results chan<- pro
 				_, _, err := c.Exchange(msg, srv+":53")
 				close(done)
 				if err == nil {
-					results <- probeResult{protocol: "UDP", server: srv + ":53", latency: time.Since(start)}
+					select {
+					case results <- probeResult{protocol: "UDP", server: srv + ":53", latency: time.Since(start)}:
+					default:
+					}
 				} else {
-					results <- probeResult{protocol: "UDP", server: srv + ":53", latency: time.Since(start), err: err}
+					select {
+					case results <- probeResult{protocol: "UDP", server: srv + ":53", latency: time.Since(start), err: err}:
+					default:
+					}
 				}
 			}()
 
 			select {
 			case <-done:
 			case <-timeoutCtx.Done():
-				results <- probeResult{protocol: "UDP", server: srv + ":53", latency: 3 * time.Second, err: fmt.Errorf("timeout")}
+				select {
+				case results <- probeResult{protocol: "UDP", server: srv + ":53", latency: 3 * time.Second, err: fmt.Errorf("timeout")}:
+				default:
+				}
 			}
 		}(server)
 	}
