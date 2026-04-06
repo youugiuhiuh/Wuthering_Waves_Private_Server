@@ -1304,19 +1304,10 @@ $notify.Dispose()
 		}
 	}
 
-	// Optional: auto-shutdown (may require administrative privileges)
+	// Optional: auto-shutdown (requires admin privileges on Windows)
 	if *autoShutdown {
-		fmt.Println("Auto-shutdown requested. Trying to shutdown system...")
-		switch runtime.GOOS {
-		case "windows":
-			// Immediate shutdown (requires admin privileges)
-			_ = exec.Command("shutdown.exe", "/s", "/t", "0").Start()
-		case "darwin", "linux":
-			// Requires appropriate permissions (e.g. run as root or sudo)
-			_ = exec.Command("shutdown", "-h", "now").Start()
-		default:
-			fmt.Println("Auto-shutdown is not supported on this OS.")
-		}
+		fmt.Println("Auto-shutdown requested. Executing shutdown...")
+		_ = exec.Command("shutdown.exe", "/s", "/t", "0").Start()
 	}
 
 	// 正常结束，优雅关闭
