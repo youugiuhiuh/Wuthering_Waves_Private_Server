@@ -1608,19 +1608,9 @@ func loadExistingBinFiles(dir string, m map[string]struct{}) {
 		if err != nil {
 			continue
 		}
-		// Parse binary format: [2 bytes length BE][domain bytes]...
-		offset := 0
-		for offset+2 <= len(data) {
-			length := int(binary.BigEndian.Uint16(data[offset : offset+2]))
-			offset += 2
-			if length == 0 || length > 512 || offset+length > len(data) {
-				break
-			}
-			domain := string(data[offset : offset+length])
-			if domain != "" && strings.Contains(domain, ".") {
-				m[domain] = struct{}{}
-			}
-			offset += length
+		domains := parseBinaryDomains(data)
+		for _, domain := range domains {
+			m[domain] = struct{}{}
 		}
 	}
 }
@@ -1724,20 +1714,50 @@ func writeBinaryDomainFile(targetDir string, countryCode string, domains []strin
 		return nil
 	}
 
-	sort.Strings(domains)
-	domains = dedupeStrings(domains)
+	// Read existing domains from file
+	existingDomains := []string{}
+	if data, err := os.ReadFile(targetPath); err == nil {
+		existingDomains = parseBinaryDomains(data)
+	}
 
+	// Merge existing and new domains
+	allDomains := append(existingDomains, domains...)
+
+	// Sort and dedupe
+	sort.Strings(allDomains)
+	allDomains = dedupeStrings(allDomains)
+
+	// Write to file
 	f, err := os.Create(targetPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	for _, d := range domains {
+	for _, d := range allDomains {
 		binary.Write(f, binary.BigEndian, uint16(len(d)))
 		f.WriteString(d)
 	}
 	return nil
+}
+
+// parseBinaryDomains parses binary format [2 bytes len BE][domain]...
+func parseBinaryDomains(data []byte) []string {
+	domains := []string{}
+	offset := 0
+	for offset+2 <= len(data) {
+		length := int(binary.BigEndian.Uint16(data[offset : offset+2]))
+		offset += 2
+		if length == 0 || length > 512 || offset+length > len(data) {
+			break
+		}
+		domain := string(data[offset : offset+length])
+		if domain != "" && strings.Contains(domain, ".") {
+			domains = append(domains, domain)
+		}
+		offset += length
+	}
+	return domains
 }
 
 func dedupeStrings(sorted []string) []string {
