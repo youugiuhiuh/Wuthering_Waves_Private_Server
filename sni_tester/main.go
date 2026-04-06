@@ -439,6 +439,7 @@ func main() {
 	// Optional: auto-shutdown after task completion
 	autoShutdown := flag.Bool("shutdown", false, "Shutdown system immediately after task completion")
 	forceRetry := flag.Bool("force", false, "Force re-test domains that were previously skipped (ignores failure history)")
+	resetAll := flag.Bool("reset", false, "Clear all history (success + failures) and test from scratch. Also clears existing .bin output files.")
 
 	// XHTTP & Reality 专项校验参数
 	xhttpMode := flag.Bool("xhttp", false, "Enable XHTTP validation (H2 minimum)")
@@ -452,11 +453,13 @@ func main() {
 	}
 
 	if *inputFile == "" {
-		fmt.Println("Usage: sni_tester -f <input_file> [-dns <dns_server>] [-w <workers>] [-debug] [-force] [-p <proxy>] [-xhttp] [-reality] [-ttl <days>] [-max <lines>]")
+		fmt.Println("Usage: sni_tester -f <input_file> [-dns <dns_server>] [-w <workers>] [-debug] [-force] [-reset] [-p <proxy>] [-xhttp] [-reality] [-ttl <days>] [-max <lines>]")
 		fmt.Println("  Example: sni_tester -f domains.txt (uses built-in DNS pool)")
 		fmt.Println("  Example: sni_tester -f domains.txt -w 2000 (disables AIMD, forces 2000 workers)")
 		fmt.Println("  Example: sni_tester -f domains.txt -dns 1.1.1.1")
 		fmt.Println("  Example: sni_tester -f domains.txt -force (re-test previously skipped/failed domains)")
+		fmt.Println("  Example: sni_tester -f domains.txt -reset (clear all history and test from scratch)")
+		fmt.Println("  Example: sni_tester -f domains.txt -force -reset (full reset and retest)")
 		os.Exit(1)
 	}
 
@@ -661,9 +664,50 @@ func main() {
 
 	// 2. Setup Memory Indices (Success Map) and BadgerDB Failure History
 	successMap := make(map[string]struct{})
-	loadExistingIntoMap(targetDir, successMap)
-	loadSuccessHistory(db, successMap)
-	loadBlockedHistory(db, successMap)
+
+	if *resetAll {
+		fmt.Println("[RESET] Clearing all history and existing output files...")
+		// Clear BadgerDB
+		if err := clearAllHistory(db); err != nil {
+			fmt.Printf("[RESET] Warning: failed to clear BadgerDB: %v\n", err)
+		} else {
+			fmt.Println("[RESET] BadgerDB history cleared.")
+		}
+		// Delete existing .bin files in target directory
+		binFiles, _ := filepath.Glob(filepath.Join(targetDir, "*.bin"))
+		for _, f := range binFiles {
+			if err := os.Remove(f); err != nil {
+				fmt.Printf("[RESET] Warning: failed to remove %s: %v\n", f, err)
+			}
+		}
+		if len(binFiles) > 0 {
+			fmt.Printf("[RESET] Removed %d existing .bin files.\n", len(binFiles))
+		}
+		// Delete existing .txt files (except blacklist)
+		txtFiles, _ := filepath.Glob(filepath.Join(targetDir, "*.txt"))
+		for _, f := range txtFiles {
+			baseName := strings.ToUpper(filepath.Base(f))
+			if baseName == "CN.TXT" || baseName == "HK.TXT" || baseName == "MO.TXT" {
+				continue
+			}
+			if err := os.Remove(f); err != nil {
+				fmt.Printf("[RESET] Warning: failed to remove %s: %v\n", f, err)
+			}
+		}
+		fmt.Println("[RESET] Starting fresh test...")
+	}
+
+	// Load existing successes (unless reset)
+	if !*resetAll {
+		loadExistingIntoMap(targetDir, successMap)
+		loadSuccessHistory(db, successMap)
+		loadBlockedHistory(db, successMap)
+	}
+
+	// Force mode: still load existing .bin files to skip re-testing
+	if *forceRetry && !*resetAll {
+		loadExistingBinFiles(targetDir, successMap)
+	}
 
 	failCount, purged := cleanAndCountFailureHistory(db, now, ttlSec)
 	if purged > 0 {
@@ -1401,6 +1445,48 @@ func loadExistingIntoMap(dir string, m map[string]struct{}) {
 			}
 		}
 		file.Close()
+	}
+}
+
+func clearAllHistory(db *badger.DB) error {
+	if db == nil {
+		return nil
+	}
+	// Drop all data in BadgerDB
+	err := db.DropAll()
+	if err != nil {
+		return err
+	}
+	// Run GC to clean up
+	db.RunValueLogGC(0.5)
+	return nil
+}
+
+func loadExistingBinFiles(dir string, m map[string]struct{}) {
+	files, _ := filepath.Glob(filepath.Join(dir, "*.bin"))
+	for _, f := range files {
+		baseName := strings.ToUpper(filepath.Base(f))
+		if baseName == "CN.BIN" || baseName == "HK.BIN" || baseName == "MO.BIN" {
+			continue
+		}
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		// Parse binary format: [2 bytes length BE][domain bytes]...
+		offset := 0
+		for offset+2 <= len(data) {
+			length := int(binary.BigEndian.Uint16(data[offset : offset+2]))
+			offset += 2
+			if length == 0 || length > 512 || offset+length > len(data) {
+				break
+			}
+			domain := string(data[offset : offset+length])
+			if domain != "" && strings.Contains(domain, ".") {
+				m[domain] = struct{}{}
+			}
+			offset += length
+		}
 	}
 }
 
