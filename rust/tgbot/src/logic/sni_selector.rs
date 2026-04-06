@@ -19,6 +19,46 @@ static SNI_PERSISTENCE: Lazy<Option<SNIPersistence>> = Lazy::new(|| match SNIPer
     }
 });
 
+static LARGEST_BIN_REALITY: Lazy<Option<String>> =
+    Lazy::new(|| find_largest_bin_in_protocol("reality"));
+
+static LARGEST_BIN_XHTTP: Lazy<Option<String>> =
+    Lazy::new(|| find_largest_bin_in_protocol("xhttp"));
+
+fn find_largest_bin_in_protocol(proto_prefix: &str) -> Option<String> {
+    let prefix_path = format!("{}/", proto_prefix);
+    let mut largest_file: Option<String> = None;
+    let mut largest_size: usize = 0;
+
+    for file in SniAssets::iter() {
+        let filename = file.as_ref();
+        if !filename.starts_with(&prefix_path) {
+            continue;
+        }
+        if !filename.ends_with(".bin") {
+            continue;
+        }
+
+        if let Some(asset) = SniAssets::get(filename) {
+            let size = asset.data.as_ref().len();
+            if size > largest_size {
+                largest_size = size;
+                largest_file = Some(filename.to_string());
+            }
+        }
+    }
+
+    if let Some(ref f) = largest_file {
+        log::info!(
+            "Found largest .bin for {}: {} ({} bytes)",
+            proto_prefix,
+            f,
+            largest_size
+        );
+    }
+    largest_file
+}
+
 pub struct SNISelector {
     domains: Vec<String>,
     shuffled_indices: Vec<usize>,
@@ -83,10 +123,17 @@ impl SNISelector {
         let fallback_bin = format!("{}.bin", code_upper);
         let fallback_txt = format!("{}.txt", code_upper);
 
+        let largest_cache: &Option<String> = match proto_prefix {
+            "reality" => &LARGEST_BIN_REALITY,
+            "xhttp" => &LARGEST_BIN_XHTTP,
+            _ => &None,
+        };
+
         Self::load_embedded(&bin_file)
             .or_else(|| Self::load_embedded(&txt_file))
             .or_else(|| Self::load_embedded(&fallback_bin))
             .or_else(|| Self::load_embedded(&fallback_txt))
+            .or_else(|| largest_cache.as_ref().and_then(|f| Self::load_embedded(f)))
             .or_else(|| Self::load_embedded("default.bin"))
             .or_else(|| Self::load_embedded("default.txt"))
             .unwrap_or_else(|| vec!["www.google.com".to_string()])
@@ -413,5 +460,57 @@ mod tests {
         assert_eq!(selector.remaining(), 2);
         selector.next();
         assert_eq!(selector.remaining(), 1);
+    }
+
+    #[test]
+    fn find_largest_bin_finds_us_file() {
+        let result = find_largest_bin_in_protocol("reality");
+        assert!(result.is_some());
+        let filename = result.unwrap();
+        assert!(
+            filename.ends_with("US.bin"),
+            "Expected US.bin, got {}",
+            filename
+        );
+
+        let result = find_largest_bin_in_protocol("xhttp");
+        assert!(result.is_some());
+        let filename = result.unwrap();
+        assert!(
+            filename.ends_with("US.bin"),
+            "Expected US.bin, got {}",
+            filename
+        );
+    }
+
+    #[test]
+    fn get_for_country_unknown_uses_largest_bin_fallback() {
+        let selector = SNISelector::get_for_country("XXXUNKNOWN", RealityProto::Vision);
+        assert!(
+            !selector.domains.is_empty(),
+            "Domains should not be empty for unknown country"
+        );
+        assert!(
+            selector.domains.iter().all(|d| d.contains('.')),
+            "All domains should contain dots"
+        );
+
+        let selector = SNISelector::get_for_country("ZZZ999", RealityProto::XHTTP);
+        assert!(
+            !selector.domains.is_empty(),
+            "Domains should not be empty for unknown country (xhttp)"
+        );
+    }
+
+    #[test]
+    fn lazy_cache_is_initialized() {
+        assert!(
+            LARGEST_BIN_REALITY.is_some(),
+            "LARGEST_BIN_REALITY should be initialized"
+        );
+        assert!(
+            LARGEST_BIN_XHTTP.is_some(),
+            "LARGEST_BIN_XHTTP should be initialized"
+        );
     }
 }
