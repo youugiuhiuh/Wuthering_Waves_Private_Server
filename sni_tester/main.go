@@ -1175,8 +1175,8 @@ $notify.Dispose()
 		fmt.Println("Auto-shutdown requested. Trying to shutdown system...")
 		switch runtime.GOOS {
 		case "windows":
-			// Shutdown after 5 seconds
-			_ = exec.Command("shutdown", "/s", "/t", "5").Start()
+			// Immediate shutdown (requires admin privileges)
+			_ = exec.Command("shutdown.exe", "/s", "/t", "0").Start()
 		case "darwin", "linux":
 			// Requires appropriate permissions (e.g. run as root or sudo)
 			_ = exec.Command("shutdown", "-h", "now").Start()

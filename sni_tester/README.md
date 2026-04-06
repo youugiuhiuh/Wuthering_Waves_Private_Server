@@ -46,7 +46,7 @@ go build -o sni_tester .
 - **`-force`**: 强制重新测试之前跳过/失败的域名（忽略历史记录）。
 - **`-xhttp`**: 开启 XHTTP 专项校验模式 (要求 TLS 1.3 + H2/H3)。
 - **`-reality`**: 开启 Reality 专项校验模式 (要求 TLS 1.3 + X25519 + H2)。
-- **`-shutdown`**: 任务完成后自动执行系统关机命令（Windows: `shutdown /s /t 5`，Linux/macOS: `shutdown -h now`，需要具备相应权限）。
+- **`-shutdown`**: 任务完成后自动执行系统关机命令（Windows: `shutdown.exe /s /t 0`，Linux/macOS: `shutdown -h now`，需要具备相应权限）。
 
 ### ADB 模式参数
 
