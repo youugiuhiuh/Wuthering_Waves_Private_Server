@@ -19,44 +19,55 @@ static SNI_PERSISTENCE: Lazy<Option<SNIPersistence>> = Lazy::new(|| match SNIPer
     }
 });
 
-static LARGEST_BIN_REALITY: Lazy<Option<String>> =
-    Lazy::new(|| find_largest_bin_in_protocol("reality"));
+static LARGEST_BIN_REALITY: Lazy<Option<(String, usize)>> =
+    Lazy::new(|| find_file_with_most_domains("reality"));
 
-static LARGEST_BIN_XHTTP: Lazy<Option<String>> =
-    Lazy::new(|| find_largest_bin_in_protocol("xhttp"));
+static LARGEST_BIN_XHTTP: Lazy<Option<(String, usize)>> =
+    Lazy::new(|| find_file_with_most_domains("xhttp"));
 
-fn find_largest_bin_in_protocol(proto_prefix: &str) -> Option<String> {
+fn find_file_with_most_domains(proto_prefix: &str) -> Option<(String, usize)> {
     let prefix_path = format!("{}/", proto_prefix);
-    let mut largest_file: Option<String> = None;
-    let mut largest_size: usize = 0;
+    let mut best_file: Option<String> = None;
+    let mut best_count: usize = 0;
 
     for file in SniAssets::iter() {
         let filename = file.as_ref();
         if !filename.starts_with(&prefix_path) {
             continue;
         }
-        if !filename.ends_with(".bin") {
+        if !filename.ends_with(".bin") && !filename.ends_with(".txt") {
             continue;
         }
 
         if let Some(asset) = SniAssets::get(filename) {
-            let size = asset.data.as_ref().len();
-            if size > largest_size {
-                largest_size = size;
-                largest_file = Some(filename.to_string());
+            let data = asset.data.as_ref();
+            if let Some(domains) = parse_domains_from_data(data) {
+                if domains.len() > best_count {
+                    best_count = domains.len();
+                    best_file = Some(filename.to_string());
+                }
             }
         }
     }
 
-    if let Some(ref f) = largest_file {
+    if let Some(ref f) = best_file {
         log::info!(
-            "Found largest .bin for {}: {} ({} bytes)",
+            "Found file with most domains for {}: {} ({} domains)",
             proto_prefix,
             f,
-            largest_size
+            best_count
         );
     }
-    largest_file
+    best_file.map(|f| (f, best_count))
+}
+
+fn parse_domains_from_data(data: &[u8]) -> Option<Vec<String>> {
+    if is_binary_format(data) {
+        load_binary(data)
+    } else {
+        let text = std::str::from_utf8(data).ok()?;
+        load_text(text)
+    }
 }
 
 pub struct SNISelector {
@@ -117,24 +128,45 @@ impl SNISelector {
     }
 
     fn load_domains(proto_prefix: &str, code: &str) -> Vec<String> {
+        const MIN_DOMAINS: usize = 3;
+
         let code_upper = code.to_uppercase();
         let bin_file = format!("{}/{}.bin", proto_prefix, code_upper);
         let txt_file = format!("{}/{}.txt", proto_prefix, code_upper);
         let fallback_bin = format!("{}.bin", code_upper);
         let fallback_txt = format!("{}.txt", code_upper);
 
-        let largest_cache: &Option<String> = match proto_prefix {
+        let country_domains = Self::load_embedded(&bin_file)
+            .or_else(|| Self::load_embedded(&txt_file))
+            .or_else(|| Self::load_embedded(&fallback_bin))
+            .or_else(|| Self::load_embedded(&fallback_txt));
+
+        if let Some(domains) = country_domains {
+            if domains.len() >= MIN_DOMAINS {
+                return domains;
+            }
+            log::warn!(
+                "SNI file for {} has only {} domains (< {}), falling back to file with most domains",
+                code_upper,
+                domains.len(),
+                MIN_DOMAINS
+            );
+        }
+
+        let best_cache: &Option<(String, usize)> = match proto_prefix {
             "reality" => &LARGEST_BIN_REALITY,
             "xhttp" => &LARGEST_BIN_XHTTP,
             _ => &None,
         };
 
-        Self::load_embedded(&bin_file)
-            .or_else(|| Self::load_embedded(&txt_file))
-            .or_else(|| Self::load_embedded(&fallback_bin))
-            .or_else(|| Self::load_embedded(&fallback_txt))
-            .or_else(|| largest_cache.as_ref().and_then(|f| Self::load_embedded(f)))
-            .or_else(|| Self::load_embedded("default.bin"))
+        if let Some((filename, count)) = best_cache {
+            log::info!("Using fallback file: {} ({} domains)", filename, count);
+            if let Some(domains) = Self::load_embedded(filename) {
+                return domains;
+            }
+        }
+
+        Self::load_embedded("default.bin")
             .or_else(|| Self::load_embedded("default.txt"))
             .unwrap_or_else(|| vec!["www.google.com".to_string()])
     }
@@ -463,23 +495,33 @@ mod tests {
     }
 
     #[test]
-    fn find_largest_bin_finds_us_file() {
-        let result = find_largest_bin_in_protocol("reality");
+    fn find_file_with_most_domains_finds_us_file() {
+        let result = find_file_with_most_domains("reality");
         assert!(result.is_some());
-        let filename = result.unwrap();
+        let (filename, count) = result.unwrap();
         assert!(
             filename.ends_with("US.bin"),
             "Expected US.bin, got {}",
             filename
         );
+        assert!(
+            count >= 10,
+            "US should have at least 10 domains, got {}",
+            count
+        );
 
-        let result = find_largest_bin_in_protocol("xhttp");
+        let result = find_file_with_most_domains("xhttp");
         assert!(result.is_some());
-        let filename = result.unwrap();
+        let (filename, count) = result.unwrap();
         assert!(
             filename.ends_with("US.bin"),
             "Expected US.bin, got {}",
             filename
+        );
+        assert!(
+            count >= 10,
+            "US xhttp should have at least 10 domains, got {}",
+            count
         );
     }
 
@@ -503,6 +545,26 @@ mod tests {
     }
 
     #[test]
+    fn load_domains_falls_back_when_too_few_domains() {
+        let domains = SNISelector::load_domains("reality", "JP");
+        assert!(
+            domains.len() >= 3,
+            "JP has < 3 domains, should fallback to file with more domains, got {} domains",
+            domains.len()
+        );
+    }
+
+    #[test]
+    fn load_domains_uses_country_when_enough() {
+        let domains = SNISelector::load_domains("reality", "US");
+        assert!(
+            domains.len() >= 3,
+            "US should have enough domains, got {}",
+            domains.len()
+        );
+    }
+
+    #[test]
     fn lazy_cache_is_initialized() {
         assert!(
             LARGEST_BIN_REALITY.is_some(),
@@ -512,5 +574,12 @@ mod tests {
             LARGEST_BIN_XHTTP.is_some(),
             "LARGEST_BIN_XHTTP should be initialized"
         );
+        let (filename, count) = LARGEST_BIN_REALITY.as_ref().unwrap();
+        assert!(!filename.is_empty());
+        assert!(*count >= 3);
+
+        let (filename, count) = LARGEST_BIN_XHTTP.as_ref().unwrap();
+        assert!(!filename.is_empty());
+        assert!(*count >= 3);
     }
 }
