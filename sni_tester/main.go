@@ -768,7 +768,18 @@ func main() {
 				loadExistingBinFiles(modeDir, successMap)
 			}
 		}
-		loadSuccessHistory(db, successMap)
+		// Load success history from BadgerDB for ALL modes
+		// This ensures domains tested in one mode are skipped in other modes
+		originalModePrefix := modePrefix
+		for _, mode := range modes {
+			if mode != "" {
+				setModePrefix(mode)
+				loadSuccessHistory(db, successMap)
+			}
+		}
+		if len(modes) > 0 && modes[0] != "" {
+			setModePrefix(originalModePrefix)
+		}
 		loadBlockedHistory(db, successMap)
 	}
 
