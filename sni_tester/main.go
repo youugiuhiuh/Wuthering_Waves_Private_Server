@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -59,6 +60,15 @@ const (
 	dnsBurstSize          = 20  // Burst size
 )
 
+// DNS Rate Limiter Wait Configuration
+const (
+	dnsBacklogThreshold      = 30 * time.Millisecond // Backlog threshold for high-load mode
+	dnsNormalSemaphoreWait   = 50 * time.Millisecond // Normal: semaphore wait
+	dnsNormalRateWait        = 50 * time.Millisecond // Normal: rate limit wait
+	dnsHighLoadSemaphoreWait = 20 * time.Millisecond // High-load: semaphore wait
+	dnsHighLoadRateWait      = 10 * time.Millisecond // High-load: rate limit wait
+)
+
 // DNS Priority: DoH → DoT → UDP
 
 // DNSConfig separates DNS servers by protocol
@@ -87,6 +97,26 @@ const (
 	ProviderDomestic                     // Other domestic (114, ByteDance, CNNIC, etc.)
 	ProviderGlobal                       // International (Cloudflare, Google, etc.)
 )
+
+// DNS Priority Type
+type DNSPriority int
+
+const (
+	PriorityPrefetch DNSPriority = iota // Prefetch: non-blocking, skip on rate limit
+	PriorityNormal                      // Normal: wait with timeout isolation
+)
+
+// DNS Rate Limiter Errors
+var (
+	ErrRateLimited      = errors.New("DNS rate limited")
+	ErrConcurrencyLimit = errors.New("DNS concurrency limit reached")
+)
+
+// MaxWaitConfig holds wait limits for different states
+type MaxWaitConfig struct {
+	Semaphore time.Duration
+	Rate      time.Duration
+}
 
 // DnsHealth tracks DNS server health and weight
 type DnsHealth struct {
