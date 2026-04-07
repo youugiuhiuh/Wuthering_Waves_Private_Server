@@ -1970,6 +1970,7 @@ func updateDnsHealth(server string, success bool) {
 }
 
 var dnsRng = rand.New(rand.NewSource(time.Now().UnixNano()))
+var dnsRngMu sync.Mutex
 
 func selectWeightedServers(servers []string, count int) []string {
 	type weightedServer struct {
@@ -1995,7 +1996,9 @@ func selectWeightedServers(servers []string, count int) []string {
 	selected := make([]string, 0, count)
 	used := make(map[string]bool)
 	for len(selected) < count && len(selected) < len(servers) {
+		dnsRngMu.Lock()
 		r := dnsRng.Float64() * totalWeight
+		dnsRngMu.Unlock()
 		cumulative := 0.0
 		for _, w := range ws {
 			if used[w.server] {
