@@ -193,6 +193,77 @@ var timeoutCtrl = TimeoutController{
 	baseTLS:    10 * time.Second,
 }
 
+// TLS 结果缓存（共享）
+var tlsCache sync.Map // key: "domain:ip", value: *TLSResult
+
+// 国家缓存
+var countryCache sync.Map // key: ip, value: string (country code)
+
+// ASN 缓存
+var asnResultCache sync.Map // key: ip, value: ASNResult
+
+// ASN 结果结构
+type ASNResult struct {
+	ASN uint32
+	Org string
+}
+
+// 模式结果（用于 channel 通信）
+type DomainResult struct {
+	Domain  string
+	Success bool
+	IP      string
+	Country string
+	ASN     uint32
+	Org     string
+	Info    string
+	Mode    string
+}
+
+// 获取缓存的国家代码
+func getCachedCountry(ip string, geoDB *geoip2.Reader) string {
+	if cached, ok := countryCache.Load(ip); ok {
+		return cached.(string)
+	}
+
+	countryCode := "UNKNOWN"
+	record, err := geoDB.Country(net.ParseIP(ip))
+	if err == nil {
+		if record.Country.IsoCode != "" {
+			countryCode = record.Country.IsoCode
+		} else if record.RegisteredCountry.IsoCode != "" {
+			countryCode = record.RegisteredCountry.IsoCode
+		}
+	}
+
+	countryCache.Store(ip, countryCode)
+	return countryCode
+}
+
+// 获取缓存的 ASN 结果
+func getCachedASN(ip string, asnDB *geoip2.Reader) ASNResult {
+	if cached, ok := asnResultCache.Load(ip); ok {
+		return cached.(ASNResult)
+	}
+
+	asn, org := getASN(net.ParseIP(ip), asnDB)
+	result := ASNResult{ASN: asn, Org: org}
+	asnResultCache.Store(ip, result)
+	return result
+}
+
+// 获取缓存的 TLS 结果
+func getCachedTLS(domain, ip string, tlsTimeout time.Duration, needTLS13 bool) *TLSResult {
+	cacheKey := domain + ":" + ip
+	if cached, ok := tlsCache.Load(cacheKey); ok {
+		return cached.(*TLSResult)
+	}
+
+	result, _ := performTLSHandshake(domain, ip, tlsTimeout, needTLS13)
+	tlsCache.Store(cacheKey, result)
+	return result
+}
+
 func (t *TimeoutController) Record(duration time.Duration, kind string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -649,16 +720,13 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(GCInterval)
 		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if isShuttingDown.Load() {
-					return
-				}
-				fmt.Println("[GC] Running value log garbage collection...")
-				if err := db.RunValueLogGC(GCRatio); err != nil {
-					fmt.Printf("[GC] Error: %v\n", err)
-				}
+		for range ticker.C {
+			if isShuttingDown.Load() {
+				return
+			}
+			fmt.Println("[GC] Running value log garbage collection...")
+			if err := db.RunValueLogGC(GCRatio); err != nil {
+				fmt.Printf("[GC] Error: %v\n", err)
 			}
 		}
 	}()
@@ -916,21 +984,15 @@ func main() {
 					}
 
 					countryCode := "UNKNOWN"
-					record, geoErr := geoDB.Country(net.ParseIP(ip))
-					if geoErr == nil {
-						if record.Country.IsoCode != "" {
-							countryCode = record.Country.IsoCode
-						} else if record.RegisteredCountry.IsoCode != "" {
-							countryCode = record.RegisteredCountry.IsoCode
-						}
-					}
+					// Use cached country lookup
+					countryCode = getCachedCountry(ip, geoDB)
 
 					// 先检查国家黑名单 (使用 ISO 代码)
 					if isBlockedCountry(countryCode) {
 						// 动态学习 ASN: 查询该 IP 的 ASN 并加入黑名单
-						asn, org := getASN(net.ParseIP(ip), asnDB)
-						if asn > 0 {
-							addASNToBlacklist(db, asn, org, countryCode)
+						asnResult := getCachedASN(ip, asnDB)
+						if asnResult.ASN > 0 {
+							addASNToBlacklist(db, asnResult.ASN, asnResult.Org, countryCode)
 						}
 						// 记录到被阻止数据库
 						addBlockedDomain(db, domain, "COUNTRY", countryCode)
@@ -940,7 +1002,9 @@ func main() {
 					}
 
 					// 2.1 ASN Check - 跳过黑名单中的 ASN
-					asn, org := getASN(net.ParseIP(ip), asnDB)
+					asnResult := getCachedASN(ip, asnDB)
+					asn := asnResult.ASN
+					org := asnResult.Org
 					if asn > 0 && isASNBlocked(asn, &asnBlocklist) {
 						// 记录到被阻止数据库
 						addBlockedDomain(db, domain, "ASN", fmt.Sprintf("%d", asn))
@@ -949,11 +1013,58 @@ func main() {
 						continue
 					}
 
-					// 3. Perform TLS Handshake
+					// 3. Perform TLS Handshake and Validation
 					tlsTimeout := timeoutCtrl.GetTimeout("tls")
-					success, finalIP, info := checkSNI(domain, ip, *debugMode, *xhttpMode, *realityMode, resolver, tlsTimeout)
-					if finalIP != "" {
-						ip = finalIP
+
+					var success bool
+					var finalIP string
+					var info string
+
+					// Determine mode-specific validation
+					isReality := (mode == "reality")
+					isXhttp := (mode == "xhttp")
+					needTLS13 := isReality || isXhttp
+
+					// Try to get cached TLS result first
+					cacheKey := domain + ":" + ip
+					var tlsResult *TLSResult
+					if cached, ok := tlsCache.Load(cacheKey); ok {
+						tlsResult = cached.(*TLSResult)
+					} else {
+						// Perform TLS handshake and cache result
+						tlsResult, err = performTLSHandshake(domain, ip, tlsTimeout, needTLS13)
+						if tlsResult != nil {
+							tlsCache.Store(cacheKey, tlsResult)
+						}
+					}
+
+					if err != nil || tlsResult == nil || !tlsResult.HandshakeOK {
+						errMsg := "TLS handshake failed"
+						if err != nil {
+							errMsg = err.Error()
+						} else if tlsResult != nil && tlsResult.Error != "" {
+							errMsg = tlsResult.Error
+						}
+						results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, Info: errMsg}
+						workerSemaphore <- struct{}{}
+						continue
+					}
+
+					if tlsResult.IP != "" {
+						finalIP = tlsResult.IP
+					} else {
+						finalIP = ip
+					}
+
+					// Mode-specific validation
+					if isReality {
+						success, info = validateReality(tlsResult)
+					} else if isXhttp {
+						success, info = validateXHTTP(tlsResult, resolver)
+					} else {
+						// Default mode: just pass if TLS handshake succeeded
+						success = true
+						info = "Validated"
 					}
 
 					if countryCode == "UNKNOWN" && finalIP != "" {
@@ -970,7 +1081,13 @@ func main() {
 						countryCode = "UNKNOWN"
 					}
 
-					results <- ValidationResult{Domain: domain, Success: success, IP: ip, Country: countryCode, ASN: asn, Org: org, Info: info}
+					// Use finalIP for result if available
+					resultIP := ip
+					if finalIP != "" {
+						resultIP = finalIP
+					}
+
+					results <- ValidationResult{Domain: domain, Success: success, IP: resultIP, Country: countryCode, ASN: asn, Org: org, Info: info}
 					workerSemaphore <- struct{}{} // Return the token
 				}
 			}()
@@ -1803,15 +1920,39 @@ func findTargetDir() string {
 	return ""
 }
 
-func checkSNI(domain string, targetIP string, debug bool, xhttp bool, reality bool, resolver *net.Resolver, tlsTimeout time.Duration) (bool, string, string) {
-	dialer := &net.Dialer{Timeout: 5 * time.Second}
+// TLSResult 共享的 TLS 握手结果
+type TLSResult struct {
+	Domain      string
+	IP          string
+	TLSVersion  uint16
+	ALPN        string
+	KeyGroup    utls.CurveID
+	HandshakeOK bool
+	Error       string
+}
 
-	// 始终使用已解析的 IP 地址进行连接，不再通过域名拨号
+// isValidKeyGroup 检查密钥交换组是否为 X25519 系列
+func isValidKeyGroup(group utls.CurveID) bool {
+	return group == utls.X25519 ||
+		group == utls.X25519MLKEM768 ||
+		group == utls.X25519Kyber768Draft00
+}
+
+// performTLSHandshake 执行 TLS 握手并返回共享结果
+func performTLSHandshake(domain string, targetIP string, tlsTimeout time.Duration, needTLS13 bool) (*TLSResult, error) {
+	result := &TLSResult{
+		Domain: domain,
+		IP:     targetIP,
+	}
+
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	addr := net.JoinHostPort(targetIP, "443")
 	rawConn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
-		return false, "", err.Error()
+		result.Error = err.Error()
+		return result, err
 	}
+
 	alpn := pickALPNProfile()
 	config := &utls.Config{
 		ServerName: domain,
@@ -1819,61 +1960,78 @@ func checkSNI(domain string, targetIP string, debug bool, xhttp bool, reality bo
 		MaxVersion: utls.VersionTLS13,
 		NextProtos: alpn,
 	}
-	if reality || xhttp {
+	if needTLS13 {
 		config.MinVersion = utls.VersionTLS13
 	}
+
 	helloID := pickClientHelloID()
 	uConn := utls.UClient(rawConn, config, helloID)
 	defer uConn.Close()
 	uConn.SetDeadline(time.Now().Add(tlsTimeout))
+
 	start := time.Now()
 	if err := uConn.Handshake(); err != nil {
-		return false, "", err.Error()
+		result.Error = err.Error()
+		return result, err
 	}
 	timeoutCtrl.Record(time.Since(start), "tls")
-	state := uConn.ConnectionState()
 
-	if state.Version != utls.VersionTLS13 && (reality || xhttp) {
-		return false, "", fmt.Sprintf("Requirement: TLS 1.3 (got %04x)", state.Version)
+	state := uConn.ConnectionState()
+	hs := uConn.HandshakeState
+
+	result.TLSVersion = state.Version
+	result.ALPN = state.NegotiatedProtocol
+	if hs.ServerHello != nil {
+		result.KeyGroup = hs.ServerHello.ServerShare.Group
 	}
+	result.HandshakeOK = true
 
 	remoteAddr := uConn.RemoteAddr().String()
 	ip, _, _ := net.SplitHostPort(remoteAddr)
-
-	if reality {
-		// Reality usually has H2, but we prioritize the X25519 requirement per user
-		// X25519 key exchange check (accept X25519, X25519MLKEM768, X25519Kyber768Draft00)
-		hs := uConn.HandshakeState
-		if hs.ServerHello != nil {
-			group := hs.ServerHello.ServerShare.Group
-			if group != utls.X25519 && group != utls.X25519MLKEM768 && group != utls.X25519Kyber768Draft00 {
-				return false, "", fmt.Sprintf("Reality: key exchange not X25519-based (got %d)", group)
-			}
-		}
+	if ip != "" {
+		result.IP = ip
 	}
 
-	h3Supported := false
-	if xhttp {
-		// H2/H3 requirement. Check H3 via Alt-Svc if TCP ALPN is not H2 or just as extra verification.
-		h3Supported = checkH3Support(domain, ip, resolver)
-		if state.NegotiatedProtocol != "h2" && !h3Supported {
-			return false, "", "XHTTP: Neither H2 nor H3 support detected"
-		}
+	return result, nil
+}
+
+// validateReality 验证 REALITY 模式要求
+func validateReality(result *TLSResult) (bool, string) {
+	if result.TLSVersion != utls.VersionTLS13 {
+		return false, fmt.Sprintf("Reality: TLS 1.3 required (got %04x)", result.TLSVersion)
 	}
 
-	// For XHTTP info display
-	info := "Validated"
-	if xhttp {
-		if state.NegotiatedProtocol == "h2" && h3Supported {
-			info = "Validated (H2+H3)"
-		} else if h3Supported {
-			info = "Validated (H3 only)"
-		} else {
-			info = "Validated (H2 only)"
-		}
+	if !isValidKeyGroup(result.KeyGroup) {
+		return false, fmt.Sprintf("Reality: X25519-based key exchange required (got %d)", result.KeyGroup)
 	}
 
-	return true, ip, info
+	if result.ALPN != "h2" {
+		return false, "Reality: H2 required"
+	}
+
+	return true, "Validated"
+}
+
+// validateXHTTP 验证 XHTTP 模式要求
+func validateXHTTP(result *TLSResult, resolver *net.Resolver) (bool, string) {
+	if result.TLSVersion != utls.VersionTLS13 {
+		return false, fmt.Sprintf("XHTTP: TLS 1.3 required (got %04x)", result.TLSVersion)
+	}
+
+	if !isValidKeyGroup(result.KeyGroup) {
+		return false, fmt.Sprintf("XHTTP: X25519-based key exchange required (got %d)", result.KeyGroup)
+	}
+
+	if result.ALPN == "h2" {
+		return true, "Validated (H2)"
+	}
+
+	h3Supported := checkH3Support(result.Domain, result.IP, resolver)
+	if h3Supported {
+		return true, "Validated (H3 only)"
+	}
+
+	return false, "XHTTP: Neither H2 nor H3 support detected"
 }
 
 // checkH3Support makes a HEAD request and checks Alt-Svc header for H3 support.
