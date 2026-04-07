@@ -36,6 +36,7 @@ import (
 	utls "github.com/refraction-networking/utls"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/net/proxy"
+	"golang.org/x/time/rate"
 )
 
 // DNS Failover Configuration
@@ -44,6 +45,18 @@ const (
 	dnsMaxServers    = 5                      // Max DNS servers to try per domain
 	dnsRetryRounds   = 2                      // Retry rounds on failure
 	dnsRetryDelay    = 100 * time.Millisecond // Delay between retry rounds
+)
+
+// DNS Rate Limiter Configuration
+const (
+	dnsGlobalLimit        = 300 // Global max QPS
+	dnsAliyunDoHLimit     = 15  // Aliyun DoH/DoT: official 20 QPS per IP
+	dnsAliyunUDPLimit     = 80  // Aliyun UDP/TCP: official ~100 QPS per IP
+	dnsTencentLimit       = 50  // Tencent DNSPod: global limit (per-domain is 20 QPS)
+	dnsDomesticLimit      = 50  // Other domestic DNS (114, ByteDance, CNNIC, etc.)
+	dnsInternationalLimit = 500 // International DNS (Cloudflare, Google, etc.)
+	dnsMaxConcurrent      = 100 // Max concurrent DNS queries
+	dnsBurstSize          = 20  // Burst size
 )
 
 // DNS Priority: DoH → DoT → UDP
@@ -64,6 +77,17 @@ const (
 	dnsRecoveryBoost      = 1.5  // Weight recovery multiplier on success
 )
 
+// DNS Provider Type
+type DNSProvider int
+
+const (
+	ProviderAliyunDoH DNSProvider = iota // Aliyun DoH/DoT
+	ProviderAliyunUDP                    // Aliyun UDP/TCP
+	ProviderTencent                      // Tencent DNSPod
+	ProviderDomestic                     // Other domestic (114, ByteDance, CNNIC, etc.)
+	ProviderGlobal                       // International (Cloudflare, Google, etc.)
+)
+
 // DnsHealth tracks DNS server health and weight
 type DnsHealth struct {
 	SuccessCount    uint32
@@ -74,6 +98,153 @@ type DnsHealth struct {
 
 // DnsHealthMap stores health data for all DNS servers
 var DnsHealthMap sync.Map
+
+// DNS Provider IP Mapping (UDP/TCP)
+var dnsProviderMapUDP = map[string]DNSProvider{
+	// Aliyun DNS
+	"223.5.5.5": ProviderAliyunUDP,
+	"223.6.6.6": ProviderAliyunUDP,
+	// Tencent DNSPod
+	"119.29.29.29":    ProviderTencent,
+	"182.254.116.116": ProviderTencent,
+	"120.53.53.53":    ProviderTencent,
+	"1.12.12.12":      ProviderTencent,
+	// Other domestic
+	"114.114.114.114": ProviderDomestic,
+	"114.114.115.115": ProviderDomestic,
+	"180.76.76.76":    ProviderDomestic, // Baidu
+	"1.2.4.8":         ProviderDomestic, // CNNIC
+	"210.2.4.8":       ProviderDomestic, // CNNIC
+	"117.50.22.22":    ProviderDomestic, // OneDNS
+	"117.50.11.11":    ProviderDomestic,
+	"180.184.1.1":     ProviderDomestic, // ByteDance
+	"180.184.2.2":     ProviderDomestic, // International
+	"1.1.1.1":         ProviderGlobal,   // Cloudflare
+	"1.0.0.1":         ProviderGlobal,
+	"8.8.8.8":         ProviderGlobal, // Google
+	"8.8.4.4":         ProviderGlobal,
+	"9.9.9.9":         ProviderGlobal, // Quad9
+	"149.112.112.112": ProviderGlobal,
+	"208.67.222.222":  ProviderGlobal, // OpenDNS
+	"208.67.220.220":  ProviderGlobal,
+}
+
+// DNS Provider IP Mapping (DoH/DoT)
+var dnsProviderMapDoH = map[string]DNSProvider{
+	// Aliyun DNS DoH/DoT
+	"223.5.5.5": ProviderAliyunDoH,
+	"223.6.6.6": ProviderAliyunDoH,
+	// Tencent DNSPod DoH
+	"119.29.29.29":    ProviderTencent,
+	"182.254.116.116": ProviderTencent,
+	// Other domestic DoH
+	"180.184.1.1": ProviderDomestic, // ByteDance
+	"1.2.4.8":     ProviderDomestic, // CNNIC
+	// International DoH
+	"1.1.1.1": ProviderGlobal, // Cloudflare
+	"8.8.8.8": ProviderGlobal, // Google
+	"9.9.9.9": ProviderGlobal, // Quad9
+}
+
+// DNSRateLimiter controls DNS query rate
+type DNSRateLimiter struct {
+	globalLimiter    *rate.Limiter
+	providerLimiters map[DNSProvider]*rate.Limiter
+	semaphore        chan struct{}
+	providerMapUDP   map[string]DNSProvider
+	providerMapDoH   map[string]DNSProvider
+}
+
+// NewDNSRateLimiter creates a new DNS rate limiter
+func NewDNSRateLimiter() *DNSRateLimiter {
+	return &DNSRateLimiter{
+		globalLimiter: rate.NewLimiter(rate.Limit(dnsGlobalLimit), dnsBurstSize),
+		providerLimiters: map[DNSProvider]*rate.Limiter{
+			ProviderAliyunDoH: rate.NewLimiter(rate.Limit(dnsAliyunDoHLimit), dnsBurstSize),
+			ProviderAliyunUDP: rate.NewLimiter(rate.Limit(dnsAliyunUDPLimit), dnsBurstSize),
+			ProviderTencent:   rate.NewLimiter(rate.Limit(dnsTencentLimit), dnsBurstSize),
+			ProviderDomestic:  rate.NewLimiter(rate.Limit(dnsDomesticLimit), dnsBurstSize),
+			ProviderGlobal:    rate.NewLimiter(rate.Limit(dnsInternationalLimit), dnsBurstSize),
+		},
+		semaphore:      make(chan struct{}, dnsMaxConcurrent),
+		providerMapUDP: dnsProviderMapUDP,
+		providerMapDoH: dnsProviderMapDoH,
+	}
+}
+
+// Acquire acquires permission for DNS query (blocking)
+func (r *DNSRateLimiter) Acquire(ctx context.Context, server string, isDoHOrDoT bool) (func(), error) {
+	//1. Semaphore for concurrency control
+	select {
+	case r.semaphore <- struct{}{}:
+		// Got semaphore
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	// 2. Global rate limit
+	if err := r.globalLimiter.Wait(ctx); err != nil {
+		<-r.semaphore
+		return nil, err
+	}
+
+	// 3. Provider rate limit
+	provider := r.getProvider(server, isDoHOrDoT)
+	if limiter, ok := r.providerLimiters[provider]; ok {
+		if err := limiter.Wait(ctx); err != nil {
+			<-r.semaphore
+			return nil, err
+		}
+	}
+
+	return func() { <-r.semaphore }, nil
+}
+
+// getProvider identifies the DNS provider based on server address and protocol
+func (r *DNSRateLimiter) getProvider(server string, isDoHOrDoT bool) DNSProvider {
+	var providerMap map[string]DNSProvider
+	if isDoHOrDoT {
+		providerMap = r.providerMapDoH
+	} else {
+		providerMap = r.providerMapUDP
+	}
+
+	// Extract IP address (remove port)
+	ip := server
+	if strings.Contains(server, ":") {
+		host, _, err := net.SplitHostPort(server)
+		if err == nil {
+			ip = host
+		}
+	}
+
+	// Find provider by IP prefix
+	for prefix, provider := range providerMap {
+		if strings.HasPrefix(ip, prefix) {
+			return provider
+		}
+	}
+
+	// Default to global
+	return ProviderGlobal
+}
+
+// TryAcquire tries to acquire permission (non-blocking)
+func (r *DNSRateLimiter) TryAcquire() bool {
+	select {
+	case r.semaphore <- struct{}{}:
+		if r.globalLimiter.Allow() {
+			return true
+		}
+		<-r.semaphore
+		return false
+	default:
+		return false
+	}
+}
+
+// dnsRateLimiter is the global DNS rate limiter
+var dnsRateLimiter *DNSRateLimiter
 
 // DNS server pools by protocol (IPv4 only)
 var DNS = DNSConfig{
@@ -486,8 +657,11 @@ func isBlockedCountry(code string) bool {
 }
 
 func main() {
-	// 强制使用 Go 内置解析器，避免并发 CGO 解析限制
+	//强制使用 Go 内置解析器，避免并发 CGO 解析限制
 	os.Setenv("GODEBUG", "netdns=go")
+
+	// 初始化 DNS 限流器
+	dnsRateLimiter = NewDNSRateLimiter()
 
 	// 优雅退出信号通道
 	sigChan := make(chan os.Signal, 1)
@@ -883,6 +1057,11 @@ func main() {
 					continue
 				}
 				if _, exists := dnsCache.Load(domain); exists {
+					continue
+				}
+				// Try to acquire rate limiter (non-blocking)
+				if !dnsRateLimiter.TryAcquire() {
+					// Rate limited, skip this prefetch
 					continue
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -2205,6 +2384,12 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 				return nil, fmt.Errorf("shutting down")
 			}
 
+			release, err := dnsRateLimiter.Acquire(ctx, server, false) // UDP, not DoH/DoT
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
 			c := &dns.Client{
 				Timeout: baseTimeout,
 				Net:     "udp4",
@@ -2214,6 +2399,8 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 			in, _, err := c.ExchangeContext(ctx, msg, server+":53")
 			elapsed := time.Since(start)
 			timeoutCtrl.Record(elapsed, "dns")
+
+			release()
 
 			if err != nil {
 				errStr := err.Error()
