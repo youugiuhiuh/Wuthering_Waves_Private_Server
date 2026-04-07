@@ -181,6 +181,7 @@ type DNSRateLimiter struct {
 	globalLimiter    *rate.Limiter
 	providerLimiters map[DNSProvider]*rate.Limiter
 	semaphore        chan struct{}
+	backlog          atomic.Int32
 	providerMapUDP   map[string]DNSProvider
 	providerMapDoH   map[string]DNSProvider
 }
@@ -202,32 +203,90 @@ func NewDNSRateLimiter() *DNSRateLimiter {
 	}
 }
 
-// Acquire acquires permission for DNS query (blocking)
+// Acquire acquires permission for DNS query with timeout isolation
+// Uses Reserve() + Delay() to avoid consuming caller's context deadline
 func (r *DNSRateLimiter) Acquire(ctx context.Context, server string, isDoHOrDoT bool) (func(), error) {
-	//1. Semaphore for concurrency control
+	maxWait := r.calculateMaxWait()
+
 	select {
 	case r.semaphore <- struct{}{}:
-		// Got semaphore
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-time.After(maxWait.Semaphore):
+		return nil, ErrConcurrencyLimit
 	}
 
-	// 2. Global rate limit
-	if err := r.globalLimiter.Wait(ctx); err != nil {
+	release, err := r.acquireWithRateLimit(ctx, server, isDoHOrDoT, maxWait.Rate)
+	if err != nil {
 		<-r.semaphore
 		return nil, err
 	}
 
-	// 3. Provider rate limit
-	provider := r.getProvider(server, isDoHOrDoT)
-	if limiter, ok := r.providerLimiters[provider]; ok {
-		if err := limiter.Wait(ctx); err != nil {
-			<-r.semaphore
-			return nil, err
+	return release, nil
+}
+
+// calculateMaxWait returns dynamic wait limits based on backlog
+func (r *DNSRateLimiter) calculateMaxWait() MaxWaitConfig {
+	backlog := r.backlog.Load()
+
+	if backlog > dnsBacklogThreshold {
+		return MaxWaitConfig{
+			Semaphore: dnsHighLoadSemaphoreWait,
+			Rate:      dnsHighLoadRateWait,
 		}
 	}
 
-	return func() { <-r.semaphore }, nil
+	return MaxWaitConfig{
+		Semaphore: dnsNormalSemaphoreWait,
+		Rate:      dnsNormalRateWait,
+	}
+}
+
+// acquireWithRateLimit acquires rate limit with timeout isolation
+// Uses Reserve() instead of Wait() to avoid consuming caller's context deadline
+func (r *DNSRateLimiter) acquireWithRateLimit(ctx context.Context, server string, isDoHOrDoT bool, maxWait time.Duration) (func(), error) {
+	globalReservation := r.globalLimiter.Reserve()
+	globalDelay := globalReservation.Delay()
+
+	if globalDelay > maxWait {
+		globalReservation.Cancel()
+		return nil, ErrRateLimited
+	}
+
+	if globalDelay > 0 {
+		select {
+		case <-time.After(globalDelay):
+		case <-ctx.Done():
+			globalReservation.Cancel()
+			return nil, ctx.Err()
+		}
+	}
+
+	provider := r.getProvider(server, isDoHOrDoT)
+	if limiter, ok := r.providerLimiters[provider]; ok {
+		providerReservation := limiter.Reserve()
+		providerDelay := providerReservation.Delay()
+
+		if providerDelay > maxWait {
+			providerReservation.Cancel()
+			globalReservation.Cancel()
+			return nil, ErrRateLimited
+		}
+
+		if providerDelay > 0 {
+			select {
+			case <-time.After(providerDelay):
+			case <-ctx.Done():
+				providerReservation.Cancel()
+				globalReservation.Cancel()
+				return nil, ctx.Err()
+			}
+		}
+	}
+
+	return func() {
+		<-r.semaphore
+	}, nil
 }
 
 // getProvider identifies the DNS provider based on server address and protocol
@@ -259,18 +318,25 @@ func (r *DNSRateLimiter) getProvider(server string, isDoHOrDoT bool) DNSProvider
 	return ProviderGlobal
 }
 
-// TryAcquire tries to acquire permission (non-blocking)
-func (r *DNSRateLimiter) TryAcquire() bool {
+// TryAcquireForPrefetch attempts to acquire without blocking
+// Returns release function and whether acquisition succeeded
+func (r *DNSRateLimiter) TryAcquireForPrefetch() (release func(), acquired bool) {
+	if r.backlog.Load() > dnsBacklogThreshold {
+		return nil, false
+	}
+
 	select {
 	case r.semaphore <- struct{}{}:
-		if r.globalLimiter.Allow() {
-			return true
-		}
-		<-r.semaphore
-		return false
 	default:
-		return false
+		return nil, false
 	}
+
+	if !r.globalLimiter.Allow() {
+		<-r.semaphore
+		return nil, false
+	}
+
+	return func() { <-r.semaphore }, true
 }
 
 // dnsRateLimiter is the global DNS rate limiter
@@ -1090,13 +1156,15 @@ func main() {
 					continue
 				}
 				// Try to acquire rate limiter (non-blocking)
-				if !dnsRateLimiter.TryAcquire() {
+				release, acquired := dnsRateLimiter.TryAcquireForPrefetch()
+				if !acquired {
 					// Rate limited, skip this prefetch
 					continue
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				ips, err := resolveWithFailover(ctx, domain)
 				cancel()
+				release()
 				if err == nil && len(ips) > 0 {
 					dnsPrefetchCache.Store(domain, ips[0])
 				}
@@ -2414,8 +2482,15 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 				return nil, fmt.Errorf("shutting down")
 			}
 
-			release, err := dnsRateLimiter.Acquire(ctx, server, false) // UDP, not DoH/DoT
+			release, err := dnsRateLimiter.Acquire(ctx, server, false)
+			if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrConcurrencyLimit) {
+				// Rate limited, brief backoff then try next server
+				time.Sleep(50 * time.Millisecond)
+				lastErr = err
+				continue
+			}
 			if err != nil {
+				// Other error (context cancelled, etc.)
 				lastErr = err
 				continue
 			}
