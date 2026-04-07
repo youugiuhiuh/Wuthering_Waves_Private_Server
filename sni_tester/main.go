@@ -62,7 +62,7 @@ const (
 
 // DNS Rate Limiter Wait Configuration
 const (
-	dnsBacklogThreshold      = 30 * time.Millisecond // Backlog threshold for high-load mode
+	dnsBacklogThreshold      = 30                    // Backlog threshold for high-load mode (count)
 	dnsNormalSemaphoreWait   = 50 * time.Millisecond // Normal: semaphore wait
 	dnsNormalRateWait        = 50 * time.Millisecond // Normal: rate limit wait
 	dnsHighLoadSemaphoreWait = 20 * time.Millisecond // High-load: semaphore wait
