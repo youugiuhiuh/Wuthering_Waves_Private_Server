@@ -38,6 +38,8 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/net/proxy"
 	"golang.org/x/time/rate"
+	"google.golang.org/protobuf/proto"
+	snipb "sni_tester/proto"
 )
 
 // DNS Failover Configuration
@@ -2003,17 +2005,17 @@ func clearAllHistory(db *badger.DB) error {
 }
 
 func loadExistingBinFiles(dir string, m map[string]struct{}) {
-	files, _ := filepath.Glob(filepath.Join(dir, "*.bin"))
+	files, _ := filepath.Glob(filepath.Join(dir, "*.pb"))
 	for _, f := range files {
 		baseName := strings.ToUpper(filepath.Base(f))
-		if baseName == "CN.BIN" || baseName == "HK.BIN" || baseName == "MO.BIN" {
+		if baseName == "CN.PB" || baseName == "HK.PB" || baseName == "MO.PB" {
 			continue
 		}
 		data, err := os.ReadFile(f)
 		if err != nil {
 			continue
 		}
-		domains := parseBinaryDomains(data)
+		domains, _ := parseProtobufDomains(data)
 		for _, domain := range domains {
 			m[domain] = struct{}{}
 		}
@@ -2080,7 +2082,19 @@ func batchSave(targetDir string, m map[string][]string, db *badger.DB) {
 	}
 
 	for country, list := range m {
-		writeBinaryDomainFile(targetDir, country, list)
+		filename := fmt.Sprintf("%s.pb", strings.ToUpper(country))
+		targetPath := filepath.Join(targetDir, filename)
+		os.MkdirAll(targetDir, 0o755)
+
+		existingDomains := []string{}
+		if data, err := os.ReadFile(targetPath); err == nil {
+			existingDomains, _ = parseProtobufDomains(data)
+		}
+
+		allDomains := append(existingDomains, list...)
+		if len(allDomains) > 0 {
+			writeProtobufDomainFile(allDomains, targetPath)
+		}
 	}
 	// 保存到成功历史数据库
 	if db != nil && len(m) > 0 {
@@ -2110,59 +2124,47 @@ func batchSave(targetDir string, m map[string][]string, db *badger.DB) {
 	}
 }
 
-func writeBinaryDomainFile(targetDir string, countryCode string, domains []string) error {
-	filename := fmt.Sprintf("%s.bin", strings.ToUpper(countryCode))
-	targetPath := filepath.Join(targetDir, filename)
-	os.MkdirAll(targetDir, 0o755)
-
+func writeProtobufDomainFile(domains []string, filePath string) error {
 	if len(domains) == 0 {
 		return nil
 	}
 
-	// Read existing domains from file
-	existingDomains := []string{}
-	if data, err := os.ReadFile(targetPath); err == nil {
-		existingDomains = parseBinaryDomains(data)
+	sort.Strings(domains)
+	uniqueDomains := []string{}
+	for i, d := range domains {
+		if i == 0 || d != domains[i-1] {
+			uniqueDomains = append(uniqueDomains, d)
+		}
 	}
 
-	// Merge existing and new domains
-	allDomains := append(existingDomains, domains...)
+	pb := &snipb.DomainList{Domains: uniqueDomains}
 
-	// Sort and dedupe
-	sort.Strings(allDomains)
-	allDomains = dedupeStrings(allDomains)
-
-	// Write to file
-	f, err := os.Create(targetPath)
+	data, err := proto.Marshal(pb)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal protobuf: %w", err)
 	}
-	defer f.Close()
 
-	for _, d := range allDomains {
-		binary.Write(f, binary.BigEndian, uint16(len(d)))
-		f.WriteString(d)
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
 	}
+
 	return nil
 }
 
-// parseBinaryDomains parses binary format [2 bytes len BE][domain]...
-func parseBinaryDomains(data []byte) []string {
+func parseProtobufDomains(data []byte) ([]string, error) {
+	var pb snipb.DomainList
+	if err := proto.Unmarshal(data, &pb); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal protobuf: %w", err)
+	}
+
 	domains := []string{}
-	offset := 0
-	for offset+2 <= len(data) {
-		length := int(binary.BigEndian.Uint16(data[offset : offset+2]))
-		offset += 2
-		if length == 0 || length > 512 || offset+length > len(data) {
-			break
-		}
-		domain := string(data[offset : offset+length])
+	for _, domain := range pb.Domains {
 		if domain != "" && strings.Contains(domain, ".") {
 			domains = append(domains, domain)
 		}
-		offset += length
 	}
-	return domains
+
+	return domains, nil
 }
 
 func dedupeStrings(sorted []string) []string {
