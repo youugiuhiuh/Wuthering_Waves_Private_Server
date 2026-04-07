@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use prost::Message;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rust_embed::RustEmbed;
@@ -6,7 +7,10 @@ use rust_embed::RustEmbed;
 use crate::logic::config::RealityProto;
 use crate::logic::sni_state::{SNIPersistence, SNIState};
 
-// Embedded SNI resources
+pub mod sni_proto {
+    include!(concat!(env!("OUT_DIR"), "/sni.rs"));
+}
+
 #[derive(RustEmbed)]
 #[folder = "src/resources/sni/"]
 struct SniAssets;
@@ -19,29 +23,21 @@ static SNI_PERSISTENCE: Lazy<Option<SNIPersistence>> = Lazy::new(|| match SNIPer
     }
 });
 
-static LARGEST_BIN_REALITY: Lazy<Option<(String, usize)>> =
-    Lazy::new(|| find_file_with_most_domains("reality"));
+static LARGEST_PB: Lazy<Option<(String, usize)>> = Lazy::new(|| find_file_with_most_domains());
 
-static LARGEST_BIN_XHTTP: Lazy<Option<(String, usize)>> =
-    Lazy::new(|| find_file_with_most_domains("xhttp"));
-
-fn find_file_with_most_domains(proto_prefix: &str) -> Option<(String, usize)> {
-    let prefix_path = format!("{}/", proto_prefix);
+fn find_file_with_most_domains() -> Option<(String, usize)> {
     let mut best_file: Option<String> = None;
     let mut best_count: usize = 0;
 
     for file in SniAssets::iter() {
         let filename = file.as_ref();
-        if !filename.starts_with(&prefix_path) {
-            continue;
-        }
-        if !filename.ends_with(".bin") && !filename.ends_with(".txt") {
+        if !filename.ends_with(".pb") {
             continue;
         }
 
         if let Some(asset) = SniAssets::get(filename) {
             let data = asset.data.as_ref();
-            if let Some(domains) = parse_domains_from_data(data) {
+            if let Some(domains) = load_protobuf(data) {
                 if domains.len() > best_count {
                     best_count = domains.len();
                     best_file = Some(filename.to_string());
@@ -52,8 +48,7 @@ fn find_file_with_most_domains(proto_prefix: &str) -> Option<(String, usize)> {
 
     if let Some(ref f) = best_file {
         log::info!(
-            "Found file with most domains for {}: {} ({} domains)",
-            proto_prefix,
+            "Found file with most domains: {} ({} domains)",
             f,
             best_count
         );
@@ -61,13 +56,10 @@ fn find_file_with_most_domains(proto_prefix: &str) -> Option<(String, usize)> {
     best_file.map(|f| (f, best_count))
 }
 
-fn parse_domains_from_data(data: &[u8]) -> Option<Vec<String>> {
-    if is_binary_format(data) {
-        load_binary(data)
-    } else {
-        let text = std::str::from_utf8(data).ok()?;
-        load_text(text)
-    }
+fn load_protobuf(data: &[u8]) -> Option<Vec<String>> {
+    sni_proto::DomainList::decode(data)
+        .ok()
+        .map(|dl| dl.domains)
 }
 
 pub struct SNISelector {
@@ -78,19 +70,17 @@ pub struct SNISelector {
 }
 
 impl SNISelector {
-    pub fn get_for_country(country_code: &str, proto: RealityProto) -> Self {
+    pub fn get_for_country(country_code: &str, _proto: RealityProto) -> Self {
         let upper = country_code.to_uppercase();
         let code = match upper.as_str() {
             "UK" => "GB",
             c => c,
         };
 
-        let proto_prefix = match proto {
-            RealityProto::Vision => "reality",
-            RealityProto::XHTTP => "xhttp",
-        };
+        let domains = Self::load_domains(&code);
+        let state = SNIState::new(domains.clone());
 
-        let cache_key = format!("{}_{}", proto_prefix, code);
+        let cache_key = format!("sni_{}", code);
 
         if let Some(ref persistence) = *SNI_PERSISTENCE {
             if let Some(state) = persistence.load(&cache_key) {
@@ -110,9 +100,6 @@ impl SNISelector {
             }
         }
 
-        let domains = Self::load_domains(proto_prefix, &code);
-        let state = SNIState::new(domains.clone());
-
         if let Some(ref persistence) = *SNI_PERSISTENCE {
             if let Err(e) = persistence.save(&cache_key, &state) {
                 log::warn!("Failed to save initial SNI state: {}", e);
@@ -127,19 +114,13 @@ impl SNISelector {
         }
     }
 
-    fn load_domains(proto_prefix: &str, code: &str) -> Vec<String> {
+    fn load_domains(code: &str) -> Vec<String> {
         const MIN_DOMAINS: usize = 3;
 
         let code_upper = code.to_uppercase();
-        let bin_file = format!("{}/{}.bin", proto_prefix, code_upper);
-        let txt_file = format!("{}/{}.txt", proto_prefix, code_upper);
-        let fallback_bin = format!("{}.bin", code_upper);
-        let fallback_txt = format!("{}.txt", code_upper);
+        let pb_file = format!("{}.pb", code_upper);
 
-        let country_domains = Self::load_embedded(&bin_file)
-            .or_else(|| Self::load_embedded(&txt_file))
-            .or_else(|| Self::load_embedded(&fallback_bin))
-            .or_else(|| Self::load_embedded(&fallback_txt));
+        let country_domains = Self::load_embedded(&pb_file);
 
         if let Some(domains) = country_domains {
             if domains.len() >= MIN_DOMAINS {
@@ -153,22 +134,14 @@ impl SNISelector {
             );
         }
 
-        let best_cache: &Option<(String, usize)> = match proto_prefix {
-            "reality" => &LARGEST_BIN_REALITY,
-            "xhttp" => &LARGEST_BIN_XHTTP,
-            _ => &None,
-        };
-
-        if let Some((filename, count)) = best_cache {
+        if let Some((filename, count)) = LARGEST_PB.as_ref() {
             log::info!("Using fallback file: {} ({} domains)", filename, count);
             if let Some(domains) = Self::load_embedded(filename) {
                 return domains;
             }
         }
 
-        Self::load_embedded("default.bin")
-            .or_else(|| Self::load_embedded("default.txt"))
-            .unwrap_or_else(|| vec!["www.google.com".to_string()])
+        Self::load_embedded("default.pb").unwrap_or_else(|| vec!["www.google.com".to_string()])
     }
 
     pub fn next(&mut self) -> String {
@@ -223,126 +196,7 @@ impl SNISelector {
     fn load_embedded(filename: &str) -> Option<Vec<String>> {
         let file = SniAssets::get(filename)?;
         let data = file.data.as_ref();
-
-        if is_binary_format(data) {
-            if let Some(domains) = load_binary(data) {
-                return Some(domains);
-            }
-        }
-
-        let text = std::str::from_utf8(data).ok()?;
-        load_text(text)
-    }
-}
-
-fn load_binary(data: &[u8]) -> Option<Vec<String>> {
-    let mut domains = Vec::new();
-    let mut offset = 0;
-
-    while offset < data.len() {
-        if offset + 2 > data.len() {
-            break;
-        }
-        let length = u16::from_be_bytes([data[offset], data[offset + 1]]) as usize;
-        offset += 2;
-
-        if length == 0 || length > 512 {
-            return None;
-        }
-
-        if offset + length > data.len() {
-            break;
-        }
-
-        let domain = std::str::from_utf8(&data[offset..offset + length]).ok()?;
-        if !domain.is_empty() && domain.contains('.') {
-            domains.push(domain.to_string());
-        }
-        offset += length;
-    }
-
-    if domains.is_empty() {
-        None
-    } else {
-        Some(domains)
-    }
-}
-
-fn is_binary_format(data: &[u8]) -> bool {
-    if data.len() < 4 || data.len() > 10 * 1024 * 1024 {
-        return false;
-    }
-
-    let mut offset = 0;
-    let mut count = 0;
-    let max_domains = 1000;
-
-    while offset < data.len() && count < max_domains {
-        if offset + 2 > data.len() {
-            return false;
-        }
-
-        let length = u16::from_be_bytes([data[offset], data[offset + 1]]) as usize;
-        offset += 2;
-
-        if length == 0 || length > 512 {
-            return false;
-        }
-
-        if offset + length > data.len() {
-            return false;
-        }
-
-        let slice = &data[offset..offset + length];
-        if !slice.contains(&b'.') {
-            return false;
-        }
-
-        for &b in slice {
-            if !(b == 46
-                || (b >= 48 && b <= 57)
-                || (b >= 97 && b <= 122)
-                || (b >= 65 && b <= 90)
-                || b == 45
-                || b == 95)
-            {}
-        }
-
-        offset += length;
-        count += 1;
-    }
-
-    count >= 3
-}
-
-fn load_text(content: &str) -> Option<Vec<String>> {
-    let mut domains = Vec::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("//") {
-            continue;
-        }
-
-        let clean = trimmed
-            .trim_matches(|c| c == '"' || c == '\'')
-            .trim_end_matches(',');
-
-        let domain_only = if let Some(idx) = clean.find(':') {
-            &clean[..idx]
-        } else {
-            clean
-        };
-
-        if !domain_only.is_empty() && domain_only.contains('.') {
-            domains.push(domain_only.to_string());
-        }
-    }
-
-    if domains.is_empty() {
-        None
-    } else {
-        Some(domains)
+        load_protobuf(data)
     }
 }
 
@@ -420,61 +274,6 @@ mod tests {
     }
 
     #[test]
-    fn get_for_country_xhttp_different_prefix() {
-        let selector = SNISelector::get_for_country("US", RealityProto::XHTTP);
-        let mut s = selector;
-        assert!(!s.next().is_empty());
-    }
-
-    #[test]
-    fn load_embedded_handles_comments_and_empty_lines() {
-        let domains = SNISelector::load_embedded("default.txt");
-        if let Some(domains) = domains {
-            for domain in &domains {
-                assert!(!domain.starts_with('#'));
-                assert!(!domain.starts_with("//"));
-                assert!(!domain.is_empty());
-                assert!(domain.contains('.'));
-            }
-        }
-    }
-
-    #[test]
-    fn binary_format_detection() {
-        let binary_data = vec![
-            0x00, 0x0B, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D, 0x00,
-            0x08, 0x74, 0x65, 0x73, 0x74, 0x2E, 0x63, 0x6F, 0x6D, 0x00, 0x07, 0x66, 0x6F, 0x6F,
-            0x2E, 0x63, 0x6F, 0x6D,
-        ];
-        assert!(is_binary_format(&binary_data));
-
-        assert!(!is_binary_format(&[0x00, 0x0B]));
-
-        let two_domains = vec![
-            0x00, 0x0B, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D, 0x00,
-            0x08, 0x74, 0x65, 0x73, 0x74, 0x2E, 0x63, 0x6F, 0x6D,
-        ];
-        assert!(!is_binary_format(&two_domains));
-    }
-
-    #[test]
-    fn load_binary_parses_correctly() {
-        let binary_data = vec![
-            0x00, 0x0B, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D, 0x00,
-            0x08, 0x74, 0x65, 0x73, 0x74, 0x2E, 0x63, 0x6F, 0x6D, 0x00, 0x07, 0x66, 0x6F, 0x6F,
-            0x2E, 0x63, 0x6F, 0x6D,
-        ];
-
-        let domains = load_binary(&binary_data);
-        assert!(domains.is_some());
-        let domains = domains.unwrap();
-        assert_eq!(domains.len(), 3);
-        assert_eq!(domains[0], "example.com");
-        assert_eq!(domains[1], "test.com");
-        assert_eq!(domains[2], "foo.com");
-    }
-
-    #[test]
     fn remaining_count() {
         let mut selector = SNISelector {
             domains: vec![
@@ -495,91 +294,14 @@ mod tests {
     }
 
     #[test]
-    fn find_file_with_most_domains_finds_us_file() {
-        let result = find_file_with_most_domains("reality");
-        assert!(result.is_some());
-        let (filename, count) = result.unwrap();
-        assert!(
-            filename.ends_with("US.bin"),
-            "Expected US.bin, got {}",
-            filename
-        );
-        assert!(
-            count >= 10,
-            "US should have at least 10 domains, got {}",
-            count
-        );
-
-        let result = find_file_with_most_domains("xhttp");
-        assert!(result.is_some());
-        let (filename, count) = result.unwrap();
-        assert!(
-            filename.ends_with("US.bin"),
-            "Expected US.bin, got {}",
-            filename
-        );
-        assert!(
-            count >= 10,
-            "US xhttp should have at least 10 domains, got {}",
-            count
-        );
-    }
-
-    #[test]
-    fn get_for_country_unknown_uses_largest_bin_fallback() {
-        let selector = SNISelector::get_for_country("XXXUNKNOWN", RealityProto::Vision);
-        assert!(
-            !selector.domains.is_empty(),
-            "Domains should not be empty for unknown country"
-        );
-        assert!(
-            selector.domains.iter().all(|d| d.contains('.')),
-            "All domains should contain dots"
-        );
-
-        let selector = SNISelector::get_for_country("ZZZ999", RealityProto::XHTTP);
-        assert!(
-            !selector.domains.is_empty(),
-            "Domains should not be empty for unknown country (xhttp)"
-        );
-    }
-
-    #[test]
-    fn load_domains_falls_back_when_too_few_domains() {
-        let domains = SNISelector::load_domains("reality", "JP");
-        assert!(
-            domains.len() >= 3,
-            "JP has < 3 domains, should fallback to file with more domains, got {} domains",
-            domains.len()
-        );
-    }
-
-    #[test]
-    fn load_domains_uses_country_when_enough() {
-        let domains = SNISelector::load_domains("reality", "US");
-        assert!(
-            domains.len() >= 3,
-            "US should have enough domains, got {}",
-            domains.len()
-        );
-    }
-
-    #[test]
-    fn lazy_cache_is_initialized() {
-        assert!(
-            LARGEST_BIN_REALITY.is_some(),
-            "LARGEST_BIN_REALITY should be initialized"
-        );
-        assert!(
-            LARGEST_BIN_XHTTP.is_some(),
-            "LARGEST_BIN_XHTTP should be initialized"
-        );
-        let (filename, count) = LARGEST_BIN_REALITY.as_ref().unwrap();
-        assert!(!filename.is_empty());
-        assert!(*count >= 3);
-
-        let (filename, count) = LARGEST_BIN_XHTTP.as_ref().unwrap();
-        assert!(!filename.is_empty());
-        assert!(*count >= 3);
+    fn load_protobuf_decodes_valid_data() {
+        let domains = vec!["example.com".to_string(), "test.com".to_string()];
+        let list = sni_proto::DomainList { domains };
+        let mut buf = Vec::new();
+        list.encode(&mut buf).unwrap();
+        let decoded = load_protobuf(&buf).unwrap();
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0], "example.com");
+        assert_eq!(decoded[1], "test.com");
     }
 }
