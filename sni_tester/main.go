@@ -477,7 +477,6 @@ type ASNResult struct {
 	Org string
 }
 
-// 模式结果（用于 channel 通信）
 type DomainResult struct {
 	Domain  string
 	Success bool
@@ -486,7 +485,6 @@ type DomainResult struct {
 	ASN     uint32
 	Org     string
 	Info    string
-	Mode    string
 }
 
 // 获取缓存的国家代码
@@ -782,22 +780,9 @@ func main() {
 	// Optional: auto-shutdown after task completion
 	autoShutdown := flag.Bool("shutdown", false, "Shutdown system immediately after task completion")
 	forceRetry := flag.Bool("force", false, "Force re-test domains that were previously skipped (ignores failure history)")
-	resetAll := flag.Bool("reset", false, "Clear all history (success + failures) and test from scratch. Also clears existing .bin output files.")
-
-	// XHTTP & Reality 专项校验参数
-	xhttpMode := flag.Bool("xhttp", false, "Enable XHTTP validation (H2 minimum)")
-	realityMode := flag.Bool("reality", false, "Enable Reality validation (TLS 1.3, X25519, H2)")
-	runBoth := flag.Bool("both", false, "Run both Reality and XHTTP modes automatically (reality → xhttp)")
+	resetAll := flag.Bool("reset", false, "Clear all history (success + failures) and test from scratch. Also clears existing .pb output files.")
 
 	flag.Parse()
-
-	// 参数冲突检测
-	if *runBoth && (*xhttpMode || *realityMode) {
-		fmt.Println("Error: -both cannot be used with -xhttp or -reality")
-		fmt.Println("Use -both alone to run both modes sequentially.")
-		fmt.Println("Use -xhttp or -reality for single mode.")
-		os.Exit(1)
-	}
 
 	isDebugMode = *debugMode
 	if isDebugMode {
@@ -817,18 +802,6 @@ func main() {
 		fmt.Println("  -ttl <days>     Days to remember failures (default: 7)")
 		fmt.Println("  -max <lines>    Max lines to read from input")
 		fmt.Println("  -shutdown       Shutdown system after completion")
-		fmt.Println("")
-		fmt.Println("Mode selection:")
-		fmt.Println("  -reality        Enable Reality validation (TLS 1.3, X25519, H2)")
-		fmt.Println("  -xhttp          Enable XHTTP validation (H2 minimum)")
-		fmt.Println("  -both           Run both Reality and XHTTP modes automatically")
-		fmt.Println("")
-		fmt.Println("Examples:")
-		fmt.Println("  ./sni_tester -f domains.txt                    # Default mode")
-		fmt.Println("  ./sni_tester -f domains.txt -reality           # Reality mode only")
-		fmt.Println("  ./sni_tester -f domains.txt -xhttp             # XHTTP mode only")
-		fmt.Println("  ./sni_tester -f domains.txt -both               # Both modes (reality→xhttp)")
-		fmt.Println("  ./sni_tester -f domains.txt -both -force -reset")
 		os.Exit(1)
 	}
 
@@ -860,27 +833,8 @@ func main() {
 		dnsUDP = "udp4" // Built-in pool are all IPv4
 	}
 
-	// 确定存储子目录和模式前缀
-	var modes []string
-	if *runBoth {
-		modes = []string{"reality", "xhttp"}
-	} else if *realityMode {
-		modes = []string{"reality"}
-	} else if *xhttpMode {
-		modes = []string{"xhttp"}
-	} else {
-		modes = []string{""} // 默认模式
-	}
-
-	// 显示执行模式
-	if len(modes) > 0 && modes[0] != "" {
-		fmt.Printf("\nRunning %d mode(s): %s\n", len(modes), strings.Join(modes, " → "))
-	}
-
-	// 设置第一模式的子目录设置 (用于初始检查)
-	if len(modes) > 0 && modes[0] != "" {
-		setModePrefix(modes[0])
-	}
+	// Unified validation mode (TLS 1.3 + X25519 + H2 or H3)
+	fmt.Println("\nRunning unified validation (TLS 1.3 + X25519 + H2/H3 supported)")
 
 	baseTargetDir := findTargetDir()
 	if baseTargetDir == "" {
@@ -888,23 +842,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 模式统计汇总
-	type ModeResult struct {
-		Mode           string
-		Total          int
-		Success        int
-		Failed         int
-		SkippedCountry int
-		SkippedASN     int
-		CountryStats   map[string]int
-	}
-	var allModeResults []ModeResult
-
-	// 设置第一模式的 targetDir (用于网络检查和文件解析)
 	targetDir := baseTargetDir
-	if len(modes) > 0 && modes[0] != "" {
-		targetDir = filepath.Join(baseTargetDir, modes[0])
-	}
+	fmt.Printf("Detected target directory: %s\n", targetDir)
 	fmt.Printf("Detected target directory: %s\n", targetDir)
 
 	// 0. Check network connectivity (only if using explicit single DNS)
@@ -1057,7 +996,7 @@ func main() {
 	// 在多模式下，successMap 在所有模式间共享
 	successMap := make(map[string]struct{})
 
-	// 全局重置 (清除所有模式的历史)
+	// 全局重置
 	if *resetAll {
 		fmt.Println("[RESET] Clearing all history and existing output files...")
 		// Clear BadgerDB
@@ -1066,71 +1005,40 @@ func main() {
 		} else {
 			fmt.Println("[RESET] BadgerDB history cleared.")
 		}
-		// Delete existing .bin files in all mode directories
-		for _, mode := range modes {
-			if mode == "" {
+		// Delete existing .pb files
+		pbFiles, _ := filepath.Glob(filepath.Join(targetDir, "*.pb"))
+		for _, f := range pbFiles {
+			if err := os.Remove(f); err != nil {
+				fmt.Printf("[RESET] Warning: failed to remove %s: %v\n", f, err)
+			}
+		}
+		if len(pbFiles) > 0 {
+			fmt.Printf("[RESET] Removed %d existing .pb files.\n", len(pbFiles))
+		}
+		txtFiles, _ := filepath.Glob(filepath.Join(targetDir, "*.txt"))
+		for _, f := range txtFiles {
+			baseName := strings.ToUpper(filepath.Base(f))
+			if baseName == "CN.TXT" || baseName == "HK.TXT" || baseName == "MO.TXT" {
 				continue
 			}
-			modeDir := filepath.Join(baseTargetDir, mode)
-			binFiles, _ := filepath.Glob(filepath.Join(modeDir, "*.bin"))
-			for _, f := range binFiles {
-				if err := os.Remove(f); err != nil {
-					fmt.Printf("[RESET] Warning: failed to remove %s: %v\n", f, err)
-				}
-			}
-			if len(binFiles) > 0 {
-				fmt.Printf("[RESET] Removed %d existing .bin files from %s mode.\n", len(binFiles), mode)
-			}
-			txtFiles, _ := filepath.Glob(filepath.Join(modeDir, "*.txt"))
-			for _, f := range txtFiles {
-				baseName := strings.ToUpper(filepath.Base(f))
-				if baseName == "CN.TXT" || baseName == "HK.TXT" || baseName == "MO.TXT" {
-					continue
-				}
-				if err := os.Remove(f); err != nil {
-					fmt.Printf("[RESET] Warning: failed to remove %s: %v\n", f, err)
-				}
+			if err := os.Remove(f); err != nil {
+				fmt.Printf("[RESET] Warning: failed to remove %s: %v\n", f, err)
 			}
 		}
 		fmt.Println("[RESET] Starting fresh test...")
 	}
 
-	// Load existing successes from ALL mode directories (unless reset)
-	// successMap is shared across modes to avoid re-testing same domains
+	// Load existing successes from output directory (unless reset)
 	if !*resetAll {
-		// Load from base directory (no mode subdirectory)
-		loadExistingIntoMap(baseTargetDir, successMap)
-		// Load from each mode directory
-		for _, mode := range modes {
-			if mode != "" {
-				modeDir := filepath.Join(baseTargetDir, mode)
-				loadExistingIntoMap(modeDir, successMap)
-				loadExistingBinFiles(modeDir, successMap)
-			}
-		}
-		// Load success history from BadgerDB for ALL modes
-		// This ensures domains tested in one mode are skipped in other modes
-		originalModePrefix := modePrefix
-		for _, mode := range modes {
-			if mode != "" {
-				setModePrefix(mode)
-				loadSuccessHistory(db, successMap)
-			}
-		}
-		if len(modes) > 0 && modes[0] != "" {
-			setModePrefix(originalModePrefix)
-		}
+		loadExistingIntoMap(targetDir, successMap)
+		loadExistingBinFiles(targetDir, successMap)
+		loadSuccessHistory(db, successMap)
 		loadBlockedHistory(db, successMap)
 	}
 
-	// Force mode: still load existing .bin files to skip re-testing
+	// Force mode: still load existing .pb files to skip re-testing
 	if *forceRetry && !*resetAll {
-		for _, mode := range modes {
-			if mode != "" {
-				modeDir := filepath.Join(baseTargetDir, mode)
-				loadExistingBinFiles(modeDir, successMap)
-			}
-		}
+		loadExistingBinFiles(targetDir, successMap)
 	}
 
 	failCount, purged := cleanAndCountFailureHistory(db, now, ttlSec)
@@ -1174,299 +1082,238 @@ func main() {
 		}(i)
 	}
 
-	// Mode loop: run test for each mode
-	for modeIdx, mode := range modes {
-		// Set mode-specific directory and prefix
-		if mode != "" {
-			targetDir = filepath.Join(baseTargetDir, mode)
-			setModePrefix(mode)
-			fmt.Printf("\n%s\n", strings.Repeat("=", 60))
-			fmt.Printf("Mode %d/%d: %s\n", modeIdx+1, len(modes), strings.ToUpper(mode))
-			fmt.Printf("Output directory: %s\n", targetDir)
-			fmt.Printf("%s\n\n", strings.Repeat("=", 60))
-			// Create target directory if needed
-			if err := os.MkdirAll(targetDir, 0o755); err != nil {
-				fmt.Printf("Error creating target directory %s: %v\n", targetDir, err)
-				continue
-			}
-		}
+	// 4. Setup Dynamic Workers (AIMD Concurrency Controller)
+	jobs := make(chan string, JobBuffer)
 
-		// 4. Setup Dynamic Workers (AIMD Concurrency Controller)
-		jobs := make(chan string, JobBuffer)
+	maxConcurrent := MaxWorkers
+	if *fixedWorkers > 0 {
+		maxConcurrent = *fixedWorkers
+	}
+	results := make(chan ValidationResult, maxConcurrent)
+	var wg sync.WaitGroup
 
-		maxConcurrent := MaxWorkers
-		if *fixedWorkers > 0 {
-			maxConcurrent = *fixedWorkers
-		}
-		results := make(chan ValidationResult, maxConcurrent)
-		var wg sync.WaitGroup
+	// Dynamic Semaphore for controlling active workers
+	workerSemaphore := make(chan struct{}, maxConcurrent)
+	// Initialize with starting workers
+	currentWorkers := InitialWorkers
+	if *fixedWorkers > 0 {
+		currentWorkers = *fixedWorkers
+	}
+	for i := 0; i < currentWorkers; i++ {
+		workerSemaphore <- struct{}{}
+	}
+	// This function spawns a single worker that pulls from the jobs channel.
+	// It stops pulling and exits when the semaphore is drained (downscaling).
+	spawnWorker := func() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				// Try to acquire/hold a token. If we can't, it means we've been downscaled.
+				select {
+				case <-workerSemaphore:
+					// We hold a token, proceed to get a job
+				default:
+					return // Downscaled: Semaphore is empty, exit this worker
+				}
 
-		// Dynamic Semaphore for controlling active workers
-		workerSemaphore := make(chan struct{}, maxConcurrent)
-		// Initialize with starting workers
-		currentWorkers := InitialWorkers
-		if *fixedWorkers > 0 {
-			currentWorkers = *fixedWorkers
-		}
-		for i := 0; i < currentWorkers; i++ {
-			workerSemaphore <- struct{}{}
-		}
-		// This function spawns a single worker that pulls from the jobs channel.
-		// It stops pulling and exits when the semaphore is drained (downscaling).
-		spawnWorker := func() {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for {
-					// Try to acquire/hold a token. If we can't, it means we've been downscaled.
-					select {
-					case <-workerSemaphore:
-						// We hold a token, proceed to get a job
-					default:
-						return // Downscaled: Semaphore is empty, exit this worker
-					}
+				domain, ok := <-jobs
+				if !ok {
+					// Jobs channel closed, we are done
+					workerSemaphore <- struct{}{} // Return the token before exiting
+					return
+				}
 
-					domain, ok := <-jobs
-					if !ok {
-						// Jobs channel closed, we are done
-						workerSemaphore <- struct{}{} // Return the token before exiting
-						return
-					}
-
-					// 1. DNS Resolution (Check cache first, then prefetch)
-					var ip string
-					if cachedIP, hit := dnsCache.Load(domain); hit {
-						ip = cachedIP.(string)
-					} else if prefetchedIP, exists := dnsPrefetchCache.LoadAndDelete(domain); exists {
-						ip = prefetchedIP.(string)
-						dnsCache.Store(domain, ip)
-					} else {
-						var ips []string
-						var err error
-						dnsTimeout := timeoutCtrl.GetTimeout("dns")
-						ctx, cancel := context.WithTimeout(context.Background(), dnsTimeout)
-						start := time.Now()
-						ips, err = resolveWithFailover(ctx, domain)
-						timeoutCtrl.Record(time.Since(start), "dns")
-						cancel()
-						if err != nil || len(ips) == 0 {
-							errMsg := "DNS resolution failed"
-							if err != nil {
-								errMsg = err.Error()
-							}
-							results <- ValidationResult{Domain: domain, Success: false, IP: "", Country: "UNKNOWN", Info: errMsg}
-							workerSemaphore <- struct{}{} // Return the token
-							continue
+				// 1. DNS Resolution (Check cache first, then prefetch)
+				var ip string
+				if cachedIP, hit := dnsCache.Load(domain); hit {
+					ip = cachedIP.(string)
+				} else if prefetchedIP, exists := dnsPrefetchCache.LoadAndDelete(domain); exists {
+					ip = prefetchedIP.(string)
+					dnsCache.Store(domain, ip)
+				} else {
+					var ips []string
+					var err error
+					dnsTimeout := timeoutCtrl.GetTimeout("dns")
+					ctx, cancel := context.WithTimeout(context.Background(), dnsTimeout)
+					start := time.Now()
+					ips, err = resolveWithFailover(ctx, domain)
+					timeoutCtrl.Record(time.Since(start), "dns")
+					cancel()
+					if err != nil || len(ips) == 0 {
+						errMsg := "DNS resolution failed"
+						if err != nil {
+							errMsg = err.Error()
 						}
-						ip = ips[0]
-						dnsCache.Store(domain, ip) // Store in cache for future hits
-					}
-
-					countryCode := "UNKNOWN"
-					// Use cached country lookup
-					countryCode = getCachedCountry(ip, geoDB)
-
-					// 先检查国家黑名单 (使用 ISO 代码)
-					if isBlockedCountry(countryCode) {
-						// 动态学习 ASN: 查询该 IP 的 ASN 并加入黑名单
-						asnResult := getCachedASN(ip, asnDB)
-						if asnResult.ASN > 0 {
-							addASNToBlacklist(db, asnResult.ASN, asnResult.Org, countryCode)
-						}
-						// 记录到被阻止数据库
-						addBlockedDomain(db, domain, "COUNTRY", countryCode)
-						results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, Info: fmt.Sprintf("Skipped (Country: %s)", countryCode)}
+						results <- ValidationResult{Domain: domain, Success: false, IP: "", Country: "UNKNOWN", Info: errMsg}
 						workerSemaphore <- struct{}{} // Return the token
 						continue
 					}
+					ip = ips[0]
+					dnsCache.Store(domain, ip) // Store in cache for future hits
+				}
 
-					// 2.1 ASN Check - 跳过黑名单中的 ASN
+				countryCode := "UNKNOWN"
+				// Use cached country lookup
+				countryCode = getCachedCountry(ip, geoDB)
+
+				// 先检查国家黑名单 (使用 ISO 代码)
+				if isBlockedCountry(countryCode) {
+					// 动态学习 ASN: 查询该 IP 的 ASN 并加入黑名单
 					asnResult := getCachedASN(ip, asnDB)
-					asn := asnResult.ASN
-					org := asnResult.Org
-					if asn > 0 && isASNBlocked(asn, &asnBlocklist) {
-						// 记录到被阻止数据库
-						addBlockedDomain(db, domain, "ASN", fmt.Sprintf("%d", asn))
-						results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, ASN: asn, Org: org, Info: fmt.Sprintf("Skipped (ASN: %d %s)", asn, org)}
-						workerSemaphore <- struct{}{}
-						continue
+					if asnResult.ASN > 0 {
+						addASNToBlacklist(db, asnResult.ASN, asnResult.Org, countryCode)
 					}
-
-					// 3. Perform TLS Handshake and Validation
-					tlsTimeout := timeoutCtrl.GetTimeout("tls")
-
-					var success bool
-					var finalIP string
-					var info string
-
-					// Determine mode-specific validation
-					isReality := (mode == "reality")
-					isXhttp := (mode == "xhttp")
-					needTLS13 := isReality || isXhttp
-
-					// Try to get cached TLS result first
-					cacheKey := domain + ":" + ip
-					var tlsResult *TLSResult
-					if cached, ok := tlsCache.Load(cacheKey); ok {
-						tlsResult = cached.(*TLSResult)
-					} else {
-						// Perform TLS handshake and cache result
-						tlsResult, err = performTLSHandshake(domain, ip, tlsTimeout, needTLS13)
-						if tlsResult != nil {
-							tlsCache.Store(cacheKey, tlsResult)
-						}
-					}
-
-					if err != nil || tlsResult == nil || !tlsResult.HandshakeOK {
-						errMsg := "TLS handshake failed"
-						if err != nil {
-							errMsg = err.Error()
-						} else if tlsResult != nil && tlsResult.Error != "" {
-							errMsg = tlsResult.Error
-						}
-						results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, Info: errMsg}
-						workerSemaphore <- struct{}{}
-						continue
-					}
-
-					if tlsResult.IP != "" {
-						finalIP = tlsResult.IP
-					} else {
-						finalIP = ip
-					}
-
-					// Mode-specific validation
-					if isReality {
-						success, info = validateReality(tlsResult)
-					} else if isXhttp {
-						success, info = validateXHTTP(tlsResult, resolver)
-					} else {
-						// Default mode: just pass if TLS handshake succeeded
-						success = true
-						info = "Validated"
-					}
-
-					if countryCode == "UNKNOWN" && finalIP != "" {
-						record, geoErr := geoDB.Country(net.ParseIP(finalIP))
-						if geoErr == nil {
-							if record.Country.IsoCode != "" {
-								countryCode = record.Country.IsoCode
-							} else if record.RegisteredCountry.IsoCode != "" {
-								countryCode = record.RegisteredCountry.IsoCode
-							}
-						}
-					}
-					if countryCode == "" {
-						countryCode = "UNKNOWN"
-					}
-
-					// Use finalIP for result if available
-					resultIP := ip
-					if finalIP != "" {
-						resultIP = finalIP
-					}
-
-					results <- ValidationResult{Domain: domain, Success: success, IP: resultIP, Country: countryCode, ASN: asn, Org: org, Info: info}
+					// 记录到被阻止数据库
+					addBlockedDomain(db, domain, "COUNTRY", countryCode)
+					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, Info: fmt.Sprintf("Skipped (Country: %s)", countryCode)}
 					workerSemaphore <- struct{}{} // Return the token
-				}
-			}()
-		}
-
-		// Spawn initial workers
-		for i := 0; i < currentWorkers; i++ {
-			spawnWorker()
-		}
-
-		var bar *progressbar.ProgressBar
-		if !*debugMode {
-			bar = progressbar.Default(int64(totalLines), "Testing")
-		}
-
-		validDomainsMap := make(map[string][]string)
-		failureList := make([]string, 0, 100)
-
-		doneChan := make(chan bool)
-
-		// 统计变量
-		var stats struct {
-			mu             sync.Mutex
-			total          int
-			success        int
-			failed         int
-			skippedCountry int
-			skippedASN     int
-			countryStats   map[string]int
-		}
-		stats.countryStats = make(map[string]int)
-
-		go func() {
-			newSuccessCount := 0
-			newFailureCount := 0
-
-			// AIMD State Variables
-			consecutiveSuccesses := 0
-			lastScaleDown := time.Now()
-
-			for res := range results {
-				stats.mu.Lock()
-				stats.total++
-				stats.mu.Unlock()
-
-				if !*debugMode && bar != nil {
-					bar.Add(1)
+					continue
 				}
 
-				if res.Success {
-					msg := fmt.Sprintf("\033[32m[PASS] %s (IP: %s, Country: %s, Info: %s)\033[0m", res.Domain, res.IP, res.Country, res.Info)
-					stats.mu.Lock()
-					stats.success++
-					stats.countryStats[res.Country]++
-					stats.mu.Unlock()
-					// 明确逻辑：CN/HK/MO 或 UNKNOWN 域名绝对不写入任何输出文件，改为记入失败库废弃
-					// CRITICAL: Domains from CN/HK/MO or UNKNOWN MUST NOT be written to any output files.
-					if res.Country != "" && !isBlockedCountry(res.Country) && res.Country != "UNKNOWN" {
-						validDomainsMap[res.Country] = append(validDomainsMap[res.Country], res.Domain)
-						newSuccessCount++
-						if newSuccessCount >= 100 {
-							batchSave(targetDir, validDomainsMap, db)
-							for k := range validDomainsMap {
-								delete(validDomainsMap, k)
-							}
-							newSuccessCount = 0
-						}
-					} else {
-						// 虽然验证成功，但因为区域问题（CN/HK/MO/UNKNOWN）被废弃，记入 BadgerDB
-						failureList = append(failureList, res.Domain)
-						newFailureCount++
-						if newFailureCount >= 500 {
-							appendFailureHistoryDB(db, failureList)
-							failureList = failureList[:0]
-							newFailureCount = 0
+				// 2.1 ASN Check - 跳过黑名单中的 ASN
+				asnResult := getCachedASN(ip, asnDB)
+				asn := asnResult.ASN
+				org := asnResult.Org
+				if asn > 0 && isASNBlocked(asn, &asnBlocklist) {
+					// 记录到被阻止数据库
+					addBlockedDomain(db, domain, "ASN", fmt.Sprintf("%d", asn))
+					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, ASN: asn, Org: org, Info: fmt.Sprintf("Skipped (ASN: %d %s)", asn, org)}
+					workerSemaphore <- struct{}{}
+					continue
+				}
+
+				// 3. Perform TLS Handshake and Validation
+				tlsTimeout := timeoutCtrl.GetTimeout("tls")
+
+				var success bool
+				var finalIP string
+				var info string
+
+				// Try to get cached TLS result first
+				cacheKey := domain + ":" + ip
+				var tlsResult *TLSResult
+				if cached, ok := tlsCache.Load(cacheKey); ok {
+					tlsResult = cached.(*TLSResult)
+				} else {
+					// Perform TLS handshake and cache result
+					tlsResult, err = performTLSHandshake(domain, ip, tlsTimeout, true)
+					if tlsResult != nil {
+						tlsCache.Store(cacheKey, tlsResult)
+					}
+				}
+
+				if err != nil || tlsResult == nil || !tlsResult.HandshakeOK {
+					errMsg := "TLS handshake failed"
+					if err != nil {
+						errMsg = err.Error()
+					} else if tlsResult != nil && tlsResult.Error != "" {
+						errMsg = tlsResult.Error
+					}
+					results <- ValidationResult{Domain: domain, Success: false, IP: ip, Country: countryCode, Info: errMsg}
+					workerSemaphore <- struct{}{}
+					continue
+				}
+
+				if tlsResult.IP != "" {
+					finalIP = tlsResult.IP
+				} else {
+					finalIP = ip
+				}
+
+				// Unified validation: TLS 1.3 + X25519 + (H2 or H3)
+				success, info = validateDomain(tlsResult, resolver)
+
+				if countryCode == "UNKNOWN" && finalIP != "" {
+					record, geoErr := geoDB.Country(net.ParseIP(finalIP))
+					if geoErr == nil {
+						if record.Country.IsoCode != "" {
+							countryCode = record.Country.IsoCode
+						} else if record.RegisteredCountry.IsoCode != "" {
+							countryCode = record.RegisteredCountry.IsoCode
 						}
 					}
-					if *debugMode {
-						fmt.Println(msg)
-					} else {
-						fmt.Printf("\r\033[K%s\n", msg)
+				}
+				if countryCode == "" {
+					countryCode = "UNKNOWN"
+				}
+
+				// Use finalIP for result if available
+				resultIP := ip
+				if finalIP != "" {
+					resultIP = finalIP
+				}
+
+				results <- ValidationResult{Domain: domain, Success: success, IP: resultIP, Country: countryCode, ASN: asn, Org: org, Info: info}
+				workerSemaphore <- struct{}{} // Return the token
+			}
+		}()
+	}
+
+	// Spawn initial workers
+	for i := 0; i < currentWorkers; i++ {
+		spawnWorker()
+	}
+
+	var bar *progressbar.ProgressBar
+	if !*debugMode {
+		bar = progressbar.Default(int64(totalLines), "Testing")
+	}
+
+	validDomainsMap := make(map[string][]string)
+	failureList := make([]string, 0, 100)
+
+	doneChan := make(chan bool)
+
+	// 统计变量
+	var stats struct {
+		mu             sync.Mutex
+		total          int
+		success        int
+		failed         int
+		skippedCountry int
+		skippedASN     int
+		countryStats   map[string]int
+	}
+	stats.countryStats = make(map[string]int)
+
+	go func() {
+		newSuccessCount := 0
+		newFailureCount := 0
+
+		// AIMD State Variables
+		consecutiveSuccesses := 0
+		lastScaleDown := time.Now()
+
+		for res := range results {
+			stats.mu.Lock()
+			stats.total++
+			stats.mu.Unlock()
+
+			if !*debugMode && bar != nil {
+				bar.Add(1)
+			}
+
+			if res.Success {
+				msg := fmt.Sprintf("\033[32m[PASS] %s (IP: %s, Country: %s, Info: %s)\033[0m", res.Domain, res.IP, res.Country, res.Info)
+				stats.mu.Lock()
+				stats.success++
+				stats.countryStats[res.Country]++
+				stats.mu.Unlock()
+				// 明确逻辑：CN/HK/MO 或 UNKNOWN 域名绝对不写入任何输出文件，改为记入失败库废弃
+				// CRITICAL: Domains from CN/HK/MO or UNKNOWN MUST NOT be written to any output files.
+				if res.Country != "" && !isBlockedCountry(res.Country) && res.Country != "UNKNOWN" {
+					validDomainsMap[res.Country] = append(validDomainsMap[res.Country], res.Domain)
+					newSuccessCount++
+					if newSuccessCount >= 100 {
+						batchSave(targetDir, validDomainsMap, db)
+						for k := range validDomainsMap {
+							delete(validDomainsMap, k)
+						}
+						newSuccessCount = 0
 					}
 				} else {
-					// 明确逻辑：所有失败（包含 CN/HK/MO 跳过）都必须记入 BadgerDB 失败库
-					// CRITICAL: All failures AND skipped CN/HK/MO domains MUST be recorded in BadgerDB failure history.
-					// Record Failure
-					msg := ""
-					stats.mu.Lock()
-					if isBlockedCountry(res.Country) {
-						msg = fmt.Sprintf("\033[31m[SKIP] %s is in %s\033[0m", res.Domain, res.Country)
-						stats.skippedCountry++
-					} else if strings.Contains(res.Info, "ASN:") {
-						msg = fmt.Sprintf("\033[31m[SKIP] %s (ASN blocked)\033[0m", res.Domain)
-						stats.skippedASN++
-					} else {
-						msg = fmt.Sprintf("[FAIL] %s: %s", res.Domain, res.Info)
-						stats.failed++
-					}
-					stats.mu.Unlock()
-
+					// 虽然验证成功，但因为区域问题（CN/HK/MO/UNKNOWN）被废弃，记入 BadgerDB
 					failureList = append(failureList, res.Domain)
 					newFailureCount++
 					if newFailureCount >= 500 {
@@ -1474,219 +1321,206 @@ func main() {
 						failureList = failureList[:0]
 						newFailureCount = 0
 					}
-					if *debugMode {
-						fmt.Println(msg)
-					} else if isBlockedCountry(res.Country) || res.Country == "UNKNOWN" {
-						fmt.Printf("\r\033[K%s\n", msg)
-					}
 				}
+				if *debugMode {
+					fmt.Println(msg)
+				} else {
+					fmt.Printf("\r\033[K%s\n", msg)
+				}
+			} else {
+				// 明确逻辑：所有失败（包含 CN/HK/MO 跳过）都必须记入 BadgerDB 失败库
+				// CRITICAL: All failures AND skipped CN/HK/MO domains MUST be recorded in BadgerDB failure history.
+				// Record Failure
+				msg := ""
+				stats.mu.Lock()
+				if isBlockedCountry(res.Country) {
+					msg = fmt.Sprintf("\033[31m[SKIP] %s is in %s\033[0m", res.Domain, res.Country)
+					stats.skippedCountry++
+				} else if strings.Contains(res.Info, "ASN:") {
+					msg = fmt.Sprintf("\033[31m[SKIP] %s (ASN blocked)\033[0m", res.Domain)
+					stats.skippedASN++
+				} else {
+					msg = fmt.Sprintf("[FAIL] %s: %s", res.Domain, res.Info)
+					stats.failed++
+				}
+				stats.mu.Unlock()
 
-				// --- AIMD Concurrency Control Logic ---
-				if *fixedWorkers == 0 {
-					// Is this a network/load error? (DNS lookup failed, i/o timeout, TLS handshake timeout)
-					isNetworkError := !res.Success && (strings.Contains(res.Info, "lookup") || strings.Contains(res.Info, "timeout") || strings.Contains(res.Info, "i/o"))
-
-					if res.Success || (!res.Success && !isNetworkError) {
-						// Successful network interaction (even if the domain is just an invalid SNI, the network is responding fine)
-						consecutiveSuccesses++
-						// Additive Increase: Every 50 smooth operations, add 20 workers
-						if consecutiveSuccesses >= 50 && currentWorkers < MaxWorkers {
-							consecutiveSuccesses = 0
-							increment := 20
-							if currentWorkers+increment > MaxWorkers {
-								increment = MaxWorkers - currentWorkers
-							}
-							currentWorkers += increment
-							for i := 0; i < increment; i++ {
-								workerSemaphore <- struct{}{}
-								spawnWorker()
-							}
-						}
-					} else if isNetworkError {
-						consecutiveSuccesses = 0 // Reset smooth streak
-
-						// Multiplicative Decrease: Halve workers, with cooldown to avoid over-shrinking
-						if time.Since(lastScaleDown) > 2*time.Second {
-							newWorkerCount := currentWorkers / 2
-							if newWorkerCount < MinWorkers {
-								newWorkerCount = MinWorkers
-							}
-							reduction := currentWorkers - newWorkerCount
-
-							// Drain semaphore to trigger workers to exit
-							for i := 0; i < reduction; i++ {
-								select {
-								case <-workerSemaphore:
-									// Successfully drained a token
-								default:
-									// Semaphore already empty, break outer loop
-									goto drainDone
-								}
-							}
-						drainDone:
-
-							currentWorkers = newWorkerCount
-							lastScaleDown = time.Now()
-							if !*debugMode && bar != nil {
-								bar.Describe(fmt.Sprintf("Testing (W:%d)", currentWorkers))
-							} else {
-								fmt.Printf("\r\033[K⚠️ Network congested. Scale down workers to %d\n", currentWorkers)
-							}
-						}
-					}
+				failureList = append(failureList, res.Domain)
+				newFailureCount++
+				if newFailureCount >= 500 {
+					appendFailureHistoryDB(db, failureList)
+					failureList = failureList[:0]
+					newFailureCount = 0
+				}
+				if *debugMode {
+					fmt.Println(msg)
+				} else if isBlockedCountry(res.Country) || res.Country == "UNKNOWN" {
+					fmt.Printf("\r\033[K%s\n", msg)
 				}
 			}
 
-			// Final Batch Save
-			if len(validDomainsMap) > 0 {
-				batchSave(targetDir, validDomainsMap, db)
-			}
-			if len(failureList) > 0 {
-				appendFailureHistoryDB(db, failureList)
-			}
+			// --- AIMD Concurrency Control Logic ---
+			if *fixedWorkers == 0 {
+				// Is this a network/load error? (DNS lookup failed, i/o timeout, TLS handshake timeout)
+				isNetworkError := !res.Success && (strings.Contains(res.Info, "lookup") || strings.Contains(res.Info, "timeout") || strings.Contains(res.Info, "i/o"))
 
-			if !*debugMode && bar != nil {
-				bar.Finish()
-				fmt.Println()
-			}
-			doneChan <- true
-		}()
+				if res.Success || (!res.Success && !isNetworkError) {
+					// Successful network interaction (even if the domain is just an invalid SNI, the network is responding fine)
+					consecutiveSuccesses++
+					// Additive Increase: Every 50 smooth operations, add 20 workers
+					if consecutiveSuccesses >= 50 && currentWorkers < MaxWorkers {
+						consecutiveSuccesses = 0
+						increment := 20
+						if currentWorkers+increment > MaxWorkers {
+							increment = MaxWorkers - currentWorkers
+						}
+						currentWorkers += increment
+						for i := 0; i < increment; i++ {
+							workerSemaphore <- struct{}{}
+							spawnWorker()
+						}
+					}
+				} else if isNetworkError {
+					consecutiveSuccesses = 0 // Reset smooth streak
 
-		// 5. Streaming Feed with Smart Filter
-		file, err := os.Open(*inputFile)
-		if err != nil {
-			fmt.Printf("Error opening input: %v\n", err)
-			os.Exit(1)
+					// Multiplicative Decrease: Halve workers, with cooldown to avoid over-shrinking
+					if time.Since(lastScaleDown) > 2*time.Second {
+						newWorkerCount := currentWorkers / 2
+						if newWorkerCount < MinWorkers {
+							newWorkerCount = MinWorkers
+						}
+						reduction := currentWorkers - newWorkerCount
+
+						// Drain semaphore to trigger workers to exit
+						for i := 0; i < reduction; i++ {
+							select {
+							case <-workerSemaphore:
+								// Successfully drained a token
+							default:
+								// Semaphore already empty, break outer loop
+								goto drainDone
+							}
+						}
+					drainDone:
+
+						currentWorkers = newWorkerCount
+						lastScaleDown = time.Now()
+						if !*debugMode && bar != nil {
+							bar.Describe(fmt.Sprintf("Testing (W:%d)", currentWorkers))
+						} else {
+							fmt.Printf("\r\033[K⚠️ Network congested. Scale down workers to %d\n", currentWorkers)
+						}
+					}
+				}
+			}
 		}
 
-		skippedCount := 0
-		lineNum := 0
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			lineNum++
-			if *maxLines > 0 && lineNum > *maxLines {
-				break
+		// Final Batch Save
+		if len(validDomainsMap) > 0 {
+			batchSave(targetDir, validDomainsMap, db)
+		}
+		if len(failureList) > 0 {
+			appendFailureHistoryDB(db, failureList)
+		}
+
+		if !*debugMode && bar != nil {
+			bar.Finish()
+			fmt.Println()
+		}
+		doneChan <- true
+	}()
+
+	// 5. Streaming Feed with Smart Filter
+	file, err := os.Open(*inputFile)
+	if err != nil {
+		fmt.Printf("Error opening input: %v\n", err)
+		os.Exit(1)
+	}
+
+	skippedCount := 0
+	lineNum := 0
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lineNum++
+		if *maxLines > 0 && lineNum > *maxLines {
+			break
+		}
+		raw := scanner.Text()
+		domain := cleanDomain(raw)
+		if domain == "" {
+			if !*debugMode {
+				skippedCount++
 			}
-			raw := scanner.Text()
-			domain := cleanDomain(raw)
-			if domain == "" {
+			continue
+		}
+
+		// 1. Skip if already succeeded (unless -force is set)
+		if !*forceRetry {
+			if _, exists := successMap[domain]; exists {
 				if !*debugMode {
 					skippedCount++
 				}
 				continue
 			}
-
-			// 1. Skip if already succeeded (unless -force is set)
-			if !*forceRetry {
-				if _, exists := successMap[domain]; exists {
-					if !*debugMode {
-						skippedCount++
-					}
-					continue
-				}
-			}
-
-			// 2. Skip if failed recently (BadgerDB lookup)
-			if !*forceRetry && isFailedRecently(db, domain, now, ttlSec) {
-				if !*debugMode {
-					skippedCount++
-				}
-				continue
-			}
-
-			// Mark as seen in this session to avoid duplicates in input file
-			successMap[domain] = struct{}{}
-
-			// To keep progress bar in sync when we skip in feed
-			if skippedCount > 0 && !*debugMode && bar != nil {
-				bar.Add(skippedCount)
-				skippedCount = 0
-			}
-
-			// Trigger DNS prefetch for this domain
-			select {
-			case dnsPrefetchQueue <- domain:
-			default:
-			}
-
-			jobs <- domain
 		}
-		if err := scanner.Err(); err != nil {
-			fmt.Printf("\nError scanning input: %v\n", err)
-		}
-		file.Close()
-		close(jobs)
-		wg.Wait()
-		close(results)
-		<-doneChan
 
-		// Deduplication Phase
-		fmt.Println("\nRunning post-scan deduplication on output files...")
-		deduplicateTargetDir(targetDir)
-
-		// 输出统计信息
-		fmt.Println("\n========================================")
-		fmt.Println("              测试统计                  ")
-		fmt.Println("========================================")
-		fmt.Printf("  总计:     %d\n", stats.total)
-		fmt.Printf("  成功:     \033[32m%d\033[0m\n", stats.success)
-		fmt.Printf("  失败:     \033[31m%d\033[0m\n", stats.failed)
-		fmt.Printf("  跳过(CN): %d\n", stats.skippedCountry)
-		fmt.Printf("  跳过(ASN): %d\n", stats.skippedASN)
-		fmt.Println("----------------------------------------")
-		fmt.Println("  按国家分布:")
-		for country, count := range stats.countryStats {
-			fmt.Printf("    %s: %d\n", country, count)
-		}
-		fmt.Println("========================================")
-
-		// Collect mode results for summary
-		allModeResults = append(allModeResults, ModeResult{
-			Mode:           mode,
-			Total:          stats.total,
-			Success:        stats.success,
-			Failed:         stats.failed,
-			SkippedCountry: stats.skippedCountry,
-			SkippedASN:     stats.skippedASN,
-			CountryStats:   stats.countryStats,
-		})
-	} // End of mode loop
-
-	// Print summary for multiple modes
-	if len(allModeResults) > 1 {
-		fmt.Println("\n========================================")
-		fmt.Println("              总体统计                  ")
-		fmt.Println("========================================")
-		var totalSuccess, totalFailed, totalSkippedCN, totalSkippedASN int
-		for _, r := range allModeResults {
-			modeName := r.Mode
-			if modeName == "" {
-				modeName = "default"
+		// 2. Skip if failed recently (BadgerDB lookup)
+		if !*forceRetry && isFailedRecently(db, domain, now, ttlSec) {
+			if !*debugMode {
+				skippedCount++
 			}
-			fmt.Printf("  [%s] Success: %d, Failed: %d, Skipped: CN=%d, ASN=%d\n",
-				strings.ToUpper(modeName), r.Success, r.Failed, r.SkippedCountry, r.SkippedASN)
-			totalSuccess += r.Success
-			totalFailed += r.Failed
-			totalSkippedCN += r.SkippedCountry
-			totalSkippedASN += r.SkippedASN
+			continue
 		}
-		fmt.Println("----------------------------------------")
-		fmt.Printf("  [TOTAL] Success: %d, Failed: %d, Skipped: CN=%d, ASN=%d\n",
-			totalSuccess, totalFailed, totalSkippedCN, totalSkippedASN)
-		fmt.Println("========================================")
-		// Update notifyMsg for summary
-		notifyMsg := fmt.Sprintf("Total: Success %d | Failed %d | Skipped CN %d ASN %d",
-			totalSuccess, totalFailed, totalSkippedCN, totalSkippedASN)
-		fmt.Println(notifyMsg)
+
+		// Mark as seen in this session to avoid duplicates in input file
+		successMap[domain] = struct{}{}
+
+		// To keep progress bar in sync when we skip in feed
+		if skippedCount > 0 && !*debugMode && bar != nil {
+			bar.Add(skippedCount)
+			skippedCount = 0
+		}
+
+		// Trigger DNS prefetch for this domain
+		select {
+		case dnsPrefetchQueue <- domain:
+		default:
+		}
+
+		jobs <- domain
 	}
-
-	// Use single mode stats for notification if not multiple modes
-	notifyMsg := "SNI Tester completed"
-	if len(allModeResults) == 1 {
-		r := allModeResults[0]
-		notifyMsg = fmt.Sprintf("Success %d | Failed %d | Skipped CN %d ASN %d",
-			r.Success, r.Failed, r.SkippedCountry, r.SkippedASN)
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("\nError scanning input: %v\n", err)
 	}
+	file.Close()
+	close(jobs)
+	wg.Wait()
+	close(results)
+	<-doneChan
+
+	// Deduplication Phase
+	fmt.Println("\nRunning post-scan deduplication on output files...")
+	deduplicateTargetDir(targetDir)
+
+	// 输出统计信息
+	fmt.Println("\n========================================")
+	fmt.Println("              测试统计                  ")
+	fmt.Println("========================================")
+	fmt.Printf("  总计:     %d\n", stats.total)
+	fmt.Printf("  成功:     \033[32m%d\033[0m\n", stats.success)
+	fmt.Printf("  失败:     \033[31m%d\033[0m\n", stats.failed)
+	fmt.Printf("  跳过(CN): %d\n", stats.skippedCountry)
+	fmt.Printf("  跳过(ASN): %d\n", stats.skippedASN)
+	fmt.Println("----------------------------------------")
+	fmt.Println("  按国家分布:")
+	for country, count := range stats.countryStats {
+		fmt.Printf("    %s: %d\n", country, count)
+	}
+	fmt.Println("========================================")
+
+	// Use stats for notification
+	notifyMsg := fmt.Sprintf("Success %d | Failed %d | Skipped CN %d ASN %d",
+		stats.success, stats.failed, stats.skippedCountry, stats.skippedASN)
 
 	// Emit desktop notification based on OS
 	if runtime.GOOS == "windows" {
@@ -1848,27 +1682,18 @@ func countLines(path string, limit int) (int, error) {
 
 // --- Persistence & History (BadgerDB) ---
 
-// Key prefixes for unified BadgerDB
-// Mode-specific prefixes (default/xhttp/reality)
-var modePrefix = "default"
+// Key prefixes for BadgerDB
+const keyPrefixFailedStr = "failed:"
+const keyPrefixSuccessStr = "success:"
 
-// setModePrefix sets the global modePrefix for BadgerDB key prefixes
-func setModePrefix(mode string) {
-	switch mode {
-	case "reality", "xhttp":
-		modePrefix = mode
-	default:
-		modePrefix = "default"
-	}
-}
-
-// Helper functions for mode-specific key prefixes
 func keyPrefixFailed() []byte {
-	return []byte("failed:" + modePrefix + ":")
+	return []byte(keyPrefixFailedStr)
 }
+
 func keyPrefixSuccess() []byte {
-	return []byte("success:" + modePrefix + ":")
+	return []byte(keyPrefixSuccessStr)
 }
+
 func keyPrefixBlockedCountry() []byte {
 	return []byte("blocked:country:")
 }
@@ -1881,7 +1706,7 @@ func keyPrefixASN() []byte {
 
 // String versions for TrimPrefix (include trailing colon)
 func strKeyPrefixSuccess() string {
-	return "success:" + modePrefix + ":"
+	return keyPrefixSuccessStr
 }
 func strKeyPrefixASN() string {
 	return "asn:"
@@ -2274,43 +2099,30 @@ func performTLSHandshake(domain string, targetIP string, tlsTimeout time.Duratio
 	return result, nil
 }
 
-// validateReality 验证 REALITY 模式要求
-func validateReality(result *TLSResult) (bool, string) {
+// validateDomain validates unified requirements: TLS 1.3 + X25519 + (H2 or H3)
+func validateDomain(result *TLSResult, resolver *net.Resolver) (bool, string) {
+	// 1. TLS 1.3 required
 	if result.TLSVersion != utls.VersionTLS13 {
-		return false, fmt.Sprintf("Reality: TLS 1.3 required (got %04x)", result.TLSVersion)
+		return false, fmt.Sprintf("TLS 1.3 required (got %04x)", result.TLSVersion)
 	}
 
+	// 2. X25519-based key exchange required
 	if !isValidKeyGroup(result.KeyGroup) {
-		return false, fmt.Sprintf("Reality: X25519-based key exchange required (got %d)", result.KeyGroup)
+		return false, fmt.Sprintf("X25519-based key exchange required (got %d)", result.KeyGroup)
 	}
 
-	if result.ALPN != "h2" {
-		return false, "Reality: H2 required"
-	}
-
-	return true, "Validated"
-}
-
-// validateXHTTP 验证 XHTTP 模式要求
-func validateXHTTP(result *TLSResult, resolver *net.Resolver) (bool, string) {
-	if result.TLSVersion != utls.VersionTLS13 {
-		return false, fmt.Sprintf("XHTTP: TLS 1.3 required (got %04x)", result.TLSVersion)
-	}
-
-	if !isValidKeyGroup(result.KeyGroup) {
-		return false, fmt.Sprintf("XHTTP: X25519-based key exchange required (got %d)", result.KeyGroup)
-	}
-
+	// 3. H2 OR H3 required
 	if result.ALPN == "h2" {
 		return true, "Validated (H2)"
 	}
 
+	// Check for H3 via Alt-Svc header
 	h3Supported := checkH3Support(result.Domain, result.IP, resolver)
 	if h3Supported {
-		return true, "Validated (H3 only)"
+		return true, "Validated (H3)"
 	}
 
-	return false, "XHTTP: Neither H2 nor H3 support detected"
+	return false, "Neither H2 nor H3 support detected"
 }
 
 // checkH3Support makes a HEAD request and checks Alt-Svc header for H3 support.

@@ -28,10 +28,10 @@ go build -o sni_tester .
 
 ```bash
 # USB ADB 模式
-./sni_tester -adb -f <输入文件路径> [-reality] [-xhttp]
+./sni_tester -adb -f <输入文件路径>
 
 # WiFi ADB 模式 (显示 QR Code)
-./sni_tester -adb-wifi -f <输入文件路径> [-reality] [-xhttp]
+./sni_tester -adb-wifi -f <输入文件路径>
 ```
 
 ### 参数说明
@@ -44,10 +44,7 @@ go build -o sni_tester .
 - **`-ttl`**: 失败记录的记忆天数 (默认 7 天)，在此期间内的重复失败域名将被跳过。
 - **`-max`**: 仅处理输入文件的前 N 行。
 - **`-force`**: 强制重新测试之前跳过/失败的域名（忽略历史记录）。
-- **`-reset`**: 清除所有历史记录（成功+失败），从零开始测试。同时删除已存在的 .bin 输出文件。
-- **`-xhttp`**: 开启 XHTTP 专项校验模式 (要求 TLS 1.3 + H2/H3)。
-- **`-reality`**: 开启 Reality 专项校验模式 (要求 TLS 1.3 + X25519 + H2)。
-- **`-both`**: 自动运行两种模式 (reality → xhttp)。依次执行 Reality 和 XHTTP 测试，所有参数在两模式间继承。
+- **`-reset`**: 清除所有历史记录（成功+失败），从零开始测试。同时删除已存在的 .pb 输出文件。
 - **`-shutdown`**: 任务完成后自动执行系统关机命令（Windows: `shutdown.exe /s /t 0`，Linux/macOS: `shutdown -h now`，需要具备相应权限）。
 
 ### ADB 模式参数
@@ -207,7 +204,7 @@ go build -o sni_tester .
 5. **多级进度显示**:
    - 包含流式读取、测试进度以及批量写入的实时状态。
 6. **自动发现目标目录**:
-   - 自动寻找并将结果写入 `rust/tgbot/src/resources/sni` 及其子目录（如 `reality/`, `xhttp/`）。
+   - 自动寻找并将结果写入 `rust/tgbot/src/resources/sni` 目录。
 7. **极致性能与智能伸缩 (AIMD)**:
    - 采用 **uTLS** 模拟 Chrome 指纹。
    - **全自动动态并发**: 工具内置了基于 AIMD（加性增/乘性减）算法的并发控制器。它会从 100 并发平稳起步，在网络良好时自动加速最高至 2000 并发；一旦遇到网络封锁或 DNS 限流，会瞬间降低并发保护网络，全程**无需用户干预**。
@@ -224,7 +221,7 @@ go build -o sni_tester .
 
 ```bash
 # 直接测试 (使用内置 DNS 池)
-./sni_tester -f domains.txt -reality
+./sni_tester -f domains.txt
 
 # 指定 DNS 服务器
 ./sni_tester -f domains.txt -dns 119.29.29.29
@@ -235,39 +232,27 @@ go build -o sni_tester .
 # 强制重新测试之前跳过的域名
 ./sni_tester -f domains.txt -force
 
-# 自动双模式测试 (Reality + XHTTP)
-./sni_tester -f domains.txt -both
-
-# 双模式 + 重置历史
-./sni_tester -f domains.txt -both -reset
+# 重置历史
+./sni_tester -f domains.txt -reset
 
 # USB ADB 测试
-./sni_tester -adb -f domains.txt -reality
+./sni_tester -adb -f domains.txt
 
 # WiFi ADB 测试 (显示 QR Code)
-./sni_tester -adb-wifi -f domains.txt -reality
+./sni_tester -adb-wifi -f domains.txt
 ```
 
-## 自动双模式
+## 验证标准
 
-使用 `-both` 参数自动依次运行两种模式：
+所有域名均通过统一验证:
+- **TLS 1.3** 必需
+- **X25519 系列密钥交换** 必需 (X25519, X25519MLKEM768, X25519Kyber768Draft00)
+- **H2 或 H3** 至少支持一种 (通过 ALPN 协商 H2, 或通过 Alt-Svc 头检测 H3)
 
-```bash
-./sni_tester -f domains.txt -both
-```
+## 输出格式
 
-**执行顺序：** reality → xhttp
-
-**输出目录：**
-- Reality 模式: `sni/reality/CC.bin`
-- XHTTP 模式: `sni/xhttp/CC.bin`
-
-**特性：**
-- 所有参数在两模式间继承 (DNS、并发数、超时等)
-- 进度条按模式独立显示
-- 统计数据独立后汇总
-- 失败记录按模式分离存储 (BadgerDB 键前缀分离)
-- 域名状态在模式间共享 (避免重复测试)
+- 输出文件: `sni/CC.pb` (Protobuf 格式)
+- CC 为国家代码 (US, JP 等)
 
 ## 导入模式
 
