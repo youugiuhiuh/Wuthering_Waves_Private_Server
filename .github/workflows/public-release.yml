@@ -64,6 +64,9 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Install Protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
