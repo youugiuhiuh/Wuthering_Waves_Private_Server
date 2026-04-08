@@ -133,23 +133,24 @@ jobs:
                   git push origin main --force
                   git push origin "v${{ env.NEW_VERSION }}" --force
 
-            - name: Cleanup Previous Releases
+            - name: Cleanup Old Releases (Keep Last 3)
               env:
                   GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
               run: |
-                  # List all releases and delete each one
-                  RELEASES=$(gh release list --repo NicholasDewar/Wuthering_Waves_Private_Server --limit 100 | cut -f 1)
+                  # Get all releases sorted by creation date (newest first)
+                  RELEASES=$(gh release list --repo NicholasDewar/Wuthering_Waves_Private_Server --limit 100 -L 100 | sort -t$'\t' -k3 -r | cut -f 3)
+                  
+                  # Count releases and delete old ones (keep last 3)
+                  COUNT=0
                   for tag in $RELEASES; do
-                    echo "Deleting release: $tag"
-                    gh release delete "$tag" --repo NicholasDewar/Wuthering_Waves_Private_Server --yes --cleanup-tag
+                    COUNT=$((COUNT + 1))
+                    if [ $COUNT -gt 3 ]; then
+                      echo "Deleting old release: $tag"
+                      gh release delete "$tag" --repo NicholasDewar/Wuthering_Waves_Private_Server --yes --cleanup-tag || true
+                    fi
                   done
-
-                  # Double check for any wandering tags that don't have releases
-                  TAGS=$(gh api repos/NicholasDewar/Wuthering_Waves_Private_Server/tags --jq '.[].name')
-                  for tag in $TAGS; do
-                    echo "Deleting tag: $tag"
-                    gh api -X DELETE "repos/NicholasDewar/Wuthering_Waves_Private_Server/git/refs/tags/$tag"
-                  done
+                  
+                  echo "Kept $((COUNT > 3 ? 3 : COUNT)) releases, deleted $((COUNT > 3 ? COUNT - 3 : 0)) old releases"
 
             - name: Create Public Release
               uses: softprops/action-gh-release@v2
