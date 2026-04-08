@@ -1,4 +1,3 @@
-use tgbot::logic::config::RealityProto;
 use tgbot::logic::geoip::GeoIPService;
 use tgbot::logic::sni_selector::SNISelector;
 
@@ -19,7 +18,7 @@ async fn main() {
 
     // 2. Test SNI Selector
     log::info!("Testing SNI Selector for {}", country);
-    let mut selector = SNISelector::get_for_country(&country, RealityProto::Vision);
+    let mut selector = SNISelector::get_for_country(&country);
 
     log::info!("Generating 5 SNIs for {}:", country);
     for i in 0..5 {
@@ -29,7 +28,7 @@ async fn main() {
 
     // 3. Test US (Manual file with ports and commas)
     log::info!("Testing US SNI (should be cleaned):");
-    let mut us_selector = SNISelector::get_for_country("US", RealityProto::XHTTP);
+    let mut us_selector = SNISelector::get_for_country("US");
     for i in 0..5 {
         let sni = us_selector.next();
         log::info!("  [US-{}] '{}'", i + 1, sni);
@@ -37,7 +36,7 @@ async fn main() {
 
     // 4. Test Fallback (Unknown country)
     log::info!("Testing SNI Selector for UNKNOWN country");
-    let mut fallback_selector = SNISelector::get_for_country("UNKNOWN", RealityProto::Vision);
+    let mut fallback_selector = SNISelector::get_for_country("UNKNOWN");
     let fallback_sni = fallback_selector.next();
     log::info!("  Fallback SNI: {}", fallback_sni);
 }
