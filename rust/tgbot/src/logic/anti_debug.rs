@@ -54,3 +54,45 @@ pub fn check_debugger() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_debugger_no_panic() {
+        check_debugger();
+    }
+
+    #[test]
+    fn test_tracerpid_parsing() {
+        let status = "Name: test\nTracerPid:\t0\nPid: 1234\n";
+        let mut tracer_pid: i32 = -1;
+        for line in status.lines() {
+            if line.starts_with("TracerPid:") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() > 1 {
+                    tracer_pid = parts[1].parse::<i32>().unwrap_or(-1);
+                }
+                break;
+            }
+        }
+        assert_eq!(tracer_pid, 0);
+    }
+
+    #[test]
+    fn test_tracerpid_detected() {
+        let status = "Name: test\nTracerPid:\t12345\nPid: 1234\n";
+        let mut tracer_pid: i32 = -1;
+        for line in status.lines() {
+            if line.starts_with("TracerPid:") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() > 1 {
+                    tracer_pid = parts[1].parse::<i32>().unwrap_or(-1);
+                }
+                break;
+            }
+        }
+        assert_eq!(tracer_pid, 12345);
+    }
+}
