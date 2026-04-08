@@ -1,12 +1,12 @@
 #![allow(dead_code, unused_variables)]
 use aes_gcm::{
-    Aes256Gcm, Nonce,
     aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
 };
 use anyhow::Result;
 use libc::{mlock, munlock};
 use obfstr::obfstr;
-use rand::{RngCore, rngs::OsRng};
+use rand::{rngs::OsRng, RngCore};
 use secrecy::SecretVec;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -165,4 +165,159 @@ pub fn secure_wipe_path(path: &Path) -> Result<()> {
         fs::remove_file(path)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use secrecy::ExposeSecret;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_security_new_creates_key_file() {
+        let temp = TempDir::new().unwrap();
+        let key_path = temp.path().join("key");
+
+        let result = SecurityManager::new(&key_path);
+
+        assert!(result.is_ok());
+        assert!(key_path.exists());
+    }
+
+    #[test]
+    fn test_security_new_loads_existing_key() {
+        let temp = TempDir::new().unwrap();
+        let key_path = temp.path().join("key");
+
+        // Create first manager
+        let _sm1 = SecurityManager::new(&key_path).unwrap();
+
+        // Create second manager with same key
+        let sm2 = SecurityManager::new(&key_path);
+
+        assert!(sm2.is_ok());
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let temp = TempDir::new().unwrap();
+        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+
+        let plaintext = b"test data";
+        let encrypted = sm.encrypt(plaintext).unwrap();
+        let decrypted = sm.decrypt(&encrypted).unwrap();
+
+        assert_eq!(decrypted.expose_secret(), plaintext);
+    }
+
+    #[test]
+    fn test_encrypt_empty_data() {
+        let temp = TempDir::new().unwrap();
+        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+
+        let encrypted = sm.encrypt(b"").unwrap();
+
+        // Encrypted data should at least contain nonce (12 bytes)
+        assert!(encrypted.len() >= 12);
+    }
+
+    #[test]
+    fn test_decrypt_invalid_length() {
+        let temp = TempDir::new().unwrap();
+        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+
+        // Data too short (< 12 bytes for nonce)
+        let result = sm.decrypt(&[0u8; 11]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decrypt_corrupt_data() {
+        let temp = TempDir::new().unwrap();
+        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+
+        let mut encrypted = sm.encrypt(b"test").unwrap();
+        // Corrupt the ciphertext (after nonce)
+        if encrypted.len() > 15 {
+            encrypted[15] ^= 0xFF;
+        }
+
+        let result = sm.decrypt(&encrypted);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_secure_wipe_path_file() {
+        let temp = TempDir::new().unwrap();
+        let file_path = temp.path().join("test.txt");
+
+        fs::write(&file_path, b"secret data").unwrap();
+        assert!(file_path.exists());
+
+        let result = secure_wipe_path(&file_path);
+
+        assert!(result.is_ok());
+        assert!(!file_path.exists());
+    }
+
+    #[test]
+    fn test_secure_wipe_path_directory() {
+        let temp = TempDir::new().unwrap();
+        let dir = temp.path().join("test_dir");
+
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("file1.txt"), b"data1").unwrap();
+        fs::write(dir.join("file2.txt"), b"data2").unwrap();
+
+        assert!(dir.exists());
+
+        let result = secure_wipe_path(&dir);
+
+        assert!(result.is_ok());
+        assert!(!dir.exists());
+    }
+
+    #[test]
+    fn test_secure_wipe_path_nonexistent() {
+        let result = secure_wipe_path(Path::new("/nonexistent/path"));
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_secure_wipe_path_empty_file() {
+        let temp = TempDir::new().unwrap();
+        let file_path = temp.path().join("empty.txt");
+
+        fs::write(&file_path, b"").unwrap();
+
+        let result = secure_wipe_path(&file_path);
+
+        assert!(result.is_ok());
+        assert!(!file_path.exists());
+    }
+
+    #[test]
+    fn test_lock_memory() {
+        let mut data = vec![0u8; 1024];
+        lock_memory(&mut data);
+        // Should not panic
+    }
+
+    #[test]
+    fn test_unlock_memory() {
+        let mut data = vec![0u8; 1024];
+        lock_memory(&mut data);
+        unlock_memory(&mut data);
+        // Should not panic
+    }
+
+    #[test]
+    fn test_lock_memory_empty() {
+        let mut data = vec![];
+        lock_memory(&mut data);
+        // Should not panic on empty slice
+    }
 }
