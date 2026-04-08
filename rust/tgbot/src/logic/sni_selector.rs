@@ -141,7 +141,7 @@ impl SNISelector {
             }
         }
 
-        Self::load_embedded("default.pb").unwrap_or_else(|| vec!["www.google.com".to_string()])
+        vec!["www.google.com".to_string()]
     }
 
     pub fn next(&mut self) -> String {
