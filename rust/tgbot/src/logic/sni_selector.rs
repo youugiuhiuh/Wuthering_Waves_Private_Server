@@ -141,12 +141,12 @@ impl SNISelector {
             }
         }
 
-        vec!["www.google.com".to_string()]
+        vec![]
     }
 
     pub fn next(&mut self) -> String {
         if self.domains.is_empty() {
-            return "www.google.com".to_string();
+            return String::new();
         }
 
         if self.shuffled_indices.is_empty() {
