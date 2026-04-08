@@ -4,7 +4,6 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rust_embed::RustEmbed;
 
-use crate::logic::config::RealityProto;
 use crate::logic::sni_state::{SNIPersistence, SNIState};
 
 pub mod sni_proto {
@@ -70,7 +69,7 @@ pub struct SNISelector {
 }
 
 impl SNISelector {
-    pub fn get_for_country(country_code: &str, _proto: RealityProto) -> Self {
+    pub fn get_for_country(country_code: &str) -> Self {
         let upper = country_code.to_uppercase();
         let code = match upper.as_str() {
             "UK" => "GB",
@@ -206,7 +205,7 @@ mod tests {
 
     #[test]
     fn get_for_country_returns_selector_with_domains() {
-        let selector = SNISelector::get_for_country("US", RealityProto::Vision);
+        let selector = SNISelector::get_for_country("US");
         let mut s = selector;
         let first = s.next();
         assert!(!first.is_empty());
@@ -215,7 +214,7 @@ mod tests {
 
     #[test]
     fn get_for_country_unknown_falls_back_to_default() {
-        let selector = SNISelector::get_for_country("XX", RealityProto::Vision);
+        let selector = SNISelector::get_for_country("XX");
         let mut s = selector;
         let d = s.next();
         assert!(!d.is_empty());
@@ -265,8 +264,8 @@ mod tests {
 
     #[test]
     fn get_for_country_uk_normalizes_to_gb() {
-        let selector_uk = SNISelector::get_for_country("UK", RealityProto::Vision);
-        let selector_gb = SNISelector::get_for_country("GB", RealityProto::Vision);
+        let selector_uk = SNISelector::get_for_country("UK");
+        let selector_gb = SNISelector::get_for_country("GB");
         let mut s1 = selector_uk;
         let mut s2 = selector_gb;
         assert!(!s1.next().is_empty());

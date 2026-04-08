@@ -381,7 +381,6 @@ impl ConfigManager {
 
         let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(
             &country_code,
-            RealityProto::Vision,
         );
 
         let mut links = Vec::new();
@@ -456,7 +455,6 @@ impl ConfigManager {
 
         let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(
             &country_code,
-            RealityProto::XHTTP,
         );
 
         let mut links = Vec::new();
