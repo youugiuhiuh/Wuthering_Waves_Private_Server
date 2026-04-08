@@ -29,3 +29,20 @@ pub fn trigger(executor: Arc<dyn SelfDestructExecutor>) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_production_executor_creation() {
+        let executor = production_executor();
+        assert!(Arc::strong_count(&executor) >= 1);
+    }
+
+    #[test]
+    fn test_executor_trait_available() {
+        let executor: Arc<dyn SelfDestructExecutor> = production_executor();
+        let _ = executor.clone();
+    }
+}
