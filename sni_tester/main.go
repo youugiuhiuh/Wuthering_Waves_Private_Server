@@ -1261,6 +1261,7 @@ func main() {
 	}
 
 	validDomainsMap := make(map[string][]string)
+	var validDomainsMu sync.Mutex // Protect concurrent access to validDomainsMap
 	failureList := make([]string, 0, 100)
 
 	doneChan := make(chan bool)
@@ -1303,6 +1304,7 @@ func main() {
 				// 明确逻辑：CN/HK/MO 或 UNKNOWN 域名绝对不写入任何输出文件，改为记入失败库废弃
 				// CRITICAL: Domains from CN/HK/MO or UNKNOWN MUST NOT be written to any output files.
 				if res.Country != "" && !isBlockedCountry(res.Country) && res.Country != "UNKNOWN" {
+					validDomainsMu.Lock()
 					validDomainsMap[res.Country] = append(validDomainsMap[res.Country], res.Domain)
 					newSuccessCount++
 					if newSuccessCount >= 100 {
@@ -1312,6 +1314,7 @@ func main() {
 						}
 						newSuccessCount = 0
 					}
+					validDomainsMu.Unlock()
 				} else {
 					// 虽然验证成功，但因为区域问题（CN/HK/MO/UNKNOWN）被废弃，记入 BadgerDB
 					failureList = append(failureList, res.Domain)
@@ -1416,9 +1419,11 @@ func main() {
 		}
 
 		// Final Batch Save
+		validDomainsMu.Lock()
 		if len(validDomainsMap) > 0 {
 			batchSave(targetDir, validDomainsMap, db)
 		}
+		validDomainsMu.Unlock()
 		if len(failureList) > 0 {
 			appendFailureHistoryDB(db, failureList)
 		}
