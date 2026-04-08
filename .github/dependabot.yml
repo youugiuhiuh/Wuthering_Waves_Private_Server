@@ -5,7 +5,16 @@
 
 version: 2
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/rust/tgbot" # Location of package manifests
+  - package-ecosystem: "cargo"    directory: "rust/tgbot"
+    schedule:
+      interval: "weekly"
+  
+  - package-ecosystem: "gomod"
+    directory: "sni_tester"
+    schedule:
+      interval: "weekly"
+  
+  - package-ecosystem: "gomod"
+    directory: "go/installer"
     schedule:
       interval: "weekly"
