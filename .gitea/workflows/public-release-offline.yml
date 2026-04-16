@@ -71,7 +71,7 @@ jobs:
       - name: Build Bootstrap Binary (no network)
         run: |
           cd go/installer
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+          CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
 
       - name: Prepare Public Artifacts
         run: |

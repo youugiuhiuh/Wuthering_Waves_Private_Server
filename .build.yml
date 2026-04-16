@@ -46,7 +46,7 @@ tasks:
       . "$HOME/.cargo/env"
       rustc --version
   - install-go: |
-      curl -sL "https://go.dev/dl/go1.22.4.linux-amd64.tar.gz" | sudo tar -C /usr/local -xz
+      curl -sL "https://go.dev/dl/go1.26.2.linux-amd64.tar.gz" | sudo tar -C /usr/local -xz
       export PATH="/usr/local/go/bin:$PATH"
       go version
       go install mvdan.cc/garble@latest
@@ -61,7 +61,7 @@ tasks:
       . ~/.buildenv
       export PATH="/usr/local/go/bin:$(go env GOPATH)/bin:$PATH"
       cd go/installer
-      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+      CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
   - prepare-dist: |
       . ~/.buildenv
       mkdir -p dist

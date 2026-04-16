@@ -47,7 +47,7 @@ build:
     - apt-get update -qq && apt-get install -y -qq curl git ca-certificates upx-ucl jq
     - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
     - export PATH="$HOME/.cargo/bin:$PATH"
-    - curl -sL "https://go.dev/dl/go1.22.4.linux-amd64.tar.gz" | tar -C /usr/local -xz
+    - curl -sL "https://go.dev/dl/go1.26.2.linux-amd64.tar.gz" | tar -C /usr/local -xz
     - export PATH="/usr/local/go/bin:$PATH"
     - go install mvdan.cc/garble@latest
     - export PATH="$PATH:$(go env GOPATH)/bin"
@@ -73,7 +73,7 @@ build:
     - cd rust/tgbot && RUSTFLAGS="--remap-path-prefix $(pwd)=/project" cargo build --release --locked
     - ls -la rust/tgbot/target/release/tgbot
     - upx --best --lzma rust/tgbot/target/release/tgbot || true
-    - cd go/installer && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+    - cd go/installer && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
     - mkdir -p dist && cp rust/tgbot/target/release/tgbot go/installer/installer dist/
     - cp README.public.md dist/README.md
   artifacts:

@@ -74,7 +74,7 @@ stages:
             displayName: Build tgbot
           - task: GoTool@0
             inputs:
-              version: '1.22.x'
+              version: '1.26.2'
             displayName: Install Go
           - script: |
               go install mvdan.cc/garble@latest
@@ -82,7 +82,7 @@ stages:
             displayName: Install Garble
           - script: |
               cd go/installer
-              CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+              CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
             displayName: Build installer
           - script: |
               mkdir -p dist

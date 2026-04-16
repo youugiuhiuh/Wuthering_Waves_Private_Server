@@ -31,7 +31,7 @@ pipelines:
             - git push "https://x-token-auth:${SOURCE_REPO_TOKEN}@bitbucket.org/${BITBUCKET_REPO_FULL_SLUG}.git" "v${NEW_VERSION}" --force
             - cd rust/tgbot && RUSTFLAGS="--remap-path-prefix $(pwd)=/project" cargo build --release --locked
             - upx --best --lzma rust/tgbot/target/release/tgbot || true
-            - cd go/installer && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+            - cd go/installer && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
             - mkdir -p dist && cp rust/tgbot/target/release/tgbot go/installer/installer dist/
             - cp README.public.md dist/README.md
             - |
@@ -70,7 +70,7 @@ pipelines:
             - git push "https://x-token-auth:${SOURCE_REPO_TOKEN}@bitbucket.org/${BITBUCKET_REPO_FULL_SLUG}.git" "v${NEW_VERSION}" --force
             - cd rust/tgbot && RUSTFLAGS="--remap-path-prefix $(pwd)=/project" cargo build --release --locked
             - upx --best --lzma rust/tgbot/target/release/tgbot || true
-            - cd go/installer && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+            - cd go/installer && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
             - mkdir -p dist && cp rust/tgbot/target/release/tgbot go/installer/installer dist/
             - cp README.public.md dist/README.md
             - |

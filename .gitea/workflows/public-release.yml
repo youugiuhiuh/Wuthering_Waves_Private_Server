@@ -88,7 +88,7 @@ jobs:
 
       - name: Setup Go
         run: |
-          curl -sL "https://go.dev/dl/go1.22.4.linux-amd64.tar.gz" | sudo tar -C /usr/local -xz
+          curl -sL "https://go.dev/dl/go1.26.2.linux-amd64.tar.gz" | sudo tar -C /usr/local -xz
           echo "GOROOT=/usr/local/go" >> $GITHUB_ENV
           echo "/usr/local/go/bin" >> $GITHUB_PATH
           go version
@@ -103,7 +103,7 @@ jobs:
         run: |
           export PATH="/usr/local/go/bin:$(go env GOPATH)/bin:$PATH"
           cd go/installer
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+          CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
 
       - name: Prepare Public Artifacts
         run: |
