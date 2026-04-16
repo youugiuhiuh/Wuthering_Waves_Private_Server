@@ -1,6 +1,6 @@
 module github.com/NicholasDewar/Wuthering_Waves_Private_Server/go/installer
 
-go 1.25
+go 1.26.2
 
 require github.com/awnumar/memguard v0.23.0
 
