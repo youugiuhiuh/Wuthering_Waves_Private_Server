@@ -386,14 +386,23 @@ impl ConfigManager {
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
 
+        let port_443_available =
+            crate::logic::maintenance::MaintenanceManager::is_port_available(443).await;
+
         for i in 0..count {
             let sni = selector.next();
 
             // 判断当前 SNI 是否适合启用 PQ（证书链长度 + 公钥算法）。
             let pq_ok = crate::logic::tls_probe::sni_is_pq_friendly(&sni).await;
 
+            let preferred = if i == 0 && port_443_available {
+                Some(443u16)
+            } else {
+                None
+            };
             let (port, uuid, priv_key, pub_key, short_id, sni, email, tag, path) =
-                Self::generate_enhanced_config(&mut rng, sni, i, RealityProto::Vision).await?;
+                Self::generate_enhanced_config(&mut rng, sni, i, RealityProto::Vision, preferred)
+                    .await?;
 
             let config = Self::build_reality_vless_inbound(
                 &tag,
@@ -460,13 +469,22 @@ impl ConfigManager {
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
 
+        let port_443_available =
+            crate::logic::maintenance::MaintenanceManager::is_port_available(443).await;
+
         for i in 0..count {
             let sni = selector.next();
 
             let pq_ok = crate::logic::tls_probe::sni_is_pq_friendly(&sni).await;
 
+            let preferred = if i == 0 && port_443_available {
+                Some(443u16)
+            } else {
+                None
+            };
             let (port, uuid, priv_key, pub_key, short_id, sni, email, tag, path) =
-                Self::generate_enhanced_config(&mut rng, sni, i, RealityProto::XHTTP).await?;
+                Self::generate_enhanced_config(&mut rng, sni, i, RealityProto::XHTTP, preferred)
+                    .await?;
 
             let config = Self::build_reality_vless_inbound(
                 &tag,
@@ -529,6 +547,7 @@ impl ConfigManager {
         sni: String,
         index: usize,
         proto: RealityProto,
+        preferred_port: Option<u16>,
     ) -> Result<(
         i32,
         String,
@@ -540,11 +559,23 @@ impl ConfigManager {
         String,
         Option<String>,
     )> {
-        // 随机端口
-        let port = loop {
-            let p = rng.gen_range(10000..60000);
-            if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
-                break p;
+        let port: i32 = if let Some(pp) = preferred_port {
+            if crate::logic::maintenance::MaintenanceManager::is_port_available(pp).await {
+                pp as i32
+            } else {
+                loop {
+                    let p = rng.gen_range(10000..60000);
+                    if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
+                        break p as i32;
+                    }
+                }
+            }
+        } else {
+            loop {
+                let p = rng.gen_range(10000..60000);
+                if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
+                    break p as i32;
+                }
             }
         };
 
