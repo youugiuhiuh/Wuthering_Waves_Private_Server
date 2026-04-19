@@ -1,0 +1,46 @@
+name: Repo Mirror Sync
+
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+
+jobs:
+  mirror-codeberg:
+    name: Mirror to Codeberg
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mirror to Codeberg
+        uses: cssnr/mirror-repository-action@v1
+        with:
+          host: https://codeberg.org
+          owner: youugiuhiuh
+          repo: Wuthering_Waves_Private_Server_source_code
+          username: youugiuhiuh
+          password: ${{ secrets.CODEBERG_TOKEN }}
+          create: true
+
+  mirror-gitlab:
+    name: Mirror to GitLab
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mirror to GitLab
+        uses: cssnr/mirror-repository-action@v1
+        with:
+          host: https://gitlab.com
+          owner: egfrthtu-group
+          repo: wuthering_waves_private_server_source_code
+          username: EGfrthtu
+          password: ${{ secrets.GITLAB_TOKEN }}
