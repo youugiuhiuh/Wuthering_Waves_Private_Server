@@ -4,10 +4,17 @@ on:
   push:
     branches: ['**']
     tags: ['**']
+    paths-ignore:
+      - 'go/installer/go.mod'
+      - 'go/installer/go.sum'
+      - 'sni_tester/go.mod'
+      - 'sni_tester/go.sum'
+      - 'rust/tgbot/Cargo.lock'
 
 jobs:
   mirror-codeberg:
     name: Mirror to Codeberg
+    if: "!contains(github.event.head_commit.message, 'chore(deps)')"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -28,6 +35,7 @@ jobs:
 
   mirror-gitlab:
     name: Mirror to GitLab
+    if: "!contains(github.event.head_commit.message, 'chore(deps)')"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

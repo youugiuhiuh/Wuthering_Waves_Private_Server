@@ -19,7 +19,7 @@ jobs:
     build-and-push:
         runs-on: ubuntu-latest
         # Prevent recursive triggers if something goes wrong, though [skip ci] is used below
-        if: "!contains(github.event.head_commit.message, '[skip ci]')"
+        if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore(deps)')"
         steps:
             - name: Checkout Source
               uses: actions/checkout@v4
