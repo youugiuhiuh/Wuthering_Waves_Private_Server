@@ -1,0 +1,22 @@
+name: Auto Merge
+
+on:
+    pull_request:
+        types: [labeled]
+
+permissions:
+    contents: write
+    pull-requests: write
+
+jobs:
+    auto-merge:
+        if: contains(github.event.pull_request.labels.*.name, 'automerge')
+        runs-on: ubuntu-latest
+        steps:
+            - name: Auto merge PR
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  pr_url="${{ github.event.pull_request.html_url }}"
+                  echo "Auto-merging PR: $pr_url"
+                  gh pr merge --admin --merge "$pr_url"
