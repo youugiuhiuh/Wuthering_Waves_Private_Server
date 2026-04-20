@@ -15,7 +15,7 @@ jobs:
         steps:
             - name: Auto merge PR
               env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_TOKEN: ${{ secrets.PAT_TOKEN }}
               run: |
                   pr_url="${{ github.event.pull_request.html_url }}"
                   echo "Auto-merging PR: $pr_url"
