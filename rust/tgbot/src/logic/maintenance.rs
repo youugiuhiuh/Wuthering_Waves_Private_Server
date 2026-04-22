@@ -361,17 +361,18 @@ impl MaintenanceManager {
     /// 此函数是 `perform_self_destruct` 的核心逻辑，被提取为独立函数
     /// 以支持 E2E 集成测试 (在沙盒环境中验证擦除行为)。
     pub fn wipe_targets<'a>(targets: &'a [&'a str]) -> Vec<(&'a str, Result<()>)> {
-        let mut results = Vec::new();
-        for target in targets {
-            let path = std::path::Path::new(target);
-            if path.exists() {
-                let result = crate::logic::security::secure_wipe_path(path);
-                results.push((*target, result));
-            } else {
-                results.push((*target, Ok(())));
-            }
-        }
-        results
+        targets
+            .iter()
+            .map(|&target| {
+                let path = std::path::Path::new(target);
+                let result = if path.exists() {
+                    crate::logic::security::secure_wipe_path(path)
+                } else {
+                    Ok(())
+                };
+                (target, result)
+            })
+            .collect()
     }
 
     /// 安全擦除自身可执行文件
@@ -456,6 +457,13 @@ const CPU_V3_FLAGS: &[&str] = &[
 ];
 const CPU_V4_FLAGS: &[&str] = &["avx512f", "avx512bw", "avx512cd", "avx512dq", "avx512vl"];
 
+const CPU_LEVELS: &[(&[&str], u8)] = &[
+    (CPU_V4_FLAGS, 4),
+    (CPU_V3_FLAGS, 3),
+    (CPU_V2_FLAGS, 2),
+    (CPU_V1_FLAGS, 1),
+];
+
 async fn detect_cpu_level() -> Result<u8> {
     let cpuinfo = fs::read_to_string("/proc/cpuinfo")
         .await
@@ -468,21 +476,11 @@ async fn detect_cpu_level() -> Result<u8> {
 
     let flags: HashSet<&str> = flags.split_whitespace().skip(1).collect();
 
-    // 检测顺序: v1 → v2 → v3 → v4 (从低到高)
-    if has_all_flags(&flags, CPU_V1_FLAGS) {
-        if has_all_flags(&flags, CPU_V2_FLAGS) {
-            if has_all_flags(&flags, CPU_V3_FLAGS) {
-                if has_all_flags(&flags, CPU_V4_FLAGS) {
-                    return Ok(4);
-                }
-                return Ok(3);
-            }
-            return Ok(2);
-        }
-        return Ok(1);
-    }
-
-    anyhow::bail!("无法确定 CPU 级别，当前 CPU 不支持 x86-64-v1 及以上")
+    CPU_LEVELS
+        .iter()
+        .find(|(req, _)| has_all_flags(&flags, req))
+        .map(|(_, level)| *level)
+        .ok_or_else(|| anyhow!("无法确定 CPU 级别，当前 CPU 不支持 x86-64-v1 及以上"))
 }
 
 fn has_all_flags(flags: &HashSet<&str>, required: &[&str]) -> bool {
@@ -632,35 +630,40 @@ async fn update_grub() -> Result<()> {
     Ok(())
 }
 
+struct DepCheck {
+    check: DepCheckKind,
+    primary: &'static [&'static str],
+    fallback: Option<&'static [&'static str]>,
+}
+
+enum DepCheckKind {
+    Command(&'static str),
+    File(&'static str),
+}
+
 async fn ensure_bbr3_dependencies() -> Result<()> {
-    if !command_exists("sudo").await {
-        install_apt_package(&["sudo"]).await?;
-    }
+    const DEPS: &[DepCheck] = &[
+        DepCheck { check: DepCheckKind::Command("sudo"), primary: &["sudo"], fallback: None },
+        DepCheck { check: DepCheckKind::Command("gpg"), primary: &["gnupg"], fallback: Some(&["gnupg2"]) },
+        DepCheck { check: DepCheckKind::Command("gpgv"), primary: &["gpgv"], fallback: None },
+        DepCheck { check: DepCheckKind::Command("wget"), primary: &["wget"], fallback: None },
+        DepCheck { check: DepCheckKind::Command("curl"), primary: &["curl"], fallback: None },
+        DepCheck { check: DepCheckKind::Command("lsb_release"), primary: &["lsb-release"], fallback: None },
+        DepCheck { check: DepCheckKind::File("/etc/ssl/certs/ca-certificates.crt"), primary: &["ca-certificates"], fallback: None },
+    ];
 
-    if !command_exists("gpg").await {
-        if install_apt_package(&["gnupg"]).await.is_err() {
-            install_apt_package(&["gnupg2"]).await?;
+    for dep in DEPS {
+        let present = match dep.check {
+            DepCheckKind::Command(cmd) => command_exists(cmd).await,
+            DepCheckKind::File(path) => package_file_exists(path).await,
+        };
+        if !present {
+            if install_apt_package(dep.primary).await.is_err() {
+                if let Some(fallback) = dep.fallback {
+                    install_apt_package(fallback).await?;
+                }
+            }
         }
-    }
-
-    if !command_exists("gpgv").await {
-        install_apt_package(&["gpgv"]).await?;
-    }
-
-    if !command_exists("wget").await {
-        install_apt_package(&["wget"]).await?;
-    }
-
-    if !command_exists("curl").await {
-        install_apt_package(&["curl"]).await?;
-    }
-
-    if !command_exists("lsb_release").await {
-        install_apt_package(&["lsb-release"]).await?;
-    }
-
-    if !package_file_exists("/etc/ssl/certs/ca-certificates.crt").await {
-        install_apt_package(&["ca-certificates"]).await?;
     }
 
     Ok(())
