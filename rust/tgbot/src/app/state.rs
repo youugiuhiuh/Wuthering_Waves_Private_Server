@@ -123,7 +123,7 @@ impl AppState {
         let sessions = self.sessions.lock().await;
         sessions
             .get(&user_id)
-            .map(|t| t.elapsed() < Duration::from_secs(timeout))
+            .map(|t| is_session_valid(t, timeout))
             .unwrap_or(false)
     }
 
@@ -135,7 +135,7 @@ impl AppState {
         let sessions = self.sessions.lock().await;
         sessions
             .get(&user_id)
-            .map(|t| t.elapsed() < Duration::from_secs(RECENT_AUTH_WINDOW_SECS))
+            .map(|t| is_session_valid(t, RECENT_AUTH_WINDOW_SECS))
             .unwrap_or(false)
     }
 
@@ -415,6 +415,10 @@ impl AppState {
         let mut inputs = self.pending_schedule_inputs.lock().await;
         inputs.get_mut(&chat_id).map(f)
     }
+}
+
+fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
+    session_time.elapsed() < Duration::from_secs(timeout_secs)
 }
 
 #[cfg(test)]

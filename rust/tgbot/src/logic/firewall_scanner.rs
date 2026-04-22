@@ -89,49 +89,53 @@ impl FirewallScanner {
 
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 4 {
-                        let local_addr = parts[parts.len() - 2]; // 倒数第二列通常是 Local Address
-                        if !local_addr.contains("127.0.0.1") && !local_addr.contains("[::1]") {
-                            if let Some(port_str) = local_addr.split(':').last() {
-                                if let Ok(port) = port_str.parse::<u16>() {
-                                    ports.insert(port);
-                                }
-                            }
+                let new_ports: HashSet<u16> = stdout
+                    .lines()
+                    .filter_map(|line| {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() < 4 {
+                            return None;
                         }
-                    }
-                }
+                        let local_addr = parts[parts.len() - 2];
+                        if local_addr.contains("127.0.0.1") || local_addr.contains("[::1]") {
+                            return None;
+                        }
+                        parse_port_from_addr(local_addr)
+                    })
+                    .collect();
+                ports.extend(new_ports);
             }
         }
         Ok(ports)
     }
 
     async fn scan_with_netstat() -> Result<HashSet<u16>> {
-        let mut ports = HashSet::new();
         let output = tokio::process::Command::new("netstat")
             .args(&["-tunl"])
             .output()
             .await?;
 
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                // netstat 输出示例:
-                // tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 4 && (line.starts_with("tcp") || line.starts_with("udp")) {
-                    let local_addr = parts[3];
-                    if !local_addr.contains("127.0.0.1") && !local_addr.contains("::1") {
-                        if let Some(port_str) = local_addr.split(':').last() {
-                            if let Ok(port) = port_str.parse::<u16>() {
-                                ports.insert(port);
-                            }
-                        }
-                    }
-                }
-            }
+        if !output.status.success() {
+            return Ok(HashSet::new());
         }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let ports: HashSet<u16> = stdout
+            .lines()
+            .filter(|line| line.starts_with("tcp") || line.starts_with("udp"))
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() < 4 {
+                    return None;
+                }
+                let local_addr = parts[3];
+                if local_addr.contains("127.0.0.1") || local_addr.contains("::1") {
+                    return None;
+                }
+                parse_port_from_addr(local_addr)
+            })
+            .collect();
+
         Ok(ports)
     }
 
@@ -140,20 +144,21 @@ impl FirewallScanner {
         let config = fs::read_to_string("/etc/ssh/sshd_config")
             .await
             .context("读取 sshd_config 失败")?;
-        for line in config.lines() {
-            let line = line.trim();
-            if line.starts_with('#') {
-                continue;
-            }
-            if line.to_lowercase().starts_with("port ") {
-                if let Some(port_str) = line.split_whitespace().nth(1) {
-                    if let Ok(port) = port_str.parse::<u16>() {
-                        return Ok(port);
-                    }
+
+        let port = config
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.starts_with('#'))
+            .filter_map(|line| {
+                if !line.to_lowercase().starts_with("port ") {
+                    return None;
                 }
-            }
-        }
-        Ok(22)
+                line.split_whitespace().nth(1)?.parse::<u16>().ok()
+            })
+            .next()
+            .map(|p| if p == 0 { 22 } else { p });
+
+        Ok(port.unwrap_or(22))
     }
 
     /// 扫描目录下的所有 .json 文件提取端口
@@ -236,4 +241,8 @@ impl FirewallScanner {
         fs::try_exists("/etc/nginx").await.unwrap_or(false)
             || fs::try_exists("/etc/apache2").await.unwrap_or(false)
     }
+}
+
+fn parse_port_from_addr(addr: &str) -> Option<u16> {
+    addr.split(':').last()?.parse::<u16>().ok()
 }

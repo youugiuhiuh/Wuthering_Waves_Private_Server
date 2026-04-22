@@ -64,22 +64,25 @@ impl SchedulerState {
             return "📝 暂无定时任务".to_string();
         }
 
-        let mut summary = String::new();
-        summary.push_str("⏰ **定时任务列表**:\n\n");
+        let body: String = self
+            .tasks
+            .iter()
+            .enumerate()
+            .map(|(i, task)| {
+                let status = if task.enabled { "✅" } else { "⏸️" };
+                format!(
+                    "{}. {} {}\n   Cron: `{}`\n   TZ: `{}`\n\n",
+                    i + 1,
+                    status,
+                    task.task_type.get_display_name(),
+                    task.cron_expression,
+                    task.timezone
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("");
 
-        for (i, task) in self.tasks.iter().enumerate() {
-            let status = if task.enabled { "✅" } else { "⏸️" };
-            summary.push_str(&format!(
-                "{}. {} {}\n   Cron: `{}`\n   TZ: `{}`\n\n",
-                i + 1,
-                status,
-                task.task_type.get_display_name(),
-                task.cron_expression,
-                task.timezone
-            ));
-        }
-
-        summary
+        format!("⏰ **定时任务列表**:\n\n{}", body)
     }
 }
 
