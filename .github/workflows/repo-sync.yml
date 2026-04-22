@@ -2,7 +2,8 @@ name: Repo Mirror Sync
 
 on:
   push:
-    branches: ['**']
+    branches:
+      - main
     tags: ['**']
     paths-ignore:
       - 'go/installer/go.mod'
