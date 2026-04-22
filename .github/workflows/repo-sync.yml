@@ -16,7 +16,7 @@ jobs:
   mirror-codeberg:
     name: Mirror to Codeberg
     if: "!contains(github.event.head_commit.message, 'chore(deps)')"
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -37,7 +37,7 @@ jobs:
   mirror-gitlab:
     name: Mirror to GitLab
     if: "!contains(github.event.head_commit.message, 'chore(deps)')"
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 5
     steps:
       - name: Checkout
