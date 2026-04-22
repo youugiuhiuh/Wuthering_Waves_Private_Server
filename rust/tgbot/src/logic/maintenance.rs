@@ -469,6 +469,10 @@ async fn detect_cpu_level() -> Result<u8> {
         .await
         .context("读取 /proc/cpuinfo 失败")?;
 
+    detect_cpu_level_from_str(&cpuinfo)
+}
+
+fn detect_cpu_level_from_str(cpuinfo: &str) -> Result<u8> {
     let flags = cpuinfo
         .lines()
         .find(|l| l.starts_with("flags"))

@@ -45,12 +45,7 @@ impl SystemMonitor {
             };
 
             let networks = Networks::new_with_refreshed_list();
-            let mut rx_total = 0;
-            let mut tx_total = 0;
-            for data in networks.list().values() {
-                rx_total += data.total_received();
-                tx_total += data.total_transmitted();
-            }
+            let (rx_total, tx_total) = aggregate_network_traffic(&networks);
             let rx_gb = rx_total as f64 / 1024.0 / 1024.0 / 1024.0;
             let tx_gb = tx_total as f64 / 1024.0 / 1024.0 / 1024.0;
 
@@ -175,12 +170,7 @@ impl SystemMonitor {
     pub async fn get_network_traffic() -> Result<String> {
         tokio::task::spawn_blocking(|| {
             let networks = Networks::new_with_refreshed_list();
-            let mut rx_total = 0;
-            let mut tx_total = 0;
-            for data in networks.list().values() {
-                rx_total += data.total_received();
-                tx_total += data.total_transmitted();
-            }
+            let (rx_total, tx_total) = aggregate_network_traffic(&networks);
             Ok(format!(
                 "⬇️ {:.2} GB | ⬆️ {:.2} GB",
                 rx_total as f64 / 1024.0 / 1024.0 / 1024.0,
@@ -302,4 +292,13 @@ impl SystemMonitor {
             Err(_) => false,
         }
     }
+}
+
+fn aggregate_network_traffic(networks: &Networks) -> (u64, u64) {
+    networks
+        .list()
+        .values()
+        .fold((0u64, 0u64), |(rx, tx), data| {
+            (rx + data.total_received(), tx + data.total_transmitted())
+        })
 }

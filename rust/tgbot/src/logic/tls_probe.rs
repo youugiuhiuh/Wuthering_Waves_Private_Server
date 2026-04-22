@@ -84,27 +84,21 @@ async fn rustls_handshake(
 pub async fn probe_tls_once(domain: &str, port: u16) -> Result<TlsProbeResult> {
     let (_, certs) = rustls_handshake(domain, port).await?;
 
-    let mut total_len = 0usize;
-    let mut leaf_alg = "UNKNOWN".to_string();
+    let total_len: usize = certs.iter().map(|c| c.0.len()).sum();
 
-    if !certs.is_empty() {
-        for (idx, cert) in certs.iter().enumerate() {
-            let der = &cert.0;
-            total_len += der.len();
-
-            if idx == 0 {
-                if let Ok((_, parsed)) = X509Certificate::from_der(der) {
-                    let alg = parsed.public_key().algorithm.algorithm.clone();
-                    let oid_str = alg.to_id_string();
-                    leaf_alg = match oid_str.as_str() {
-                        "1.2.840.113549.1.1.1" => "RSA".to_string(),
-                        "1.2.840.10045.2.1" => "EC".to_string(),
-                        _ => oid_str,
-                    };
+    let leaf_alg = certs.first().and_then(|cert| {
+        X509Certificate::from_der(&cert.0)
+            .ok()
+            .map(|(_, parsed)| {
+                let alg = parsed.public_key().algorithm.algorithm.clone();
+                let oid_str = alg.to_id_string();
+                match oid_str.as_str() {
+                    "1.2.840.113549.1.1.1" => "RSA".to_string(),
+                    "1.2.840.10045.2.1" => "EC".to_string(),
+                    _ => oid_str,
                 }
-            }
-        }
-    }
+            })
+    }).unwrap_or_else(|| "UNKNOWN".to_string());
 
     Ok(TlsProbeResult {
         total_cert_len: total_len,

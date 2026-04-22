@@ -53,9 +53,8 @@ impl TaskType {
                         Ok(())
                     }
                     Err(e) => {
-                        bot.send_message(chat_id, format!("❌ [定时任务] 系统维护失败: {}", e))
-                            .await?;
-                        Err(e)
+                        report_result(bot, chat_id, "系统维护", "✅ [定时任务] 系统维护完成", Err(e))
+                            .await
                     }
                 }
             }
@@ -65,24 +64,19 @@ impl TaskType {
                     .send_message(chat_id, "⏳ [定时任务] 开始更新 GeoData...")
                     .await;
 
-                // Use a simple callback for logging
                 let result = MaintenanceManager::update_geodata(|_pct, msg| {
                     log::info!("[GeoData] {}", msg);
                 })
                 .await;
 
-                match result {
-                    Ok(_) => {
-                        bot.send_message(chat_id, "✅ [定时任务] GeoData 更新完成。")
-                            .await?;
-                        Ok(())
-                    }
-                    Err(e) => {
-                        bot.send_message(chat_id, format!("❌ [定时任务] GeoData 更新失败: {}", e))
-                            .await?;
-                        Err(e)
-                    }
-                }
+                report_result(
+                    bot,
+                    chat_id,
+                    "GeoData 更新",
+                    "✅ [定时任务] GeoData 更新完成。",
+                    result.map(|_| ()),
+                )
+                .await
             }
             TaskType::Reboot => {
                 let _ = bot
@@ -99,6 +93,29 @@ impl TaskType {
             }
         }
     }
+}
+
+async fn report_result(
+    bot: &Bot,
+    chat_id: ChatId,
+    task_name: &str,
+    success_msg: &str,
+    result: Result<()>,
+) -> Result<()> {
+    match result {
+        Ok(()) => {
+            bot.send_message(chat_id, success_msg).await?;
+            Ok(())
+        }
+        Err(e) => {
+            bot.send_message(
+                chat_id,
+                format!("❌ [定时任务] {} 失败: {}", task_name, e),
+            )
+            .await?;
+            Err(e)
+        }
+}
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

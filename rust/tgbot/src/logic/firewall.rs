@@ -1,6 +1,6 @@
 use crate::logic::firewalld::FirewalldClient;
 use crate::logic::ufw::UfwClient;
-use anyhow::{Result, bail};
+use anyhow::Result;
 use std::collections::HashSet;
 
 #[derive(Debug, PartialEq)]
@@ -63,7 +63,7 @@ impl FirewallManager {
                 FirewalldClient::add_port(port, "tcp").await?;
                 FirewalldClient::add_port(port, "udp").await?;
             }
-            None => bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
+            None => anyhow::bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
         }
         Ok(())
     }
@@ -72,7 +72,7 @@ impl FirewallManager {
         match Self::detect_backend().await {
             Some(FirewallBackend::Ufw) => UfwClient::harden_with_ports(ports).await,
             Some(FirewallBackend::Firewalld) => FirewalldClient::harden_with_ports(ports).await,
-            None => bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
+            None => anyhow::bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
         }
     }
 }

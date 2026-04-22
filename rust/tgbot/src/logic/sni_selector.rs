@@ -25,34 +25,25 @@ static SNI_PERSISTENCE: Lazy<Option<SNIPersistence>> = Lazy::new(|| match SNIPer
 static LARGEST_PB: Lazy<Option<(String, usize)>> = Lazy::new(|| find_file_with_most_domains());
 
 fn find_file_with_most_domains() -> Option<(String, usize)> {
-    let mut best_file: Option<String> = None;
-    let mut best_count: usize = 0;
-
-    for file in SniAssets::iter() {
-        let filename = file.as_ref();
-        if !filename.ends_with(".pb") {
-            continue;
-        }
-
-        if let Some(asset) = SniAssets::get(filename) {
-            let data = asset.data.as_ref();
-            if let Some(domains) = load_protobuf(data) {
-                if domains.len() > best_count {
-                    best_count = domains.len();
-                    best_file = Some(filename.to_string());
-                }
-            }
-        }
-    }
-
-    if let Some(ref f) = best_file {
-        log::info!(
-            "Found file with most domains: {} ({} domains)",
-            f,
-            best_count
-        );
-    }
-    best_file.map(|f| (f, best_count))
+    SniAssets::iter()
+        .filter(|f| f.as_ref().ends_with(".pb"))
+        .filter_map(|file| {
+            let filename = file.as_ref();
+            SniAssets::get(filename).and_then(|asset| {
+                load_protobuf(asset.data.as_ref()).map(|domains| {
+                    (filename.to_string(), domains.len())
+                })
+            })
+        })
+        .max_by_key(|(_, count)| *count)
+        .map(|(filename, count)| {
+            log::info!(
+                "Found file with most domains: {} ({} domains)",
+                filename,
+                count
+            );
+            (filename, count)
+        })
 }
 
 fn load_protobuf(data: &[u8]) -> Option<Vec<String>> {
