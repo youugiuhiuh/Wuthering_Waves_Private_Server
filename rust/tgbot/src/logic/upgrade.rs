@@ -6,6 +6,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, USER_AGENT};
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -48,6 +49,47 @@ pub const UPGRADE_FLAG_FILE: &str = "/etc/wwps/tgbot/upgrade.flag";
 
 static SHA256_LINE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)sha256[:\s]+([0-9a-f]{64})").expect("valid sha256 regex"));
+
+async fn fetch_json_from_mirrors<T: DeserializeOwned>(
+    client: &reqwest::Client,
+    bases: &[String],
+    api_path: &str,
+    token: Option<&str>,
+) -> Result<T> {
+    let mut last_err = None::<anyhow::Error>;
+    for base in bases {
+        let url = format!("{}/{}", base.trim_end_matches('/'), api_path.trim_start_matches('/'));
+        let mut builder = client
+            .get(&url)
+            .header(USER_AGENT, HeaderValue::from_static(USER_AGENT_VALUE))
+            .header(ACCEPT, HeaderValue::from_static("application/vnd.github+json"));
+        if let Some(t) = token {
+            builder = builder.bearer_auth(t);
+        }
+        let response = match builder.send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = Some(e.into());
+                continue;
+            }
+        };
+        let response = match response.error_for_status() {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = Some(e.into());
+                continue;
+            }
+        };
+        match response.json::<T>().await {
+            Ok(data) => return Ok(data),
+            Err(e) => {
+                last_err = Some(e.into());
+                continue;
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow!("所有镜像源均失败")))
+}
 
 pub struct UpgradeManager {
     client: reqwest::Client,
@@ -186,81 +228,51 @@ impl UpgradeManager {
     }
 
     async fn fetch_latest_release(&self) -> Result<ReleaseArtifact> {
-        let api_path = format!("/repos/{}/{}/releases/latest", self.owner, self.repo);
+        let api_path = format!("repos/{}/{}/releases/latest", self.owner, self.repo);
         let bases = tgbot_release_api_bases();
-        let mut last_err = None::<anyhow::Error>;
 
-        for base in &bases {
-            let base = base.trim_end_matches('/');
-            let url = format!("{}{}", base, api_path);
+        let release: ReleaseResponse = fetch_json_from_mirrors(
+            &self.client,
+            &bases,
+            &api_path,
+            self.token.as_deref(),
+        )
+        .await?;
 
-            let response = match self.build_request(&url).send().await {
-                Ok(r) => r,
-                Err(e) => {
-                    last_err = Some(e.into());
-                    continue;
-                }
-            };
-
-            let response = match response.error_for_status() {
-                Ok(r) => r,
-                Err(e) => {
-                    last_err = Some(e.into());
-                    continue;
-                }
-            };
-
-            let release: ReleaseResponse = match response.json().await {
-                Ok(r) => r,
-                Err(e) => {
-                    last_err = Some(e.into());
-                    continue;
-                }
-            };
-
-            if release.tag_name.is_empty() {
-                last_err = Some(anyhow!("{} 返回的 release 缺少 tag_name", base));
-                continue;
-            }
-
-            let asset = match self.select_asset(&release.assets) {
-                Some(a) => a,
-                None => {
-                    last_err = Some(anyhow!("未找到匹配的 Release 产物 ({})", self.asset_name));
-                    continue;
-                }
-            };
-
-            let download_url = asset.download_url().to_string();
-            if download_url.is_empty() {
-                last_err = Some(anyhow!("Release 产物无下载地址"));
-                continue;
-            }
-
-            let sha256 = if let Some(digest) = asset.digest.as_deref() {
-                parse_digest(digest).ok_or_else(|| anyhow!("无法解析 digest 字段"))?
-            } else if let Some(hash) = self
-                .download_sha256_manifest(&release.assets, &asset.name)
-                .await?
-            {
-                hash
-            } else if let Some(body) = release.body.as_deref() {
-                extract_sha256_from_body(body)
-                    .ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
-            } else {
-                anyhow::bail!("Release 中缺少 SHA256 信息");
-            };
-
-            return Ok(ReleaseArtifact {
-                tag_name: release.tag_name,
-                asset_name: asset.name.clone(),
-                download_url,
-                sha256,
-                size: asset.size,
-            });
+        if release.tag_name.is_empty() {
+            anyhow::bail!("Release 缺少 tag_name");
         }
 
-        Err(last_err.unwrap_or_else(|| anyhow!("未配置 Release 源")))
+        let asset = self
+            .select_asset(&release.assets)
+            .ok_or_else(|| anyhow!("未找到匹配的 Release 产物 ({})", self.asset_name))?;
+
+        let download_url = asset.download_url().to_string();
+        if download_url.is_empty() {
+            anyhow::bail!("Release 产物无下载地址");
+        }
+
+        let sha256 = if let Some(digest) = asset.digest.as_deref() {
+            parse_digest(digest).ok_or_else(|| anyhow!("无法解析 digest 字段"))?
+        } else if let Some(hash) = self
+            .download_sha256_manifest(&release.assets, &asset.name)
+            .await?
+        {
+            hash
+        } else if let Some(body) = release.body.as_deref() {
+            extract_sha256_from_body(body)
+                .ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
+        } else {
+            anyhow::bail!("Release 中缺少 SHA256 信息");
+        };
+
+        Ok(ReleaseArtifact {
+            tag_name: release.tag_name,
+            asset_name: asset.name.clone(),
+            download_url,
+            sha256,
+            size: asset.size,
+        })
     }
 
     fn select_asset<'a>(&self, assets: &'a [ReleaseAsset]) -> Option<&'a ReleaseAsset> {
@@ -651,118 +663,72 @@ pub mod wwps_core {
 
             let config = &self.config;
             let path = format!(
-                "/{}/{}/releases?per_page={}",
+                "{}/{}/releases?per_page={}",
                 config.owner, config.repo, limit
             );
             let bases = wwps_core_release_api_bases();
-            let mut last_err = None::<anyhow::Error>;
 
-            for base in &bases {
-                let url = format!("{}{}", base.trim_end_matches('/'), path);
-                let response = match self.build_request(&url).send().await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        last_err = Some(e.into());
-                        continue;
-                    }
-                };
-                let response = match response.error_for_status() {
-                    Ok(r) => r,
-                    Err(e) => {
-                        last_err = Some(e.into());
-                        continue;
-                    }
-                };
-                let releases: Vec<ReleaseResponse> = match response.json().await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        last_err = Some(e.into());
-                        continue;
-                    }
-                };
-                let tags = releases
-                    .into_iter()
-                    .map(|r| r.tag_name)
-                    .take(limit)
-                    .collect();
-                return Ok(tags);
-            }
+            let releases: Vec<ReleaseResponse> = fetch_json_from_mirrors(
+                &self.client,
+                &bases,
+                &path,
+                self.github_token.as_deref(),
+            )
+            .await?;
 
-            Err(last_err.unwrap_or_else(|| anyhow!("wwps-core Release 列表所有源均失败")))
+            Ok(releases.into_iter().map(|r| r.tag_name).take(limit).collect())
         }
 
         pub async fn fetch_release(&self, tag: Option<&str>) -> Result<WwpsCoreReleaseInfo> {
             let config = &self.config;
             let path = if let Some(t) = tag {
-                format!("/{}/{}/releases/tags/{}", config.owner, config.repo, t)
+                format!("{}/{}/releases/tags/{}", config.owner, config.repo, t)
             } else {
-                format!("/{}/{}/releases/latest", config.owner, config.repo)
+                format!("{}/{}/releases/latest", config.owner, config.repo)
             };
             let bases = wwps_core_release_api_bases();
-            let mut last_err = None::<anyhow::Error>;
 
-            for base in &bases {
-                let url = format!("{}{}", base.trim_end_matches('/'), path);
-                let response = match self.build_request(&url).send().await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        last_err = Some(e.into());
-                        continue;
-                    }
-                };
-                let response = match response.error_for_status() {
-                    Ok(r) => r,
-                    Err(e) => {
-                        last_err = Some(e.into());
-                        continue;
-                    }
-                };
-                let release: ReleaseResponse = match response.json().await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        last_err = Some(e.into());
-                        continue;
-                    }
-                };
+            let release: ReleaseResponse = fetch_json_from_mirrors(
+                &self.client,
+                &bases,
+                &path,
+                self.github_token.as_deref(),
+            )
+            .await?;
 
-                let asset_name = format!("{}.zip", config.arch.asset_basename());
-                let asset = match release.assets.iter().find(|a| a.name == asset_name) {
-                    Some(a) => a,
-                    None => {
-                        last_err = Some(anyhow!("未在 Release 中找到资产 {}", asset_name));
-                        continue;
-                    }
-                };
-
-                let download_url = asset.download_url().to_string();
-                if download_url.is_empty() {
-                    last_err = Some(anyhow!("Release 资产无下载地址"));
-                    continue;
+            let asset_name = format!("{}.zip", config.arch.asset_basename());
+            let asset = match release.assets.iter().find(|a| a.name == asset_name) {
+                Some(a) => a,
+                None => {
+                    anyhow::bail!("未在 Release 中找到资产 {}", asset_name);
                 }
+            };
 
-                let sha256 = if let Some(digest) = asset.digest.as_deref() {
-                    parse_digest(digest).ok_or_else(|| anyhow!("无法解析 digest 字段"))?
-                } else if let Some(hash) = self
-                    .download_sha256_manifest(&release.assets, &asset.name)
-                    .await?
-                {
-                    hash
-                } else if let Some(body) = release.body.as_deref() {
-                    extract_sha256_from_body(body)
-                        .ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
-                } else {
-                    anyhow::bail!("Release 中缺少 SHA256 信息");
-                };
-
-                return Ok(WwpsCoreReleaseInfo {
-                    tag_name: release.tag_name,
-                    download_url,
-                    sha256,
-                    size: asset.size,
-                });
+            let download_url = asset.download_url().to_string();
+            if download_url.is_empty() {
+                anyhow::bail!("Release 资产无下载地址");
             }
 
-            Err(last_err.unwrap_or_else(|| anyhow!("wwps-core Release 所有源均失败")))
+            let sha256 = if let Some(digest) = asset.digest.as_deref() {
+                parse_digest(digest).ok_or_else(|| anyhow!("无法解析 digest 字段"))?
+            } else if let Some(hash) = self
+                .download_sha256_manifest(&release.assets, &asset.name)
+                .await?
+            {
+                hash
+            } else if let Some(body) = release.body.as_deref() {
+                extract_sha256_from_body(body)
+                    .ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
+            } else {
+                anyhow::bail!("Release 中缺少 SHA256 信息");
+            };
+
+            Ok(WwpsCoreReleaseInfo {
+                tag_name: release.tag_name,
+                download_url,
+                sha256,
+                size: asset.size,
+            })
         }
 
         pub async fn download_release(
