@@ -1,9 +1,8 @@
-# GitLab CI：与 GitHub Actions public-release 等效
-# 变量/Secrets: SOURCE_REPO_TOKEN, PUBLIC_REPO_TOKEN, 可选 PUBLIC_REPO_OWNER, PUBLIC_REPO_NAME
+# GitLab CI：构建并在本项目创建Release
+# 变量/Secrets: SOURCE_REPO_TOKEN
 
 variables:
-  PUBLIC_OWNER: ${PUBLIC_REPO_OWNER:-NicholasDewar}
-  PUBLIC_REPO: ${PUBLIC_REPO_NAME:-Wuthering_Waves_Private_Server}
+  SOURCE_REPO_TOKEN: ${GITLAB_TOKEN}
 
 workflow:
   rules:
@@ -66,7 +65,7 @@ build:
         sed -i 's/^version = .*/version = "'"$NEW_VERSION"'"/' rust/tgbot/Cargo.toml
         git add rust/tgbot/Cargo.toml
         git commit -m "chore: bump version to $NEW_VERSION [skip ci]" || true
-        git push "https://${SOURCE_REPO_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:${CI_DEFAULT_BRANCH}
+        git push "https://${SOURCE_REPO_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:${CI_DEFAULT_BRANCH}"
       fi
     - git tag -f "v${NEW_VERSION}"
     - git push "https://${SOURCE_REPO_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "v${NEW_VERSION}" --force
@@ -75,7 +74,6 @@ build:
     - upx --best --lzma rust/tgbot/target/release/tgbot || true
     - cd go/installer && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
     - mkdir -p dist && cp rust/tgbot/target/release/tgbot go/installer/installer dist/
-    - cp README.public.md dist/README.md
   artifacts:
     paths:
       - dist/
@@ -90,33 +88,23 @@ release:
     - source build.env
   script:
     - |
-      set +x
-      git clone --depth 0 "https://${PUBLIC_REPO_TOKEN}@${CI_SERVER_HOST}/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" public-repo
-      set -x
-    - cd public-repo && git config user.email "ci@gitlab.com" && git config user.name "GitLab CI"
-    - rm -rf public-repo/* && cp -r dist/* public-repo/
-    - cd public-repo && git add . && git commit -m "Publish v${NEW_VERSION}" || true
-    - cd public-repo && git tag -f "v${NEW_VERSION}"
-    - cd public-repo && git push "https://${PUBLIC_REPO_TOKEN}@${CI_SERVER_HOST}/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" HEAD:${CI_DEFAULT_BRANCH} --force
-    - cd public-repo && git push "https://${PUBLIC_REPO_TOKEN}@${CI_SERVER_HOST}/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" "v${NEW_VERSION}" --force
-    - |
-      PROJ="${PUBLIC_OWNER}%2F${PUBLIC_REPO}"
-      API="${CI_SERVER_URL}/api/v4/projects/${PROJ}"
-      AUTH="PRIVATE-TOKEN: ${PUBLIC_REPO_TOKEN}"
+      PROJ="${CI_PROJECT_PATH}"
+      API="${CI_SERVER_URL}/api/v4/projects/${PROJ//\//%2F}"
+      AUTH="PRIVATE-TOKEN: ${SOURCE_REPO_TOKEN}"
       for tag in $(curl -sS -H "$AUTH" "${API}/releases?per_page=100" | jq -r '.[].tag_name // empty'); do
         echo "Deleting release: $tag"
         curl -sS -X DELETE -H "$AUTH" "${API}/releases/${tag}" || true
       done
     - |
-      PROJ="${PUBLIC_OWNER}%2F${PUBLIC_REPO}"
-      API="${CI_SERVER_URL}/api/v4/projects/${PROJ}"
-      AUTH="PRIVATE-TOKEN: ${PUBLIC_REPO_TOKEN}"
-      JSON=$(jq -n --arg tag "v${NEW_VERSION}" --arg name "v${NEW_VERSION}" --arg body "Public distribution package v${NEW_VERSION}." \
+      PROJ="${CI_PROJECT_PATH}"
+      API="${CI_SERVER_URL}/api/v4/projects/${PROJ//\//%2F}"
+      AUTH="PRIVATE-TOKEN: ${SOURCE_REPO_TOKEN}"
+      RAW="${CI_SERVER_URL}/${CI_PROJECT_PATH}/-/raw/main"
+      JSON=$(jq -n --arg tag "v${NEW_VERSION}" --arg name "v${NEW_VERSION}" --arg body "Release v${NEW_VERSION}." \
         '{tag_name:$tag,name:$name,description:$body}')
       curl -sS -X POST -H "$AUTH" -H "Content-Type: application/json" -d "$JSON" "${API}/releases"
-      RAW="${CI_SERVER_URL}/${PUBLIC_OWNER}/${PUBLIC_REPO}/-/raw/main"
       for f in tgbot installer; do
-        curl -sS -X POST -H "$AUTH" -d "name=${f}&url=${RAW}/${f}&link_type=other" \
+        curl -sS -X POST -H "$AUTH" -d "name=${f}&url=${RAW}/dist/${f}&link_type=other" \
           "${API}/releases/v${NEW_VERSION}/assets/links"
       done
   rules:

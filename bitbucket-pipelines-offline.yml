@@ -1,6 +1,6 @@
-# Bitbucket 不联网版：使用预装 Rust/Go/UPX/Garble 的镜像，不执行任何外网下载
-# 在 Bitbucket 配置 Repository variable: DOCKER_IMAGE_OFFLINE = 你的预装镜像（如 myregistry/wwps-builder:offline）
-# 未设置时使用 ubuntu:22.04（需自行构建带 toolchain 的镜像并推送到可访问的 registry）
+# Bitbucket 不联网版：使用预装 Rust/Go/UPX/Garble 的镜像
+# 在 Bitbucket 配置 Repository variable: DOCKER_IMAGE_OFFLINE = 你的预装镜像
+# 变量/Secrets: SOURCE_REPO_TOKEN (Bitbucket token with repo write access)
 
 pipelines:
   branches:
@@ -9,8 +9,6 @@ pipelines:
           name: Build and Release (Offline)
           image: ${DOCKER_IMAGE_OFFLINE:-ubuntu:22.04}
           script:
-            - export PUBLIC_OWNER="${PUBLIC_REPO_OWNER:-NicholasDewar}"
-            - export PUBLIC_REPO="${PUBLIC_REPO_NAME:-Wuthering_Waves_Private_Server}"
             - |
               if [ -n "${VERSION}" ]; then
                 NEW_VERSION="${VERSION#v}"
@@ -33,23 +31,16 @@ pipelines:
             - upx --best --lzma rust/tgbot/target/release/tgbot || true
             - cd go/installer && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
             - mkdir -p dist && cp rust/tgbot/target/release/tgbot go/installer/installer dist/
-            - cp README.public.md dist/README.md
-            - |
-              git clone --depth 0 "https://x-token-auth:${PUBLIC_REPO_TOKEN}@bitbucket.org/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" public-repo
-              cd public-repo && git config user.email "ci@bitbucket.org" && git config user.name "Bitbucket Pipelines"
-              rm -rf public-repo/* && cp -r dist/* public-repo/
-              cd public-repo && git add . && git commit -m "Publish v${NEW_VERSION}" || true
-              cd public-repo && git tag -f "v${NEW_VERSION}"
-              cd public-repo && git push origin main --force && git push origin "v${NEW_VERSION}" --force
             - |
               for f in dist/tgbot dist/installer; do
-                curl -sS -u "${PUBLIC_REPO_TOKEN}:x-token-auth" -X POST \
-                  "https://api.bitbucket.org/2.0/repositories/${PUBLIC_OWNER}/${PUBLIC_REPO}/downloads" -F "files=@${f}"
+                curl -sS -u "${SOURCE_REPO_TOKEN}:x-token-auth" -X POST \
+                  "https://api.bitbucket.org/2.0/repositories/${BITBUCKET_REPO_FULL_SLUG}/downloads" \
+                  -F "files=@${f}"
               done
           artifacts:
             - dist/**
   custom:
-    public-release-offline:
+    release-offline:
       - variables:
           - name: VERSION
             default: "0.4.4"
@@ -57,8 +48,6 @@ pipelines:
           name: Build and Release (Offline)
           image: ${DOCKER_IMAGE_OFFLINE:-ubuntu:22.04}
           script:
-            - export PUBLIC_OWNER="${PUBLIC_REPO_OWNER:-NicholasDewar}"
-            - export PUBLIC_REPO="${PUBLIC_REPO_NAME:-Wuthering_Waves_Private_Server}"
             - export NEW_VERSION="${VERSION#v}"
             - sed -i 's/^version = .*/version = "'"$NEW_VERSION"'"/' rust/tgbot/Cargo.toml
             - git config user.email "ci@bitbucket.org"
@@ -72,16 +61,9 @@ pipelines:
             - upx --best --lzma rust/tgbot/target/release/tgbot || true
             - cd go/installer && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
             - mkdir -p dist && cp rust/tgbot/target/release/tgbot go/installer/installer dist/
-            - cp README.public.md dist/README.md
-            - |
-              git clone --depth 0 "https://x-token-auth:${PUBLIC_REPO_TOKEN}@bitbucket.org/${PUBLIC_OWNER}/${PUBLIC_REPO}.git" public-repo
-              cd public-repo && git config user.email "ci@bitbucket.org" && git config user.name "Bitbucket Pipelines"
-              rm -rf public-repo/* && cp -r dist/* public-repo/
-              cd public-repo && git add . && git commit -m "Publish v${NEW_VERSION}" || true
-              cd public-repo && git tag -f "v${NEW_VERSION}"
-              cd public-repo && git push origin main --force && git push origin "v${NEW_VERSION}" --force
             - |
               for f in dist/tgbot dist/installer; do
-                curl -sS -u "${PUBLIC_REPO_TOKEN}:x-token-auth" -X POST \
-                  "https://api.bitbucket.org/2.0/repositories/${PUBLIC_OWNER}/${PUBLIC_REPO}/downloads" -F "files=@${f}"
+                curl -sS -u "${SOURCE_REPO_TOKEN}:x-token-auth" -X POST \
+                  "https://api.bitbucket.org/2.0/repositories/${BITBUCKET_REPO_FULL_SLUG}/downloads" \
+                  -F "files=@${f}"
               done

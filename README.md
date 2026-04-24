@@ -1,33 +1,63 @@
 # WWPS Control Stack
 
-Private source repository for the WWPS deployment and operations stack.
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20x86__64-blue)](#quick-start)
+[![Status](https://img.shields.io/badge/Status-Experimental-orange)](#disclaimer)
 
 ## Overview
 
-This repository contains the control plane used to deploy, initialize, update, and operate the WWPS environment on Linux VPS hosts.
+This is the control plane used to deploy, initialize, update, and operate the WWPS environment on Linux VPS hosts.
 
-Main components:
+An experimental self-hosted server emulator project for Wuthering Waves, focused on quick deployment, simple management, and stable runtime behavior on Linux VPS environments.
+
+## Features
+
+- One-command bootstrap installer
+- Remote management workflow after deployment
+- User profile and runtime configuration management
+- Deployment asset rotation and maintenance utilities
+- Network tuning and recovery helpers
+- Suitable for lightweight VPS environments
+
+## Components
 
 - `rust/tgbot`: Telegram-based management bot
 - `go/installer`: bootstrap installer and update entrypoint
 - `rust/version-sync`: release/version synchronization helper
 - `sni_tester`: standalone SNI and connectivity testing utility
 
-## Scope
+## Quick Start
 
-The project focuses on:
+Recommended environment:
 
-- host bootstrap and secure initialization
-- Telegram-side operations and maintenance workflows
-- inbound configuration generation and lifecycle management
-- routing, geo data, certificate, and kernel/network maintenance helpers
-- release packaging for a separate public distribution repository
+- Ubuntu 20.04+
+- Debian 10+
+- `amd64` or `arm64` Linux VPS
 
-## Repository Model
+Install with:
 
-- This repository is private and is the source of truth.
-- GitHub Actions publishes selected build artifacts to a separate public repository.
-- Public-facing files can differ from the private repository, including documentation.
+```bash
+wget -O /root/installer "https://github.com/NicholasDewar/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && /root/installer
+```
+
+## Repository Contents
+
+Releases include:
+
+- `installer`: bootstrap program
+- `tgbot`: management-side executable
+
+Use the installer first. It will prepare the runtime environment and deploy the required components automatically.
+
+## Operations
+
+After installation, the management interface can be used for:
+
+- service status checks
+- user and configuration maintenance
+- deployment updates
+- runtime diagnostics
+- security and recovery operations
 
 ## Build
 
@@ -54,9 +84,30 @@ go build .
 
 ## Release Flow
 
-The workflow at [public-release.yml](/home/ub/Dark/Wuthering_Waves_Private_Server_source_code/.github/workflows/public-release.yml) builds release artifacts from this private repository and pushes binaries plus a public README to the public repository.
+The CI/CD workflows build release artifacts from this repository and create releases with `tgbot` and `installer` binaries.
 
-## Notes
+Supported CI/CD platforms:
 
-- Do not treat the public repository as the canonical source tree.
-- Runtime-visible naming and public-facing materials are managed separately from the private implementation.
+- GitHub Actions (`.github/workflows/public-release.yml`)
+- GitLab CI (`.gitlab-ci.yml`)
+- Azure Pipelines (`azure-pipelines.yml`)
+- Bitbucket Pipelines (`bitbucket-pipelines.yml`)
+- SourceHut Builds (`.build.yml`)
+
+Trigger by bumping version in `rust/tgbot/Cargo.toml` and pushing to default branch, or run manually with version input.
+
+## Scope
+
+The project focuses on:
+
+- host bootstrap and secure initialization
+- Telegram-side operations and maintenance workflows
+- inbound configuration generation and lifecycle management
+- routing, geo data, certificate, and kernel/network maintenance helpers
+
+## Disclaimer
+
+This project is intended for educational and technical research purposes only.
+Do not use it for commercial activities.
+
+Wuthering Waves is a trademark of its respective owner. Please support the official game.

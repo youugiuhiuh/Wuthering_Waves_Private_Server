@@ -23,11 +23,7 @@ use crate::logic::utils::{format_download_progress, human_readable_size, should_
 
 const DEFAULT_RELEASE_REPOSITORIES: &[(&str, &str)] = &[
     ("NicholasDewar", "Wuthering_Waves_Private_Server"),
-    (
-        "NicholasDewar",
-        "Wuthering_Waves_Private_Server_source_code",
-    ),
-    ("youugiuhiuh", "Wuthering_Waves_Private_Server_source_code"),
+    ("youugiuhiuh", "Wuthering_Waves_Private_Server"),
 ];
 const DEFAULT_ASSET_NAME: &str = "tgbot";
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";

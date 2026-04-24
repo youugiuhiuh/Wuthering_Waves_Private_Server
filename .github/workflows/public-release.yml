@@ -1,4 +1,4 @@
-name: Public Distribution Sync
+name: Build and Release
 
 on:
     workflow_dispatch:
@@ -17,20 +17,15 @@ permissions:
     contents: write
     actions: write
 
-env:
-    PUBLIC_REPO_OWNER: ${{ vars.PUBLIC_REPO_OWNER || github.repository_owner }}
-    PUBLIC_REPO_NAME: ${{ vars.PUBLIC_REPO_NAME || 'Wuthering_Waves_Private_Server' }}
-    PUBLIC_REPO_FULL_NAME: ${{ format('{0}/{1}', vars.PUBLIC_REPO_OWNER || github.repository_owner, vars.PUBLIC_REPO_NAME || 'Wuthering_Waves_Private_Server') }}
-
 jobs:
-    build-and-push:
+    build-and-release:
         runs-on: ubuntu-latest
         if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore(deps)')"
         steps:
             - name: Checkout Source
               uses: actions/checkout@v4
               with:
-                  token: ${{ secrets.SOURCE_REPO_TOKEN }}
+                  token: ${{ secrets.GITHUB_TOKEN }}
                   fetch-depth: 0
 
             - name: Resolve Version
@@ -40,7 +35,6 @@ jobs:
                   else
                     VERSION=$(grep -m1 '^version' rust/tgbot/Cargo.toml | sed 's/.*"\(.*\)"/\1/')
                   fi
-                  # Remove 'v' prefix if present for uniform handling
                   VERSION=${VERSION#v}
                   echo "NEW_VERSION=$VERSION" >> $GITHUB_ENV
                   echo "Resolved version: $VERSION"
@@ -61,7 +55,6 @@ jobs:
                     git push origin main
                   fi
 
-                  # Always ensure a tag exists in the private repo for this version
                   git tag -f "v${{ env.NEW_VERSION }}"
                   git push origin "v${{ env.NEW_VERSION }}" --force
 
@@ -87,11 +80,9 @@ jobs:
             - name: Build Runtime Binary
               run: |
                   cd rust/tgbot
-                  # 保持路径映射，并利用 Cargo.toml 里的 thin LTO 配置
                   RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" \
                   cargo build --release
 
-                  # 加壳前打印一下大小，方便你在日志里确认混淆效果
                   ls -lh target/release/tgbot
                   upx --best --lzma target/release/tgbot
 
@@ -109,69 +100,39 @@ jobs:
                   cd go/installer
                   CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 $(go env GOPATH)/bin/garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
 
-            - name: Prepare Public Artifacts
+            - name: Prepare Distribution Artifacts
               run: |
                   mkdir -p dist
                   cp rust/tgbot/target/release/tgbot dist/
                   cp go/installer/installer dist/
-                  cp README.public.md dist/README.md
-
-            - name: Checkout Distribution Repo
-              uses: actions/checkout@v4
-              with:
-                  repository: ${{ env.PUBLIC_REPO_FULL_NAME }}
-                  token: ${{ secrets.PUBLIC_REPO_TOKEN }}
-                  path: public-repo
-
-            - name: Publish Repository Snapshot
-              run: |
-                  cd public-repo
-                  git config --local user.email "action@github.com"
-                  git config --local user.name "GitHub Action"
-
-                  # Replace all files with new binaries and README
-                  rm -rf *
-                  cp -r ../dist/* .
-
-                  git add .
-                  git commit -m "Publish v${{ env.NEW_VERSION }}" || echo "No changes"
-                  git tag -f "v${{ env.NEW_VERSION }}"
-                  git push origin main --force
-                  git push origin "v${{ env.NEW_VERSION }}" --force
 
             - name: Cleanup Old Releases (Keep Last 3)
               env:
-                  GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  # Get all releases sorted by creation date (newest first)
-                  RELEASES=$(gh release list --repo "${{ env.PUBLIC_REPO_FULL_NAME }}" --limit 100 -L 100 | sort -t$'\t' -k3 -r | cut -f 3)
-                  
-                  # Count releases and delete old ones (keep last 3)
+                  RELEASES=$(gh release list --limit 100 -L 100 | sort -t$'\t' -k3 -r | cut -f 3)
+
                   COUNT=0
                   for tag in $RELEASES; do
                     COUNT=$((COUNT + 1))
                     if [ $COUNT -gt 3 ]; then
                       echo "Deleting old release: $tag"
-                      gh release delete "$tag" --repo "${{ env.PUBLIC_REPO_FULL_NAME }}" --yes --cleanup-tag || true
+                      gh release delete "$tag" --yes --cleanup-tag || true
                     fi
                   done
-                  
+
                   echo "Kept $((COUNT > 3 ? 3 : COUNT)) releases, deleted $((COUNT > 3 ? COUNT - 3 : 0)) old releases"
 
-            - name: Create Public Release
+            - name: Create Release
               uses: softprops/action-gh-release@v2
               with:
-                  repository: ${{ env.PUBLIC_REPO_FULL_NAME }}
-                  token: ${{ secrets.PUBLIC_REPO_TOKEN }}
                   tag_name: v${{ env.NEW_VERSION }}
                   name: v${{ env.NEW_VERSION }}
                   files: |
                       dist/tgbot
                       dist/installer
                   body: |
-                      Public distribution package `v${{ env.NEW_VERSION }}`.
-
-                      This release is generated from the private source repository and contains the current public runtime artifacts.
+                      Release `v${{ env.NEW_VERSION }}`.
 
                       ### Included Files
                       - `installer`: bootstrap executable
