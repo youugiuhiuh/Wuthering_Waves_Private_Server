@@ -83,6 +83,7 @@ pub enum IpVersion {
 pub enum RealityProto {
     Vision,
     XHTTP,
+    XdnsMkcp,
 }
 
 #[derive(Debug, Clone)]
