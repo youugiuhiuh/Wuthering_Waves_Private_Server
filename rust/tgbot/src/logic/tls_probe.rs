@@ -86,10 +86,10 @@ pub async fn probe_tls_once(domain: &str, port: u16) -> Result<TlsProbeResult> {
 
     let total_len: usize = certs.iter().map(|c| c.0.len()).sum();
 
-    let leaf_alg = certs.first().and_then(|cert| {
-        X509Certificate::from_der(&cert.0)
-            .ok()
-            .map(|(_, parsed)| {
+    let leaf_alg = certs
+        .first()
+        .and_then(|cert| {
+            X509Certificate::from_der(&cert.0).ok().map(|(_, parsed)| {
                 let alg = parsed.public_key().algorithm.algorithm.clone();
                 let oid_str = alg.to_id_string();
                 match oid_str.as_str() {
@@ -98,7 +98,8 @@ pub async fn probe_tls_once(domain: &str, port: u16) -> Result<TlsProbeResult> {
                     _ => oid_str,
                 }
             })
-    }).unwrap_or_else(|| "UNKNOWN".to_string());
+        })
+        .unwrap_or_else(|| "UNKNOWN".to_string());
 
     Ok(TlsProbeResult {
         total_cert_len: total_len,

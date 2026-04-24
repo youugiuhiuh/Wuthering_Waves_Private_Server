@@ -1042,14 +1042,8 @@ fn handle_callback(
                             ),
                         ]);
                         buttons.push(vec![
-                            InlineKeyboardButton::callback(
-                                "🚀 XDNS (mKCP+DNS)",
-                                "u_xdns_init",
-                            ),
-                            InlineKeyboardButton::callback(
-                                "🔐 ML-DSA-65 管理",
-                                "m_pq_mgmt",
-                            ),
+                            InlineKeyboardButton::callback("🚀 XDNS (mKCP+DNS)", "u_xdns_init"),
+                            InlineKeyboardButton::callback("🔐 ML-DSA-65 管理", "m_pq_mgmt"),
                         ]);
                         buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")]);
                         bot.edit_message_text(
@@ -1899,14 +1893,32 @@ fn handle_callback(
 
                     let buttons = vec![
                         vec![
-                            InlineKeyboardButton::callback("1", format!("u_xdns_exec:{}:1", ip_ver_code)),
-                            InlineKeyboardButton::callback("3", format!("u_xdns_exec:{}:3", ip_ver_code)),
-                            InlineKeyboardButton::callback("5", format!("u_xdns_exec:{}:5", ip_ver_code)),
+                            InlineKeyboardButton::callback(
+                                "1",
+                                format!("u_xdns_exec:{}:1", ip_ver_code),
+                            ),
+                            InlineKeyboardButton::callback(
+                                "3",
+                                format!("u_xdns_exec:{}:3", ip_ver_code),
+                            ),
+                            InlineKeyboardButton::callback(
+                                "5",
+                                format!("u_xdns_exec:{}:5", ip_ver_code),
+                            ),
                         ],
                         vec![
-                            InlineKeyboardButton::callback("10", format!("u_xdns_exec:{}:10", ip_ver_code)),
-                            InlineKeyboardButton::callback("20", format!("u_xdns_exec:{}:20", ip_ver_code)),
-                            InlineKeyboardButton::callback("50", format!("u_xdns_exec:{}:50", ip_ver_code)),
+                            InlineKeyboardButton::callback(
+                                "10",
+                                format!("u_xdns_exec:{}:10", ip_ver_code),
+                            ),
+                            InlineKeyboardButton::callback(
+                                "20",
+                                format!("u_xdns_exec:{}:20", ip_ver_code),
+                            ),
+                            InlineKeyboardButton::callback(
+                                "50",
+                                format!("u_xdns_exec:{}:50", ip_ver_code),
+                            ),
                         ],
                         vec![InlineKeyboardButton::callback("⬅️ 返回", "u_xdns_init")],
                     ];
@@ -1924,7 +1936,11 @@ fn handle_callback(
                     .await?;
                 }
                 d if d.starts_with("u_xdns_exec:") => {
-                    let parts: Vec<&str> = d.strip_prefix("u_xdns_exec:").unwrap_or("").split(':').collect();
+                    let parts: Vec<&str> = d
+                        .strip_prefix("u_xdns_exec:")
+                        .unwrap_or("")
+                        .split(':')
+                        .collect();
                     if parts.len() != 2 {
                         return Ok(());
                     }
@@ -1947,11 +1963,7 @@ fn handle_callback(
                         .text(format!("⏳ 正在生成 {} 个 XDNS 配置...", n))
                         .await?;
 
-                    let res = ConfigManager::batch_create_xdns_mkcp(
-                        n,
-                        true,
-                        ip_version,
-                    ).await;
+                    let res = ConfigManager::batch_create_xdns_mkcp(n, true, ip_version).await;
 
                     match res {
                         Ok(result) => {
@@ -2115,12 +2127,8 @@ fn handle_callback(
                             .await
                         }
                         RealityProto::XdnsMkcp => {
-                            ConfigManager::batch_create_xdns_mkcp(
-                                n,
-                                standalone_mode,
-                                ip_version,
-                            )
-                            .await
+                            ConfigManager::batch_create_xdns_mkcp(n, standalone_mode, ip_version)
+                                .await
                         }
                     };
 

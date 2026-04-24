@@ -384,9 +384,7 @@ impl ConfigManager {
         let geoip = crate::logic::geoip::GeoIPService::new();
         let country_code = geoip.get_country_code().await;
 
-        let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(
-            &country_code,
-        );
+        let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(&country_code);
 
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
@@ -467,9 +465,7 @@ impl ConfigManager {
         let geoip = crate::logic::geoip::GeoIPService::new();
         let country_code = geoip.get_country_code().await;
 
-        let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(
-            &country_code,
-        );
+        let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(&country_code);
 
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
@@ -549,9 +545,7 @@ impl ConfigManager {
         let geoip = crate::logic::geoip::GeoIPService::new();
         let country_code = geoip.get_country_code().await;
 
-        let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(
-            &country_code,
-        );
+        let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(&country_code);
 
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
@@ -575,17 +569,13 @@ impl ConfigManager {
             let tag = format!("XDNS-{}-{}", i + 1, uuid_short);
 
             let config = Self::build_xdns_mkcp_inbound(
-                &tag, port, &uuid, &email,
-                &pub_key, &priv_key, &short_id,
-                ip_version, &sni,
+                &tag, port, &uuid, &email, &pub_key, &priv_key, &short_id, ip_version, &sni,
             );
 
             batch_configs.push(config);
 
             let link = Self::generate_xdns_client_link(
-                &uuid, &host, port,
-                &pub_key, &short_id, &email,
-                ip_version, &sni,
+                &uuid, &host, port, &pub_key, &short_id, &email, ip_version, &sni,
             );
             links.push(link);
 
@@ -1608,7 +1598,9 @@ mod tests {
             "xdns-test.example.com",
         );
 
-        let mtu = config["streamSettings"]["kcpSettings"]["mtu"].as_i64().unwrap();
+        let mtu = config["streamSettings"]["kcpSettings"]["mtu"]
+            .as_i64()
+            .unwrap();
         assert_eq!(mtu, 130, "XDNS requires MTU of 130 or lower");
     }
 

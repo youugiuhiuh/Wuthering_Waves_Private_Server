@@ -53,8 +53,14 @@ impl TaskType {
                         Ok(())
                     }
                     Err(e) => {
-                        report_result(bot, chat_id, "系统维护", "✅ [定时任务] 系统维护完成", Err(e))
-                            .await
+                        report_result(
+                            bot,
+                            chat_id,
+                            "系统维护",
+                            "✅ [定时任务] 系统维护完成",
+                            Err(e),
+                        )
+                        .await
                     }
                 }
             }
@@ -108,14 +114,11 @@ async fn report_result(
             Ok(())
         }
         Err(e) => {
-            bot.send_message(
-                chat_id,
-                format!("❌ [定时任务] {} 失败: {}", task_name, e),
-            )
-            .await?;
+            bot.send_message(chat_id, format!("❌ [定时任务] {} 失败: {}", task_name, e))
+                .await?;
             Err(e)
         }
-}
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

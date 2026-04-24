@@ -30,9 +30,8 @@ fn find_file_with_most_domains() -> Option<(String, usize)> {
         .filter_map(|file| {
             let filename = file.as_ref();
             SniAssets::get(filename).and_then(|asset| {
-                load_protobuf(asset.data.as_ref()).map(|domains| {
-                    (filename.to_string(), domains.len())
-                })
+                load_protobuf(asset.data.as_ref())
+                    .map(|domains| (filename.to_string(), domains.len()))
             })
         })
         .max_by_key(|(_, count)| *count)

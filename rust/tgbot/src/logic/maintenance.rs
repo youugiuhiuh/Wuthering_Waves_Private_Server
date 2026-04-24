@@ -647,13 +647,41 @@ enum DepCheckKind {
 
 async fn ensure_bbr3_dependencies() -> Result<()> {
     const DEPS: &[DepCheck] = &[
-        DepCheck { check: DepCheckKind::Command("sudo"), primary: &["sudo"], fallback: None },
-        DepCheck { check: DepCheckKind::Command("gpg"), primary: &["gnupg"], fallback: Some(&["gnupg2"]) },
-        DepCheck { check: DepCheckKind::Command("gpgv"), primary: &["gpgv"], fallback: None },
-        DepCheck { check: DepCheckKind::Command("wget"), primary: &["wget"], fallback: None },
-        DepCheck { check: DepCheckKind::Command("curl"), primary: &["curl"], fallback: None },
-        DepCheck { check: DepCheckKind::Command("lsb_release"), primary: &["lsb-release"], fallback: None },
-        DepCheck { check: DepCheckKind::File("/etc/ssl/certs/ca-certificates.crt"), primary: &["ca-certificates"], fallback: None },
+        DepCheck {
+            check: DepCheckKind::Command("sudo"),
+            primary: &["sudo"],
+            fallback: None,
+        },
+        DepCheck {
+            check: DepCheckKind::Command("gpg"),
+            primary: &["gnupg"],
+            fallback: Some(&["gnupg2"]),
+        },
+        DepCheck {
+            check: DepCheckKind::Command("gpgv"),
+            primary: &["gpgv"],
+            fallback: None,
+        },
+        DepCheck {
+            check: DepCheckKind::Command("wget"),
+            primary: &["wget"],
+            fallback: None,
+        },
+        DepCheck {
+            check: DepCheckKind::Command("curl"),
+            primary: &["curl"],
+            fallback: None,
+        },
+        DepCheck {
+            check: DepCheckKind::Command("lsb_release"),
+            primary: &["lsb-release"],
+            fallback: None,
+        },
+        DepCheck {
+            check: DepCheckKind::File("/etc/ssl/certs/ca-certificates.crt"),
+            primary: &["ca-certificates"],
+            fallback: None,
+        },
     ];
 
     for dep in DEPS {

@@ -1,12 +1,12 @@
 #![allow(dead_code, unused_variables)]
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
 };
 use anyhow::Result;
 use libc::{mlock, munlock};
 use obfstr::obfstr;
-use rand::{rngs::OsRng, RngCore};
+use rand::{RngCore, rngs::OsRng};
 use secrecy::SecretVec;
 use std::fs::{self, OpenOptions};
 use std::io::Write;

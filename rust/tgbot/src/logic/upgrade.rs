@@ -58,11 +58,18 @@ async fn fetch_json_from_mirrors<T: DeserializeOwned>(
 ) -> Result<T> {
     let mut last_err = None::<anyhow::Error>;
     for base in bases {
-        let url = format!("{}/{}", base.trim_end_matches('/'), api_path.trim_start_matches('/'));
+        let url = format!(
+            "{}/{}",
+            base.trim_end_matches('/'),
+            api_path.trim_start_matches('/')
+        );
         let mut builder = client
             .get(&url)
             .header(USER_AGENT, HeaderValue::from_static(USER_AGENT_VALUE))
-            .header(ACCEPT, HeaderValue::from_static("application/vnd.github+json"));
+            .header(
+                ACCEPT,
+                HeaderValue::from_static("application/vnd.github+json"),
+            );
         if let Some(t) = token {
             builder = builder.bearer_auth(t);
         }
@@ -231,13 +238,8 @@ impl UpgradeManager {
         let api_path = format!("repos/{}/{}/releases/latest", self.owner, self.repo);
         let bases = tgbot_release_api_bases();
 
-        let release: ReleaseResponse = fetch_json_from_mirrors(
-            &self.client,
-            &bases,
-            &api_path,
-            self.token.as_deref(),
-        )
-        .await?;
+        let release: ReleaseResponse =
+            fetch_json_from_mirrors(&self.client, &bases, &api_path, self.token.as_deref()).await?;
 
         if release.tag_name.is_empty() {
             anyhow::bail!("Release 缺少 tag_name");
@@ -260,8 +262,7 @@ impl UpgradeManager {
         {
             hash
         } else if let Some(body) = release.body.as_deref() {
-            extract_sha256_from_body(body)
-                .ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
+            extract_sha256_from_body(body).ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
         } else {
             anyhow::bail!("Release 中缺少 SHA256 信息");
         };
@@ -668,15 +669,15 @@ pub mod wwps_core {
             );
             let bases = wwps_core_release_api_bases();
 
-            let releases: Vec<ReleaseResponse> = fetch_json_from_mirrors(
-                &self.client,
-                &bases,
-                &path,
-                self.github_token.as_deref(),
-            )
-            .await?;
+            let releases: Vec<ReleaseResponse> =
+                fetch_json_from_mirrors(&self.client, &bases, &path, self.github_token.as_deref())
+                    .await?;
 
-            Ok(releases.into_iter().map(|r| r.tag_name).take(limit).collect())
+            Ok(releases
+                .into_iter()
+                .map(|r| r.tag_name)
+                .take(limit)
+                .collect())
         }
 
         pub async fn fetch_release(&self, tag: Option<&str>) -> Result<WwpsCoreReleaseInfo> {
@@ -688,13 +689,9 @@ pub mod wwps_core {
             };
             let bases = wwps_core_release_api_bases();
 
-            let release: ReleaseResponse = fetch_json_from_mirrors(
-                &self.client,
-                &bases,
-                &path,
-                self.github_token.as_deref(),
-            )
-            .await?;
+            let release: ReleaseResponse =
+                fetch_json_from_mirrors(&self.client, &bases, &path, self.github_token.as_deref())
+                    .await?;
 
             let asset_name = format!("{}.zip", config.arch.asset_basename());
             let asset = match release.assets.iter().find(|a| a.name == asset_name) {
