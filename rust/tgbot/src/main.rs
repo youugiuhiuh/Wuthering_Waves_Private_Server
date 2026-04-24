@@ -123,6 +123,7 @@ async fn show_reality_batch_prompt(
     let (ip_prefix, title) = match proto {
         RealityProto::Vision => ("u_batch_ip_init:", "Reality (Vision)"),
         RealityProto::XHTTP => ("u_xhttp_batch_ip_init:", "Reality (XHTTP)"),
+        RealityProto::XdnsMkcp => ("u_xdns_ip:", "XDNS Finalmask (mKCP+DNS)"),
     };
 
     // 检测公网 IPv6 是否可用
@@ -194,6 +195,7 @@ async fn show_reality_qty_prompt(
     let (exec_prefix, title) = match proto {
         RealityProto::Vision => ("u_batch_exec:", "Reality"),
         RealityProto::XHTTP => ("u_xhttp_batch_exec:", "XHTTP"),
+        RealityProto::XdnsMkcp => ("u_xdns_exec:", "XDNS"),
     };
 
     let buttons = vec![
@@ -1893,6 +1895,7 @@ fn handle_callback(
                     let proto_str = match proto {
                         RealityProto::Vision => "Reality",
                         RealityProto::XHTTP => "XHTTP",
+                        RealityProto::XdnsMkcp => "XDNS",
                     };
 
                     bot.answer_callback_query(q.id.clone())
@@ -1913,6 +1916,14 @@ fn handle_callback(
                         }
                         RealityProto::XHTTP => {
                             ConfigManager::batch_create_xhttp_reality_enhanced(
+                                n,
+                                standalone_mode,
+                                ip_version,
+                            )
+                            .await
+                        }
+                        RealityProto::XdnsMkcp => {
+                            ConfigManager::batch_create_xdns_mkcp(
                                 n,
                                 standalone_mode,
                                 ip_version,

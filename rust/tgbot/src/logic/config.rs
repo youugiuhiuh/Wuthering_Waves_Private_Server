@@ -268,6 +268,7 @@ impl ConfigManager {
         let prefix = match proto {
             RealityProto::Vision => "batch_reality",
             RealityProto::XHTTP => "batch_xhttp",
+            RealityProto::XdnsMkcp => "batch_xdns",
         };
         Ok(format!("{}_{}_inbounds.json", prefix, uuid_short))
     }
@@ -320,6 +321,9 @@ impl ConfigManager {
             "network": match proto {
                 RealityProto::Vision => "tcp",
                 RealityProto::XHTTP => "xhttp",
+                RealityProto::XdnsMkcp => {
+                    unreachable!("XdnsMkcp should use build_xdns_mkcp_inbound")
+                }
             },
             "security": "reality",
             "realitySettings": {
@@ -530,6 +534,175 @@ impl ConfigManager {
         }
     }
 
+    pub async fn batch_create_xdns_mkcp(
+        count: usize,
+        standalone: bool,
+        ip_version: IpVersion,
+    ) -> Result<BatchCreationResult> {
+        let (host, _) = Self::resolve_public_hosts(
+            ip_version,
+            crate::logic::system::SystemMonitor::get_public_ip().await,
+            crate::logic::system::SystemMonitor::get_public_ipv6().await,
+        )?;
+
+        let mut rng = StdRng::from_entropy();
+        let geoip = crate::logic::geoip::GeoIPService::new();
+        let country_code = geoip.get_country_code().await;
+
+        let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(
+            &country_code,
+        );
+
+        let mut links = Vec::new();
+        let mut batch_configs = Vec::new();
+
+        for i in 0..count {
+            let sni = selector.next();
+
+            let port = loop {
+                let p = rng.gen_range(10000..60000);
+                if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
+                    break p as i32;
+                }
+            };
+
+            let uuid = Self::generate_wwps_uuid().await?;
+            let (priv_key, pub_key) = Self::generate_wwps_x25519().await?;
+            let short_id = Self::generate_random_short_id();
+            let uuid_short = Self::uuid_short_prefix(&uuid);
+
+            let email = format!("{}-vless-xdns-mkcp", uuid_short);
+            let tag = format!("XDNS-{}-{}", i + 1, uuid_short);
+
+            let config = Self::build_xdns_mkcp_inbound(
+                &tag, port, &uuid, &email,
+                &pub_key, &priv_key, &short_id,
+                ip_version, &sni,
+            );
+
+            batch_configs.push(config);
+
+            let link = Self::generate_xdns_client_link(
+                &uuid, &host, port,
+                &pub_key, &short_id, &email,
+                ip_version, &sni,
+            );
+            links.push(link);
+
+            let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
+        }
+
+        if standalone {
+            Self::create_standalone_config(batch_configs, links, RealityProto::XdnsMkcp).await
+        } else {
+            Self::update_existing_config(batch_configs, links).await
+        }
+    }
+
+    fn build_xdns_mkcp_inbound(
+        tag: &str,
+        port: i32,
+        uuid: &str,
+        email: &str,
+        pub_key: &str,
+        priv_key: &str,
+        short_id: &str,
+        ip_version: IpVersion,
+        xdns_domain: &str,
+    ) -> Value {
+        let listen_ip = match ip_version {
+            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => "0.0.0.0",
+            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => "::",
+        };
+
+        let client = json!({
+            "id": uuid,
+            "email": email
+        });
+
+        json!({
+            "listen": listen_ip,
+            "port": port,
+            "protocol": "vless",
+            "tag": tag,
+            "settings": {
+                "clients": [client],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "kcp",
+                "kcpSettings": {
+                    "mtu": 130,
+                    "tti": 20,
+                    "uplinkCapacity": 5,
+                    "downlinkCapacity": 20,
+                    "congestion": false,
+                    "readBufferSize": 2,
+                    "writeBufferSize": 2
+                },
+                "security": "reality",
+                "realitySettings": {
+                    "show": false,
+                    "dest": format!("{}:443", xdns_domain),
+                    "xver": 0,
+                    "serverNames": [xdns_domain],
+                    "privateKey": priv_key,
+                    "shortIds": ["", short_id]
+                },
+                "finalmask": {
+                    "udp": [{
+                        "type": "xdns",
+                        "settings": {
+                            "domain": xdns_domain
+                        }
+                    }]
+                }
+            },
+            "sniffing": {
+                "enabled": true,
+                "destOverride": ["http", "tls", "quic"],
+                "metadataOnly": false
+            }
+        })
+    }
+
+    fn generate_xdns_client_link(
+        uuid: &str,
+        host: &str,
+        port: i32,
+        pub_key: &str,
+        short_id: &str,
+        email: &str,
+        ip_version: IpVersion,
+        xdns_domain: &str,
+    ) -> String {
+        let finalmask_json = json!({
+            "udp": [{
+                "type": "xdns",
+                "settings": {
+                    "domain": xdns_domain
+                }
+            }]
+        });
+
+        let fm_str = serde_json::to_string(&finalmask_json).unwrap();
+        let fm_encoded = utf8_percent_encode(&fm_str, NON_ALPHANUMERIC).to_string();
+
+        let fmt_host = match ip_version {
+            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => format!("[{}]", host),
+            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => host.to_string(),
+        };
+
+        let encoded_pbk = utf8_percent_encode(pub_key, NON_ALPHANUMERIC).to_string();
+        let encoded_email = utf8_percent_encode(email, NON_ALPHANUMERIC).to_string();
+        let encoded_sni = utf8_percent_encode(xdns_domain, NON_ALPHANUMERIC).to_string();
+
+        format!(
+            "vless://{}@{}:{}?type=kcp&fm={}&security=reality&pbk={}&sid={}&sni={}#{}",
+            uuid, fmt_host, port, fm_encoded, encoded_pbk, short_id, encoded_sni, encoded_email
+        )
+    }
+
     fn resolve_public_hosts(
         ip_version: IpVersion,
         ipv4: Result<String>,
@@ -589,14 +762,15 @@ impl ConfigManager {
         let suffix = match proto {
             RealityProto::Vision => "vless_reality_vision",
             RealityProto::XHTTP => "vless_xhttp_reality",
+            RealityProto::XdnsMkcp => "vless_xdns_mkcp",
         };
         let email = format!("{}-{}", uuid_short, suffix);
         let tag = format!(
             "{}-{}-{}",
-            if proto == RealityProto::Vision {
-                "VLESS"
-            } else {
-                "XHTTP"
+            match proto {
+                RealityProto::Vision => "VLESS",
+                RealityProto::XHTTP => "XHTTP",
+                RealityProto::XdnsMkcp => "XDNS",
             },
             uuid_short,
             index
@@ -705,6 +879,9 @@ impl ConfigManager {
                 }
 
                 format!("{}#{}", link, encoded_email)
+            }
+            RealityProto::XdnsMkcp => {
+                unreachable!("XdnsMkcp should use generate_xdns_client_link instead")
             }
         }
     }
