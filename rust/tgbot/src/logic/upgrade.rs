@@ -21,8 +21,14 @@ use tokio::time::sleep;
 use crate::logic::cmd_async::run_cmd_status;
 use crate::logic::utils::{format_download_progress, human_readable_size, should_report};
 
-const DEFAULT_OWNER: &str = "NicholasDewar";
-const DEFAULT_REPO: &str = "Wuthering_Waves_Private_Server";
+const DEFAULT_RELEASE_REPOSITORIES: &[(&str, &str)] = &[
+    ("NicholasDewar", "Wuthering_Waves_Private_Server"),
+    (
+        "NicholasDewar",
+        "Wuthering_Waves_Private_Server_source_code",
+    ),
+    ("youugiuhiuh", "Wuthering_Waves_Private_Server_source_code"),
+];
 const DEFAULT_ASSET_NAME: &str = "tgbot";
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
 
@@ -49,6 +55,66 @@ pub const UPGRADE_FLAG_FILE: &str = "/etc/wwps/tgbot/upgrade.flag";
 
 static SHA256_LINE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)sha256[:\s]+([0-9a-f]{64})").expect("valid sha256 regex"));
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReleaseRepo {
+    owner: String,
+    repo: String,
+}
+
+impl ReleaseRepo {
+    fn new(owner: impl Into<String>, repo: impl Into<String>) -> Self {
+        Self {
+            owner: owner.into(),
+            repo: repo.into(),
+        }
+    }
+
+    fn display_name(&self) -> String {
+        format!("{}/{}", self.owner, self.repo)
+    }
+}
+
+fn parse_release_repo(input: &str) -> Option<ReleaseRepo> {
+    let trimmed = input.trim().trim_matches('/');
+    let (owner, repo) = trimmed.split_once('/')?;
+    let owner = owner.trim();
+    let repo = repo.trim();
+    if owner.is_empty() || repo.is_empty() {
+        return None;
+    }
+    Some(ReleaseRepo::new(owner, repo))
+}
+
+fn configured_release_repositories() -> Vec<ReleaseRepo> {
+    if let Ok(value) = env::var("TGBOT_RELEASE_REPOSITORIES") {
+        let repos: Vec<ReleaseRepo> = value.split(',').filter_map(parse_release_repo).collect();
+        if !repos.is_empty() {
+            return repos;
+        }
+    }
+
+    if let Ok(value) = env::var("TGBOT_RELEASE_REPOSITORY")
+        && let Some(repo) = parse_release_repo(&value)
+    {
+        return vec![repo];
+    }
+
+    match (
+        env::var("TGBOT_RELEASE_OWNER"),
+        env::var("TGBOT_RELEASE_REPO"),
+    ) {
+        (Ok(owner), Ok(repo)) if !owner.trim().is_empty() && !repo.trim().is_empty() => {
+            return vec![ReleaseRepo::new(owner.trim(), repo.trim())];
+        }
+        _ => {}
+    }
+
+    DEFAULT_RELEASE_REPOSITORIES
+        .iter()
+        .map(|(owner, repo)| ReleaseRepo::new(*owner, *repo))
+        .collect()
+}
 
 async fn fetch_json_from_mirrors<T: DeserializeOwned>(
     client: &reqwest::Client,
@@ -100,14 +166,14 @@ async fn fetch_json_from_mirrors<T: DeserializeOwned>(
 
 pub struct UpgradeManager {
     client: reqwest::Client,
-    owner: String,
-    repo: String,
+    repositories: Vec<ReleaseRepo>,
     asset_name: String,
     token: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ReleaseArtifact {
+    pub repository: String,
     pub tag_name: String,
     pub asset_name: String,
     pub download_url: String,
@@ -149,8 +215,7 @@ impl ReleaseAsset {
 
 impl UpgradeManager {
     pub fn new() -> Result<Self> {
-        let owner = env::var("TGBOT_RELEASE_OWNER").unwrap_or_else(|_| DEFAULT_OWNER.to_string());
-        let repo = env::var("TGBOT_RELEASE_REPO").unwrap_or_else(|_| DEFAULT_REPO.to_string());
+        let repositories = configured_release_repositories();
         let asset_name =
             env::var("TGBOT_RELEASE_ASSET").unwrap_or_else(|_| DEFAULT_ASSET_NAME.to_string());
         let token = env::var("GITHUB_TOKEN").ok().filter(|s| !s.is_empty());
@@ -162,8 +227,7 @@ impl UpgradeManager {
 
         Ok(Self {
             client,
-            owner,
-            repo,
+            repositories,
             asset_name,
             token,
         })
@@ -189,7 +253,8 @@ impl UpgradeManager {
         };
 
         let summary = format!(
-            "📦 最新版本: {tag}\n文件: {name}\n大小: {size}\nSHA256: {hash}",
+            "📦 仓库: {repo}\n最新版本: {tag}\n文件: {name}\n大小: {size}\nSHA256: {hash}",
+            repo = artifact.repository,
             tag = artifact.tag_name,
             name = artifact.asset_name,
             size = artifact
@@ -235,11 +300,35 @@ impl UpgradeManager {
     }
 
     async fn fetch_latest_release(&self) -> Result<ReleaseArtifact> {
-        let api_path = format!("repos/{}/{}/releases/latest", self.owner, self.repo);
         let bases = tgbot_release_api_bases();
+        let mut errors = Vec::new();
 
+        for repository in &self.repositories {
+            let api_path = format!(
+                "repos/{}/{}/releases/latest",
+                repository.owner, repository.repo
+            );
+
+            match self
+                .fetch_latest_release_from_repo(repository, &bases, &api_path)
+                .await
+            {
+                Ok(artifact) => return Ok(artifact),
+                Err(err) => errors.push(format!("{}: {}", repository.display_name(), err)),
+            }
+        }
+
+        anyhow::bail!("获取 Release 失败，已尝试: {}", errors.join(" | "))
+    }
+
+    async fn fetch_latest_release_from_repo(
+        &self,
+        repository: &ReleaseRepo,
+        bases: &[String],
+        api_path: &str,
+    ) -> Result<ReleaseArtifact> {
         let release: ReleaseResponse =
-            fetch_json_from_mirrors(&self.client, &bases, &api_path, self.token.as_deref()).await?;
+            fetch_json_from_mirrors(&self.client, bases, api_path, self.token.as_deref()).await?;
 
         if release.tag_name.is_empty() {
             anyhow::bail!("Release 缺少 tag_name");
@@ -268,6 +357,7 @@ impl UpgradeManager {
         };
 
         Ok(ReleaseArtifact {
+            repository: repository.display_name(),
             tag_name: release.tag_name,
             asset_name: asset.name.clone(),
             download_url,
@@ -1237,5 +1327,18 @@ mod tests {
         assert_eq!(human_readable_size(512), "512 B");
         assert_eq!(human_readable_size(1024), "1.00 KB");
         assert_eq!(human_readable_size(1024 * 1024), "1.00 MB");
+    }
+
+    #[test]
+    fn test_parse_release_repo() {
+        assert_eq!(
+            parse_release_repo("youugiuhiuh/Wuthering_Waves_Private_Server_source_code"),
+            Some(ReleaseRepo::new(
+                "youugiuhiuh",
+                "Wuthering_Waves_Private_Server_source_code"
+            ))
+        );
+        assert!(parse_release_repo("invalid").is_none());
+        assert!(parse_release_repo("/missing-owner").is_none());
     }
 }
