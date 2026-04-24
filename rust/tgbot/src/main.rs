@@ -1041,10 +1041,16 @@ fn handle_callback(
                                 "u_xhttp_batch_init",
                             ),
                         ]);
-                        buttons.push(vec![InlineKeyboardButton::callback(
-                            "🔐 ML-DSA-65 管理",
-                            "m_pq_mgmt",
-                        )]);
+                        buttons.push(vec![
+                            InlineKeyboardButton::callback(
+                                "🚀 XDNS (mKCP+DNS)",
+                                "u_xdns_init",
+                            ),
+                            InlineKeyboardButton::callback(
+                                "🔐 ML-DSA-65 管理",
+                                "m_pq_mgmt",
+                            ),
+                        ]);
                         buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")]);
                         bot.edit_message_text(
                             chat_id,
@@ -1836,6 +1842,192 @@ fn handle_callback(
                     .parse_mode(ParseMode::Html)
                     .await?;
                         trigger_reality_auto_init(bot.clone(), chat_id, msg_id);
+                    }
+                }
+                "u_xdns_init" => {
+                    if !MaintenanceManager::is_reality_base_ready().await {
+                        bot.answer_callback_query(q.id.clone())
+                            .text("⏳ 正在准备基础环境，请稍候...")
+                            .await?;
+                        bot.edit_message_text(
+                            chat_id,
+                            msg_id,
+                            "⏳ <b>正在自动初始化基础环境...</b>\n请稍候，完成后会自动进入 XDNS 配置界面。",
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .await?;
+                        trigger_reality_auto_init(bot.clone(), chat_id, msg_id);
+                        return Ok(());
+                    }
+
+                    let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+                    let mut buttons = vec![vec![InlineKeyboardButton::callback(
+                        "🌐 IPv4 (0.0.0.0)",
+                        "u_xdns_ip:4",
+                    )]];
+
+                    if has_ipv6 {
+                        buttons[0].push(InlineKeyboardButton::callback(
+                            "🌐 IPv6 (::)",
+                            "u_xdns_ip:6",
+                        ));
+                    }
+
+                    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
+
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        "🚀 <b>XDNS Finalmask 批量配置</b>\n\n✨ <b>特点:</b>\n• DNS 查询流量伪装\n• 适合仅允许 DNS 的受限网络\n• mKCP 可靠传输 (MTU=130)\n\n⬇️ <b>请选择网络协议版本:</b>",
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                d if d.starts_with("u_xdns_ip:") => {
+                    let ip_ver_code = d.strip_prefix("u_xdns_ip:").unwrap_or("4");
+                    let ip_version = match ip_ver_code {
+                        "6" => tgbot::logic::config::IpVersion::IPv6,
+                        _ => tgbot::logic::config::IpVersion::IPv4,
+                    };
+
+                    let ip_display = match ip_version {
+                        tgbot::logic::config::IpVersion::IPv4 => "IPv4",
+                        tgbot::logic::config::IpVersion::IPv6 => "IPv6",
+                        _ => "IPv4",
+                    };
+
+                    let buttons = vec![
+                        vec![
+                            InlineKeyboardButton::callback("1", format!("u_xdns_exec:{}:1", ip_ver_code)),
+                            InlineKeyboardButton::callback("3", format!("u_xdns_exec:{}:3", ip_ver_code)),
+                            InlineKeyboardButton::callback("5", format!("u_xdns_exec:{}:5", ip_ver_code)),
+                        ],
+                        vec![
+                            InlineKeyboardButton::callback("10", format!("u_xdns_exec:{}:10", ip_ver_code)),
+                            InlineKeyboardButton::callback("20", format!("u_xdns_exec:{}:20", ip_ver_code)),
+                            InlineKeyboardButton::callback("50", format!("u_xdns_exec:{}:50", ip_ver_code)),
+                        ],
+                        vec![InlineKeyboardButton::callback("⬅️ 返回", "u_xdns_init")],
+                    ];
+
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!(
+                            "🚀 <b>XDNS Finalmask 批量配置</b>\n\n🌐 网络协议: <b>{}</b>\n\n⬇️ <b>请选择生成数量:</b>",
+                            ip_display
+                        ),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                d if d.starts_with("u_xdns_exec:") => {
+                    let parts: Vec<&str> = d.strip_prefix("u_xdns_exec:").unwrap_or("").split(':').collect();
+                    if parts.len() != 2 {
+                        return Ok(());
+                    }
+
+                    let ip_ver_code = parts[0];
+                    let n: usize = parts[1].parse().unwrap_or(0);
+
+                    let ip_version = match ip_ver_code {
+                        "6" => tgbot::logic::config::IpVersion::IPv6,
+                        _ => tgbot::logic::config::IpVersion::IPv4,
+                    };
+
+                    let ip_str = match ip_version {
+                        tgbot::logic::config::IpVersion::IPv4 => "IPv4",
+                        tgbot::logic::config::IpVersion::IPv6 => "IPv6",
+                        _ => "IPv4",
+                    };
+
+                    bot.answer_callback_query(q.id.clone())
+                        .text(format!("⏳ 正在生成 {} 个 XDNS 配置...", n))
+                        .await?;
+
+                    let res = ConfigManager::batch_create_xdns_mkcp(
+                        n,
+                        true,
+                        ip_version,
+                    ).await;
+
+                    match res {
+                        Ok(result) => {
+                            let mut message_ids: Vec<MessageId> = Vec::new();
+
+                            let mut combined_links = String::new();
+                            for (i, link) in result.links.iter().enumerate() {
+                                combined_links.push_str(&format!("<code>{}</code>\n\n", link));
+                                if (i + 1) % 2 == 0 {
+                                    if let Ok(msg) = bot
+                                        .send_message(chat_id, combined_links.clone())
+                                        .parse_mode(ParseMode::Html)
+                                        .await
+                                    {
+                                        message_ids.push(msg.id);
+                                    }
+                                    combined_links.clear();
+                                }
+                            }
+                            if !combined_links.is_empty() {
+                                if let Ok(msg) = bot
+                                    .send_message(chat_id, combined_links)
+                                    .parse_mode(ParseMode::Html)
+                                    .await
+                                {
+                                    message_ids.push(msg.id);
+                                }
+                            }
+
+                            let links_text = result.links.join("\n");
+                            let timestamp = chrono::Utc::now().timestamp();
+                            let temp_file_path = format!("/tmp/wwps_xdns_links_{}.txt", timestamp);
+
+                            if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await {
+                                log::warn!("写入临时文件失败: {}", e);
+                            } else {
+                                let document_sent = bot
+                                    .send_document(chat_id, InputFile::file(&temp_file_path))
+                                    .caption("XDNS Finalmask 完整链接列表")
+                                    .await;
+
+                                if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
+                                    log::warn!("删除临时文件失败: {}", e);
+                                }
+
+                                if let Ok(msg) = document_sent {
+                                    message_ids.push(msg.id);
+                                }
+                            }
+
+                            let mut result_msg = format!(
+                                "✅ XDNS Finalmask 批量生成完成！\n\n📊 生成数量: {}\n🌐 网络协议: {}\n⚡ 特点: DNS伪装 + mKCP传输 (MTU=130)",
+                                result.created_count, ip_str
+                            );
+
+                            if let Some(filename) = result.config_file {
+                                result_msg.push_str(&format!("\n\n📁 配置文件: {}", filename));
+                            }
+
+                            let summary_msg = bot.send_message(chat_id, result_msg).await?;
+                            message_ids.push(summary_msg.id);
+
+                            let bot_clone = bot.clone();
+                            let chat_id_clone = chat_id;
+                            tokio::spawn(async move {
+                                tokio::time::sleep(Duration::from_secs(60)).await;
+                                for msg_id in message_ids {
+                                    let _ = bot_clone.delete_message(chat_id_clone, msg_id).await;
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            bot.send_message(chat_id, format!("❌ 生成失败: {}", e))
+                                .parse_mode(ParseMode::Html)
+                                .await?;
+                        }
                     }
                 }
                 d if d.starts_with("u_batch_ip_init:")
