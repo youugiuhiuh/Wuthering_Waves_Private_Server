@@ -18,9 +18,9 @@ permissions:
     actions: write
 
 env:
-    PUBLIC_REPO_OWNER: ${{ vars.PUBLIC_REPO_OWNER || 'NicholasDewar' }}
+    PUBLIC_REPO_OWNER: ${{ vars.PUBLIC_REPO_OWNER || github.repository_owner }}
     PUBLIC_REPO_NAME: ${{ vars.PUBLIC_REPO_NAME || 'Wuthering_Waves_Private_Server' }}
-    PUBLIC_REPO_FULL_NAME: ${{ format('{0}/{1}', vars.PUBLIC_REPO_OWNER || 'NicholasDewar', vars.PUBLIC_REPO_NAME || 'Wuthering_Waves_Private_Server') }}
+    PUBLIC_REPO_FULL_NAME: ${{ format('{0}/{1}', vars.PUBLIC_REPO_OWNER || github.repository_owner, vars.PUBLIC_REPO_NAME || 'Wuthering_Waves_Private_Server') }}
 
 jobs:
     build-and-push:
