@@ -17,6 +17,11 @@ permissions:
     contents: write
     actions: write
 
+env:
+    PUBLIC_REPO_OWNER: ${{ vars.PUBLIC_REPO_OWNER || 'NicholasDewar' }}
+    PUBLIC_REPO_NAME: ${{ vars.PUBLIC_REPO_NAME || 'Wuthering_Waves_Private_Server' }}
+    PUBLIC_REPO_FULL_NAME: ${{ format('{0}/{1}', vars.PUBLIC_REPO_OWNER || 'NicholasDewar', vars.PUBLIC_REPO_NAME || 'Wuthering_Waves_Private_Server') }}
+
 jobs:
     build-and-push:
         runs-on: ubuntu-latest
@@ -114,7 +119,7 @@ jobs:
             - name: Checkout Distribution Repo
               uses: actions/checkout@v4
               with:
-                  repository: NicholasDewar/Wuthering_Waves_Private_Server
+                  repository: ${{ env.PUBLIC_REPO_FULL_NAME }}
                   token: ${{ secrets.PUBLIC_REPO_TOKEN }}
                   path: public-repo
 
@@ -139,7 +144,7 @@ jobs:
                   GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
               run: |
                   # Get all releases sorted by creation date (newest first)
-                  RELEASES=$(gh release list --repo NicholasDewar/Wuthering_Waves_Private_Server --limit 100 -L 100 | sort -t$'\t' -k3 -r | cut -f 3)
+                  RELEASES=$(gh release list --repo "${{ env.PUBLIC_REPO_FULL_NAME }}" --limit 100 -L 100 | sort -t$'\t' -k3 -r | cut -f 3)
                   
                   # Count releases and delete old ones (keep last 3)
                   COUNT=0
@@ -147,7 +152,7 @@ jobs:
                     COUNT=$((COUNT + 1))
                     if [ $COUNT -gt 3 ]; then
                       echo "Deleting old release: $tag"
-                      gh release delete "$tag" --repo NicholasDewar/Wuthering_Waves_Private_Server --yes --cleanup-tag || true
+                      gh release delete "$tag" --repo "${{ env.PUBLIC_REPO_FULL_NAME }}" --yes --cleanup-tag || true
                     fi
                   done
                   
@@ -156,7 +161,7 @@ jobs:
             - name: Create Public Release
               uses: softprops/action-gh-release@v2
               with:
-                  repository: NicholasDewar/Wuthering_Waves_Private_Server
+                  repository: ${{ env.PUBLIC_REPO_FULL_NAME }}
                   token: ${{ secrets.PUBLIC_REPO_TOKEN }}
                   tag_name: v${{ env.NEW_VERSION }}
                   name: v${{ env.NEW_VERSION }}
