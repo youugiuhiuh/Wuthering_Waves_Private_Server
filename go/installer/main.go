@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	version     = "v0.5.3"
+	version     = "v0.5.4"
 	repoOwner   = "NicholasDewar"
 	repoName    = "Wuthering_Waves_Private_Server"
 	installDir  = "/etc/wwps/tgbot"
@@ -31,11 +31,9 @@ const (
 	serviceFile = "/etc/systemd/system/wwps-tgbot.service"
 )
 
-// releaseAPIBases: 按顺序尝试的 Release API 根地址（支持 GitHub / Codeberg / Gitea 等兼容 API）
+// releaseAPIBases: 按顺序尝试的 Release API 根地址，可通过 TGBOT_RELEASE_MIRRORS 覆盖。
 var releaseAPIBases = []string{
 	"https://api.github.com",
-	"https://codeberg.org/api/v1",
-	"https://gitea.com/api/v1",
 }
 
 func init() {
@@ -53,7 +51,7 @@ func init() {
 type releaseAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
-	URL                string `json:"url"` // Gitea/Codeberg 等可能用 url
+	URL                string `json:"url"` // 兼容部分 API 使用 url 字段返回下载地址
 	Digest             string `json:"digest"`
 }
 
@@ -86,7 +84,7 @@ func printBanner() {
 	printRed("\n==============================================================")
 	printGreen("WWPS TG Bot 管理工具")
 	printGreen("当前版本: " + version)
-	printGreen("Release 源: GitHub / Codeberg / Gitea 等 (可设 TGBOT_RELEASE_MIRRORS)")
+	printGreen("Release 源: 默认 GitHub，可设 TGBOT_RELEASE_MIRRORS")
 	printSkyBlue("所有管理功能请通过 Telegram Bot 完成")
 	printRed("==============================================================")
 }
@@ -350,7 +348,7 @@ func findAsset(release *latestRelease, name string) *releaseAsset {
 	return nil
 }
 
-// assetDownloadURL 返回该 asset 的下载地址（兼容 GitHub browser_download_url 与 Gitea/Codeberg url）
+// assetDownloadURL 返回该 asset 的下载地址，兼容不同 API 的下载地址字段。
 func assetDownloadURL(a *releaseAsset, fallbackTemplate string) string {
 	if a.BrowserDownloadURL != "" {
 		return a.BrowserDownloadURL
