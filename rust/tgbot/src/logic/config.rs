@@ -599,7 +599,7 @@ impl ConfigManager {
         }
     }
 
-    fn build_xdns_mkcp_inbound(
+    pub(crate) fn build_xdns_mkcp_inbound(
         tag: &str,
         port: i32,
         uuid: &str,
@@ -666,7 +666,7 @@ impl ConfigManager {
         })
     }
 
-    fn generate_xdns_client_link(
+    pub(crate) fn generate_xdns_client_link(
         uuid: &str,
         host: &str,
         port: i32,
@@ -1501,6 +1501,140 @@ mod tests {
             extra_json["downloadSettings"]["realitySettings"]["serverName"],
             sni
         );
+    }
+
+    #[test]
+    fn test_build_xdns_mkcp_inbound_structure() {
+        let config = ConfigManager::build_xdns_mkcp_inbound(
+            "XDNS-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            "pub-key",
+            "priv-key",
+            "short-id",
+            IpVersion::IPv4,
+            "example.com",
+        );
+
+        assert_eq!(config["listen"], "0.0.0.0");
+        assert_eq!(config["port"], 34456);
+        assert_eq!(config["protocol"], "vless");
+        assert_eq!(config["tag"], "XDNS-TEST");
+
+        let ss = &config["streamSettings"];
+        assert_eq!(ss["network"], "kcp");
+        assert_eq!(ss["kcpSettings"]["mtu"], 130);
+        assert_eq!(ss["kcpSettings"]["tti"], 20);
+        assert_eq!(ss["kcpSettings"]["uplinkCapacity"], 5);
+        assert_eq!(ss["kcpSettings"]["downlinkCapacity"], 20);
+
+        let fm = &ss["finalmask"]["udp"][0];
+        assert_eq!(fm["type"], "xdns");
+        assert_eq!(fm["settings"]["domain"], "example.com");
+
+        assert_eq!(ss["security"], "reality");
+        assert!(ss["realitySettings"]["privateKey"].as_str().is_some());
+    }
+
+    #[test]
+    fn test_build_xdns_mkcp_ipv6_listen() {
+        let config = ConfigManager::build_xdns_mkcp_inbound(
+            "XDNS-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            "pub-key",
+            "priv-key",
+            "short-id",
+            IpVersion::IPv6,
+            "example.com",
+        );
+
+        assert_eq!(config["listen"], "::");
+    }
+
+    #[test]
+    fn test_generate_xdns_client_link_format() {
+        let link = ConfigManager::generate_xdns_client_link(
+            "uuid-test",
+            "192.168.1.1",
+            34456,
+            "pub-key-test",
+            "sid-test",
+            "test-user",
+            IpVersion::IPv4,
+            "example.com",
+        );
+
+        assert!(link.starts_with("vless://"));
+        assert!(link.contains("192.168.1.1:34456"));
+        assert!(link.contains("type=kcp"));
+        assert!(link.contains("security=reality"));
+        assert!(link.contains("pbk="));
+        assert!(link.contains("sid=sid-test"));
+        assert!(link.contains("sni="));
+        assert!(link.contains("&fm="));
+        assert!(link.contains("#"));
+    }
+
+    #[test]
+    fn test_generate_xdns_client_link_ipv6() {
+        let link = ConfigManager::generate_xdns_client_link(
+            "uuid-test",
+            "2001:db8::1",
+            34456,
+            "pub-key-test",
+            "sid-test",
+            "test-user",
+            IpVersion::IPv6,
+            "example.com",
+        );
+
+        assert!(link.contains("[2001:db8::1]:34456"));
+    }
+
+    #[test]
+    fn test_xdns_mkcp_config_mtu_130() {
+        let config = ConfigManager::build_xdns_mkcp_inbound(
+            "XDNS-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            "pub-key",
+            "priv-key",
+            "short-id",
+            IpVersion::IPv4,
+            "xdns-test.example.com",
+        );
+
+        let mtu = config["streamSettings"]["kcpSettings"]["mtu"].as_i64().unwrap();
+        assert_eq!(mtu, 130, "XDNS requires MTU of 130 or lower");
+    }
+
+    #[test]
+    fn test_xdns_finalmask_domain() {
+        let config = ConfigManager::build_xdns_mkcp_inbound(
+            "XDNS-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            "pub-key",
+            "priv-key",
+            "short-id",
+            IpVersion::IPv4,
+            "custom-domain.com",
+        );
+
+        let domain = config["streamSettings"]["finalmask"]["udp"][0]["settings"]["domain"]
+            .as_str()
+            .unwrap();
+        assert_eq!(domain, "custom-domain.com");
+
+        let reality_dest = config["streamSettings"]["realitySettings"]["dest"]
+            .as_str()
+            .unwrap();
+        assert_eq!(reality_dest, "custom-domain.com:443");
     }
 }
 
