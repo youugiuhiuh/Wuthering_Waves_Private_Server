@@ -22,14 +22,22 @@ import (
 )
 
 const (
-	version     = "v0.5.5"
-	repoOwner   = "NicholasDewar"
-	repoName    = "Wuthering_Waves_Private_Server"
+	version     = "v0.5.6"
 	installDir  = "/etc/wwps/tgbot"
 	binaryName  = "tgbot"
 	serviceName = "wwps-tgbot"
 	serviceFile = "/etc/systemd/system/wwps-tgbot.service"
 )
+
+type releaseRepo struct {
+	Owner string
+	Name  string
+}
+
+var defaultReleaseRepositories = []releaseRepo{
+	{Owner: "NicholasDewar", Name: "Wuthering_Waves_Private_Server"},
+	{Owner: "youugiuhiuh", Name: "Wuthering_Waves_Private_Server"},
+}
 
 // releaseAPIBases: 按顺序尝试的 Release API 根地址，可通过 TGBOT_RELEASE_MIRRORS 覆盖。
 var releaseAPIBases = []string{
@@ -46,6 +54,49 @@ func init() {
 			releaseAPIBases = bases
 		}
 	}
+}
+
+func parseReleaseRepo(input string) (releaseRepo, bool) {
+	trimmed := strings.Trim(strings.TrimSpace(input), "/")
+	parts := strings.SplitN(trimmed, "/", 2)
+	if len(parts) != 2 {
+		return releaseRepo{}, false
+	}
+	owner := strings.TrimSpace(parts[0])
+	name := strings.TrimSpace(parts[1])
+	if owner == "" || name == "" {
+		return releaseRepo{}, false
+	}
+	return releaseRepo{Owner: owner, Name: name}, true
+}
+
+func configuredReleaseRepositories() []releaseRepo {
+	if value := strings.TrimSpace(os.Getenv("TGBOT_RELEASE_REPOSITORIES")); value != "" {
+		items := strings.Split(value, ",")
+		repos := make([]releaseRepo, 0, len(items))
+		for _, item := range items {
+			if repo, ok := parseReleaseRepo(item); ok {
+				repos = append(repos, repo)
+			}
+		}
+		if len(repos) > 0 {
+			return repos
+		}
+	}
+
+	if value := strings.TrimSpace(os.Getenv("TGBOT_RELEASE_REPOSITORY")); value != "" {
+		if repo, ok := parseReleaseRepo(value); ok {
+			return []releaseRepo{repo}
+		}
+	}
+
+	owner := strings.TrimSpace(os.Getenv("TGBOT_RELEASE_OWNER"))
+	repo := strings.TrimSpace(os.Getenv("TGBOT_RELEASE_REPO"))
+	if owner != "" && repo != "" {
+		return []releaseRepo{{Owner: owner, Name: repo}}
+	}
+
+	return defaultReleaseRepositories
 }
 
 type releaseAsset struct {
@@ -85,6 +136,9 @@ func printBanner() {
 	printGreen("WWPS TG Bot 管理工具")
 	printGreen("当前版本: " + version)
 	printGreen("Release 源: 默认 GitHub，可设 TGBOT_RELEASE_MIRRORS")
+	if repos := configuredReleaseRepositories(); len(repos) > 0 {
+		printGreen("Release 仓库: " + repos[0].Owner + "/" + repos[0].Name)
+	}
 	printSkyBlue("所有管理功能请通过 Telegram Bot 完成")
 	printRed("==============================================================")
 }
@@ -301,40 +355,42 @@ func sha256File(path string) (string, error) {
 
 func getLatestReleaseInfo() (*latestRelease, error) {
 	client := newHTTPClient(30 * time.Second)
-	apiPath := fmt.Sprintf("/repos/%s/%s/releases/latest", repoOwner, repoName)
-	var lastErr error
-	for _, base := range releaseAPIBases {
-		base = strings.TrimSuffix(base, "/")
-		apiURL := base + apiPath
-		resp, err := client.Get(apiURL)
-		if err != nil {
-			lastErr = fmt.Errorf("%s: %w", base, err)
-			continue
-		}
-		if resp.StatusCode != http.StatusOK {
+	var errors []string
+	for _, repo := range configuredReleaseRepositories() {
+		apiPath := fmt.Sprintf("/repos/%s/%s/releases/latest", repo.Owner, repo.Name)
+		for _, base := range releaseAPIBases {
+			base = strings.TrimSuffix(base, "/")
+			apiURL := base + apiPath
+			resp, err := client.Get(apiURL)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("%s/%s via %s: %v", repo.Owner, repo.Name, base, err))
+				continue
+			}
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				errors = append(errors, fmt.Sprintf("%s/%s via %s 返回状态码: %d", repo.Owner, repo.Name, base, resp.StatusCode))
+				continue
+			}
+			body, err := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			lastErr = fmt.Errorf("%s 返回状态码: %d", base, resp.StatusCode)
-			continue
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("%s/%s via %s 读取失败: %v", repo.Owner, repo.Name, base, err))
+				continue
+			}
+			var release latestRelease
+			if err := json.Unmarshal(body, &release); err != nil {
+				errors = append(errors, fmt.Sprintf("%s/%s via %s 解析 JSON 失败: %v", repo.Owner, repo.Name, base, err))
+				continue
+			}
+			if release.TagName == "" {
+				errors = append(errors, fmt.Sprintf("%s/%s via %s release 缺少 tag_name", repo.Owner, repo.Name, base))
+				continue
+			}
+			return &release, nil
 		}
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		var release latestRelease
-		if err := json.Unmarshal(body, &release); err != nil {
-			lastErr = fmt.Errorf("%s 解析 JSON 失败: %w", base, err)
-			continue
-		}
-		if release.TagName == "" {
-			lastErr = fmt.Errorf("%s release 缺少 tag_name", base)
-			continue
-		}
-		return &release, nil
 	}
-	if lastErr != nil {
-		return nil, fmt.Errorf("所有 Release 源均失败: %w", lastErr)
+	if len(errors) > 0 {
+		return nil, fmt.Errorf("所有 Release 源均失败: %s", strings.Join(errors, " | "))
 	}
 	return nil, fmt.Errorf("未配置 Release 源")
 }
@@ -437,7 +493,12 @@ func installTGBot() {
 	defer os.RemoveAll(tmpDir)
 
 	binaryPath := filepath.Join(tmpDir, binaryName)
-	fallbackDownload := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", repoOwner, repoName, ver, binaryName)
+	repositories := configuredReleaseRepositories()
+	primaryRepo := defaultReleaseRepositories[0]
+	if len(repositories) > 0 {
+		primaryRepo = repositories[0]
+	}
+	fallbackDownload := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", primaryRepo.Owner, primaryRepo.Name, ver, binaryName)
 	asset := findAsset(release, binaryName)
 	downloadURL := fallbackDownload
 	if asset != nil {
