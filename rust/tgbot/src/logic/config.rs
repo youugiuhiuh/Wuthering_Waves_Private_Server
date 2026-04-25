@@ -539,6 +539,9 @@ impl ConfigManager {
 
             let port = loop {
                 let p = rng.gen_range(10000..60000);
+                if crate::logic::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                    continue;
+                }
                 if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
                     break p as i32;
                 }
@@ -713,6 +716,9 @@ impl ConfigManager {
             } else {
                 loop {
                     let p = rng.gen_range(10000..60000);
+                    if crate::logic::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                        continue;
+                    }
                     if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
                         break p as i32;
                     }
@@ -721,6 +727,9 @@ impl ConfigManager {
         } else {
             loop {
                 let p = rng.gen_range(10000..60000);
+                if crate::logic::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                    continue;
+                }
                 if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
                     break p as i32;
                 }

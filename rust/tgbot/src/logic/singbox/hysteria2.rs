@@ -54,6 +54,23 @@ impl Hysteria2Config {
         )
     }
 
+    pub fn to_client_link_with_hopping(&self, host: &str, name: &str, hop_range: (u16, u16)) -> String {
+        let encoded_password = utf8_percent_encode(&self.password, NON_ALPHANUMERIC).to_string();
+        let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
+        let encoded_name = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
+        let hop_ports = format!("{}-{}", hop_range.0, hop_range.1);
+
+        format!(
+            "hysteria2://{}@{}:{}?sni={}&alpn=h3&insecure=1&hop_ports={}&hop_interval=30s#{}",
+            encoded_password,
+            host,
+            self.port,
+            encoded_sni,
+            hop_ports,
+            encoded_name
+        )
+    }
+
     pub fn generate_password() -> String {
         let mut rng = StdRng::from_entropy();
         let chars: String = (0..32)

@@ -2,6 +2,7 @@ use crate::core::paths::{singbox, xray};
 use crate::core::types::BatchCreationResult;
 use crate::core::types::IpVersion;
 use crate::logic::maintenance::MaintenanceManager;
+use crate::logic::port_allocator::PortAllocator;
 use crate::logic::sni_selector::SNISelector;
 use crate::logic::system::SystemMonitor;
 use anyhow::{Context, Result};
@@ -40,6 +41,15 @@ impl SingBoxConfigManager {
         fs::remove_file(path)
             .await
             .context("删除配置文件失败")?;
+        
+        let remaining = Self::list_all_inbound_files().await?;
+        let has_hysteria2 = remaining.iter().any(|f| f.contains("hysteria2"));
+        
+        if !has_hysteria2 {
+            Self::cleanup_port_hopping_firewall().await?;
+            PortAllocator::release_hysteria2_range().await?;
+        }
+        
         Self::reload_service().await?;
         Ok(())
     }
@@ -50,10 +60,32 @@ impl SingBoxConfigManager {
         for file in &files {
             let _ = fs::remove_file(file).await;
         }
+        
         if count > 0 {
+            Self::cleanup_port_hopping_firewall().await?;
+            PortAllocator::release_hysteria2_range().await?;
             Self::reload_service().await?;
         }
         Ok(count)
+    }
+
+    async fn cleanup_port_hopping_firewall() -> Result<()> {
+        use tokio::process::Command;
+
+        if let Some((main_port, _)) = PortAllocator::get_hysteria2_range().await {
+            let _ = Command::new("iptables")
+                .args([
+                    "-t", "nat", "-D", "PREROUTING", "-p", "udp",
+                    "-j", "REDIRECT",
+                    "--to-ports", &main_port.to_string(),
+                ])
+                .output()
+                .await;
+            
+            log::info!("已清理 Hysteria2 端口跳跃防火墙规则");
+        }
+
+        Ok(())
     }
 
     async fn reload_service() -> Result<()> {
@@ -166,6 +198,8 @@ impl SingBoxConfigManager {
         let mut links = Vec::new();
         let mut configs = Vec::new();
 
+        let (main_port, hop_range) = PortAllocator::allocate_hysteria2().await?;
+
         let port_443_available = MaintenanceManager::is_port_available(443).await;
 
         for i in 0..count {
@@ -173,9 +207,14 @@ impl SingBoxConfigManager {
 
             let port = if i == 0 && port_443_available {
                 443u16
+            } else if i == 1 {
+                main_port
             } else {
                 loop {
                     let p = StdRng::from_entropy().gen_range(10000..60000);
+                    if p >= hop_range.0 && p <= hop_range.1 {
+                        continue;
+                    }
                     if MaintenanceManager::is_port_available(p).await {
                         break p;
                     }
@@ -186,13 +225,19 @@ impl SingBoxConfigManager {
             let tag = format!("HYSTERIA2-{}-{}", i + 1, &password[..8]);
 
             let config = Hysteria2Config::new(port, password.clone(), sni.clone());
-            let link = config.to_client_link(&host, &tag);
+            let link = if i == 1 {
+                config.to_client_link_with_hopping(&host, &tag, hop_range)
+            } else {
+                config.to_client_link(&host, &tag)
+            };
 
             links.push(link);
             configs.push(config.to_inbound_json(&tag));
 
             let _ = MaintenanceManager::allow_port(port).await;
         }
+
+        Self::add_port_hopping_firewall_rules(main_port, hop_range).await?;
 
         let (filename, _path) = Self::save_standalone_config(configs, "hysteria2").await?;
         Self::ensure_tls_certificates().await?;
@@ -204,6 +249,28 @@ impl SingBoxConfigManager {
             backup_file: None,
             created_count: count,
         })
+    }
+
+    async fn add_port_hopping_firewall_rules(main_port: u16, hop_range: (u16, u16)) -> Result<()> {
+        use tokio::process::Command;
+
+        let range_str = format!("{}:{}", hop_range.0, hop_range.1);
+
+        let output = Command::new("iptables")
+            .args([
+                "-t", "nat", "-A", "PREROUTING", "-p", "udp",
+                "--dport", &range_str, "-j", "REDIRECT",
+                "--to-ports", &main_port.to_string(),
+            ])
+            .output()
+            .await;
+
+        if let Err(e) = output {
+            log::warn!("添加 iptables 规则失败 (可能需要 root 权限): {}", e);
+        }
+
+        log::info!("已配置 Hysteria2 端口跳跃: 主端口 {}, 跳跃范围 {}", main_port, range_str);
+        Ok(())
     }
 
     pub async fn batch_create_tuic(

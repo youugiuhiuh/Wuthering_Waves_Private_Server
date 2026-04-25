@@ -163,7 +163,7 @@ impl FirewallScanner {
     }
 
     /// 扫描目录下的所有 .json 文件提取端口
-    async fn scan_dir_for_ports<P: AsRef<Path>>(dir: P) -> Result<HashSet<u16>> {
+    pub async fn scan_dir_for_ports<P: AsRef<Path>>(dir: P) -> Result<HashSet<u16>> {
         let mut ports = HashSet::new();
         let dir = dir.as_ref();
         if !fs::try_exists(dir).await.unwrap_or(false) {

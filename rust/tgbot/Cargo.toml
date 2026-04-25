@@ -1,6 +1,6 @@
 [package]
 name = "tgbot"
-version = "2.3.15"
+version = "2.3.16"
 edition = "2024"
 
 [dependencies]
