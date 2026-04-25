@@ -1,6 +1,7 @@
 pub mod anti_debug;
 pub mod cmd_async;
 pub mod config;
+pub mod singbox;
 pub mod fail2ban;
 pub mod firewall;
 pub mod firewall_scanner;

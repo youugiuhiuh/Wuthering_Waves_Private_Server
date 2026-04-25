@@ -28,12 +28,13 @@ use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode,
 };
 use teloxide::utils::command::BotCommands;
-use tgbot::logic::config::{ConfigManager, RealityProto, WarpMode};
+use tgbot::logic::config::{ConfigManager, IpVersion, RealityProto, WarpMode};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
 use tgbot::logic::maintenance::{BBR3_PENDING_FLAG_FILE, MaintenanceManager};
 use tgbot::logic::operations::Operations;
 use tgbot::logic::scheduler::task_types::TaskType;
 use tgbot::logic::security::SecurityManager;
+use tgbot::logic::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use tgbot::logic::self_destruct::production_executor;
 use tgbot::logic::system::SystemMonitor;
 use tgbot::logic::totp::TotpManager;
@@ -976,51 +977,62 @@ fn handle_callback(
                         .await?;
                 }
                 "m_usr" => {
+                    let wwps_core_config_exists =
+                        Path::new("/etc/wwps/wwps-core/conf/").exists();
+                    let singbox_config_exists =
+                        Path::new("/etc/wwps/wwps-box/conf/config/").exists();
+                    let mut buttons = Vec::new();
+
+                    if !wwps_core_config_exists && !singbox_config_exists {
+                        buttons.push(vec![InlineKeyboardButton::callback(
+                            "🚀 初始化 wwps 环境",
+                            "a_inst_base",
+                        )]);
+                        bot.edit_message_text(chat_id, msg_id,
+                            "👥 <b>用户管理</b>\n\n❌ <b>未检测到 wwps 配置</b>\n\n当前系统尚未安装 wwps 或配置目录不存在。\n\n请先安装并配置 wwps 后再使用用户管理功能。")
+                        .parse_mode(ParseMode::Html)
+                        .reply_markup(InlineKeyboardMarkup::new(buttons))
+                        .await?;
+                    } else {
+                        buttons.push(vec![InlineKeyboardButton::callback("🅧 Xray-core 管理", "m_xray_mgmt")]);
+                        buttons.push(vec![InlineKeyboardButton::callback("📦 Sing-box 管理", "m_singbox_mgmt")]);
+                        buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")]);
+                        bot.edit_message_text(
+                            chat_id,
+                            msg_id,
+                            "👥 <b>用户管理</b>\n\n请选择核心类型:",
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .reply_markup(InlineKeyboardMarkup::new(buttons))
+                        .await?;
+                    }
+                }
+                "m_xray_mgmt" => {
                     let inbounds = ConfigManager::list_all_inbound_files()
                         .await
                         .unwrap_or_default();
                     let mut buttons = Vec::new();
 
                     if inbounds.is_empty() {
-                        // 检查wwps配置目录是否存在
-                        let wwps_core_config_exists =
-                            Path::new("/etc/wwps/wwps-core/conf/").exists();
-                        let singbox_config_exists =
-                            Path::new("/etc/wwps/wwps-box/conf/config/").exists();
-
-                        if !wwps_core_config_exists && !singbox_config_exists {
-                            // 完全没有安装wwps
-                            buttons.push(vec![InlineKeyboardButton::callback(
-                                "🚀 初始化 wwps 环境",
-                                "a_inst_base",
-                            )]);
-                            bot.edit_message_text(chat_id, msg_id,
-                        "👥 <b>用户管理</b>\n\n❌ <b>未检测到 wwps 配置</b>\n\n当前系统尚未安装 wwps 或配置目录不存在。\n\n请先安装并配置 wwps 后再使用用户管理功能。")
+                        buttons.push(vec![
+                            InlineKeyboardButton::callback(
+                                "🚀 Reality 批量备份",
+                                "u_batch_init",
+                            ),
+                            InlineKeyboardButton::callback(
+                                "🚀 Xhttp 批量备份",
+                                "u_xhttp_batch_init",
+                            ),
+                        ]);
+                        buttons.push(vec![InlineKeyboardButton::callback(
+                            "🔐 ML-DSA-65 管理",
+                            "m_pq_mgmt",
+                        )]);
+                        bot.edit_message_text(chat_id, msg_id,
+                            "🅧 <b>Xray-core 管理</b>\n\n⚠️ <b>未找到用户配置文件</b>\n\n检测到 Xray-core 已安装，但没有找到用户配置文件(*_inbounds.json)。\n\n您可以：\n• 创建 Reality 批量备份\n• 创建 Xhttp 批量备份\n• 管理 ML-DSA-65 (Reality PQ)\n• 检查配置文件是否正确放置")
                         .parse_mode(ParseMode::Html)
                         .reply_markup(InlineKeyboardMarkup::new(buttons))
                         .await?;
-                        } else {
-                            // 已安装但没有找到inbounds配置文件
-                            buttons.push(vec![
-                                InlineKeyboardButton::callback(
-                                    "🚀 Reality 批量备份",
-                                    "u_batch_init",
-                                ),
-                                InlineKeyboardButton::callback(
-                                    "🚀 Xhttp 批量备份",
-                                    "u_xhttp_batch_init",
-                                ),
-                            ]);
-                            buttons.push(vec![InlineKeyboardButton::callback(
-                                "🔐 ML-DSA-65 管理",
-                                "m_pq_mgmt",
-                            )]);
-                            bot.edit_message_text(chat_id, msg_id,
-                        "👥 <b>用户管理</b>\n\n⚠️ <b>未找到用户配置文件</b>\n\n检测到 wwps 已安装，但没有找到用户配置文件(*_inbounds.json)。\n\n您可以：\n• 创建 Reality 批量备份\n• 创建 Xhttp 批量备份\n• 管理 ML-DSA-65 (Reality PQ)\n• 检查配置文件是否正确放置")
-                        .parse_mode(ParseMode::Html)
-                        .reply_markup(InlineKeyboardMarkup::new(buttons))
-                        .await?;
-                        }
                     } else {
                         // 正常显示配置文件列表
                         for (i, path) in inbounds.iter().enumerate() {
@@ -1045,16 +1057,238 @@ fn handle_callback(
                             InlineKeyboardButton::callback("🚀 XDNS (mKCP+DNS)", "u_xdns_init"),
                             InlineKeyboardButton::callback("🔐 ML-DSA-65 管理", "m_pq_mgmt"),
                         ]);
-                        buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")]);
+                        buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
                         bot.edit_message_text(
                             chat_id,
                             msg_id,
-                            "👥 <b>用户管理</b>\n选择配置文件 (支持批量删除):",
+                            "🅧 <b>Xray-core 管理</b>\n选择配置文件 (支持批量删除):",
                         )
                         .parse_mode(ParseMode::Html)
                         .reply_markup(InlineKeyboardMarkup::new(buttons))
                         .await?;
                     }
+                }
+                "m_singbox_mgmt" => {
+                    let is_installed = SingBoxInstaller::is_installed().await;
+                    let inbounds = SingBoxConfigManager::list_all_inbound_files().await.unwrap_or_default();
+                    let mut buttons = Vec::new();
+
+                    if !is_installed {
+                        buttons.push(vec![InlineKeyboardButton::callback("🚀 安装 Sing-box", "sb_install")]);
+                        bot.edit_message_text(
+                            chat_id,
+                            msg_id,
+                            "📦 <b>Sing-box 管理</b>\n\n⚠️ <b>未检测到 Sing-box</b>\n\n系统尚未安装 Sing-box，无法使用 Hysteria2/TUIC 协议。",
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .reply_markup(InlineKeyboardMarkup::new(buttons))
+                        .await?;
+                    } else if inbounds.is_empty() {
+                        buttons.push(vec![
+                            InlineKeyboardButton::callback("🚀 Hysteria2 批量", "sb_h2_init"),
+                            InlineKeyboardButton::callback("🚀 TUIC 批量", "sb_tu_init"),
+                        ]);
+                        buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
+                        bot.edit_message_text(
+                            chat_id,
+                            msg_id,
+                            "📦 <b>Sing-box 管理</b>\n\n⚠️ <b>未找到配置文件</b>\n\n您可以创建 Hysteria2 或 TUIC 批量配置。",
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .reply_markup(InlineKeyboardMarkup::new(buttons))
+                        .await?;
+                    } else {
+                        for (i, path) in inbounds.iter().enumerate() {
+                            let filename = path.split('/').next_back().unwrap_or("Unknown");
+                            buttons.push(vec![InlineKeyboardButton::callback(
+                                format!("📁 {}", filename),
+                                format!("sb_l:{}", i),
+                            )]);
+                        }
+                        buttons.push(vec![InlineKeyboardButton::callback("🗑️ 删除管理", "sb_del_cfg")]);
+                        buttons.push(vec![
+                            InlineKeyboardButton::callback("🚀 Hysteria2 批量", "sb_h2_init"),
+                            InlineKeyboardButton::callback("🚀 TUIC 批量", "sb_tu_init"),
+                        ]);
+                        buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
+                        bot.edit_message_text(
+                            chat_id,
+                            msg_id,
+                            "📦 <b>Sing-box 管理</b>\n选择配置文件:",
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .reply_markup(InlineKeyboardMarkup::new(buttons))
+                        .await?;
+                    }
+                }
+                // Sing-box callbacks
+                "sb_install" => {
+                    bot.answer_callback_query(q.id.clone())
+                        .text("⏳ 正在安装 Sing-box...")
+                        .await?;
+                    
+                    tokio::spawn(async move {
+                        match SingBoxInstaller::install().await {
+                            Ok(_) => {
+                                let _ = bot.send_message(chat_id, "✅ <b>Sing-box 安装成功！</b>\n\n现在您可以创建 Hysteria2 或 TUIC 配置了。").parse_mode(ParseMode::Html).await;
+                            }
+                            Err(e) => {
+                                let _ = bot.send_message(chat_id, format!("❌ <b>安装失败</b>\n原因: {}", e)).parse_mode(ParseMode::Html).await;
+                            }
+                        }
+                    });
+                }
+                "sb_h2_init" => {
+                    let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+                    let mut buttons = vec![vec![
+                        InlineKeyboardButton::callback("🌐 IPv4", "sb_h2_ip:4"),
+                    ]];
+                    if has_ipv6 {
+                        buttons[0].push(InlineKeyboardButton::callback("🌐 IPv6", "sb_h2_ip:6"));
+                    }
+                    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_singbox_mgmt")]);
+                    
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        "🚀 <b>Hysteria2 批量创建</b>\n\n请选择网络协议版本:",
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                "sb_tu_init" => {
+                    let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+                    let mut buttons = vec![vec![
+                        InlineKeyboardButton::callback("🌐 IPv4", "sb_tu_ip:4"),
+                    ]];
+                    if has_ipv6 {
+                        buttons[0].push(InlineKeyboardButton::callback("🌐 IPv6", "sb_tu_ip:6"));
+                    }
+                    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_singbox_mgmt")]);
+                    
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        "🚀 <b>TUIC 批量创建</b>\n\n请选择网络协议版本:",
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                d if d.starts_with("sb_h2_ip:") => {
+                    let ip_ver = d.strip_prefix("sb_h2_ip:").unwrap_or("4");
+                    let buttons = vec![
+                        vec![
+                            InlineKeyboardButton::callback("1", format!("sb_h2_exec:{}:1", ip_ver)),
+                            InlineKeyboardButton::callback("3", format!("sb_h2_exec:{}:3", ip_ver)),
+                            InlineKeyboardButton::callback("5", format!("sb_h2_exec:{}:5", ip_ver)),
+                        ],
+                        vec![
+                            InlineKeyboardButton::callback("10", format!("sb_h2_exec:{}:10", ip_ver)),
+                            InlineKeyboardButton::callback("20", format!("sb_h2_exec:{}:20", ip_ver)),
+                            InlineKeyboardButton::callback("50", format!("sb_h2_exec:{}:50", ip_ver)),
+                        ],
+                        vec![InlineKeyboardButton::callback("⬅️ 返回", "sb_h2_init")],
+                    ];
+                    
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!("🚀 <b>Hysteria2 批量创建</b>\n\n🌐 网络版本: {}\n\n请选择生成数量:", if ip_ver == "4" { "IPv4" } else { "IPv6" }),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                d if d.starts_with("sb_tu_ip:") => {
+                    let ip_ver = d.strip_prefix("sb_tu_ip:").unwrap_or("4");
+                    let buttons = vec![
+                        vec![
+                            InlineKeyboardButton::callback("1", format!("sb_tu_exec:{}:1", ip_ver)),
+                            InlineKeyboardButton::callback("3", format!("sb_tu_exec:{}:3", ip_ver)),
+                            InlineKeyboardButton::callback("5", format!("sb_tu_exec:{}:5", ip_ver)),
+                        ],
+                        vec![
+                            InlineKeyboardButton::callback("10", format!("sb_tu_exec:{}:10", ip_ver)),
+                            InlineKeyboardButton::callback("20", format!("sb_tu_exec:{}:20", ip_ver)),
+                            InlineKeyboardButton::callback("50", format!("sb_tu_exec:{}:50", ip_ver)),
+                        ],
+                        vec![InlineKeyboardButton::callback("⬅️ 返回", "sb_tu_init")],
+                    ];
+                    
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!("🚀 <b>TUIC 批量创建</b>\n\n🌐 网络版本: {}\n\n请选择生成数量:", if ip_ver == "4" { "IPv4" } else { "IPv6" }),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                d if d.starts_with("sb_h2_exec:") => {
+                    let parts: Vec<&str> = d.strip_prefix("sb_h2_exec:").unwrap_or("").split(':').collect();
+                    if parts.len() != 2 {
+                        bot.answer_callback_query(q.id).text("参数错误").await?;
+                        return Ok(());
+                    }
+                    let ip_ver = parts[0];
+                    let count: usize = parts[1].parse().unwrap_or(1);
+                    let ip_version = if ip_ver == "6" { IpVersion::IPv6 } else { IpVersion::IPv4 };
+                    
+                    bot.answer_callback_query(q.id.clone())
+                        .text("⏳ 正在创建配置...")
+                        .await?;
+                    
+                    let bot_clone = bot.clone();
+                    let chat_id_clone = chat_id;
+                    
+                    tokio::spawn(async move {
+                        match SingBoxConfigManager::batch_create_hysteria2(count, ip_version).await {
+                            Ok(result) => {
+                                let mut msg = format!("✅ <b>Hysteria2 批量创建完成</b>\n\n已创建 {} 个配置:\n\n", result.created_count);
+                                for (i, link) in result.links.iter().enumerate() {
+                                    msg.push_str(&format!("{}. `{}`\n\n", i + 1, link));
+                                }
+                                let _ = bot_clone.send_message(chat_id_clone, msg).parse_mode(ParseMode::Html).await;
+                            }
+                            Err(e) => {
+                                let _ = bot_clone.send_message(chat_id_clone, format!("❌ <b>创建失败</b>\n原因: {}", e)).parse_mode(ParseMode::Html).await;
+                            }
+                        }
+                    });
+                }
+                d if d.starts_with("sb_tu_exec:") => {
+                    let parts: Vec<&str> = d.strip_prefix("sb_tu_exec:").unwrap_or("").split(':').collect();
+                    if parts.len() != 2 {
+                        bot.answer_callback_query(q.id).text("参数错误").await?;
+                        return Ok(());
+                    }
+                    let ip_ver = parts[0];
+                    let count: usize = parts[1].parse().unwrap_or(1);
+                    let ip_version = if ip_ver == "6" { IpVersion::IPv6 } else { IpVersion::IPv4 };
+                    
+                    bot.answer_callback_query(q.id.clone())
+                        .text("⏳ 正在创建配置...")
+                        .await?;
+                    
+                    let bot_clone = bot.clone();
+                    let chat_id_clone = chat_id;
+                    
+                    tokio::spawn(async move {
+                        match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
+                            Ok(result) => {
+                                let mut msg = format!("✅ <b>TUIC 批量创建完成</b>\n\n已创建 {} 个配置:\n\n", result.created_count);
+                                for (i, link) in result.links.iter().enumerate() {
+                                    msg.push_str(&format!("{}. `{}`\n\n", i + 1, link));
+                                }
+                                let _ = bot_clone.send_message(chat_id_clone, msg).parse_mode(ParseMode::Html).await;
+                            }
+                            Err(e) => {
+                                let _ = bot_clone.send_message(chat_id_clone, format!("❌ <b>创建失败</b>\n原因: {}", e)).parse_mode(ParseMode::Html).await;
+                            }
+                        }
+                    });
                 }
                 "m_log" => {
                     let has_access = Path::new("/etc/wwps/wwps-core/access.log").exists();
@@ -1867,7 +2101,7 @@ fn handle_callback(
                         ));
                     }
 
-                    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
+                    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")]);
 
                     bot.edit_message_text(
                         chat_id,
@@ -2350,7 +2584,7 @@ fn handle_callback(
                             "🎯 指定配置删除",
                             "cfg_del_select",
                         )],
-                        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")],
+                        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
                     ]);
                     bot.edit_message_text(
                         chat_id,
@@ -2374,7 +2608,7 @@ fn handle_callback(
                             "🔄 初始化 (生成新密钥对)",
                             "m_pq_init",
                         )],
-                        vec![InlineKeyboardButton::callback("⬅️ 返回用户管理", "m_usr")],
+                        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
                     ]);
                     bot.edit_message_text(
                     chat_id,
