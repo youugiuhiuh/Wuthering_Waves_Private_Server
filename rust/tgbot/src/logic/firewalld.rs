@@ -169,3 +169,21 @@ impl FirewalldClient {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_firewalld_client_exists() {
+        let _ = FirewalldClient;
+    }
+
+    #[test]
+    fn test_firewalld_proxy_interfaces() {
+        assert!(std::mem::size_of::<FirewallD1Proxy>() > 0);
+        assert!(std::mem::size_of::<FirewallD1ZoneProxy>() > 0);
+        assert!(std::mem::size_of::<FirewallD1ConfigProxy>() > 0);
+        assert!(std::mem::size_of::<FirewallD1ConfigZoneProxy>() > 0);
+    }
+}

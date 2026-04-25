@@ -247,3 +247,56 @@ impl FirewallScanner {
 fn parse_port_from_addr(addr: &str) -> Option<u16> {
     addr.split(':').last()?.parse::<u16>().ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_port_from_addr_ipv4() {
+        assert_eq!(parse_port_from_addr("127.0.0.1:22"), Some(22));
+        assert_eq!(parse_port_from_addr("0.0.0.0:443"), Some(443));
+        assert_eq!(parse_port_from_addr("192.168.1.1:8080"), Some(8080));
+    }
+
+    #[test]
+    fn test_parse_port_from_addr_ipv6() {
+        assert_eq!(parse_port_from_addr("[::1]:22"), Some(22));
+        assert_eq!(parse_port_from_addr("[::]:443"), Some(443));
+    }
+
+    #[test]
+    fn test_parse_port_from_addr_invalid() {
+        assert_eq!(parse_port_from_addr("invalid"), None);
+        assert_eq!(parse_port_from_addr(""), None);
+    }
+
+    #[test]
+    fn test_parse_port_from_addr_mixed() {
+        assert_eq!(parse_port_from_addr("*:2053"), Some(2053));
+    }
+
+    #[test]
+    fn test_port_regex_matches() {
+        let regex = Regex::new(r#""(?:port|listen_port)"\s*:\s*(\d+)"#).unwrap();
+        assert!(regex.is_match("\"port\": 443"));
+        assert!(regex.is_match("\"listen_port\": 8080"));
+        assert!(!regex.is_match("\"invalid\": value"));
+    }
+
+    #[test]
+    fn test_listen_addr_regex_matches() {
+        let regex = Regex::new(r#""listen"\s*:\s*"(?:127\.0\.0\.1|localhost)""#).unwrap();
+        assert!(regex.is_match("\"listen\": \"127.0.0.1\""));
+        assert!(regex.is_match("\"listen\": \"localhost\""));
+        assert!(!regex.is_match("\"listen\": \"0.0.0.0\""));
+    }
+
+    #[tokio::test]
+    async fn test_detect_ssh_port_default() {
+        let result = FirewallScanner::detect_ssh_port().await;
+        assert!(result.is_ok());
+        let port = result.unwrap();
+        assert!(port > 0);
+    }
+}

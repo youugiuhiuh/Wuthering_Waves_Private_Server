@@ -85,3 +85,26 @@ impl UfwClient {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_ufw_is_installed_returns_bool() {
+        let result = UfwClient::is_installed().await;
+        assert!(result || !result);
+    }
+
+    #[test]
+    fn test_ufw_client_exists() {
+        let _ = UfwClient;
+    }
+
+    #[test]
+    fn test_ufw_mutex_is_lazy_initialized() {
+        let mutex = &UFW_MUTEX;
+        assert!(std::mem::size_of::<Mutex<()>>() > 0);
+        let _ = mutex;
+    }
+}

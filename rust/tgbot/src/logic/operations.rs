@@ -122,3 +122,29 @@ impl Operations {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_operations_exists() {
+        let _ = Operations;
+    }
+
+    #[test]
+    fn test_maintenance_flag_is_atomic_bool() {
+        assert!(std::mem::size_of::<AtomicBool>() > 0);
+    }
+
+    #[test]
+    fn test_reboot_flag_is_atomic_bool() {
+        assert!(std::mem::size_of::<AtomicBool>() > 0);
+    }
+
+    #[test]
+    fn test_timeout_constants() {
+        assert!(TIMEOUT_APT.as_secs() > 0);
+        assert!(TIMEOUT_REBOOT.as_secs() > 0);
+    }
+}

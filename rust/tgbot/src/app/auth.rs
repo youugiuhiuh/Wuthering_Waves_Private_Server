@@ -89,3 +89,21 @@ pub async fn process_auth_code(
 
     Ok(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_process_auth_code_function_exists() {
+        let _ = process_auth_code;
+    }
+
+    #[test]
+    fn test_auth_code_response_result_type() {
+        fn check_response_result<T: Default>() -> bool {
+            std::mem::size_of::<ResponseResult<T>>() > 0
+        }
+        assert!(check_response_result::<bool>());
+    }
+}

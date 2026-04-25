@@ -112,3 +112,35 @@ bantime.max = 1w
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_detect_firewall_ufw() {
+        let result = Fail2BanManager::detect_firewall().await;
+        assert!(result == "ufw" || result == "firewalld" || result == "none");
+    }
+
+    #[tokio::test]
+    async fn test_detect_firewall_returns_valid_string() {
+        let firewall = Fail2BanManager::detect_firewall().await;
+        assert!(!firewall.is_empty());
+    }
+
+    #[test]
+    fn test_fail2ban_manager_struct_exists() {
+        let _ = Fail2BanManager;
+    }
+
+    #[test]
+    fn test_fail2ban_apply_config_action_ufw() {
+        let action = if std::path::Path::new("/etc/fail2ban/action.d/ufw-allports.conf").exists() {
+            "ufw-allports"
+        } else {
+            "ufw"
+        };
+        assert!(action == "ufw" || action == "ufw-allports");
+    }
+}

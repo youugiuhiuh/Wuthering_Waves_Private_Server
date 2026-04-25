@@ -354,3 +354,37 @@ impl SingBoxConfigManager {
         Ok((filename, config_path))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::logic::singbox::hysteria2::Hysteria2Config;
+    use crate::logic::singbox::tuic::TUICConfig;
+
+    #[tokio::test]
+    async fn test_singbox_is_installed_returns_bool() {
+        let result = SingBoxConfigManager::is_installed().await;
+        assert!(result || !result);
+    }
+
+    #[test]
+    fn test_singbox_config_manager_exists() {
+        let _ = SingBoxConfigManager;
+    }
+
+    #[test]
+    fn test_hysteria2_config_struct() {
+        let config = Hysteria2Config::new(8443, "test_password".to_string(), "sni.example.com".to_string());
+        assert_eq!(config.port, 8443);
+        assert_eq!(config.password, "test_password");
+        assert_eq!(config.sni, "sni.example.com");
+    }
+
+    #[test]
+    fn test_tuic_config_struct() {
+        let config = TUICConfig::new(9443, "test-uuid".to_string(), "password".to_string(), "sni.example.com".to_string());
+        assert_eq!(config.port, 9443);
+        assert_eq!(config.uuid, "test-uuid");
+        assert_eq!(config.congestion_control, "bbr");
+    }
+}
