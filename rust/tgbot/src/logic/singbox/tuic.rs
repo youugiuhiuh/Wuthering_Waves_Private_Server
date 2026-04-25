@@ -38,8 +38,8 @@ impl TUICConfig {
                 "enabled": true,
                 "server_name": self.sni,
                 "alpn": [self.alpn],
-                "certificate_path": "/etc/wwps/wwps-box/cert.pem",
-                "private_key_path": "/etc/wwps/wwps-box/key.pem"
+                "certificate_path": "/etc/wwps/wwps-box/certs/tls.cer",
+                "key_path": "/etc/wwps/wwps-box/certs/tls.key"
             },
             "congestion_control": self.congestion_control,
             "zero_rtt_handshake": false,

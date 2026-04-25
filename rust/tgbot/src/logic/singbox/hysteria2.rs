@@ -18,9 +18,6 @@ impl Hysteria2Config {
         }
     }
 
-    /// 生成 sing-box 入站配置 JSON
-    /// 参考: https://sing-box.sagernet.org/configuration/inbound/hysteria2/
-    /// 参考: 233boy/sing-box 配置格式
     pub fn to_inbound_json(&self, tag: &str) -> Value {
         serde_json::json!({
             "type": "hysteria2",
@@ -35,13 +32,13 @@ impl Hysteria2Config {
             "tls": {
                 "enabled": true,
                 "server_name": self.sni,
-                "alpn": ["h3"]
+                "alpn": ["h3"],
+                "key_path": "/etc/wwps/wwps-box/certs/tls.key",
+                "certificate_path": "/etc/wwps/wwps-box/certs/tls.cer"
             }
         })
     }
 
-    /// 生成客户端分享链接
-    /// 参考 233boy/sing-box 标准格式: hysteria2://password@host:port?sni=xxx#name
     pub fn to_client_link(&self, host: &str, name: &str) -> String {
         let encoded_password = utf8_percent_encode(&self.password, NON_ALPHANUMERIC).to_string();
         let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
@@ -57,7 +54,6 @@ impl Hysteria2Config {
         )
     }
 
-    /// 生成随机密码 (32字符)
     pub fn generate_password() -> String {
         let mut rng = StdRng::from_entropy();
         let chars: String = (0..32)

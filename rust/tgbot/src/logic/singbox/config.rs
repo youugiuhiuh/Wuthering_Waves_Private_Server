@@ -65,6 +65,10 @@ impl SingBoxConfigManager {
         Ok(count)
     }
 
+    const WWPS_BOX_CERTS_DIR: &str = "/etc/wwps/wwps-box/certs";
+    const WWPS_BOX_TLS_CERT: &str = "/etc/wwps/wwps-box/certs/tls.cer";
+    const WWPS_BOX_TLS_KEY: &str = "/etc/wwps/wwps-box/certs/tls.key";
+
     async fn reload_service() -> Result<()> {
         let output = tokio::process::Command::new(WWPS_BOX_BIN)
             .args(["run", "-C", WWPS_BOX_CONF_DIR])
@@ -77,6 +81,67 @@ impl SingBoxConfigManager {
                 String::from_utf8_lossy(&output.stderr)
             ));
         }
+        Ok(())
+    }
+
+    async fn ensure_tls_certificates() -> Result<()> {
+        if tokio::fs::try_exists(Self::WWPS_BOX_TLS_CERT).await.unwrap_or(false)
+            && tokio::fs::try_exists(Self::WWPS_BOX_TLS_KEY).await.unwrap_or(false)
+        {
+            return Ok(());
+        }
+
+        tokio::fs::create_dir_all(Self::WWPS_BOX_CERTS_DIR)
+            .await
+            .context("创建证书目录失败")?;
+
+        let output = tokio::process::Command::new(WWPS_BOX_BIN)
+            .args(["generate", "tls-keypair", "tls", "-m", "456"])
+            .output()
+            .await
+            .context("生成 TLS 证书失败")?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!(
+                "生成证书失败: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<&str> = output_str.lines().collect();
+
+        let mut key_content = String::new();
+        let mut cert_content = String::new();
+        let mut in_key = false;
+        let mut in_cert = false;
+
+        for line in lines {
+            if line.contains("BEGIN PRIVATE KEY") {
+                in_key = true;
+                in_cert = false;
+            } else if line.contains("BEGIN CERTIFICATE") {
+                in_cert = true;
+                in_key = false;
+            } else if line.contains("END PRIVATE KEY") {
+                in_key = false;
+            } else if line.contains("END CERTIFICATE") {
+                in_cert = false;
+            }
+
+            if in_key {
+                key_content.push_str(line);
+                key_content.push('\n');
+            }
+            if in_cert {
+                cert_content.push_str(line);
+                cert_content.push('\n');
+            }
+        }
+
+        tokio::fs::write(Self::WWPS_BOX_TLS_KEY, key_content).await?;
+        tokio::fs::write(Self::WWPS_BOX_TLS_CERT, cert_content).await?;
+
         Ok(())
     }
 
@@ -261,6 +326,7 @@ impl SingBoxConfigManager {
         let content = serde_json::to_string_pretty(&full_config)?;
         fs::write(&config_path, content).await?;
 
+        Self::ensure_tls_certificates().await?;
         Self::reload_service().await?;
 
         Ok(())
