@@ -9,7 +9,7 @@ use std::path::Path;
 use std::time::Duration;
 use tokio::fs;
 
-use crate::core::paths::xray;
+use crate::core::paths::{xray, warp};
 use crate::core::types::{BatchCreationResult, IpVersion};
 use crate::logic::cmd_async::run_cmd_output;
 
@@ -925,14 +925,11 @@ impl ConfigManager {
     ) -> Result<BatchCreationResult> {
         let created_count = configs.len();
         // 备份原配置
-        let backup_path = Self::backup_config_file(
-            "xray::CONF_DIR07_VLESS_vision_reality_inbounds.json",
-        )
-        .await?;
+        let existing_path = format!("{}/07_VLESS_vision_reality_inbounds.json", xray::CONF_DIR);
+        let backup_path = Self::backup_config_file(&existing_path).await?;
 
         // 更新现有配置
-        let path = "xray::CONF_DIR07_VLESS_vision_reality_inbounds.json";
-        let mut v: Value = serde_json::from_str(&fs::read_to_string(path).await?)?;
+        let mut v: Value = serde_json::from_str(&fs::read_to_string(&existing_path).await?)?;
 
         // 清理旧配置并添加新配置
         if let Some(inbounds) = v["inbounds"].as_array_mut() {
@@ -946,7 +943,7 @@ impl ConfigManager {
         }
 
         // 保存配置
-        fs::write(path, serde_json::to_string_pretty(&v)?).await?;
+        fs::write(&existing_path, serde_json::to_string_pretty(&v)?).await?;
         crate::logic::maintenance::MaintenanceManager::reload_core().await?;
 
         Ok(BatchCreationResult {
@@ -1014,8 +1011,8 @@ impl ConfigManager {
     }
 
     pub async fn update_warp_routing_rules(rules: Vec<String>, mode: WarpMode) -> Result<()> {
-        let config_path = "xray::CONF_DIR10_warp_routing.json";
-        let account_path = "warp::ACCOUNT_FILE";
+        let config_path = format!("{}/10_warp_routing.json", xray::CONF_DIR);
+        let account_path = warp::ACCOUNT_FILE;
 
         // Read account config
         let account_content = fs::read_to_string(account_path)
@@ -1127,12 +1124,12 @@ impl ConfigManager {
     }
 
     pub async fn get_warp_routing_rules() -> Result<(Vec<String>, WarpMode)> {
-        let config_path = "xray::CONF_DIR10_warp_routing.json";
-        if !Path::new(config_path).exists() {
+        let config_path = format!("{}/10_warp_routing.json", xray::CONF_DIR);
+        if !Path::new(&config_path).exists() {
             return Ok((Vec::new(), WarpMode::Default));
         }
 
-        let content = fs::read_to_string(config_path).await?;
+        let content = fs::read_to_string(&config_path).await?;
         let v: Value = serde_json::from_str(&content)?;
 
         // Extract rules: Find the rule with "domain" field
