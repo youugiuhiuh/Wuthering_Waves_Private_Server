@@ -1185,14 +1185,14 @@ fn handle_callback(
                     let ip_ver = d.strip_prefix("sb_h2_ip:").unwrap_or("4");
                     let buttons = vec![
                         vec![
-                            InlineKeyboardButton::callback("1", format!("sb_h2_exec:{}:1", ip_ver)),
-                            InlineKeyboardButton::callback("3", format!("sb_h2_exec:{}:3", ip_ver)),
-                            InlineKeyboardButton::callback("5", format!("sb_h2_exec:{}:5", ip_ver)),
+                            InlineKeyboardButton::callback("1", format!("sb_h2_obfs:{}:1", ip_ver)),
+                            InlineKeyboardButton::callback("3", format!("sb_h2_obfs:{}:3", ip_ver)),
+                            InlineKeyboardButton::callback("5", format!("sb_h2_obfs:{}:5", ip_ver)),
                         ],
                         vec![
-                            InlineKeyboardButton::callback("10", format!("sb_h2_exec:{}:10", ip_ver)),
-                            InlineKeyboardButton::callback("20", format!("sb_h2_exec:{}:20", ip_ver)),
-                            InlineKeyboardButton::callback("50", format!("sb_h2_exec:{}:50", ip_ver)),
+                            InlineKeyboardButton::callback("10", format!("sb_h2_obfs:{}:10", ip_ver)),
+                            InlineKeyboardButton::callback("20", format!("sb_h2_obfs:{}:20", ip_ver)),
+                            InlineKeyboardButton::callback("50", format!("sb_h2_obfs:{}:50", ip_ver)),
                         ],
                         vec![InlineKeyboardButton::callback("⬅️ 返回", "sb_h2_init")],
                     ];
@@ -1200,7 +1200,49 @@ fn handle_callback(
                     bot.edit_message_text(
                         chat_id,
                         msg_id,
-                        format!("🚀 <b>Hysteria2 批量创建</b>\n\n🌐 网络版本: {}\n\n请选择生成数量:", if ip_ver == "4" { "IPv4" } else { "IPv6" }),
+                        format!("🚀 <b>Hysteria2 批量创建</b>\n\n🌐 网络协议版本: {}\n\n请选择生成数量:", if ip_ver == "4" { "IPv4" } else { "IPv6" }),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                d if d.starts_with("sb_h2_obfs:") => {
+                    let parts: Vec<&str> = d.strip_prefix("sb_h2_obfs:").unwrap_or("").split(':').collect();
+                    if parts.len() != 2 {
+                        bot.answer_callback_query(q.id).text("参数错误").await?;
+                        return Ok(());
+                    }
+                    let ip_ver = parts[0];
+                    let count = parts[1];
+                    let ip_display = if ip_ver == "4" { "IPv4" } else { "IPv6" };
+                    
+                    let buttons = vec![
+                        vec![
+                            InlineKeyboardButton::callback(
+                                "🟢 推荐：开启混淆",
+                                format!("sb_h2_exec:{}:{}:1", ip_ver, count),
+                            ),
+                        ],
+                        vec![
+                            InlineKeyboardButton::callback(
+                                "🔴 不开启",
+                                format!("sb_h2_exec:{}:{}:0", ip_ver, count),
+                            ),
+                        ],
+                        vec![InlineKeyboardButton::callback("⬅️ 返回", "sb_h2_init")],
+                    ];
+                    
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!(
+                            "🚀 <b>Hysteria2 批量创建</b>\n\n\
+                            🌐 网络协议: {}\n\
+                            📊 生成数量: {}\n\n\
+                            ⚠️ <b>提示</b>：如果您的运营商针对 QUIC 流量进行限制或干扰，建议开启 Salamander 混淆\n\n\
+                            是否启用混淆?",
+                            ip_display, count
+                        ),
                     )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -1233,12 +1275,13 @@ fn handle_callback(
                 }
                 d if d.starts_with("sb_h2_exec:") => {
                     let parts: Vec<&str> = d.strip_prefix("sb_h2_exec:").unwrap_or("").split(':').collect();
-                    if parts.len() != 2 {
+                    if parts.len() != 3 {
                         bot.answer_callback_query(q.id).text("参数错误").await?;
                         return Ok(());
                     }
                     let ip_ver = parts[0];
                     let count: usize = parts[1].parse().unwrap_or(1);
+                    let obfs_enabled: bool = parts[2] == "1";
                     let ip_version = if ip_ver == "6" { IpVersion::IPv6 } else { IpVersion::IPv4 };
                     
                     bot.answer_callback_query(q.id.clone())
@@ -1249,7 +1292,7 @@ fn handle_callback(
                     let chat_id_clone = chat_id;
                     
                     tokio::spawn(async move {
-                        match SingBoxConfigManager::batch_create_hysteria2(count, ip_version).await {
+                        match SingBoxConfigManager::batch_create_hysteria2(count, ip_version, obfs_enabled).await {
                             Ok(result) => {
                                 let mut message_ids: Vec<MessageId> = Vec::new();
 

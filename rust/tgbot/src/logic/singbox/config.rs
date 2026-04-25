@@ -180,6 +180,7 @@ impl SingBoxConfigManager {
     pub async fn batch_create_hysteria2(
         count: usize,
         ip_version: IpVersion,
+        enable_obfs: bool,
     ) -> Result<BatchCreationResult> {
         let host = match ip_version {
             IpVersion::IPv4 | IpVersion::SplitStackV4Primary => {
@@ -224,11 +225,17 @@ impl SingBoxConfigManager {
             let password = Hysteria2Config::generate_password();
             let tag = format!("HYSTERIA2-{}-{}", i + 1, &password[..8]);
 
-            let config = Hysteria2Config::new(port, password.clone(), sni.clone());
-            let link = if i == 1 {
-                config.to_client_link_with_hopping(&host, &tag, hop_range)
+            let config = if enable_obfs {
+                let obfs_password = Hysteria2Config::generate_obfs_password();
+                Hysteria2Config::with_obfs(port, password.clone(), sni.clone(), "salamander".to_string(), obfs_password)
             } else {
-                config.to_client_link(&host, &tag)
+                Hysteria2Config::new(port, password.clone(), sni.clone())
+            };
+
+            let link = if enable_obfs {
+                config.to_client_link_with_hopping_and_obfs(&host, &tag, hop_range)
+            } else {
+                config.to_client_link_with_hopping(&host, &tag, hop_range)
             };
 
             links.push(link);
