@@ -2,15 +2,13 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use tokio::fs;
 
-const WWPS_BOX_DIR: &str = "/etc/wwps/wwps-box";
-const WWPS_BOX_BIN: &str = "/etc/wwps/wwps-box/sing-box";
-const WWPS_BOX_CONF_DIR: &str = "/etc/wwps/wwps-box/conf";
+use crate::core::paths::singbox;
 
 pub struct SingBoxInstaller;
 
 impl SingBoxInstaller {
     pub async fn is_installed() -> bool {
-        fs::try_exists(WWPS_BOX_BIN)
+        fs::try_exists(singbox::BIN)
             .await
             .unwrap_or(false)
     }
@@ -24,10 +22,10 @@ impl SingBoxInstaller {
             version, version, arch
         );
 
-        fs::create_dir_all(WWPS_BOX_DIR)
+        fs::create_dir_all(singbox::DIR)
             .await
             .context("创建安装目录失败")?;
-        fs::create_dir_all(WWPS_BOX_CONF_DIR)
+        fs::create_dir_all(singbox::CONF_DIR)
             .await
             .context("创建配置目录失败")?;
 
@@ -40,16 +38,16 @@ impl SingBoxInstaller {
         Self::extract_archive(&archive_path, temp_dir).await?;
 
         let bin_path = format!("{}/sing-box-{}-linux-{}/sing-box", temp_dir, version, arch);
-        fs::copy(&bin_path, WWPS_BOX_BIN)
+        fs::copy(&bin_path, singbox::BIN)
             .await
             .context("复制二进制文件失败")?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(WWPS_BOX_BIN).await?.permissions();
+            let mut perms = fs::metadata(singbox::BIN).await?.permissions();
             perms.set_mode(0o755);
-            fs::set_permissions(WWPS_BOX_BIN, perms).await?;
+            fs::set_permissions(singbox::BIN, perms).await?;
         }
 
         Self::create_service().await?;
@@ -63,7 +61,7 @@ impl SingBoxInstaller {
         Self::stop_service().await?;
 
         let _ = fs::remove_file("/etc/systemd/system/sing-box.service").await;
-        let _ = fs::remove_dir_all(WWPS_BOX_DIR).await;
+        let _ = fs::remove_dir_all(singbox::DIR).await;
 
         Ok(())
     }
