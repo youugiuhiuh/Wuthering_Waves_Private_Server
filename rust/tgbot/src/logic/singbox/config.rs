@@ -229,13 +229,21 @@ impl SingBoxConfigManager {
 
         let config_path = format!("{}/02_singbox_inbounds.json", WWPS_BOX_CONF_DIR);
 
+        let dns_servers = json!([
+            {"tag": "dns", "type": "udp", "server": "8.8.8.8", "domain_resolver": "local"},
+            {"tag": "local", "type": "local"}
+        ]);
+
         let full_config = json!({
             "log": {
                 "level": "warning",
                 "output": "/var/log/sing-box.log"
             },
             "dns": {
-                "servers": ["8.8.8.8", "1.1.1.1"]
+                "servers": dns_servers
+            },
+            "route": {
+                "default_domain_resolver": "dns"
             },
             "inbounds": configs,
             "outbounds": [
