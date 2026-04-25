@@ -861,7 +861,7 @@ fn handle_callback(
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![
                             InlineKeyboardButton::callback("🛰 Xray-core 管理", "a_wwps_core_menu"),
-                            InlineKeyboardButton::callback("📦 wwps-box 管理", "a_wwps_box_menu"),
+                            InlineKeyboardButton::callback("📦 Sing-box 管理", "a_wwps_box_menu"),
                         ],
                         vec![
                             InlineKeyboardButton::callback("⏰ 定时任务", "m_sched"),
@@ -983,7 +983,7 @@ fn handle_callback(
                     let wwps_core_config_exists =
                         Path::new("/etc/wwps/wwps-core/conf/").exists();
                     let singbox_config_exists =
-                        Path::new("/etc/wwps/wwps-box/conf/config/").exists();
+                        Path::new("/etc/wwps/wwps-box/conf/").exists();
                     let mut buttons = Vec::new();
 
                     if !wwps_core_config_exists && !singbox_config_exists {
@@ -998,7 +998,7 @@ fn handle_callback(
                         .await?;
                     } else {
                         buttons.push(vec![InlineKeyboardButton::callback("🅧 Xray-core 管理", "m_xray_mgmt")]);
-                        buttons.push(vec![InlineKeyboardButton::callback("📦 wwps-box 管理", "m_singbox_mgmt")]);
+                        buttons.push(vec![InlineKeyboardButton::callback("📦 Sing-box 管理", "m_singbox_mgmt")]);
                         buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")]);
                         bot.edit_message_text(
                             chat_id,
@@ -1077,11 +1077,11 @@ fn handle_callback(
                     let mut buttons = Vec::new();
 
                     if !is_installed {
-                        buttons.push(vec![InlineKeyboardButton::callback("🚀 安装 wwps-box", "sb_install")]);
+                        buttons.push(vec![InlineKeyboardButton::callback("🚀 安装 Sing-box", "sb_install")]);
                         bot.edit_message_text(
                             chat_id,
                             msg_id,
-                            "📦 <b>wwps-box 管理</b>\n\n⚠️ <b>未检测到 wwps-box</b>\n\n系统尚未安装 wwps-box，无法使用 Hysteria2/TUIC 协议。",
+                            "📦 <b>Sing-box 管理</b>\n\n⚠️ <b>未检测到 Sing-box</b>\n\n系统尚未安装 Sing-box，无法使用 Hysteria2/TUIC 协议。",
                         )
                         .parse_mode(ParseMode::Html)
                         .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -1095,7 +1095,7 @@ fn handle_callback(
                         bot.edit_message_text(
                             chat_id,
                             msg_id,
-                            "📦 <b>wwps-box 管理</b>\n\n⚠️ <b>未找到配置文件</b>\n\n您可以创建 Hysteria2 或 TUIC 批量配置。",
+                            "📦 <b>Sing-box 管理</b>\n\n⚠️ <b>未找到配置文件</b>\n\n您可以创建 Hysteria2 或 TUIC 批量配置。",
                         )
                         .parse_mode(ParseMode::Html)
                         .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -1117,23 +1117,23 @@ fn handle_callback(
                         bot.edit_message_text(
                             chat_id,
                             msg_id,
-                            "📦 <b>wwps-box 管理</b>\n选择配置文件:",
+                            "📦 <b>Sing-box 管理</b>\n选择配置文件:",
                         )
                         .parse_mode(ParseMode::Html)
                         .reply_markup(InlineKeyboardMarkup::new(buttons))
                         .await?;
                     }
                 }
-                // wwps-box callbacks
+                // Sing-box callbacks
                 "sb_install" => {
                     bot.answer_callback_query(q.id.clone())
-                        .text("⏳ 正在安装 wwps-box...")
+                        .text("⏳ 正在安装 Sing-box...")
                         .await?;
                     
                     tokio::spawn(async move {
                         match SingBoxInstaller::install().await {
                             Ok(_) => {
-                                let _ = bot.send_message(chat_id, "✅ <b>wwps-box 安装成功！</b>\n\n现在您可以创建 Hysteria2 或 TUIC 配置了。").parse_mode(ParseMode::Html).await;
+                                let _ = bot.send_message(chat_id, "✅ <b>Sing-box 安装成功！</b>\n\n现在您可以创建 Hysteria2 或 TUIC 配置了。").parse_mode(ParseMode::Html).await;
                             }
                             Err(e) => {
                                 let _ = bot.send_message(chat_id, format!("❌ <b>安装失败</b>\n原因: {}", e)).parse_mode(ParseMode::Html).await;
@@ -3230,7 +3230,7 @@ fn handle_callback(
                 }
                 "a_wwps_box_restart" => {
                     bot.answer_callback_query(q.id.clone())
-                        .text("🔄 正在重启 wwps-box 服务...")
+                        .text("🔄 正在重启 Sing-box 服务...")
                         .await?;
 
                     match SingBoxInstaller::restart_service().await {
@@ -3238,7 +3238,7 @@ fn handle_callback(
                             bot.edit_message_text(
                                 chat_id,
                                 msg_id,
-                                "✅ <b>wwps-box 重启成功</b>",
+                                "✅ <b>Sing-box 重启成功</b>",
                             )
                             .parse_mode(ParseMode::Html)
                             .await?;
@@ -3263,7 +3263,7 @@ fn handle_callback(
                             bot.edit_message_text(
                                 chat_id,
                                 msg_id,
-                                format!("📦 <b>wwps-box 状态</b>\n\n{}", status),
+                                format!("📦 <b>Sing-box 状态</b>\n\n{}", status),
                             )
                             .parse_mode(ParseMode::Html)
                             .await?;
