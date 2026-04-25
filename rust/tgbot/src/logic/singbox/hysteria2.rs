@@ -45,7 +45,7 @@ impl Hysteria2Config {
         let encoded_name = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
 
         format!(
-            "hysteria2://{}@{}:{}?sni={}&insecure=0#{}",
+            "hysteria2://{}@{}:{}?sni={}&alpn=h3&insecure=1#{}",
             encoded_password,
             host,
             self.port,

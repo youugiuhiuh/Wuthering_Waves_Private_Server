@@ -53,7 +53,7 @@ impl TUICConfig {
         let encoded_name = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
 
         format!(
-            "tuic://{}:{}@{}:{}?sni={}&alpn={}&congestion_control={}#{}",
+            "tuic://{}:{}@{}:{}?sni={}&alpn={}&congestion_control={}&allow_insecure=1#{}",
             self.uuid,
             encoded_password,
             host,

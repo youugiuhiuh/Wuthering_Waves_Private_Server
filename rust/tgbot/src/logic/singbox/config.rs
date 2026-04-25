@@ -70,8 +70,8 @@ impl SingBoxConfigManager {
     const WWPS_BOX_TLS_KEY: &str = "/etc/wwps/wwps-box/certs/tls.key";
 
     async fn reload_service() -> Result<()> {
-        let output = tokio::process::Command::new(WWPS_BOX_BIN)
-            .args(["run", "-C", WWPS_BOX_CONF_DIR])
+        let output = tokio::process::Command::new("systemctl")
+            .args(["restart", "sing-box"])
             .output()
             .await
             .context("重载配置失败")?;
