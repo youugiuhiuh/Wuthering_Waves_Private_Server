@@ -69,6 +69,47 @@ impl SingBoxConfigManager {
         Ok(count)
     }
 
+    pub async fn delete_by_count(count: usize) -> Result<usize> {
+        let files = Self::list_all_inbound_files().await?;
+        
+        if files.is_empty() {
+            return Ok(0);
+        }
+
+        let mut sorted_files: Vec<(std::path::PathBuf, std::time::SystemTime)> = Vec::new();
+        for file in &files {
+            let path = std::path::PathBuf::from(file);
+            if let Ok(metadata) = tokio::fs::metadata(&path).await {
+                if let Ok(modified) = metadata.modified() {
+                    sorted_files.push((path, modified));
+                }
+            }
+        }
+
+        sorted_files.sort_by(|a, b| a.1.cmp(&b.1));
+
+        let delete_count = count.min(sorted_files.len());
+        let mut deleted = 0;
+
+        for i in 0..delete_count {
+            let path = &sorted_files[i].0;
+            if fs::remove_file(path).await.is_ok() {
+                deleted += 1;
+            }
+        }
+
+        if deleted > 0 {
+            Self::reload_service().await?;
+        }
+
+        Ok(deleted)
+    }
+
+    pub async fn get_config_count() -> Result<usize> {
+        let files = Self::list_all_inbound_files().await?;
+        Ok(files.len())
+    }
+
     async fn cleanup_port_hopping_firewall() -> Result<()> {
         use tokio::process::Command;
 

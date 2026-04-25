@@ -1454,6 +1454,194 @@ fn handle_callback(
                         }
                     });
                 }
+                // Sing-box 删除管理
+                "sb_del_cfg" => {
+                    let keyboard = InlineKeyboardMarkup::new(vec![
+                        vec![InlineKeyboardButton::callback(
+                            "🧨 删除全部配置",
+                            "sb_del_all_confirm",
+                        )],
+                        vec![InlineKeyboardButton::callback(
+                            "➗ 按数量删除配置",
+                            "sb_del_count",
+                        )],
+                        vec![InlineKeyboardButton::callback(
+                            "🎯 指定配置删除",
+                            "sb_del_select",
+                        )],
+                        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_singbox_mgmt")],
+                    ]);
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        "🗑️ <b>Sing-box 删除管理</b>\n请选择删除方式 (操作不可逆):",
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
+                }
+                "sb_del_all_confirm" => {
+                    let keyboard = InlineKeyboardMarkup::new(vec![
+                        vec![InlineKeyboardButton::callback(
+                            "⚠️ 确认清空所有配置 (不可恢复) ⚠️",
+                            "sb_del_all_exec",
+                        )],
+                        vec![InlineKeyboardButton::callback("⬅️ 取消", "sb_del_cfg")],
+                    ]);
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        "🚨 <b>二次确认</b>\n您确定要删除 <b>所有</b> Sing-box 配置文件吗？\n此操作将清空所有配置文件、重启 Sing-box 并清理端口跳跃规则。",
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
+                }
+                "sb_del_all_exec" => {
+                    match SingBoxConfigManager::delete_all_configurations().await {
+                        Ok(count) => {
+                            bot.answer_callback_query(q.id.clone())
+                                .text(format!("✅ 已彻底清空 {} 个 Sing-box 配置文件", count))
+                                .show_alert(true)
+                                .await?;
+                        }
+                        Err(e) => {
+                            bot.answer_callback_query(q.id.clone())
+                                .text(format!("❌ 删除失败: {}", e))
+                                .show_alert(true)
+                                .await?;
+                        }
+                    }
+                    let new_q = q.clone();
+                    q = CallbackQuery {
+                        data: Some("sb_del_cfg".to_string()),
+                        ..new_q
+                    };
+                    continue;
+                }
+                "sb_del_count" => {
+                    let keyboard = InlineKeyboardMarkup::new(vec![
+                        vec![
+                            InlineKeyboardButton::callback("10 个", "sb_del_exec_count:10"),
+                            InlineKeyboardButton::callback("50 个", "sb_del_exec_count:50"),
+                        ],
+                        vec![
+                            InlineKeyboardButton::callback("100 个", "sb_del_exec_count:100"),
+                            InlineKeyboardButton::callback("500 个", "sb_del_exec_count:500"),
+                        ],
+                        vec![InlineKeyboardButton::callback("⬅️ 返回", "sb_del_cfg")],
+                    ]);
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        "➗ <b>Sing-box 按数量删除 (由旧到新)</b>\n请选择要删除的文件数量:",
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
+                }
+                d if d.starts_with("sb_del_exec_count:") => {
+                    let n: usize = d
+                        .strip_prefix("sb_del_exec_count:")
+                        .unwrap_or("0")
+                        .parse()
+                        .unwrap_or(0);
+
+                    match SingBoxConfigManager::delete_by_count(n).await {
+                        Ok(deleted) => {
+                            bot.answer_callback_query(q.id.clone())
+                                .text(format!("✅ 已删除 {} 个最旧的配置文件", deleted))
+                                .show_alert(true)
+                                .await?;
+                        }
+                        Err(e) => {
+                            bot.answer_callback_query(q.id.clone())
+                                .text(format!("❌ 删除失败: {}", e))
+                                .show_alert(true)
+                                .await?;
+                        }
+                    }
+                    let new_q = q.clone();
+                    q = CallbackQuery {
+                        data: Some("sb_del_cfg".to_string()),
+                        ..new_q
+                    };
+                    continue;
+                }
+                "sb_del_select" => {
+                    let inbounds = SingBoxConfigManager::list_all_inbound_files()
+                        .await
+                        .unwrap_or_default();
+                    let count = SingBoxConfigManager::get_config_count().await.unwrap_or(0);
+
+                    if inbounds.is_empty() {
+                        bot.answer_callback_query(q.id.clone())
+                            .text("⚠️ 没有可删除的配置文件")
+                            .show_alert(true)
+                            .await?;
+                    } else {
+                        let mut buttons = Vec::new();
+                        for (i, path) in inbounds.iter().enumerate() {
+                            let filename = path.split('/').next_back().unwrap_or("Unknown");
+                            buttons.push(vec![InlineKeyboardButton::callback(
+                                format!("🗑️ {}", filename),
+                                format!("sb_del_file:{}", i),
+                            )]);
+                        }
+                        buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "sb_del_cfg")]);
+                        bot.edit_message_text(
+                            chat_id,
+                            msg_id,
+                            format!(
+                                "🎯 <b>Sing-box 指定配置删除</b>\n\n共 {} 个配置文件，请选择要删除的:",
+                                count
+                            ),
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .reply_markup(InlineKeyboardMarkup::new(buttons))
+                        .await?;
+                    }
+                }
+                d if d.starts_with("sb_del_file:") => {
+                    let index: usize = d
+                        .strip_prefix("sb_del_file:")
+                        .unwrap_or("0")
+                        .parse()
+                        .unwrap_or(0);
+
+                    let inbounds = SingBoxConfigManager::list_all_inbound_files()
+                        .await
+                        .unwrap_or_default();
+
+                    if let Some(path) = inbounds.get(index) {
+                        match SingBoxConfigManager::delete_specific_configuration(path).await {
+                            Ok(()) => {
+                                let filename = path.split('/').next_back().unwrap_or("Unknown");
+                                bot.answer_callback_query(q.id.clone())
+                                    .text(format!("✅ 已删除配置文件: {}", filename))
+                                    .show_alert(true)
+                                    .await?;
+                            }
+                            Err(e) => {
+                                bot.answer_callback_query(q.id.clone())
+                                    .text(format!("❌ 删除失败: {}", e))
+                                    .show_alert(true)
+                                    .await?;
+                            }
+                        }
+                    } else {
+                        bot.answer_callback_query(q.id.clone())
+                            .text("❌ 文件索引无效")
+                            .show_alert(true)
+                            .await?;
+                    }
+                    let new_q = q.clone();
+                    q = CallbackQuery {
+                        data: Some("sb_del_select".to_string()),
+                        ..new_q
+                    };
+                    continue;
+                }
                 "m_log" => {
                     let has_access = Path::new(xray::ACCESS_LOG).exists();
                     let keyboard = InlineKeyboardMarkup::new(vec![
