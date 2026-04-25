@@ -7,10 +7,9 @@ use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
+use crate::core::paths::xray;
 use crate::logic::cmd_async::{run_cmd_checked, run_cmd_output, run_cmd_status};
 use crate::logic::utils::{format_download_progress, should_report};
-
-pub const WWPS_CORE_BINARY: &str = "/etc/wwps/wwps-core/wwps-core";
 pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/tgbot/bbr3_pending.flag";
 
 pub struct MaintenanceManager;
@@ -70,7 +69,7 @@ enum BbrInstallerSupport {
 
 impl MaintenanceManager {
     pub async fn is_reality_base_ready() -> bool {
-        fs::try_exists(WWPS_CORE_BINARY).await.unwrap_or(false)
+        fs::try_exists(xray::BIN).await.unwrap_or(false)
     }
 
     pub async fn control_service(service: &str, action: &str) -> Result<()> {
@@ -253,8 +252,8 @@ impl MaintenanceManager {
         ];
 
         // 确保目标目录存在
-        std::fs::create_dir_all("/etc/wwps/wwps-core")
-            .context("创建 /etc/wwps/wwps-core 目录失败")?;
+        std::fs::create_dir_all(xray::DIR)
+            .context("创建 xray 目录失败")?;
 
         let client = reqwest::Client::builder()
             .timeout(TIMEOUT_LONG)
@@ -262,7 +261,7 @@ impl MaintenanceManager {
             .context("构建 HTTP 客户端失败")?;
 
         for (file, url) in sources {
-            let target_path = format!("/etc/wwps/wwps-core/{}", file);
+            let target_path = format!("{}/{}", xray::DIR, file);
             let cb = &progress_callback;
             let start = Instant::now();
             let mut last_pct = 0.0;

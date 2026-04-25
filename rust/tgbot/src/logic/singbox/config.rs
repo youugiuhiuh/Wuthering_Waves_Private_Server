@@ -1,4 +1,4 @@
-use crate::core::paths::singbox;
+use crate::core::paths::{singbox, xray};
 use crate::core::types::BatchCreationResult;
 use crate::logic::config::IpVersion;
 use crate::logic::maintenance::MaintenanceManager;
@@ -270,7 +270,7 @@ impl SingBoxConfigManager {
 
     async fn generate_uuid() -> Result<String> {
         let (status, stdout, _) = crate::logic::cmd_async::run_cmd_output(
-            "/etc/wwps/wwps-core/wwps-core",
+            xray::BIN,
             &["uuid"],
             std::time::Duration::from_secs(5),
         )

@@ -1,3 +1,4 @@
+use crate::core::paths::xray;
 use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -31,7 +32,7 @@ impl FirewallScanner {
         }
 
         // 3. wwps-core 端口
-        let wwps_core_dirs = vec!["/etc/wwps/wwps-core/conf"];
+        let wwps_core_dirs = vec![xray::CONF_DIR];
         for dir in wwps_core_dirs {
             if let Ok(p) = Self::scan_dir_for_ports(dir).await {
                 ports.extend(p);

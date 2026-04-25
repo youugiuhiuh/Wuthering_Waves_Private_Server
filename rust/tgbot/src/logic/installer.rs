@@ -1,3 +1,4 @@
+use crate::core::paths::{xray, warp as warp_paths};
 use crate::logic::maintenance::MaintenanceManager;
 use crate::logic::upgrade::wwps_core::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
 use anyhow::{Context, Result, anyhow};
@@ -11,8 +12,6 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 
 const TOTAL_STEPS: u8 = 6;
-const WWPS_CORE_INSTALL_DIR: &str = "/etc/wwps/wwps-core";
-const WWPS_CORE_BACKUP_DIR: &str = "/etc/wwps/wwps-core/backup";
 const WWPS_CORE_TEMP_DIR: &str = "/tmp/wwps-core-installer";
 const BASE_PACKAGES_APK: &[&str] = &[
     "sudo", "curl", "wget", "jq", "tar", "unzip", "bash", "openrc", "chrony",
@@ -23,7 +22,7 @@ pub struct WarpInstaller;
 impl WarpInstaller {
     pub async fn is_installed() -> bool {
         // Check for config file instead of binary
-        fs::try_exists("/etc/wwps/wwps-core/warp_account.json")
+        fs::try_exists(warp_paths::ACCOUNT_FILE)
             .await
             .unwrap_or(false)
     }
@@ -35,7 +34,7 @@ impl WarpInstaller {
             .context("Failed to register WARP account")?;
 
         // 2. Save Account Config
-        let account_path = "/etc/wwps/wwps-core/warp_account.json";
+        let account_path = warp_paths::ACCOUNT_FILE;
         let content = serde_json::to_string_pretty(&config)?;
         fs::write(account_path, content).await?;
 
@@ -51,8 +50,8 @@ impl WarpInstaller {
 
     pub async fn uninstall() -> Result<()> {
         // Just remove the account config and the routing config
-        let _ = fs::remove_file("/etc/wwps/wwps-core/warp_account.json").await;
-        let _ = fs::remove_file("/etc/wwps/wwps-core/conf/10_warp_routing.json").await;
+        let _ = fs::remove_file(warp_paths::ACCOUNT_FILE).await;
+        let _ = fs::remove_file(warp_paths::ROUTING_FILE).await;
         crate::logic::maintenance::MaintenanceManager::reload_core().await?;
         Ok(())
     }
@@ -64,7 +63,7 @@ impl WarpInstaller {
     }
 
     pub async fn status() -> Result<String> {
-        let account_path = "/etc/wwps/wwps-core/warp_account.json";
+        let account_path = warp_paths::ACCOUNT_FILE;
         let is_registered = fs::try_exists(account_path).await.unwrap_or(false);
 
         Ok(format!(
@@ -497,8 +496,8 @@ impl PackageManager {
 }
 
 pub async fn install_wwps_core(arch: CpuArch) -> Result<()> {
-    let install_dir = PathBuf::from(WWPS_CORE_INSTALL_DIR);
-    let backup_dir = PathBuf::from(WWPS_CORE_BACKUP_DIR);
+    let install_dir = PathBuf::from(xray::DIR);
+    let backup_dir = PathBuf::from(xray::BACKUP_DIR);
     let temp_dir = PathBuf::from(WWPS_CORE_TEMP_DIR);
 
     fs::create_dir_all(&install_dir)
@@ -544,9 +543,9 @@ pub async fn install_wwps_core_service() -> Result<()> {
 pub async fn ensure_directories() -> Result<()> {
     const DIRS: &[&str] = &[
         "/etc/wwps",
-        "/etc/wwps/wwps-core",
-        "/etc/wwps/wwps-core/conf",
-        "/etc/wwps/wwps-core/tmp",
+        xray::DIR,
+        xray::CONF_DIR,
+        xray::TEMP_DIR,
         "/etc/wwps/subscribe",
         "/etc/wwps/subscribe/default",
         "/etc/wwps/subscribe_local/default",
@@ -564,7 +563,7 @@ async fn install_systemd_service() -> Result<()> {
     const SERVICE_PATH: &str = "/etc/systemd/system/wwps-core.service";
     let unit = format!(
         "[Unit]\nDescription=wwps-core Service\nAfter=network.target\n\n[Service]\nUser=root\nType=simple\nExecStart={}/wwps-core run -confdir {}/conf\nRestart=always\nRestartSec=5\nLimitNOFILE=51200\n\n[Install]\nWantedBy=multi-user.target\n",
-        WWPS_CORE_INSTALL_DIR, WWPS_CORE_INSTALL_DIR
+        xray::DIR, xray::DIR
     );
 
     fs::write(SERVICE_PATH, unit)
@@ -580,7 +579,7 @@ async fn install_openrc_service() -> Result<()> {
     const SERVICE_PATH: &str = "/etc/init.d/wwps-core";
     let script = format!(
         "#!/sbin/openrc-run\ndescription=\"wwps-core Service\"\ncommand=\"{}/wwps-core\"\ncommand_args=\"run -confdir {}/conf\"\npidfile=/run/wwps-core.pid\ncommand_background=yes\ndepend() {{\n    need net\n}}\n",
-        WWPS_CORE_INSTALL_DIR, WWPS_CORE_INSTALL_DIR
+        xray::DIR, xray::DIR
     );
 
     fs::write(SERVICE_PATH, script)

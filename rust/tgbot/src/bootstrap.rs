@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
+use tgbot::core::paths::xray;
 use crate::logic::security::SecurityManager;
 
 pub const CONFIG_DIR: &str = "/etc/wwps/tgbot";
@@ -84,11 +85,10 @@ impl BotSettings {
 
 const PQ_SEED_PATH: &str = "/etc/wwps/reality_pq.seed";
 const PQ_PUB_PATH: &str = "/etc/wwps/reality_pq.pub";
-const WWPS_CORE_BIN: &str = "/etc/wwps/wwps-core/wwps-core";
 
 /// 同步执行 wwps-core/xray mldsa65，解析 Seed/Verify 并写入文件。供 setup 时调用（无 tokio）。
 pub fn generate_reality_pq_keys_sync() -> Result<()> {
-    let output = Command::new(WWPS_CORE_BIN)
+    let output = Command::new(xray::BIN)
         .arg("mldsa65")
         .output()
         .or_else(|_| Command::new("xray").arg("mldsa65").output())

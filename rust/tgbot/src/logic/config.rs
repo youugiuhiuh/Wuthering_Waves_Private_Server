@@ -9,6 +9,7 @@ use std::path::Path;
 use std::time::Duration;
 use tokio::fs;
 
+use crate::core::paths::xray;
 use crate::logic::cmd_async::run_cmd_output;
 
 /// 服务端 mldsa65Seed（32 字节 seed 的 base64url），来自 xray/wwps-core mldsa65 输出。
@@ -97,8 +98,7 @@ pub struct BatchCreationResult {
 pub struct ConfigManager;
 
 impl ConfigManager {
-    const CONFIG_BASE_PATH: &'static str = "/etc/wwps/";
-    const WWPS_CORE_BIN: &'static str = "/etc/wwps/wwps-core/wwps-core";
+    const CONFIG_BASE_PATH: &'static str = xray::DIR;
     const TIMEOUT_WWPS_CORE: Duration = Duration::from_secs(5);
 
     pub async fn get_clients_from_config(file_path: &str) -> Result<Vec<Value>> {
@@ -883,7 +883,7 @@ impl ConfigManager {
     ) -> Result<BatchCreationResult> {
         // 生成独立文件名
         let filename = Self::generate_secure_batch_filename(proto).await?;
-        let config_path = format!("/etc/wwps/wwps-core/conf/{}", filename);
+        let config_path = format!("xray::CONF_DIR{}", filename);
 
         let created_count = configs.len();
 
@@ -938,12 +938,12 @@ impl ConfigManager {
         let created_count = configs.len();
         // 备份原配置
         let backup_path = Self::backup_config_file(
-            "/etc/wwps/wwps-core/conf/07_VLESS_vision_reality_inbounds.json",
+            "xray::CONF_DIR07_VLESS_vision_reality_inbounds.json",
         )
         .await?;
 
         // 更新现有配置
-        let path = "/etc/wwps/wwps-core/conf/07_VLESS_vision_reality_inbounds.json";
+        let path = "xray::CONF_DIR07_VLESS_vision_reality_inbounds.json";
         let mut v: Value = serde_json::from_str(&fs::read_to_string(path).await?)?;
 
         // 清理旧配置并添加新配置
@@ -1026,8 +1026,8 @@ impl ConfigManager {
     }
 
     pub async fn update_warp_routing_rules(rules: Vec<String>, mode: WarpMode) -> Result<()> {
-        let config_path = "/etc/wwps/wwps-core/conf/10_warp_routing.json";
-        let account_path = "/etc/wwps/wwps-core/warp_account.json";
+        let config_path = "xray::CONF_DIR10_warp_routing.json";
+        let account_path = "warp::ACCOUNT_FILE";
 
         // Read account config
         let account_content = fs::read_to_string(account_path)
@@ -1139,7 +1139,7 @@ impl ConfigManager {
     }
 
     pub async fn get_warp_routing_rules() -> Result<(Vec<String>, WarpMode)> {
-        let config_path = "/etc/wwps/wwps-core/conf/10_warp_routing.json";
+        let config_path = "xray::CONF_DIR10_warp_routing.json";
         if !Path::new(config_path).exists() {
             return Ok((Vec::new(), WarpMode::Default));
         }
@@ -1214,7 +1214,7 @@ impl ConfigManager {
 
 async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
     let (status, stdout, stderr) = run_cmd_output(
-        ConfigManager::WWPS_CORE_BIN,
+        xray::BIN,
         args,
         ConfigManager::TIMEOUT_WWPS_CORE,
     )

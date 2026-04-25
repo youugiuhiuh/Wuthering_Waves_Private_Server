@@ -14,6 +14,7 @@ use crate::bootstrap::{
     EncryptedConfig, KEY_FILE, config_dir, harden_process, run_setup, run_setup_from_stdin,
     verify_integrity,
 };
+use tgbot::core::paths::{singbox, xray};
 use anyhow::{Context, Result};
 use futures_util::future::BoxFuture;
 use secrecy::ExposeSecret;
@@ -981,9 +982,9 @@ fn handle_callback(
                 }
                 "m_usr" => {
                     let wwps_core_config_exists =
-                        Path::new("/etc/wwps/wwps-core/conf/").exists();
+                        Path::new(xray::CONF_DIR).exists();
                     let singbox_config_exists =
-                        Path::new("/etc/wwps/wwps-box/conf/").exists();
+                        Path::new(singbox::CONF_DIR).exists();
                     let mut buttons = Vec::new();
 
                     if !wwps_core_config_exists && !singbox_config_exists {
@@ -1364,7 +1365,7 @@ fn handle_callback(
                     });
                 }
                 "m_log" => {
-                    let has_access = Path::new("/etc/wwps/wwps-core/access.log").exists();
+                    let has_access = Path::new(xray::ACCESS_LOG).exists();
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![
                             InlineKeyboardButton::callback(

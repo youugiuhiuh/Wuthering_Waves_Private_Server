@@ -14,6 +14,12 @@ pub mod xray {
     pub const ERROR_LOG: &str = "/etc/wwps/wwps-core/error.log";
     pub const BACKUP_DIR: &str = "/etc/wwps/wwps-core/backup";
     pub const TEMP_DIR: &str = "/tmp/wwps-core-installer";
+
+    pub const DEFAULT_OWNER: &str = "XTLS";
+    pub const DEFAULT_REPO: &str = "Xray-core";
+    pub const DEFAULT_SERVICE: &str = "wwps-core";
+    pub const DEFAULT_TEMP_DIR: &str = "/tmp/wwps-core-upgrade";
+    pub const DEFAULT_BACKUP_PREFIX: &str = "wwps-core-backup";
 }
 
 /// Sing-box 相关路径

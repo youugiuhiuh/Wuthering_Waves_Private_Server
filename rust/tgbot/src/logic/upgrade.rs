@@ -1,3 +1,4 @@
+use crate::core::paths::xray;
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use futures_util::StreamExt;
@@ -556,12 +557,12 @@ pub mod wwps_core {
     use teloxide::types::MessageId;
     use zip::ZipArchive;
 
-    const WWPS_CORE_DEFAULT_OWNER: &str = "XTLS";
-    const WWPS_CORE_DEFAULT_REPO: &str = "Xray-core";
-    const WWPS_CORE_DEFAULT_SERVICE: &str = "wwps-core";
-    const WWPS_CORE_DEFAULT_INSTALL_DIR: &str = "/etc/wwps/wwps-core";
-    const WWPS_CORE_DEFAULT_TEMP_DIR: &str = "/tmp/wwps-core-upgrade";
-    const WWPS_CORE_DEFAULT_BACKUP_PREFIX: &str = "wwps-core-backup";
+    const WWPS_CORE_DEFAULT_OWNER: &str = xray::DEFAULT_OWNER;
+    const WWPS_CORE_DEFAULT_REPO: &str = xray::DEFAULT_REPO;
+    const WWPS_CORE_DEFAULT_SERVICE: &str = xray::DEFAULT_SERVICE;
+    const WWPS_CORE_DEFAULT_INSTALL_DIR: &str = xray::DIR;
+    const WWPS_CORE_DEFAULT_TEMP_DIR: &str = xray::DEFAULT_TEMP_DIR;
+    const WWPS_CORE_DEFAULT_BACKUP_PREFIX: &str = xray::DEFAULT_BACKUP_PREFIX;
 
     /// wwps-core Release API 根地址列表（含 /repos），按顺序尝试
     fn wwps_core_release_api_bases() -> Vec<String> {
