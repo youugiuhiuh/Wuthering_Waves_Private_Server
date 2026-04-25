@@ -207,11 +207,13 @@ impl SingBoxConfigManager {
             let _ = MaintenanceManager::allow_port(port).await;
         }
 
-        Self::save_configs(configs).await?;
+        let (filename, _path) = Self::save_standalone_config(configs, "hysteria2").await?;
+        Self::ensure_tls_certificates().await?;
+        Self::reload_service().await?;
 
         Ok(BatchCreationResult {
             links,
-            config_file: Some("hysteria2_inbounds.json".to_string()),
+            config_file: Some(filename),
             backup_file: None,
             created_count: count,
         })
@@ -267,11 +269,13 @@ impl SingBoxConfigManager {
             let _ = MaintenanceManager::allow_port(port).await;
         }
 
-        Self::save_configs(configs).await?;
+        let (filename, _path) = Self::save_standalone_config(configs, "tuic").await?;
+        Self::ensure_tls_certificates().await?;
+        Self::reload_service().await?;
 
         Ok(BatchCreationResult {
             links,
-            config_file: Some("tuic_inbounds.json".to_string()),
+            config_file: Some(filename),
             backup_file: None,
             created_count: count,
         })
@@ -300,12 +304,33 @@ impl SingBoxConfigManager {
         }
     }
 
-    async fn save_configs(configs: Vec<Value>) -> Result<()> {
+    async fn save_standalone_config(
+        configs: Vec<Value>,
+        proto: &str,
+    ) -> Result<(String, String)> {
+        use rand::Rng;
+
         fs::create_dir_all(WWPS_BOX_CONF_DIR)
             .await
             .context("创建配置目录失败")?;
 
-        let config_path = format!("{}/02_singbox_inbounds.json", WWPS_BOX_CONF_DIR);
+        let mut rng = StdRng::from_entropy();
+        let timestamp = chrono::Utc::now().timestamp();
+        let random_part: String = (0..8)
+            .map(|_| {
+                let chars = b"abcdefghijklmnopqrstuvwxyz0123456789";
+                let idx = rng.gen_range(0..chars.len());
+                chars[idx] as char
+            })
+            .collect();
+
+        let filename = match proto {
+            "hysteria2" => format!("batch_hy2_{}_{}.json", timestamp, random_part),
+            "tuic" => format!("batch_tuic_{}_{}.json", timestamp, random_part),
+            _ => format!("batch_{}_{}_{}.json", proto, timestamp, random_part),
+        };
+
+        let config_path = format!("{}/{}", WWPS_BOX_CONF_DIR, filename);
 
         let dns_servers = json!([
             {"tag": "dns", "type": "udp", "server": "8.8.8.8", "domain_resolver": "local"},
@@ -339,9 +364,6 @@ impl SingBoxConfigManager {
         let content = serde_json::to_string_pretty(&full_config)?;
         fs::write(&config_path, content).await?;
 
-        Self::ensure_tls_certificates().await?;
-        Self::reload_service().await?;
-
-        Ok(())
+        Ok((filename, config_path))
     }
 }

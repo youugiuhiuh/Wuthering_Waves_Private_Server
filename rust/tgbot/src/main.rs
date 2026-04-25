@@ -1249,7 +1249,11 @@ fn handle_callback(
                     tokio::spawn(async move {
                         match SingBoxConfigManager::batch_create_hysteria2(count, ip_version).await {
                             Ok(result) => {
-                                let mut msg = format!("✅ <b>Hysteria2 批量创建完成</b>\n\n已创建 {} 个配置:\n\n", result.created_count);
+                                let mut msg = format!(
+                                    "✅ <b>Hysteria2 批量创建完成</b>\n\n已创建 {} 个配置:\n📁 配置文件: <code>{}</code>\n\n",
+                                    result.created_count,
+                                    result.config_file.as_deref().unwrap_or("未知")
+                                );
                                 for (i, link) in result.links.iter().enumerate() {
                                     msg.push_str(&format!("{}. `{}`\n\n", i + 1, link));
                                 }
@@ -1281,7 +1285,11 @@ fn handle_callback(
                     tokio::spawn(async move {
                         match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
                             Ok(result) => {
-                                let mut msg = format!("✅ <b>TUIC 批量创建完成</b>\n\n已创建 {} 个配置:\n\n", result.created_count);
+                                let mut msg = format!(
+                                    "✅ <b>TUIC 批量创建完成</b>\n\n已创建 {} 个配置:\n📁 配置文件: <code>{}</code>\n\n",
+                                    result.created_count,
+                                    result.config_file.as_deref().unwrap_or("未知")
+                                );
                                 for (i, link) in result.links.iter().enumerate() {
                                     msg.push_str(&format!("{}. `{}`\n\n", i + 1, link));
                                 }
