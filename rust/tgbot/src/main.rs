@@ -860,7 +860,7 @@ fn handle_callback(
                         format!("🔐 会话有效期 ({})", format_duration_human(timeout));
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![
-                            InlineKeyboardButton::callback("🛰 wwps-core 管理", "a_wwps_core_menu"),
+                            InlineKeyboardButton::callback("🛰 Xray-core 管理", "a_wwps_core_menu"),
                             InlineKeyboardButton::callback("📦 wwps-box 管理", "a_wwps_box_menu"),
                         ],
                         vec![
@@ -963,7 +963,7 @@ fn handle_callback(
                     let (wwps_core, wwps_box) = SystemMonitor::get_core_status().await;
 
                     let status_text = format!(
-                        "{}\n\n🤖 <b>Bot 版本</b>: v{}\n\n⚙️ <b>核心进程</b>:\n- wwps-core: {}\n- wwps-box: {}",
+                        "{}\n\n🤖 <b>Bot 版本</b>: v{}\n\n⚙️ <b>核心进程</b>:\n- Xray-core: {}\n- Sing-box: {}",
                         report,
                         BOT_VERSION,
                         if wwps_core { "🟢" } else { "🔴" },
