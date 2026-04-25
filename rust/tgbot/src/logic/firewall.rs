@@ -76,3 +76,27 @@ impl FirewallManager {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_firewall_backend_variants() {
+        assert_eq!(FirewallBackend::Firewalld, FirewallBackend::Firewalld);
+        assert_eq!(FirewallBackend::Ufw, FirewallBackend::Ufw);
+    }
+
+    #[test]
+    fn test_firewall_backend_not_equal() {
+        assert_ne!(FirewallBackend::Firewalld, FirewallBackend::Ufw);
+    }
+
+    #[test]
+    fn test_firewall_backend_debug() {
+        let debug_firewalld = format!("{:?}", FirewallBackend::Firewalld);
+        let debug_ufw = format!("{:?}", FirewallBackend::Ufw);
+        assert!(debug_firewalld.contains("Firewalld"));
+        assert!(debug_ufw.contains("Ufw"));
+    }
+}

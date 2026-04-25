@@ -36,11 +36,11 @@ impl IpVersion {
     pub fn is_ipv6_primary(&self) -> bool {
         matches!(self, IpVersion::IPv6 | IpVersion::SplitStackV6Primary)
     }
-    
+
     pub fn is_ipv4_primary(&self) -> bool {
         matches!(self, IpVersion::IPv4 | IpVersion::SplitStackV4Primary)
     }
-    
+
     pub fn label(&self) -> &'static str {
         match self {
             IpVersion::IPv4 => "IPv4",
@@ -48,5 +48,74 @@ impl IpVersion {
             IpVersion::SplitStackV6Primary => "IPv6/IPv4",
             IpVersion::SplitStackV4Primary => "IPv4/IPv6",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_batch_creation_result_new() {
+        let result = BatchCreationResult::new(
+            vec!["link1".to_string(), "link2".to_string()],
+            Some("config.json".to_string()),
+            2,
+        );
+        assert_eq!(result.links.len(), 2);
+        assert_eq!(result.config_file, Some("config.json".to_string()));
+        assert_eq!(result.backup_file, None);
+        assert_eq!(result.created_count, 2);
+    }
+
+    #[test]
+    fn test_batch_creation_result_default() {
+        let result = BatchCreationResult::default();
+        assert!(result.links.is_empty());
+        assert_eq!(result.config_file, None);
+        assert_eq!(result.backup_file, None);
+        assert_eq!(result.created_count, 0);
+    }
+
+    #[test]
+    fn test_ip_version_default() {
+        let ip: IpVersion = IpVersion::default();
+        assert_eq!(ip, IpVersion::IPv4);
+    }
+
+    #[test]
+    fn test_ip_version_is_ipv6_primary() {
+        assert!(!IpVersion::IPv4.is_ipv6_primary());
+        assert!(IpVersion::IPv6.is_ipv6_primary());
+        assert!(IpVersion::SplitStackV6Primary.is_ipv6_primary());
+        assert!(!IpVersion::SplitStackV4Primary.is_ipv6_primary());
+    }
+
+    #[test]
+    fn test_ip_version_is_ipv4_primary() {
+        assert!(IpVersion::IPv4.is_ipv4_primary());
+        assert!(!IpVersion::IPv6.is_ipv4_primary());
+        assert!(!IpVersion::SplitStackV6Primary.is_ipv4_primary());
+        assert!(IpVersion::SplitStackV4Primary.is_ipv4_primary());
+    }
+
+    #[test]
+    fn test_ip_version_label() {
+        assert_eq!(IpVersion::IPv4.label(), "IPv4");
+        assert_eq!(IpVersion::IPv6.label(), "IPv6");
+        assert_eq!(IpVersion::SplitStackV6Primary.label(), "IPv6/IPv4");
+        assert_eq!(IpVersion::SplitStackV4Primary.label(), "IPv4/IPv6");
+    }
+
+    #[test]
+    fn test_ip_version_serialization() {
+        let json = serde_json::to_string(&IpVersion::IPv6).unwrap();
+        assert_eq!(json, "\"IPv6\"");
+    }
+
+    #[test]
+    fn test_ip_version_deserialization() {
+        let ip: IpVersion = serde_json::from_str("\"SplitStackV4Primary\"").unwrap();
+        assert_eq!(ip, IpVersion::SplitStackV4Primary);
     }
 }

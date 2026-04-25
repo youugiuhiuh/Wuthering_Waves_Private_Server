@@ -49,3 +49,47 @@ pub mod log {
     pub const DIR: &str = "/var/log";
     pub const SINGBOX_LOG: &str = "/var/log/sing-box.log";
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wwps_base_dir() {
+        assert_eq!(WWPS_BASE_DIR, "/etc/wwps");
+    }
+
+    #[test]
+    fn test_xray_paths() {
+        assert_eq!(xray::DIR, "/etc/wwps/wwps-core");
+        assert_eq!(xray::BIN, "/etc/wwps/wwps-core/wwps-core");
+        assert_eq!(xray::CONF_DIR, "/etc/wwps/wwps-core/conf");
+        assert_eq!(xray::DEFAULT_SERVICE, "wwps-core");
+    }
+
+    #[test]
+    fn test_singbox_paths() {
+        assert_eq!(singbox::DIR, "/etc/wwps/wwps-box");
+        assert_eq!(singbox::BIN, "/etc/wwps/wwps-box/sing-box");
+        assert_eq!(singbox::CERTS_DIR, "/etc/wwps/wwps-box/certs");
+        assert_eq!(singbox::TLS_CERT, "/etc/wwps/wwps-box/certs/tls.cer");
+    }
+
+    #[test]
+    fn test_bot_paths() {
+        assert_eq!(bot::DIR, "/etc/wwps/tgbot");
+        assert_eq!(bot::KEY_FILE, "/etc/wwps/tgbot/.key");
+    }
+
+    #[test]
+    fn test_warp_paths() {
+        assert_eq!(warp::ACCOUNT_FILE, "/etc/wwps/wwps-core/warp_account.json");
+        assert_eq!(warp::ROUTING_FILE, "/etc/wwps/wwps-core/conf/10_warp_routing.json");
+    }
+
+    #[test]
+    fn test_log_paths() {
+        assert_eq!(log::DIR, "/var/log");
+        assert_eq!(log::SINGBOX_LOG, "/var/log/sing-box.log");
+    }
+}

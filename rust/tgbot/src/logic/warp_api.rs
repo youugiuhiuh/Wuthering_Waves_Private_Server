@@ -115,3 +115,55 @@ pub async fn register_account() -> Result<WarpAccountConfig> {
         client_id,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_warp_account_config_serialization() {
+        let config = WarpAccountConfig {
+            private_key: "test_private_key".to_string(),
+            public_key: "test_public_key".to_string(),
+            address_v4: "172.16.0.1/32".to_string(),
+            address_v6: "2606:4700:::1/128".to_string(),
+            reserved: vec![0, 0, 0],
+            client_id: "test_client_id".to_string(),
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("test_private_key"));
+        assert!(json.contains("test_public_key"));
+    }
+
+    #[test]
+    fn test_warp_account_config_deserialization() {
+        let json = r#"{
+            "private_key": "abc123",
+            "public_key": "def456",
+            "address_v4": "172.16.0.1/32",
+            "address_v6": "2606:4700:::1/128",
+            "reserved": [0, 0, 0],
+            "client_id": "xyz789"
+        }"#;
+
+        let config: WarpAccountConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.private_key, "abc123");
+        assert_eq!(config.public_key, "def456");
+        assert_eq!(config.address_v4, "172.16.0.1/32");
+    }
+
+    #[test]
+    fn test_warp_account_config_default_reserved() {
+        let config = WarpAccountConfig {
+            private_key: "key".to_string(),
+            public_key: "pub".to_string(),
+            address_v4: "1.2.3.4/32".to_string(),
+            address_v6: "::1/128".to_string(),
+            reserved: vec![],
+            client_id: "id".to_string(),
+        };
+
+        assert!(config.reserved.is_empty());
+    }
+}

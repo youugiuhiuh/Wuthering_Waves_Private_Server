@@ -810,3 +810,86 @@ async fn current_kernel_version() -> String {
         _ => "unknown".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_has_all_flags_all_present() {
+        let flags: HashSet<&str> = vec!["lm", "sse2", "avx", "avx2"].into_iter().collect();
+        assert!(has_all_flags(&flags, &["lm", "sse2"]));
+    }
+
+    #[test]
+    fn test_has_all_flags_missing() {
+        let flags: HashSet<&str> = vec!["lm", "sse2"].into_iter().collect();
+        assert!(!has_all_flags(&flags, &["lm", "avx"]));
+    }
+
+    #[test]
+    fn test_has_all_flags_empty_required() {
+        let flags: HashSet<&str> = vec!["lm", "sse2"].into_iter().collect();
+        assert!(has_all_flags(&flags, &[]));
+    }
+
+    #[test]
+    fn test_detect_cpu_level_from_str_v1() {
+        let cpuinfo = r#"flags           : lm cmov cx8 fpu fxsr mmx syscall sse2"#;
+        let result = detect_cpu_level_from_str(cpuinfo);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[test]
+    fn test_detect_cpu_level_from_str_v3() {
+        let cpuinfo = r#"flags           : lm cmov cx8 fpu fxsr mmx syscall sse2 cx16 lahf_lm popcnt sse4_1 sse4_2 ssse3 avx avx2 bmi1 bmi2 f16c fma abm movbe xsave"#;
+        let result = detect_cpu_level_from_str(cpuinfo);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 3);
+    }
+
+    #[test]
+    fn test_detect_cpu_level_from_str_no_flags() {
+        let cpuinfo = "processor       : 0";
+        let result = detect_cpu_level_from_str(cpuinfo);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bbr_install_status_default() {
+        let status = BbrInstallStatus {
+            kernel_version: "5.15.0".to_string(),
+            congestion_control: "bbr".to_string(),
+            reboot_required: true,
+        };
+        assert_eq!(status.kernel_version, "5.15.0");
+        assert!(status.reboot_required);
+    }
+
+    #[test]
+    fn test_bbr_runtime_info_default() {
+        let info = BbrRuntimeInfo {
+            uname_r: "5.15.0-xanmod1".to_string(),
+            tcp_congestion_control: "bbr".to_string(),
+            proc_version: "Linux version 5.15.0-xanmod1".to_string(),
+            has_xanmod_kernel: true,
+            has_xanmod_proc_version: true,
+        };
+        assert!(info.has_xanmod_kernel);
+        assert!(info.has_xanmod_proc_version);
+    }
+
+    #[test]
+    fn test_destruct_targets_not_empty() {
+        assert!(!MaintenanceManager::DESTRUCT_TARGETS.is_empty());
+        assert!(MaintenanceManager::DESTRUCT_TARGETS.contains(&"/etc/wwps"));
+    }
+
+    #[test]
+    fn test_destruct_services_not_empty() {
+        assert!(!MaintenanceManager::DESTRUCT_SERVICES.is_empty());
+        assert!(MaintenanceManager::DESTRUCT_SERVICES.contains(&"wwps-core"));
+    }
+}

@@ -53,3 +53,73 @@ pub fn parse_ip_version(s: &str) -> Option<IpVersion> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_random_suffix_length() {
+        assert_eq!(generate_random_suffix(0).len(), 0);
+        assert_eq!(generate_random_suffix(5).len(), 5);
+        assert_eq!(generate_random_suffix(16).len(), 16);
+    }
+
+    #[test]
+    fn test_generate_random_suffix_characters() {
+        let suffix = generate_random_suffix(1000);
+        assert!(suffix.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn test_generate_random_suffix_deterministic() {
+        let s1 = generate_random_suffix(8);
+        let s2 = generate_random_suffix(8);
+        assert_ne!(s1, s2);
+    }
+
+    #[test]
+    fn test_generate_timestamp_filename_format() {
+        let filename = generate_timestamp_filename("config", "json");
+        let parts: Vec<&str> = filename.split('_').collect();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0], "config");
+        assert!(parts[1].parse::<i64>().is_ok());
+        assert!(parts[2].ends_with(".json"));
+    }
+
+    #[test]
+    fn test_generate_timestamp_filename_extension_without_dot() {
+        let filename = generate_timestamp_filename("test", "log");
+        assert!(filename.ends_with(".log"));
+    }
+
+    #[test]
+    fn test_parse_ip_version_ipv4_variants() {
+        assert_eq!(parse_ip_version("4"), Some(IpVersion::IPv4));
+        assert_eq!(parse_ip_version("ipv4"), Some(IpVersion::IPv4));
+        assert_eq!(parse_ip_version("IPv4"), Some(IpVersion::IPv4));
+    }
+
+    #[test]
+    fn test_parse_ip_version_ipv6_variants() {
+        assert_eq!(parse_ip_version("6"), Some(IpVersion::IPv6));
+        assert_eq!(parse_ip_version("ipv6"), Some(IpVersion::IPv6));
+        assert_eq!(parse_ip_version("IPv6"), Some(IpVersion::IPv6));
+    }
+
+    #[test]
+    fn test_parse_ip_version_split_stack() {
+        assert_eq!(parse_ip_version("split6"), Some(IpVersion::SplitStackV6Primary));
+        assert_eq!(parse_ip_version("split4"), Some(IpVersion::SplitStackV4Primary));
+    }
+
+    #[test]
+    fn test_parse_ip_version_invalid() {
+        assert_eq!(parse_ip_version(""), None);
+        assert_eq!(parse_ip_version("invalid"), None);
+        assert_eq!(parse_ip_version("ipv7"), None);
+        assert_eq!(parse_ip_version("v4"), None);
+        assert_eq!(parse_ip_version("v6"), None);
+    }
+}

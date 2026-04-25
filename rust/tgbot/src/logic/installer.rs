@@ -650,3 +650,44 @@ async fn is_openrc() -> bool {
     fs::try_exists("/run/openrc").await.unwrap_or(false)
         || fs::try_exists("/sbin/openrc").await.unwrap_or(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reality_install_outcome_variants() {
+        assert_eq!(
+            RealityInstallOutcome::AlreadyReady,
+            RealityInstallOutcome::AlreadyReady
+        );
+        assert_eq!(RealityInstallOutcome::Completed, RealityInstallOutcome::Completed);
+        assert_eq!(RealityInstallOutcome::InProgress, RealityInstallOutcome::InProgress);
+    }
+
+    #[test]
+    fn test_reality_install_outcome_not_equal() {
+        assert_ne!(RealityInstallOutcome::AlreadyReady, RealityInstallOutcome::Completed);
+        assert_ne!(RealityInstallOutcome::Completed, RealityInstallOutcome::InProgress);
+    }
+
+    #[test]
+    fn test_reality_install_outcome_debug() {
+        assert!(format!("{:?}", RealityInstallOutcome::AlreadyReady).contains("AlreadyReady"));
+        assert!(format!("{:?}", RealityInstallOutcome::Completed).contains("Completed"));
+    }
+
+    #[test]
+    fn test_progress_state_new() {
+        let state = ProgressState::new();
+        assert!(!state.running);
+        assert_eq!(state.step, 0);
+        assert_eq!(state.total, TOTAL_STEPS);
+        assert!(state.description.is_empty());
+    }
+
+    #[test]
+    fn test_progress_state_total_steps() {
+        assert_eq!(TOTAL_STEPS, 6);
+    }
+}

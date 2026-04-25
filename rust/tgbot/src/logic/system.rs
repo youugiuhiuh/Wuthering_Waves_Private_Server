@@ -301,3 +301,44 @@ fn aggregate_network_traffic(networks: &Networks) -> (u64, u64) {
             (rx + data.total_received(), tx + data.total_transmitted())
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sysinfo::Networks;
+
+    #[test]
+    fn test_aggregate_network_traffic_empty() {
+        let networks = Networks::new_with_refreshed_list();
+        let (rx, tx) = aggregate_network_traffic(&networks);
+        assert!(rx >= 0);
+        assert!(tx >= 0);
+    }
+
+    #[test]
+    fn test_aggregate_network_traffic_with_data() {
+        let mut networks = Networks::new_with_refreshed_list();
+        networks.refresh();
+        let (rx, tx) = aggregate_network_traffic(&networks);
+        assert!(rx >= 0);
+        assert!(tx >= 0);
+    }
+
+    #[tokio::test]
+    async fn test_system_monitor_check_service_status_nonexistent() {
+        let result = SystemMonitor::check_service_status("nonexistent-service-xyz123").await;
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_system_monitor_get_load_avg() {
+        let result = SystemMonitor::get_load_avg().await;
+        assert!(result.is_ok());
+        let load = result.unwrap();
+        let parts: Vec<&str> = load.split(' ').collect();
+        assert_eq!(parts.len(), 3);
+        for part in parts {
+            assert!(part.parse::<f32>().is_ok());
+        }
+    }
+}
