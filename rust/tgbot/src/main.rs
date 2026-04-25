@@ -1285,12 +1285,35 @@ fn handle_callback(
                                 if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await {
                                     log::warn!("写入临时文件失败: {}", e);
                                 } else {
-                                    if let Ok(_) = bot_clone.send_document(chat_id_clone, InputFile::file(&temp_file_path)).caption("完整链接列表，建议尽快复制/导入").await {
-                                    }
+                                    let doc_sent = bot_clone.send_document(chat_id_clone, InputFile::file(&temp_file_path)).caption("完整链接列表，建议尽快复制/导入").await;
                                     if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
                                         log::warn!("删除临时文件失败: {}", e);
                                     }
+                                    if let Ok(msg) = doc_sent {
+                                        message_ids.push(msg.id);
+                                    }
                                 }
+
+                                // 发送结果信息
+                                let result_msg = format!(
+                                    "✅ 批量创建完成！\n\n📊 生成数量: {}",
+                                    result.created_count
+                                );
+                                if let Ok(msg) = bot_clone.send_message(chat_id_clone, result_msg).await {
+                                    message_ids.push(msg.id);
+                                }
+
+                                // 启动后台任务，60秒后自动删除所有消息
+                                let bot_clone2 = bot_clone.clone();
+                                let chat_id_clone2 = chat_id_clone;
+                                tokio::spawn(async move {
+                                    tokio::time::sleep(Duration::from_secs(60)).await;
+                                    for msg_id in message_ids {
+                                        if let Err(e) = bot_clone2.delete_message(chat_id_clone2, msg_id).await {
+                                            log::warn!("删除消息失败 (chat_id: {}, msg_id: {}): {}", chat_id_clone2, msg_id, e);
+                                        }
+                                    }
+                                });
                             }
                             Err(e) => {
                                 let _ = bot_clone.send_message(chat_id_clone, format!("❌ <b>创建失败</b>\n原因: {}", e)).parse_mode(ParseMode::Html).await;
@@ -1352,12 +1375,35 @@ fn handle_callback(
                                 if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await {
                                     log::warn!("写入临时文件失败: {}", e);
                                 } else {
-                                    if let Ok(_) = bot_clone.send_document(chat_id_clone, InputFile::file(&temp_file_path)).caption("完整链接列表，建议尽快复制/导入").await {
-                                    }
+                                    let doc_sent = bot_clone.send_document(chat_id_clone, InputFile::file(&temp_file_path)).caption("完整链接列表，建议尽快复制/导入").await;
                                     if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
                                         log::warn!("删除临时文件失败: {}", e);
                                     }
+                                    if let Ok(msg) = doc_sent {
+                                        message_ids.push(msg.id);
+                                    }
                                 }
+
+                                // 发送结果信息
+                                let result_msg = format!(
+                                    "✅ 批量创建完成！\n\n📊 生成数量: {}",
+                                    result.created_count
+                                );
+                                if let Ok(msg) = bot_clone.send_message(chat_id_clone, result_msg).await {
+                                    message_ids.push(msg.id);
+                                }
+
+                                // 启动后台任务，60秒后自动删除所有消息
+                                let bot_clone2 = bot_clone.clone();
+                                let chat_id_clone2 = chat_id_clone;
+                                tokio::spawn(async move {
+                                    tokio::time::sleep(Duration::from_secs(60)).await;
+                                    for msg_id in message_ids {
+                                        if let Err(e) = bot_clone2.delete_message(chat_id_clone2, msg_id).await {
+                                            log::warn!("删除消息失败 (chat_id: {}, msg_id: {}): {}", chat_id_clone2, msg_id, e);
+                                        }
+                                    }
+                                });
                             }
                             Err(e) => {
                                 let _ = bot_clone.send_message(chat_id_clone, format!("❌ <b>创建失败</b>\n原因: {}", e)).parse_mode(ParseMode::Html).await;
