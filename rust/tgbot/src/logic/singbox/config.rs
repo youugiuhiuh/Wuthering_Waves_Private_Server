@@ -37,17 +37,73 @@ impl SingBoxConfigManager {
         Ok(out)
     }
 
-    pub async fn delete_specific_configuration(path: &str) -> Result<()> {
+    async fn extract_main_port_from_config(path: &str) -> Result<u16> {
+        let content = fs::read_to_string(path).await?;
+        let json: Value = serde_json::from_str(&content)?;
+        
+        let port = json["inbounds"][0]["listen_port"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("无法解析主端口"))? as u16;
+        
+        Ok(port)
+    }
+
+    async fn cleanup_specific_hysteria2_rules(
+        main_port: u16, 
+        hop_range: (u16, u16)
+    ) -> Result<()> {
+        use tokio::process::Command;
+        
+        let range_str = format!("{}:{}", hop_range.0, hop_range.1);
+        let _ = Command::new("iptables")
+            .args([
+                "-t", "nat", "-D", "PREROUTING", "-p", "udp",
+                "--dport", &range_str,
+                "-j", "REDIRECT",
+                "--to-ports", &main_port.to_string(),
+            ])
+            .output()
+            .await;
+        
+        let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+        if has_ipv6 {
+            let _ = Command::new("ip6tables")
+                .args([
+                    "-t", "nat", "-D", "PREROUTING", "-p", "udp",
+                    "--dport", &range_str,
+                    "-j", "REDIRECT",
+                    "--to-ports", &main_port.to_string(),
+                ])
+                .output()
+                .await;
+            
+            let _ = MaintenanceManager::remove_port_range_v6(hop_range.0, hop_range.1).await;
+        }
+        
+        let _ = MaintenanceManager::remove_port_range(main_port, main_port).await;
+        let _ = MaintenanceManager::remove_port_range(hop_range.0, hop_range.1).await;
+        
+        log::info!("已清理 Hysteria2 端口跳跃规则: 主端口 {}, 范围 {}", main_port, range_str);
+        Ok(())
+    }
+
+pub async fn delete_specific_configuration(path: &str) -> Result<()> {
+        let main_port = Self::extract_main_port_from_config(path).await?;
+        let hop_range = (main_port + 1, main_port + 99);
+        
         fs::remove_file(path)
             .await
             .context("删除配置文件失败")?;
+        
+        Self::cleanup_specific_hysteria2_rules(main_port, hop_range).await?;
+        
+        let _ = PortAllocator::release_hysteria2_range(main_port).await;
         
         let remaining = Self::list_all_inbound_files().await?;
         let has_hysteria2 = remaining.iter().any(|f| f.contains("hysteria2"));
         
         if !has_hysteria2 {
-            Self::cleanup_port_hopping_firewall().await?;
-            PortAllocator::release_hysteria2_range().await?;
+            let _ = PortAllocator::release_hysteria2_range(main_port).await;
         }
         
         Self::reload_service().await?;
@@ -57,13 +113,19 @@ impl SingBoxConfigManager {
     pub async fn delete_all_configurations() -> Result<usize> {
         let files = Self::list_all_inbound_files().await?;
         let count = files.len();
+        
         for file in &files {
+            if file.contains("hysteria2") || file.contains("hysteria") {
+                if let Ok(main_port) = Self::extract_main_port_from_config(file).await {
+                    let hop_range = (main_port + 1, main_port + 99);
+                    Self::cleanup_specific_hysteria2_rules(main_port, hop_range).await?;
+                }
+            }
+            
             let _ = fs::remove_file(file).await;
         }
         
         if count > 0 {
-            Self::cleanup_port_hopping_firewall().await?;
-            PortAllocator::release_hysteria2_range().await?;
             Self::reload_service().await?;
         }
         Ok(count)
@@ -245,6 +307,10 @@ impl SingBoxConfigManager {
         ip_version: IpVersion,
         enable_obfs: bool,
     ) -> Result<BatchCreationResult> {
+        if !PortAllocator::check_hysteria2_limit().await? {
+            return Err(anyhow::anyhow!("已达到最大 Hysteria2 配置数量限制（50个）"));
+        }
+
         let host = match ip_version {
             IpVersion::IPv4 | IpVersion::SplitStackV4Primary => {
                 SystemMonitor::get_public_ip().await?
@@ -262,28 +328,12 @@ impl SingBoxConfigManager {
         let mut links = Vec::new();
         let mut configs = Vec::new();
 
-        let (main_port, hop_range) = PortAllocator::allocate_hysteria2().await?;
-
-        let port_443_available = MaintenanceManager::is_port_available(443).await;
-
         for i in 0..count {
             let sni = selector.next();
 
-            let port = if i == 0 && port_443_available {
-                443u16
-            } else if i == 1 {
-                main_port
-            } else {
-                loop {
-                    let p = StdRng::from_entropy().gen_range(10000..60000);
-                    if p >= hop_range.0 && p <= hop_range.1 {
-                        continue;
-                    }
-                    if MaintenanceManager::is_port_available(p).await {
-                        break p;
-                    }
-                }
-            };
+            let (main_port, hop_range) = PortAllocator::allocate_hysteria2().await?;
+
+            let port = main_port;
 
             let password = Hysteria2Config::generate_password();
             let tag = format!("HYSTERIA2-{}-{}", i + 1, &password[..8]);
@@ -304,22 +354,18 @@ impl SingBoxConfigManager {
             links.push(link);
             configs.push(config.to_inbound_json(&tag));
 
-            let _ = MaintenanceManager::allow_port(port).await;
-        }
+            let _ = MaintenanceManager::allow_port(main_port).await;
+            let _ = MaintenanceManager::allow_port_range(hop_range.0, hop_range.1).await;
 
-        // 开放 IPv4 端口范围
-        let _ = MaintenanceManager::allow_port_range(hop_range.0, hop_range.1).await;
+            let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+            if has_ipv6 {
+                let _ = MaintenanceManager::allow_port_range_v6(hop_range.0, hop_range.1).await;
+            }
 
-        // 检测 IPv6，有才开放 IPv6 端口范围
-        let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
-        if has_ipv6 {
-            let _ = MaintenanceManager::allow_port_range_v6(hop_range.0, hop_range.1).await;
-        }
-
-        Self::add_port_hopping_firewall_rules_v4(main_port, hop_range).await?;
-
-        if has_ipv6 {
-            Self::add_port_hopping_firewall_rules_v6(main_port, hop_range).await?;
+            Self::add_port_hopping_firewall_rules_v4(main_port, hop_range).await?;
+            if has_ipv6 {
+                Self::add_port_hopping_firewall_rules_v6(main_port, hop_range).await?;
+            }
         }
 
         let (filename, _path) = Self::save_standalone_config(configs, "hysteria2").await?;
