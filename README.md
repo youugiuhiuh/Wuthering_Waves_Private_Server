@@ -37,7 +37,7 @@ Recommended environment:
 Install with:
 
 ```bash
-wget -O /root/installer "https://github.com/NicholasDewar/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && /root/installer
+wget -O /root/installer "https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && /root/installer
 ```
 
 ## Repository Contents
