@@ -119,14 +119,27 @@ impl SingBoxConfigManager {
         for line in lines {
             if line.contains("BEGIN PRIVATE KEY") {
                 in_key = true;
-                in_cert = false;
-            } else if line.contains("BEGIN CERTIFICATE") {
+                key_content.push_str(line);
+                key_content.push('\n');
+                continue;
+            }
+            if line.contains("END PRIVATE KEY") {
+                key_content.push_str(line);
+                key_content.push('\n');
+                in_key = false;
+                continue;
+            }
+            if line.contains("BEGIN CERTIFICATE") {
                 in_cert = true;
-                in_key = false;
-            } else if line.contains("END PRIVATE KEY") {
-                in_key = false;
-            } else if line.contains("END CERTIFICATE") {
+                cert_content.push_str(line);
+                cert_content.push('\n');
+                continue;
+            }
+            if line.contains("END CERTIFICATE") {
+                cert_content.push_str(line);
+                cert_content.push('\n');
                 in_cert = false;
+                continue;
             }
 
             if in_key {
