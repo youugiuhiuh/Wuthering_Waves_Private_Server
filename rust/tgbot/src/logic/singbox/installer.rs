@@ -39,7 +39,7 @@ impl SingBoxInstaller {
 
         Self::extract_archive(&archive_path, temp_dir).await?;
 
-        let bin_path = format!("{}/sing-box-{}/sing-box", temp_dir, version);
+        let bin_path = format!("{}/sing-box-{}-linux-{}/sing-box", temp_dir, version, arch);
         fs::copy(&bin_path, WWPS_BOX_BIN)
             .await
             .context("复制二进制文件失败")?;
