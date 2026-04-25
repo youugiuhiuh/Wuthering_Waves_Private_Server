@@ -83,15 +83,15 @@ impl Hysteria2Config {
         let encoded_password = utf8_percent_encode(&self.password, NON_ALPHANUMERIC).to_string();
         let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
         let encoded_name = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
-        let hop_ports = format!("{}-{}", hop_range.0, hop_range.1);
 
         format!(
-            "hysteria2://{}@{}:{}?sni={}&alpn=h3&insecure=1&hop_ports={}&hop_interval=30s#{}",
+            "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3&insecure=1&hop_interval=30s#{}",
             encoded_password,
             host,
             self.port,
+            hop_range.0,
+            hop_range.1,
             encoded_sni,
-            hop_ports,
             encoded_name
         )
     }
@@ -125,15 +125,15 @@ impl Hysteria2Config {
         let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
         let encoded_name = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
         let encoded_obfs_password = utf8_percent_encode(self.obfs_password.as_deref().unwrap_or(""), NON_ALPHANUMERIC).to_string();
-        let hop_ports = format!("{}-{}", hop_range.0, hop_range.1);
 
         format!(
-            "hysteria2://{}@{}:{}?sni={}&alpn=h3&insecure=1&hop_ports={}&hop_interval=30s&obfs=salamander&obfs-password={}#{}",
+            "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3&insecure=1&hop_interval=30s&obfs=salamander&obfs-password={}#{}",
             encoded_password,
             host,
             self.port,
+            hop_range.0,
+            hop_range.1,
             encoded_sni,
-            hop_ports,
             encoded_obfs_password,
             encoded_name
         )
