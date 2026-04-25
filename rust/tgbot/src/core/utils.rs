@@ -1,8 +1,8 @@
 //! 共享工具函数
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use crate::core::types::{IpVersion, Result};
-use crate::core::error::AppError;
+use crate::core::types::IpVersion;
+use crate::core::error::{AppError, Result};
 use crate::logic::maintenance::MaintenanceManager;
 
 /// 通用端口选择

@@ -1,3 +1,5 @@
+use crate::core::paths::singbox;
+use crate::core::types::BatchCreationResult;
 use crate::logic::config::IpVersion;
 use crate::logic::maintenance::MaintenanceManager;
 use crate::logic::sni_selector::SNISelector;
@@ -11,29 +13,18 @@ use tokio::fs;
 use super::hysteria2::Hysteria2Config;
 use super::tuic::TUICConfig;
 
-const WWPS_BOX_DIR: &str = "/etc/wwps/wwps-box";
-const WWPS_BOX_CONF_DIR: &str = "/etc/wwps/wwps-box/conf";
-const WWPS_BOX_BIN: &str = "/etc/wwps/wwps-box/sing-box";
-
-pub struct BatchCreationResult {
-    pub links: Vec<String>,
-    pub config_file: Option<String>,
-    pub backup_file: Option<String>,
-    pub created_count: usize,
-}
-
 pub struct SingBoxConfigManager;
 
 impl SingBoxConfigManager {
     pub async fn is_installed() -> bool {
-        fs::try_exists(WWPS_BOX_BIN)
+        fs::try_exists(singbox::BIN)
             .await
             .unwrap_or(false)
     }
 
     pub async fn list_all_inbound_files() -> Result<Vec<String>> {
         let mut out = Vec::new();
-        if let Ok(mut rd) = fs::read_dir(WWPS_BOX_CONF_DIR).await {
+        if let Ok(mut rd) = fs::read_dir(singbox::CONF_DIR).await {
             while let Ok(Some(entry)) = rd.next_entry().await {
                 if let Some(name) = entry.file_name().to_str() {
                     if name.ends_with(".json") && !name.starts_with("00_") && !name.starts_with("01_") {
@@ -65,10 +56,6 @@ impl SingBoxConfigManager {
         Ok(count)
     }
 
-    const WWPS_BOX_CERTS_DIR: &str = "/etc/wwps/wwps-box/certs";
-    const WWPS_BOX_TLS_CERT: &str = "/etc/wwps/wwps-box/certs/tls.cer";
-    const WWPS_BOX_TLS_KEY: &str = "/etc/wwps/wwps-box/certs/tls.key";
-
     async fn reload_service() -> Result<()> {
         let output = tokio::process::Command::new("systemctl")
             .args(["restart", "sing-box"])
@@ -85,17 +72,17 @@ impl SingBoxConfigManager {
     }
 
     async fn ensure_tls_certificates() -> Result<()> {
-        if tokio::fs::try_exists(Self::WWPS_BOX_TLS_CERT).await.unwrap_or(false)
-            && tokio::fs::try_exists(Self::WWPS_BOX_TLS_KEY).await.unwrap_or(false)
+        if tokio::fs::try_exists(singbox::TLS_CERT).await.unwrap_or(false)
+            && tokio::fs::try_exists(singbox::TLS_KEY).await.unwrap_or(false)
         {
             return Ok(());
         }
 
-        tokio::fs::create_dir_all(Self::WWPS_BOX_CERTS_DIR)
+        tokio::fs::create_dir_all(singbox::CERTS_DIR)
             .await
             .context("创建证书目录失败")?;
 
-        let output = tokio::process::Command::new(WWPS_BOX_BIN)
+        let output = tokio::process::Command::new(singbox::BIN)
             .args(["generate", "tls-keypair", "tls", "-m", "456"])
             .output()
             .await
@@ -152,8 +139,8 @@ impl SingBoxConfigManager {
             }
         }
 
-        tokio::fs::write(Self::WWPS_BOX_TLS_KEY, key_content).await?;
-        tokio::fs::write(Self::WWPS_BOX_TLS_CERT, cert_content).await?;
+        tokio::fs::write(singbox::TLS_KEY, key_content).await?;
+        tokio::fs::write(singbox::TLS_CERT, cert_content).await?;
 
         Ok(())
     }
@@ -310,7 +297,7 @@ impl SingBoxConfigManager {
     ) -> Result<(String, String)> {
         use rand::Rng;
 
-        fs::create_dir_all(WWPS_BOX_CONF_DIR)
+        fs::create_dir_all(singbox::CONF_DIR)
             .await
             .context("创建配置目录失败")?;
 
@@ -330,7 +317,7 @@ impl SingBoxConfigManager {
             _ => format!("batch_{}_{}_{}.json", proto, timestamp, random_part),
         };
 
-        let config_path = format!("{}/{}", WWPS_BOX_CONF_DIR, filename);
+        let config_path = format!("{}/{}", singbox::CONF_DIR, filename);
 
         let dns_servers = json!([
             {"tag": "dns", "type": "udp", "server": "8.8.8.8", "domain_resolver": "local"},

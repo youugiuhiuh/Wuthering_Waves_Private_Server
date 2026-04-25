@@ -1,8 +1,7 @@
 //! 集中路径常量定义
 //!
 //! 所有系统路径在此定义，避免硬编码分散
-
-use std::path::PathBuf;
+#![allow(dead_code)]
 
 pub const WWPS_BASE_DIR: &str = "/etc/wwps";
 
@@ -15,10 +14,6 @@ pub mod xray {
     pub const ERROR_LOG: &str = "/etc/wwps/wwps-core/error.log";
     pub const BACKUP_DIR: &str = "/etc/wwps/wwps-core/backup";
     pub const TEMP_DIR: &str = "/tmp/wwps-core-installer";
-
-    pub fn conf_file(name: &str) -> PathBuf {
-        PathBuf::from(format!("{}/{}", CONF_DIR, name))
-    }
 }
 
 /// Sing-box 相关路径
@@ -29,10 +24,6 @@ pub mod singbox {
     pub const CERTS_DIR: &str = "/etc/wwps/wwps-box/certs";
     pub const TLS_CERT: &str = "/etc/wwps/wwps-box/certs/tls.cer";
     pub const TLS_KEY: &str = "/etc/wwps/wwps-box/certs/tls.key";
-
-    pub fn conf_file(name: &str) -> PathBuf {
-        PathBuf::from(format!("{}/{}", CONF_DIR, name))
-    }
 }
 
 /// Bot 相关路径

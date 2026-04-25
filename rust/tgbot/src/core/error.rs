@@ -36,9 +36,3 @@ pub enum AppError {
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;
-
-impl From<AppError> for anyhow::Error {
-    fn from(err: AppError) -> Self {
-        anyhow::anyhow!(err.to_string())
-    }
-}
