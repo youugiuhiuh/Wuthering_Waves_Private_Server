@@ -102,23 +102,18 @@ impl ConfigManager {
     }
 
     pub async fn list_all_inbound_files() -> Result<Vec<String>> {
-        let dirs = vec![
-            format!("{}wwps-core/conf/", Self::CONFIG_BASE_PATH),
-            format!("{}wwps-box/conf/config/", Self::CONFIG_BASE_PATH),
-        ];
-
         let mut out = Vec::new();
-        for dir in dirs {
-            if let Ok(mut rd) = fs::read_dir(&dir).await {
-                while let Ok(Some(entry)) = rd.next_entry().await {
-                    if let Some(name) = entry.file_name().to_str()
-                        && name.ends_with("_inbounds.json")
-                    {
-                        out.push(entry.path().to_string_lossy().to_string());
-                    }
+        
+        if let Ok(mut rd) = fs::read_dir(xray::CONF_DIR).await {
+            while let Ok(Some(entry)) = rd.next_entry().await {
+                if let Some(name) = entry.file_name().to_str()
+                    && name.ends_with("_inbounds.json")
+                {
+                    out.push(entry.path().to_string_lossy().to_string());
                 }
             }
         }
+        
         Ok(out)
     }
 
