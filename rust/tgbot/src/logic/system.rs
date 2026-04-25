@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables)]
 use anyhow::Result;
 use std::time::Duration;
 
@@ -13,7 +12,7 @@ impl SystemMonitor {
     pub async fn get_status_report() -> Result<String> {
         let interval = sysinfo::MINIMUM_CPU_UPDATE_INTERVAL;
 
-        let (sys_data, cpu_usage) = tokio::task::spawn_blocking(move || {
+        let (sys_data, _cpu_usage) = tokio::task::spawn_blocking(move || {
             let mut sys = System::new_all();
             sys.refresh_all();
             sys.refresh_all();

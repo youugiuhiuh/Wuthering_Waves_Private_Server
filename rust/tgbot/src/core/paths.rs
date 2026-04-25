@@ -1,7 +1,6 @@
 //! 集中路径常量定义
 //!
 //! 所有系统路径在此定义，避免硬编码分散
-#![allow(dead_code)]
 
 pub const WWPS_BASE_DIR: &str = "/etc/wwps";
 

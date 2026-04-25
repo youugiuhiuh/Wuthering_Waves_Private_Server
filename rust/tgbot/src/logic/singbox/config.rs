@@ -1,6 +1,6 @@
 use crate::core::paths::{singbox, xray};
 use crate::core::types::BatchCreationResult;
-use crate::logic::config::IpVersion;
+use crate::core::types::IpVersion;
 use crate::logic::maintenance::MaintenanceManager;
 use crate::logic::sni_selector::SNISelector;
 use crate::logic::system::SystemMonitor;

@@ -10,6 +10,7 @@ use std::time::Duration;
 use tokio::fs;
 
 use crate::core::paths::xray;
+use crate::core::types::{BatchCreationResult, IpVersion};
 use crate::logic::cmd_async::run_cmd_output;
 
 /// 服务端 mldsa65Seed（32 字节 seed 的 base64url），来自 xray/wwps-core mldsa65 输出。
@@ -71,16 +72,6 @@ fn reality_pq_verify_as_base64url(raw: &str) -> Option<String> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum IpVersion {
-    IPv4,
-    IPv6,
-    /// 双栈分离：上行优先使用 IPv6，下行可使用 IPv4（兼容现有行为）
-    SplitStackV6Primary,
-    /// 双栈分离：上行优先使用 IPv4，下行可使用 IPv6（新增）
-    SplitStackV4Primary,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RealityProto {
     Vision,
     XHTTP,
@@ -88,13 +79,6 @@ pub enum RealityProto {
 }
 
 #[derive(Debug, Clone)]
-pub struct BatchCreationResult {
-    pub links: Vec<String>,
-    pub config_file: Option<String>, // 独立文件名
-    pub backup_file: Option<String>, // 备份文件名
-    pub created_count: usize,
-}
-
 pub struct ConfigManager;
 
 impl ConfigManager {
@@ -594,7 +578,7 @@ impl ConfigManager {
         port: i32,
         uuid: &str,
         email: &str,
-        pub_key: &str,
+        _pub_key: &str,
         priv_key: &str,
         short_id: &str,
         ip_version: IpVersion,

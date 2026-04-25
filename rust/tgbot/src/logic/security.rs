@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables)]
 use aes_gcm::{
     Aes256Gcm, Nonce,
     aead::{Aead, KeyInit},

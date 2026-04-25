@@ -708,11 +708,6 @@ pub mod wwps_core {
             Ok(())
         }
 
-        #[allow(dead_code)]
-        pub fn asset_basename(&self) -> &'static str {
-            self.arch.asset_basename()
-        }
-
         fn ensure_dir_writable(path: &Path) -> Result<()> {
             if !path.exists() {
                 std_fs::create_dir_all(path)

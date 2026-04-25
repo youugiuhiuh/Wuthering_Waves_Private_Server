@@ -29,7 +29,8 @@ use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode,
 };
 use teloxide::utils::command::BotCommands;
-use tgbot::logic::config::{ConfigManager, IpVersion, RealityProto, WarpMode};
+use tgbot::core::types::IpVersion;
+use tgbot::logic::config::{ConfigManager, RealityProto, WarpMode};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
 use tgbot::logic::maintenance::{BBR3_PENDING_FLAG_FILE, MaintenanceManager};
 use tgbot::logic::operations::Operations;
@@ -178,20 +179,20 @@ async fn show_reality_qty_prompt(
     bot: &Bot,
     chat_id: ChatId,
     msg_id: MessageId,
-    ip_version: tgbot::logic::config::IpVersion,
+    ip_version: IpVersion,
     proto: RealityProto,
 ) -> ResponseResult<()> {
     let ip_ver_code = match ip_version {
-        tgbot::logic::config::IpVersion::IPv4 => "4",
-        tgbot::logic::config::IpVersion::IPv6 => "6",
-        tgbot::logic::config::IpVersion::SplitStackV6Primary => "s6",
-        tgbot::logic::config::IpVersion::SplitStackV4Primary => "s4",
+        IpVersion::IPv4 => "4",
+        IpVersion::IPv6 => "6",
+        IpVersion::SplitStackV6Primary => "s6",
+        IpVersion::SplitStackV4Primary => "s4",
     };
     let ip_display = match ip_version {
-        tgbot::logic::config::IpVersion::IPv4 => "IPv4",
-        tgbot::logic::config::IpVersion::IPv6 => "IPv6",
-        tgbot::logic::config::IpVersion::SplitStackV6Primary => "双栈分离 (v6上v4下)",
-        tgbot::logic::config::IpVersion::SplitStackV4Primary => "双栈分离 (v4上v6下)",
+        IpVersion::IPv4 => "IPv4",
+        IpVersion::IPv6 => "IPv6",
+        IpVersion::SplitStackV6Primary => "双栈分离 (v6上v4下)",
+        IpVersion::SplitStackV4Primary => "双栈分离 (v4上v6下)",
     };
 
     let (exec_prefix, title) = match proto {
@@ -2189,13 +2190,13 @@ fn handle_callback(
                 d if d.starts_with("u_xdns_ip:") => {
                     let ip_ver_code = d.strip_prefix("u_xdns_ip:").unwrap_or("4");
                     let ip_version = match ip_ver_code {
-                        "6" => tgbot::logic::config::IpVersion::IPv6,
-                        _ => tgbot::logic::config::IpVersion::IPv4,
+                        "6" => IpVersion::IPv6,
+                        _ => IpVersion::IPv4,
                     };
 
                     let ip_display = match ip_version {
-                        tgbot::logic::config::IpVersion::IPv4 => "IPv4",
-                        tgbot::logic::config::IpVersion::IPv6 => "IPv6",
+                        IpVersion::IPv4 => "IPv4",
+                        IpVersion::IPv6 => "IPv6",
                         _ => "IPv4",
                     };
 
@@ -2257,13 +2258,13 @@ fn handle_callback(
                     let n: usize = parts[1].parse().unwrap_or(0);
 
                     let ip_version = match ip_ver_code {
-                        "6" => tgbot::logic::config::IpVersion::IPv6,
-                        _ => tgbot::logic::config::IpVersion::IPv4,
+                        "6" => IpVersion::IPv6,
+                        _ => IpVersion::IPv4,
                     };
 
                     let ip_str = match ip_version {
-                        tgbot::logic::config::IpVersion::IPv4 => "IPv4",
-                        tgbot::logic::config::IpVersion::IPv6 => "IPv6",
+                        IpVersion::IPv4 => "IPv4",
+                        IpVersion::IPv6 => "IPv6",
                         _ => "IPv4",
                     };
 
@@ -2360,10 +2361,10 @@ fn handle_callback(
                     };
                     let ip_ver_code = d.strip_prefix(prefix).unwrap_or("");
                     let ip_version = match ip_ver_code {
-                        "6" => logic::config::IpVersion::IPv6,
-                        "s6" => logic::config::IpVersion::SplitStackV6Primary,
-                        "s4" => logic::config::IpVersion::SplitStackV4Primary,
-                        _ => logic::config::IpVersion::IPv4,
+                        "6" => IpVersion::IPv6,
+                        "s6" => IpVersion::SplitStackV6Primary,
+                        "s4" => IpVersion::SplitStackV4Primary,
+                        _ => IpVersion::IPv4,
                     };
                     // 进入第二步：选择数量
                     show_reality_qty_prompt(&bot, chat_id, msg_id, ip_version, proto).await?;
@@ -2382,10 +2383,10 @@ fn handle_callback(
                     let n: usize = parts[1].parse().unwrap_or(0);
 
                     let ip_version = match ip_ver_code {
-                        "6" => logic::config::IpVersion::IPv6,
-                        "s6" => logic::config::IpVersion::SplitStackV6Primary,
-                        "s4" => logic::config::IpVersion::SplitStackV4Primary,
-                        _ => logic::config::IpVersion::IPv4,
+                        "6" => IpVersion::IPv6,
+                        "s6" => IpVersion::SplitStackV6Primary,
+                        "s4" => IpVersion::SplitStackV4Primary,
+                        _ => IpVersion::IPv4,
                     };
 
                     let standalone_mode = true;
@@ -2398,10 +2399,10 @@ fn handle_callback(
                     }
 
                     let ip_str = match ip_version {
-                        logic::config::IpVersion::IPv4 => "IPv4",
-                        logic::config::IpVersion::IPv6 => "IPv6",
-                        logic::config::IpVersion::SplitStackV6Primary => "双栈分离 (v6上v4下)",
-                        logic::config::IpVersion::SplitStackV4Primary => "双栈分离 (v4上v6下)",
+                        IpVersion::IPv4 => "IPv4",
+                        IpVersion::IPv6 => "IPv6",
+                        IpVersion::SplitStackV6Primary => "双栈分离 (v6上v4下)",
+                        IpVersion::SplitStackV4Primary => "双栈分离 (v4上v6下)",
                     };
 
                     let proto_str = match proto {

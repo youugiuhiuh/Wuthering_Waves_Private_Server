@@ -326,12 +326,6 @@ impl MaintenanceManager {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub async fn install_base_reality() -> Result<()> {
-        // 直接调用异步安装任务
-        crate::logic::installer::RealityInstallerInternal::install_minimal_environment().await
-    }
-
     pub async fn is_port_available(port: u16) -> bool {
         match run_cmd_output("netstat", &["-tunlp"], TIMEOUT_SHORT).await {
             Ok((_, stdout, _)) => !stdout.contains(&format!(":{}", port)),
