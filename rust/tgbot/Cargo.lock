@@ -3012,6 +3012,7 @@ dependencies = [
  "sysinfo",
  "teloxide",
  "tempfile",
+ "thiserror",
  "tokio",
  "tokio-cron-scheduler",
  "tokio-rustls",
