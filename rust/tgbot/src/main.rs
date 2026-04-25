@@ -3222,7 +3222,7 @@ fn handle_callback(
                     bot.edit_message_text(
                         chat_id,
                         msg_id,
-                        "📦 <b>wwps-box 管理</b>\n管理 Sing-box 服务状态",
+                        "📦 <b>Sing-box 管理</b>\n管理 Sing-box 服务状态",
                     )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(keyboard)
