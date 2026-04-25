@@ -75,6 +75,62 @@ impl FirewallManager {
             None => anyhow::bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
         }
     }
+
+    pub async fn add_port_range(start: u16, end: u16) -> Result<()> {
+        match Self::detect_backend().await {
+            Some(FirewallBackend::Ufw) => {
+                UfwClient::add_port_range(start, end, "udp").await?;
+            }
+            Some(FirewallBackend::Firewalld) => {
+                FirewalldClient::add_port_range(start, end, "udp").await?;
+            }
+            None => anyhow::bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
+        }
+        Ok(())
+    }
+
+    pub async fn add_port_range_v6(start: u16, end: u16) -> Result<()> {
+        match Self::detect_backend().await {
+            Some(FirewallBackend::Ufw) => {
+                // UFW 自动处理 IPv6，使用相同的方法
+                UfwClient::add_port_range_v6(start, end, "udp").await?;
+            }
+            Some(FirewallBackend::Firewalld) => {
+                // Firewalld 端口规则通常同时应用于 IPv4 和 IPv6
+                FirewalldClient::add_port_range(start, end, "udp").await?;
+            }
+            None => anyhow::bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
+        }
+        Ok(())
+    }
+
+    pub async fn remove_port_range(start: u16, end: u16) -> Result<()> {
+        match Self::detect_backend().await {
+            Some(FirewallBackend::Ufw) => {
+                UfwClient::remove_port_range(start, end, "udp").await?;
+            }
+            Some(FirewallBackend::Firewalld) => {
+                FirewalldClient::remove_port_range(start, end, "udp").await?;
+            }
+            None => anyhow::bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
+        }
+        Ok(())
+    }
+
+    pub async fn remove_port_range_v6(start: u16, end: u16) -> Result<()> {
+        match Self::detect_backend().await {
+            Some(FirewallBackend::Ufw) => {
+                // UFW 自动处理 IPv6，使用相同的方法
+                UfwClient::remove_port_range_v6(start, end, "udp").await?;
+            }
+            Some(FirewallBackend::Firewalld) => {
+                // Firewalld 端口规则通常同时应用于 IPv4 和 IPv6
+                FirewalldClient::remove_port_range(start, end, "udp").await?;
+            }
+            None => anyhow::bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

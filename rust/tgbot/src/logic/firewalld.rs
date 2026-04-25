@@ -120,6 +120,115 @@ impl FirewalldClient {
         Ok(())
     }
 
+    pub async fn add_port_range(start: u16, end: u16, protocol: &str) -> Result<()> {
+        let connection = zbus::Connection::system().await?;
+
+        // Proxies
+        let proxy = FirewallD1Proxy::new(&connection).await?;
+        let zone_proxy = FirewallD1ZoneProxy::new(&connection).await?;
+
+        let zone = proxy.get_default_zone().await?;
+        let port_range_str = format!("{}-{}", start, end);
+
+        // 1. Runtime: Add port range immediately (Safe to fail)
+        if !zone_proxy
+            .query_port(&zone, &port_range_str, protocol)
+            .await
+            .unwrap_or(false)
+        {
+            let _ = zone_proxy.add_port(&zone, &port_range_str, protocol, 0).await;
+        }
+
+        // 2. Permanent: Add port range to config
+        let config_path = match proxy.config().await {
+            Ok(path) => path,
+            Err(_) => {
+                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
+                    .unwrap()
+            }
+        };
+        let config_proxy = FirewallD1ConfigProxy::builder(&connection)
+            .path(config_path)?
+            .build()
+            .await?;
+
+        if let Ok(zone_path) = config_proxy.get_zone_by_name(&zone).await {
+            let config_zone_proxy = FirewallD1ConfigZoneProxy::builder(&connection)
+                .path(zone_path)?
+                .build()
+                .await?;
+
+            if !config_zone_proxy
+                .query_port(&port_range_str, protocol)
+                .await
+                .unwrap_or(false)
+            {
+                config_zone_proxy.add_port(&port_range_str, protocol).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn remove_port_range(start: u16, end: u16, protocol: &str) -> Result<()> {
+        let connection = zbus::Connection::system().await?;
+
+        // Proxies
+        let proxy = FirewallD1Proxy::new(&connection).await?;
+        let zone_proxy = FirewallD1ZoneProxy::new(&connection).await?;
+
+        let zone = proxy.get_default_zone().await?;
+        let port_range_str = format!("{}-{}", start, end);
+
+        // 1. Runtime: Remove port range (Safe to fail)
+        let _ = zone_proxy.remove_port(&zone, &port_range_str, protocol).await;
+
+        // 2. Permanent: Remove port range from config
+        let config_path = match proxy.config().await {
+            Ok(path) => path,
+            Err(_) => {
+                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
+                    .unwrap()
+            }
+        };
+        let config_proxy = FirewallD1ConfigProxy::builder(&connection)
+            .path(config_path)?
+            .build()
+            .await?;
+
+        if let Ok(zone_path) = config_proxy.get_zone_by_name(&zone).await {
+            let config_zone_proxy = FirewallD1ConfigZoneProxy::builder(&connection)
+                .path(zone_path)?
+                .build()
+                .await?;
+
+            if config_zone_proxy
+                .query_port(&port_range_str, protocol)
+                .await
+                .unwrap_or(false)
+            {
+                config_zone_proxy.remove_port(&port_range_str, protocol).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn is_active() -> bool {
+        match zbus::Connection::system().await {
+            Ok(connection) => {
+                match FirewallD1Proxy::new(&connection).await {
+                    Ok(proxy) => {
+                        // 尝试调用 get_default_zone 来检查服务是否响应
+                        proxy.get_default_zone().await.is_ok()
+                    }
+                    Err(_) => false,
+                }
+            }
+            Err(_) => false,
+        }
+    }
+
     pub async fn harden_with_ports(ports: HashSet<u16>) -> Result<()> {
         let connection = zbus::Connection::system().await?;
         let proxy = FirewallD1Proxy::new(&connection).await?;

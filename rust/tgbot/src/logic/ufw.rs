@@ -65,6 +65,43 @@ impl UfwClient {
             .with_context(|| format!("UFW 允许端口 {} 失败", port_spec))
     }
 
+    pub async fn add_port_range(start: u16, end: u16, protocol: &str) -> Result<()> {
+        let port_spec = format!("{}:{}/{}", start, end, protocol);
+        Self::run_ufw(&["allow", &port_spec])
+            .await
+            .with_context(|| format!("UFW 允许端口范围 {} 失败", port_spec))
+    }
+
+    pub async fn add_port_range_v6(start: u16, end: u16, protocol: &str) -> Result<()> {
+        let port_spec = format!("{}:{}/{}", start, end, protocol);
+        Self::run_ufw(&["allow", &port_spec])
+            .await
+            .with_context(|| format!("UFW 允许 IPv6 端口范围 {} 失败", port_spec))
+    }
+
+    pub async fn remove_port_range(start: u16, end: u16, protocol: &str) -> Result<()> {
+        let port_spec = format!("{}:{}/{}", start, end, protocol);
+        Self::run_ufw(&["delete", "allow", &port_spec])
+            .await
+            .with_context(|| format!("UFW 删除端口范围 {} 失败", port_spec))
+    }
+
+    pub async fn remove_port_range_v6(start: u16, end: u16, protocol: &str) -> Result<()> {
+        let port_spec = format!("{}:{}/{}", start, end, protocol);
+        Self::run_ufw(&["delete", "allow", &port_spec])
+            .await
+            .with_context(|| format!("UFW 删除 IPv6 端口范围 {} 失败", port_spec))
+    }
+
+    pub async fn is_active() -> bool {
+        match run_cmd_output("ufw", &["status"], Duration::from_secs(5)).await {
+            Ok((status, stdout, _)) => {
+                status.success() && stdout.to_lowercase().contains("status: active")
+            }
+            Err(_) => false,
+        }
+    }
+
     pub async fn harden_with_ports(ports: HashSet<u16>) -> Result<()> {
         // 1. 重置 UFW
         let _ = Self::run_ufw(&["--force", "reset"]).await;

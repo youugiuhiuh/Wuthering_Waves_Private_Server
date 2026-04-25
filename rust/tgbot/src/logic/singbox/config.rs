@@ -113,7 +113,11 @@ impl SingBoxConfigManager {
     async fn cleanup_port_hopping_firewall() -> Result<()> {
         use tokio::process::Command;
 
-        if let Some((main_port, _)) = PortAllocator::get_hysteria2_range().await {
+        // 检测 IPv6
+        let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+
+        if let Some((main_port, hop_range)) = PortAllocator::get_hysteria2_range().await {
+            // 清理 IPv4 规则（总是）
             let _ = Command::new("iptables")
                 .args([
                     "-t", "nat", "-D", "PREROUTING", "-p", "udp",
@@ -122,7 +126,25 @@ impl SingBoxConfigManager {
                 ])
                 .output()
                 .await;
-            
+
+            // 移除 IPv4 端口范围
+            let _ = MaintenanceManager::remove_port_range(hop_range.0, hop_range.1).await;
+
+            // 清理 IPv6 规则（仅当 has_ipv6）
+            if has_ipv6 {
+                let _ = Command::new("ip6tables")
+                    .args([
+                        "-t", "nat", "-D", "PREROUTING", "-p", "udp",
+                        "-j", "REDIRECT",
+                        "--to-ports", &main_port.to_string(),
+                    ])
+                    .output()
+                    .await;
+
+                // 移除 IPv6 端口范围
+                let _ = MaintenanceManager::remove_port_range_v6(hop_range.0, hop_range.1).await;
+            }
+
             log::info!("已清理 Hysteria2 端口跳跃防火墙规则");
         }
 
@@ -285,7 +307,20 @@ impl SingBoxConfigManager {
             let _ = MaintenanceManager::allow_port(port).await;
         }
 
-        Self::add_port_hopping_firewall_rules(main_port, hop_range).await?;
+        // 开放 IPv4 端口范围
+        let _ = MaintenanceManager::allow_port_range(hop_range.0, hop_range.1).await;
+
+        // 检测 IPv6，有才开放 IPv6 端口范围
+        let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+        if has_ipv6 {
+            let _ = MaintenanceManager::allow_port_range_v6(hop_range.0, hop_range.1).await;
+        }
+
+        Self::add_port_hopping_firewall_rules_v4(main_port, hop_range).await?;
+
+        if has_ipv6 {
+            Self::add_port_hopping_firewall_rules_v6(main_port, hop_range).await?;
+        }
 
         let (filename, _path) = Self::save_standalone_config(configs, "hysteria2").await?;
         Self::ensure_tls_certificates().await?;
@@ -299,7 +334,7 @@ impl SingBoxConfigManager {
         })
     }
 
-    async fn add_port_hopping_firewall_rules(main_port: u16, hop_range: (u16, u16)) -> Result<()> {
+    async fn add_port_hopping_firewall_rules_v4(main_port: u16, hop_range: (u16, u16)) -> Result<()> {
         use tokio::process::Command;
 
         let range_str = format!("{}:{}", hop_range.0, hop_range.1);
@@ -317,7 +352,29 @@ impl SingBoxConfigManager {
             log::warn!("添加 iptables 规则失败 (可能需要 root 权限): {}", e);
         }
 
-        log::info!("已配置 Hysteria2 端口跳跃: 主端口 {}, 跳跃范围 {}", main_port, range_str);
+        log::info!("已配置 Hysteria2 IPv4 端口跳跃: 主端口 {}, 跳跃范围 {}", main_port, range_str);
+        Ok(())
+    }
+
+    async fn add_port_hopping_firewall_rules_v6(main_port: u16, hop_range: (u16, u16)) -> Result<()> {
+        use tokio::process::Command;
+
+        let range_str = format!("{}:{}", hop_range.0, hop_range.1);
+
+        let output = Command::new("ip6tables")
+            .args([
+                "-t", "nat", "-A", "PREROUTING", "-p", "udp",
+                "--dport", &range_str, "-j", "REDIRECT",
+                "--to-ports", &main_port.to_string(),
+            ])
+            .output()
+            .await;
+
+        if let Err(e) = output {
+            log::warn!("添加 ip6tables 规则失败 (可能需要 root 权限): {}", e);
+        }
+
+        log::info!("已配置 Hysteria2 IPv6 端口跳跃: 主端口 {}, 跳跃范围 {}", main_port, range_str);
         Ok(())
     }
 

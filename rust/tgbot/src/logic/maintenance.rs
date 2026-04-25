@@ -338,6 +338,69 @@ impl MaintenanceManager {
         Ok(())
     }
 
+    pub async fn is_ufw_active() -> bool {
+        crate::logic::ufw::UfwClient::is_active().await
+    }
+
+    pub async fn is_firewalld_active() -> bool {
+        crate::logic::firewalld::FirewalldClient::is_active().await
+    }
+
+    /// 允许端口范围（IPv4）
+    /// 检测 ufw 和 firewalld 是否激活，然后调用相应的方法添加端口范围
+    pub async fn allow_port_range(start: u16, end: u16) -> Result<()> {
+        // 检测 ufw 是否激活
+        if Self::is_ufw_active().await {
+            crate::logic::ufw::UfwClient::add_port_range(start, end, "udp").await?;
+        }
+
+        // 检测 firewalld 是否激活
+        if Self::is_firewalld_active().await {
+            crate::logic::firewalld::FirewalldClient::add_port_range(start, end, "udp").await?;
+        }
+
+        Ok(())
+    }
+
+    /// 允许端口范围（IPv6）
+    /// firewalld 自动处理 IPv6，无需额外调用
+    pub async fn allow_port_range_v6(start: u16, end: u16) -> Result<()> {
+        // 检测 ufw 是否激活
+        if Self::is_ufw_active().await {
+            crate::logic::ufw::UfwClient::add_port_range_v6(start, end, "udp").await?;
+        }
+
+        // firewalld 自动处理 IPv6，无需额外调用
+
+        Ok(())
+    }
+
+    /// 移除端口范围（IPv4）
+    /// 检测 ufw 和 firewalld 是否激活，然后调用相应的方法移除端口范围
+    pub async fn remove_port_range(start: u16, end: u16) -> Result<()> {
+        // 检测 ufw 是否激活
+        if Self::is_ufw_active().await {
+            crate::logic::ufw::UfwClient::remove_port_range(start, end, "udp").await?;
+        }
+
+        // 检测 firewalld 是否激活
+        if Self::is_firewalld_active().await {
+            crate::logic::firewalld::FirewalldClient::remove_port_range(start, end, "udp").await?;
+        }
+
+        Ok(())
+    }
+
+    /// 移除端口范围（IPv6）
+    pub async fn remove_port_range_v6(start: u16, end: u16) -> Result<()> {
+        // 检测 ufw 是否激活
+        if Self::is_ufw_active().await {
+            crate::logic::ufw::UfwClient::remove_port_range_v6(start, end, "udp").await?;
+        }
+
+        Ok(())
+    }
+
     /// 默认的自毁目标路径列表
     pub const DESTRUCT_TARGETS: &[&str] = &[
         "/etc/wwps",
