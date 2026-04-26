@@ -871,7 +871,7 @@ impl ConfigManager {
     ) -> Result<BatchCreationResult> {
         // 生成独立文件名
         let filename = Self::generate_secure_batch_filename(proto).await?;
-        let config_path = format!("xray::CONF_DIR{}", filename);
+        let config_path = format!("{}/{}", xray::CONF_DIR, filename);
 
         let created_count = configs.len();
 
