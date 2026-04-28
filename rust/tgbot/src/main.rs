@@ -30,7 +30,7 @@ use teloxide::types::{
 };
 use teloxide::utils::command::BotCommands;
 use tgbot::core::types::IpVersion;
-use tgbot::logic::config::{ConfigManager, RealityProto, WarpMode};
+use tgbot::logic::config::{ConfigManager, KcpFinalMask, Proto, WarpMode};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
 use tgbot::logic::maintenance::{BBR3_PENDING_FLAG_FILE, MaintenanceManager};
 use tgbot::logic::operations::Operations;
@@ -121,12 +121,12 @@ async fn show_reality_batch_prompt(
     bot: &Bot,
     chat_id: ChatId,
     msg_id: MessageId,
-    proto: RealityProto,
+    proto: Proto,
 ) -> ResponseResult<()> {
     let (ip_prefix, title) = match proto {
-        RealityProto::Vision => ("u_batch_ip_init:", "Reality (Vision)"),
-        RealityProto::XHTTP => ("u_xhttp_batch_ip_init:", "Reality (XHTTP)"),
-        RealityProto::XdnsMkcp => ("u_xdns_ip:", "XDNS Finalmask (mKCP+DNS)"),
+        Proto::Vision => ("u_batch_ip_init:", "Reality (Vision)"),
+        Proto::XHTTP => ("u_xhttp_batch_ip_init:", "Reality (XHTTP)"),
+        Proto::Kcp => unreachable!("KCP uses separate UI flow"),
     };
 
     // 检测公网 IPv6 是否可用
@@ -145,7 +145,7 @@ async fn show_reality_batch_prompt(
         ));
 
         // XHTTP 双栈分离选项也依赖 IPv6
-        if proto == RealityProto::XHTTP {
+        if proto == Proto::XHTTP {
             buttons.push(vec![
                 InlineKeyboardButton::callback(
                     "🚀 双栈分离 (v6上v4下)",
@@ -180,7 +180,7 @@ async fn show_reality_qty_prompt(
     chat_id: ChatId,
     msg_id: MessageId,
     ip_version: IpVersion,
-    proto: RealityProto,
+    proto: Proto,
 ) -> ResponseResult<()> {
     let ip_ver_code = match ip_version {
         IpVersion::IPv4 => "4",
@@ -196,9 +196,9 @@ async fn show_reality_qty_prompt(
     };
 
     let (exec_prefix, title) = match proto {
-        RealityProto::Vision => ("u_batch_exec:", "Reality"),
-        RealityProto::XHTTP => ("u_xhttp_batch_exec:", "XHTTP"),
-        RealityProto::XdnsMkcp => ("u_xdns_exec:", "XDNS"),
+        Proto::Vision => ("u_batch_exec:", "Reality"),
+        Proto::XHTTP => ("u_xhttp_batch_exec:", "XHTTP"),
+        Proto::Kcp => unreachable!("KCP uses separate UI flow"),
     };
 
     let buttons = vec![
@@ -240,11 +240,11 @@ fn trigger_reality_auto_init(bot: Bot, chat_id: ChatId, msg_id: MessageId) {
         match RealityInstaller::run(bot.clone(), chat_id, msg_id).await {
             Ok(RealityInstallOutcome::AlreadyReady) => {
                 let _ =
-                    show_reality_batch_prompt(&bot, chat_id, msg_id, RealityProto::Vision).await;
+                    show_reality_batch_prompt(&bot, chat_id, msg_id, Proto::Vision).await;
             }
             Ok(RealityInstallOutcome::Completed) => {
                 let _ =
-                    show_reality_batch_prompt(&bot, chat_id, msg_id, RealityProto::Vision).await;
+                    show_reality_batch_prompt(&bot, chat_id, msg_id, Proto::Vision).await;
                 let _ = bot
                     .send_message(
                         chat_id,
@@ -1059,7 +1059,7 @@ fn handle_callback(
                             ),
                         ]);
                         buttons.push(vec![
-                            InlineKeyboardButton::callback("🚀 XDNS (mKCP+DNS)", "u_xdns_init"),
+                            InlineKeyboardButton::callback("🚀 KCP (mKCP+FinalMask)", "u_kcp_init"),
                             InlineKeyboardButton::callback("🔐 ML-DSA-65 管理", "m_pq_mgmt"),
                         ]);
                         buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
@@ -2390,7 +2390,7 @@ fn handle_callback(
                 }
                 "u_batch_init" => {
                     if MaintenanceManager::is_reality_base_ready().await {
-                        show_reality_batch_prompt(&bot, chat_id, msg_id, RealityProto::Vision)
+                        show_reality_batch_prompt(&bot, chat_id, msg_id, Proto::Vision)
                             .await?;
                     } else {
                         bot.answer_callback_query(q.id.clone())
@@ -2408,7 +2408,7 @@ fn handle_callback(
                 }
                 "u_xhttp_batch_init" => {
                     if MaintenanceManager::is_reality_base_ready().await {
-                        show_reality_batch_prompt(&bot, chat_id, msg_id, RealityProto::XHTTP)
+                        show_reality_batch_prompt(&bot, chat_id, msg_id, Proto::XHTTP)
                             .await?;
                     } else {
                         bot.answer_callback_query(q.id.clone())
@@ -2424,217 +2424,13 @@ fn handle_callback(
                         trigger_reality_auto_init(bot.clone(), chat_id, msg_id);
                     }
                 }
-                "u_xdns_init" => {
-                    if !MaintenanceManager::is_reality_base_ready().await {
-                        bot.answer_callback_query(q.id.clone())
-                            .text("⏳ 正在准备基础环境，请稍候...")
-                            .await?;
-                        bot.edit_message_text(
-                            chat_id,
-                            msg_id,
-                            "⏳ <b>正在自动初始化基础环境...</b>\n请稍候，完成后会自动进入 XDNS 配置界面。",
-                        )
-                        .parse_mode(ParseMode::Html)
-                        .await?;
-                        trigger_reality_auto_init(bot.clone(), chat_id, msg_id);
-                        return Ok(());
-                    }
-
-                    let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
-                    let mut buttons = vec![vec![InlineKeyboardButton::callback(
-                        "🌐 IPv4 (0.0.0.0)",
-                        "u_xdns_ip:4",
-                    )]];
-
-                    if has_ipv6 {
-                        buttons[0].push(InlineKeyboardButton::callback(
-                            "🌐 IPv6 (::)",
-                            "u_xdns_ip:6",
-                        ));
-                    }
-
-                    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")]);
-
-                    bot.edit_message_text(
-                        chat_id,
-                        msg_id,
-                        "🚀 <b>XDNS Finalmask 批量配置</b>\n\n✨ <b>特点:</b>\n• DNS 查询流量伪装\n• 适合仅允许 DNS 的受限网络\n• mKCP 可靠传输 (MTU=130)\n\n⬇️ <b>请选择网络协议版本:</b>",
-                    )
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(InlineKeyboardMarkup::new(buttons))
-                    .await?;
-                }
-                d if d.starts_with("u_xdns_ip:") => {
-                    let ip_ver_code = d.strip_prefix("u_xdns_ip:").unwrap_or("4");
-                    let ip_version = match ip_ver_code {
-                        "6" => IpVersion::IPv6,
-                        _ => IpVersion::IPv4,
-                    };
-
-                    let ip_display = match ip_version {
-                        IpVersion::IPv4 => "IPv4",
-                        IpVersion::IPv6 => "IPv6",
-                        _ => "IPv4",
-                    };
-
-                    let buttons = vec![
-                        vec![
-                            InlineKeyboardButton::callback(
-                                "1",
-                                format!("u_xdns_exec:{}:1", ip_ver_code),
-                            ),
-                            InlineKeyboardButton::callback(
-                                "3",
-                                format!("u_xdns_exec:{}:3", ip_ver_code),
-                            ),
-                            InlineKeyboardButton::callback(
-                                "5",
-                                format!("u_xdns_exec:{}:5", ip_ver_code),
-                            ),
-                        ],
-                        vec![
-                            InlineKeyboardButton::callback(
-                                "10",
-                                format!("u_xdns_exec:{}:10", ip_ver_code),
-                            ),
-                            InlineKeyboardButton::callback(
-                                "20",
-                                format!("u_xdns_exec:{}:20", ip_ver_code),
-                            ),
-                            InlineKeyboardButton::callback(
-                                "50",
-                                format!("u_xdns_exec:{}:50", ip_ver_code),
-                            ),
-                        ],
-                        vec![InlineKeyboardButton::callback("⬅️ 返回", "u_xdns_init")],
-                    ];
-
-                    bot.edit_message_text(
-                        chat_id,
-                        msg_id,
-                        format!(
-                            "🚀 <b>XDNS Finalmask 批量配置</b>\n\n🌐 网络协议: <b>{}</b>\n\n⬇️ <b>请选择生成数量:</b>",
-                            ip_display
-                        ),
-                    )
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(InlineKeyboardMarkup::new(buttons))
-                    .await?;
-                }
-                d if d.starts_with("u_xdns_exec:") => {
-                    let parts: Vec<&str> = d
-                        .strip_prefix("u_xdns_exec:")
-                        .unwrap_or("")
-                        .split(':')
-                        .collect();
-                    if parts.len() != 2 {
-                        return Ok(());
-                    }
-
-                    let ip_ver_code = parts[0];
-                    let n: usize = parts[1].parse().unwrap_or(0);
-
-                    let ip_version = match ip_ver_code {
-                        "6" => IpVersion::IPv6,
-                        _ => IpVersion::IPv4,
-                    };
-
-                    let ip_str = match ip_version {
-                        IpVersion::IPv4 => "IPv4",
-                        IpVersion::IPv6 => "IPv6",
-                        _ => "IPv4",
-                    };
-
-                    bot.answer_callback_query(q.id.clone())
-                        .text(format!("⏳ 正在生成 {} 个 XDNS 配置...", n))
-                        .await?;
-
-                    let res = ConfigManager::batch_create_xdns_mkcp(n, true, ip_version).await;
-
-                    match res {
-                        Ok(result) => {
-                            let mut message_ids: Vec<MessageId> = Vec::new();
-
-                            let mut combined_links = String::new();
-                            for (i, link) in result.links.iter().enumerate() {
-                                combined_links.push_str(&format!("<code>{}</code>\n\n", link));
-                                if (i + 1) % 2 == 0 {
-                                    if let Ok(msg) = bot
-                                        .send_message(chat_id, combined_links.clone())
-                                        .parse_mode(ParseMode::Html)
-                                        .await
-                                    {
-                                        message_ids.push(msg.id);
-                                    }
-                                    combined_links.clear();
-                                }
-                            }
-                            if !combined_links.is_empty() {
-                                if let Ok(msg) = bot
-                                    .send_message(chat_id, combined_links)
-                                    .parse_mode(ParseMode::Html)
-                                    .await
-                                {
-                                    message_ids.push(msg.id);
-                                }
-                            }
-
-                            let links_text = result.links.join("\n");
-                            let timestamp = chrono::Utc::now().timestamp();
-                            let temp_file_path = format!("/tmp/wwps_xdns_links_{}.txt", timestamp);
-
-                            if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await {
-                                log::warn!("写入临时文件失败: {}", e);
-                            } else {
-                                let document_sent = bot
-                                    .send_document(chat_id, InputFile::file(&temp_file_path))
-                                    .caption("XDNS Finalmask 完整链接列表")
-                                    .await;
-
-                                if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
-                                    log::warn!("删除临时文件失败: {}", e);
-                                }
-
-                                if let Ok(msg) = document_sent {
-                                    message_ids.push(msg.id);
-                                }
-                            }
-
-                            let mut result_msg = format!(
-                                "✅ XDNS Finalmask 批量生成完成！\n\n📊 生成数量: {}\n🌐 网络协议: {}\n⚡ 特点: DNS伪装 + mKCP传输 (MTU=130)",
-                                result.created_count, ip_str
-                            );
-
-                            if let Some(filename) = result.config_file {
-                                result_msg.push_str(&format!("\n\n📁 配置文件: {}", filename));
-                            }
-
-                            let summary_msg = bot.send_message(chat_id, result_msg).await?;
-                            message_ids.push(summary_msg.id);
-
-                            let bot_clone = bot.clone();
-                            let chat_id_clone = chat_id;
-                            tokio::spawn(async move {
-                                tokio::time::sleep(Duration::from_secs(60)).await;
-                                for msg_id in message_ids {
-                                    let _ = bot_clone.delete_message(chat_id_clone, msg_id).await;
-                                }
-                            });
-                        }
-                        Err(e) => {
-                            bot.send_message(chat_id, format!("❌ 生成失败: {}", e))
-                                .parse_mode(ParseMode::Html)
-                                .await?;
-                        }
-                    }
-                }
                 d if d.starts_with("u_batch_ip_init:")
                     || d.starts_with("u_xhttp_batch_ip_init:") =>
                 {
                     let (prefix, proto) = if d.starts_with("u_batch_ip_init:") {
-                        ("u_batch_ip_init:", RealityProto::Vision)
+                        ("u_batch_ip_init:", Proto::Vision)
                     } else {
-                        ("u_xhttp_batch_ip_init:", RealityProto::XHTTP)
+                        ("u_xhttp_batch_ip_init:", Proto::XHTTP)
                     };
                     let ip_ver_code = d.strip_prefix(prefix).unwrap_or("");
                     let ip_version = match ip_ver_code {
@@ -2648,9 +2444,9 @@ fn handle_callback(
                 }
                 d if d.starts_with("u_batch_exec:") || d.starts_with("u_xhttp_batch_exec:") => {
                     let (prefix, proto) = if d.starts_with("u_batch_exec:") {
-                        ("u_batch_exec:", RealityProto::Vision)
+                        ("u_batch_exec:", Proto::Vision)
                     } else {
-                        ("u_xhttp_batch_exec:", RealityProto::XHTTP)
+                        ("u_xhttp_batch_exec:", Proto::XHTTP)
                     };
                     let parts: Vec<&str> = d.strip_prefix(prefix).unwrap_or(d).split(':').collect();
                     if parts.len() != 2 {
@@ -2683,9 +2479,9 @@ fn handle_callback(
                     };
 
                     let proto_str = match proto {
-                        RealityProto::Vision => "Reality",
-                        RealityProto::XHTTP => "XHTTP",
-                        RealityProto::XdnsMkcp => "XDNS",
+                        Proto::Vision => "Reality",
+                        Proto::XHTTP => "XHTTP",
+                        Proto::Kcp => "KCP",
                     };
 
                     bot.answer_callback_query(q.id.clone())
@@ -2696,7 +2492,7 @@ fn handle_callback(
                         .await?;
 
                     let res = match proto {
-                        RealityProto::Vision => {
+                        Proto::Vision => {
                             ConfigManager::batch_create_reality_vision_enhanced(
                                 n,
                                 standalone_mode,
@@ -2704,7 +2500,7 @@ fn handle_callback(
                             )
                             .await
                         }
-                        RealityProto::XHTTP => {
+                        Proto::XHTTP => {
                             ConfigManager::batch_create_xhttp_reality_enhanced(
                                 n,
                                 standalone_mode,
@@ -2712,9 +2508,8 @@ fn handle_callback(
                             )
                             .await
                         }
-                        RealityProto::XdnsMkcp => {
-                            ConfigManager::batch_create_xdns_mkcp(n, standalone_mode, ip_version)
-                                .await
+                        Proto::Kcp => {
+                            unreachable!("KCP uses separate batch handler")
                         }
                     };
 
@@ -2825,6 +2620,245 @@ fn handle_callback(
                                 bot.send_message(chat_id, format!("❌ 生成失败: {}", err_msg))
                                     .await?;
                             }
+                        }
+                    }
+                }
+                // ==================== KCP Handlers ====================
+                "u_kcp_init" => {
+                    let buttons = vec![
+                        vec![
+                            InlineKeyboardButton::callback("🔐 加密", "u_kcp_grp:enc"),
+                            InlineKeyboardButton::callback("🎭 伪装", "u_kcp_grp:dsg"),
+                        ],
+                        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
+                    ];
+
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        "🚀 <b>KCP (mKCP+FinalMask) 配置</b>\n\n✨ <b>特点:</b>\n• 基于 mKCP 协议的可靠传输\n• FinalMask 伪装/加密支持\n• 官方 Xray-core 标准 kcpSettings\n\n⬇️ <b>请选择 FinalMask 类别:</b>",
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                d if d.starts_with("u_kcp_grp:") => {
+                    let group = d.strip_prefix("u_kcp_grp:").unwrap_or("enc");
+                    let finalmasks = if group == "enc" {
+                        KcpFinalMask::encryption_variants()
+                    } else {
+                        KcpFinalMask::disguise_variants()
+                    };
+
+                    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+                    for fm in &finalmasks {
+                        let code = fm.code();
+                        let name = fm.display_name();
+                        buttons.push(vec![InlineKeyboardButton::callback(
+                            name,
+                            format!("u_kcp_fm:{}", code),
+                        )]);
+                    }
+                    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "u_kcp_init")]);
+
+                    let group_name = if group == "enc" { "加密" } else { "伪装" };
+
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!(
+                            "🚀 <b>KCP FinalMask - {}</b>\n\n⬇️ <b>请选择 FinalMask 类型:</b>",
+                            group_name
+                        ),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                d if d.starts_with("u_kcp_fm:") => {
+                    let fm_code = d.strip_prefix("u_kcp_fm:").unwrap_or("mo");
+
+                    let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+                    let mut buttons = vec![vec![InlineKeyboardButton::callback(
+                        "🌐 IPv4 (0.0.0.0)",
+                        format!("u_kcp_ip:{}:4", fm_code),
+                    )]];
+
+                    if has_ipv6 {
+                        buttons[0].push(InlineKeyboardButton::callback(
+                            "🌐 IPv6 (::)",
+                            format!("u_kcp_ip:{}:6", fm_code),
+                        ));
+                    }
+
+                    buttons.push(vec![InlineKeyboardButton::callback(
+                        "⬅️ 返回",
+                        "u_kcp_init",
+                    )]);
+
+                    let fm = KcpFinalMask::from_code(fm_code);
+                    let fm_name = fm.as_ref().map(|f| f.display_name()).unwrap_or("Unknown");
+
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!(
+                            "🚀 <b>KCP FinalMask 配置</b>\n\n🎭 FinalMask: <b>{}</b>\n\n⬇️ <b>请选择网络协议版本:</b>",
+                            fm_name
+                        ),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                d if d.starts_with("u_kcp_ip:") => {
+                    let parts: Vec<&str> = d.strip_prefix("u_kcp_ip:").unwrap_or("").split(':').collect();
+                    if parts.len() != 2 {
+                        return Ok(());
+                    }
+                    let fm_code = parts[0];
+                    let ip_ver_code = parts[1];
+                    let ip_version: IpVersion = match ip_ver_code {
+                        "6" => IpVersion::IPv6,
+                        _ => IpVersion::IPv4,
+                    };
+                    let ip_display = match ip_version {
+                        IpVersion::IPv4 => "IPv4",
+                        IpVersion::IPv6 => "IPv6",
+                        _ => "IPv4",
+                    };
+
+                    let fm = KcpFinalMask::from_code(fm_code);
+                    let fm_name = fm.as_ref().map(|f| f.display_name()).unwrap_or("Unknown");
+
+                    let buttons = vec![
+                        vec![
+                            InlineKeyboardButton::callback("1", format!("u_kcp_ex:{}:{}:1", fm_code, ip_ver_code)),
+                            InlineKeyboardButton::callback("3", format!("u_kcp_ex:{}:{}:3", fm_code, ip_ver_code)),
+                            InlineKeyboardButton::callback("5", format!("u_kcp_ex:{}:{}:5", fm_code, ip_ver_code)),
+                        ],
+                        vec![
+                            InlineKeyboardButton::callback("10", format!("u_kcp_ex:{}:{}:10", fm_code, ip_ver_code)),
+                            InlineKeyboardButton::callback("20", format!("u_kcp_ex:{}:{}:20", fm_code, ip_ver_code)),
+                            InlineKeyboardButton::callback("50", format!("u_kcp_ex:{}:{}:50", fm_code, ip_ver_code)),
+                        ],
+                        vec![InlineKeyboardButton::callback("⬅️ 返回", format!("u_kcp_fm:{}", fm_code))],
+                    ];
+
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!(
+                            "🚀 <b>KCP Finalmask 批量配置</b>\n\n🎭 FinalMask: <b>{}</b>\n🌐 网络协议: <b>{}</b>\n\n⬇️ <b>请选择生成数量:</b>",
+                            fm_name, ip_display
+                        ),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                }
+                d if d.starts_with("u_kcp_ex:") => {
+                    let parts: Vec<&str> = d.strip_prefix("u_kcp_ex:").unwrap_or("").split(':').collect();
+                    if parts.len() != 3 {
+                        return Ok(());
+                    }
+                    let fm_code = parts[0];
+                    let ip_ver_code = parts[1];
+                    let n: usize = parts[2].parse().unwrap_or(0);
+
+                    let ip_version = match ip_ver_code {
+                        "6" => IpVersion::IPv6,
+                        _ => IpVersion::IPv4,
+                    };
+                    let ip_str = match ip_version {
+                        IpVersion::IPv4 => "IPv4",
+                        IpVersion::IPv6 => "IPv6",
+                        _ => "IPv4",
+                    };
+
+                    let fm = KcpFinalMask::from_code(fm_code);
+                    let fm_name = fm.as_ref().map(|f| f.display_name()).unwrap_or("Unknown");
+
+                    bot.answer_callback_query(q.id.clone())
+                        .text(format!("⏳ 正在生成 {} 个 KCP {} 配置...", n, fm_name))
+                        .await?;
+
+                    let res = ConfigManager::batch_create_kcp(n, true, ip_version, fm_code).await;
+
+                    match res {
+                        Ok(result) => {
+                            let mut message_ids: Vec<MessageId> = Vec::new();
+
+                            let mut combined_links = String::new();
+                            for (i, link) in result.links.iter().enumerate() {
+                                combined_links.push_str(&format!("<code>{}</code>\n\n", link));
+                                if (i + 1) % 2 == 0 {
+                                    if let Ok(msg) = bot
+                                        .send_message(chat_id, combined_links.clone())
+                                        .parse_mode(ParseMode::Html)
+                                        .await
+                                    {
+                                        message_ids.push(msg.id);
+                                    }
+                                    combined_links.clear();
+                                }
+                            }
+                            if !combined_links.is_empty() {
+                                if let Ok(msg) = bot
+                                    .send_message(chat_id, combined_links)
+                                    .parse_mode(ParseMode::Html)
+                                    .await
+                                {
+                                    message_ids.push(msg.id);
+                                }
+                            }
+
+                            let links_text = result.links.join("\n");
+                            let timestamp = chrono::Utc::now().timestamp();
+                            let temp_file_path = format!("/tmp/wwps_kcp_links_{}.txt", timestamp);
+
+                            if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await {
+                                log::warn!("写入临时文件失败: {}", e);
+                            } else {
+                                let document_sent = bot
+                                    .send_document(chat_id, InputFile::file(&temp_file_path))
+                                    .caption(format!("KCP {} 完整链接列表", fm_name))
+                                    .await;
+
+                                if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
+                                    log::warn!("删除临时文件失败: {}", e);
+                                }
+
+                                if let Ok(msg) = document_sent {
+                                    message_ids.push(msg.id);
+                                }
+                            }
+
+                            let mut result_msg = format!(
+                                "✅ KCP {} 批量生成完成！\n\n📊 生成数量: {}\n🌐 网络协议: {}\n⚡ 特点: {} Finalmask + mKCP传输",
+                                fm_name, result.created_count, ip_str, fm_name
+                            );
+
+                            if let Some(filename) = result.config_file {
+                                result_msg.push_str(&format!("\n\n📁 配置文件: {}", filename));
+                            }
+
+                            let summary_msg = bot.send_message(chat_id, result_msg).await?;
+                            message_ids.push(summary_msg.id);
+
+                            let bot_clone = bot.clone();
+                            let chat_id_clone = chat_id;
+                            tokio::spawn(async move {
+                                tokio::time::sleep(Duration::from_secs(60)).await;
+                                for msg_id in message_ids {
+                                    let _ = bot_clone.delete_message(chat_id_clone, msg_id).await;
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            bot.send_message(chat_id, format!("❌ 生成失败: {}", e))
+                                .parse_mode(ParseMode::Html)
+                                .await?;
                         }
                     }
                 }

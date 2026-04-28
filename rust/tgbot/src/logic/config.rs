@@ -72,10 +72,146 @@ fn reality_pq_verify_as_base64url(raw: &str) -> Option<String> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum RealityProto {
+pub enum Proto {
     Vision,
     XHTTP,
-    XdnsMkcp,
+    Kcp,
+}
+
+#[derive(Debug, Clone)]
+pub enum KcpFinalMask {
+    MkcpOriginal,
+    MkcpAes128Gcm { password: String },
+    HeaderDns { domain: String },
+    HeaderWechat,
+    HeaderSrtp,
+    HeaderUtp,
+    HeaderDtls,
+    HeaderWireguard,
+}
+
+impl KcpFinalMask {
+    pub fn type_str(&self) -> &'static str {
+        match self {
+            KcpFinalMask::MkcpOriginal => "mkcp-original",
+            KcpFinalMask::MkcpAes128Gcm { .. } => "mkcp-aes128gcm",
+            KcpFinalMask::HeaderDns { .. } => "header-dns",
+            KcpFinalMask::HeaderWechat => "header-wechat",
+            KcpFinalMask::HeaderSrtp => "header-srtp",
+            KcpFinalMask::HeaderUtp => "header-utp",
+            KcpFinalMask::HeaderDtls => "header-dtls",
+            KcpFinalMask::HeaderWireguard => "header-wireguard",
+        }
+    }
+
+    pub fn group_name(&self) -> &'static str {
+        match self {
+            KcpFinalMask::MkcpOriginal | KcpFinalMask::MkcpAes128Gcm { .. } => "enc",
+            KcpFinalMask::HeaderDns { .. }
+            | KcpFinalMask::HeaderWechat
+            | KcpFinalMask::HeaderSrtp
+            | KcpFinalMask::HeaderUtp
+            | KcpFinalMask::HeaderDtls
+            | KcpFinalMask::HeaderWireguard => "dsg",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            KcpFinalMask::MkcpOriginal => "mKCP Original (XOR)",
+            KcpFinalMask::MkcpAes128Gcm { .. } => "mKCP AES-128-GCM",
+            KcpFinalMask::HeaderDns { .. } => "DNS 查询伪装",
+            KcpFinalMask::HeaderWechat => "微信视频通话伪装",
+            KcpFinalMask::HeaderSrtp => "SRTP 伪装",
+            KcpFinalMask::HeaderUtp => "uTP (BitTorrent) 伪装",
+            KcpFinalMask::HeaderDtls => "DTLS 1.2 伪装",
+            KcpFinalMask::HeaderWireguard => "WireGuard 伪装",
+        }
+    }
+
+    pub fn code(&self) -> &'static str {
+        match self {
+            KcpFinalMask::MkcpOriginal => "mo",
+            KcpFinalMask::MkcpAes128Gcm { .. } => "ma",
+            KcpFinalMask::HeaderDns { .. } => "hd",
+            KcpFinalMask::HeaderWechat => "hw",
+            KcpFinalMask::HeaderSrtp => "hs",
+            KcpFinalMask::HeaderUtp => "hu",
+            KcpFinalMask::HeaderDtls => "hdt",
+            KcpFinalMask::HeaderWireguard => "hwg",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "mo" => Some(KcpFinalMask::MkcpOriginal),
+            "ma" => Some(KcpFinalMask::MkcpAes128Gcm {
+                password: ConfigManager::generate_aes_password(),
+            }),
+            "hd" => Some(KcpFinalMask::HeaderDns {
+                domain: "www.baidu.com".to_string(),
+            }),
+            "hw" => Some(KcpFinalMask::HeaderWechat),
+            "hs" => Some(KcpFinalMask::HeaderSrtp),
+            "hu" => Some(KcpFinalMask::HeaderUtp),
+            "hdt" => Some(KcpFinalMask::HeaderDtls),
+            "hwg" => Some(KcpFinalMask::HeaderWireguard),
+            _ => None,
+        }
+    }
+
+    pub fn as_json(&self) -> Value {
+        match self {
+            KcpFinalMask::MkcpOriginal => json!({
+                "type": "mkcp-original"
+            }),
+            KcpFinalMask::MkcpAes128Gcm { password } => json!({
+                "type": "mkcp-aes128gcm",
+                "settings": { "password": password }
+            }),
+            KcpFinalMask::HeaderDns { domain } => json!({
+                "type": "header-dns",
+                "settings": { "domain": domain }
+            }),
+            KcpFinalMask::HeaderWechat => json!({
+                "type": "header-wechat"
+            }),
+            KcpFinalMask::HeaderSrtp => json!({
+                "type": "header-srtp"
+            }),
+            KcpFinalMask::HeaderUtp => json!({
+                "type": "header-utp"
+            }),
+            KcpFinalMask::HeaderDtls => json!({
+                "type": "header-dtls"
+            }),
+            KcpFinalMask::HeaderWireguard => json!({
+                "type": "header-wireguard"
+            }),
+        }
+    }
+
+    pub fn encryption_variants() -> Vec<Self> {
+        vec![
+            KcpFinalMask::MkcpOriginal,
+            KcpFinalMask::MkcpAes128Gcm {
+                password: String::new(),
+            },
+        ]
+    }
+
+    pub fn disguise_variants() -> Vec<Self> {
+        vec![
+            KcpFinalMask::HeaderDns {
+                domain: String::new(),
+            },
+            KcpFinalMask::HeaderWechat,
+            KcpFinalMask::HeaderSrtp,
+            KcpFinalMask::HeaderUtp,
+            KcpFinalMask::HeaderDtls,
+            KcpFinalMask::HeaderWireguard,
+        ]
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +220,15 @@ pub struct ConfigManager;
 impl ConfigManager {
     const CONFIG_BASE_PATH: &'static str = xray::DIR;
     const TIMEOUT_WWPS_CORE: Duration = Duration::from_secs(5);
+
+    fn generate_aes_password() -> String {
+        let rng_len = rand::thread_rng().gen_range(16..32);
+        rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(rng_len)
+            .map(char::from)
+            .collect()
+    }
 
     pub async fn get_clients_from_config(file_path: &str) -> Result<Vec<Value>> {
         let content = fs::read_to_string(file_path)
@@ -241,13 +386,13 @@ impl ConfigManager {
         format!("/xhttp_{}", suffix)
     }
 
-    pub async fn generate_secure_batch_filename(proto: RealityProto) -> Result<String> {
+    pub async fn generate_secure_batch_filename(proto: Proto) -> Result<String> {
         let uuid = Self::generate_wwps_uuid().await?;
         let uuid_short = Self::uuid_short_prefix(&uuid);
         let prefix = match proto {
-            RealityProto::Vision => "batch_reality",
-            RealityProto::XHTTP => "batch_xhttp",
-            RealityProto::XdnsMkcp => "batch_xdns",
+            Proto::Vision => "batch_reality",
+            Proto::XHTTP => "batch_xhttp",
+            Proto::Kcp => "batch_kcp",
         };
         Ok(format!("{}_{}_inbounds.json", prefix, uuid_short))
     }
@@ -271,7 +416,7 @@ impl ConfigManager {
         priv_key: &str,
         short_id: &str,
         ip_version: IpVersion,
-        proto: RealityProto,
+        proto: Proto,
         path: Option<&str>,
         enable_pq: bool,
     ) -> Value {
@@ -283,7 +428,7 @@ impl ConfigManager {
             }
         };
 
-        let client = if proto == RealityProto::Vision {
+        let client = if proto == Proto::Vision {
             json!({
                 "id": uuid,
                 "email": email,
@@ -298,10 +443,10 @@ impl ConfigManager {
 
         let mut stream_settings = json!({
             "network": match proto {
-                RealityProto::Vision => "tcp",
-                RealityProto::XHTTP => "xhttp",
-                RealityProto::XdnsMkcp => {
-                    unreachable!("XdnsMkcp should use build_xdns_mkcp_inbound")
+                Proto::Vision => "tcp",
+                Proto::XHTTP => "xhttp",
+                Proto::Kcp => {
+                    unreachable!("Kcp should use build_kcp_inbound")
                 }
             },
             "security": "reality",
@@ -321,7 +466,7 @@ impl ConfigManager {
                 serde_json::Value::String(REALITY_PQ_SEED.clone());
         }
 
-        if proto == RealityProto::XHTTP {
+        if proto == Proto::XHTTP {
             let actual_path = path.unwrap_or("/xhttp_client_upload");
             stream_settings["xhttpSettings"] = json!({
                 "host": "", // 显式设置 host 以符合 #4118 建议
@@ -343,9 +488,145 @@ impl ConfigManager {
             "sniffing": {
                 "enabled": true,
                 "destOverride": ["http", "tls", "quic"],
-                "metadataOnly": false // 使用 #4118 建议的配置
+                "metadataOnly": false
             }
         })
+    }
+
+    pub(crate) fn build_kcp_inbound(
+        tag: &str,
+        port: i32,
+        uuid: &str,
+        email: &str,
+        ip_version: IpVersion,
+        finalmask: &KcpFinalMask,
+    ) -> Value {
+        let listen_ip = match ip_version {
+            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => "0.0.0.0",
+            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => "::",
+        };
+
+        let client = json!({
+            "id": uuid,
+            "email": email
+        });
+
+        let finalmask_json = finalmask.as_json();
+        let udp_array = json!([finalmask_json]);
+
+        json!({
+            "listen": listen_ip,
+            "port": port,
+            "protocol": "vless",
+            "tag": tag,
+            "settings": {
+                "clients": [client],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "kcp",
+                "kcpSettings": {
+                    "mtu": 1350,
+                    "tti": 50,
+                    "uplinkCapacity": 5,
+                    "downlinkCapacity": 20,
+                    "cwndMultiplier": 1,
+                    "maxSendingWindow": 2097152
+                },
+                "security": "none",
+                "finalmask": {
+                    "udp": udp_array
+                }
+            },
+            "sniffing": {
+                "enabled": true,
+                "destOverride": ["http", "tls", "quic"],
+                "metadataOnly": false
+            }
+        })
+    }
+
+    pub(crate) fn generate_kcp_client_link(
+        uuid: &str,
+        host: &str,
+        port: i32,
+        email: &str,
+        ip_version: IpVersion,
+        finalmask: &KcpFinalMask,
+    ) -> String {
+        let finalmask_json = json!({
+            "udp": [finalmask.as_json()]
+        });
+        let fm_str = serde_json::to_string(&finalmask_json).unwrap();
+        let fm_encoded = utf8_percent_encode(&fm_str, NON_ALPHANUMERIC).to_string();
+
+        let fmt_host = match ip_version {
+            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => format!("[{}]", host),
+            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => host.to_string(),
+        };
+        let encoded_email = utf8_percent_encode(email, NON_ALPHANUMERIC).to_string();
+
+        format!(
+            "vless://{}@{}:{}?encryption=none&type=kcp&security=none&fm={}#{}",
+            uuid, fmt_host, port, fm_encoded, encoded_email
+        )
+    }
+
+    pub async fn batch_create_kcp(
+        count: usize,
+        standalone: bool,
+        ip_version: IpVersion,
+        finalmask_code: &str,
+    ) -> Result<BatchCreationResult> {
+        let finalmask = KcpFinalMask::from_code(finalmask_code)
+            .ok_or_else(|| anyhow!("Invalid finalmask code: {}", finalmask_code))?;
+
+        let (host, _) = Self::resolve_public_hosts(
+            ip_version,
+            crate::logic::system::SystemMonitor::get_public_ip().await,
+            crate::logic::system::SystemMonitor::get_public_ipv6().await,
+        )?;
+
+        let mut rng = StdRng::from_entropy();
+
+        let mut links = Vec::new();
+        let mut batch_configs = Vec::new();
+
+        for i in 0..count {
+            let port = loop {
+                let p = rng.gen_range(10000..60000);
+                if crate::logic::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                    continue;
+                }
+                if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
+                    break p as i32;
+                }
+            };
+
+            let uuid = Self::generate_wwps_uuid().await?;
+            let uuid_short = Self::uuid_short_prefix(&uuid);
+
+            let email = format!("{}-vless-kcp-{}", uuid_short, finalmask.type_str());
+            let tag = format!("KCP-{}-{}", i + 1, uuid_short);
+
+            let config = Self::build_kcp_inbound(
+                &tag, port, &uuid, &email, ip_version, &finalmask,
+            );
+            batch_configs.push(config);
+
+            let link = Self::generate_kcp_client_link(
+                &uuid, &host, port, &email, ip_version, &finalmask,
+            );
+            links.push(link);
+
+            let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
+        }
+
+        if standalone {
+            Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
+        } else {
+            Self::update_existing_config(batch_configs, links).await
+        }
     }
 
     pub async fn batch_create_reality_vision_enhanced(
@@ -383,7 +664,7 @@ impl ConfigManager {
                 None
             };
             let (port, uuid, priv_key, pub_key, short_id, sni, email, tag, path) =
-                Self::generate_enhanced_config(&mut rng, sni, i, RealityProto::Vision, preferred)
+                Self::generate_enhanced_config(&mut rng, sni, i, Proto::Vision, preferred)
                     .await?;
 
             let config = Self::build_reality_vless_inbound(
@@ -396,7 +677,7 @@ impl ConfigManager {
                 &priv_key,
                 &short_id,
                 ip_version,
-                RealityProto::Vision,
+                Proto::Vision,
                 path.as_deref(),
                 pq_ok,
             );
@@ -412,7 +693,7 @@ impl ConfigManager {
                 &short_id,
                 &email,
                 ip_version,
-                RealityProto::Vision,
+                Proto::Vision,
                 path.as_deref(),
                 None,
                 pq_ok,
@@ -423,7 +704,7 @@ impl ConfigManager {
         }
 
         if standalone {
-            Self::create_standalone_config(batch_configs, links, RealityProto::Vision).await
+            Self::create_standalone_config(batch_configs, links, Proto::Vision).await
         } else {
             Self::update_existing_config(batch_configs, links).await
         }
@@ -463,7 +744,7 @@ impl ConfigManager {
                 None
             };
             let (port, uuid, priv_key, pub_key, short_id, sni, email, tag, path) =
-                Self::generate_enhanced_config(&mut rng, sni, i, RealityProto::XHTTP, preferred)
+                Self::generate_enhanced_config(&mut rng, sni, i, Proto::XHTTP, preferred)
                     .await?;
 
             let config = Self::build_reality_vless_inbound(
@@ -476,7 +757,7 @@ impl ConfigManager {
                 &priv_key,
                 &short_id,
                 ip_version,
-                RealityProto::XHTTP,
+                Proto::XHTTP,
                 path.as_deref(),
                 pq_ok,
             );
@@ -492,7 +773,7 @@ impl ConfigManager {
                 &short_id,
                 &email,
                 ip_version,
-                RealityProto::XHTTP,
+                Proto::XHTTP,
                 path.as_deref(),
                 host_secondary.as_deref(),
                 pq_ok,
@@ -503,176 +784,10 @@ impl ConfigManager {
         }
 
         if standalone {
-            Self::create_standalone_config(batch_configs, links, RealityProto::XHTTP).await
+            Self::create_standalone_config(batch_configs, links, Proto::XHTTP).await
         } else {
             Self::update_existing_config(batch_configs, links).await
         }
-    }
-
-    pub async fn batch_create_xdns_mkcp(
-        count: usize,
-        standalone: bool,
-        ip_version: IpVersion,
-    ) -> Result<BatchCreationResult> {
-        let (host, _) = Self::resolve_public_hosts(
-            ip_version,
-            crate::logic::system::SystemMonitor::get_public_ip().await,
-            crate::logic::system::SystemMonitor::get_public_ipv6().await,
-        )?;
-
-        let mut rng = StdRng::from_entropy();
-        let geoip = crate::logic::geoip::GeoIPService::new();
-        let country_code = geoip.get_country_code().await;
-
-        let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(&country_code);
-
-        let mut links = Vec::new();
-        let mut batch_configs = Vec::new();
-
-        for i in 0..count {
-            let sni = selector.next();
-
-            let port = loop {
-                let p = rng.gen_range(10000..60000);
-                if crate::logic::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
-                    continue;
-                }
-                if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
-                    break p as i32;
-                }
-            };
-
-            let uuid = Self::generate_wwps_uuid().await?;
-            let (priv_key, pub_key) = Self::generate_wwps_x25519().await?;
-            let short_id = Self::generate_random_short_id();
-            let uuid_short = Self::uuid_short_prefix(&uuid);
-
-            let email = format!("{}-vless-xdns-mkcp", uuid_short);
-            let tag = format!("XDNS-{}-{}", i + 1, uuid_short);
-
-            let config = Self::build_xdns_mkcp_inbound(
-                &tag, port, &uuid, &email, &pub_key, &priv_key, &short_id, ip_version, &sni,
-            );
-
-            batch_configs.push(config);
-
-            let link = Self::generate_xdns_client_link(
-                &uuid, &host, port, &pub_key, &short_id, &email, ip_version, &sni,
-            );
-            links.push(link);
-
-            let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
-        }
-
-        if standalone {
-            Self::create_standalone_config(batch_configs, links, RealityProto::XdnsMkcp).await
-        } else {
-            Self::update_existing_config(batch_configs, links).await
-        }
-    }
-
-    pub(crate) fn build_xdns_mkcp_inbound(
-        tag: &str,
-        port: i32,
-        uuid: &str,
-        email: &str,
-        _pub_key: &str,
-        priv_key: &str,
-        short_id: &str,
-        ip_version: IpVersion,
-        xdns_domain: &str,
-    ) -> Value {
-        let listen_ip = match ip_version {
-            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => "0.0.0.0",
-            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => "::",
-        };
-
-        let client = json!({
-            "id": uuid,
-            "email": email
-        });
-
-        json!({
-            "listen": listen_ip,
-            "port": port,
-            "protocol": "vless",
-            "tag": tag,
-            "settings": {
-                "clients": [client],
-                "decryption": "none"
-            },
-            "streamSettings": {
-                "network": "kcp",
-                "kcpSettings": {
-                    "mtu": 130,
-                    "tti": 20,
-                    "uplinkCapacity": 5,
-                    "downlinkCapacity": 20,
-                    "congestion": false,
-                    "readBufferSize": 2,
-                    "writeBufferSize": 2
-                },
-                "security": "reality",
-                "realitySettings": {
-                    "show": false,
-                    "dest": format!("{}:443", xdns_domain),
-                    "xver": 0,
-                    "serverNames": [xdns_domain],
-                    "privateKey": priv_key,
-                    "shortIds": ["", short_id]
-                },
-                "finalmask": {
-                    "udp": [{
-                        "type": "xdns",
-                        "settings": {
-                            "domain": xdns_domain
-                        }
-                    }]
-                }
-            },
-            "sniffing": {
-                "enabled": true,
-                "destOverride": ["http", "tls", "quic"],
-                "metadataOnly": false
-            }
-        })
-    }
-
-    pub(crate) fn generate_xdns_client_link(
-        uuid: &str,
-        host: &str,
-        port: i32,
-        pub_key: &str,
-        short_id: &str,
-        email: &str,
-        ip_version: IpVersion,
-        xdns_domain: &str,
-    ) -> String {
-        let finalmask_json = json!({
-            "udp": [{
-                "type": "xdns",
-                "settings": {
-                    "domain": xdns_domain
-                }
-            }]
-        });
-
-        let fm_str = serde_json::to_string(&finalmask_json).unwrap();
-        let fm_encoded = utf8_percent_encode(&fm_str, NON_ALPHANUMERIC).to_string();
-
-        let fmt_host = match ip_version {
-            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => format!("[{}]", host),
-            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => host.to_string(),
-        };
-
-        let encoded_pbk = utf8_percent_encode(pub_key, NON_ALPHANUMERIC).to_string();
-        let encoded_email = utf8_percent_encode(email, NON_ALPHANUMERIC).to_string();
-        let encoded_sni = utf8_percent_encode(xdns_domain, NON_ALPHANUMERIC).to_string();
-
-        format!(
-            "vless://{}@{}:{}?type=kcp&fm={}&security=reality&pbk={}&sid={}&sni={}#{}",
-            uuid, fmt_host, port, fm_encoded, encoded_pbk, short_id, encoded_sni, encoded_email
-        )
     }
 
     fn resolve_public_hosts(
@@ -692,7 +807,7 @@ impl ConfigManager {
         rng: &mut StdRng,
         sni: String,
         index: usize,
-        proto: RealityProto,
+        proto: Proto,
         preferred_port: Option<u16>,
     ) -> Result<(
         i32,
@@ -738,23 +853,23 @@ impl ConfigManager {
         let uuid_short = Self::uuid_short_prefix(&uuid);
 
         let suffix = match proto {
-            RealityProto::Vision => "vless_reality_vision",
-            RealityProto::XHTTP => "vless_xhttp_reality",
-            RealityProto::XdnsMkcp => "vless_xdns_mkcp",
+            Proto::Vision => "vless_reality_vision",
+            Proto::XHTTP => "vless_xhttp_reality",
+            Proto::Kcp => "vless_kcp",
         };
         let email = format!("{}-{}", uuid_short, suffix);
         let tag = format!(
             "{}-{}-{}",
             match proto {
-                RealityProto::Vision => "VLESS",
-                RealityProto::XHTTP => "XHTTP",
-                RealityProto::XdnsMkcp => "XDNS",
+                Proto::Vision => "VLESS",
+                Proto::XHTTP => "XHTTP",
+                Proto::Kcp => "KCP",
             },
             uuid_short,
             index
         );
 
-        let path = if proto == RealityProto::XHTTP {
+        let path = if proto == Proto::XHTTP {
             Some(Self::generate_random_path())
         } else {
             None
@@ -782,9 +897,9 @@ impl ConfigManager {
         short_id: &str,
         email: &str,
         ip_version: IpVersion,
-        proto: RealityProto,
+        proto: Proto,
         path: Option<&str>,
-        host_secondary: Option<&str>, // 仅在双栈分离模式下使用（secondary host）
+        host_secondary: Option<&str>,
         enable_pq: bool,
     ) -> String {
         let fmt_host = match ip_version {
@@ -797,7 +912,7 @@ impl ConfigManager {
         let encoded_email = utf8_percent_encode(email, NON_ALPHANUMERIC).to_string();
 
         match proto {
-            RealityProto::Vision => {
+            Proto::Vision => {
                 let mut link = format!(
                     "vless://{}@{}:{}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={}&fp=chrome&pbk={}&sid={}&type=tcp&headerType=none",
                     uuid, fmt_host, port, encoded_sni, encoded_pbk, short_id,
@@ -812,7 +927,7 @@ impl ConfigManager {
 
                 format!("{}#{}", link, encoded_email)
             }
-            RealityProto::XHTTP => {
+            Proto::XHTTP => {
                 // 参考 GitHub #716 标准提案
                 let actual_path = path.unwrap_or("/xhttp_client_upload");
                 let encoded_path = utf8_percent_encode(actual_path, NON_ALPHANUMERIC).to_string();
@@ -858,8 +973,8 @@ impl ConfigManager {
 
                 format!("{}#{}", link, encoded_email)
             }
-            RealityProto::XdnsMkcp => {
-                unreachable!("XdnsMkcp should use generate_xdns_client_link instead")
+            Proto::Kcp => {
+                unreachable!("Kcp should use generate_kcp_client_link instead")
             }
         }
     }
@@ -867,7 +982,7 @@ impl ConfigManager {
     async fn create_standalone_config(
         configs: Vec<Value>,
         links: Vec<String>,
-        proto: RealityProto,
+        proto: Proto,
     ) -> Result<BatchCreationResult> {
         // 生成独立文件名
         let filename = Self::generate_secure_batch_filename(proto).await?;
@@ -1263,7 +1378,7 @@ mod tests {
             priv_key,
             short_id,
             IpVersion::IPv4,
-            RealityProto::Vision,
+            Proto::Vision,
             None,
             false,
         );
@@ -1313,7 +1428,7 @@ mod tests {
             priv_key,
             short_id,
             IpVersion::IPv4,
-            RealityProto::XHTTP,
+            Proto::XHTTP,
             Some(path),
             false,
         );
@@ -1379,7 +1494,7 @@ mod tests {
             sid,
             email,
             IpVersion::SplitStackV6Primary,
-            RealityProto::XHTTP,
+            Proto::XHTTP,
             Some(path),
             Some(host_v4_secondary),
             false,
@@ -1440,7 +1555,7 @@ mod tests {
             sid,
             email,
             IpVersion::SplitStackV4Primary,
-            RealityProto::XHTTP,
+            Proto::XHTTP,
             Some(path),
             Some(host_v6_secondary),
             false,
@@ -1479,139 +1594,159 @@ mod tests {
     }
 
     #[test]
-    fn test_build_xdns_mkcp_inbound_structure() {
-        let config = ConfigManager::build_xdns_mkcp_inbound(
-            "XDNS-TEST",
+    fn test_build_kcp_inbound_mkcp_original() {
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST",
             34456,
             "test-uuid",
             "test-email",
-            "pub-key",
-            "priv-key",
-            "short-id",
             IpVersion::IPv4,
-            "example.com",
+            &KcpFinalMask::MkcpOriginal,
         );
 
         assert_eq!(config["listen"], "0.0.0.0");
         assert_eq!(config["port"], 34456);
         assert_eq!(config["protocol"], "vless");
-        assert_eq!(config["tag"], "XDNS-TEST");
+        assert_eq!(config["tag"], "KCP-TEST");
 
         let ss = &config["streamSettings"];
         assert_eq!(ss["network"], "kcp");
-        assert_eq!(ss["kcpSettings"]["mtu"], 130);
-        assert_eq!(ss["kcpSettings"]["tti"], 20);
+        assert_eq!(ss["kcpSettings"]["mtu"], 1350);
+        assert_eq!(ss["kcpSettings"]["tti"], 50);
         assert_eq!(ss["kcpSettings"]["uplinkCapacity"], 5);
         assert_eq!(ss["kcpSettings"]["downlinkCapacity"], 20);
+        assert_eq!(ss["kcpSettings"]["cwndMultiplier"], 1);
+        assert_eq!(ss["kcpSettings"]["maxSendingWindow"], 2097152);
+        assert_eq!(ss["security"], "none");
 
         let fm = &ss["finalmask"]["udp"][0];
-        assert_eq!(fm["type"], "xdns");
-        assert_eq!(fm["settings"]["domain"], "example.com");
-
-        assert_eq!(ss["security"], "reality");
-        assert!(ss["realitySettings"]["privateKey"].as_str().is_some());
+        assert_eq!(fm["type"], "mkcp-original");
+        assert!(fm.get("settings").is_none());
     }
 
     #[test]
-    fn test_build_xdns_mkcp_ipv6_listen() {
-        let config = ConfigManager::build_xdns_mkcp_inbound(
-            "XDNS-TEST",
+    fn test_build_kcp_inbound_header_dns() {
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST",
             34456,
             "test-uuid",
             "test-email",
-            "pub-key",
-            "priv-key",
-            "short-id",
+            IpVersion::IPv4,
+            &KcpFinalMask::HeaderDns {
+                domain: "www.google.com".to_string(),
+            },
+        );
+
+        let fm = &config["streamSettings"]["finalmask"]["udp"][0];
+        assert_eq!(fm["type"], "header-dns");
+        assert_eq!(fm["settings"]["domain"], "www.google.com");
+    }
+
+    #[test]
+    fn test_build_kcp_inbound_mkcp_aes128gcm() {
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
             IpVersion::IPv6,
-            "example.com",
+            &KcpFinalMask::MkcpAes128Gcm {
+                password: "testpass".to_string(),
+            },
         );
 
         assert_eq!(config["listen"], "::");
+        let fm = &config["streamSettings"]["finalmask"]["udp"][0];
+        assert_eq!(fm["type"], "mkcp-aes128gcm");
+        assert_eq!(fm["settings"]["password"], "testpass");
     }
 
     #[test]
-    fn test_generate_xdns_client_link_format() {
-        let link = ConfigManager::generate_xdns_client_link(
-            "uuid-test",
+    fn test_kcp_no_reality_settings() {
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &KcpFinalMask::MkcpOriginal,
+        );
+
+        assert!(config["streamSettings"].get("realitySettings").is_none());
+        assert!(config["streamSettings"].get("tlsSettings").is_none());
+    }
+
+    #[test]
+    fn test_kcp_no_old_fields() {
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &KcpFinalMask::MkcpOriginal,
+        );
+
+        let kcp = &config["streamSettings"]["kcpSettings"];
+        assert!(kcp.get("congestion").is_none(), "congestion should be removed");
+        assert!(kcp.get("readBufferSize").is_none(), "readBufferSize should be removed");
+        assert!(kcp.get("writeBufferSize").is_none(), "writeBufferSize should be removed");
+    }
+
+    #[test]
+    fn test_kcp_finalmask_type_str() {
+        assert_eq!(KcpFinalMask::MkcpOriginal.type_str(), "mkcp-original");
+        assert_eq!(KcpFinalMask::MkcpAes128Gcm { password: "x".into() }.type_str(), "mkcp-aes128gcm");
+        assert_eq!(KcpFinalMask::HeaderDns { domain: "x".into() }.type_str(), "header-dns");
+        assert_eq!(KcpFinalMask::HeaderWechat.type_str(), "header-wechat");
+        assert_eq!(KcpFinalMask::HeaderSrtp.type_str(), "header-srtp");
+        assert_eq!(KcpFinalMask::HeaderUtp.type_str(), "header-utp");
+        assert_eq!(KcpFinalMask::HeaderDtls.type_str(), "header-dtls");
+        assert_eq!(KcpFinalMask::HeaderWireguard.type_str(), "header-wireguard");
+    }
+
+    #[test]
+    fn test_kcp_finalmask_group_name() {
+        assert_eq!(KcpFinalMask::MkcpOriginal.group_name(), "enc");
+        assert_eq!(KcpFinalMask::MkcpAes128Gcm { password: "x".into() }.group_name(), "enc");
+        assert_eq!(KcpFinalMask::HeaderDns { domain: "x".into() }.group_name(), "dsg");
+        assert_eq!(KcpFinalMask::HeaderWireguard.group_name(), "dsg");
+    }
+
+    #[test]
+    fn test_kcp_finalmask_code_roundtrip() {
+        let codes = ["mo", "ma", "hd", "hw", "hs", "hu", "hdt", "hwg"];
+        for code in codes {
+            let fm = KcpFinalMask::from_code(code);
+            assert!(fm.is_some(), "Failed to parse code: {}", code);
+            assert_eq!(fm.unwrap().code(), code);
+        }
+    }
+
+    #[test]
+    fn test_kcp_finalmask_from_code_invalid() {
+        assert!(KcpFinalMask::from_code("invalid").is_none());
+        assert!(KcpFinalMask::from_code("").is_none());
+    }
+
+    #[test]
+    fn test_generate_kcp_client_link_mkcp_original() {
+        let link = ConfigManager::generate_kcp_client_link(
+            "test-uuid",
             "192.168.1.1",
             34456,
-            "pub-key-test",
-            "sid-test",
             "test-user",
             IpVersion::IPv4,
-            "example.com",
+            &KcpFinalMask::MkcpOriginal,
         );
 
-        assert!(link.starts_with("vless://"));
-        assert!(link.contains("192.168.1.1:34456"));
+        assert!(link.starts_with("vless://test-uuid@192.168.1.1:34456"));
         assert!(link.contains("type=kcp"));
-        assert!(link.contains("security=reality"));
-        assert!(link.contains("pbk="));
-        assert!(link.contains("sid=sid-test"));
-        assert!(link.contains("sni="));
-        assert!(link.contains("&fm="));
-        assert!(link.contains("#"));
-    }
-
-    #[test]
-    fn test_generate_xdns_client_link_ipv6() {
-        let link = ConfigManager::generate_xdns_client_link(
-            "uuid-test",
-            "2001:db8::1",
-            34456,
-            "pub-key-test",
-            "sid-test",
-            "test-user",
-            IpVersion::IPv6,
-            "example.com",
-        );
-
-        assert!(link.contains("[2001:db8::1]:34456"));
-    }
-
-    #[test]
-    fn test_xdns_mkcp_config_mtu_130() {
-        let config = ConfigManager::build_xdns_mkcp_inbound(
-            "XDNS-TEST",
-            34456,
-            "test-uuid",
-            "test-email",
-            "pub-key",
-            "priv-key",
-            "short-id",
-            IpVersion::IPv4,
-            "xdns-test.example.com",
-        );
-
-        let mtu = config["streamSettings"]["kcpSettings"]["mtu"]
-            .as_i64()
-            .unwrap();
-        assert_eq!(mtu, 130, "XDNS requires MTU of 130 or lower");
-    }
-
-    #[test]
-    fn test_xdns_finalmask_domain() {
-        let config = ConfigManager::build_xdns_mkcp_inbound(
-            "XDNS-TEST",
-            34456,
-            "test-uuid",
-            "test-email",
-            "pub-key",
-            "priv-key",
-            "short-id",
-            IpVersion::IPv4,
-            "custom-domain.com",
-        );
-
-        let domain = config["streamSettings"]["finalmask"]["udp"][0]["settings"]["domain"]
-            .as_str()
-            .unwrap();
-        assert_eq!(domain, "custom-domain.com");
-
-        let reality_dest = config["streamSettings"]["realitySettings"]["dest"]
-            .as_str()
-            .unwrap();
-        assert_eq!(reality_dest, "custom-domain.com:443");
+        assert!(link.contains("security=none"));
+        assert!(link.contains("fm="));
+        assert!(link.contains("#test%2Duser"));
+        assert!(!link.contains("sni="));
+        assert!(!link.contains("pbk="));
     }
 }
 
