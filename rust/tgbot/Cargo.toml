@@ -7,7 +7,7 @@ edition = "2024"
 teloxide = { version = "0.13", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
 aes-gcm = "0.10"
-secrecy = { version = "0.8", features = ["serde"] }
+secrecy = { version = "0.10", features = ["serde"] }
 zeroize = { version = "1.7", features = ["derive"] }
 totp-rs = { version = "5.5", features = [
     "serde_support",
