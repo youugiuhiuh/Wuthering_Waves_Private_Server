@@ -30,7 +30,7 @@ use teloxide::types::{
 };
 use teloxide::utils::command::BotCommands;
 use tgbot::core::types::IpVersion;
-use tgbot::logic::config::{ConfigManager, KcpFinalMask, Proto, WarpMode};
+use tgbot::logic::config::{ConfigManager, KcpEncryption, KcpDisguise, Proto, WarpMode};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
 use tgbot::logic::maintenance::{BBR3_PENDING_FLAG_FILE, MaintenanceManager};
 use tgbot::logic::operations::Operations;
@@ -2624,244 +2624,290 @@ fn handle_callback(
                     }
                 }
                 // ==================== KCP Handlers ====================
-                "u_kcp_init" => {
-                    let buttons = vec![
-                        vec![
-                            InlineKeyboardButton::callback("🔐 加密", "u_kcp_grp:enc"),
-                            InlineKeyboardButton::callback("🎭 伪装", "u_kcp_grp:dsg"),
-                        ],
-                        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
-                    ];
+"u_kcp_init" => {
+    let buttons = vec![
+        vec![
+            InlineKeyboardButton::callback(
+                "🔀 mKCP Original (XOR混淆)",
+                "u_kcp_enc:mo",
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "🔐 mKCP AES-128-GCM (加密)",
+                "u_kcp_enc:ma",
+            ),
+        ],
+        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
+    ];
 
-                    bot.edit_message_text(
-                        chat_id,
-                        msg_id,
-                        "🚀 <b>KCP (mKCP+FinalMask) 配置</b>\n\n✨ <b>特点:</b>\n• 基于 mKCP 协议的可靠传输\n• FinalMask 伪装/加密支持\n• 官方 Xray-core 标准 kcpSettings\n\n⬇️ <b>请选择 FinalMask 类别:</b>",
-                    )
+    bot.edit_message_text(
+        chat_id,
+        msg_id,
+        "🚀 <b>KCP (mKCP+FinalMask) 配置</b>\n\n\
+         ✨ <b>特点:</b>\n\
+         • 基于 mKCP 协议的可靠传输\n\
+         • FinalMask 加密+伪装双层叠加\n\
+         • 官方 Xray-core 标准 kcpSettings\n\n\
+         📋 <b>步骤 1/2: 选择加密层</b>\n\
+         ⚠️ 加密层为必选项\n\n\
+         🔀 mKCP Original: 轻量级XOR混淆，仅提供完整性校验(FNV1a)，不含真正加密。性能好但安全性低\n\
+         🔐 mKCP AES-128-GCM: AES-128-GCM端到端加密，密钥由密码经SHA256派生。提供加密+认证双重保护，安全性高，推荐使用",
+    )
+    .parse_mode(ParseMode::Html)
+    .reply_markup(InlineKeyboardMarkup::new(buttons))
+    .await?;
+}
+d if d.starts_with("u_kcp_enc:") => {
+    let enc_code = d.strip_prefix("u_kcp_enc:").unwrap_or("mo");
+
+    let variants = KcpDisguise::all_variants();
+    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+    for dsg in &variants {
+        let dsg_code = dsg.code();
+        let name = dsg.display_name();
+        buttons.push(vec![InlineKeyboardButton::callback(
+            name,
+            format!("u_kcp_dsg:{}:{}", enc_code, dsg_code),
+        )]);
+    }
+    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "u_kcp_init")]);
+
+    let enc = KcpEncryption::from_code(enc_code);
+    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
+
+    bot.edit_message_text(
+        chat_id,
+        msg_id,
+        format!(
+            "🚀 <b>KCP 配置 - 步骤 2/2</b>\n\n\
+             ✅ 加密层: <b>{}</b>\n\n\
+             📋 <b>选择伪装层</b>\n\
+             ⚠️ 伪装层为必选项\n\n\
+             • 🌐 DNS: 伪装为DNS查询流量\n\
+             • 💬 微信: 伪装为微信视频通话\n\
+             • 🎬 SRTP: 伪装为音视频流\n\
+             • 🔗 uTP: 伪装为BitTorrent\n\
+             • 🔒 DTLS: 伪装为DTLS 1.2\n\
+             • 🛡️ WireGuard: 伪装为VPN流量",
+            enc_name
+        ),
+    )
+    .parse_mode(ParseMode::Html)
+    .reply_markup(InlineKeyboardMarkup::new(buttons))
+    .await?;
+}
+d if d.starts_with("u_kcp_dsg:") => {
+    let parts: Vec<&str> = d.strip_prefix("u_kcp_dsg:").unwrap_or("").split(':').collect();
+    if parts.len() != 2 {
+        return Ok(());
+    }
+    let enc_code = parts[0];
+    let dsg_code = parts[1];
+
+    let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+    let mut buttons = vec![vec![InlineKeyboardButton::callback(
+        "🌐 IPv4 (0.0.0.0)",
+        format!("u_kcp_ip:{}:{}:4", enc_code, dsg_code),
+    )]];
+
+    if has_ipv6 {
+        buttons[0].push(InlineKeyboardButton::callback(
+            "🌐 IPv6 (::)",
+            format!("u_kcp_ip:{}:{}:6", enc_code, dsg_code),
+        ));
+    }
+
+    buttons.push(vec![InlineKeyboardButton::callback(
+        "⬅️ 返回",
+        format!("u_kcp_enc:{}", enc_code),
+    )]);
+
+    let enc = KcpEncryption::from_code(enc_code);
+    let dsg = KcpDisguise::from_code(dsg_code);
+    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
+    let dsg_name = dsg.as_ref().map(|d| d.display_name()).unwrap_or("Unknown");
+
+    bot.edit_message_text(
+        chat_id,
+        msg_id,
+        format!(
+            "🚀 <b>KCP 配置</b>\n\n\
+             🔐 加密层: <b>{}</b>\n\
+             🎭 伪装层: <b>{}</b>\n\n\
+             ⬇️ <b>请选择网络协议版本:</b>",
+            enc_name, dsg_name
+        ),
+    )
+    .parse_mode(ParseMode::Html)
+    .reply_markup(InlineKeyboardMarkup::new(buttons))
+    .await?;
+}
+d if d.starts_with("u_kcp_ip:") => {
+    let parts: Vec<&str> = d.strip_prefix("u_kcp_ip:").unwrap_or("").split(':').collect();
+    if parts.len() != 3 {
+        return Ok(());
+    }
+    let enc_code = parts[0];
+    let dsg_code = parts[1];
+    let ip_ver_code = parts[2];
+    let ip_version: IpVersion = match ip_ver_code {
+        "6" => IpVersion::IPv6,
+        _ => IpVersion::IPv4,
+    };
+    let ip_display = match ip_version {
+        IpVersion::IPv4 => "IPv4",
+        IpVersion::IPv6 => "IPv6",
+        _ => "IPv4",
+    };
+
+    let enc = KcpEncryption::from_code(enc_code);
+    let dsg = KcpDisguise::from_code(dsg_code);
+    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
+    let dsg_name = dsg.as_ref().map(|d| d.display_name()).unwrap_or("Unknown");
+
+    let buttons = vec![
+        vec![
+            InlineKeyboardButton::callback("1", format!("u_kcp_ex:{}:{}:{}:1", enc_code, dsg_code, ip_ver_code)),
+            InlineKeyboardButton::callback("3", format!("u_kcp_ex:{}:{}:{}:3", enc_code, dsg_code, ip_ver_code)),
+            InlineKeyboardButton::callback("5", format!("u_kcp_ex:{}:{}:{}:5", enc_code, dsg_code, ip_ver_code)),
+        ],
+        vec![
+            InlineKeyboardButton::callback("10", format!("u_kcp_ex:{}:{}:{}:10", enc_code, dsg_code, ip_ver_code)),
+            InlineKeyboardButton::callback("20", format!("u_kcp_ex:{}:{}:{}:20", enc_code, dsg_code, ip_ver_code)),
+            InlineKeyboardButton::callback("50", format!("u_kcp_ex:{}:{}:{}:50", enc_code, dsg_code, ip_ver_code)),
+        ],
+        vec![InlineKeyboardButton::callback("⬅️ 返回", format!("u_kcp_dsg:{}:{}", enc_code, dsg_code))],
+    ];
+
+    bot.edit_message_text(
+        chat_id,
+        msg_id,
+        format!(
+            "🚀 <b>KCP 配置 - 批量生成</b>\n\n\
+             🔐 加密层: <b>{}</b>\n\
+             🎭 伪装层: <b>{}</b>\n\
+             🌐 网络协议: <b>{}</b>\n\n\
+             ⬇️ <b>请选择生成数量:</b>",
+            enc_name, dsg_name, ip_display
+        ),
+    )
+    .parse_mode(ParseMode::Html)
+    .reply_markup(InlineKeyboardMarkup::new(buttons))
+    .await?;
+}
+d if d.starts_with("u_kcp_ex:") => {
+    let parts: Vec<&str> = d.strip_prefix("u_kcp_ex:").unwrap_or("").split(':').collect();
+    if parts.len() != 4 {
+        return Ok(());
+    }
+    let enc_code = parts[0];
+    let dsg_code = parts[1];
+    let ip_ver_code = parts[2];
+    let n: usize = parts[3].parse().unwrap_or(0);
+
+    let ip_version = match ip_ver_code {
+        "6" => IpVersion::IPv6,
+        _ => IpVersion::IPv4,
+    };
+    let ip_str = match ip_version {
+        IpVersion::IPv4 => "IPv4",
+        IpVersion::IPv6 => "IPv6",
+        _ => "IPv4",
+    };
+
+    let enc = KcpEncryption::from_code(enc_code);
+    let dsg = KcpDisguise::from_code(dsg_code);
+    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
+    let dsg_name = dsg.as_ref().map(|d| d.display_name()).unwrap_or("Unknown");
+
+    bot.answer_callback_query(q.id.clone())
+        .text(format!("⏳ 正在生成 {} 个 KCP 配置...", n))
+        .await?;
+
+    let res = ConfigManager::batch_create_kcp(n, true, ip_version, enc_code, dsg_code).await;
+
+    match res {
+        Ok(result) => {
+            let mut message_ids: Vec<MessageId> = Vec::new();
+
+            let mut combined_links = String::new();
+            for (i, link) in result.links.iter().enumerate() {
+                combined_links.push_str(&format!("<code>{}</code>\n\n", link));
+                if (i + 1) % 2 == 0 {
+                    if let Ok(msg) = bot
+                        .send_message(chat_id, combined_links.clone())
+                        .parse_mode(ParseMode::Html)
+                        .await
+                    {
+                        message_ids.push(msg.id);
+                    }
+                    combined_links.clear();
+                }
+            }
+            if !combined_links.is_empty() {
+                if let Ok(msg) = bot
+                    .send_message(chat_id, combined_links)
                     .parse_mode(ParseMode::Html)
-                    .reply_markup(InlineKeyboardMarkup::new(buttons))
-                    .await?;
+                    .await
+                {
+                    message_ids.push(msg.id);
                 }
-                d if d.starts_with("u_kcp_grp:") => {
-                    let group = d.strip_prefix("u_kcp_grp:").unwrap_or("enc");
-                    let finalmasks = if group == "enc" {
-                        KcpFinalMask::encryption_variants()
-                    } else {
-                        KcpFinalMask::disguise_variants()
-                    };
+            }
 
-                    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-                    for fm in &finalmasks {
-                        let code = fm.code();
-                        let name = fm.display_name();
-                        buttons.push(vec![InlineKeyboardButton::callback(
-                            name,
-                            format!("u_kcp_fm:{}", code),
-                        )]);
-                    }
-                    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "u_kcp_init")]);
+            let links_text = result.links.join("\n");
+            let timestamp = chrono::Utc::now().timestamp();
+            let temp_file_path = format!("/tmp/wwps_kcp_links_{}.txt", timestamp);
 
-                    let group_name = if group == "enc" { "加密" } else { "伪装" };
+            if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await {
+                log::warn!("写入临时文件失败: {}", e);
+            } else {
+                let document_sent = bot
+                    .send_document(chat_id, InputFile::file(&temp_file_path))
+                    .caption(format!("KCP {}+{} 完整链接列表", enc_name, dsg_name))
+                    .await;
 
-                    bot.edit_message_text(
-                        chat_id,
-                        msg_id,
-                        format!(
-                            "🚀 <b>KCP FinalMask - {}</b>\n\n⬇️ <b>请选择 FinalMask 类型:</b>",
-                            group_name
-                        ),
-                    )
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(InlineKeyboardMarkup::new(buttons))
-                    .await?;
+                if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
+                    log::warn!("删除临时文件失败: {}", e);
                 }
-                d if d.starts_with("u_kcp_fm:") => {
-                    let fm_code = d.strip_prefix("u_kcp_fm:").unwrap_or("mo");
 
-                    let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
-                    let mut buttons = vec![vec![InlineKeyboardButton::callback(
-                        "🌐 IPv4 (0.0.0.0)",
-                        format!("u_kcp_ip:{}:4", fm_code),
-                    )]];
-
-                    if has_ipv6 {
-                        buttons[0].push(InlineKeyboardButton::callback(
-                            "🌐 IPv6 (::)",
-                            format!("u_kcp_ip:{}:6", fm_code),
-                        ));
-                    }
-
-                    buttons.push(vec![InlineKeyboardButton::callback(
-                        "⬅️ 返回",
-                        "u_kcp_init",
-                    )]);
-
-                    let fm = KcpFinalMask::from_code(fm_code);
-                    let fm_name = fm.as_ref().map(|f| f.display_name()).unwrap_or("Unknown");
-
-                    bot.edit_message_text(
-                        chat_id,
-                        msg_id,
-                        format!(
-                            "🚀 <b>KCP FinalMask 配置</b>\n\n🎭 FinalMask: <b>{}</b>\n\n⬇️ <b>请选择网络协议版本:</b>",
-                            fm_name
-                        ),
-                    )
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(InlineKeyboardMarkup::new(buttons))
-                    .await?;
+                if let Ok(msg) = document_sent {
+                    message_ids.push(msg.id);
                 }
-                d if d.starts_with("u_kcp_ip:") => {
-                    let parts: Vec<&str> = d.strip_prefix("u_kcp_ip:").unwrap_or("").split(':').collect();
-                    if parts.len() != 2 {
-                        return Ok(());
-                    }
-                    let fm_code = parts[0];
-                    let ip_ver_code = parts[1];
-                    let ip_version: IpVersion = match ip_ver_code {
-                        "6" => IpVersion::IPv6,
-                        _ => IpVersion::IPv4,
-                    };
-                    let ip_display = match ip_version {
-                        IpVersion::IPv4 => "IPv4",
-                        IpVersion::IPv6 => "IPv6",
-                        _ => "IPv4",
-                    };
+            }
 
-                    let fm = KcpFinalMask::from_code(fm_code);
-                    let fm_name = fm.as_ref().map(|f| f.display_name()).unwrap_or("Unknown");
+            let mut result_msg = format!(
+                "✅ KCP 批量生成完成！\n\n\
+                 📊 生成数量: {}\n\
+                 🌐 网络协议: {}\n\
+                 🔐 加密层: {}\n\
+                 🎭 伪装层: {}",
+                result.created_count, ip_str, enc_name, dsg_name
+            );
 
-                    let buttons = vec![
-                        vec![
-                            InlineKeyboardButton::callback("1", format!("u_kcp_ex:{}:{}:1", fm_code, ip_ver_code)),
-                            InlineKeyboardButton::callback("3", format!("u_kcp_ex:{}:{}:3", fm_code, ip_ver_code)),
-                            InlineKeyboardButton::callback("5", format!("u_kcp_ex:{}:{}:5", fm_code, ip_ver_code)),
-                        ],
-                        vec![
-                            InlineKeyboardButton::callback("10", format!("u_kcp_ex:{}:{}:10", fm_code, ip_ver_code)),
-                            InlineKeyboardButton::callback("20", format!("u_kcp_ex:{}:{}:20", fm_code, ip_ver_code)),
-                            InlineKeyboardButton::callback("50", format!("u_kcp_ex:{}:{}:50", fm_code, ip_ver_code)),
-                        ],
-                        vec![InlineKeyboardButton::callback("⬅️ 返回", format!("u_kcp_fm:{}", fm_code))],
-                    ];
+            if let Some(filename) = result.config_file {
+                result_msg.push_str(&format!("\n\n📁 配置文件: {}", filename));
+            }
 
-                    bot.edit_message_text(
-                        chat_id,
-                        msg_id,
-                        format!(
-                            "🚀 <b>KCP Finalmask 批量配置</b>\n\n🎭 FinalMask: <b>{}</b>\n🌐 网络协议: <b>{}</b>\n\n⬇️ <b>请选择生成数量:</b>",
-                            fm_name, ip_display
-                        ),
-                    )
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(InlineKeyboardMarkup::new(buttons))
-                    .await?;
+            let summary_msg = bot.send_message(chat_id, result_msg).await?;
+            message_ids.push(summary_msg.id);
+
+            let bot_clone = bot.clone();
+            let chat_id_clone = chat_id;
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                for msg_id in message_ids {
+                    let _ = bot_clone.delete_message(chat_id_clone, msg_id).await;
                 }
-                d if d.starts_with("u_kcp_ex:") => {
-                    let parts: Vec<&str> = d.strip_prefix("u_kcp_ex:").unwrap_or("").split(':').collect();
-                    if parts.len() != 3 {
-                        return Ok(());
-                    }
-                    let fm_code = parts[0];
-                    let ip_ver_code = parts[1];
-                    let n: usize = parts[2].parse().unwrap_or(0);
-
-                    let ip_version = match ip_ver_code {
-                        "6" => IpVersion::IPv6,
-                        _ => IpVersion::IPv4,
-                    };
-                    let ip_str = match ip_version {
-                        IpVersion::IPv4 => "IPv4",
-                        IpVersion::IPv6 => "IPv6",
-                        _ => "IPv4",
-                    };
-
-                    let fm = KcpFinalMask::from_code(fm_code);
-                    let fm_name = fm.as_ref().map(|f| f.display_name()).unwrap_or("Unknown");
-
-                    bot.answer_callback_query(q.id.clone())
-                        .text(format!("⏳ 正在生成 {} 个 KCP {} 配置...", n, fm_name))
-                        .await?;
-
-                    let res = ConfigManager::batch_create_kcp(n, true, ip_version, fm_code).await;
-
-                    match res {
-                        Ok(result) => {
-                            let mut message_ids: Vec<MessageId> = Vec::new();
-
-                            let mut combined_links = String::new();
-                            for (i, link) in result.links.iter().enumerate() {
-                                combined_links.push_str(&format!("<code>{}</code>\n\n", link));
-                                if (i + 1) % 2 == 0 {
-                                    if let Ok(msg) = bot
-                                        .send_message(chat_id, combined_links.clone())
-                                        .parse_mode(ParseMode::Html)
-                                        .await
-                                    {
-                                        message_ids.push(msg.id);
-                                    }
-                                    combined_links.clear();
-                                }
-                            }
-                            if !combined_links.is_empty() {
-                                if let Ok(msg) = bot
-                                    .send_message(chat_id, combined_links)
-                                    .parse_mode(ParseMode::Html)
-                                    .await
-                                {
-                                    message_ids.push(msg.id);
-                                }
-                            }
-
-                            let links_text = result.links.join("\n");
-                            let timestamp = chrono::Utc::now().timestamp();
-                            let temp_file_path = format!("/tmp/wwps_kcp_links_{}.txt", timestamp);
-
-                            if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await {
-                                log::warn!("写入临时文件失败: {}", e);
-                            } else {
-                                let document_sent = bot
-                                    .send_document(chat_id, InputFile::file(&temp_file_path))
-                                    .caption(format!("KCP {} 完整链接列表", fm_name))
-                                    .await;
-
-                                if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
-                                    log::warn!("删除临时文件失败: {}", e);
-                                }
-
-                                if let Ok(msg) = document_sent {
-                                    message_ids.push(msg.id);
-                                }
-                            }
-
-                            let mut result_msg = format!(
-                                "✅ KCP {} 批量生成完成！\n\n📊 生成数量: {}\n🌐 网络协议: {}\n⚡ 特点: {} Finalmask + mKCP传输",
-                                fm_name, result.created_count, ip_str, fm_name
-                            );
-
-                            if let Some(filename) = result.config_file {
-                                result_msg.push_str(&format!("\n\n📁 配置文件: {}", filename));
-                            }
-
-                            let summary_msg = bot.send_message(chat_id, result_msg).await?;
-                            message_ids.push(summary_msg.id);
-
-                            let bot_clone = bot.clone();
-                            let chat_id_clone = chat_id;
-                            tokio::spawn(async move {
-                                tokio::time::sleep(Duration::from_secs(60)).await;
-                                for msg_id in message_ids {
-                                    let _ = bot_clone.delete_message(chat_id_clone, msg_id).await;
-                                }
-                            });
-                        }
-                        Err(e) => {
-                            bot.send_message(chat_id, format!("❌ 生成失败: {}", e))
-                                .parse_mode(ParseMode::Html)
-                                .await?;
-                        }
-                    }
-                }
+            });
+        }
+        Err(e) => {
+            bot.send_message(chat_id, format!("❌ 生成失败: {}", e))
+                .parse_mode(ParseMode::Html)
+                .await?;
+        }
+    }
+}
                 // 用户列表
                 d if d.starts_with("u_l:") => {
                     let idx: usize = d.strip_prefix("u_l:").unwrap_or("0").parse().unwrap_or(0);
