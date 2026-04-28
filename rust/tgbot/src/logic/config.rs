@@ -79,9 +79,72 @@ pub enum Proto {
 }
 
 #[derive(Debug, Clone)]
-pub enum KcpFinalMask {
+pub enum KcpEncryption {
     MkcpOriginal,
     MkcpAes128Gcm { password: String },
+}
+
+impl KcpEncryption {
+    pub fn type_str(&self) -> &'static str {
+        match self {
+            KcpEncryption::MkcpOriginal => "mkcp-original",
+            KcpEncryption::MkcpAes128Gcm { .. } => "mkcp-aes128gcm",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            KcpEncryption::MkcpOriginal => "🔀 mKCP Original (XOR混淆)",
+            KcpEncryption::MkcpAes128Gcm { .. } => "🔐 mKCP AES-128-GCM (加密)",
+        }
+    }
+
+    pub fn detail(&self) -> &'static str {
+        match self {
+            KcpEncryption::MkcpOriginal => "轻量级XOR混淆，仅提供完整性校验(FNV1a)，不含真正加密。性能好但安全性低",
+            KcpEncryption::MkcpAes128Gcm { .. } => "AES-128-GCM端到端加密，密钥由密码经SHA256派生。提供加密+认证双重保护，安全性高，推荐使用",
+        }
+    }
+
+    pub fn code(&self) -> &'static str {
+        match self {
+            KcpEncryption::MkcpOriginal => "mo",
+            KcpEncryption::MkcpAes128Gcm { .. } => "ma",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "mo" => Some(KcpEncryption::MkcpOriginal),
+            "ma" => Some(KcpEncryption::MkcpAes128Gcm {
+                password: ConfigManager::generate_aes_password(),
+            }),
+            _ => None,
+        }
+    }
+
+    pub fn as_json(&self) -> Value {
+        match self {
+            KcpEncryption::MkcpOriginal => json!({
+                "type": "mkcp-original"
+            }),
+            KcpEncryption::MkcpAes128Gcm { password } => json!({
+                "type": "mkcp-aes128gcm",
+                "settings": { "password": password }
+            }),
+        }
+    }
+
+    pub fn all_variants() -> Vec<Self> {
+        vec![
+            KcpEncryption::MkcpOriginal,
+            KcpEncryption::MkcpAes128Gcm { password: String::new() },
+        ]
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum KcpDisguise {
     HeaderDns { domain: String },
     HeaderWechat,
     HeaderSrtp,
@@ -90,126 +153,97 @@ pub enum KcpFinalMask {
     HeaderWireguard,
 }
 
-impl KcpFinalMask {
+impl KcpDisguise {
     pub fn type_str(&self) -> &'static str {
         match self {
-            KcpFinalMask::MkcpOriginal => "mkcp-original",
-            KcpFinalMask::MkcpAes128Gcm { .. } => "mkcp-aes128gcm",
-            KcpFinalMask::HeaderDns { .. } => "header-dns",
-            KcpFinalMask::HeaderWechat => "header-wechat",
-            KcpFinalMask::HeaderSrtp => "header-srtp",
-            KcpFinalMask::HeaderUtp => "header-utp",
-            KcpFinalMask::HeaderDtls => "header-dtls",
-            KcpFinalMask::HeaderWireguard => "header-wireguard",
-        }
-    }
-
-    pub fn group_name(&self) -> &'static str {
-        match self {
-            KcpFinalMask::MkcpOriginal | KcpFinalMask::MkcpAes128Gcm { .. } => "enc",
-            KcpFinalMask::HeaderDns { .. }
-            | KcpFinalMask::HeaderWechat
-            | KcpFinalMask::HeaderSrtp
-            | KcpFinalMask::HeaderUtp
-            | KcpFinalMask::HeaderDtls
-            | KcpFinalMask::HeaderWireguard => "dsg",
+            KcpDisguise::HeaderDns { .. } => "header-dns",
+            KcpDisguise::HeaderWechat => "header-wechat",
+            KcpDisguise::HeaderSrtp => "header-srtp",
+            KcpDisguise::HeaderUtp => "header-utp",
+            KcpDisguise::HeaderDtls => "header-dtls",
+            KcpDisguise::HeaderWireguard => "header-wireguard",
         }
     }
 
     pub fn display_name(&self) -> &'static str {
         match self {
-            KcpFinalMask::MkcpOriginal => "mKCP Original (XOR)",
-            KcpFinalMask::MkcpAes128Gcm { .. } => "mKCP AES-128-GCM",
-            KcpFinalMask::HeaderDns { .. } => "DNS 查询伪装",
-            KcpFinalMask::HeaderWechat => "微信视频通话伪装",
-            KcpFinalMask::HeaderSrtp => "SRTP 伪装",
-            KcpFinalMask::HeaderUtp => "uTP (BitTorrent) 伪装",
-            KcpFinalMask::HeaderDtls => "DTLS 1.2 伪装",
-            KcpFinalMask::HeaderWireguard => "WireGuard 伪装",
+            KcpDisguise::HeaderDns { .. } => "🌐 DNS 查询伪装",
+            KcpDisguise::HeaderWechat => "💬 微信视频通话伪装",
+            KcpDisguise::HeaderSrtp => "🎬 SRTP 伪装",
+            KcpDisguise::HeaderUtp => "🔗 uTP (BitTorrent) 伪装",
+            KcpDisguise::HeaderDtls => "🔒 DTLS 1.2 伪装",
+            KcpDisguise::HeaderWireguard => "🛡️ WireGuard 伪装",
+        }
+    }
+
+    pub fn detail(&self) -> &'static str {
+        match self {
+            KcpDisguise::HeaderDns { .. } => "伪装为DNS查询流量，可自定义域名(默认www.baidu.com)，适合仅允许DNS流量的网络",
+            KcpDisguise::HeaderWechat => "伪装为微信视频通话流量，适合允许微信的网络环境",
+            KcpDisguise::HeaderSrtp => "伪装为安全实时传输协议流量，看起来像视频/音频流媒体",
+            KcpDisguise::HeaderUtp => "伪装为BitTorrent uTP流量，可能绕过允许P2P的流量整形",
+            KcpDisguise::HeaderDtls => "伪装为DTLS 1.2流量，看起来像正常的加密UDP通信",
+            KcpDisguise::HeaderWireguard => "伪装为WireGuard VPN流量，可能混入VPN流量中",
         }
     }
 
     pub fn code(&self) -> &'static str {
         match self {
-            KcpFinalMask::MkcpOriginal => "mo",
-            KcpFinalMask::MkcpAes128Gcm { .. } => "ma",
-            KcpFinalMask::HeaderDns { .. } => "hd",
-            KcpFinalMask::HeaderWechat => "hw",
-            KcpFinalMask::HeaderSrtp => "hs",
-            KcpFinalMask::HeaderUtp => "hu",
-            KcpFinalMask::HeaderDtls => "hdt",
-            KcpFinalMask::HeaderWireguard => "hwg",
+            KcpDisguise::HeaderDns { .. } => "hd",
+            KcpDisguise::HeaderWechat => "hw",
+            KcpDisguise::HeaderSrtp => "hs",
+            KcpDisguise::HeaderUtp => "hu",
+            KcpDisguise::HeaderDtls => "hdt",
+            KcpDisguise::HeaderWireguard => "hwg",
         }
     }
 
     pub fn from_code(code: &str) -> Option<Self> {
         match code {
-            "mo" => Some(KcpFinalMask::MkcpOriginal),
-            "ma" => Some(KcpFinalMask::MkcpAes128Gcm {
-                password: ConfigManager::generate_aes_password(),
-            }),
-            "hd" => Some(KcpFinalMask::HeaderDns {
+            "hd" => Some(KcpDisguise::HeaderDns {
                 domain: "www.baidu.com".to_string(),
             }),
-            "hw" => Some(KcpFinalMask::HeaderWechat),
-            "hs" => Some(KcpFinalMask::HeaderSrtp),
-            "hu" => Some(KcpFinalMask::HeaderUtp),
-            "hdt" => Some(KcpFinalMask::HeaderDtls),
-            "hwg" => Some(KcpFinalMask::HeaderWireguard),
+            "hw" => Some(KcpDisguise::HeaderWechat),
+            "hs" => Some(KcpDisguise::HeaderSrtp),
+            "hu" => Some(KcpDisguise::HeaderUtp),
+            "hdt" => Some(KcpDisguise::HeaderDtls),
+            "hwg" => Some(KcpDisguise::HeaderWireguard),
             _ => None,
         }
     }
 
     pub fn as_json(&self) -> Value {
         match self {
-            KcpFinalMask::MkcpOriginal => json!({
-                "type": "mkcp-original"
-            }),
-            KcpFinalMask::MkcpAes128Gcm { password } => json!({
-                "type": "mkcp-aes128gcm",
-                "settings": { "password": password }
-            }),
-            KcpFinalMask::HeaderDns { domain } => json!({
+            KcpDisguise::HeaderDns { domain } => json!({
                 "type": "header-dns",
                 "settings": { "domain": domain }
             }),
-            KcpFinalMask::HeaderWechat => json!({
+            KcpDisguise::HeaderWechat => json!({
                 "type": "header-wechat"
             }),
-            KcpFinalMask::HeaderSrtp => json!({
+            KcpDisguise::HeaderSrtp => json!({
                 "type": "header-srtp"
             }),
-            KcpFinalMask::HeaderUtp => json!({
+            KcpDisguise::HeaderUtp => json!({
                 "type": "header-utp"
             }),
-            KcpFinalMask::HeaderDtls => json!({
+            KcpDisguise::HeaderDtls => json!({
                 "type": "header-dtls"
             }),
-            KcpFinalMask::HeaderWireguard => json!({
+            KcpDisguise::HeaderWireguard => json!({
                 "type": "header-wireguard"
             }),
         }
     }
 
-    pub fn encryption_variants() -> Vec<Self> {
+    pub fn all_variants() -> Vec<Self> {
         vec![
-            KcpFinalMask::MkcpOriginal,
-            KcpFinalMask::MkcpAes128Gcm {
-                password: String::new(),
-            },
-        ]
-    }
-
-    pub fn disguise_variants() -> Vec<Self> {
-        vec![
-            KcpFinalMask::HeaderDns {
-                domain: String::new(),
-            },
-            KcpFinalMask::HeaderWechat,
-            KcpFinalMask::HeaderSrtp,
-            KcpFinalMask::HeaderUtp,
-            KcpFinalMask::HeaderDtls,
-            KcpFinalMask::HeaderWireguard,
+            KcpDisguise::HeaderDns { domain: String::new() },
+            KcpDisguise::HeaderWechat,
+            KcpDisguise::HeaderSrtp,
+            KcpDisguise::HeaderUtp,
+            KcpDisguise::HeaderDtls,
+            KcpDisguise::HeaderWireguard,
         ]
     }
 }
@@ -499,7 +533,8 @@ impl ConfigManager {
         uuid: &str,
         email: &str,
         ip_version: IpVersion,
-        finalmask: &KcpFinalMask,
+        encryption: &KcpEncryption,
+        disguise: &KcpDisguise,
     ) -> Value {
         let listen_ip = match ip_version {
             IpVersion::IPv4 | IpVersion::SplitStackV4Primary => "0.0.0.0",
@@ -511,8 +546,7 @@ impl ConfigManager {
             "email": email
         });
 
-        let finalmask_json = finalmask.as_json();
-        let udp_array = json!([finalmask_json]);
+        let udp_array = json!([encryption.as_json(), disguise.as_json()]);
 
         json!({
             "listen": listen_ip,
@@ -552,10 +586,11 @@ impl ConfigManager {
         port: i32,
         email: &str,
         ip_version: IpVersion,
-        finalmask: &KcpFinalMask,
+        encryption: &KcpEncryption,
+        disguise: &KcpDisguise,
     ) -> String {
         let finalmask_json = json!({
-            "udp": [finalmask.as_json()]
+            "udp": [encryption.as_json(), disguise.as_json()]
         });
         let fm_str = serde_json::to_string(&finalmask_json).unwrap();
         let fm_encoded = utf8_percent_encode(&fm_str, NON_ALPHANUMERIC).to_string();
@@ -576,10 +611,13 @@ impl ConfigManager {
         count: usize,
         standalone: bool,
         ip_version: IpVersion,
-        finalmask_code: &str,
+        enc_code: &str,
+        dsg_code: &str,
     ) -> Result<BatchCreationResult> {
-        let finalmask = KcpFinalMask::from_code(finalmask_code)
-            .ok_or_else(|| anyhow!("Invalid finalmask code: {}", finalmask_code))?;
+        let encryption = KcpEncryption::from_code(enc_code)
+            .ok_or_else(|| anyhow!("Invalid encryption code: {}", enc_code))?;
+        let disguise = KcpDisguise::from_code(dsg_code)
+            .ok_or_else(|| anyhow!("Invalid disguise code: {}", dsg_code))?;
 
         let (host, _) = Self::resolve_public_hosts(
             ip_version,
@@ -606,17 +644,17 @@ impl ConfigManager {
             let uuid = Self::generate_wwps_uuid().await?;
             let uuid_short = Self::uuid_short_prefix(&uuid);
 
-            let email = format!("{}-vless-kcp-{}", uuid_short, finalmask.type_str());
-            let tag = format!("KCP-{}-{}", i + 1, uuid_short);
+let email = format!("{}-vless-kcp-{}-{}", uuid_short, encryption.type_str(), disguise.type_str());
+        let tag = format!("KCP-{}-{}", i + 1, uuid_short);
 
-            let config = Self::build_kcp_inbound(
-                &tag, port, &uuid, &email, ip_version, &finalmask,
-            );
-            batch_configs.push(config);
+        let config = Self::build_kcp_inbound(
+            &tag, port, &uuid, &email, ip_version, &encryption, &disguise,
+        );
+        batch_configs.push(config);
 
-            let link = Self::generate_kcp_client_link(
-                &uuid, &host, port, &email, ip_version, &finalmask,
-            );
+        let link = Self::generate_kcp_client_link(
+            &uuid, &host, port, &email, ip_version, &encryption, &disguise,
+        );
             links.push(link);
 
             let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
@@ -1594,14 +1632,15 @@ mod tests {
     }
 
     #[test]
-    fn test_build_kcp_inbound_mkcp_original() {
+    fn test_build_kcp_inbound_original_srtp() {
         let config = ConfigManager::build_kcp_inbound(
             "KCP-TEST",
             34456,
             "test-uuid",
             "test-email",
             IpVersion::IPv4,
-            &KcpFinalMask::MkcpOriginal,
+            &KcpEncryption::MkcpOriginal,
+            &KcpDisguise::HeaderSrtp,
         );
 
         assert_eq!(config["listen"], "0.0.0.0");
@@ -1619,46 +1658,56 @@ mod tests {
         assert_eq!(ss["kcpSettings"]["maxSendingWindow"], 2097152);
         assert_eq!(ss["security"], "none");
 
-        let fm = &ss["finalmask"]["udp"][0];
-        assert_eq!(fm["type"], "mkcp-original");
-        assert!(fm.get("settings").is_none());
+        let udp = &ss["finalmask"]["udp"];
+        assert_eq!(udp[0]["type"], "mkcp-original");
+        assert!(udp[0].get("settings").is_none());
+        assert_eq!(udp[1]["type"], "header-srtp");
+        assert!(udp[1].get("settings").is_none());
     }
 
     #[test]
-    fn test_build_kcp_inbound_header_dns() {
-        let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST",
-            34456,
-            "test-uuid",
-            "test-email",
-            IpVersion::IPv4,
-            &KcpFinalMask::HeaderDns {
-                domain: "www.google.com".to_string(),
-            },
-        );
-
-        let fm = &config["streamSettings"]["finalmask"]["udp"][0];
-        assert_eq!(fm["type"], "header-dns");
-        assert_eq!(fm["settings"]["domain"], "www.google.com");
-    }
-
-    #[test]
-    fn test_build_kcp_inbound_mkcp_aes128gcm() {
+    fn test_build_kcp_inbound_aes_wechat() {
         let config = ConfigManager::build_kcp_inbound(
             "KCP-TEST",
             34456,
             "test-uuid",
             "test-email",
             IpVersion::IPv6,
-            &KcpFinalMask::MkcpAes128Gcm {
-                password: "testpass".to_string(),
+            &KcpEncryption::MkcpAes128Gcm {
+                password: "secretpass".to_string(),
             },
+            &KcpDisguise::HeaderWechat,
         );
 
         assert_eq!(config["listen"], "::");
-        let fm = &config["streamSettings"]["finalmask"]["udp"][0];
-        assert_eq!(fm["type"], "mkcp-aes128gcm");
-        assert_eq!(fm["settings"]["password"], "testpass");
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp[0]["type"], "mkcp-aes128gcm");
+        assert_eq!(udp[0]["settings"]["password"], "secretpass");
+        assert_eq!(udp[1]["type"], "header-wechat");
+        assert!(udp[1].get("settings").is_none());
+    }
+
+    #[test]
+    fn test_build_kcp_inbound_aes_dns() {
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &KcpEncryption::MkcpAes128Gcm {
+                password: "mypassword".to_string(),
+            },
+            &KcpDisguise::HeaderDns {
+                domain: "www.google.com".to_string(),
+            },
+        );
+
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp[0]["type"], "mkcp-aes128gcm");
+        assert_eq!(udp[0]["settings"]["password"], "mypassword");
+        assert_eq!(udp[1]["type"], "header-dns");
+        assert_eq!(udp[1]["settings"]["domain"], "www.google.com");
     }
 
     #[test]
@@ -1669,7 +1718,8 @@ mod tests {
             "test-uuid",
             "test-email",
             IpVersion::IPv4,
-            &KcpFinalMask::MkcpOriginal,
+            &KcpEncryption::MkcpOriginal,
+            &KcpDisguise::HeaderSrtp,
         );
 
         assert!(config["streamSettings"].get("realitySettings").is_none());
@@ -1684,7 +1734,8 @@ mod tests {
             "test-uuid",
             "test-email",
             IpVersion::IPv4,
-            &KcpFinalMask::MkcpOriginal,
+            &KcpEncryption::MkcpOriginal,
+            &KcpDisguise::HeaderSrtp,
         );
 
         let kcp = &config["streamSettings"]["kcpSettings"];
@@ -1694,50 +1745,82 @@ mod tests {
     }
 
     #[test]
-    fn test_kcp_finalmask_type_str() {
-        assert_eq!(KcpFinalMask::MkcpOriginal.type_str(), "mkcp-original");
-        assert_eq!(KcpFinalMask::MkcpAes128Gcm { password: "x".into() }.type_str(), "mkcp-aes128gcm");
-        assert_eq!(KcpFinalMask::HeaderDns { domain: "x".into() }.type_str(), "header-dns");
-        assert_eq!(KcpFinalMask::HeaderWechat.type_str(), "header-wechat");
-        assert_eq!(KcpFinalMask::HeaderSrtp.type_str(), "header-srtp");
-        assert_eq!(KcpFinalMask::HeaderUtp.type_str(), "header-utp");
-        assert_eq!(KcpFinalMask::HeaderDtls.type_str(), "header-dtls");
-        assert_eq!(KcpFinalMask::HeaderWireguard.type_str(), "header-wireguard");
+    fn test_kcp_encryption_variants() {
+        assert_eq!(KcpEncryption::MkcpOriginal.type_str(), "mkcp-original");
+        assert_eq!(
+            KcpEncryption::MkcpAes128Gcm {
+                password: "x".into()
+            }
+            .type_str(),
+            "mkcp-aes128gcm"
+        );
+        assert_eq!(KcpEncryption::MkcpOriginal.code(), "mo");
+        assert_eq!(
+            KcpEncryption::MkcpAes128Gcm {
+                password: "x".into()
+            }
+            .code(),
+            "ma"
+        );
     }
 
     #[test]
-    fn test_kcp_finalmask_group_name() {
-        assert_eq!(KcpFinalMask::MkcpOriginal.group_name(), "enc");
-        assert_eq!(KcpFinalMask::MkcpAes128Gcm { password: "x".into() }.group_name(), "enc");
-        assert_eq!(KcpFinalMask::HeaderDns { domain: "x".into() }.group_name(), "dsg");
-        assert_eq!(KcpFinalMask::HeaderWireguard.group_name(), "dsg");
+    fn test_kcp_disguise_variants() {
+        assert_eq!(
+            KcpDisguise::HeaderDns {
+                domain: "x".into()
+            }
+            .type_str(),
+            "header-dns"
+        );
+        assert_eq!(KcpDisguise::HeaderWechat.type_str(), "header-wechat");
+        assert_eq!(KcpDisguise::HeaderSrtp.type_str(), "header-srtp");
+        assert_eq!(KcpDisguise::HeaderUtp.type_str(), "header-utp");
+        assert_eq!(KcpDisguise::HeaderDtls.type_str(), "header-dtls");
+        assert_eq!(
+            KcpDisguise::HeaderWireguard.type_str(),
+            "header-wireguard"
+        );
     }
 
     #[test]
-    fn test_kcp_finalmask_code_roundtrip() {
-        let codes = ["mo", "ma", "hd", "hw", "hs", "hu", "hdt", "hwg"];
-        for code in codes {
-            let fm = KcpFinalMask::from_code(code);
-            assert!(fm.is_some(), "Failed to parse code: {}", code);
-            assert_eq!(fm.unwrap().code(), code);
+    fn test_kcp_encryption_code_roundtrip() {
+        for code in ["mo", "ma"] {
+            let enc = KcpEncryption::from_code(code);
+            assert!(enc.is_some(), "Failed to parse encryption code: {}", code);
+            assert_eq!(enc.unwrap().code(), code);
         }
     }
 
     #[test]
-    fn test_kcp_finalmask_from_code_invalid() {
-        assert!(KcpFinalMask::from_code("invalid").is_none());
-        assert!(KcpFinalMask::from_code("").is_none());
+    fn test_kcp_disguise_code_roundtrip() {
+        for code in ["hd", "hw", "hs", "hu", "hdt", "hwg"] {
+            let dsg = KcpDisguise::from_code(code);
+            assert!(dsg.is_some(), "Failed to parse disguise code: {}", code);
+            assert_eq!(dsg.unwrap().code(), code);
+        }
     }
 
     #[test]
-    fn test_generate_kcp_client_link_mkcp_original() {
+    fn test_kcp_from_code_invalid() {
+        assert!(KcpEncryption::from_code("invalid").is_none());
+        assert!(KcpEncryption::from_code("").is_none());
+        assert!(KcpDisguise::from_code("invalid").is_none());
+        assert!(KcpDisguise::from_code("").is_none());
+    }
+
+    #[test]
+    fn test_generate_kcp_client_link_dual_layer() {
         let link = ConfigManager::generate_kcp_client_link(
             "test-uuid",
             "192.168.1.1",
             34456,
             "test-user",
             IpVersion::IPv4,
-            &KcpFinalMask::MkcpOriginal,
+            &KcpEncryption::MkcpAes128Gcm {
+                password: "testpass".to_string(),
+            },
+            &KcpDisguise::HeaderSrtp,
         );
 
         assert!(link.starts_with("vless://test-uuid@192.168.1.1:34456"));
@@ -1747,6 +1830,36 @@ mod tests {
         assert!(link.contains("#test%2Duser"));
         assert!(!link.contains("sni="));
         assert!(!link.contains("pbk="));
+
+        let fm_start = link.find("fm=").unwrap() + 3;
+        let fm_end = link.find('#').unwrap();
+        let fm_encoded = &link[fm_start..fm_end];
+        let fm_decoded = percent_decode_str(fm_encoded).decode_utf8().unwrap();
+        let fm_json: Value = serde_json::from_str(&fm_decoded).unwrap();
+        assert_eq!(fm_json["udp"][0]["type"], "mkcp-aes128gcm");
+        assert_eq!(fm_json["udp"][0]["settings"]["password"], "testpass");
+        assert_eq!(fm_json["udp"][1]["type"], "header-srtp");
+    }
+
+    #[test]
+    fn test_generate_kcp_client_link_original_wireguard() {
+        let link = ConfigManager::generate_kcp_client_link(
+            "test-uuid",
+            "192.168.1.1",
+            34456,
+            "test-user",
+            IpVersion::IPv4,
+            &KcpEncryption::MkcpOriginal,
+            &KcpDisguise::HeaderWireguard,
+        );
+
+        let fm_start = link.find("fm=").unwrap() + 3;
+        let fm_end = link.find('#').unwrap();
+        let fm_encoded = &link[fm_start..fm_end];
+        let fm_decoded = percent_decode_str(fm_encoded).decode_utf8().unwrap();
+        let fm_json: Value = serde_json::from_str(&fm_decoded).unwrap();
+        assert_eq!(fm_json["udp"][0]["type"], "mkcp-original");
+        assert_eq!(fm_json["udp"][1]["type"], "header-wireguard");
     }
 }
 
