@@ -3026,46 +3026,49 @@ d if d.starts_with("u_kcp_done:") => {
         .filter_map(|c| KcpMask::from_code(c))
         .collect();
 
-    if let Err(e) = KcpMask::validate_stack(&masks) {
+    let ordered = KcpMask::canonical_order(&masks);
+    if let Err(e) = KcpMask::validate_stack(&ordered) {
         bot.answer_callback_query(q.id.clone())
             .text(format!("❌ {}", e))
             .await?;
         return Ok(());
     }
 
-    let stack_display: Vec<String> = codes.iter().enumerate().map(|(i, c)| {
-        let m = KcpMask::from_code(c);
-        format!("{}️⃣ {}", i + 1, m.map(|m| m.display_name()).unwrap_or("???"))
+    let ordered_codes: Vec<String> = ordered.iter().map(|m| m.code().to_string()).collect();
+    let ordered_str = ordered_codes.join(",");
+
+    let stack_display: Vec<String> = ordered.iter().enumerate().map(|(i, m)| {
+        format!("{}️⃣ {}", i + 1, m.display_name())
     }).collect();
 
     let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
     let mut buttons = vec![vec![
         InlineKeyboardButton::callback(
             "🌐 IPv4 (0.0.0.0)",
-            format!("u_kcp_ip:{}:4", mask_codes_str),
+            format!("u_kcp_ip:{}:4", ordered_str),
         ),
     ]];
     if has_ipv6 {
         buttons[0].push(InlineKeyboardButton::callback(
             "🌐 IPv6 (::)",
-            format!("u_kcp_ip:{}:6", mask_codes_str),
+            format!("u_kcp_ip:{}:6", ordered_str),
         ));
     }
     buttons.push(vec![
         InlineKeyboardButton::callback(
             "🔄 双栈 IPv4优先",
-            format!("u_kcp_ip:{}:s4", mask_codes_str),
+            format!("u_kcp_ip:{}:s4", ordered_str),
         ),
     ]);
     buttons.push(vec![
         InlineKeyboardButton::callback(
             "🔄 双栈 IPv6优先",
-            format!("u_kcp_ip:{}:s6", mask_codes_str),
+            format!("u_kcp_ip:{}:s6", ordered_str),
         ),
     ]);
     buttons.push(vec![InlineKeyboardButton::callback(
         "⬅️ 返回",
-        format!("u_kcp_more:{}", mask_codes_str),
+        format!("u_kcp_more:{}", ordered_str),
     )]);
 
     bot.edit_message_text(
