@@ -357,6 +357,74 @@ impl KcpMask {
             _ => None,
         }
     }
+
+    pub fn is_encryption(&self) -> bool {
+        matches!(self, KcpMask::MkcpOriginal | KcpMask::MkcpAes128Gcm { .. })
+    }
+
+    pub fn is_sudoku(&self) -> bool {
+        matches!(self, KcpMask::Sudoku { .. })
+    }
+
+    pub fn is_compatible_add(&self, current_stack: &[&KcpMask]) -> Result<(), String> {
+        let stack_len = current_stack.len();
+
+        if stack_len >= 5 {
+            return Err("已达最大层数(5层)".to_string());
+        }
+
+        if self.is_sudoku() {
+            if current_stack.iter().any(|m| m.is_sudoku()) {
+                return Err("重复的Sudoku".to_string());
+            }
+            if stack_len > 0 {
+                return Err("Sudoku必须是最后一层(最内侧)".to_string());
+            }
+        }
+
+        if self.is_encryption() {
+            if current_stack.iter().any(|m| m.is_encryption()) {
+                return Err("重复的加密层".to_string());
+            }
+        }
+
+        if current_stack.iter().any(|m| m.is_sudoku()) {
+            return Err("Sudoku之后不能再添加其他遮罩层".to_string());
+        }
+
+        if matches!(self, KcpMask::MkcpOriginal) && stack_len == 0 {
+            return Err("mKCP Original单独使用安全性低，建议配合伪装层使用".to_string());
+        }
+
+        Ok(())
+    }
+
+    pub fn validate_stack(masks: &[KcpMask]) -> Result<(), String> {
+        if masks.is_empty() {
+            return Err("请至少选择1层遮罩".to_string());
+        }
+
+        if masks.len() > 5 {
+            return Err("最多5层遮罩".to_string());
+        }
+
+        let has_sudoku = masks.iter().any(|m| m.is_sudoku());
+        let has_encryption = masks.iter().any(|m| m.is_encryption());
+
+        if has_sudoku && !masks.iter().last().map(|m| m.is_sudoku()).unwrap_or(false) {
+            return Err("Sudoku必须是最后一层(最内侧)".to_string());
+        }
+
+        if masks.iter().filter(|m| m.is_encryption()).count() > 1 {
+            return Err("重复的加密层".to_string());
+        }
+
+        if matches!(masks.first(), Some(KcpMask::MkcpOriginal)) && masks.len() == 1 {
+            return Err("mKCP Original单独使用安全性低，建议配合伪装层使用".to_string());
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -2707,6 +2707,12 @@ d if d.starts_with("u_kcp_cat:") => {
 d if d.starts_with("u_kcp_add:") => {
     let code = d.strip_prefix("u_kcp_add:").unwrap_or("mo");
     if let Some(m) = KcpMask::from_code(code) {
+        if let Err(e) = KcpMask::validate_stack(&[m.clone()]) {
+            bot.answer_callback_query(q.id.clone())
+                .text(format!("❌ {}", e))
+                .await?;
+            return Ok(());
+        }
         let stack_display = format!("1️⃣ {}", m.display_name());
         let mut buttons = vec![
             vec![InlineKeyboardButton::callback(
@@ -2719,12 +2725,6 @@ d if d.starts_with("u_kcp_add:") => {
             )],
             vec![InlineKeyboardButton::callback("🗑️ 清空重选", "u_kcp_init")],
         ];
-        if code == "mo" {
-            buttons.insert(0, vec![InlineKeyboardButton::callback(
-                "⚠️ 安全提醒: mKCP Original单独使用安全性低",
-                "noop",
-            )]);
-        }
         bot.edit_message_text(
             chat_id,
             msg_id,
@@ -2750,6 +2750,17 @@ d if d.starts_with("u_kcp_more:") => {
 
     let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
 
+    let current_masks: Vec<KcpMask> = existing_codes
+        .iter()
+        .filter(|c| !c.is_empty())
+        .filter_map(|c| KcpMask::from_code(c))
+        .collect();
+
+    let has_sudoku = current_masks.iter().any(|m| m.is_sudoku());
+    let has_encryption = current_masks.iter().any(|m| m.is_encryption());
+    let stack_len = current_masks.len();
+    let stack_full = stack_len >= 5;
+
     let cat_counts = [
         ("enc", "🔐 加密层", KcpMask::variants_by_category("enc").len()),
         ("obf", "🌀 混淆层", KcpMask::variants_by_category("obf").len()),
@@ -2762,7 +2773,13 @@ d if d.starts_with("u_kcp_more:") => {
             KcpMask::from_code(ec).map(|m| m.category_code() == *code).unwrap_or(false)
         }).count();
         let remaining = total - added_count;
-        if remaining > 0 {
+
+        if stack_full || (has_sudoku && stack_len > 0) {
+            buttons.push(vec![InlineKeyboardButton::callback(
+                format!("⛔ {} (已达上限)", name),
+                "noop",
+            )]);
+        } else if remaining > 0 {
             if buttons.is_empty() || buttons.last().unwrap().len() >= 2 {
                 buttons.push(Vec::new());
             }
@@ -2772,6 +2789,11 @@ d if d.starts_with("u_kcp_more:") => {
                     format!("u_kcp_mcat:{},{}", existing, code),
                 )
             );
+        } else {
+            buttons.push(vec![InlineKeyboardButton::callback(
+                format!("⛔ {} (已添加)", name),
+                "noop",
+            )]);
         }
     }
 
@@ -2811,6 +2833,14 @@ d if d.starts_with("u_kcp_mcat:") => {
 
     let variants = KcpMask::variants_by_category(cat_code);
 
+    let current_masks: Vec<KcpMask> = existing_codes
+        .iter()
+        .filter(|c| !c.is_empty())
+        .filter_map(|c| KcpMask::from_code(c))
+        .collect();
+
+    let current_mask_refs: Vec<&KcpMask> = current_masks.iter().collect();
+
     let stack_display: Vec<String> = existing_codes.iter().enumerate().map(|(i, c)| {
         let m = KcpMask::from_code(c);
         format!("{}️⃣ {}", i + 1, m.map(|m| m.display_name()).unwrap_or("???"))
@@ -2826,10 +2856,20 @@ d if d.starts_with("u_kcp_mcat:") => {
                 "noop",
             )]);
         } else {
-            buttons.push(vec![InlineKeyboardButton::callback(
-                format!("✅ {}", mask.display_name()),
-                format!("u_kcp_push:{}:{}", existing, code),
-            )]);
+            match mask.is_compatible_add(&current_mask_refs) {
+                Ok(()) => {
+                    buttons.push(vec![InlineKeyboardButton::callback(
+                        format!("✅ {}", mask.display_name()),
+                        format!("u_kcp_push:{}:{}", existing, code),
+                    )]);
+                }
+                Err(_) => {
+                    buttons.push(vec![InlineKeyboardButton::callback(
+                        format!("⛔ {}", mask.display_name()),
+                        format!("noop:⛔:{}", code),
+                    )]);
+                }
+            }
         }
     }
 
@@ -2877,15 +2917,44 @@ d if d.starts_with("u_kcp_push:") => {
     }
     let existing = parts[0];
     let new_code = parts[1];
-    let new_stack = format!("{},{}", existing, new_code);
-    let codes: Vec<&str> = new_stack.split(',').collect();
 
-    if codes.len() > 5 {
+    let existing_codes: Vec<&str> = if existing.is_empty() {
+        vec![]
+    } else {
+        existing.split(',').collect()
+    };
+
+    let current_masks: Vec<KcpMask> = existing_codes
+        .iter()
+        .filter(|c| !c.is_empty())
+        .filter_map(|c| KcpMask::from_code(c))
+        .collect();
+
+    let current_mask_refs: Vec<&KcpMask> = current_masks.iter().collect();
+
+    let new_mask = match KcpMask::from_code(new_code) {
+        Some(m) => m,
+        None => {
+            bot.answer_callback_query(q.id.clone())
+                .text("❌ 未知遮罩类型")
+                .await?;
+            return Ok(());
+        }
+    };
+
+    if let Err(e) = new_mask.is_compatible_add(&current_mask_refs) {
         bot.answer_callback_query(q.id.clone())
-            .text("❌ 最多5层遮罩")
+            .text(format!("❌ {}", e))
             .await?;
         return Ok(());
     }
+
+    let new_stack = if existing.is_empty() {
+        new_code.to_string()
+    } else {
+        format!("{},{}", existing, new_code)
+    };
+    let codes: Vec<&str> = new_stack.split(',').collect();
 
     let stack_display: Vec<String> = codes.iter().enumerate().map(|(i, c)| {
         let m = KcpMask::from_code(c);
@@ -2928,6 +2997,18 @@ d if d.starts_with("u_kcp_done:") => {
     if codes.is_empty() {
         bot.answer_callback_query(q.id.clone())
             .text("❌ 请至少选择1层遮罩")
+            .await?;
+        return Ok(());
+    }
+
+    let masks: Vec<KcpMask> = codes
+        .iter()
+        .filter_map(|c| KcpMask::from_code(c))
+        .collect();
+
+    if let Err(e) = KcpMask::validate_stack(&masks) {
+        bot.answer_callback_query(q.id.clone())
+            .text(format!("❌ {}", e))
             .await?;
         return Ok(());
     }
