@@ -366,6 +366,63 @@ impl KcpMask {
         matches!(self, KcpMask::Sudoku { .. })
     }
 
+    pub fn is_xdns(&self) -> bool {
+        matches!(self, KcpMask::Xdns { .. })
+    }
+
+    pub fn is_xicmp(&self) -> bool {
+        matches!(self, KcpMask::Xicmp { .. })
+    }
+
+    pub fn is_transport_replacement(&self) -> bool {
+        self.is_xdns() || self.is_xicmp()
+    }
+
+    pub fn is_header_conn(&self) -> bool {
+        matches!(
+            self,
+            KcpMask::MkcpOriginal
+                | KcpMask::MkcpAes128Gcm { .. }
+                | KcpMask::Salamander { .. }
+                | KcpMask::HeaderDns { .. }
+                | KcpMask::HeaderWechat
+                | KcpMask::HeaderSrtp
+                | KcpMask::HeaderUtp
+                | KcpMask::HeaderDtls
+                | KcpMask::HeaderWireguard
+                | KcpMask::HeaderCustom
+        )
+    }
+
+    pub fn is_disguise_header(&self) -> bool {
+        matches!(
+            self,
+            KcpMask::HeaderDns { .. }
+                | KcpMask::HeaderWechat
+                | KcpMask::HeaderSrtp
+                | KcpMask::HeaderUtp
+                | KcpMask::HeaderDtls
+                | KcpMask::HeaderWireguard
+                | KcpMask::HeaderCustom
+        )
+    }
+
+    pub fn header_size(&self) -> Option<usize> {
+        match self {
+            KcpMask::MkcpOriginal => Some(6),
+            KcpMask::MkcpAes128Gcm { .. } => Some(28),
+            KcpMask::Salamander { .. } => Some(8),
+            KcpMask::HeaderDns { .. } => Some(30),
+            KcpMask::HeaderWechat => Some(13),
+            KcpMask::HeaderSrtp => Some(4),
+            KcpMask::HeaderUtp => Some(4),
+            KcpMask::HeaderDtls => Some(13),
+            KcpMask::HeaderWireguard => Some(4),
+            KcpMask::HeaderCustom => Some(4),
+            _ => None,
+        }
+    }
+
     pub fn is_compatible_add(&self, current_stack: &[&KcpMask]) -> Result<(), String> {
         let stack_len = current_stack.len();
 
