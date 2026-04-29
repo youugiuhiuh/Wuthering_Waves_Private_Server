@@ -29,3 +29,6 @@ failed_history_xhttp.db
 success_history.db
 .worktrees
 /.worktrees/
+
+# Local docs (not for version control)
+docs/kcp-mask-censorship-analysis.md
