@@ -2866,9 +2866,16 @@ d if d.starts_with("u_kcp_mcat:") => {
                         format!("u_kcp_push:{}:{}", existing, code),
                     )]);
                 }
-                Err(_) => {
+                Err(e) => {
+                    let reason = if e.contains("XDNS") || e.contains("XICMP") {
+                        "⛔ 互斥"
+                    } else if e.contains("重复") {
+                        "⛔ 已添加"
+                    } else {
+                        "⛔"
+                    };
                     buttons.push(vec![InlineKeyboardButton::callback(
-                        format!("⛔ {}", mask.display_name()),
+                        format!("{} {}", reason, mask.display_name()),
                         format!("noop:⛔:{}", code),
                     )]);
                 }
