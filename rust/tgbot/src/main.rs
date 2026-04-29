@@ -2844,8 +2844,6 @@ d if d.starts_with("u_kcp_mcat:") => {
         .filter_map(|c| KcpMask::from_code(c))
         .collect();
 
-    let current_mask_refs: Vec<&KcpMask> = current_masks.iter().collect();
-
     let stack_display: Vec<String> = existing_codes.iter().enumerate().map(|(i, c)| {
         let m = KcpMask::from_code(c);
         format!("{}️⃣ {}", i + 1, m.map(|m| m.display_name()).unwrap_or("???"))
@@ -2861,7 +2859,7 @@ d if d.starts_with("u_kcp_mcat:") => {
                 "noop",
             )]);
         } else {
-            match mask.is_compatible_add(&current_mask_refs) {
+            match mask.is_compatible_with(&current_masks) {
                 Ok(()) => {
                     buttons.push(vec![InlineKeyboardButton::callback(
                         format!("✅ {}", mask.display_name()),
@@ -2935,8 +2933,6 @@ d if d.starts_with("u_kcp_push:") => {
         .filter_map(|c| KcpMask::from_code(c))
         .collect();
 
-    let current_mask_refs: Vec<&KcpMask> = current_masks.iter().collect();
-
     let new_mask = match KcpMask::from_code(new_code) {
         Some(m) => m,
         None => {
@@ -2947,7 +2943,7 @@ d if d.starts_with("u_kcp_push:") => {
         }
     };
 
-    if let Err(e) = new_mask.is_compatible_add(&current_mask_refs) {
+    if let Err(e) = new_mask.is_compatible_with(&current_masks) {
         bot.answer_callback_query(q.id.clone())
             .text(format!("❌ {}", e))
             .await?;

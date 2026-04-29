@@ -446,34 +446,50 @@ impl KcpMask {
         ordered
     }
 
-    pub fn is_compatible_add(&self, current_stack: &[&KcpMask]) -> Result<(), String> {
-        let stack_len = current_stack.len();
-
-        if stack_len >= 5 {
+    pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
+        if existing.len() >= 5 {
             return Err("已达最大层数(5层)".to_string());
         }
 
-        if self.is_sudoku() {
-            if current_stack.iter().any(|m| m.is_sudoku()) {
-                return Err("重复的Sudoku".to_string());
-            }
-            if stack_len > 0 {
-                return Err("Sudoku必须是最后一层(最内侧)".to_string());
+        if self.is_transport_replacement() {
+            if existing.iter().any(|m| m.is_transport_replacement()) {
+                let name = if self.is_xdns() { "XDNS" } else { "XICMP" };
+                let other = if self.is_xdns() { "XICMP" } else { "XDNS" };
+                return Err(format!("{}和{}不能同时使用", name, other));
             }
         }
 
         if self.is_encryption() {
-            if current_stack.iter().any(|m| m.is_encryption()) {
+            if existing.iter().any(|m| m.is_encryption()) {
                 return Err("重复的加密层".to_string());
             }
         }
 
-        if current_stack.iter().any(|m| m.is_sudoku()) {
-            return Err("Sudoku之后不能再添加其他遮罩层".to_string());
+        if self.is_sudoku() {
+            if existing.iter().any(|m| m.is_sudoku()) {
+                return Err("重复的Sudoku".to_string());
+            }
         }
 
-        if matches!(self, KcpMask::MkcpOriginal) && stack_len == 0 {
+        if existing.iter().any(|m| m.code() == self.code()) {
+            return Err(format!("重复的{}", self.display_name()));
+        }
+
+        if matches!(self, KcpMask::MkcpOriginal) && existing.is_empty() {
             return Err("mKCP Original单独使用安全性低，建议配合伪装层使用".to_string());
+        }
+
+        let total_header: usize = existing.iter()
+            .filter_map(|m| m.header_size())
+            .sum::<usize>()
+            + self.header_size().unwrap_or(0);
+        let sudoku_reserve = if self.is_sudoku() || existing.iter().any(|m| m.is_sudoku()) {
+            2400
+        } else {
+            0
+        };
+        if total_header + sudoku_reserve > 3800 {
+            return Err(format!("header总大小{}字节过大，可能超出UDP包限制(4096字节)", total_header));
         }
 
         Ok(())
