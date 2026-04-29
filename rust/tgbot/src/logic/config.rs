@@ -409,21 +409,31 @@ impl KcpMask {
 
     pub fn header_size(&self) -> Option<usize> {
         match self {
-            KcpMask::MkcpOriginal => Some(32),
-            KcpMask::MkcpAes128Gcm { .. } => Some(36),
-            KcpMask::Noise => Some(48),
-            KcpMask::Salamander { .. } => Some(32),
-            KcpMask::Sudoku { .. } => Some(2400),
-            KcpMask::HeaderDns { .. } => Some(64),
-            KcpMask::HeaderWechat => Some(58),
-            KcpMask::HeaderSrtp => Some(48),
-            KcpMask::HeaderUtp => Some(32),
-            KcpMask::HeaderDtls => Some(32),
-            KcpMask::HeaderWireguard => Some(48),
-            KcpMask::Xdns { .. } => Some(5),
-            KcpMask::Xicmp { .. } => Some(42),
-            KcpMask::HeaderCustom => None,
+            KcpMask::MkcpOriginal => Some(6),
+            KcpMask::MkcpAes128Gcm { .. } => Some(28),
+            KcpMask::Salamander { .. } => Some(8),
+            KcpMask::HeaderDns { domain } => Some(Self::dns_header_size(domain)),
+            KcpMask::HeaderWechat => Some(13),
+            KcpMask::HeaderSrtp => Some(4),
+            KcpMask::HeaderUtp => Some(4),
+            KcpMask::HeaderDtls => Some(13),
+            KcpMask::HeaderWireguard => Some(4),
+            KcpMask::HeaderCustom => Some(4),
+            KcpMask::Noise => None,
+            KcpMask::Sudoku { .. } => None,
+            KcpMask::Xdns { .. } => None,
+            KcpMask::Xicmp { .. } => None,
         }
+    }
+
+    fn dns_header_size(domain: &str) -> usize {
+        let mut size = 12;
+        for label in domain.split('.') {
+            size += 1 + label.len();
+        }
+        size += 1;
+        size += 4;
+        size
     }
 
     pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
@@ -1649,6 +1659,32 @@ mod tests {
     use anyhow::anyhow;
     use base64::engine::general_purpose;
     use percent_encoding::percent_decode_str;
+
+    #[test]
+    fn test_header_size_values() {
+        assert_eq!(KcpMask::MkcpOriginal.header_size(), Some(6));
+        assert_eq!(KcpMask::MkcpAes128Gcm { password: "test".to_string() }.header_size(), Some(28));
+        assert_eq!(KcpMask::Salamander { password: "test".to_string() }.header_size(), Some(8));
+        assert_eq!(KcpMask::HeaderDns { domain: "example.com".to_string() }.header_size(), Some(29));
+        assert_eq!(KcpMask::HeaderWechat.header_size(), Some(13));
+        assert_eq!(KcpMask::HeaderSrtp.header_size(), Some(4));
+        assert_eq!(KcpMask::HeaderUtp.header_size(), Some(4));
+        assert_eq!(KcpMask::HeaderDtls.header_size(), Some(13));
+        assert_eq!(KcpMask::HeaderWireguard.header_size(), Some(4));
+        assert_eq!(KcpMask::HeaderCustom.header_size(), Some(4));
+
+        assert_eq!(KcpMask::Noise.header_size(), None);
+        assert_eq!(KcpMask::Sudoku { password: "test".to_string() }.header_size(), None);
+        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.header_size(), None);
+        assert_eq!(KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 }.header_size(), None);
+    }
+
+    #[test]
+    fn test_dns_header_size_dynamic() {
+        assert_eq!(KcpMask::HeaderDns { domain: "a.io".to_string() }.header_size(), Some(22));
+        assert_eq!(KcpMask::HeaderDns { domain: "example.com".to_string() }.header_size(), Some(29));
+        assert_eq!(KcpMask::HeaderDns { domain: "sub.domain.example.com".to_string() }.header_size(), Some(40));
+    }
 
     #[test]
     fn test_reality_pq_verify_as_base64url() {
