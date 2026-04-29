@@ -514,33 +514,25 @@ impl KcpMask {
         if masks.is_empty() {
             return Err("请至少选择1层遮罩".to_string());
         }
-
-        if masks.iter().any(|m| m.is_sudoku()) {
-            if !masks.last().map(|m| m.is_sudoku()).unwrap_or(false) {
-                return Err("Sudoku必须是最后一层(最内侧)".to_string());
-            }
-        }
-
         if masks.iter().any(|m| m.is_xicmp()) {
             if !masks.first().map(|m| m.is_xicmp()).unwrap_or(false) {
                 return Err("XICMP必须是最外层(第一个遮罩)".to_string());
             }
         }
-
-        if masks.iter().any(|m| m.is_xdns()) {
-            if !masks.first().map(|m| m.is_xdns()).unwrap_or(false) {
-                return Err("XDNS必须是最外层(第一个遮罩)".to_string());
-            }
-        }
-
         if masks.iter().any(|m| m.is_xdns()) && masks.iter().any(|m| m.is_xicmp()) {
             return Err("XDNS和XICMP不能同时使用".to_string());
         }
-
         if masks.iter().filter(|m| m.is_encryption()).count() > 1 {
             return Err("重复的加密层".to_string());
         }
-
+        if masks.iter().filter(|m| m.is_sudoku()).count() > 1 {
+            return Err("重复的Sudoku".to_string());
+        }
+        if masks.iter().any(|m| m.is_sudoku()) {
+            if !masks.last().map(|m| m.is_sudoku()).unwrap_or(false) {
+                return Err("Sudoku必须是最后一层(最内侧)".to_string());
+            }
+        }
         if let Some(enc_idx) = masks.iter().position(|m| m.is_encryption()) {
             for m in &masks[enc_idx + 1..] {
                 if m.is_disguise_header() || matches!(m, KcpMask::Salamander { .. }) {
@@ -548,11 +540,9 @@ impl KcpMask {
                 }
             }
         }
-
         if masks.len() == 1 && matches!(masks[0], KcpMask::MkcpOriginal) {
             return Err("mKCP Original单独使用安全性低，建议配合伪装层使用".to_string());
         }
-
         let total_header: usize = masks.iter().filter_map(|m| m.header_size()).sum();
         let sudoku_reserve = if masks.iter().any(|m| m.is_sudoku()) { 2400 } else { 0 };
         if total_header + sudoku_reserve > 3800 {
@@ -561,7 +551,6 @@ impl KcpMask {
                 total_header
             ));
         }
-
         Ok(())
     }
 }
@@ -2771,6 +2760,38 @@ mod tests {
         let existing = vec![KcpMask::HeaderSrtp];
         let xicmp = KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 };
         assert!(xicmp.is_compatible_with(&existing).is_err());
+    }
+
+    #[test]
+    fn test_validate_stack_xdns_not_enforced_first() {
+        let masks = vec![
+            KcpMask::HeaderSrtp,
+            KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] },
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_ok());
+    }
+
+    #[test]
+    fn test_validate_stack_sudoku_duplicate() {
+        let masks = vec![
+            KcpMask::Sudoku { password: "test1".to_string() },
+            KcpMask::Sudoku { password: "test2".to_string() },
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_err());
+    }
+
+    #[test]
+    fn test_validate_stack_no_layer_limit() {
+        let masks = vec![
+            KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] },
+            KcpMask::Noise,
+            KcpMask::HeaderDns { domain: "a.com".to_string() },
+            KcpMask::HeaderSrtp,
+            KcpMask::Salamander { password: "test".to_string() },
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::Sudoku { password: "test".to_string() },
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_ok());
     }
 }
 
