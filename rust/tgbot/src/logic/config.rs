@@ -387,29 +387,85 @@ impl KcpMask {
                 | KcpMask::HeaderUtp
                 | KcpMask::HeaderDtls
                 | KcpMask::HeaderWireguard
+                | KcpMask::HeaderCustom
+        )
+    }
+
+    pub fn is_header_conn(&self) -> bool {
+        matches!(
+            self,
+            KcpMask::MkcpOriginal
+                | KcpMask::MkcpAes128Gcm { .. }
+                | KcpMask::Salamander { .. }
+                | KcpMask::HeaderDns { .. }
+                | KcpMask::HeaderWechat
+                | KcpMask::HeaderSrtp
+                | KcpMask::HeaderUtp
+                | KcpMask::HeaderDtls
+                | KcpMask::HeaderWireguard
+                | KcpMask::HeaderCustom
         )
     }
 
     pub fn header_size(&self) -> Option<usize> {
         match self {
-            KcpMask::MkcpOriginal => Some(32),
-            KcpMask::MkcpAes128Gcm { .. } => Some(36),
-            KcpMask::Noise => Some(48),
-            KcpMask::Salamander { .. } => Some(32),
-            KcpMask::Sudoku { .. } => Some(2400),
-            KcpMask::HeaderDns { .. } => Some(64),
-            KcpMask::HeaderWechat => Some(58),
-            KcpMask::HeaderSrtp => Some(48),
-            KcpMask::HeaderUtp => Some(32),
-            KcpMask::HeaderDtls => Some(32),
-            KcpMask::HeaderWireguard => Some(48),
-            KcpMask::Xdns { .. } => Some(5),
-            KcpMask::Xicmp { .. } => Some(42),
-            KcpMask::HeaderCustom => None,
+            KcpMask::MkcpOriginal => Some(6),
+            KcpMask::MkcpAes128Gcm { .. } => Some(28),
+            KcpMask::Salamander { .. } => Some(8),
+            KcpMask::HeaderDns { domain } => Some(Self::dns_header_size(domain)),
+            KcpMask::HeaderWechat => Some(13),
+            KcpMask::HeaderSrtp => Some(4),
+            KcpMask::HeaderUtp => Some(4),
+            KcpMask::HeaderDtls => Some(13),
+            KcpMask::HeaderWireguard => Some(4),
+            KcpMask::HeaderCustom => Some(4),
+            KcpMask::Noise => None,
+            KcpMask::Sudoku { .. } => None,
+            KcpMask::Xdns { .. } => None,
+            KcpMask::Xicmp { .. } => None,
         }
     }
 
+    fn dns_header_size(domain: &str) -> usize {
+        let mut size = 12;
+        for label in domain.split('.') {
+            size += 1 + label.len();
+        }
+        size += 1;
+        size += 4;
+        size
+    }
+
+    fn sort_priority(&self) -> u8 {
+        match self {
+            KcpMask::Xicmp { .. } => 0,
+            KcpMask::Xdns { .. } => 1,
+            KcpMask::Noise => 10,
+            KcpMask::HeaderDns { .. }
+            | KcpMask::HeaderWechat
+            | KcpMask::HeaderSrtp
+            | KcpMask::HeaderUtp
+            | KcpMask::HeaderDtls
+            | KcpMask::HeaderWireguard
+            | KcpMask::HeaderCustom => 20,
+            KcpMask::Salamander { .. } => 30,
+            KcpMask::MkcpOriginal
+            | KcpMask::MkcpAes128Gcm { .. } => 40,
+            KcpMask::Sudoku { .. } => 50,
+        }
+    }
+
+    pub fn canonical_order(masks: &[KcpMask]) -> Vec<KcpMask> {
+        let mut ordered: Vec<KcpMask> = masks.to_vec();
+        ordered.sort_by_key(|m| m.sort_priority());
+        ordered
+    }
+
     pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
+        if self.is_xicmp() && !existing.is_empty() {
+            return Err("XICMP必须是最外层(第一个添加的遮罩)".to_string());
+        }
+
         if self.is_transport_replacement() {
             if existing.iter().any(|m| m.is_transport_replacement()) {
                 let name = if self.is_xdns() { "XDNS" } else { "XICMP" };
@@ -458,33 +514,25 @@ impl KcpMask {
         if masks.is_empty() {
             return Err("请至少选择1层遮罩".to_string());
         }
-
+        if masks.iter().any(|m| m.is_xicmp()) {
+            if !masks.first().map(|m| m.is_xicmp()).unwrap_or(false) {
+                return Err("XICMP必须是最外层(第一个添加的遮罩)".to_string());
+            }
+        }
+        if masks.iter().any(|m| m.is_xdns()) && masks.iter().any(|m| m.is_xicmp()) {
+            return Err("XDNS和XICMP不能同时使用".to_string());
+        }
+        if masks.iter().filter(|m| m.is_encryption()).count() > 1 {
+            return Err("重复的加密层".to_string());
+        }
+        if masks.iter().filter(|m| m.is_sudoku()).count() > 1 {
+            return Err("重复的Sudoku".to_string());
+        }
         if masks.iter().any(|m| m.is_sudoku()) {
             if !masks.last().map(|m| m.is_sudoku()).unwrap_or(false) {
                 return Err("Sudoku必须是最后一层(最内侧)".to_string());
             }
         }
-
-        if masks.iter().any(|m| m.is_xicmp()) {
-            if !masks.first().map(|m| m.is_xicmp()).unwrap_or(false) {
-                return Err("XICMP必须是最外层(第一个遮罩)".to_string());
-            }
-        }
-
-        if masks.iter().any(|m| m.is_xdns()) {
-            if !masks.first().map(|m| m.is_xdns()).unwrap_or(false) {
-                return Err("XDNS必须是最外层(第一个遮罩)".to_string());
-            }
-        }
-
-        if masks.iter().any(|m| m.is_xdns()) && masks.iter().any(|m| m.is_xicmp()) {
-            return Err("XDNS和XICMP不能同时使用".to_string());
-        }
-
-        if masks.iter().filter(|m| m.is_encryption()).count() > 1 {
-            return Err("重复的加密层".to_string());
-        }
-
         if let Some(enc_idx) = masks.iter().position(|m| m.is_encryption()) {
             for m in &masks[enc_idx + 1..] {
                 if m.is_disguise_header() || matches!(m, KcpMask::Salamander { .. }) {
@@ -492,11 +540,9 @@ impl KcpMask {
                 }
             }
         }
-
         if masks.len() == 1 && matches!(masks[0], KcpMask::MkcpOriginal) {
             return Err("mKCP Original单独使用安全性低，建议配合伪装层使用".to_string());
         }
-
         let total_header: usize = masks.iter().filter_map(|m| m.header_size()).sum();
         let sudoku_reserve = if masks.iter().any(|m| m.is_sudoku()) { 2400 } else { 0 };
         if total_header + sudoku_reserve > 3800 {
@@ -505,7 +551,6 @@ impl KcpMask {
                 total_header
             ));
         }
-
         Ok(())
     }
 }
@@ -1634,6 +1679,32 @@ mod tests {
     use percent_encoding::percent_decode_str;
 
     #[test]
+    fn test_header_size_values() {
+        assert_eq!(KcpMask::MkcpOriginal.header_size(), Some(6));
+        assert_eq!(KcpMask::MkcpAes128Gcm { password: "test".to_string() }.header_size(), Some(28));
+        assert_eq!(KcpMask::Salamander { password: "test".to_string() }.header_size(), Some(8));
+        assert_eq!(KcpMask::HeaderDns { domain: "example.com".to_string() }.header_size(), Some(29));
+        assert_eq!(KcpMask::HeaderWechat.header_size(), Some(13));
+        assert_eq!(KcpMask::HeaderSrtp.header_size(), Some(4));
+        assert_eq!(KcpMask::HeaderUtp.header_size(), Some(4));
+        assert_eq!(KcpMask::HeaderDtls.header_size(), Some(13));
+        assert_eq!(KcpMask::HeaderWireguard.header_size(), Some(4));
+        assert_eq!(KcpMask::HeaderCustom.header_size(), Some(4));
+
+        assert_eq!(KcpMask::Noise.header_size(), None);
+        assert_eq!(KcpMask::Sudoku { password: "test".to_string() }.header_size(), None);
+        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.header_size(), None);
+        assert_eq!(KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 }.header_size(), None);
+    }
+
+    #[test]
+    fn test_dns_header_size_dynamic() {
+        assert_eq!(KcpMask::HeaderDns { domain: "a.io".to_string() }.header_size(), Some(22));
+        assert_eq!(KcpMask::HeaderDns { domain: "example.com".to_string() }.header_size(), Some(29));
+        assert_eq!(KcpMask::HeaderDns { domain: "sub.domain.example.com".to_string() }.header_size(), Some(40));
+    }
+
+    #[test]
     fn test_reality_pq_verify_as_base64url() {
         // Standard base64 含 +/ 的输入应转为 URL-safe 输出
         let bytes_with_special = b"\xfc\xfd\xfe\xff";
@@ -2555,6 +2626,249 @@ mod tests {
         assert_eq!(masks[0].code(), "mo");
         assert_eq!(masks[1].code(), "no");
         assert_eq!(masks[2].code(), "hw");
+    }
+
+    #[test]
+    fn test_is_header_conn_classification() {
+        assert!(KcpMask::MkcpOriginal.is_header_conn());
+        assert!(KcpMask::MkcpAes128Gcm { password: "test".to_string() }.is_header_conn());
+        assert!(KcpMask::Salamander { password: "test".to_string() }.is_header_conn());
+        assert!(KcpMask::HeaderDns { domain: "example.com".to_string() }.is_header_conn());
+        assert!(KcpMask::HeaderWechat.is_header_conn());
+        assert!(KcpMask::HeaderSrtp.is_header_conn());
+        assert!(KcpMask::HeaderUtp.is_header_conn());
+        assert!(KcpMask::HeaderDtls.is_header_conn());
+        assert!(KcpMask::HeaderWireguard.is_header_conn());
+        assert!(KcpMask::HeaderCustom.is_header_conn());
+
+        assert!(!KcpMask::Noise.is_header_conn());
+        assert!(!KcpMask::Sudoku { password: "test".to_string() }.is_header_conn());
+        assert!(!KcpMask::Xdns { domains: vec![], resolvers: vec![] }.is_header_conn());
+        assert!(!KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 }.is_header_conn());
+    }
+
+    #[test]
+    fn test_is_disguise_header_includes_custom() {
+        assert!(KcpMask::HeaderCustom.is_disguise_header());
+        assert!(KcpMask::HeaderDns { domain: "example.com".to_string() }.is_disguise_header());
+        assert!(KcpMask::HeaderWechat.is_disguise_header());
+        assert!(KcpMask::HeaderSrtp.is_disguise_header());
+        assert!(KcpMask::HeaderUtp.is_disguise_header());
+        assert!(KcpMask::HeaderDtls.is_disguise_header());
+        assert!(KcpMask::HeaderWireguard.is_disguise_header());
+
+        assert!(!KcpMask::MkcpOriginal.is_disguise_header());
+        assert!(!KcpMask::Salamander { password: "test".to_string() }.is_disguise_header());
+        assert!(!KcpMask::Noise.is_disguise_header());
+    }
+
+    #[test]
+    fn test_canonical_order_transport_replacement_first() {
+        let masks = vec![
+            KcpMask::HeaderSrtp,
+            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        assert!(ordered[0].is_xicmp());
+    }
+
+    #[test]
+    fn test_canonical_order_sudoku_last() {
+        let masks = vec![
+            KcpMask::Sudoku { password: "test".to_string() },
+            KcpMask::HeaderSrtp,
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        assert!(ordered.last().unwrap().is_sudoku());
+    }
+
+    #[test]
+    fn test_canonical_order_encryption_after_disguise() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::HeaderSrtp,
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        let enc_pos = ordered.iter().position(|m| m.is_encryption()).unwrap();
+        let dis_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
+        assert!(dis_pos < enc_pos, "disguise header should come before encryption");
+    }
+
+    #[test]
+    fn test_canonical_order_salamander_after_disguise_before_encryption() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::Salamander { password: "test".to_string() },
+            KcpMask::HeaderDns { domain: "example.com".to_string() },
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        let dis_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
+        let sal_pos = ordered.iter().position(|m| matches!(m, KcpMask::Salamander { .. })).unwrap();
+        let enc_pos = ordered.iter().position(|m| m.is_encryption()).unwrap();
+        assert!(dis_pos < sal_pos, "disguise should be before salamander");
+        assert!(sal_pos < enc_pos, "salamander should be before encryption");
+    }
+
+    #[test]
+    fn test_canonical_order_noise_after_transport_before_headers() {
+        let masks = vec![
+            KcpMask::HeaderSrtp,
+            KcpMask::Noise,
+            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        let xicmp_pos = ordered.iter().position(|m| m.is_xicmp()).unwrap();
+        let noise_pos = ordered.iter().position(|m| matches!(m, KcpMask::Noise)).unwrap();
+        let header_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
+        assert!(xicmp_pos < noise_pos, "xicmp should be before noise");
+        assert!(noise_pos < header_pos, "noise should be before disguise header");
+    }
+
+    #[test]
+    fn test_canonical_order_full_stack() {
+        let masks = vec![
+            KcpMask::Sudoku { password: "test".to_string() },
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::HeaderDns { domain: "example.com".to_string() },
+            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+            KcpMask::Noise,
+            KcpMask::Salamander { password: "test".to_string() },
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        assert!(ordered[0].is_xicmp());
+        assert!(matches!(ordered[1], KcpMask::Noise));
+        assert!(ordered[2].is_disguise_header());
+        assert!(matches!(ordered[3], KcpMask::Salamander { .. }));
+        assert!(ordered[4].is_encryption());
+        assert!(ordered[5].is_sudoku());
+    }
+
+    #[test]
+    fn test_canonical_order_simple_stack() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::HeaderSrtp,
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        assert!(ordered[0].is_disguise_header());
+        assert!(ordered[1].is_encryption());
+    }
+
+    #[test]
+    fn test_compatible_with_xicmp_not_first() {
+        let existing = vec![KcpMask::HeaderSrtp];
+        let xicmp = KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 };
+        assert!(xicmp.is_compatible_with(&existing).is_err());
+    }
+
+    #[test]
+    fn test_validate_stack_xdns_not_enforced_first() {
+        let masks = vec![
+            KcpMask::HeaderSrtp,
+            KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] },
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_ok());
+    }
+
+    #[test]
+    fn test_validate_stack_sudoku_duplicate() {
+        let masks = vec![
+            KcpMask::Sudoku { password: "test1".to_string() },
+            KcpMask::Sudoku { password: "test2".to_string() },
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_err());
+    }
+
+    #[test]
+    fn test_validate_stack_no_layer_limit() {
+        let masks = vec![
+            KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] },
+            KcpMask::Noise,
+            KcpMask::HeaderDns { domain: "a.com".to_string() },
+            KcpMask::HeaderSrtp,
+            KcpMask::Salamander { password: "test".to_string() },
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::Sudoku { password: "test".to_string() },
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_ok());
+    }
+
+    #[test]
+    fn test_compatible_with_xdns_xicmp_exclusive() {
+        let existing = vec![KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 }];
+        let xdns = KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] };
+        assert!(xdns.is_compatible_with(&existing).is_err());
+
+        let existing2 = vec![KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] }];
+        let xicmp = KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 };
+        assert!(xicmp.is_compatible_with(&existing2).is_err());
+    }
+
+    #[test]
+    fn test_compatible_with_duplicate_encryption() {
+        let existing = vec![KcpMask::MkcpAes128Gcm { password: "test".to_string() }];
+        let dup = KcpMask::MkcpOriginal;
+        assert!(dup.is_compatible_with(&existing).is_err());
+    }
+
+    #[test]
+    fn test_compatible_with_duplicate_sudoku() {
+        let existing = vec![KcpMask::Sudoku { password: "test1".to_string() }];
+        let dup = KcpMask::Sudoku { password: "test2".to_string() };
+        assert!(dup.is_compatible_with(&existing).is_err());
+    }
+
+    #[test]
+    fn test_compatible_with_duplicate_header() {
+        let existing = vec![KcpMask::HeaderSrtp];
+        let dup = KcpMask::HeaderSrtp;
+        assert!(dup.is_compatible_with(&existing).is_err());
+    }
+
+    #[test]
+    fn test_compatible_with_mkcp_original_alone() {
+        let alone = KcpMask::MkcpOriginal;
+        assert!(alone.is_compatible_with(&[]).is_err());
+
+        let with_header = KcpMask::MkcpOriginal;
+        let existing = vec![KcpMask::HeaderSrtp];
+        assert!(with_header.is_compatible_with(&existing).is_ok());
+    }
+
+    #[test]
+    fn test_validate_stack_xicmp_not_first() {
+        let masks = vec![
+            KcpMask::HeaderSrtp,
+            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_err());
+    }
+
+    #[test]
+    fn test_validate_stack_sudoku_not_last() {
+        let masks = vec![
+            KcpMask::Sudoku { password: "test".to_string() },
+            KcpMask::HeaderSrtp,
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_err());
+    }
+
+    #[test]
+    fn test_validate_stack_encryption_before_disguise() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::HeaderSrtp,
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_err());
+    }
+
+    #[test]
+    fn test_validate_stack_header_overflow() {
+        let masks: Vec<KcpMask> = (0..200)
+            .map(|_| KcpMask::HeaderDns { domain: "sub.domain.example.com".to_string() })
+            .collect();
+        assert!(KcpMask::validate_stack(&masks).is_err());
     }
 }
 

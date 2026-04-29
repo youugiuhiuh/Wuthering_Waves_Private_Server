@@ -2730,7 +2730,7 @@ d if d.starts_with("u_kcp_add:") => {
             msg_id,
             format!(
                 "📋 <b>当前遮罩栈:</b>\n{}\n\n\
-                 ➕ 可以继续添加(最多5层)，或完成配置",
+                 ➕ 可以继续添加，或完成配置",
                 stack_display
             ),
         )
@@ -2758,9 +2758,6 @@ d if d.starts_with("u_kcp_more:") => {
 
     let has_sudoku = current_masks.iter().any(|m| m.is_sudoku());
     let has_encryption = current_masks.iter().any(|m| m.is_encryption());
-    let has_transport_replacement = current_masks.iter().any(|m| m.is_transport_replacement());
-    let stack_len = current_masks.len();
-    let stack_full = stack_len >= 5;
 
     let cat_counts = [
         ("enc", "🔐 加密层", KcpMask::variants_by_category("enc").len()),
@@ -2778,16 +2775,10 @@ d if d.starts_with("u_kcp_more:") => {
         let disabled_reason = match *code {
             "enc" if has_encryption => Some("已添加"),
             "obf" if has_sudoku => Some("数独已添加"),
-            "dis" if has_transport_replacement => Some("传输替换已存在"),
             _ => None,
         };
 
-        if stack_full {
-            buttons.push(vec![InlineKeyboardButton::callback(
-                format!("⛔ {} (已达上限)", name),
-                "noop",
-            )]);
-        } else if let Some(reason) = disabled_reason {
+        if let Some(reason) = disabled_reason {
             buttons.push(vec![InlineKeyboardButton::callback(
                 format!("⛔ {} ({})", name, reason),
                 "noop",
@@ -2824,7 +2815,7 @@ d if d.starts_with("u_kcp_more:") => {
         msg_id,
         format!(
             "📋 <b>当前遮罩栈:</b>\n{}\n\n\
-             ➕ <b>选择要添加的遮罩类别</b> (已达{}层，最多5层)",
+             ➕ <b>选择要添加的遮罩类别</b> (已达{}层)",
             stack_display.join("\n"),
             existing_codes.len()
         ),
@@ -2874,9 +2865,9 @@ d if d.starts_with("u_kcp_mcat:") => {
                         format!("u_kcp_push:{}:{}", existing, code),
                     )]);
                 }
-                Err(_) => {
+                Err(e) => {
                     buttons.push(vec![InlineKeyboardButton::callback(
-                        format!("⛔ {}", mask.display_name()),
+                        format!("⛔ {} ({})", mask.display_name(), e),
                         format!("noop:⛔:{}", code),
                     )]);
                 }
@@ -2972,12 +2963,10 @@ d if d.starts_with("u_kcp_push:") => {
 
     let mut buttons = Vec::new();
 
-    if codes.len() < 5 {
-        buttons.push(vec![InlineKeyboardButton::callback(
-            "➕ 继续添加遮罩层",
-            format!("u_kcp_more:{}", new_stack),
-        )]);
-    }
+    buttons.push(vec![InlineKeyboardButton::callback(
+        "➕ 继续添加遮罩层",
+        format!("u_kcp_more:{}", new_stack),
+    )]);
 
     buttons.push(vec![InlineKeyboardButton::callback(
         "✅ 完成配置",
@@ -2990,9 +2979,8 @@ d if d.starts_with("u_kcp_push:") => {
         msg_id,
         format!(
             "📋 <b>当前遮罩栈:</b>\n{}\n\n\
-             {}",
+             ➕ 可以继续添加，或完成配置",
             stack_display.join("\n"),
-            if codes.len() < 5 { "➕ 可以继续添加，或完成配置" } else { "✅ 已达最大层数(5层)" }
         ),
     )
     .parse_mode(ParseMode::Html)
@@ -3015,41 +3003,45 @@ d if d.starts_with("u_kcp_done:") => {
         .filter_map(|c| KcpMask::from_code(c))
         .collect();
 
-    if let Err(e) = KcpMask::validate_stack(&masks) {
+    let ordered = KcpMask::canonical_order(&masks);
+
+    if let Err(e) = KcpMask::validate_stack(&ordered) {
         bot.answer_callback_query(q.id.clone())
             .text(format!("❌ {}", e))
             .await?;
         return Ok(());
     }
 
-    let stack_display: Vec<String> = codes.iter().enumerate().map(|(i, c)| {
-        let m = KcpMask::from_code(c);
-        format!("{}️⃣ {}", i + 1, m.map(|m| m.display_name()).unwrap_or("???"))
+    let stack_display: Vec<String> = ordered.iter().map(|m| {
+        format!("{}", m.display_name())
     }).collect();
+
+    let ordered_codes: Vec<String> = ordered.iter().map(|m| m.code().to_string()).collect();
+    let ordered_str = ordered_codes.join(",");
 
     let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
     let mut buttons = vec![vec![
         InlineKeyboardButton::callback(
             "🌐 IPv4 (0.0.0.0)",
-            format!("u_kcp_ip:{}:4", mask_codes_str),
+            format!("u_kcp_ip:{}:4", ordered_str),
         ),
     ]];
     if has_ipv6 {
         buttons[0].push(InlineKeyboardButton::callback(
             "🌐 IPv6 (::)",
-            format!("u_kcp_ip:{}:6", mask_codes_str),
+            format!("u_kcp_ip:{}:6", ordered_str),
         ));
     }
     buttons.push(vec![
         InlineKeyboardButton::callback(
             "🔄 双栈 IPv4优先",
-            format!("u_kcp_ip:{}:s4", mask_codes_str),
+            format!("u_kcp_ip:{}:s4", ordered_str),
         ),
     ]);
     buttons.push(vec![
         InlineKeyboardButton::callback(
             "🔄 双栈 IPv6优先",
-            format!("u_kcp_ip:{}:s6", mask_codes_str),
+            format!("u_kcp_ip:{}:s6", ordered_str),
         ),
     ]);
     buttons.push(vec![InlineKeyboardButton::callback(
@@ -3062,9 +3054,9 @@ d if d.starts_with("u_kcp_done:") => {
         msg_id,
         format!(
             "🚀 <b>KCP 配置</b>\n\n\
-             📋 <b>遮罩栈:</b>\n{}\n\n\
+             📋 <b>遮罩栈 (外层→内层):</b>\n{}\n\n\
              ⬇️ <b>请选择网络协议版本:</b>",
-            stack_display.join("\n")
+            stack_display.join(" → ")
         ),
     )
     .parse_mode(ParseMode::Html)
