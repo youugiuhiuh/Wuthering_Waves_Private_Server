@@ -2793,6 +2793,83 @@ mod tests {
         ];
         assert!(KcpMask::validate_stack(&masks).is_ok());
     }
+
+    #[test]
+    fn test_compatible_with_xdns_xicmp_exclusive() {
+        let existing = vec![KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 }];
+        let xdns = KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] };
+        assert!(xdns.is_compatible_with(&existing).is_err());
+
+        let existing2 = vec![KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] }];
+        let xicmp = KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 };
+        assert!(xicmp.is_compatible_with(&existing2).is_err());
+    }
+
+    #[test]
+    fn test_compatible_with_duplicate_encryption() {
+        let existing = vec![KcpMask::MkcpAes128Gcm { password: "test".to_string() }];
+        let dup = KcpMask::MkcpOriginal;
+        assert!(dup.is_compatible_with(&existing).is_err());
+    }
+
+    #[test]
+    fn test_compatible_with_duplicate_sudoku() {
+        let existing = vec![KcpMask::Sudoku { password: "test1".to_string() }];
+        let dup = KcpMask::Sudoku { password: "test2".to_string() };
+        assert!(dup.is_compatible_with(&existing).is_err());
+    }
+
+    #[test]
+    fn test_compatible_with_duplicate_header() {
+        let existing = vec![KcpMask::HeaderSrtp];
+        let dup = KcpMask::HeaderSrtp;
+        assert!(dup.is_compatible_with(&existing).is_err());
+    }
+
+    #[test]
+    fn test_compatible_with_mkcp_original_alone() {
+        let alone = KcpMask::MkcpOriginal;
+        assert!(alone.is_compatible_with(&[]).is_err());
+
+        let with_header = KcpMask::MkcpOriginal;
+        let existing = vec![KcpMask::HeaderSrtp];
+        assert!(with_header.is_compatible_with(&existing).is_ok());
+    }
+
+    #[test]
+    fn test_validate_stack_xicmp_not_first() {
+        let masks = vec![
+            KcpMask::HeaderSrtp,
+            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_err());
+    }
+
+    #[test]
+    fn test_validate_stack_sudoku_not_last() {
+        let masks = vec![
+            KcpMask::Sudoku { password: "test".to_string() },
+            KcpMask::HeaderSrtp,
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_err());
+    }
+
+    #[test]
+    fn test_validate_stack_encryption_before_disguise() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::HeaderSrtp,
+        ];
+        assert!(KcpMask::validate_stack(&masks).is_err());
+    }
+
+    #[test]
+    fn test_validate_stack_header_overflow() {
+        let masks: Vec<KcpMask> = (0..200)
+            .map(|_| KcpMask::HeaderDns { domain: "sub.domain.example.com".to_string() })
+            .collect();
+        assert!(KcpMask::validate_stack(&masks).is_err());
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
