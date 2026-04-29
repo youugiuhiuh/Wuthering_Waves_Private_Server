@@ -520,6 +520,39 @@ impl KcpMask {
             return Err("mKCP Original单独使用安全性低，建议配合伪装层使用".to_string());
         }
 
+        if masks.iter().any(|m| m.is_xicmp()) {
+            if !masks.first().map(|m| m.is_xicmp()).unwrap_or(false) {
+                return Err("XICMP必须是最外层(第一个遮罩)".to_string());
+            }
+        }
+
+        if masks.iter().any(|m| m.is_xdns()) {
+            if !masks.first().map(|m| m.is_xdns()).unwrap_or(false) {
+                return Err("XDNS必须是最外层(第一个遮罩)".to_string());
+            }
+        }
+
+        if masks.iter().any(|m| m.is_xdns()) && masks.iter().any(|m| m.is_xicmp()) {
+            return Err("XDNS和XICMP不能同时使用".to_string());
+        }
+
+        if let Some(enc_idx) = masks.iter().position(|m| m.is_encryption()) {
+            for m in &masks[enc_idx + 1..] {
+                if m.is_disguise_header() || matches!(m, KcpMask::Salamander { .. }) {
+                    return Err("加密层之后不能有伪装/混淆层(加密层应紧贴数据)".to_string());
+                }
+            }
+        }
+
+        let total_header: usize = masks.iter().filter_map(|m| m.header_size()).sum();
+        let sudoku_reserve = if masks.iter().any(|m| m.is_sudoku()) { 2400 } else { 0 };
+        if total_header + sudoku_reserve > 3800 {
+            return Err(format!(
+                "header总大小{}字节过大，可能超出UDP包限制(4096字节)",
+                total_header
+            ));
+        }
+
         Ok(())
     }
 }
