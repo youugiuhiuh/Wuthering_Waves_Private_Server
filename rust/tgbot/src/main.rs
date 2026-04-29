@@ -2758,6 +2758,7 @@ d if d.starts_with("u_kcp_more:") => {
 
     let has_sudoku = current_masks.iter().any(|m| m.is_sudoku());
     let has_encryption = current_masks.iter().any(|m| m.is_encryption());
+    let has_transport_replacement = current_masks.iter().any(|m| m.is_transport_replacement());
     let stack_len = current_masks.len();
     let stack_full = stack_len >= 5;
 
@@ -2774,14 +2775,21 @@ d if d.starts_with("u_kcp_more:") => {
         }).count();
         let remaining = total - added_count;
 
+        let disabled_reason = match *code {
+            "enc" if has_encryption => Some("已添加"),
+            "obf" if has_sudoku => Some("数独已添加"),
+            "dis" if has_transport_replacement => Some("传输替换已存在"),
+            _ => None,
+        };
+
         if stack_full {
             buttons.push(vec![InlineKeyboardButton::callback(
                 format!("⛔ {} (已达上限)", name),
                 "noop",
             )]);
-        } else if has_sudoku && stack_len > 0 {
+        } else if let Some(reason) = disabled_reason {
             buttons.push(vec![InlineKeyboardButton::callback(
-                format!("⛔ {} (Sudoku已添加)", name),
+                format!("⛔ {} ({})", name, reason),
                 "noop",
             )]);
         } else if remaining > 0 {
@@ -2796,7 +2804,7 @@ d if d.starts_with("u_kcp_more:") => {
             );
         } else {
             buttons.push(vec![InlineKeyboardButton::callback(
-                format!("⛔ {} (已添加)", name),
+                format!("⛔ {} (已达上限)", name),
                 "noop",
             )]);
         }
@@ -2843,8 +2851,6 @@ d if d.starts_with("u_kcp_mcat:") => {
         .filter(|c| !c.is_empty())
         .filter_map(|c| KcpMask::from_code(c))
         .collect();
-
-    let current_mask_refs: Vec<&KcpMask> = current_masks.iter().collect();
 
     let stack_display: Vec<String> = existing_codes.iter().enumerate().map(|(i, c)| {
         let m = KcpMask::from_code(c);
@@ -2934,8 +2940,6 @@ d if d.starts_with("u_kcp_push:") => {
         .filter(|c| !c.is_empty())
         .filter_map(|c| KcpMask::from_code(c))
         .collect();
-
-    let current_mask_refs: Vec<&KcpMask> = current_masks.iter().collect();
 
     let new_mask = match KcpMask::from_code(new_code) {
         Some(m) => m,

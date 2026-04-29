@@ -366,34 +366,89 @@ impl KcpMask {
         matches!(self, KcpMask::Sudoku { .. })
     }
 
-    pub fn is_compatible_add(&self, current_stack: &[&KcpMask]) -> Result<(), String> {
-        let stack_len = current_stack.len();
+    pub fn is_transport_replacement(&self) -> bool {
+        matches!(self, KcpMask::Xdns { .. } | KcpMask::Xicmp { .. })
+    }
 
-        if stack_len >= 5 {
-            return Err("已达最大层数(5层)".to_string());
+    pub fn is_xdns(&self) -> bool {
+        matches!(self, KcpMask::Xdns { .. })
+    }
+
+    pub fn is_xicmp(&self) -> bool {
+        matches!(self, KcpMask::Xicmp { .. })
+    }
+
+    pub fn is_disguise_header(&self) -> bool {
+        matches!(
+            self,
+            KcpMask::HeaderDns { .. }
+                | KcpMask::HeaderWechat
+                | KcpMask::HeaderSrtp
+                | KcpMask::HeaderUtp
+                | KcpMask::HeaderDtls
+                | KcpMask::HeaderWireguard
+        )
+    }
+
+    pub fn header_size(&self) -> Option<usize> {
+        match self {
+            KcpMask::MkcpOriginal => Some(32),
+            KcpMask::MkcpAes128Gcm { .. } => Some(36),
+            KcpMask::Noise => Some(48),
+            KcpMask::Salamander { .. } => Some(32),
+            KcpMask::Sudoku { .. } => Some(2400),
+            KcpMask::HeaderDns { .. } => Some(64),
+            KcpMask::HeaderWechat => Some(58),
+            KcpMask::HeaderSrtp => Some(48),
+            KcpMask::HeaderUtp => Some(32),
+            KcpMask::HeaderDtls => Some(32),
+            KcpMask::HeaderWireguard => Some(48),
+            KcpMask::Xdns { .. } => Some(5),
+            KcpMask::Xicmp { .. } => Some(42),
+            KcpMask::HeaderCustom => None,
         }
+    }
 
-        if self.is_sudoku() {
-            if current_stack.iter().any(|m| m.is_sudoku()) {
-                return Err("重复的Sudoku".to_string());
-            }
-            if stack_len > 0 {
-                return Err("Sudoku必须是最后一层(最内侧)".to_string());
+    pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
+        if self.is_transport_replacement() {
+            if existing.iter().any(|m| m.is_transport_replacement()) {
+                let name = if self.is_xdns() { "XDNS" } else { "XICMP" };
+                let other = if self.is_xdns() { "XICMP" } else { "XDNS" };
+                return Err(format!("{}和{}不能同时使用", name, other));
             }
         }
 
         if self.is_encryption() {
-            if current_stack.iter().any(|m| m.is_encryption()) {
+            if existing.iter().any(|m| m.is_encryption()) {
                 return Err("重复的加密层".to_string());
             }
         }
 
-        if current_stack.iter().any(|m| m.is_sudoku()) {
-            return Err("Sudoku之后不能再添加其他遮罩层".to_string());
+        if self.is_sudoku() {
+            if existing.iter().any(|m| m.is_sudoku()) {
+                return Err("重复的Sudoku".to_string());
+            }
         }
 
-        if matches!(self, KcpMask::MkcpOriginal) && stack_len == 0 {
+        if existing.iter().any(|m| m.code() == self.code()) {
+            return Err(format!("重复的{}", self.display_name()));
+        }
+
+        if matches!(self, KcpMask::MkcpOriginal) && existing.is_empty() {
             return Err("mKCP Original单独使用安全性低，建议配合伪装层使用".to_string());
+        }
+
+        let total_header: usize = existing.iter()
+            .filter_map(|m| m.header_size())
+            .sum::<usize>()
+            + self.header_size().unwrap_or(0);
+        let sudoku_reserve = if self.is_sudoku() || existing.iter().any(|m| m.is_sudoku()) {
+            2400
+        } else {
+            0
+        };
+        if total_header + sudoku_reserve > 3800 {
+            return Err(format!("header总大小{}字节过大，可能超出UDP包限制(4096字节)", total_header));
         }
 
         Ok(())
@@ -404,23 +459,51 @@ impl KcpMask {
             return Err("请至少选择1层遮罩".to_string());
         }
 
-        if masks.len() > 5 {
-            return Err("最多5层遮罩".to_string());
+        if masks.iter().any(|m| m.is_sudoku()) {
+            if !masks.last().map(|m| m.is_sudoku()).unwrap_or(false) {
+                return Err("Sudoku必须是最后一层(最内侧)".to_string());
+            }
         }
 
-        let has_sudoku = masks.iter().any(|m| m.is_sudoku());
-        let has_encryption = masks.iter().any(|m| m.is_encryption());
+        if masks.iter().any(|m| m.is_xicmp()) {
+            if !masks.first().map(|m| m.is_xicmp()).unwrap_or(false) {
+                return Err("XICMP必须是最外层(第一个遮罩)".to_string());
+            }
+        }
 
-        if has_sudoku && !masks.iter().last().map(|m| m.is_sudoku()).unwrap_or(false) {
-            return Err("Sudoku必须是最后一层(最内侧)".to_string());
+        if masks.iter().any(|m| m.is_xdns()) {
+            if !masks.first().map(|m| m.is_xdns()).unwrap_or(false) {
+                return Err("XDNS必须是最外层(第一个遮罩)".to_string());
+            }
+        }
+
+        if masks.iter().any(|m| m.is_xdns()) && masks.iter().any(|m| m.is_xicmp()) {
+            return Err("XDNS和XICMP不能同时使用".to_string());
         }
 
         if masks.iter().filter(|m| m.is_encryption()).count() > 1 {
             return Err("重复的加密层".to_string());
         }
 
-        if matches!(masks.first(), Some(KcpMask::MkcpOriginal)) && masks.len() == 1 {
+        if let Some(enc_idx) = masks.iter().position(|m| m.is_encryption()) {
+            for m in &masks[enc_idx + 1..] {
+                if m.is_disguise_header() || matches!(m, KcpMask::Salamander { .. }) {
+                    return Err("加密层之后不能有伪装/混淆层(加密层应紧贴数据)".to_string());
+                }
+            }
+        }
+
+        if masks.len() == 1 && matches!(masks[0], KcpMask::MkcpOriginal) {
             return Err("mKCP Original单独使用安全性低，建议配合伪装层使用".to_string());
+        }
+
+        let total_header: usize = masks.iter().filter_map(|m| m.header_size()).sum();
+        let sudoku_reserve = if masks.iter().any(|m| m.is_sudoku()) { 2400 } else { 0 };
+        if total_header + sudoku_reserve > 3800 {
+            return Err(format!(
+                "header总大小{}字节过大，可能超出UDP包限制(4096字节)",
+                total_header
+            ));
         }
 
         Ok(())
