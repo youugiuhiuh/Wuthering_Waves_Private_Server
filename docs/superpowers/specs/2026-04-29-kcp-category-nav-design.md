@@ -1,16 +1,22 @@
 # KCP 分类导航 UI 重设计规格
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+**日期：** 2026-04-29
+**状态：** 已批准
 
-**Goal:** 将 KCP 遮罩选择 UI 从平铺分类列表改为 4 个分类按钮导航，每个分类子菜单直接显示简介+添加按钮。
+## 目标
 
-**Architecture:** 纯 UI 层改动，不涉及数据模型。KcpMask 枚举新增 `brief()` 和 `category_code()` 方法，main.rs 重写 3 个回调处理器、新增 2 个、删除 1 个。
+将 KCP 遮罩选择 UI 从平铺分类列表改为 4 个分类按钮导航，每个分类子菜单显示简介描述和直接添加按钮。
 
-**Tech Stack:** Rust, teloxide (Telegram Bot API)
+## 架构
 
----
+纯 UI 层改动，不涉及数据模型。需：
+1. 在 `KcpMask` 枚举上新增 `brief()`、`category_code()`、`variants_by_category()` 方法
+2. 重写 main.rs 中的 `u_kcp_init` 和 `u_kcp_more` 处理器
+3. 新增 `u_kcp_cat` 和 `u_kcp_mcat` 处理器
+4. 删除 `u_kcp_sel` 处理器（不再需要）
+5. 微调 `u_kcp_add` 处理器
 
-## 1. KcpMask 新增方法 (`config.rs`)
+## 1. KcpMask 新增方法 (config.rs)
 
 ### `brief()` → `&'static str`
 
@@ -40,131 +46,87 @@
 | 🎭 伪装层 | `dis` |
 | ⚡ 扩展层 | `ext` |
 
----
+### `variants_by_category(code: &str)` → `Vec<KcpMask>`
 
-## 2. UI 流程 (`main.rs`)
+返回该分类下所有变体。
+
+### `category_from_code(code: &str)` → `Option<&'static str>`
+
+映射代码到分类全名。
+
+## 2. UI 流程 (main.rs)
 
 ### 2.1 `u_kcp_init` (修改)
 
-4 个分类按钮 + 返回按钮。按钮格式 `[emoji 分类名 (数量)]`。
+显示 4 个分类按钮 + 返回按钮，代替当前平铺列表。
 
-消息文本：
-```
-🚀 <b>KCP (mKCP+FinalMask) 配置</b>
-
-✨ <b>特点:</b>
-• 基于 mKCP 协议的可靠传输
-• FinalMask 多层遮罩任意叠加(1-5层)
-• 支持加密、混淆、伪装、扩展四大类遮罩
-
-📋 <b>步骤 1: 选择遮罩类别</b>
-⚠️ 至少选择1层，建议加密层+伪装层组合
-```
-
-按钮布局（2x2 网格）：
+按钮：
 ```
 [🔐 加密层 (2)] [🌀 混淆层 (3)]
 [🎭 伪装层 (6)] [⚡ 扩展层 (3)]
 [⬅️ 返回]
 ```
 
-回调数据格式：
-- `u_kcp_cat:enc` — 加密层分类子菜单
-- `u_kcp_cat:obf` — 混淆层分类子菜单
-- `u_kcp_cat:dis` — 伪装层分类子菜单
-- `u_kcp_cat:ext` — 扩展层分类子菜单
+回调：`u_kcp_cat:{cat_code}`
 
-### 2.2 `u_kcp_cat:{cat}` (新增 — 首次选择)
+### 2.2 `u_kcp_cat:{cat_code}` (新增)
 
-消息顶部显示当前遮罩栈（首次为空则不显示）。分类子菜单中每个遮罩显示：emoji + 名称 + brief 简介文本。
+进入分类子菜单，显示该分类下所有遮罩的简介和添加按钮。
 
-以加密层为例：
+示例（加密层）：
 ```
-📋 <b>当前遮罩栈:</b>
-(空)
-
-🔐 <b>加密层</b> — 选择要添加的遮罩
+🔐 <b>加密层</b>
 
 🔀 <b>mKCP Original</b>
 轻量级XOR混淆，仅FNV1a校验
 
 🔐 <b>mKCP AES-128-GCM</b>
 AES-128-GCM认证加密，推荐首选
-```
 
-按钮（每个类型一行）：
-```
 [✅ mKCP Original] [✅ mKCP AES-128-GCM]
-[⬅️ 返回分类] [🗑️ 清空重选]
+[⬅️ 返回分类]
 ```
 
-回调数据格式：
-- `u_kcp_add:mo` — 直接添加（复用现有处理器）
+回调：选择遮罩 → `u_kcp_add:{code}`
 
 ### 2.3 `u_kcp_add:{code}` (微调)
 
-栈显示改为动态显示。按钮改为：
-```
-[➕ 继续添加遮罩层]  →  u_kcp_more:{code}
-[✅ 完成配置]        →  u_kcp_done:{code}
-[🗑️ 清空重选]       →  u_kcp_init
-```
+保持现有逻辑不变，按钮"继续添加"指向 `u_kcp_more:{existing}`，"清空重选"指向 `u_kcp_init`。
 
 ### 2.4 `u_kcp_more:{existing}` (修改)
 
-同样改为 4 个分类按钮（替代旧版平铺列表）。
+改为 4 个分类按钮导航，隐藏已满的分类。
 
-消息格式：
-```
-📋 <b>当前遮罩栈:</b>
-1️⃣ mKCP Original
-
-➕ <b>选择要添加的遮罩类别</b> (已达1层，最多5层)
-```
-
-按钮布局：
+消息顶部显示当前遮罩栈，按钮：
 ```
 [🔐 加密层 (1)] [🌀 混淆层 (3)]
 [🎭 伪装层 (6)] [⚡ 扩展层 (3)]
 [✅ 完成配置] [🗑️ 清空重选]
 ```
 
-注意：按钮数字为该分类剩余可选数量（all_variants 中排除已添加 code）。
+回调：`u_kcp_mcat:{existing},{cat_code}`
 
-### 2.5 `u_kcp_mcat:{existing},{cat}` (新增 — 叠加选择)
+### 2.5 `u_kcp_mcat:{existing},{cat_code}` (新增)
 
 与 `u_kcp_cat` 类似，但：
-- 顶部显示当前遮罩栈
-- 已添加的类型显示为 ☑️ 已添加（禁用按钮），或直接不显示
-- 添加按钮回调是 `u_kcp_push:{existing}:{code}`
+- 消息顶部显示当前遮罩栈
+- 已添加的类型显示为 ☑️ 已添加 禁用按钮
+- 添加按钮回调：`u_kcp_push:{existing}:{code}`
+- 底部有 "⬅️ 返回分类"、"✅ 完成配置"、"🗑️ 清空重选"
 
 ### 2.6 删除 `u_kcp_sel:{code}`
 
-不再需要单独的详情确认页。简介文本已提供足够信息。
+不再需要，简介直接在分类子菜单中显示。
 
-### 2.7 `u_kcp_push:{existing}:{code}` (不变)
+### 2.7 其余处理器不变
 
-逻辑保持不变，只是后续 `u_kcp_more` 现在使用分类导航。
-
----
+`u_kcp_push`、`u_kcp_done`、`u_kcp_ip`、`u_kcp_ok` 保持原样。
 
 ## 3. 回调数据长度
 
-Telegram 限制 64 字节：
-
-| 回调 | 长度 | 示例 |
-|------|------|------|
-| `u_kcp_cat:enc` | 12 | ✓ |
-| `u_kcp_mcat:mo,sa,hd,hw,hdt:dis` | 33 | ✓ |
-| `u_kcp_push:mo,sa,hd,hw,hdt:no` | 34 | ✓ |
-| `u_kcp_done:mo,sa,hd,hw,hdt` | 28 | ✓ |
-
-所有均在限制内。
-
----
+所有回调均远低于 Telegram 64 字节限制。
 
 ## 4. 边界情况
 
-- **分类无可选项：** 从按钮列表中移除该分类，或显示 `(0)` 时禁用。
-- **仅剩1层空间：** 正常显示分类按钮，`u_kcp_push` 仍显示 "已达最大层数(5层)"。
-- **HeaderCustom：** from_code 直接创建，无需额外参数。
+- 某分类所有类型已添加时，隐藏该分类按钮
+- 仅剩1层空间时正常提示
