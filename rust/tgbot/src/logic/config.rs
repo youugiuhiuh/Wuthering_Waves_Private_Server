@@ -488,8 +488,9 @@ impl KcpMask {
         } else {
             0
         };
-        if total_header + sudoku_reserve > 3800 {
-            return Err(format!("header总大小{}字节过大，可能超出UDP包限制(4096字节)", total_header));
+        let total_with_reserve = total_header + sudoku_reserve;
+        if total_with_reserve > 3800 {
+            return Err(format!("header总大小{}字节过大，可能超出UDP包限制(4096字节)", total_with_reserve));
         }
 
         Ok(())
