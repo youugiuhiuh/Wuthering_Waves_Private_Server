@@ -2796,7 +2796,7 @@ mod kcp_mask_validation_tests {
             KcpMask::Sudoku { password: "test".into() },
         ];
         let result = KcpMask::validate_stack(&masks);
-        assert!(result.is_err() || masks.len() <= 5);
+        assert!(result.is_err(), "6 layers should be rejected but was accepted");
     }
 }
 
