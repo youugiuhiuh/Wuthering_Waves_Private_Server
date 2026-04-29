@@ -516,7 +516,7 @@ impl KcpMask {
         }
         if masks.iter().any(|m| m.is_xicmp()) {
             if !masks.first().map(|m| m.is_xicmp()).unwrap_or(false) {
-                return Err("XICMP必须是最外层(第一个遮罩)".to_string());
+                return Err("XICMP必须是最外层(第一个添加的遮罩)".to_string());
             }
         }
         if masks.iter().any(|m| m.is_xdns()) && masks.iter().any(|m| m.is_xicmp()) {
