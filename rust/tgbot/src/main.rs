@@ -30,7 +30,7 @@ use teloxide::types::{
 };
 use teloxide::utils::command::BotCommands;
 use tgbot::core::types::IpVersion;
-use tgbot::logic::config::{ConfigManager, KcpEncryption, KcpDisguise, Proto, WarpMode};
+use tgbot::logic::config::{ConfigManager, KcpMask, Proto, WarpMode};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
 use tgbot::logic::maintenance::{BBR3_PENDING_FLAG_FILE, MaintenanceManager};
 use tgbot::logic::operations::Operations;
@@ -2622,24 +2622,28 @@ fn handle_callback(
                             }
                         }
                     }
-                }
-                // ==================== KCP Handlers ====================
+}
+                // ==================== KCP Handlers (Stacking UI) ====================
 "u_kcp_init" => {
-    let buttons = vec![
-        vec![
-            InlineKeyboardButton::callback(
-                "🔀 mKCP Original (XOR混淆)",
-                "u_kcp_enc:mo",
-            ),
-        ],
-        vec![
-            InlineKeyboardButton::callback(
-                "🔐 mKCP AES-128-GCM (加密)",
-                "u_kcp_enc:ma",
-            ),
-        ],
-        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
-    ];
+    let variants = KcpMask::all_variants();
+    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+    let mut current_category = "";
+
+    for mask in &variants {
+        let cat = mask.category();
+        if cat != current_category {
+            buttons.push(vec![InlineKeyboardButton::callback(
+                format!("── {} ──", cat),
+                "noop",
+            )]);
+            current_category = cat;
+        }
+        buttons.push(vec![InlineKeyboardButton::callback(
+            mask.display_name(),
+            format!("u_kcp_sel:{}", mask.code()),
+        )]);
+    }
+    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")]);
 
     bot.edit_message_text(
         chat_id,
@@ -2647,96 +2651,240 @@ fn handle_callback(
         "🚀 <b>KCP (mKCP+FinalMask) 配置</b>\n\n\
          ✨ <b>特点:</b>\n\
          • 基于 mKCP 协议的可靠传输\n\
-         • FinalMask 加密+伪装双层叠加\n\
-         • 官方 Xray-core 标准 kcpSettings\n\n\
-         📋 <b>步骤 1/2: 选择加密层</b>\n\
-         ⚠️ 加密层为必选项\n\n\
-         🔀 mKCP Original: 轻量级XOR混淆，仅提供完整性校验(FNV1a)，不含真正加密。性能好但安全性低\n\
-         🔐 mKCP AES-128-GCM: AES-128-GCM端到端加密，密钥由密码经SHA256派生。提供加密+认证双重保护，安全性高，推荐使用",
+         • FinalMask 多层遮罩任意叠加(1-5层)\n\
+         • 支持加密、混淆、伪装、扩展四大类遮罩\n\n\
+         📋 <b>步骤 1: 选择遮罩层类型</b>\n\
+         ⚠️ 至少选择1层，建议加密层+伪装层组合\n\n\
+         🔐 <b>加密层</b> — 提供数据加密保护\n\
+         🌀 <b>混淆层</b> — 增加流量随机性\n\
+         🎭 <b>伪装层</b> — 模拟协议头部\n\
+         ⚡ <b>扩展层</b> — 高级伪装功能"
     )
     .parse_mode(ParseMode::Html)
     .reply_markup(InlineKeyboardMarkup::new(buttons))
     .await?;
 }
-d if d.starts_with("u_kcp_enc:") => {
-    let enc_code = d.strip_prefix("u_kcp_enc:").unwrap_or("mo");
+d if d.starts_with("u_kcp_sel:") => {
+    let code = d.strip_prefix("u_kcp_sel:").unwrap_or("mo");
+    if let Some(m) = KcpMask::from_code(code) {
+        let name = m.display_name();
+        let detail = m.detail();
+        let cat = m.category();
+        let buttons = vec![
+            vec![InlineKeyboardButton::callback(
+                format!("✅ 确认添加 {}", name),
+                format!("u_kcp_add:{}", code),
+            )],
+            vec![InlineKeyboardButton::callback("⬅️ 返回选择", "u_kcp_init")],
+        ];
+        bot.edit_message_text(
+            chat_id,
+            msg_id,
+            format!("🔍 <b>{}</b> ({})\n\n{}", name, cat, detail),
+        )
+        .parse_mode(ParseMode::Html)
+        .reply_markup(InlineKeyboardMarkup::new(buttons))
+        .await?;
+    } else {
+        bot.answer_callback_query(q.id.clone())
+            .text("❌ 无效的遮罩类型")
+            .await?;
+    }
+}
+d if d.starts_with("u_kcp_add:") => {
+    let code = d.strip_prefix("u_kcp_add:").unwrap_or("mo");
+    if let Some(m) = KcpMask::from_code(code) {
+        let stack_display = format!("1️⃣ {}", m.display_name());
+        let mut buttons = vec![
+            vec![InlineKeyboardButton::callback(
+                "➕ 继续添加遮罩层",
+                format!("u_kcp_more:{}", code),
+            )],
+            vec![InlineKeyboardButton::callback(
+                "✅ 完成配置",
+                format!("u_kcp_done:{}", code),
+            )],
+            vec![InlineKeyboardButton::callback("🗑️ 清空重选", "u_kcp_init")],
+        ];
+        if code == "mo" {
+            buttons.insert(0, vec![InlineKeyboardButton::callback(
+                "⚠️ 安全提醒: mKCP Original单独使用安全性低",
+                "noop",
+            )]);
+        }
+        bot.edit_message_text(
+            chat_id,
+            msg_id,
+            format!(
+                "📋 <b>当前遮罩栈:</b>\n{}\n\n\
+                 ➕ 可以继续添加(最多5层)，或完成配置",
+                stack_display
+            ),
+        )
+        .parse_mode(ParseMode::Html)
+        .reply_markup(InlineKeyboardMarkup::new(buttons))
+        .await?;
+    }
+}
+d if d.starts_with("u_kcp_more:") => {
+    let existing = d.strip_prefix("u_kcp_more:").unwrap_or("");
+    let existing_codes: Vec<&str> = existing.split(',').collect();
+    let variants = KcpMask::all_variants();
 
-    let variants = KcpDisguise::all_variants();
+    let stack_display: Vec<String> = existing_codes.iter().enumerate().map(|(i, c)| {
+        let m = KcpMask::from_code(c);
+        format!("{}️⃣ {}", i + 1, m.map(|m| m.display_name()).unwrap_or("???"))
+    }).collect();
+
     let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-    for dsg in &variants {
-        let dsg_code = dsg.code();
-        let name = dsg.display_name();
+    let mut current_category = "";
+
+    for mask in &variants {
+        let cat = mask.category();
+        if cat != current_category {
+            buttons.push(vec![InlineKeyboardButton::callback(
+                format!("── {} ──", cat),
+                "noop",
+            )]);
+            current_category = cat;
+        }
+        let code = mask.code();
+        if existing_codes.contains(&code) {
+            continue;
+        }
         buttons.push(vec![InlineKeyboardButton::callback(
-            name,
-            format!("u_kcp_dsg:{}:{}", enc_code, dsg_code),
+            format!("{} ✓", mask.display_name()),
+            format!("u_kcp_push:{}:{}", existing, code),
         )]);
     }
-    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "u_kcp_init")]);
 
-    let enc = KcpEncryption::from_code(enc_code);
-    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
+    buttons.push(vec![InlineKeyboardButton::callback(
+        "✅ 完成配置",
+        format!("u_kcp_done:{}", existing),
+    )]);
+    buttons.push(vec![InlineKeyboardButton::callback("🗑️ 清空重选", "u_kcp_init")]);
 
     bot.edit_message_text(
         chat_id,
         msg_id,
         format!(
-            "🚀 <b>KCP 配置 - 步骤 2/2</b>\n\n\
-             ✅ 加密层: <b>{}</b>\n\n\
-             📋 <b>选择伪装层</b>\n\
-             ⚠️ 伪装层为必选项\n\n\
-             • 🌐 DNS: 伪装为DNS查询流量\n\
-             • 💬 微信: 伪装为微信视频通话\n\
-             • 🎬 SRTP: 伪装为音视频流\n\
-             • 🔗 uTP: 伪装为BitTorrent\n\
-             • 🔒 DTLS: 伪装为DTLS 1.2\n\
-             • 🛡️ WireGuard: 伪装为VPN流量",
-            enc_name
+            "📋 <b>当前遮罩栈:</b>\n{}\n\n\
+             ➕ <b>选择要添加的遮罩层</b> (已达{}层，最多5层)\n\
+             已添加的类型不会再显示",
+            stack_display.join("\n"),
+            existing_codes.len()
         ),
     )
     .parse_mode(ParseMode::Html)
     .reply_markup(InlineKeyboardMarkup::new(buttons))
     .await?;
 }
-d if d.starts_with("u_kcp_dsg:") => {
-    let parts: Vec<&str> = d.strip_prefix("u_kcp_dsg:").unwrap_or("").split(':').collect();
+d if d.starts_with("u_kcp_push:") => {
+    let data = d.strip_prefix("u_kcp_push:").unwrap_or("");
+    let parts: Vec<&str> = data.splitn(2, ':').collect();
     if parts.len() != 2 {
         return Ok(());
     }
-    let enc_code = parts[0];
-    let dsg_code = parts[1];
+    let existing = parts[0];
+    let new_code = parts[1];
+    let new_stack = format!("{},{}", existing, new_code);
+    let codes: Vec<&str> = new_stack.split(',').collect();
 
-    let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
-    let mut buttons = vec![vec![InlineKeyboardButton::callback(
-        "🌐 IPv4 (0.0.0.0)",
-        format!("u_kcp_ip:{}:{}:4", enc_code, dsg_code),
-    )]];
+    if codes.len() > 5 {
+        bot.answer_callback_query(q.id.clone())
+            .text("❌ 最多5层遮罩")
+            .await?;
+        return Ok(());
+    }
 
-    if has_ipv6 {
-        buttons[0].push(InlineKeyboardButton::callback(
-            "🌐 IPv6 (::)",
-            format!("u_kcp_ip:{}:{}:6", enc_code, dsg_code),
-        ));
+    let stack_display: Vec<String> = codes.iter().enumerate().map(|(i, c)| {
+        let m = KcpMask::from_code(c);
+        format!("{}️⃣ {}", i + 1, m.map(|m| m.display_name()).unwrap_or("???"))
+    }).collect();
+
+    let mut buttons = Vec::new();
+
+    if codes.len() < 5 {
+        buttons.push(vec![InlineKeyboardButton::callback(
+            "➕ 继续添加遮罩层",
+            format!("u_kcp_more:{}", new_stack),
+        )]);
     }
 
     buttons.push(vec![InlineKeyboardButton::callback(
-        "⬅️ 返回",
-        format!("u_kcp_enc:{}", enc_code),
+        "✅ 完成配置",
+        format!("u_kcp_done:{}", new_stack),
     )]);
+    buttons.push(vec![InlineKeyboardButton::callback("🗑️ 清空重选", "u_kcp_init")]);
 
-    let enc = KcpEncryption::from_code(enc_code);
-    let dsg = KcpDisguise::from_code(dsg_code);
-    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
-    let dsg_name = dsg.as_ref().map(|d| d.display_name()).unwrap_or("Unknown");
+    bot.edit_message_text(
+        chat_id,
+        msg_id,
+        format!(
+            "📋 <b>当前遮罩栈:</b>\n{}\n\n\
+             {}",
+            stack_display.join("\n"),
+            if codes.len() < 5 { "➕ 可以继续添加，或完成配置" } else { "✅ 已达最大层数(5层)" }
+        ),
+    )
+    .parse_mode(ParseMode::Html)
+    .reply_markup(InlineKeyboardMarkup::new(buttons))
+    .await?;
+}
+d if d.starts_with("u_kcp_done:") => {
+    let mask_codes_str = d.strip_prefix("u_kcp_done:").unwrap_or("");
+    let codes: Vec<&str> = mask_codes_str.split(',').collect();
+
+    if codes.is_empty() {
+        bot.answer_callback_query(q.id.clone())
+            .text("❌ 请至少选择1层遮罩")
+            .await?;
+        return Ok(());
+    }
+
+    let stack_display: Vec<String> = codes.iter().enumerate().map(|(i, c)| {
+        let m = KcpMask::from_code(c);
+        format!("{}️⃣ {}", i + 1, m.map(|m| m.display_name()).unwrap_or("???"))
+    }).collect();
+
+    let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+    let mut buttons = vec![vec![
+        InlineKeyboardButton::callback(
+            "🌐 IPv4 (0.0.0.0)",
+            format!("u_kcp_ip:{}:4", mask_codes_str),
+        ),
+    ]];
+    if has_ipv6 {
+        buttons[0].push(InlineKeyboardButton::callback(
+            "🌐 IPv6 (::)",
+            format!("u_kcp_ip:{}:6", mask_codes_str),
+        ));
+    }
+    buttons.push(vec![
+        InlineKeyboardButton::callback(
+            "🔄 双栈 IPv4优先",
+            format!("u_kcp_ip:{}:s4", mask_codes_str),
+        ),
+    ]);
+    buttons.push(vec![
+        InlineKeyboardButton::callback(
+            "🔄 双栈 IPv6优先",
+            format!("u_kcp_ip:{}:s6", mask_codes_str),
+        ),
+    ]);
+    buttons.push(vec![InlineKeyboardButton::callback(
+        "⬅️ 返回",
+        format!("u_kcp_more:{}", mask_codes_str),
+    )]);
 
     bot.edit_message_text(
         chat_id,
         msg_id,
         format!(
             "🚀 <b>KCP 配置</b>\n\n\
-             🔐 加密层: <b>{}</b>\n\
-             🎭 伪装层: <b>{}</b>\n\n\
+             📋 <b>遮罩栈:</b>\n{}\n\n\
              ⬇️ <b>请选择网络协议版本:</b>",
-            enc_name, dsg_name
+            stack_display.join("\n")
         ),
     )
     .parse_mode(ParseMode::Html)
@@ -2744,40 +2892,42 @@ d if d.starts_with("u_kcp_dsg:") => {
     .await?;
 }
 d if d.starts_with("u_kcp_ip:") => {
-    let parts: Vec<&str> = d.strip_prefix("u_kcp_ip:").unwrap_or("").split(':').collect();
-    if parts.len() != 3 {
-        return Ok(());
-    }
-    let enc_code = parts[0];
-    let dsg_code = parts[1];
-    let ip_ver_code = parts[2];
+    let data = d.strip_prefix("u_kcp_ip:").unwrap_or("");
+    let last_colon = data.rfind(':').unwrap_or(data.len());
+    let mask_codes_str = &data[..last_colon];
+    let ip_ver_code = &data[last_colon+1..];
+    let codes: Vec<&str> = mask_codes_str.split(',').collect();
+
     let ip_version: IpVersion = match ip_ver_code {
         "6" => IpVersion::IPv6,
+        "s4" => IpVersion::SplitStackV4Primary,
+        "s6" => IpVersion::SplitStackV6Primary,
         _ => IpVersion::IPv4,
     };
     let ip_display = match ip_version {
         IpVersion::IPv4 => "IPv4",
         IpVersion::IPv6 => "IPv6",
-        _ => "IPv4",
+        IpVersion::SplitStackV4Primary => "双栈 IPv4优先",
+        IpVersion::SplitStackV6Primary => "双栈 IPv6优先",
     };
 
-    let enc = KcpEncryption::from_code(enc_code);
-    let dsg = KcpDisguise::from_code(dsg_code);
-    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
-    let dsg_name = dsg.as_ref().map(|d| d.display_name()).unwrap_or("Unknown");
+    let stack_display: Vec<String> = codes.iter().enumerate().map(|(i, c)| {
+        let m = KcpMask::from_code(c);
+        format!("{}️⃣ {}", i + 1, m.map(|m| m.display_name()).unwrap_or("???"))
+    }).collect();
 
     let buttons = vec![
         vec![
-            InlineKeyboardButton::callback("1", format!("u_kcp_ex:{}:{}:{}:1", enc_code, dsg_code, ip_ver_code)),
-            InlineKeyboardButton::callback("3", format!("u_kcp_ex:{}:{}:{}:3", enc_code, dsg_code, ip_ver_code)),
-            InlineKeyboardButton::callback("5", format!("u_kcp_ex:{}:{}:{}:5", enc_code, dsg_code, ip_ver_code)),
+            InlineKeyboardButton::callback("1", format!("u_kcp_ok:{}:{}:1", mask_codes_str, ip_ver_code)),
+            InlineKeyboardButton::callback("3", format!("u_kcp_ok:{}:{}:3", mask_codes_str, ip_ver_code)),
+            InlineKeyboardButton::callback("5", format!("u_kcp_ok:{}:{}:5", mask_codes_str, ip_ver_code)),
         ],
         vec![
-            InlineKeyboardButton::callback("10", format!("u_kcp_ex:{}:{}:{}:10", enc_code, dsg_code, ip_ver_code)),
-            InlineKeyboardButton::callback("20", format!("u_kcp_ex:{}:{}:{}:20", enc_code, dsg_code, ip_ver_code)),
-            InlineKeyboardButton::callback("50", format!("u_kcp_ex:{}:{}:{}:50", enc_code, dsg_code, ip_ver_code)),
+            InlineKeyboardButton::callback("10", format!("u_kcp_ok:{}:{}:10", mask_codes_str, ip_ver_code)),
+            InlineKeyboardButton::callback("20", format!("u_kcp_ok:{}:{}:20", mask_codes_str, ip_ver_code)),
+            InlineKeyboardButton::callback("50", format!("u_kcp_ok:{}:{}:50", mask_codes_str, ip_ver_code)),
         ],
-        vec![InlineKeyboardButton::callback("⬅️ 返回", format!("u_kcp_dsg:{}:{}", enc_code, dsg_code))],
+        vec![InlineKeyboardButton::callback("⬅️ 返回", format!("u_kcp_done:{}", mask_codes_str))],
     ];
 
     bot.edit_message_text(
@@ -2785,47 +2935,54 @@ d if d.starts_with("u_kcp_ip:") => {
         msg_id,
         format!(
             "🚀 <b>KCP 配置 - 批量生成</b>\n\n\
-             🔐 加密层: <b>{}</b>\n\
-             🎭 伪装层: <b>{}</b>\n\
+             📋 <b>遮罩栈:</b>\n{}\n\n\
              🌐 网络协议: <b>{}</b>\n\n\
              ⬇️ <b>请选择生成数量:</b>",
-            enc_name, dsg_name, ip_display
+            stack_display.join("\n"),
+            ip_display
         ),
     )
     .parse_mode(ParseMode::Html)
     .reply_markup(InlineKeyboardMarkup::new(buttons))
     .await?;
 }
-d if d.starts_with("u_kcp_ex:") => {
-    let parts: Vec<&str> = d.strip_prefix("u_kcp_ex:").unwrap_or("").split(':').collect();
-    if parts.len() != 4 {
+d if d.starts_with("u_kcp_ok:") => {
+    let data = d.strip_prefix("u_kcp_ok:").unwrap_or("");
+    let parts: Vec<&str> = data.rsplitn(2, ':').collect();
+    if parts.len() != 2 {
         return Ok(());
     }
-    let enc_code = parts[0];
-    let dsg_code = parts[1];
-    let ip_ver_code = parts[2];
-    let n: usize = parts[3].parse().unwrap_or(0);
+    let n: usize = parts[0].parse().unwrap_or(0);
+    let remaining = parts[1];
+    let last_colon = remaining.rfind(':').unwrap_or(remaining.len());
+    let mask_codes_str = &remaining[..last_colon];
+    let ip_ver_code = &remaining[last_colon+1..];
 
-    let ip_version = match ip_ver_code {
+    let ip_version: IpVersion = match ip_ver_code {
         "6" => IpVersion::IPv6,
+        "s4" => IpVersion::SplitStackV4Primary,
+        "s6" => IpVersion::SplitStackV6Primary,
         _ => IpVersion::IPv4,
     };
     let ip_str = match ip_version {
         IpVersion::IPv4 => "IPv4",
         IpVersion::IPv6 => "IPv6",
-        _ => "IPv4",
+        IpVersion::SplitStackV4Primary => "双栈 IPv4优先",
+        IpVersion::SplitStackV6Primary => "双栈 IPv6优先",
     };
 
-    let enc = KcpEncryption::from_code(enc_code);
-    let dsg = KcpDisguise::from_code(dsg_code);
-    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
-    let dsg_name = dsg.as_ref().map(|d| d.display_name()).unwrap_or("Unknown");
+    let mask_codes: Vec<&str> = mask_codes_str.split(',').collect();
+
+    let mask_names: Vec<&str> = mask_codes.iter()
+        .filter_map(|c| KcpMask::from_code(c).map(|m| m.display_name()))
+        .collect();
+    let mask_label = mask_names.join("+");
 
     bot.answer_callback_query(q.id.clone())
         .text(format!("⏳ 正在生成 {} 个 KCP 配置...", n))
         .await?;
 
-    let res = ConfigManager::batch_create_kcp(n, true, ip_version, enc_code, dsg_code).await;
+    let res = ConfigManager::batch_create_kcp(n, true, ip_version, &mask_codes).await;
 
     match res {
         Ok(result) => {
@@ -2864,7 +3021,7 @@ d if d.starts_with("u_kcp_ex:") => {
             } else {
                 let document_sent = bot
                     .send_document(chat_id, InputFile::file(&temp_file_path))
-                    .caption(format!("KCP {}+{} 完整链接列表", enc_name, dsg_name))
+                    .caption(format!("KCP {} 完整链接列表", mask_label))
                     .await;
 
                 if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
@@ -2880,9 +3037,8 @@ d if d.starts_with("u_kcp_ex:") => {
                 "✅ KCP 批量生成完成！\n\n\
                  📊 生成数量: {}\n\
                  🌐 网络协议: {}\n\
-                 🔐 加密层: {}\n\
-                 🎭 伪装层: {}",
-                result.created_count, ip_str, enc_name, dsg_name
+                 🎭 遮罩层: {}",
+                result.created_count, ip_str, mask_label
             );
 
             if let Some(filename) = result.config_file {
