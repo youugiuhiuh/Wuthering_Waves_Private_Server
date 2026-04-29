@@ -2623,27 +2623,34 @@ fn handle_callback(
                         }
                     }
 }
-                // ==================== KCP Handlers (Stacking UI) ====================
+                // ==================== KCP Handlers (Category Navigation UI) ====================
 "u_kcp_init" => {
-    let variants = KcpMask::all_variants();
     let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-    let mut current_category = "";
 
-    for mask in &variants {
-        let cat = mask.category();
-        if cat != current_category {
-            buttons.push(vec![InlineKeyboardButton::callback(
-                format!("── {} ──", cat),
-                "noop",
-            )]);
-            current_category = cat;
-        }
-        buttons.push(vec![InlineKeyboardButton::callback(
-            mask.display_name(),
-            format!("u_kcp_sel:{}", mask.code()),
-        )]);
-    }
-    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")]);
+    buttons.push(vec![
+        InlineKeyboardButton::callback(
+            "🔐 加密层 (2)",
+            "u_kcp_cat:enc",
+        ),
+        InlineKeyboardButton::callback(
+            "🌀 混淆层 (3)",
+            "u_kcp_cat:obf",
+        ),
+    ]);
+    buttons.push(vec![
+        InlineKeyboardButton::callback(
+            "🎭 伪装层 (6)",
+            "u_kcp_cat:dis",
+        ),
+        InlineKeyboardButton::callback(
+            "⚡ 扩展层 (3)",
+            "u_kcp_cat:ext",
+        ),
+    ]);
+    buttons.push(vec![InlineKeyboardButton::callback(
+        "⬅️ 返回",
+        "m_xray_mgmt",
+    )]);
 
     bot.edit_message_text(
         chat_id,
@@ -2653,43 +2660,49 @@ fn handle_callback(
          • 基于 mKCP 协议的可靠传输\n\
          • FinalMask 多层遮罩任意叠加(1-5层)\n\
          • 支持加密、混淆、伪装、扩展四大类遮罩\n\n\
-         📋 <b>步骤 1: 选择遮罩层类型</b>\n\
-         ⚠️ 至少选择1层，建议加密层+伪装层组合\n\n\
-         🔐 <b>加密层</b> — 提供数据加密保护\n\
-         🌀 <b>混淆层</b> — 增加流量随机性\n\
-         🎭 <b>伪装层</b> — 模拟协议头部\n\
-         ⚡ <b>扩展层</b> — 高级伪装功能"
+         📋 <b>步骤 1: 选择遮罩类别</b>\n\
+         ⚠️ 至少选择1层，建议加密层+伪装层组合",
     )
     .parse_mode(ParseMode::Html)
     .reply_markup(InlineKeyboardMarkup::new(buttons))
     .await?;
 }
-d if d.starts_with("u_kcp_sel:") => {
-    let code = d.strip_prefix("u_kcp_sel:").unwrap_or("mo");
-    if let Some(m) = KcpMask::from_code(code) {
-        let name = m.display_name();
-        let detail = m.detail();
-        let cat = m.category();
-        let buttons = vec![
-            vec![InlineKeyboardButton::callback(
-                format!("✅ 确认添加 {}", name),
-                format!("u_kcp_add:{}", code),
-            )],
-            vec![InlineKeyboardButton::callback("⬅️ 返回选择", "u_kcp_init")],
-        ];
-        bot.edit_message_text(
-            chat_id,
-            msg_id,
-            format!("🔍 <b>{}</b> ({})\n\n{}", name, cat, detail),
-        )
-        .parse_mode(ParseMode::Html)
-        .reply_markup(InlineKeyboardMarkup::new(buttons))
-        .await?;
-    } else {
-        bot.answer_callback_query(q.id.clone())
-            .text("❌ 无效的遮罩类型")
-            .await?;
+d if d.starts_with("u_kcp_cat:") => {
+    let cat_code = d.strip_prefix("u_kcp_cat:").unwrap_or("enc");
+    let cat_name = KcpMask::category_from_code(cat_code).unwrap_or("未知");
+
+    let variants = KcpMask::variants_by_category(cat_code);
+    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+
+    for mask in &variants {
+        buttons.push(vec![InlineKeyboardButton::callback(
+            format!("✅ {}", mask.display_name()),
+            format!("u_kcp_add:{}", mask.code()),
+        )]);
     }
+
+    buttons.push(vec![InlineKeyboardButton::callback(
+        "⬅️ 返回分类",
+        "u_kcp_init",
+    )]);
+
+    let mask_list: String = variants
+        .iter()
+        .map(|m| format!("<b>{}</b>\n{}", m.display_name(), m.brief()))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    bot.edit_message_text(
+        chat_id,
+        msg_id,
+        format!(
+            "<b>{}</b> — 选择要添加的遮罩\n\n{}",
+            cat_name, mask_list
+        ),
+    )
+    .parse_mode(ParseMode::Html)
+    .reply_markup(InlineKeyboardMarkup::new(buttons))
+    .await?;
 }
 d if d.starts_with("u_kcp_add:") => {
     let code = d.strip_prefix("u_kcp_add:").unwrap_or("mo");
@@ -2729,7 +2742,6 @@ d if d.starts_with("u_kcp_add:") => {
 d if d.starts_with("u_kcp_more:") => {
     let existing = d.strip_prefix("u_kcp_more:").unwrap_or("");
     let existing_codes: Vec<&str> = existing.split(',').collect();
-    let variants = KcpMask::all_variants();
 
     let stack_display: Vec<String> = existing_codes.iter().enumerate().map(|(i, c)| {
         let m = KcpMask::from_code(c);
@@ -2737,42 +2749,120 @@ d if d.starts_with("u_kcp_more:") => {
     }).collect();
 
     let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-    let mut current_category = "";
 
-    for mask in &variants {
-        let cat = mask.category();
-        if cat != current_category {
-            buttons.push(vec![InlineKeyboardButton::callback(
-                format!("── {} ──", cat),
-                "noop",
-            )]);
-            current_category = cat;
+    let cat_counts = [
+        ("enc", "🔐 加密层", KcpMask::variants_by_category("enc").len()),
+        ("obf", "🌀 混淆层", KcpMask::variants_by_category("obf").len()),
+        ("dis", "🎭 伪装层", KcpMask::variants_by_category("dis").len()),
+        ("ext", "⚡ 扩展层", KcpMask::variants_by_category("ext").len()),
+    ];
+
+    for (code, name, total) in &cat_counts {
+        let added_count = existing_codes.iter().filter(|ec| {
+            KcpMask::from_code(ec).map(|m| m.category_code() == *code).unwrap_or(false)
+        }).count();
+        let remaining = total - added_count;
+        if remaining > 0 {
+            if buttons.is_empty() || buttons.last().unwrap().len() >= 2 {
+                buttons.push(Vec::new());
+            }
+            buttons.last_mut().unwrap().push(
+                InlineKeyboardButton::callback(
+                    format!("{} ({})", name, remaining),
+                    format!("u_kcp_mcat:{},{}", existing, code),
+                )
+            );
         }
-        let code = mask.code();
-        if existing_codes.contains(&code) {
-            continue;
-        }
-        buttons.push(vec![InlineKeyboardButton::callback(
-            format!("{} ✓", mask.display_name()),
-            format!("u_kcp_push:{}:{}", existing, code),
-        )]);
     }
 
     buttons.push(vec![InlineKeyboardButton::callback(
         "✅ 完成配置",
         format!("u_kcp_done:{}", existing),
     )]);
-    buttons.push(vec![InlineKeyboardButton::callback("🗑️ 清空重选", "u_kcp_init")]);
+    buttons.push(vec![InlineKeyboardButton::callback(
+        "🗑️ 清空重选",
+        "u_kcp_init",
+    )]);
 
     bot.edit_message_text(
         chat_id,
         msg_id,
         format!(
             "📋 <b>当前遮罩栈:</b>\n{}\n\n\
-             ➕ <b>选择要添加的遮罩层</b> (已达{}层，最多5层)\n\
-             已添加的类型不会再显示",
+             ➕ <b>选择要添加的遮罩类别</b> (已达{}层，最多5层)",
             stack_display.join("\n"),
             existing_codes.len()
+        ),
+    )
+    .parse_mode(ParseMode::Html)
+    .reply_markup(InlineKeyboardMarkup::new(buttons))
+    .await?;
+}
+d if d.starts_with("u_kcp_mcat:") => {
+    let data = d.strip_prefix("u_kcp_mcat:").unwrap_or("");
+    let parts: Vec<&str> = data.splitn(2, ',').collect();
+    if parts.len() != 2 {
+        return Ok(());
+    }
+    let existing = parts[0];
+    let cat_code = parts[1];
+    let existing_codes: Vec<&str> = existing.split(',').collect();
+    let cat_name = KcpMask::category_from_code(cat_code).unwrap_or("未知");
+
+    let variants = KcpMask::variants_by_category(cat_code);
+
+    let stack_display: Vec<String> = existing_codes.iter().enumerate().map(|(i, c)| {
+        let m = KcpMask::from_code(c);
+        format!("{}️⃣ {}", i + 1, m.map(|m| m.display_name()).unwrap_or("???"))
+    }).collect();
+
+    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+
+    for mask in &variants {
+        let code = mask.code();
+        if existing_codes.contains(&code) {
+            buttons.push(vec![InlineKeyboardButton::callback(
+                format!("☑️ {}", mask.display_name()),
+                "noop",
+            )]);
+        } else {
+            buttons.push(vec![InlineKeyboardButton::callback(
+                format!("✅ {}", mask.display_name()),
+                format!("u_kcp_push:{}:{}", existing, code),
+            )]);
+        }
+    }
+
+    buttons.push(vec![
+        InlineKeyboardButton::callback(
+            "⬅️ 返回分类",
+            format!("u_kcp_more:{}", existing),
+        ),
+    ]);
+    buttons.push(vec![InlineKeyboardButton::callback(
+        "✅ 完成配置",
+        format!("u_kcp_done:{}", existing),
+    )]);
+    buttons.push(vec![InlineKeyboardButton::callback(
+        "🗑️ 清空重选",
+        "u_kcp_init",
+    )]);
+
+    let mask_list: String = variants
+        .iter()
+        .map(|m| format!("<b>{}</b>\n{}", m.display_name(), m.brief()))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    bot.edit_message_text(
+        chat_id,
+        msg_id,
+        format!(
+            "📋 <b>当前遮罩栈:</b>\n{}\n\n\
+             <b>{}</b> — 选择要添加的遮罩\n\n{}",
+            stack_display.join("\n"),
+            cat_name,
+            mask_list
         ),
     )
     .parse_mode(ParseMode::Html)
