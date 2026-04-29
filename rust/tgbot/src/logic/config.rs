@@ -462,6 +462,10 @@ impl KcpMask {
     }
 
     pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
+        if self.is_xicmp() && !existing.is_empty() {
+            return Err("XICMP必须是最外层(第一个添加的遮罩)".to_string());
+        }
+
         if self.is_transport_replacement() {
             if existing.iter().any(|m| m.is_transport_replacement()) {
                 let name = if self.is_xdns() { "XDNS" } else { "XICMP" };
@@ -2760,6 +2764,13 @@ mod tests {
         let ordered = KcpMask::canonical_order(&masks);
         assert!(ordered[0].is_disguise_header());
         assert!(ordered[1].is_encryption());
+    }
+
+    #[test]
+    fn test_compatible_with_xicmp_not_first() {
+        let existing = vec![KcpMask::HeaderSrtp];
+        let xicmp = KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 };
+        assert!(xicmp.is_compatible_with(&existing).is_err());
     }
 }
 
