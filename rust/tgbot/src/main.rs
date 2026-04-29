@@ -30,7 +30,7 @@ use teloxide::types::{
 };
 use teloxide::utils::command::BotCommands;
 use tgbot::core::types::IpVersion;
-use tgbot::logic::config::{ConfigManager, KcpEncryption, KcpDisguise, Proto, WarpMode};
+use tgbot::logic::config::{ConfigManager, KcpMask, Proto, WarpMode};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
 use tgbot::logic::maintenance::{BBR3_PENDING_FLAG_FILE, MaintenanceManager};
 use tgbot::logic::operations::Operations;
@@ -2661,7 +2661,7 @@ fn handle_callback(
 d if d.starts_with("u_kcp_enc:") => {
     let enc_code = d.strip_prefix("u_kcp_enc:").unwrap_or("mo");
 
-    let variants = KcpDisguise::all_variants();
+    let variants = KcpMask::all_variants();
     let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
     for dsg in &variants {
         let dsg_code = dsg.code();
@@ -2673,7 +2673,7 @@ d if d.starts_with("u_kcp_enc:") => {
     }
     buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "u_kcp_init")]);
 
-    let enc = KcpEncryption::from_code(enc_code);
+    let enc = KcpMask::from_code(enc_code);
     let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
 
     bot.edit_message_text(
@@ -2723,20 +2723,17 @@ d if d.starts_with("u_kcp_dsg:") => {
         format!("u_kcp_enc:{}", enc_code),
     )]);
 
-    let enc = KcpEncryption::from_code(enc_code);
-    let dsg = KcpDisguise::from_code(dsg_code);
-    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
-    let dsg_name = dsg.as_ref().map(|d| d.display_name()).unwrap_or("Unknown");
+    let mask = KcpMask::from_code(dsg_code);
+    let mask_name = mask.as_ref().map(|m| m.display_name()).unwrap_or("Unknown");
 
     bot.edit_message_text(
         chat_id,
         msg_id,
         format!(
             "🚀 <b>KCP 配置</b>\n\n\
-             🔐 加密层: <b>{}</b>\n\
-             🎭 伪装层: <b>{}</b>\n\n\
+             🔐 配置: <b>{}</b>\n\n\
              ⬇️ <b>请选择网络协议版本:</b>",
-            enc_name, dsg_name
+            mask_name
         ),
     )
     .parse_mode(ParseMode::Html)
@@ -2761,10 +2758,8 @@ d if d.starts_with("u_kcp_ip:") => {
         _ => "IPv4",
     };
 
-    let enc = KcpEncryption::from_code(enc_code);
-    let dsg = KcpDisguise::from_code(dsg_code);
-    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
-    let dsg_name = dsg.as_ref().map(|d| d.display_name()).unwrap_or("Unknown");
+    let mask = KcpMask::from_code(dsg_code);
+    let mask_name = mask.as_ref().map(|m| m.display_name()).unwrap_or("Unknown");
 
     let buttons = vec![
         vec![
@@ -2785,11 +2780,10 @@ d if d.starts_with("u_kcp_ip:") => {
         msg_id,
         format!(
             "🚀 <b>KCP 配置 - 批量生成</b>\n\n\
-             🔐 加密层: <b>{}</b>\n\
-             🎭 伪装层: <b>{}</b>\n\
+             🔐 配置: <b>{}</b>\n\
              🌐 网络协议: <b>{}</b>\n\n\
              ⬇️ <b>请选择生成数量:</b>",
-            enc_name, dsg_name, ip_display
+            mask_name, ip_display
         ),
     )
     .parse_mode(ParseMode::Html)
@@ -2816,16 +2810,14 @@ d if d.starts_with("u_kcp_ex:") => {
         _ => "IPv4",
     };
 
-    let enc = KcpEncryption::from_code(enc_code);
-    let dsg = KcpDisguise::from_code(dsg_code);
-    let enc_name = enc.as_ref().map(|e| e.display_name()).unwrap_or("Unknown");
-    let dsg_name = dsg.as_ref().map(|d| d.display_name()).unwrap_or("Unknown");
+    let mask = KcpMask::from_code(dsg_code);
+    let mask_name = mask.as_ref().map(|m| m.display_name()).unwrap_or("Unknown");
 
     bot.answer_callback_query(q.id.clone())
         .text(format!("⏳ 正在生成 {} 个 KCP 配置...", n))
         .await?;
 
-    let res = ConfigManager::batch_create_kcp(n, true, ip_version, enc_code, dsg_code).await;
+    let res = ConfigManager::batch_create_kcp(n, true, ip_version, dsg_code, dsg_code).await;
 
     match res {
         Ok(result) => {
@@ -2864,7 +2856,7 @@ d if d.starts_with("u_kcp_ex:") => {
             } else {
                 let document_sent = bot
                     .send_document(chat_id, InputFile::file(&temp_file_path))
-                    .caption(format!("KCP {}+{} 完整链接列表", enc_name, dsg_name))
+                    .caption(format!("KCP {} 完整链接列表", mask_name))
                     .await;
 
                 if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
@@ -2880,9 +2872,8 @@ d if d.starts_with("u_kcp_ex:") => {
                 "✅ KCP 批量生成完成！\n\n\
                  📊 生成数量: {}\n\
                  🌐 网络协议: {}\n\
-                 🔐 加密层: {}\n\
-                 🎭 伪装层: {}",
-                result.created_count, ip_str, enc_name, dsg_name
+                 🔐 配置: {}",
+                result.created_count, ip_str, mask_name
             );
 
             if let Some(filename) = result.config_file {
