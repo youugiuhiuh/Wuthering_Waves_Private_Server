@@ -436,6 +436,31 @@ impl KcpMask {
         size
     }
 
+    fn sort_priority(&self) -> u8 {
+        match self {
+            KcpMask::Xicmp { .. } => 0,
+            KcpMask::Xdns { .. } => 1,
+            KcpMask::Noise => 10,
+            KcpMask::HeaderDns { .. }
+            | KcpMask::HeaderWechat
+            | KcpMask::HeaderSrtp
+            | KcpMask::HeaderUtp
+            | KcpMask::HeaderDtls
+            | KcpMask::HeaderWireguard
+            | KcpMask::HeaderCustom => 20,
+            KcpMask::Salamander { .. } => 30,
+            KcpMask::MkcpOriginal
+            | KcpMask::MkcpAes128Gcm { .. } => 40,
+            KcpMask::Sudoku { .. } => 50,
+        }
+    }
+
+    pub fn canonical_order(masks: &[KcpMask]) -> Vec<KcpMask> {
+        let mut ordered: Vec<KcpMask> = masks.to_vec();
+        ordered.sort_by_key(|m| m.sort_priority());
+        ordered
+    }
+
     pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
         if self.is_transport_replacement() {
             if existing.iter().any(|m| m.is_transport_replacement()) {
@@ -2642,6 +2667,99 @@ mod tests {
         assert!(!KcpMask::MkcpOriginal.is_disguise_header());
         assert!(!KcpMask::Salamander { password: "test".to_string() }.is_disguise_header());
         assert!(!KcpMask::Noise.is_disguise_header());
+    }
+
+    #[test]
+    fn test_canonical_order_transport_replacement_first() {
+        let masks = vec![
+            KcpMask::HeaderSrtp,
+            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        assert!(ordered[0].is_xicmp());
+    }
+
+    #[test]
+    fn test_canonical_order_sudoku_last() {
+        let masks = vec![
+            KcpMask::Sudoku { password: "test".to_string() },
+            KcpMask::HeaderSrtp,
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        assert!(ordered.last().unwrap().is_sudoku());
+    }
+
+    #[test]
+    fn test_canonical_order_encryption_after_disguise() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::HeaderSrtp,
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        let enc_pos = ordered.iter().position(|m| m.is_encryption()).unwrap();
+        let dis_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
+        assert!(dis_pos < enc_pos, "disguise header should come before encryption");
+    }
+
+    #[test]
+    fn test_canonical_order_salamander_after_disguise_before_encryption() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::Salamander { password: "test".to_string() },
+            KcpMask::HeaderDns { domain: "example.com".to_string() },
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        let dis_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
+        let sal_pos = ordered.iter().position(|m| matches!(m, KcpMask::Salamander { .. })).unwrap();
+        let enc_pos = ordered.iter().position(|m| m.is_encryption()).unwrap();
+        assert!(dis_pos < sal_pos, "disguise should be before salamander");
+        assert!(sal_pos < enc_pos, "salamander should be before encryption");
+    }
+
+    #[test]
+    fn test_canonical_order_noise_after_transport_before_headers() {
+        let masks = vec![
+            KcpMask::HeaderSrtp,
+            KcpMask::Noise,
+            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        let xicmp_pos = ordered.iter().position(|m| m.is_xicmp()).unwrap();
+        let noise_pos = ordered.iter().position(|m| matches!(m, KcpMask::Noise)).unwrap();
+        let header_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
+        assert!(xicmp_pos < noise_pos, "xicmp should be before noise");
+        assert!(noise_pos < header_pos, "noise should be before disguise header");
+    }
+
+    #[test]
+    fn test_canonical_order_full_stack() {
+        let masks = vec![
+            KcpMask::Sudoku { password: "test".to_string() },
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::HeaderDns { domain: "example.com".to_string() },
+            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+            KcpMask::Noise,
+            KcpMask::Salamander { password: "test".to_string() },
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        assert!(ordered[0].is_xicmp());
+        assert!(matches!(ordered[1], KcpMask::Noise));
+        assert!(ordered[2].is_disguise_header());
+        assert!(matches!(ordered[3], KcpMask::Salamander { .. }));
+        assert!(ordered[4].is_encryption());
+        assert!(ordered[5].is_sudoku());
+    }
+
+    #[test]
+    fn test_canonical_order_simple_stack() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::HeaderSrtp,
+        ];
+        let ordered = KcpMask::canonical_order(&masks);
+        assert!(ordered[0].is_disguise_header());
+        assert!(ordered[1].is_encryption());
     }
 }
 
