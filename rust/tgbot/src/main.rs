@@ -2817,7 +2817,7 @@ d if d.starts_with("u_kcp_ex:") => {
         .text(format!("⏳ 正在生成 {} 个 KCP 配置...", n))
         .await?;
 
-    let res = ConfigManager::batch_create_kcp(n, true, ip_version, dsg_code, dsg_code).await;
+    let res = ConfigManager::batch_create_kcp(n, true, ip_version, &[dsg_code]).await;
 
     match res {
         Ok(result) => {

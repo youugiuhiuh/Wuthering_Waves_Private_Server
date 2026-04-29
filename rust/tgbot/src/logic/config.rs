@@ -594,7 +594,7 @@ impl ConfigManager {
         uuid: &str,
         email: &str,
         ip_version: IpVersion,
-        mask: &KcpMask,
+        masks: &[KcpMask],
     ) -> Value {
         let listen_ip = match ip_version {
             IpVersion::IPv4 | IpVersion::SplitStackV4Primary => "0.0.0.0",
@@ -606,7 +606,7 @@ impl ConfigManager {
             "email": email
         });
 
-        let udp_array = json!([mask.as_json()]);
+        let udp_array: Vec<Value> = masks.iter().map(|m| m.as_json()).collect();
 
         json!({
             "listen": listen_ip,
@@ -646,10 +646,11 @@ impl ConfigManager {
         port: i32,
         email: &str,
         ip_version: IpVersion,
-        mask: &KcpMask,
+        masks: &[KcpMask],
     ) -> String {
+        let udp_array: Vec<Value> = masks.iter().map(|m| m.as_json()).collect();
         let finalmask_json = json!({
-            "udp": [mask.as_json()]
+            "udp": udp_array
         });
         let fm_str = serde_json::to_string(&finalmask_json).unwrap();
         let fm_encoded = utf8_percent_encode(&fm_str, NON_ALPHANUMERIC).to_string();
@@ -670,11 +671,13 @@ impl ConfigManager {
         count: usize,
         standalone: bool,
         ip_version: IpVersion,
-        enc_code: &str,
-        dsg_code: &str,
+        mask_codes: &[&str],
     ) -> Result<BatchCreationResult> {
-        let mask = KcpMask::from_code(enc_code)
-            .ok_or_else(|| anyhow!("Invalid mask code: {}", enc_code))?;
+        let masks = KcpMask::parse_codes(mask_codes)
+            .map_err(|e| anyhow!("{}", e))?;
+
+        let mask_types: Vec<&str> = masks.iter().map(|m| m.type_str()).collect();
+        let mask_label = mask_types.join("+");
 
         let (host, _) = Self::resolve_public_hosts(
             ip_version,
@@ -701,16 +704,16 @@ impl ConfigManager {
             let uuid = Self::generate_wwps_uuid().await?;
             let uuid_short = Self::uuid_short_prefix(&uuid);
 
-let email = format!("{}-vless-kcp-{}-{}", uuid_short, mask.type_str(), mask.type_str());
+let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
         let tag = format!("KCP-{}-{}", i + 1, uuid_short);
 
         let config = Self::build_kcp_inbound(
-            &tag, port, &uuid, &email, ip_version, &mask,
+            &tag, port, &uuid, &email, ip_version, &masks,
         );
         batch_configs.push(config);
 
         let link = Self::generate_kcp_client_link(
-            &uuid, &host, port, &email, ip_version, &mask,
+            &uuid, &host, port, &email, ip_version, &masks,
         );
             links.push(link);
 
@@ -1864,13 +1867,14 @@ mod tests {
 
     #[test]
     fn test_build_kcp_inbound_original_srtp() {
+        let masks = vec![KcpMask::MkcpOriginal];
         let config = ConfigManager::build_kcp_inbound(
             "KCP-TEST",
             34456,
             "test-uuid",
             "test-email",
             IpVersion::IPv4,
-            &KcpMask::MkcpOriginal,
+            &masks,
         );
 
         assert_eq!(config["listen"], "0.0.0.0");
@@ -1895,15 +1899,16 @@ mod tests {
 
     #[test]
     fn test_build_kcp_inbound_aes_wechat() {
+        let masks = vec![KcpMask::MkcpAes128Gcm {
+            password: "secretpass".to_string(),
+        }];
         let config = ConfigManager::build_kcp_inbound(
             "KCP-TEST",
             34456,
             "test-uuid",
             "test-email",
             IpVersion::IPv6,
-            &KcpMask::MkcpAes128Gcm {
-                password: "secretpass".to_string(),
-            },
+            &masks,
         );
 
         assert_eq!(config["listen"], "::");
@@ -1914,15 +1919,16 @@ mod tests {
 
     #[test]
     fn test_build_kcp_inbound_aes_dns() {
+        let masks = vec![KcpMask::MkcpAes128Gcm {
+            password: "mypassword".to_string(),
+        }];
         let config = ConfigManager::build_kcp_inbound(
             "KCP-TEST",
             34456,
             "test-uuid",
             "test-email",
             IpVersion::IPv4,
-            &KcpMask::MkcpAes128Gcm {
-                password: "mypassword".to_string(),
-            },
+            &masks,
         );
 
         let udp = &config["streamSettings"]["finalmask"]["udp"];
@@ -1932,13 +1938,14 @@ mod tests {
 
     #[test]
     fn test_kcp_no_reality_settings() {
+        let masks = vec![KcpMask::MkcpOriginal];
         let config = ConfigManager::build_kcp_inbound(
             "KCP-TEST",
             34456,
             "test-uuid",
             "test-email",
             IpVersion::IPv4,
-            &KcpMask::MkcpOriginal,
+            &masks,
         );
 
         assert!(config["streamSettings"].get("realitySettings").is_none());
@@ -1947,13 +1954,14 @@ mod tests {
 
     #[test]
     fn test_kcp_no_old_fields() {
+        let masks = vec![KcpMask::MkcpOriginal];
         let config = ConfigManager::build_kcp_inbound(
             "KCP-TEST",
             34456,
             "test-uuid",
             "test-email",
             IpVersion::IPv4,
-            &KcpMask::MkcpOriginal,
+            &masks,
         );
 
         let kcp = &config["streamSettings"]["kcpSettings"];
@@ -1964,15 +1972,16 @@ mod tests {
 
     #[test]
     fn test_generate_kcp_client_link_dual_layer() {
+        let masks = vec![KcpMask::MkcpAes128Gcm {
+            password: "testpass".to_string(),
+        }];
         let link = ConfigManager::generate_kcp_client_link(
             "test-uuid",
             "192.168.1.1",
             34456,
             "test-user",
             IpVersion::IPv4,
-            &KcpMask::MkcpAes128Gcm {
-                password: "testpass".to_string(),
-            },
+            &masks,
         );
 
         assert!(link.starts_with("vless://test-uuid@192.168.1.1:34456"));
@@ -1994,13 +2003,14 @@ mod tests {
 
     #[test]
     fn test_generate_kcp_client_link_original_wireguard() {
+        let masks = vec![KcpMask::MkcpOriginal];
         let link = ConfigManager::generate_kcp_client_link(
             "test-uuid",
             "192.168.1.1",
             34456,
             "test-user",
             IpVersion::IPv4,
-            &KcpMask::MkcpOriginal,
+            &masks,
         );
 
         let fm_start = link.find("fm=").unwrap() + 3;
@@ -2009,6 +2019,130 @@ mod tests {
         let fm_decoded = percent_decode_str(fm_encoded).decode_utf8().unwrap();
         let fm_json: Value = serde_json::from_str(&fm_decoded).unwrap();
         assert_eq!(fm_json["udp"][0]["type"], "mkcp-original");
+    }
+
+    #[test]
+    fn test_build_kcp_inbound_masks_slice() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "testpass".into() },
+            KcpMask::HeaderSrtp,
+        ];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::IPv4, &masks,
+        );
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp[0]["type"], "mkcp-aes128gcm");
+        assert_eq!(udp[0]["settings"]["password"], "testpass");
+        assert_eq!(udp[1]["type"], "header-srtp");
+        assert!(udp[1].get("settings").is_none());
+    }
+
+    #[test]
+    fn test_build_kcp_inbound_single_mask() {
+        let masks = vec![KcpMask::MkcpOriginal];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::IPv4, &masks,
+        );
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp.as_array().unwrap().len(), 1);
+        assert_eq!(udp[0]["type"], "mkcp-original");
+    }
+
+    #[test]
+    fn test_build_kcp_inbound_three_masks() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "pw".into() },
+            KcpMask::Noise,
+            KcpMask::HeaderDtls,
+        ];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::IPv6, &masks,
+        );
+        assert_eq!(config["listen"], "::");
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp.as_array().unwrap().len(), 3);
+        assert_eq!(udp[0]["type"], "mkcp-aes128gcm");
+        assert_eq!(udp[1]["type"], "noise");
+        assert_eq!(udp[2]["type"], "header-dtls");
+    }
+
+    #[test]
+    fn test_build_kcp_inbound_split_stack_v4() {
+        let masks = vec![KcpMask::MkcpOriginal];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::SplitStackV4Primary, &masks,
+        );
+        assert_eq!(config["listen"], "0.0.0.0");
+    }
+
+    #[test]
+    fn test_build_kcp_inbound_split_stack_v6() {
+        let masks = vec![KcpMask::MkcpOriginal];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::SplitStackV6Primary, &masks,
+        );
+        assert_eq!(config["listen"], "::");
+    }
+
+    #[test]
+    fn test_generate_kcp_client_link_masks_slice() {
+        let masks = vec![
+            KcpMask::MkcpAes128Gcm { password: "testpass".into() },
+            KcpMask::HeaderDns { domain: "dns.google".into() },
+        ];
+        let link = ConfigManager::generate_kcp_client_link(
+            "test-uuid", "192.168.1.1", 34456, "test-user",
+            IpVersion::IPv4, &masks,
+        );
+        assert!(link.starts_with("vless://test-uuid@192.168.1.1:34456"));
+        assert!(link.contains("type=kcp"));
+        assert!(link.contains("security=none"));
+        assert!(link.contains("fm="));
+
+        let fm_start = link.find("fm=").unwrap() + 3;
+        let fm_end = link.find('#').unwrap();
+        let fm_encoded = &link[fm_start..fm_end];
+        let fm_decoded = percent_decode_str(fm_encoded).decode_utf8().unwrap();
+        let fm_json: Value = serde_json::from_str(&fm_decoded).unwrap();
+        assert_eq!(fm_json["udp"][0]["type"], "mkcp-aes128gcm");
+        assert_eq!(fm_json["udp"][0]["settings"]["password"], "testpass");
+        assert_eq!(fm_json["udp"][1]["type"], "header-dns");
+        assert_eq!(fm_json["udp"][1]["settings"]["domain"], "dns.google");
+    }
+
+    #[test]
+    fn test_generate_kcp_client_link_ipv6() {
+        let masks = vec![KcpMask::MkcpOriginal, KcpMask::HeaderWechat];
+        let link = ConfigManager::generate_kcp_client_link(
+            "test-uuid", "2001:db8::1", 34456, "test-user",
+            IpVersion::IPv6, &masks,
+        );
+        assert!(link.starts_with("vless://test-uuid@[2001:db8::1]:34456"));
+    }
+
+    #[test]
+    fn test_generate_kcp_client_link_split_stack_v4() {
+        let masks = vec![KcpMask::MkcpOriginal];
+        let link = ConfigManager::generate_kcp_client_link(
+            "test-uuid", "1.2.3.4", 34456, "test-user",
+            IpVersion::SplitStackV4Primary, &masks,
+        );
+        assert!(link.starts_with("vless://test-uuid@1.2.3.4:34456"));
+    }
+
+    #[test]
+    fn test_generate_kcp_client_link_split_stack_v6() {
+        let masks = vec![KcpMask::MkcpOriginal];
+        let link = ConfigManager::generate_kcp_client_link(
+            "test-uuid", "2001:db8::1", 34456, "test-user",
+            IpVersion::SplitStackV6Primary, &masks,
+        );
+        assert!(link.starts_with("vless://test-uuid@[2001:db8::1]:34456"));
     }
 }
 
