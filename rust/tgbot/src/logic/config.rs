@@ -423,6 +423,29 @@ impl KcpMask {
         }
     }
 
+    fn sort_priority(&self) -> u8 {
+        match self {
+            KcpMask::Xdns { .. } | KcpMask::Xicmp { .. } => 0,
+            KcpMask::Noise => 10,
+            KcpMask::HeaderDns { .. }
+                | KcpMask::HeaderWechat
+                | KcpMask::HeaderSrtp
+                | KcpMask::HeaderUtp
+                | KcpMask::HeaderDtls
+                | KcpMask::HeaderWireguard
+                | KcpMask::HeaderCustom => 20,
+            KcpMask::Salamander { .. } => 30,
+            KcpMask::MkcpOriginal | KcpMask::MkcpAes128Gcm { .. } => 40,
+            KcpMask::Sudoku { .. } => 50,
+        }
+    }
+
+    pub fn canonical_order(masks: &[KcpMask]) -> Vec<KcpMask> {
+        let mut ordered: Vec<KcpMask> = masks.to_vec();
+        ordered.sort_by_key(|m| m.sort_priority());
+        ordered
+    }
+
     pub fn is_compatible_add(&self, current_stack: &[&KcpMask]) -> Result<(), String> {
         let stack_len = current_stack.len();
 
