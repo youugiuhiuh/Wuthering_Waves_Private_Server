@@ -154,6 +154,39 @@ impl KcpMask {
         }
     }
 
+    pub fn brief(&self) -> &'static str {
+        match self {
+            KcpMask::MkcpOriginal => "轻量级XOR混淆，仅FNV1a校验",
+            KcpMask::MkcpAes128Gcm { .. } => "AES-128-GCM认证加密，推荐首选",
+            KcpMask::Noise => "随机噪声填充，抗流量分析",
+            KcpMask::Salamander { .. } => "蝾螈混淆协议，抗深度包检测",
+            KcpMask::Sudoku { .. } => "数独混淆算法，强度更高",
+            KcpMask::HeaderDns { .. } => "DNS查询流量伪装",
+            KcpMask::HeaderWechat => "微信视频通话流量伪装",
+            KcpMask::HeaderSrtp => "SRTP音视频流媒体伪装",
+            KcpMask::HeaderUtp => "BitTorrent uTP协议伪装",
+            KcpMask::HeaderDtls => "DTLS 1.2加密数据包伪装",
+            KcpMask::HeaderWireguard => "WireGuard VPN流量伪装",
+            KcpMask::Xdns { .. } => "扩展DNS，支持自定义域名和解析器",
+            KcpMask::Xicmp { .. } => "ICMP数据包伪装，极端限制网络适用",
+            KcpMask::HeaderCustom => "自定义UDP头部格式",
+        }
+    }
+
+    pub fn category_code(&self) -> &'static str {
+        match self {
+            KcpMask::MkcpOriginal | KcpMask::MkcpAes128Gcm { .. } => "enc",
+            KcpMask::Noise | KcpMask::Salamander { .. } | KcpMask::Sudoku { .. } => "obf",
+            KcpMask::HeaderDns { .. }
+            | KcpMask::HeaderWechat
+            | KcpMask::HeaderSrtp
+            | KcpMask::HeaderUtp
+            | KcpMask::HeaderDtls
+            | KcpMask::HeaderWireguard => "dis",
+            KcpMask::Xdns { .. } | KcpMask::Xicmp { .. } | KcpMask::HeaderCustom => "ext",
+        }
+    }
+
     pub fn category(&self) -> &'static str {
         match self {
             KcpMask::MkcpOriginal | KcpMask::MkcpAes128Gcm { .. } => "🔐 加密层",
@@ -306,6 +339,23 @@ impl KcpMask {
             masks.push(mask);
         }
         Ok(masks)
+    }
+
+    pub fn variants_by_category(code: &str) -> Vec<Self> {
+        Self::all_variants()
+            .into_iter()
+            .filter(|m| m.category_code() == code)
+            .collect()
+    }
+
+    pub fn category_from_code(code: &str) -> Option<&'static str> {
+        match code {
+            "enc" => Some("🔐 加密层"),
+            "obf" => Some("🌀 混淆层"),
+            "dis" => Some("🎭 伪装层"),
+            "ext" => Some("⚡ 扩展层"),
+            _ => None,
+        }
     }
 }
 
@@ -1863,6 +1913,98 @@ mod tests {
     fn test_kcp_mask_from_code_invalid() {
         assert!(KcpMask::from_code("invalid").is_none());
         assert!(KcpMask::from_code("").is_none());
+    }
+
+    #[test]
+    fn test_kcp_mask_brief_all_variants() {
+        let variants = KcpMask::all_variants();
+        assert_eq!(variants.len(), 14);
+        for m in &variants {
+            let brief = m.brief();
+            assert!(!brief.is_empty(), "brief should not be empty for {:?}", m);
+        }
+    }
+
+    #[test]
+    fn test_kcp_mask_category_code_all_variants() {
+        for m in KcpMask::all_variants() {
+            let code = m.category_code();
+            assert!(
+                code == "enc" || code == "obf" || code == "dis" || code == "ext",
+                "category_code should be enc/obf/dis/ext for {:?}, got {}",
+                m,
+                code
+            );
+        }
+    }
+
+    #[test]
+    fn test_kcp_mask_category_code_unique() {
+        let mut codes: Vec<&str> = KcpMask::all_variants()
+            .iter()
+            .map(|m| m.category_code())
+            .collect();
+        codes.sort();
+        codes.dedup();
+        assert_eq!(codes.len(), 4, "should have exactly 4 unique category codes");
+    }
+
+    #[test]
+    fn test_kcp_mask_category_code_matches_category() {
+        for m in KcpMask::all_variants() {
+            let cat = m.category();
+            let code = m.category_code();
+            match code {
+                "enc" => assert!(cat.contains("加密"), "enc should map to 加密层: {}", cat),
+                "obf" => assert!(cat.contains("混淆"), "obf should map to 混淆层: {}", cat),
+                "dis" => assert!(cat.contains("伪装"), "dis should map to 伪装层: {}", cat),
+                "ext" => assert!(cat.contains("扩展"), "ext should map to 扩展层: {}", cat),
+                _ => panic!("unexpected code: {}", code),
+            }
+        }
+    }
+
+    #[test]
+    fn test_variants_by_category_count() {
+        assert_eq!(KcpMask::variants_by_category("enc").len(), 2);
+        assert_eq!(KcpMask::variants_by_category("obf").len(), 3);
+        assert_eq!(KcpMask::variants_by_category("dis").len(), 6);
+        assert_eq!(KcpMask::variants_by_category("ext").len(), 3);
+    }
+
+    #[test]
+    fn test_variants_by_category_invalid() {
+        assert!(KcpMask::variants_by_category("invalid").is_empty());
+        assert!(KcpMask::variants_by_category("").is_empty());
+    }
+
+    #[test]
+    fn test_category_from_code() {
+        assert_eq!(KcpMask::category_from_code("enc"), Some("🔐 加密层"));
+        assert_eq!(KcpMask::category_from_code("obf"), Some("🌀 混淆层"));
+        assert_eq!(KcpMask::category_from_code("dis"), Some("🎭 伪装层"));
+        assert_eq!(KcpMask::category_from_code("ext"), Some("⚡ 扩展层"));
+        assert_eq!(KcpMask::category_from_code("xx"), None);
+    }
+
+    #[test]
+    fn test_category_from_code_roundtrip() {
+        for code in ["enc", "obf", "dis", "ext"] {
+            let cat = KcpMask::category_from_code(code).unwrap();
+            for m in KcpMask::variants_by_category(code) {
+                assert_eq!(m.category(), cat);
+                assert_eq!(m.category_code(), code);
+            }
+        }
+    }
+
+    #[test]
+    fn test_category_buttons_count_matches_variant_counts() {
+        let enc = KcpMask::variants_by_category("enc").len();
+        let obf = KcpMask::variants_by_category("obf").len();
+        let dis = KcpMask::variants_by_category("dis").len();
+        let ext = KcpMask::variants_by_category("ext").len();
+        assert_eq!(enc + obf + dis + ext, 14, "total variants should be 14");
     }
 
     #[test]
