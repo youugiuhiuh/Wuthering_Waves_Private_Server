@@ -2865,9 +2865,9 @@ d if d.starts_with("u_kcp_mcat:") => {
                         format!("u_kcp_push:{}:{}", existing, code),
                     )]);
                 }
-                Err(_) => {
+                Err(e) => {
                     buttons.push(vec![InlineKeyboardButton::callback(
-                        format!("⛔ {}", mask.display_name()),
+                        format!("⛔ {} ({})", mask.display_name(), e),
                         format!("noop:⛔:{}", code),
                     )]);
                 }
