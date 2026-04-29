@@ -390,6 +390,22 @@ impl KcpMask {
         )
     }
 
+    pub fn is_header_conn(&self) -> bool {
+        matches!(
+            self,
+            KcpMask::MkcpOriginal
+                | KcpMask::MkcpAes128Gcm { .. }
+                | KcpMask::Salamander { .. }
+                | KcpMask::HeaderDns { .. }
+                | KcpMask::HeaderWechat
+                | KcpMask::HeaderSrtp
+                | KcpMask::HeaderUtp
+                | KcpMask::HeaderDtls
+                | KcpMask::HeaderWireguard
+                | KcpMask::HeaderCustom
+        )
+    }
+
     pub fn header_size(&self) -> Option<usize> {
         match self {
             KcpMask::MkcpOriginal => Some(32),
@@ -2555,6 +2571,25 @@ mod tests {
         assert_eq!(masks[0].code(), "mo");
         assert_eq!(masks[1].code(), "no");
         assert_eq!(masks[2].code(), "hw");
+    }
+
+    #[test]
+    fn test_is_header_conn_classification() {
+        assert!(KcpMask::MkcpOriginal.is_header_conn());
+        assert!(KcpMask::MkcpAes128Gcm { password: "test".to_string() }.is_header_conn());
+        assert!(KcpMask::Salamander { password: "test".to_string() }.is_header_conn());
+        assert!(KcpMask::HeaderDns { domain: "example.com".to_string() }.is_header_conn());
+        assert!(KcpMask::HeaderWechat.is_header_conn());
+        assert!(KcpMask::HeaderSrtp.is_header_conn());
+        assert!(KcpMask::HeaderUtp.is_header_conn());
+        assert!(KcpMask::HeaderDtls.is_header_conn());
+        assert!(KcpMask::HeaderWireguard.is_header_conn());
+        assert!(KcpMask::HeaderCustom.is_header_conn());
+
+        assert!(!KcpMask::Noise.is_header_conn());
+        assert!(!KcpMask::Sudoku { password: "test".to_string() }.is_header_conn());
+        assert!(!KcpMask::Xdns { domains: vec![], resolvers: vec![] }.is_header_conn());
+        assert!(!KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 }.is_header_conn());
     }
 }
 
