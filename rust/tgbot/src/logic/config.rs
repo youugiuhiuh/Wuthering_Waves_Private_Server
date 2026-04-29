@@ -387,6 +387,7 @@ impl KcpMask {
                 | KcpMask::HeaderUtp
                 | KcpMask::HeaderDtls
                 | KcpMask::HeaderWireguard
+                | KcpMask::HeaderCustom
         )
     }
 
@@ -2590,6 +2591,21 @@ mod tests {
         assert!(!KcpMask::Sudoku { password: "test".to_string() }.is_header_conn());
         assert!(!KcpMask::Xdns { domains: vec![], resolvers: vec![] }.is_header_conn());
         assert!(!KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 }.is_header_conn());
+    }
+
+    #[test]
+    fn test_is_disguise_header_includes_custom() {
+        assert!(KcpMask::HeaderCustom.is_disguise_header());
+        assert!(KcpMask::HeaderDns { domain: "example.com".to_string() }.is_disguise_header());
+        assert!(KcpMask::HeaderWechat.is_disguise_header());
+        assert!(KcpMask::HeaderSrtp.is_disguise_header());
+        assert!(KcpMask::HeaderUtp.is_disguise_header());
+        assert!(KcpMask::HeaderDtls.is_disguise_header());
+        assert!(KcpMask::HeaderWireguard.is_disguise_header());
+
+        assert!(!KcpMask::MkcpOriginal.is_disguise_header());
+        assert!(!KcpMask::Salamander { password: "test".to_string() }.is_disguise_header());
+        assert!(!KcpMask::Noise.is_disguise_header());
     }
 }
 
