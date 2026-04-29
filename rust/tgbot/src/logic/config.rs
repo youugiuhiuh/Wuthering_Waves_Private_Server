@@ -2144,6 +2144,125 @@ mod tests {
         );
         assert!(link.starts_with("vless://test-uuid@[2001:db8::1]:34456"));
     }
+
+    #[test]
+    fn test_kcp_mask_noise_json() {
+        let masks = vec![KcpMask::MkcpOriginal, KcpMask::Noise];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::IPv4, &masks,
+        );
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp[0]["type"], "mkcp-original");
+        assert_eq!(udp[1]["type"], "noise");
+        assert!(udp[1].get("settings").is_none());
+    }
+
+    #[test]
+    fn test_kcp_mask_salamander_json() {
+        let masks = vec![KcpMask::Salamander { password: "salpass".into() }];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::IPv4, &masks,
+        );
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp[0]["type"], "salamander");
+        assert_eq!(udp[0]["settings"]["password"], "salpass");
+    }
+
+    #[test]
+    fn test_kcp_mask_sudoku_json() {
+        let masks = vec![KcpMask::Sudoku { password: "sudpass".into() }];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::IPv4, &masks,
+        );
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp[0]["type"], "sudoku");
+        assert_eq!(udp[0]["settings"]["password"], "sudpass");
+    }
+
+    #[test]
+    fn test_kcp_mask_xdns_json() {
+        let masks = vec![KcpMask::Xdns {
+            domains: vec!["dns.google".into(), "cloudflare.com".into()],
+            resolvers: vec!["+udp://8.8.8.8".into()],
+        }];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::IPv4, &masks,
+        );
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp[0]["type"], "xdns");
+        assert_eq!(udp[0]["settings"]["domains"][0], "dns.google");
+        assert_eq!(udp[0]["settings"]["domains"][1], "cloudflare.com");
+        assert_eq!(udp[0]["settings"]["resolvers"][0], "+udp://8.8.8.8");
+    }
+
+    #[test]
+    fn test_kcp_mask_xicmp_json() {
+        let masks = vec![KcpMask::Xicmp { listen_ip: "0.0.0.0".into(), id: 99999 }];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::IPv4, &masks,
+        );
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp[0]["type"], "xicmp");
+        assert_eq!(udp[0]["settings"]["listenIp"], "0.0.0.0");
+        assert_eq!(udp[0]["settings"]["id"], 99999);
+    }
+
+    #[test]
+    fn test_kcp_mask_header_custom_json() {
+        let masks = vec![KcpMask::HeaderCustom];
+        let config = ConfigManager::build_kcp_inbound(
+            "KCP-TEST", 34456, "test-uuid", "test-email",
+            IpVersion::IPv4, &masks,
+        );
+        let udp = &config["streamSettings"]["finalmask"]["udp"];
+        assert_eq!(udp[0]["type"], "header-custom");
+        assert!(udp[0].get("settings").is_none());
+    }
+
+    #[test]
+    fn test_kcp_client_link_with_noise_and_salamander() {
+        let masks = vec![KcpMask::Noise, KcpMask::Salamander { password: "salpw".into() }];
+        let link = ConfigManager::generate_kcp_client_link(
+            "test-uuid", "1.2.3.4", 443, "test-user",
+            IpVersion::IPv4, &masks,
+        );
+        let fm_start = link.find("fm=").unwrap() + 3;
+        let fm_end = link.find('#').unwrap();
+        let fm_encoded = &link[fm_start..fm_end];
+        let fm_decoded = percent_decode_str(fm_encoded).decode_utf8().unwrap();
+        let fm_json: Value = serde_json::from_str(&fm_decoded).unwrap();
+        assert_eq!(fm_json["udp"][0]["type"], "noise");
+        assert_eq!(fm_json["udp"][1]["type"], "salamander");
+        assert_eq!(fm_json["udp"][1]["settings"]["password"], "salpw");
+    }
+
+    #[test]
+    fn test_kcp_parse_codes_valid() {
+        let masks = KcpMask::parse_codes(&["ma", "hd"]).unwrap();
+        assert_eq!(masks.len(), 2);
+        assert_eq!(masks[0].code(), "ma");
+        assert_eq!(masks[1].code(), "hd");
+    }
+
+    #[test]
+    fn test_kcp_parse_codes_invalid() {
+        let result = KcpMask::parse_codes(&["ma", "invalid"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_kcp_parse_codes_three_masks() {
+        let masks = KcpMask::parse_codes(&["mo", "no", "hw"]).unwrap();
+        assert_eq!(masks.len(), 3);
+        assert_eq!(masks[0].code(), "mo");
+        assert_eq!(masks[1].code(), "no");
+        assert_eq!(masks[2].code(), "hw");
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
