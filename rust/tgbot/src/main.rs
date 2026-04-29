@@ -2774,9 +2774,14 @@ d if d.starts_with("u_kcp_more:") => {
         }).count();
         let remaining = total - added_count;
 
-        if stack_full || (has_sudoku && stack_len > 0) {
+        if stack_full {
             buttons.push(vec![InlineKeyboardButton::callback(
                 format!("⛔ {} (已达上限)", name),
+                "noop",
+            )]);
+        } else if has_sudoku && stack_len > 0 {
+            buttons.push(vec![InlineKeyboardButton::callback(
+                format!("⛔ {} (Sudoku已添加)", name),
                 "noop",
             )]);
         } else if remaining > 0 {
