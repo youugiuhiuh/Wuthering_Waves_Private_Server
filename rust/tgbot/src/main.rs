@@ -2707,7 +2707,7 @@ d if d.starts_with("u_kcp_cat:") => {
 d if d.starts_with("u_kcp_add:") => {
     let code = d.strip_prefix("u_kcp_add:").unwrap_or("mo");
     if let Some(m) = KcpMask::from_code(code) {
-        if let Err(e) = KcpMask::validate_stack(&[m.clone()]) {
+        if let Err(e) = m.is_compatible_with(&[]) {
             bot.answer_callback_query(q.id.clone())
                 .text(format!("❌ {}", e))
                 .await?;
@@ -2861,7 +2861,7 @@ d if d.starts_with("u_kcp_mcat:") => {
                 "noop",
             )]);
         } else {
-            match mask.is_compatible_add(&current_mask_refs) {
+            match mask.is_compatible_with(&current_masks) {
                 Ok(()) => {
                     buttons.push(vec![InlineKeyboardButton::callback(
                         format!("✅ {}", mask.display_name()),
@@ -2947,7 +2947,7 @@ d if d.starts_with("u_kcp_push:") => {
         }
     };
 
-    if let Err(e) = new_mask.is_compatible_add(&current_mask_refs) {
+    if let Err(e) = new_mask.is_compatible_with(&current_masks) {
         bot.answer_callback_query(q.id.clone())
             .text(format!("❌ {}", e))
             .await?;
