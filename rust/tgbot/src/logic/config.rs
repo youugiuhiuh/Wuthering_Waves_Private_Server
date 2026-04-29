@@ -2784,6 +2784,20 @@ mod kcp_mask_validation_tests {
         }
         assert!(result.is_ok(), "validate_stack should pass for full valid stack");
     }
+
+    #[test]
+    fn test_validate_stack_max_layers() {
+        let masks = vec![
+            KcpMask::Xdns { domains: vec![], resolvers: vec![] },
+            KcpMask::Noise,
+            KcpMask::HeaderSrtp,
+            KcpMask::Salamander { password: "test".into() },
+            KcpMask::MkcpAes128Gcm { password: "test".into() },
+            KcpMask::Sudoku { password: "test".into() },
+        ];
+        let result = KcpMask::validate_stack(&masks);
+        assert!(result.is_err() || masks.len() <= 5);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
