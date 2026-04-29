@@ -2758,6 +2758,8 @@ d if d.starts_with("u_kcp_more:") => {
 
     let has_sudoku = current_masks.iter().any(|m| m.is_sudoku());
     let has_encryption = current_masks.iter().any(|m| m.is_encryption());
+    let has_transport_replacement = current_masks.iter().any(|m| m.is_transport_replacement());
+    let has_disguise_header = current_masks.iter().any(|m| m.is_disguise_header());
     let stack_len = current_masks.len();
     let stack_full = stack_len >= 5;
 
@@ -2779,9 +2781,19 @@ d if d.starts_with("u_kcp_more:") => {
                 format!("⛔ {} (已达上限)", name),
                 "noop",
             )]);
-        } else if has_sudoku && stack_len > 0 {
+        } else if *code == "enc" && has_encryption {
             buttons.push(vec![InlineKeyboardButton::callback(
-                format!("⛔ {} (Sudoku已添加)", name),
+                format!("⛔ {} (已添加)", name),
+                "noop",
+            )]);
+        } else if *code == "obf" && has_sudoku {
+            buttons.push(vec![InlineKeyboardButton::callback(
+                format!("⛔ {} (数独已添加)", name),
+                "noop",
+            )]);
+        } else if *code == "dis" && has_disguise_header {
+            buttons.push(vec![InlineKeyboardButton::callback(
+                format!("⛔ {} (伪装头已存在)", name),
                 "noop",
             )]);
         } else if remaining > 0 {
