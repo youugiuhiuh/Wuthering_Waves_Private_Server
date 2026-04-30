@@ -603,6 +603,26 @@ impl ConfigManager {
         Ok(out)
     }
 
+    pub async fn list_inbound_files_by_proto(proto: Proto) -> Result<Vec<String>> {
+        let all = Self::list_all_inbound_files().await?;
+        let prefix = match proto {
+            Proto::Vision => "batch_reality",
+            Proto::XHTTP => "batch_xhttp",
+            Proto::Kcp => "batch_kcp",
+        };
+        let filtered: Vec<String> = all
+            .into_iter()
+            .filter(|p| {
+                if let Some(name) = p.split('/').next_back() {
+                    name.starts_with(prefix)
+                } else {
+                    false
+                }
+            })
+            .collect();
+        Ok(filtered)
+    }
+
     /// 是否已配置 ML-DSA-65（Reality PQ）：seed 或 verify 的环境变量/文件存在即视为已配置。
     pub fn is_reality_pq_configured() -> bool {
         if std::env::var("TGBOT_REALITY_PQ_SEED")
