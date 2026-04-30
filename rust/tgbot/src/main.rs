@@ -3012,6 +3012,7 @@ d if d.starts_with("u_kcp_done:") => {
         return Ok(());
     }
 
+    let warnings = KcpMask::get_stack_warnings(&ordered);
     let stack_display: Vec<String> = ordered.iter().map(|m| {
         format!("{}", m.display_name())
     }).collect();
@@ -3049,14 +3050,21 @@ d if d.starts_with("u_kcp_done:") => {
         format!("u_kcp_more:{}", mask_codes_str),
     )]);
 
+    let warning_text = if warnings.is_empty() {
+        String::new()
+    } else {
+        format!("\n\n{}", warnings.join("\n"))
+    };
+
     bot.edit_message_text(
         chat_id,
         msg_id,
         format!(
             "🚀 <b>KCP 配置</b>\n\n\
-             📋 <b>遮罩栈 (外层→内层):</b>\n{}\n\n\
+             📋 <b>遮罩栈 (外层→内层):</b>\n{}{}\n\n\
              ⬇️ <b>请选择网络协议版本:</b>",
-            stack_display.join(" → ")
+            stack_display.join(" → "),
+            warning_text
         ),
     )
     .parse_mode(ParseMode::Html)

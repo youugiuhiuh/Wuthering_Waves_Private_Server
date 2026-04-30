@@ -525,6 +525,14 @@ impl KcpMask {
         }
         Ok(())
     }
+
+    pub fn get_stack_warnings(masks: &[KcpMask]) -> Vec<String> {
+        let mut warnings = Vec::new();
+        if masks.len() == 1 && matches!(masks[0], KcpMask::MkcpOriginal) {
+            warnings.push("⚠️ mKCP Original 单独使用安全性低，建议配合伪装层使用".to_string());
+        }
+        warnings
+    }
 }
 
 #[derive(Debug, Clone)]
