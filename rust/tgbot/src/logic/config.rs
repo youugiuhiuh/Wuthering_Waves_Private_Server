@@ -462,10 +462,6 @@ impl KcpMask {
     }
 
     pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
-        if self.is_xicmp() && !existing.is_empty() {
-            return Err("XICMP必须是最外层(最后添加的遮罩)".to_string());
-        }
-
         if self.is_transport_replacement() {
             if existing.iter().any(|m| m.is_transport_replacement()) {
                 let name = if self.is_xdns() { "XDNS" } else { "XICMP" };
@@ -490,10 +486,6 @@ impl KcpMask {
             return Err(format!("重复的{}", self.display_name()));
         }
 
-        if matches!(self, KcpMask::MkcpOriginal) && existing.is_empty() {
-            return Err("mKCP Original单独使用安全性低，建议配合伪装层使用".to_string());
-        }
-
         let total_header: usize = existing.iter()
             .filter_map(|m| m.header_size())
             .sum::<usize>()
@@ -514,11 +506,6 @@ impl KcpMask {
         if masks.is_empty() {
             return Err("请至少选择1层遮罩".to_string());
         }
-        if masks.iter().any(|m| m.is_xicmp()) {
-            if !masks.last().map(|m| m.is_xicmp()).unwrap_or(false) {
-                return Err("XICMP必须是最外层(最后添加的遮罩)".to_string());
-            }
-        }
         if masks.iter().any(|m| m.is_xdns()) && masks.iter().any(|m| m.is_xicmp()) {
             return Err("XDNS和XICMP不能同时使用".to_string());
         }
@@ -527,21 +514,6 @@ impl KcpMask {
         }
         if masks.iter().filter(|m| m.is_sudoku()).count() > 1 {
             return Err("重复的Sudoku".to_string());
-        }
-        if masks.iter().any(|m| m.is_sudoku()) {
-            if !masks.last().map(|m| m.is_sudoku()).unwrap_or(false) {
-                return Err("Sudoku必须是最后一层(最内侧)".to_string());
-            }
-        }
-        if let Some(enc_idx) = masks.iter().position(|m| m.is_encryption()) {
-            for m in &masks[enc_idx + 1..] {
-                if m.is_disguise_header() || matches!(m, KcpMask::Salamander { .. }) {
-                    return Err("加密层之后不能有伪装/混淆层(加密层应紧贴数据)".to_string());
-                }
-            }
-        }
-        if masks.len() == 1 && matches!(masks[0], KcpMask::MkcpOriginal) {
-            return Err("mKCP Original单独使用安全性低，建议配合伪装层使用".to_string());
         }
         let total_header: usize = masks.iter().filter_map(|m| m.header_size()).sum();
         let sudoku_reserve = if masks.iter().any(|m| m.is_sudoku()) { 2400 } else { 0 };
@@ -2776,13 +2748,6 @@ mod tests {
     }
 
     #[test]
-    fn test_compatible_with_xicmp_not_first() {
-        let existing = vec![KcpMask::HeaderSrtp];
-        let xicmp = KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 };
-        assert!(xicmp.is_compatible_with(&existing).is_err());
-    }
-
-    #[test]
     fn test_validate_stack_xdns_not_enforced_first() {
         let masks = vec![
             KcpMask::HeaderSrtp,
@@ -2849,38 +2814,11 @@ mod tests {
     #[test]
     fn test_compatible_with_mkcp_original_alone() {
         let alone = KcpMask::MkcpOriginal;
-        assert!(alone.is_compatible_with(&[]).is_err());
+        assert!(alone.is_compatible_with(&[]).is_ok());
 
         let with_header = KcpMask::MkcpOriginal;
         let existing = vec![KcpMask::HeaderSrtp];
         assert!(with_header.is_compatible_with(&existing).is_ok());
-    }
-
-    #[test]
-    fn test_validate_stack_xicmp_must_be_last() {
-        let masks = vec![
-            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
-            KcpMask::HeaderSrtp,
-        ];
-        assert!(KcpMask::validate_stack(&masks).is_err(), "xicmp must be last (outermost)");
-    }
-
-    #[test]
-    fn test_validate_stack_sudoku_not_last() {
-        let masks = vec![
-            KcpMask::Sudoku { password: "test".to_string() },
-            KcpMask::HeaderSrtp,
-        ];
-        assert!(KcpMask::validate_stack(&masks).is_err());
-    }
-
-    #[test]
-    fn test_validate_stack_encryption_before_disguise() {
-        let masks = vec![
-            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
-            KcpMask::HeaderSrtp,
-        ];
-        assert!(KcpMask::validate_stack(&masks).is_err());
     }
 
     #[test]
