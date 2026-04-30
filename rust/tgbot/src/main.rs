@@ -2790,7 +2790,7 @@ d if d.starts_with("u_kcp_more:") => {
             buttons.last_mut().unwrap().push(
                 InlineKeyboardButton::callback(
                     format!("{} ({})", name, remaining),
-                    format!("u_kcp_mcat:{},{}", existing, code),
+                    format!("u_kcp_mcat:{}:{}", existing, code),
                 )
             );
         } else {
@@ -2826,7 +2826,7 @@ d if d.starts_with("u_kcp_more:") => {
 }
 d if d.starts_with("u_kcp_mcat:") => {
     let data = d.strip_prefix("u_kcp_mcat:").unwrap_or("");
-    let parts: Vec<&str> = data.splitn(2, ',').collect();
+    let parts: Vec<&str> = data.splitn(2, ':').collect();
     if parts.len() != 2 {
         return Ok(());
     }
