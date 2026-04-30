@@ -438,20 +438,20 @@ impl KcpMask {
 
     fn sort_priority(&self) -> u8 {
         match self {
-            KcpMask::Xicmp { .. } => 0,
-            KcpMask::Xdns { .. } => 1,
-            KcpMask::Noise => 10,
+            KcpMask::Sudoku { .. } => 0,
+            KcpMask::MkcpOriginal
+            | KcpMask::MkcpAes128Gcm { .. } => 10,
+            KcpMask::Salamander { .. } => 20,
             KcpMask::HeaderDns { .. }
             | KcpMask::HeaderWechat
             | KcpMask::HeaderSrtp
             | KcpMask::HeaderUtp
             | KcpMask::HeaderDtls
             | KcpMask::HeaderWireguard
-            | KcpMask::HeaderCustom => 20,
-            KcpMask::Salamander { .. } => 30,
-            KcpMask::MkcpOriginal
-            | KcpMask::MkcpAes128Gcm { .. } => 40,
-            KcpMask::Sudoku { .. } => 50,
+            | KcpMask::HeaderCustom => 30,
+            KcpMask::Noise => 40,
+            KcpMask::Xdns { .. } => 50,
+            KcpMask::Xicmp { .. } => 60,
         }
     }
 
