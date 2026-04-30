@@ -463,7 +463,7 @@ impl KcpMask {
 
     pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
         if self.is_xicmp() && !existing.is_empty() {
-            return Err("XICMP必须是最外层(第一个添加的遮罩)".to_string());
+            return Err("XICMP必须是最外层(最后添加的遮罩)".to_string());
         }
 
         if self.is_transport_replacement() {
@@ -515,8 +515,8 @@ impl KcpMask {
             return Err("请至少选择1层遮罩".to_string());
         }
         if masks.iter().any(|m| m.is_xicmp()) {
-            if !masks.first().map(|m| m.is_xicmp()).unwrap_or(false) {
-                return Err("XICMP必须是最外层(第一个添加的遮罩)".to_string());
+            if !masks.last().map(|m| m.is_xicmp()).unwrap_or(false) {
+                return Err("XICMP必须是最外层(最后添加的遮罩)".to_string());
             }
         }
         if masks.iter().any(|m| m.is_xdns()) && masks.iter().any(|m| m.is_xicmp()) {
@@ -601,6 +601,26 @@ impl ConfigManager {
         }
         
         Ok(out)
+    }
+
+    pub async fn list_inbound_files_by_proto(proto: Proto) -> Result<Vec<String>> {
+        let all = Self::list_all_inbound_files().await?;
+        let prefix = match proto {
+            Proto::Vision => "batch_reality",
+            Proto::XHTTP => "batch_xhttp",
+            Proto::Kcp => "batch_kcp",
+        };
+        let filtered: Vec<String> = all
+            .into_iter()
+            .filter(|p| {
+                if let Some(name) = p.split('/').next_back() {
+                    name.starts_with(prefix)
+                } else {
+                    false
+                }
+            })
+            .collect();
+        Ok(filtered)
     }
 
     /// 是否已配置 ML-DSA-65（Reality PQ）：seed 或 verify 的环境变量/文件存在即视为已配置。
@@ -865,6 +885,10 @@ impl ConfigManager {
             },
             "streamSettings": {
                 "network": "kcp",
+                "security": "none",
+                "finalmask": {
+                    "udp": udp_array
+                },
                 "kcpSettings": {
                     "mtu": 1350,
                     "tti": 50,
@@ -872,10 +896,6 @@ impl ConfigManager {
                     "downlinkCapacity": 20,
                     "cwndMultiplier": 1,
                     "maxSendingWindow": 2097152
-                },
-                "security": "none",
-                "finalmask": {
-                    "udp": udp_array
                 }
             },
             "sniffing": {
@@ -2663,28 +2683,28 @@ mod tests {
     }
 
     #[test]
-    fn test_canonical_order_transport_replacement_first() {
+    fn test_canonical_order_transport_replacement_last() {
         let masks = vec![
             KcpMask::HeaderSrtp,
             KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
         ];
         let ordered = KcpMask::canonical_order(&masks);
-        assert!(ordered[0].is_xicmp());
+        assert!(ordered.last().unwrap().is_xicmp());
     }
 
     #[test]
-    fn test_canonical_order_sudoku_last() {
+    fn test_canonical_order_sudoku_first() {
         let masks = vec![
             KcpMask::Sudoku { password: "test".to_string() },
             KcpMask::HeaderSrtp,
             KcpMask::MkcpAes128Gcm { password: "test".to_string() },
         ];
         let ordered = KcpMask::canonical_order(&masks);
-        assert!(ordered.last().unwrap().is_sudoku());
+        assert!(ordered[0].is_sudoku());
     }
 
     #[test]
-    fn test_canonical_order_encryption_after_disguise() {
+    fn test_canonical_order_encryption_before_disguise() {
         let masks = vec![
             KcpMask::MkcpAes128Gcm { password: "test".to_string() },
             KcpMask::HeaderSrtp,
@@ -2692,37 +2712,37 @@ mod tests {
         let ordered = KcpMask::canonical_order(&masks);
         let enc_pos = ordered.iter().position(|m| m.is_encryption()).unwrap();
         let dis_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
-        assert!(dis_pos < enc_pos, "disguise header should come before encryption");
+        assert!(enc_pos < dis_pos, "encryption should come before disguise header (innermost)");
     }
 
     #[test]
-    fn test_canonical_order_salamander_after_disguise_before_encryption() {
+    fn test_canonical_order_salamander_before_disguise_after_encryption() {
         let masks = vec![
             KcpMask::MkcpAes128Gcm { password: "test".to_string() },
             KcpMask::Salamander { password: "test".to_string() },
             KcpMask::HeaderDns { domain: "example.com".to_string() },
         ];
         let ordered = KcpMask::canonical_order(&masks);
-        let dis_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
-        let sal_pos = ordered.iter().position(|m| matches!(m, KcpMask::Salamander { .. })).unwrap();
         let enc_pos = ordered.iter().position(|m| m.is_encryption()).unwrap();
-        assert!(dis_pos < sal_pos, "disguise should be before salamander");
-        assert!(sal_pos < enc_pos, "salamander should be before encryption");
+        let sal_pos = ordered.iter().position(|m| matches!(m, KcpMask::Salamander { .. })).unwrap();
+        let dis_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
+        assert!(enc_pos < sal_pos, "encryption should be innermost (before salamander)");
+        assert!(sal_pos < dis_pos, "salamander should be before disguise header (outermost)");
     }
 
     #[test]
-    fn test_canonical_order_noise_after_transport_before_headers() {
+    fn test_canonical_order_noise_before_transport_after_headers() {
         let masks = vec![
             KcpMask::HeaderSrtp,
             KcpMask::Noise,
             KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
         ];
         let ordered = KcpMask::canonical_order(&masks);
-        let xicmp_pos = ordered.iter().position(|m| m.is_xicmp()).unwrap();
-        let noise_pos = ordered.iter().position(|m| matches!(m, KcpMask::Noise)).unwrap();
         let header_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
-        assert!(xicmp_pos < noise_pos, "xicmp should be before noise");
-        assert!(noise_pos < header_pos, "noise should be before disguise header");
+        let noise_pos = ordered.iter().position(|m| matches!(m, KcpMask::Noise)).unwrap();
+        let xicmp_pos = ordered.iter().position(|m| m.is_xicmp()).unwrap();
+        assert!(header_pos < noise_pos, "disguise header should be innermost (before noise)");
+        assert!(noise_pos < xicmp_pos, "noise should be before xicmp (outermost)");
     }
 
     #[test]
@@ -2736,12 +2756,12 @@ mod tests {
             KcpMask::Salamander { password: "test".to_string() },
         ];
         let ordered = KcpMask::canonical_order(&masks);
-        assert!(ordered[0].is_xicmp());
-        assert!(matches!(ordered[1], KcpMask::Noise));
-        assert!(ordered[2].is_disguise_header());
-        assert!(matches!(ordered[3], KcpMask::Salamander { .. }));
-        assert!(ordered[4].is_encryption());
-        assert!(ordered[5].is_sudoku());
+        assert!(ordered[0].is_sudoku(), "sudoku innermost (first)");
+        assert!(ordered[1].is_encryption(), "mKCP second");
+        assert!(matches!(ordered[2], KcpMask::Salamander { .. }), "salamander third");
+        assert!(ordered[3].is_disguise_header(), "headers fourth");
+        assert!(matches!(ordered[4], KcpMask::Noise), "noise fifth");
+        assert!(ordered[5].is_xicmp(), "xicmp outermost (last)");
     }
 
     #[test]
@@ -2751,8 +2771,8 @@ mod tests {
             KcpMask::HeaderSrtp,
         ];
         let ordered = KcpMask::canonical_order(&masks);
-        assert!(ordered[0].is_disguise_header());
-        assert!(ordered[1].is_encryption());
+        assert!(ordered[0].is_encryption(), "encryption innermost (first)");
+        assert!(ordered[1].is_disguise_header(), "disguise outermost (second)");
     }
 
     #[test]
@@ -2837,12 +2857,12 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_stack_xicmp_not_first() {
+    fn test_validate_stack_xicmp_must_be_last() {
         let masks = vec![
-            KcpMask::HeaderSrtp,
             KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+            KcpMask::HeaderSrtp,
         ];
-        assert!(KcpMask::validate_stack(&masks).is_err());
+        assert!(KcpMask::validate_stack(&masks).is_err(), "xicmp must be last (outermost)");
     }
 
     #[test]
