@@ -865,6 +865,10 @@ impl ConfigManager {
             },
             "streamSettings": {
                 "network": "kcp",
+                "security": "none",
+                "finalmask": {
+                    "udp": udp_array
+                },
                 "kcpSettings": {
                     "mtu": 1350,
                     "tti": 50,
@@ -872,10 +876,6 @@ impl ConfigManager {
                     "downlinkCapacity": 20,
                     "cwndMultiplier": 1,
                     "maxSendingWindow": 2097152
-                },
-                "security": "none",
-                "finalmask": {
-                    "udp": udp_array
                 }
             },
             "sniffing": {
