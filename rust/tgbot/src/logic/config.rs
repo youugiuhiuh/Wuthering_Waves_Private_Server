@@ -574,6 +574,7 @@ impl ConfigManager {
             while let Ok(Some(entry)) = rd.next_entry().await {
                 if let Some(name) = entry.file_name().to_str()
                     && name.ends_with("_inbounds.json")
+                    && !name.starts_with("00_")
                 {
                     out.push(entry.path().to_string_lossy().to_string());
                 }
