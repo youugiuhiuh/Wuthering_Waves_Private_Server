@@ -1697,7 +1697,9 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
 
         let content = serde_json::to_string_pretty(&base_config)
             .context("序列化基础配置失败")?;
-        tokio::fs::write(&base_path, content).await?;
+        tokio::fs::write(&base_path, content)
+            .await
+            .context("写入基础配置失败")?;
 
         log::info!("已创建 wwps-core 基础配置: {}", base_path);
         Ok(())
