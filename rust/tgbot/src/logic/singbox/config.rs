@@ -583,36 +583,11 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
 
         let config_path = format!("{}/{}", singbox::CONF_DIR, filename);
 
-        let dns_servers = json!([
-            {"tag": "dns", "type": "udp", "server": "8.8.8.8", "domain_resolver": "local"},
-            {"tag": "local", "type": "local"}
-        ]);
-
-        let full_config = json!({
-            "log": {
-                "level": "warning",
-                "output": "/var/log/wwps-box.log"
-            },
-            "dns": {
-                "servers": dns_servers
-            },
-            "route": {
-                "default_domain_resolver": "dns"
-            },
-            "inbounds": configs,
-            "outbounds": [
-                {
-                    "type": "direct",
-                    "tag": "direct"
-                },
-                {
-                    "type": "block",
-                    "tag": "block"
-                }
-            ]
+        let inbound_only_config = json!({
+            "inbounds": configs
         });
 
-        let content = serde_json::to_string_pretty(&full_config)?;
+        let content = serde_json::to_string_pretty(&inbound_only_config)?;
         fs::write(&config_path, content).await?;
 
         Ok((filename, config_path))
