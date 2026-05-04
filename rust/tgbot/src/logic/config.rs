@@ -1654,6 +1654,54 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
             .collect();
         Self::update_warp_routing_rules(new_rules, mode).await
     }
+
+    pub async fn ensure_base_config() -> Result<()> {
+        use crate::core::paths::xray;
+
+        let base_path = format!("{}/00_base.json", xray::CONF_DIR);
+
+        let exists = match tokio::fs::try_exists(&base_path).await {
+            Ok(true) => true,
+            Ok(false) => false,
+            Err(e) => {
+                log::warn!("检查基础配置存在性失败: {}", e);
+                false
+            }
+        };
+        if exists {
+            return Ok(());
+        }
+
+        tokio::fs::create_dir_all(xray::CONF_DIR)
+            .await
+            .context("创建配置目录失败")?;
+
+        let base_config = serde_json::json!({
+            "log": {"loglevel": "warning"},
+            "dns": {
+                "servers": ["https+local://1.1.1.1/dns-query", "https+local://8.8.8.8/dns-query"],
+                "tag": "dns"
+            },
+            "routing": {
+                "domainStrategy": "IPIfNonMatch",
+                "rules": [
+                    {"type": "field", "protocol": ["bittorrent"], "outboundTag": "blocked"},
+                    {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"}
+                ]
+            },
+            "outbounds": [
+                {"protocol": "freedom", "settings": {}, "tag": "direct"},
+                {"protocol": "blackhole", "settings": {}, "tag": "blocked"}
+            ]
+        });
+
+        let content = serde_json::to_string_pretty(&base_config)
+            .context("序列化基础配置失败")?;
+        tokio::fs::write(&base_path, content).await?;
+
+        log::info!("已创建 wwps-core 基础配置: {}", base_path);
+        Ok(())
+    }
 }
 
 async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
@@ -2835,6 +2883,35 @@ mod tests {
             .map(|_| KcpMask::HeaderDns { domain: "sub.domain.example.com".to_string() })
             .collect();
         assert!(KcpMask::validate_stack(&masks).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_ensure_base_config_structure() {
+        let base_config = serde_json::json!({
+            "log": {"loglevel": "warning"},
+            "dns": {
+                "servers": ["https+local://1.1.1.1/dns-query", "https+local://8.8.8.8/dns-query"],
+                "tag": "dns"
+            },
+            "routing": {
+                "domainStrategy": "IPIfNonMatch",
+                "rules": [
+                    {"type": "field", "protocol": ["bittorrent"], "outboundTag": "blocked"},
+                    {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"}
+                ]
+            },
+            "outbounds": [
+                {"protocol": "freedom", "settings": {}, "tag": "direct"},
+                {"protocol": "blackhole", "settings": {}, "tag": "blocked"}
+            ]
+        });
+
+        assert!(base_config.get("log").is_some());
+        assert!(base_config.get("dns").is_some());
+        assert!(base_config.get("routing").is_some());
+        assert!(base_config.get("outbounds").is_some());
+        let rules = base_config["routing"]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 2);
     }
 }
 
