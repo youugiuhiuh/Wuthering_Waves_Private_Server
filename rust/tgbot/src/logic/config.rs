@@ -1326,8 +1326,11 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
         });
 
         // 保存文件
-        let content = serde_json::to_string_pretty(&config)?;
-        fs::write(&config_path, content).await?;
+        let content = serde_json::to_string_pretty(&config)
+            .context("序列化配置失败")?;
+        fs::write(&config_path, content)
+            .await
+            .context("写入配置文件失败")?;
         crate::logic::maintenance::MaintenanceManager::reload_core().await?;
 
         Ok(BatchCreationResult {
@@ -2822,7 +2825,6 @@ mod tests {
             "routing": {
                 "domainStrategy": "IPIfNonMatch",
                 "rules": [
-                    {"type": "field", "protocol": ["bittorrent"], "outboundTag": "blocked"},
                     {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"}
                 ]
             },
@@ -2837,7 +2839,7 @@ mod tests {
         assert!(base_config.get("routing").is_some());
         assert!(base_config.get("outbounds").is_some());
         let rules = base_config["routing"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 2);
+        assert_eq!(rules.len(), 1);
     }
 }
 
