@@ -14,6 +14,19 @@ impl SingBoxInstaller {
     }
 
     pub async fn install() -> Result<()> {
+        let old_service_path = "/etc/systemd/system/sing-box.service";
+        if tokio::fs::try_exists(old_service_path).await.unwrap_or(false) {
+            let _ = tokio::process::Command::new("systemctl")
+                .args(["stop", "sing-box"])
+                .output()
+                .await;
+            let _ = tokio::fs::remove_file(old_service_path).await;
+            let _ = tokio::process::Command::new("systemctl")
+                .args(["daemon-reload"])
+                .output()
+                .await;
+        }
+
         let arch = Self::detect_arch()?;
 
         let version = Self::fetch_latest_version().await?;
@@ -60,7 +73,7 @@ impl SingBoxInstaller {
     pub async fn uninstall() -> Result<()> {
         Self::stop_service().await?;
 
-        let _ = fs::remove_file("/etc/systemd/system/sing-box.service").await;
+        let _ = fs::remove_file("/etc/systemd/system/wwps-box.service").await;
         let _ = fs::remove_dir_all(singbox::DIR).await;
 
         Ok(())
@@ -78,7 +91,7 @@ impl SingBoxInstaller {
         }
 
         let running = tokio::process::Command::new("pgrep")
-            .args(["-x", "sing-box"])
+            .args(["-x", "wwps-box"])
             .output()
             .await
             .map(|o| o.status.success())
@@ -154,12 +167,12 @@ impl SingBoxInstaller {
         }
 
         let service_content = r#"[Unit]
-Description=Sing-box Service
+Description=WWPS-Box Service
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/etc/wwps/wwps-box/sing-box run -C /etc/wwps/wwps-box/conf
+ExecStart=/etc/wwps/wwps-box/wwps-box run -C /etc/wwps/wwps-box/conf
 Restart=always
 RestartSec=5
 LimitNOFILE=51200
@@ -168,7 +181,7 @@ LimitNOFILE=51200
 WantedBy=multi-user.target
 "#;
 
-        fs::write("/etc/systemd/system/sing-box.service", service_content)
+        fs::write("/etc/systemd/system/wwps-box.service", service_content)
             .await
             .context("创建服务文件失败")?;
 
@@ -178,7 +191,7 @@ WantedBy=multi-user.target
             .await?;
 
         tokio::process::Command::new("systemctl")
-            .args(["enable", "--now", "sing-box"])
+            .args(["enable", "--now", "wwps-box"])
             .output()
             .await?;
 
@@ -187,7 +200,7 @@ WantedBy=multi-user.target
 
     async fn stop_service() -> Result<()> {
         let _ = tokio::process::Command::new("systemctl")
-            .args(["stop", "sing-box"])
+            .args(["stop", "wwps-box"])
             .output()
             .await;
 
@@ -196,7 +209,7 @@ WantedBy=multi-user.target
 
     async fn reload_service() -> Result<()> {
         let output = tokio::process::Command::new("systemctl")
-            .args(["restart", "sing-box"])
+            .args(["restart", "wwps-box"])
             .output()
             .await
             .context("重启服务失败")?;

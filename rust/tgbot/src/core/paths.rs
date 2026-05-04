@@ -24,7 +24,7 @@ pub mod xray {
 /// Sing-box 相关路径
 pub mod singbox {
     pub const DIR: &str = "/etc/wwps/wwps-box";
-    pub const BIN: &str = "/etc/wwps/wwps-box/sing-box";
+    pub const BIN: &str = "/etc/wwps/wwps-box/wwps-box";
     pub const CONF_DIR: &str = "/etc/wwps/wwps-box/conf";
     pub const CERTS_DIR: &str = "/etc/wwps/wwps-box/certs";
     pub const TLS_CERT: &str = "/etc/wwps/wwps-box/certs/tls.cer";
@@ -47,7 +47,7 @@ pub mod warp {
 /// 日志目录
 pub mod log {
     pub const DIR: &str = "/var/log";
-    pub const SINGBOX_LOG: &str = "/var/log/sing-box.log";
+    pub const SINGBOX_LOG: &str = "/var/log/wwps-box.log";
 }
 
 #[cfg(test)]
@@ -70,7 +70,7 @@ mod tests {
     #[test]
     fn test_singbox_paths() {
         assert_eq!(singbox::DIR, "/etc/wwps/wwps-box");
-        assert_eq!(singbox::BIN, "/etc/wwps/wwps-box/sing-box");
+        assert_eq!(singbox::BIN, "/etc/wwps/wwps-box/wwps-box");
         assert_eq!(singbox::CERTS_DIR, "/etc/wwps/wwps-box/certs");
         assert_eq!(singbox::TLS_CERT, "/etc/wwps/wwps-box/certs/tls.cer");
     }
@@ -90,6 +90,6 @@ mod tests {
     #[test]
     fn test_log_paths() {
         assert_eq!(log::DIR, "/var/log");
-        assert_eq!(log::SINGBOX_LOG, "/var/log/sing-box.log");
+        assert_eq!(log::SINGBOX_LOG, "/var/log/wwps-box.log");
     }
 }

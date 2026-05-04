@@ -215,7 +215,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
 
     async fn reload_service() -> Result<()> {
         let output = tokio::process::Command::new("systemctl")
-            .args(["restart", "sing-box"])
+            .args(["restart", "wwps-box"])
             .output()
             .await
             .context("重载配置失败")?;
@@ -545,7 +545,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         let full_config = json!({
             "log": {
                 "level": "warning",
-                "output": "/var/log/sing-box.log"
+                "output": "/var/log/wwps-box.log"
             },
             "dns": {
                 "servers": dns_servers
