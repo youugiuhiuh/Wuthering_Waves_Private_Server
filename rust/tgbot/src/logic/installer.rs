@@ -179,6 +179,9 @@ impl RealityInstallerInternal {
         if let Err(e) = crate::logic::config::ConfigManager::ensure_base_config().await {
             log::warn!("创建 wwps-core 基础配置失败: {}", e);
         }
+        if let Err(e) = crate::logic::maintenance::MaintenanceManager::ensure_geodata().await {
+            log::warn!("确保 geodata 文件失败: {}", e);
+        }
         let _ = MaintenanceManager::reload_core().await;
         Ok(())
     }
