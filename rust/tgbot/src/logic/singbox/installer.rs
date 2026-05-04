@@ -200,7 +200,7 @@ WantedBy=multi-user.target
 
     async fn stop_service() -> Result<()> {
         let _ = tokio::process::Command::new("systemctl")
-            .args(["stop", "sing-box"])
+            .args(["stop", "wwps-box"])
             .output()
             .await;
 
@@ -209,7 +209,7 @@ WantedBy=multi-user.target
 
     async fn reload_service() -> Result<()> {
         let output = tokio::process::Command::new("systemctl")
-            .args(["restart", "sing-box"])
+            .args(["restart", "wwps-box"])
             .output()
             .await
             .context("重启服务失败")?;
