@@ -9,8 +9,6 @@ pub mod xray {
     pub const DIR: &str = "/etc/wwps/wwps-core";
     pub const BIN: &str = "/etc/wwps/wwps-core/wwps-core";
     pub const CONF_DIR: &str = "/etc/wwps/wwps-core/conf";
-    pub const ACCESS_LOG: &str = "/etc/wwps/wwps-core/access.log";
-    pub const ERROR_LOG: &str = "/etc/wwps/wwps-core/error.log";
     pub const BACKUP_DIR: &str = "/etc/wwps/wwps-core/backup";
     pub const TEMP_DIR: &str = "/tmp/wwps-core-installer";
 

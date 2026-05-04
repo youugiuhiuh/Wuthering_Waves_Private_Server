@@ -1643,17 +1643,8 @@ fn handle_callback(
                     continue;
                 }
                 "m_log" => {
-                    let has_access = Path::new(xray::ACCESS_LOG).exists();
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![
-                            InlineKeyboardButton::callback(
-                                if has_access {
-                                    "🔴 关闭 Access 日志"
-                                } else {
-                                    "🟢 开启 Access 日志"
-                                },
-                                "l_tgl",
-                            ),
                             InlineKeyboardButton::callback("📝 查看 Access 日志", "l_tail_acc"),
                         ],
                         vec![
@@ -1669,12 +1660,7 @@ fn handle_callback(
                         chat_id,
                         msg_id,
                         format!(
-                            "📄 <b>日志管理</b>\nAccess 日志状态: {}",
-                            if has_access {
-                                "🟢 已开启"
-                            } else {
-                                "🔴 已关闭"
-                            }
+                            "📄 <b>日志管理</b>\n日志通过 journalctl 获取"
                         ),
                     )
                     .parse_mode(ParseMode::Html)
