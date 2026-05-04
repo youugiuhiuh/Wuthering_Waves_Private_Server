@@ -231,7 +231,15 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
     pub async fn ensure_base_config() -> Result<()> {
         let base_path = format!("{}/00_base.json", singbox::CONF_DIR);
 
-        if tokio::fs::try_exists(&base_path).await.unwrap_or(false) {
+        let exists = match tokio::fs::try_exists(&base_path).await {
+            Ok(true) => true,
+            Ok(false) => false,
+            Err(e) => {
+                log::warn!("检查基础配置存在性失败: {}", e);
+                false
+            }
+        };
+        if exists {
             return Ok(());
         }
 
@@ -258,7 +266,8 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
             ]
         });
 
-        let content = serde_json::to_string_pretty(&base_config)?;
+        let content = serde_json::to_string_pretty(&base_config)
+            .context("序列化基础配置失败")?;
         tokio::fs::write(&base_path, content).await?;
 
         log::info!("已创建 wwps-box 基础配置: {}", base_path);
