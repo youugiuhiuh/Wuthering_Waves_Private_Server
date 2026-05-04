@@ -14,6 +14,19 @@ impl SingBoxInstaller {
     }
 
     pub async fn install() -> Result<()> {
+        let old_service_path = "/etc/systemd/system/sing-box.service";
+        if tokio::fs::try_exists(old_service_path).await.unwrap_or(false) {
+            let _ = tokio::process::Command::new("systemctl")
+                .args(["stop", "sing-box"])
+                .output()
+                .await;
+            let _ = tokio::fs::remove_file(old_service_path).await;
+            let _ = tokio::process::Command::new("systemctl")
+                .args(["daemon-reload"])
+                .output()
+                .await;
+        }
+
         let arch = Self::detect_arch()?;
 
         let version = Self::fetch_latest_version().await?;
