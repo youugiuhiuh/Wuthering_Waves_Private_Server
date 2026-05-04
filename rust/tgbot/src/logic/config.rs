@@ -1586,6 +1586,10 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
     pub async fn ensure_base_config() -> Result<()> {
         use crate::core::paths::xray;
 
+        if let Err(e) = crate::logic::maintenance::MaintenanceManager::ensure_geodata().await {
+            log::warn!("确保 geodata 文件失败: {}", e);
+        }
+
         let base_path = format!("{}/00_base.json", xray::CONF_DIR);
 
         let exists = match tokio::fs::try_exists(&base_path).await {
