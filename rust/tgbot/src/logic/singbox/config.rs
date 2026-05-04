@@ -545,7 +545,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         let full_config = json!({
             "log": {
                 "level": "warning",
-                "output": "/var/log/sing-box.log"
+                "output": "/var/log/wwps-box.log"
             },
             "dns": {
                 "servers": dns_servers
