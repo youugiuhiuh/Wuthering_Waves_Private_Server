@@ -1337,41 +1337,6 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
         })
     }
 
-    async fn update_existing_config(
-        configs: Vec<Value>,
-        links: Vec<String>,
-    ) -> Result<BatchCreationResult> {
-        let created_count = configs.len();
-        // 备份原配置
-        let existing_path = format!("{}/07_VLESS_vision_reality_inbounds.json", xray::CONF_DIR);
-        let backup_path = Self::backup_config_file(&existing_path).await?;
-
-        // 更新现有配置
-        let mut v: Value = serde_json::from_str(&fs::read_to_string(&existing_path).await?)?;
-
-        // 清理旧配置并添加新配置
-        if let Some(inbounds) = v["inbounds"].as_array_mut() {
-            inbounds.retain(|ib| {
-                let tag = ib["tag"].as_str().unwrap_or("");
-                !tag.starts_with("VLESS-")
-            });
-            for config in configs {
-                inbounds.push(config);
-            }
-        }
-
-        // 保存配置
-        fs::write(&existing_path, serde_json::to_string_pretty(&v)?).await?;
-        crate::logic::maintenance::MaintenanceManager::reload_core().await?;
-
-        Ok(BatchCreationResult {
-            links,
-            config_file: None,
-            backup_file: Some(backup_path),
-            created_count,
-        })
-    }
-
     async fn backup_config_file(path: &str) -> Result<String> {
         let timestamp = chrono::Utc::now().timestamp();
         let backup_path = format!("{}.backup.{}", path, timestamp);
