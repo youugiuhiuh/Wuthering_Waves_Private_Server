@@ -219,6 +219,74 @@ impl MaintenanceManager {
         Ok(())
     }
 
+    pub async fn ensure_geodata() -> Result<()> {
+        Self::ensure_geodata_in_dir(xray::DIR).await
+    }
+
+    pub async fn ensure_geodata_in_dir(dir: &str) -> Result<()> {
+        let sources = [
+            (
+                "geoip.dat",
+                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat",
+            ),
+            (
+                "geosite.dat",
+                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat",
+            ),
+        ];
+
+        let client = reqwest::Client::builder()
+            .timeout(TIMEOUT_LONG)
+            .build()
+            .context("构建 HTTP 客户端失败")?;
+
+        for (file, url) in sources {
+            let target_path = format!("{}/{}", dir, file);
+
+            if tokio::fs::try_exists(&target_path)
+                .await
+                .unwrap_or(false)
+            {
+                log::info!("geodata 文件已存在，跳过: {}", target_path);
+                continue;
+            }
+
+            log::info!("正在下载 geodata: {}", file);
+
+            if let Err(e) =
+                Self::download_file_atomic(&client, url, &target_path).await
+            {
+                log::warn!("下载 {} 失败: {} (服务可能仍可启动)", file, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn download_file_atomic(
+        client: &reqwest::Client,
+        url: &str,
+        path: &str,
+    ) -> Result<()> {
+        let temp_path = format!("{}.tmp", path);
+
+        let result = Self::download_file(client, url, &temp_path, |_, _| {}).await;
+
+        match result {
+            Ok(()) => {
+                tokio::fs::rename(&temp_path, path)
+                    .await
+                    .context("重命名临时文件失败")?;
+                log::info!("geodata 下载完成: {}", path);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = tokio::fs::remove_file(&temp_path).await;
+                Err(e)
+            }
+        }
+    }
+
     pub async fn update_geodata<F>(progress_callback: F) -> Result<()>
     where
         F: Fn(f64, &str) + Send + Sync + 'static,
@@ -937,5 +1005,34 @@ mod tests {
     fn test_destruct_services_not_empty() {
         assert!(!MaintenanceManager::DESTRUCT_SERVICES.is_empty());
         assert!(MaintenanceManager::DESTRUCT_SERVICES.contains(&"wwps-core"));
+    }
+
+    #[tokio::test]
+    async fn test_ensure_geodata_files_exist_returns_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        tokio::fs::write(format!("{}/geoip.dat", dir_path), b"test")
+            .await
+            .unwrap();
+        tokio::fs::write(format!("{}/geosite.dat", dir_path), b"test")
+            .await
+            .unwrap();
+
+        let result = MaintenanceManager::ensure_geodata_in_dir(&dir_path).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ensure_geodata_missing_file_triggers_download_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path().to_string_lossy().to_string();
+
+        tokio::fs::write(format!("{}/geoip.dat", dir_path), b"test")
+            .await
+            .unwrap();
+
+        let result = MaintenanceManager::ensure_geodata_in_dir(&dir_path).await;
+        assert!(result.is_ok());
     }
 }
