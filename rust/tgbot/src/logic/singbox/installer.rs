@@ -185,6 +185,10 @@ WantedBy=multi-user.target
             .await
             .context("创建服务文件失败")?;
 
+        if let Err(e) = crate::logic::singbox::SingBoxConfigManager::ensure_base_config().await {
+            log::warn!("创建基础配置失败: {}", e);
+        }
+
         tokio::process::Command::new("systemctl")
             .args(["daemon-reload"])
             .output()
