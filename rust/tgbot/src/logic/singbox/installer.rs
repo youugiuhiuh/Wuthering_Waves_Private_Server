@@ -73,7 +73,7 @@ impl SingBoxInstaller {
     pub async fn uninstall() -> Result<()> {
         Self::stop_service().await?;
 
-        let _ = fs::remove_file("/etc/systemd/system/sing-box.service").await;
+        let _ = fs::remove_file("/etc/systemd/system/wwps-box.service").await;
         let _ = fs::remove_dir_all(singbox::DIR).await;
 
         Ok(())
