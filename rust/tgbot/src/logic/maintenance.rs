@@ -92,7 +92,7 @@ impl MaintenanceManager {
         }
 
         if wwps_box_running {
-            Self::merge_wwps_box_config().await?;
+            crate::logic::singbox::SingBoxConfigManager::ensure_base_config().await?;
             Self::control_service("wwps-box", "restart").await?;
         }
 
@@ -184,24 +184,6 @@ impl MaintenanceManager {
             tcp_congestion_control,
             proc_version,
         }
-    }
-
-    async fn merge_wwps_box_config() -> Result<()> {
-        run_cmd_checked(
-            "/etc/wwps/wwps-box/wwps-box",
-            &[
-                "merge",
-                "config.json",
-                "-C",
-                "/etc/wwps/wwps-box/conf/config/",
-                "-D",
-                "/etc/wwps/wwps-box/conf/",
-            ],
-            TIMEOUT_SHORT,
-        )
-        .await
-        .context("❌ 合并 wwps-box 配置失败")?;
-        Ok(())
     }
 
     /// 通用型 VPS 内核调优配置，适用于大多数小中型实例

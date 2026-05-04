@@ -45,7 +45,6 @@ pub mod warp {
 /// 日志目录
 pub mod log {
     pub const DIR: &str = "/var/log";
-    pub const SINGBOX_LOG: &str = "/var/log/wwps-box.log";
 }
 
 #[cfg(test)]
@@ -88,6 +87,5 @@ mod tests {
     #[test]
     fn test_log_paths() {
         assert_eq!(log::DIR, "/var/log");
-        assert_eq!(log::SINGBOX_LOG, "/var/log/wwps-box.log");
     }
 }
