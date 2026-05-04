@@ -176,6 +176,9 @@ impl RealityInstallerInternal {
             .context("安装依赖失败")?;
         Self::step_install_core(probe.arch).await?;
         Self::step_configure_service().await?;
+        if let Err(e) = crate::logic::config::ConfigManager::ensure_base_config().await {
+            log::warn!("创建 wwps-core 基础配置失败: {}", e);
+        }
         let _ = MaintenanceManager::reload_core().await;
         Ok(())
     }

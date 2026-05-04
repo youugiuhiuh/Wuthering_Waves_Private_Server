@@ -88,6 +88,7 @@ impl MaintenanceManager {
             crate::logic::system::SystemMonitor::get_core_status().await;
 
         if wwps_core_running {
+            crate::logic::config::ConfigManager::ensure_base_config().await?;
             Self::control_service("wwps-core", "restart").await?;
         }
 

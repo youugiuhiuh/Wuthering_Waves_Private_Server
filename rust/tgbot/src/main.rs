@@ -2552,7 +2552,6 @@ fn handle_callback(
                         _ => IpVersion::IPv4,
                     };
 
-                    let standalone_mode = true;
                     if !MaintenanceManager::is_reality_base_ready().await {
                         bot.answer_callback_query(q.id.clone())
                             .text("⚙️ 基础配置缺失，正在自动初始化...")
@@ -2585,7 +2584,6 @@ fn handle_callback(
                         Proto::Vision => {
                             ConfigManager::batch_create_reality_vision_enhanced(
                                 n,
-                                standalone_mode,
                                 ip_version,
                             )
                             .await
@@ -2593,7 +2591,6 @@ fn handle_callback(
                         Proto::XHTTP => {
                             ConfigManager::batch_create_xhttp_reality_enhanced(
                                 n,
-                                standalone_mode,
                                 ip_version,
                             )
                             .await
@@ -3252,7 +3249,7 @@ d if d.starts_with("u_kcp_ok:") => {
         .text(format!("⏳ 正在生成 {} 个 KCP 配置...", n))
         .await?;
 
-    let res = ConfigManager::batch_create_kcp(n, true, ip_version, &mask_codes).await;
+    let res = ConfigManager::batch_create_kcp(n, ip_version, &mask_codes).await;
 
     match res {
         Ok(result) => {

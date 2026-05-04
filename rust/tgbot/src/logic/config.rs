@@ -574,6 +574,7 @@ impl ConfigManager {
             while let Ok(Some(entry)) = rd.next_entry().await {
                 if let Some(name) = entry.file_name().to_str()
                     && name.ends_with("_inbounds.json")
+                    && !name.starts_with("00_")
                 {
                     out.push(entry.path().to_string_lossy().to_string());
                 }
@@ -915,7 +916,6 @@ impl ConfigManager {
 
     pub async fn batch_create_kcp(
         count: usize,
-        standalone: bool,
         ip_version: IpVersion,
         mask_codes: &[&str],
     ) -> Result<BatchCreationResult> {
@@ -966,16 +966,11 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
             let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
-        if standalone {
-            Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
-        } else {
-            Self::update_existing_config(batch_configs, links).await
-        }
+Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
     }
 
     pub async fn batch_create_reality_vision_enhanced(
         count: usize,
-        standalone: bool,
         ip_version: IpVersion,
     ) -> Result<BatchCreationResult> {
         let (host, _) = Self::resolve_public_hosts(
@@ -1047,16 +1042,11 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
             let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
-        if standalone {
-            Self::create_standalone_config(batch_configs, links, Proto::Vision).await
-        } else {
-            Self::update_existing_config(batch_configs, links).await
-        }
+        Self::create_standalone_config(batch_configs, links, Proto::Vision).await
     }
 
     pub async fn batch_create_xhttp_reality_enhanced(
         count: usize,
-        standalone: bool,
         ip_version: IpVersion,
     ) -> Result<BatchCreationResult> {
         let (host, host_secondary) = Self::resolve_public_hosts(
@@ -1127,11 +1117,7 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
             let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
-        if standalone {
-            Self::create_standalone_config(batch_configs, links, Proto::XHTTP).await
-        } else {
-            Self::update_existing_config(batch_configs, links).await
-        }
+        Self::create_standalone_config(batch_configs, links, Proto::XHTTP).await
     }
 
     fn resolve_public_hosts(
@@ -1334,81 +1320,23 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
 
         let created_count = configs.len();
 
-        // 创建完整配置结构
+        // 只写入 inbounds 片段（00_base.json 提供 log/dns/outbounds/routing）
         let config = json!({
-            "log": {
-                "loglevel": "warning"
-            },
-            "dns": {
-                "servers": [
-                    "https+local://1.1.1.1/dns-query",
-                    "https+local://8.8.8.8/dns-query"
-                ],
-                "tag": "dns"
-            },
-            "inbounds": configs,
-            "outbounds": [
-                {
-                    "protocol": "freedom",
-                    "settings": {},
-                    "tag": "direct"
-                },
-                {
-                    "protocol": "blackhole",
-                    "settings": {},
-                    "tag": "blocked"
-                }
-            ],
-            "routing": {
-                "domainStrategy": "IPIfNonMatch",
-                "rules": []
-            }
+            "inbounds": configs
         });
 
         // 保存文件
-        let content = serde_json::to_string_pretty(&config)?;
-        fs::write(&config_path, content).await?;
+        let content = serde_json::to_string_pretty(&config)
+            .context("序列化配置失败")?;
+        fs::write(&config_path, content)
+            .await
+            .context("写入配置文件失败")?;
         crate::logic::maintenance::MaintenanceManager::reload_core().await?;
 
         Ok(BatchCreationResult {
             links,
             config_file: Some(filename),
             backup_file: None,
-            created_count,
-        })
-    }
-
-    async fn update_existing_config(
-        configs: Vec<Value>,
-        links: Vec<String>,
-    ) -> Result<BatchCreationResult> {
-        let created_count = configs.len();
-        // 备份原配置
-        let existing_path = format!("{}/07_VLESS_vision_reality_inbounds.json", xray::CONF_DIR);
-        let backup_path = Self::backup_config_file(&existing_path).await?;
-
-        // 更新现有配置
-        let mut v: Value = serde_json::from_str(&fs::read_to_string(&existing_path).await?)?;
-
-        // 清理旧配置并添加新配置
-        if let Some(inbounds) = v["inbounds"].as_array_mut() {
-            inbounds.retain(|ib| {
-                let tag = ib["tag"].as_str().unwrap_or("");
-                !tag.starts_with("VLESS-")
-            });
-            for config in configs {
-                inbounds.push(config);
-            }
-        }
-
-        // 保存配置
-        fs::write(&existing_path, serde_json::to_string_pretty(&v)?).await?;
-        crate::logic::maintenance::MaintenanceManager::reload_core().await?;
-
-        Ok(BatchCreationResult {
-            links,
-            config_file: None,
-            backup_file: Some(backup_path),
             created_count,
         })
     }
@@ -1653,6 +1581,55 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
             .filter(|r| r != rule_to_remove)
             .collect();
         Self::update_warp_routing_rules(new_rules, mode).await
+    }
+
+    pub async fn ensure_base_config() -> Result<()> {
+        use crate::core::paths::xray;
+
+        let base_path = format!("{}/00_base.json", xray::CONF_DIR);
+
+        let exists = match tokio::fs::try_exists(&base_path).await {
+            Ok(true) => true,
+            Ok(false) => false,
+            Err(e) => {
+                log::warn!("检查基础配置存在性失败: {}", e);
+                false
+            }
+        };
+        if exists {
+            return Ok(());
+        }
+
+        tokio::fs::create_dir_all(xray::CONF_DIR)
+            .await
+            .context("创建配置目录失败")?;
+
+        let base_config = serde_json::json!({
+            "log": {"loglevel": "warning"},
+            "dns": {
+                "servers": ["https+local://1.1.1.1/dns-query", "https+local://8.8.8.8/dns-query"],
+                "tag": "dns"
+            },
+            "routing": {
+                "domainStrategy": "IPIfNonMatch",
+                "rules": [
+                    {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"}
+                ]
+            },
+            "outbounds": [
+                {"protocol": "freedom", "settings": {}, "tag": "direct"},
+                {"protocol": "blackhole", "settings": {}, "tag": "blocked"}
+            ]
+        });
+
+        let content = serde_json::to_string_pretty(&base_config)
+            .context("序列化基础配置失败")?;
+        tokio::fs::write(&base_path, content)
+            .await
+            .context("写入基础配置失败")?;
+
+        log::info!("已创建 wwps-core 基础配置: {}", base_path);
+        Ok(())
     }
 }
 
@@ -2835,6 +2812,34 @@ mod tests {
             .map(|_| KcpMask::HeaderDns { domain: "sub.domain.example.com".to_string() })
             .collect();
         assert!(KcpMask::validate_stack(&masks).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_ensure_base_config_structure() {
+        let base_config = serde_json::json!({
+            "log": {"loglevel": "warning"},
+            "dns": {
+                "servers": ["https+local://1.1.1.1/dns-query", "https+local://8.8.8.8/dns-query"],
+                "tag": "dns"
+            },
+            "routing": {
+                "domainStrategy": "IPIfNonMatch",
+                "rules": [
+                    {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"}
+                ]
+            },
+            "outbounds": [
+                {"protocol": "freedom", "settings": {}, "tag": "direct"},
+                {"protocol": "blackhole", "settings": {}, "tag": "blocked"}
+            ]
+        });
+
+        assert!(base_config.get("log").is_some());
+        assert!(base_config.get("dns").is_some());
+        assert!(base_config.get("routing").is_some());
+        assert!(base_config.get("outbounds").is_some());
+        let rules = base_config["routing"]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 1);
     }
 }
 
