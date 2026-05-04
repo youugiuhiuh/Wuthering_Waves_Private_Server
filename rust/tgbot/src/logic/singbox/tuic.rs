@@ -43,7 +43,7 @@ impl TUICConfig {
             },
             "congestion_control": self.congestion_control,
             "zero_rtt_handshake": false,
-            "heartbeat": 30
+            "heartbeat": "30s"
         })
     }
 
