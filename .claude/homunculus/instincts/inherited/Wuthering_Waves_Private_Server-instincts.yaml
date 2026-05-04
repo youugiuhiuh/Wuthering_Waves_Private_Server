@@ -1,0 +1,351 @@
+# Instincts generated from https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server
+# Generated: 2026-05-04T03:33:09.270Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: Wuthering_Waves_Private_Server-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_Waves_Private_Server Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat, refactor
+
+## Evidence
+
+- 3 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat(log_audit): create log audit module with journalctl support, refactor(paths): remove unused xray ACCESS_LOG and ERROR_LOG
+
+---
+id: Wuthering_Waves_Private_Server-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_Waves_Private_Server Commit Length
+
+## Action
+
+Write moderate-length commit messages (~60 characters)
+
+## Evidence
+
+- Average commit message length: 60 chars
+- Based on 3 commits
+
+---
+id: Wuthering_Waves_Private_Server-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_Waves_Private_Server Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: Wuthering_Waves_Private_Server-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_Waves_Private_Server Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: Wuthering_Waves_Private_Server-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_Waves_Private_Server Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: Wuthering_Waves_Private_Server-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_Waves_Private_Server Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: Wuthering_Waves_Private_Server-workflow-feature-module-implementation-update-mod
+trigger: "when doing feature module implementation update mod"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_Waves_Private_Server Workflow Feature Module Implementation Update Mod
+
+## Action
+
+Follow the feature-module-implementation-update-mod workflow:
+1. Create or update the feature module file in rust/tgbot/src/logic/
+2. Update rust/tgbot/src/logic/mod.rs to register the new module
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: rust/tgbot/src/logic/<feature>.rs, rust/tgbot/src/logic/mod.rs
+
+---
+id: wuthering_waves_private_server-instinct-file-naming
+trigger: "When creating or renaming a source file in the repository"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_waves_private_server Instinct File Naming
+
+## Action
+
+Use camelCase for file names
+
+## Evidence
+
+- Pattern in namingConventions.files
+- Observed in rust/tgbot/src/logic/
+
+---
+id: wuthering_waves_private_server-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_waves_private_server Instinct Function Naming
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions
+- Seen in Rust codebase
+
+---
+id: wuthering_waves_private_server-instinct-class-naming
+trigger: "When defining a new struct or class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_waves_private_server Instinct Class Naming
+
+## Action
+
+Name the struct/class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes
+- Seen in Rust codebase
+
+---
+id: wuthering_waves_private_server-instinct-constant-naming
+trigger: "When declaring a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_waves_private_server Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Pattern in namingConventions.constants
+- Seen in Rust codebase
+
+---
+id: wuthering_waves_private_server-instinct-import-style
+trigger: "When importing modules or files"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_waves_private_server Instinct Import Style
+
+## Action
+
+Use relative imports
+
+## Evidence
+
+- Pattern in importStyle
+- Seen in Rust codebase
+
+---
+id: wuthering_waves_private_server-instinct-export-style
+trigger: "When exporting functions, structs, or modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_waves_private_server Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle
+- Seen in Rust codebase
+
+---
+id: wuthering_waves_private_server-instinct-test-location
+trigger: "When writing tests for a module"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_waves_private_server Instinct Test Location
+
+## Action
+
+Place test files in a separate directory from source files
+
+## Evidence
+
+- Pattern in folderStructure.testLocation
+- Seen in project folder structure
+
+---
+id: wuthering_waves_private_server-instinct-commit-format
+trigger: "When making a git commit"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_waves_private_server Instinct Commit Format
+
+## Action
+
+Use conventional commit format with 'feat' or 'refactor' prefix and a short scope
+
+## Evidence
+
+- Seen in commit: 'feat(log_audit): create log audit module with journalctl support'
+- Seen in commit: 'refactor(paths): remove unused xray ACCESS_LOG and ERROR_LOG'
+- Pattern in commits.prefixes
+
+---
+id: wuthering_waves_private_server-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_waves_private_server Instinct Commit Length
+
+## Action
+
+Keep commit message length around 60 characters
+
+## Evidence
+
+- Pattern in commits.averageLength
+- Seen in commit examples
+
+---
+id: wuthering_waves_private_server-instinct-feature-module-workflow
+trigger: "When adding a new logic module to the project"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: youugiuhiuh/Wuthering_Waves_Private_Server
+---
+
+# Wuthering_waves_private_server Instinct Feature Module Workflow
+
+## Action
+
+Create or update the module in rust/tgbot/src/logic/ and register it in rust/tgbot/src/logic/mod.rs
+
+## Evidence
+
+- Workflow: feature-module-implementation-update-mod
+- Seen in commit sequence: create file in rust/tgbot/src/logic/, update mod.rs
+
