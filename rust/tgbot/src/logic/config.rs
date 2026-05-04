@@ -915,7 +915,6 @@ impl ConfigManager {
 
     pub async fn batch_create_kcp(
         count: usize,
-        standalone: bool,
         ip_version: IpVersion,
         mask_codes: &[&str],
     ) -> Result<BatchCreationResult> {
@@ -966,16 +965,11 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
             let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
-        if standalone {
-            Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
-        } else {
-            Self::update_existing_config(batch_configs, links).await
-        }
+Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
     }
 
     pub async fn batch_create_reality_vision_enhanced(
         count: usize,
-        standalone: bool,
         ip_version: IpVersion,
     ) -> Result<BatchCreationResult> {
         let (host, _) = Self::resolve_public_hosts(
@@ -1047,16 +1041,11 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
             let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
-        if standalone {
-            Self::create_standalone_config(batch_configs, links, Proto::Vision).await
-        } else {
-            Self::update_existing_config(batch_configs, links).await
-        }
+        Self::create_standalone_config(batch_configs, links, Proto::Vision).await
     }
 
     pub async fn batch_create_xhttp_reality_enhanced(
         count: usize,
-        standalone: bool,
         ip_version: IpVersion,
     ) -> Result<BatchCreationResult> {
         let (host, host_secondary) = Self::resolve_public_hosts(
@@ -1127,11 +1116,7 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
             let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
-        if standalone {
-            Self::create_standalone_config(batch_configs, links, Proto::XHTTP).await
-        } else {
-            Self::update_existing_config(batch_configs, links).await
-        }
+        Self::create_standalone_config(batch_configs, links, Proto::XHTTP).await
     }
 
     fn resolve_public_hosts(
