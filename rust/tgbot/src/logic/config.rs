@@ -1610,7 +1610,6 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
             "routing": {
                 "domainStrategy": "IPIfNonMatch",
                 "rules": [
-                    {"type": "field", "protocol": ["bittorrent"], "outboundTag": "blocked"},
                     {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"}
                 ]
             },
