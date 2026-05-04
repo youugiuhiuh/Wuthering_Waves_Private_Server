@@ -91,7 +91,7 @@ impl SingBoxInstaller {
         }
 
         let running = tokio::process::Command::new("pgrep")
-            .args(["-x", "sing-box"])
+            .args(["-x", "wwps-box"])
             .output()
             .await
             .map(|o| o.status.success())
