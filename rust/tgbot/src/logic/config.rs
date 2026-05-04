@@ -1334,35 +1334,9 @@ let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
 
         let created_count = configs.len();
 
-        // 创建完整配置结构
+        // 只写入 inbounds 片段（00_base.json 提供 log/dns/outbounds/routing）
         let config = json!({
-            "log": {
-                "loglevel": "warning"
-            },
-            "dns": {
-                "servers": [
-                    "https+local://1.1.1.1/dns-query",
-                    "https+local://8.8.8.8/dns-query"
-                ],
-                "tag": "dns"
-            },
-            "inbounds": configs,
-            "outbounds": [
-                {
-                    "protocol": "freedom",
-                    "settings": {},
-                    "tag": "direct"
-                },
-                {
-                    "protocol": "blackhole",
-                    "settings": {},
-                    "tag": "blocked"
-                }
-            ],
-            "routing": {
-                "domainStrategy": "IPIfNonMatch",
-                "rules": []
-            }
+            "inbounds": configs
         });
 
         // 保存文件
