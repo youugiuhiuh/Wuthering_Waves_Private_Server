@@ -44,6 +44,7 @@ use tgbot::logic::upgrade::{
     UPGRADE_FLAG_FILE, UpgradeManager,
     wwps_core::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager},
 };
+use tgbot::logic::log_audit::{LogAudit, SERVICE_WWPS_CORE, SERVICE_SING_BOX};
 // TOTP 防爆破参数
 // TOTP 防爆破参数
 const TOTP_FAIL_MAX: u32 = 5; // 窗口内最大失败次数
@@ -1643,22 +1644,10 @@ fn handle_callback(
                     continue;
                 }
                 "m_log" => {
-                    let has_access = Path::new(xray::ACCESS_LOG).exists();
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![
-                            InlineKeyboardButton::callback(
-                                if has_access {
-                                    "🔴 关闭 Access 日志"
-                                } else {
-                                    "🟢 开启 Access 日志"
-                                },
-                                "l_tgl",
-                            ),
-                            InlineKeyboardButton::callback("📝 查看 Access 日志", "l_tail_acc"),
-                        ],
-                        vec![
-                            InlineKeyboardButton::callback("📝 查看 Error 日志", "l_tail_err"),
-                            InlineKeyboardButton::callback("🔄 刷新日志", "m_log"),
+                            InlineKeyboardButton::callback("🅧 Xray-core 日志", "l_xray"),
+                            InlineKeyboardButton::callback("📦 Sing-box 日志", "l_box"),
                         ],
                         vec![InlineKeyboardButton::callback(
                             "⬅️ 返回运维中心",
@@ -1668,18 +1657,119 @@ fn handle_callback(
                     bot.edit_message_text(
                         chat_id,
                         msg_id,
+                        "📄 日志审计\n通过 systemd journal 获取服务日志:",
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
+                }
+                "l_xray" => {
+                    let status = LogAudit::service_status(SERVICE_WWPS_CORE).await;
+                    let status_icon = if status.active { "🟢" } else { "🔴" };
+                    let keyboard = InlineKeyboardMarkup::new(vec![
+                        vec![InlineKeyboardButton::callback(
+                            "📝 查看最近日志",
+                            "l_xray_tail",
+                        )],
+                        vec![InlineKeyboardButton::callback("🔄 刷新", "l_xray")],
+                        vec![InlineKeyboardButton::callback(
+                            "⬅️ 返回日志审计",
+                            "m_log",
+                        )],
+                    ]);
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
                         format!(
-                            "📄 <b>日志管理</b>\nAccess 日志状态: {}",
-                            if has_access {
-                                "🟢 已开启"
-                            } else {
-                                "🔴 已关闭"
-                            }
+                            "🅧 Xray-core 日志\n\n状态: {} {} | 日志来源: journalctl -u {}",
+                            status_icon, status.status_text, SERVICE_WWPS_CORE
                         ),
                     )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(keyboard)
                     .await?;
+                }
+                "l_box" => {
+                    let status = LogAudit::service_status(SERVICE_SING_BOX).await;
+                    let status_icon = if status.active { "🟢" } else { "🔴" };
+                    let keyboard = InlineKeyboardMarkup::new(vec![
+                        vec![InlineKeyboardButton::callback(
+                            "📝 查看最近日志",
+                            "l_box_tail",
+                        )],
+                        vec![InlineKeyboardButton::callback("🔄 刷新", "l_box")],
+                        vec![InlineKeyboardButton::callback(
+                            "⬅️ 返回日志审计",
+                            "m_log",
+                        )],
+                    ]);
+                    bot.edit_message_text(
+                        chat_id,
+                        msg_id,
+                        format!(
+                            "📦 Sing-box 日志\n\n状态: {} {} | 日志来源: journalctl -u {}",
+                            status_icon, status.status_text, SERVICE_SING_BOX
+                        ),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
+                }
+                "l_xray_tail" => {
+                    bot.answer_callback_query(q.id.clone())
+                        .text("📝 正在获取 Xray-core 日志...")
+                        .await?;
+                    let bot_c = bot.clone();
+                    let chat_id_c = chat_id;
+                    tokio::spawn(async move {
+                        match LogAudit::tail_logs(SERVICE_WWPS_CORE, 50).await {
+                            Ok(log) => {
+                                let _ = bot_c
+                                    .send_message(
+                                        chat_id_c,
+                                        format!(
+                                            "🅧 Xray-core 最近日志 (最近 50 行):\n\n<pre>{}</pre>",
+                                            escape_html(&log)
+                                        ),
+                                    )
+                                    .parse_mode(ParseMode::Html)
+                                    .await;
+                            }
+                            Err(e) => {
+                                let _ = bot_c
+                                    .send_message(chat_id_c, format!("❌ 获取日志失败: {}", e))
+                                    .await;
+                            }
+                        }
+                    });
+                }
+                "l_box_tail" => {
+                    bot.answer_callback_query(q.id.clone())
+                        .text("📝 正在获取 Sing-box 日志...")
+                        .await?;
+                    let bot_c = bot.clone();
+                    let chat_id_c = chat_id;
+                    tokio::spawn(async move {
+                        match LogAudit::tail_logs(SERVICE_SING_BOX, 50).await {
+                            Ok(log) => {
+                                let _ = bot_c
+                                    .send_message(
+                                        chat_id_c,
+                                        format!(
+                                            "📦 Sing-box 最近日志 (最近 50 行):\n\n<pre>{}</pre>",
+                                            escape_html(&log)
+                                        ),
+                                    )
+                                    .parse_mode(ParseMode::Html)
+                                    .await;
+                            }
+                            Err(e) => {
+                                let _ = bot_c
+                                    .send_message(chat_id_c, format!("❌ 获取日志失败: {}", e))
+                                    .await;
+                            }
+                        }
+                    });
                 }
                 "m_session_timeout" => {
                     let current = state.session_timeout_secs().await;
