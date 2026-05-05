@@ -3,9 +3,8 @@ use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, InputFile, Mes
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use futures_util::future::BoxFuture;
-use chrono::Utc;
 use sha2::{Digest, Sha256};
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::Result;
 use std::path::Path;
 use std::fs;
 
@@ -17,7 +16,6 @@ use tgbot::core::types::IpVersion;
 use tgbot::logic::config::{ConfigManager, KcpMask, Proto, WarpMode};
 use tgbot::logic::installer::{RealityInstaller, RealityInstallOutcome, WarpInstaller};
 use tgbot::logic::maintenance::MaintenanceManager;
-use tgbot::logic::security::SecurityManager;
 use tgbot::logic::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use tgbot::logic::upgrade::{UpgradeManager, wwps_core::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager}};
 use tgbot::logic::log_audit::{LogAudit, SERVICE_WWPS_CORE, SERVICE_SING_BOX};
@@ -2129,7 +2127,7 @@ d if d.starts_with("u_kcp_add:") => {
             return Ok(());
         }
         let stack_display = format!("1️⃣ {}", m.display_name());
-        let mut buttons = vec![
+        let buttons = vec![
             vec![InlineKeyboardButton::callback(
                 "➕ 继续添加遮罩层",
                 format!("u_kcp_more:{}", code),
