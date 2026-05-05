@@ -5,7 +5,6 @@ use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, MessageId, Par
 use std::sync::Arc;
 
 use crate::app::state::AppState;
-use crate::app::destruct_flow;
 use crate::logic::scheduler::task_types::TaskType;
 use crate::logic::scheduler::ScheduledTask;
 use tgbot::core::error::{Result, AppError};
