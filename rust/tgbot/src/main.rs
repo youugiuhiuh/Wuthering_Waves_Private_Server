@@ -182,7 +182,7 @@ mod tests {
     use futures_util::future::BoxFuture;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tgbot::logic::self_destruct::SelfDestructExecutor;
-    use crate::handlers::callback::format_duration_human;
+    use tgbot::core::utils::format_duration_human;
 
     struct CountingExecutor {
         calls: Arc<AtomicUsize>,
@@ -209,25 +209,5 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(3)).await;
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn format_duration_human_seconds() {
-        assert_eq!(format_duration_human(0), "0秒");
-        assert_eq!(format_duration_human(45), "45秒");
-    }
-
-    #[test]
-    fn format_duration_human_minutes() {
-        assert_eq!(format_duration_human(60), "1分钟");
-        assert_eq!(format_duration_human(90), "1分钟");
-        assert_eq!(format_duration_human(120), "2分钟");
-    }
-
-    #[test]
-    fn format_duration_human_hours_and_days() {
-        assert_eq!(format_duration_human(3600), "1小时");
-        assert_eq!(format_duration_human(3661), "1小时1分");
-        assert!(format_duration_human(86400).starts_with("1天"));
     }
 }

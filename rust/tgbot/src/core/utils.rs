@@ -43,6 +43,36 @@ pub fn generate_timestamp_filename(prefix: &str, extension: &str) -> String {
     format!("{}_{}_{}.{}", prefix, timestamp, suffix, extension)
 }
 
+/// 将秒数转换为人类可读的时长字符串
+///
+/// # Arguments
+/// * `secs` - 秒数
+///
+/// # Returns
+/// 格式化的时长字符串，如 "1小时30分钟"
+///
+/// # Examples
+/// ```
+/// assert_eq!(format_duration_human(3661), "1小时1分".to_string());
+/// ```
+pub fn format_duration_human(secs: u64) -> String {
+    if secs < 60 {
+        format!("{}秒", secs)
+    } else if secs < 3600 {
+        format!("{}分钟", secs / 60)
+    } else if secs < 86400 {
+        let h = secs / 3600;
+        let m = (secs % 3600) / 60;
+        if m == 0 {
+            format!("{}小时", h)
+        } else {
+            format!("{}小时{}分", h, m)
+        }
+    } else {
+        format!("{}天", secs / 86400)
+    }
+}
+
 /// 安全地解析 IP 版本字符串
 pub fn parse_ip_version(s: &str) -> Option<IpVersion> {
     match s {
@@ -121,5 +151,25 @@ mod tests {
         assert_eq!(parse_ip_version("ipv7"), None);
         assert_eq!(parse_ip_version("v4"), None);
         assert_eq!(parse_ip_version("v6"), None);
+    }
+
+    #[test]
+    fn test_format_duration_human_seconds() {
+        assert_eq!(format_duration_human(0), "0秒");
+        assert_eq!(format_duration_human(45), "45秒");
+    }
+
+    #[test]
+    fn test_format_duration_human_minutes() {
+        assert_eq!(format_duration_human(60), "1分钟");
+        assert_eq!(format_duration_human(90), "1分钟");
+        assert_eq!(format_duration_human(120), "2分钟");
+    }
+
+    #[test]
+    fn test_format_duration_human_hours_and_days() {
+        assert_eq!(format_duration_human(3600), "1小时");
+        assert_eq!(format_duration_human(3661), "1小时1分");
+        assert!(format_duration_human(86400).starts_with("1天"));
     }
 }

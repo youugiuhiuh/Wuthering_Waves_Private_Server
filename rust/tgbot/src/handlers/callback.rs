@@ -29,24 +29,6 @@ use crate::handlers::system::{
     build_cron_from_custom_state,
 };
 
-pub fn format_duration_human(secs: u64) -> String {
-    if secs < 60 {
-        format!("{}秒", secs)
-    } else if secs < 3600 {
-        format!("{}分钟", secs / 60)
-    } else if secs < 86400 {
-        let h = secs / 3600;
-        let m = (secs % 3600) / 60;
-        if m == 0 {
-            format!("{}小时", h)
-        } else {
-            format!("{}小时{}分", h, m)
-        }
-    } else {
-        format!("{}天", secs / 86400)
-    }
-}
-
 fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -186,7 +168,7 @@ pub fn handle_callback(
                 "m_settings" => {
                     let timeout = state.session_timeout_secs().await;
                     let timeout_label =
-                        format!("🔐 会话有效期 ({})", format_duration_human(timeout));
+                        format!("🔐 会话有效期 ({})", tgbot::core::utils::format_duration_human(timeout));
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![
                             InlineKeyboardButton::callback("🛰 Xray-core 管理", "a_wwps_core_menu"),
@@ -1132,7 +1114,7 @@ pub fn handle_callback(
                     msg_id,
                     format!(
                         "🔐 <b>会话有效期设置</b>\n\n当前: <b>{}</b>\n\nTOTP 认证后的会话有效时长，过期需重新认证。",
-                        format_duration_human(current)
+                        tgbot::core::utils::format_duration_human(current)
                     ),
                 )
                 .parse_mode(ParseMode::Html)
@@ -1155,7 +1137,7 @@ pub fn handle_callback(
                     bot.answer_callback_query(q.id.clone())
                         .text(format!(
                             "✅ 会话有效期已设为 {}",
-                            format_duration_human(secs)
+                            tgbot::core::utils::format_duration_human(secs)
                         ))
                         .await?;
 

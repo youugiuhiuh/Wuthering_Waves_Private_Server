@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use teloxide::prelude::*;
 
 use crate::app::state::{AppState, AuthFailureOutcome};
-use crate::handlers::callback::format_duration_human;
+use tgbot::core::utils::format_duration_human;
 
 pub async fn process_auth_code(
     bot: &Bot,
