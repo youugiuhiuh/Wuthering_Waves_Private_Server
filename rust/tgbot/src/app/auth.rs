@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use teloxide::prelude::*;
 
 use crate::app::state::{AppState, AuthFailureOutcome};
+use crate::handlers::callback::format_duration_human;
 
 pub async fn process_auth_code(
     bot: &Bot,
@@ -40,7 +41,7 @@ pub async fn process_auth_code(
             chat_id,
             format!(
                 "✅ 认证成功！会话有效期 {}。请使用 /menu 开始管理。",
-                crate::format_duration_human(timeout)
+                format_duration_human(timeout)
             ),
         )
         .await?;
