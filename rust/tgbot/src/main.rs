@@ -48,18 +48,7 @@ use tgbot::logic::upgrade::{
     wwps_core::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager},
 };
 use tgbot::logic::log_audit::{LogAudit, SERVICE_WWPS_CORE, SERVICE_SING_BOX};
-// TOTP 防爆破参数
-// TOTP 防爆破参数
-const TOTP_FAIL_MAX: u32 = 5; // 窗口内最大失败次数
-const TOTP_FAIL_WINDOW: Duration = Duration::from_secs(10 * 60); // 10 分钟
 
-// 递增锁定策略: 15m -> 1h -> 24h -> 48h
-const LOCKOUT_DURATIONS: [Duration; 4] = [
-    Duration::from_secs(15 * 60),
-    Duration::from_secs(60 * 60),
-    Duration::from_secs(24 * 60 * 60),
-    Duration::from_secs(48 * 60 * 60),
-];
 
 fn format_duration_human(secs: u64) -> String {
     if secs < 60 {
@@ -111,7 +100,7 @@ fn validate_idx(idx: usize, max: usize, field_name: &str) -> Result<()> {
     Ok(())
 }
 
-const MAX_FILE_DOWNLOAD_SIZE: u64 = 10 * 1024 * 1024;
+
 
 async fn register_bot_commands(bot: &Bot) -> Result<()> {
     bot.set_my_commands(Command::bot_commands())
@@ -381,24 +370,7 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Respons
     Ok(())
 }
 
-async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
-    let keyboard = InlineKeyboardMarkup::new(vec![
-        vec![
-            InlineKeyboardButton::callback("📊 系统状态", "m_mon"),
-            InlineKeyboardButton::callback("👥 用户管理", "m_usr"),
-        ],
-        vec![InlineKeyboardButton::callback(
-            "🛠 运维中心 (Ops)",
-            "m_ops_center",
-        )],
-        vec![InlineKeyboardButton::callback("⚙️ 系统设置", "m_settings")],
-    ]);
-    bot.send_message(chat_id, "🏠 <b>主菜单</b>\n请选择操作类目:")
-        .parse_mode(ParseMode::Html)
-        .reply_markup(keyboard)
-        .await?;
-    Ok(())
-}
+
 
 fn schedule_task_name(task_type: &TaskType) -> &'static str {
     match task_type {
@@ -4743,20 +4715,7 @@ d if d.starts_with("u_kcp_ok:") => {
     })
 }
 
-async fn save_config(state: &Arc<AppState>) -> Result<()> {
-    let config_dir = config_dir();
-    let _ = SecurityManager::new(&config_dir.join(KEY_FILE))?;
-    let path = config_dir.join(CONFIG_FILE);
 
-    let config_data = fs::read(&path)?;
-    let mut encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
-
-    let hash = state.self_destruct_key_hash().await;
-    encrypted_config.self_destruct_key_hash = hash;
-
-    fs::write(path, serde_json::to_vec(&encrypted_config)?)?;
-    Ok(())
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
