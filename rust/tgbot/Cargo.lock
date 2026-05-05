@@ -3004,6 +3004,7 @@ version = "2.5.5"
 dependencies = [
  "aes-gcm",
  "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "chrono",
  "chrono-tz",
