@@ -4,57 +4,30 @@ mod bootstrap;
 mod handlers;
 
 use crate::handlers::command::{Command, handle_command, looks_like_totp_code, process_auth_code};
-use crate::handlers::proxy::{show_reality_batch_prompt, show_reality_qty_prompt, trigger_reality_auto_init};
-use crate::handlers::system::{
-    build_custom_schedule_text, build_custom_schedule_keyboard, build_custom_day_keyboard,
-    build_custom_hour_keyboard, build_custom_minute_keyboard, build_custom_timezone_keyboard,
-    build_cron_from_custom_state,
-};
 use crate::handlers::callback::handle_callback;
 
 use obfstr::obfstr;
 
 use tgbot::logic;
 
-use crate::app::auth;
 use crate::app::destruct_flow::{self, MessageFlowOutcome};
-use crate::app::state::{AppState, ScheduleFrequency, ScheduleInputState, TimeoutStatus};
+use crate::app::state::{AppState, TimeoutStatus};
 use crate::bootstrap::{
-    BOT_VERSION, BotSettings, CONFIG_FILE, ConfigValidator, DEFAULT_SESSION_TIMEOUT_SECS,
+    BotSettings, CONFIG_FILE, ConfigValidator,
     EncryptedConfig, KEY_FILE, config_dir, harden_process, run_setup, run_setup_from_stdin,
     verify_integrity,
 };
-use tgbot::core::paths::{singbox, xray};
 use anyhow::{Context, Result};
-use futures_util::future::BoxFuture;
 use secrecy::ExposeSecret;
-use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use teloxide::net::Download;
+use std::time::Duration;
 use teloxide::prelude::*;
-use teloxide::types::{
-    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode,
-};
 use teloxide::utils::command::BotCommands;
-use tgbot::core::types::IpVersion;
-use tgbot::logic::config::{ConfigManager, KcpMask, Proto, WarpMode};
-use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
-use tgbot::logic::maintenance::MaintenanceManager;
-use tgbot::logic::operations::Operations;
-use tgbot::logic::scheduler::task_types::TaskType;
+use tgbot::logic::config::ConfigManager;
 use tgbot::logic::security::SecurityManager;
-use tgbot::logic::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use tgbot::logic::self_destruct::production_executor;
-use tgbot::logic::system::SystemMonitor;
 use tgbot::logic::totp::TotpManager;
-use tgbot::logic::upgrade::{
-    UpgradeManager,
-    wwps_core::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager},
-};
-use tgbot::logic::log_audit::{LogAudit, SERVICE_WWPS_CORE, SERVICE_SING_BOX};
 
 
 
