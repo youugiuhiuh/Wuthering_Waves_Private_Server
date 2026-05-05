@@ -6,7 +6,6 @@ mod handlers;
 use crate::handlers::command::{Command, handle_command, looks_like_totp_code, process_auth_code};
 use crate::handlers::proxy::{show_reality_batch_prompt, show_reality_qty_prompt, trigger_reality_auto_init};
 use crate::handlers::system::{
-    schedule_task_name, schedule_frequency_name, weekday_label, timezone_label,
     build_custom_schedule_text, build_custom_schedule_keyboard, build_custom_day_keyboard,
     build_custom_hour_keyboard, build_custom_minute_keyboard, build_custom_timezone_keyboard,
     build_cron_from_custom_state,
