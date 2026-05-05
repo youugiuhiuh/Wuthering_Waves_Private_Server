@@ -3493,65 +3493,7 @@ d if d.starts_with("u_kcp_ok:") => {
                         .await?;
                 }
                 "a_fw" => {
-                    let bot_clone = bot.clone();
-                    let chat_id_clone = chat_id;
-                    let msg_id = q.message.as_ref().map(|m| m.id()).unwrap_or_default();
-
-                    tokio::spawn(async move {
-                        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-
-                        // 进度更新任务 (带节流)
-                        let bot_for_updates = bot_clone.clone();
-                        let update_task = tokio::spawn(async move {
-                            let mut last_text = String::new();
-                            while let Some(text) = rx.recv().await {
-                                if text == last_text {
-                                    continue;
-                                }
-                                last_text = text.clone();
-                                let _ = bot_for_updates
-                                    .edit_message_text(
-                                        chat_id_clone,
-                                        msg_id,
-                                        format!("🛡️ <b>防火墙安全加固</b>\n{}", text),
-                                    )
-                                    .parse_mode(ParseMode::Html)
-                                    .await;
-                                // 强制等待 500ms，避免 Telegram 频率限制
-                                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                            }
-                        });
-
-                        let tx_clone = tx.clone();
-                        let res_timeout = tokio::time::timeout(
-                            tokio::time::Duration::from_secs(45), // 45秒超时
-                            MaintenanceManager::harden_firewall(move |text| {
-                                let _ = tx_clone.send(text.to_string());
-                            }),
-                        )
-                        .await;
-
-                        match res_timeout {
-                            Ok(Ok(_)) => {
-                                // 正常结束，update_task 会在 rx 关闭后退出
-                            }
-                            Ok(Err(err)) => {
-                                let _ = tx.send(format!("❌ 失败: {}", err));
-                            }
-                            Err(_) => {
-                                let _ = tx.send(
-                                    "❌ 失败: 操作超时 (45s)，请检查系统 nftables 状态".to_string(),
-                                );
-                            }
-                        }
-
-                        drop(tx); // 关闭 channel 触发 update_task 退出
-                        let _ = update_task.await;
-                    });
-
-                    bot.answer_callback_query(q.id)
-                        .text("⚙️ 正在启动防火墙扫描与加固...")
-                        .await?;
+                    handlers::security::handle_firewall_harden(bot.clone(), q, chat_id, msg_id).await?;
                 }
                 "a_upgrade" => {
                     bot.answer_callback_query(q.id.clone())
