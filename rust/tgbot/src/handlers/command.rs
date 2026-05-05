@@ -1,7 +1,7 @@
 use crate::app::auth;
 use crate::app::state::AppState;
 use crate::bootstrap::{CONFIG_FILE, EncryptedConfig, KEY_FILE};
-use anyhow::Result;
+use tgbot::core::error::Result;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::sync::Arc;

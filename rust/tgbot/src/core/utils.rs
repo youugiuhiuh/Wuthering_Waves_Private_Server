@@ -53,6 +53,7 @@ pub fn generate_timestamp_filename(prefix: &str, extension: &str) -> String {
 ///
 /// # Examples
 /// ```
+/// use tgbot::core::utils::format_duration_human;
 /// assert_eq!(format_duration_human(3661), "1小时1分".to_string());
 /// ```
 pub fn format_duration_human(secs: u64) -> String {

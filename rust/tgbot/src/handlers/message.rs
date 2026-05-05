@@ -9,6 +9,23 @@ use tgbot::logic::config::ConfigManager;
 
 const MAX_INPUT_LENGTH: usize = 4096;
 
+/// 处理用户发送的普通消息
+///
+/// 包含以下处理逻辑:
+/// - 验证用户是否为管理员
+/// - 检查输入长度限制 (4096 字符)
+/// - 处理定时任务输入超时 (180s)
+/// - 处理 WARP 分流规则输入 (60s)
+/// - 处理销毁流程消息
+/// - 处理 TOTP 验证码认证
+///
+/// # Arguments
+/// * `bot` - Telegram bot 实例
+/// * `msg` - 用户消息
+/// * `state` - 应用状态
+///
+/// # Returns
+/// 处理结果
 pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> ResponseResult<()> {
     let chat_id = msg.chat.id;
     let Some(from) = msg.from.as_ref() else {

@@ -1,3 +1,7 @@
+//! 应用状态管理模块
+//!
+//! 管理用户会话、认证状态、定时任务输入流、WARP 输入流、销毁流程等.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -81,7 +85,15 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(
+    /// 创建新的应用状态
+///
+/// # Arguments
+/// * `admin_id` - 管理员 Telegram 用户 ID
+/// * `totp_manager` - TOTP 管理器
+/// * `self_destruct_executor` - 自销毁执行器
+/// * `self_destruct_key_hash` - 自销毁密钥哈希
+/// * `session_timeout_secs` - 会话超时时间（秒）
+pub fn new(
         admin_id: i64,
         totp_manager: TotpManager,
         self_destruct_executor: Arc<dyn SelfDestructExecutor>,
@@ -102,19 +114,23 @@ impl AppState {
         }
     }
 
-    pub fn admin_id(&self) -> i64 {
+    /// 获取管理员 ID
+pub fn admin_id(&self) -> i64 {
         self.admin_id
     }
 
-    pub fn is_admin_user(&self, user_id: i64) -> bool {
+    /// 检查用户是否为管理员
+pub fn is_admin_user(&self, user_id: i64) -> bool {
         user_id == self.admin_id
     }
 
-    pub fn verify_totp(&self, code: &str) -> bool {
+    /// 验证 TOTP 验证码
+pub fn verify_totp(&self, code: &str) -> bool {
         self.totp_manager.verify(code)
     }
 
-    pub async fn is_authorized(&self, user_id: i64) -> bool {
+    /// 检查用户是否已授权（会话有效）
+pub async fn is_authorized(&self, user_id: i64) -> bool {
         if !self.is_admin_user(user_id) {
             return false;
         }
@@ -127,7 +143,8 @@ impl AppState {
             .unwrap_or(false)
     }
 
-    pub async fn is_recently_authenticated(&self, user_id: i64) -> bool {
+    /// 检查用户是否在最近 5 分钟内认证过
+pub async fn is_recently_authenticated(&self, user_id: i64) -> bool {
         if !self.is_admin_user(user_id) {
             return false;
         }
@@ -139,33 +156,40 @@ impl AppState {
             .unwrap_or(false)
     }
 
-    pub async fn session_timeout_secs(&self) -> u64 {
+    /// 获取会话超时时间（秒）
+pub async fn session_timeout_secs(&self) -> u64 {
         *self.session_timeout_secs.lock().await
     }
 
-    pub async fn set_session_timeout_secs(&self, secs: u64) {
+    /// 设置会话超时时间
+pub async fn set_session_timeout_secs(&self, secs: u64) {
         *self.session_timeout_secs.lock().await = secs;
     }
 
-    pub fn self_destruct_executor(&self) -> Arc<dyn SelfDestructExecutor> {
+    /// 获取自销毁执行器
+pub fn self_destruct_executor(&self) -> Arc<dyn SelfDestructExecutor> {
         self.self_destruct_executor.clone()
     }
 
-    pub async fn set_self_destruct_key_hash(&self, hash: Option<String>) {
+    /// 设置自销毁密钥哈希
+pub async fn set_self_destruct_key_hash(&self, hash: Option<String>) {
         *self.self_destruct_key_hash.lock().await = hash;
     }
 
-    pub async fn self_destruct_key_hash(&self) -> Option<String> {
+    /// 获取自销毁密钥哈希
+pub async fn self_destruct_key_hash(&self) -> Option<String> {
         self.self_destruct_key_hash.lock().await.clone()
     }
 
-    pub async fn record_auth_success(&self, user_id: i64, now: Instant) -> u64 {
+    /// 记录认证成功，更新会话并返回超时时间
+pub async fn record_auth_success(&self, user_id: i64, now: Instant) -> u64 {
         self.sessions.lock().await.insert(user_id, now);
         self.failed_attempts.lock().await.remove(&user_id);
         self.session_timeout_secs().await
     }
 
-    pub async fn record_auth_failure(
+    /// 记录认证失败，返回失败结果或锁定状态
+pub async fn record_auth_failure(
         &self,
         user_id: i64,
         now: Instant,
@@ -214,7 +238,8 @@ impl AppState {
         }
     }
 
-    pub async fn auth_cooldown_remaining(&self, user_id: i64, now: Instant) -> Option<Duration> {
+    /// 获取用户冷却剩余时间
+pub async fn auth_cooldown_remaining(&self, user_id: i64, now: Instant) -> Option<Duration> {
         let mut fails = self.failed_attempts.lock().await;
         let rec = fails.get_mut(&user_id)?;
         let until = rec.cooldown_until?;
@@ -226,7 +251,8 @@ impl AppState {
         }
     }
 
-    pub async fn begin_destruct(&self, chat_id: ChatId, now: Instant) {
+    /// 开始销毁流程
+pub async fn begin_destruct(&self, chat_id: ChatId, now: Instant) {
         self.pending_destructs.lock().await.insert(
             chat_id,
             DestructState {
@@ -238,7 +264,8 @@ impl AppState {
         );
     }
 
-    pub async fn cancel_destruct(&self, chat_id: ChatId) -> bool {
+    /// 取消销毁流程
+pub async fn cancel_destruct(&self, chat_id: ChatId) -> bool {
         self.pending_destructs
             .lock()
             .await
@@ -246,11 +273,13 @@ impl AppState {
             .is_some()
     }
 
-    pub async fn destruct_snapshot(&self, chat_id: ChatId) -> Option<DestructState> {
+    /// 获取销毁流程快照
+pub async fn destruct_snapshot(&self, chat_id: ChatId) -> Option<DestructState> {
         self.pending_destructs.lock().await.get(&chat_id).cloned()
     }
 
-    pub async fn touch_destruct(
+    /// 检查销毁流程超时状态
+pub async fn touch_destruct(
         &self,
         chat_id: ChatId,
         now: Instant,
@@ -267,7 +296,8 @@ impl AppState {
         }
     }
 
-    pub async fn advance_destruct_step(
+    /// 推进销毁流程步骤
+pub async fn advance_destruct_step(
         &self,
         chat_id: ChatId,
         expected: DestructStep,
@@ -287,7 +317,8 @@ impl AppState {
         .unwrap_or(false)
     }
 
-    pub async fn confirm_first_destruct_totp(
+    /// 确认第一个 TOTP
+pub async fn confirm_first_destruct_totp(
         &self,
         chat_id: ChatId,
         code: &str,
@@ -307,7 +338,8 @@ impl AppState {
         .unwrap_or(false)
     }
 
-    pub async fn confirm_second_destruct_totp(
+    /// 确认第二个 TOTP（检测重复）
+pub async fn confirm_second_destruct_totp(
         &self,
         chat_id: ChatId,
         code: &str,
@@ -339,7 +371,8 @@ impl AppState {
             .unwrap_or(false))
     }
 
-    pub async fn mark_destruct_file_verified(&self, chat_id: ChatId, now: Instant) -> bool {
+    /// 标记安全文件已验证
+pub async fn mark_destruct_file_verified(&self, chat_id: ChatId, now: Instant) -> bool {
         self.advance_destruct_step(
             chat_id,
             DestructStep::AwaitSecurityFile,
@@ -349,7 +382,8 @@ impl AppState {
         .await
     }
 
-    pub async fn with_destruct<R>(
+    /// 修改销毁流程状态
+pub async fn with_destruct<R>(
         &self,
         chat_id: ChatId,
         f: impl FnOnce(&mut DestructState) -> R,
@@ -358,11 +392,13 @@ impl AppState {
         destructs.get_mut(&chat_id).map(f)
     }
 
-    pub async fn start_warp_input(&self, chat_id: ChatId, now: Instant) {
+    /// 启动 WARP 输入追踪
+pub async fn start_warp_input(&self, chat_id: ChatId, now: Instant) {
         self.pending_warp_inputs.lock().await.insert(chat_id, now);
     }
 
-    pub async fn take_warp_input_status(
+    /// 获取 WARP 输入状态
+pub async fn take_warp_input_status(
         &self,
         chat_id: ChatId,
         timeout: Duration,
@@ -375,7 +411,8 @@ impl AppState {
         }
     }
 
-    pub async fn schedule_timeout_status(
+    /// 获取定时任务输入超时状态
+pub async fn schedule_timeout_status(
         &self,
         chat_id: ChatId,
         timeout: Duration,
@@ -388,18 +425,21 @@ impl AppState {
         }
     }
 
-    pub async fn remove_schedule_input(&self, chat_id: ChatId) {
+    /// 移除定时任务输入
+pub async fn remove_schedule_input(&self, chat_id: ChatId) {
         self.pending_schedule_inputs.lock().await.remove(&chat_id);
     }
 
-    pub async fn insert_schedule_input(&self, chat_id: ChatId, input: ScheduleInputState) {
+    /// 插入定时任务输入
+pub async fn insert_schedule_input(&self, chat_id: ChatId, input: ScheduleInputState) {
         self.pending_schedule_inputs
             .lock()
             .await
             .insert(chat_id, input);
     }
 
-    pub async fn schedule_input_snapshot(&self, chat_id: ChatId) -> Option<ScheduleInputState> {
+    /// 获取定时任务输入快照
+pub async fn schedule_input_snapshot(&self, chat_id: ChatId) -> Option<ScheduleInputState> {
         self.pending_schedule_inputs
             .lock()
             .await
@@ -407,7 +447,8 @@ impl AppState {
             .cloned()
     }
 
-    pub async fn with_schedule_input<R>(
+    /// 修改定时任务输入状态
+pub async fn with_schedule_input<R>(
         &self,
         chat_id: ChatId,
         f: impl FnOnce(&mut ScheduleInputState) -> R,
