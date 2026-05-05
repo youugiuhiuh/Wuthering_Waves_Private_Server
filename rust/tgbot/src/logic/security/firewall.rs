@@ -1,5 +1,5 @@
-use crate::logic::firewalld::FirewalldClient;
-use crate::logic::ufw::UfwClient;
+use super::firewalld::FirewalldClient;
+use super::ufw::UfwClient;
 use anyhow::Result;
 use std::collections::HashSet;
 

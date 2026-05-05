@@ -196,7 +196,7 @@ impl MaintenanceManager {
     where
         F: Fn(&str) + Send + Sync + 'static,
     {
-        use crate::logic::firewall_scanner::FirewallScanner;
+        use crate::logic::security::firewall_scanner::FirewallScanner;
 
         progress_callback("🔍 正在扫描系统端口...");
         let ports = FirewallScanner::scan_all_ports().await?;
@@ -206,7 +206,7 @@ impl MaintenanceManager {
 
         progress_callback("🛡️ 正在应用防火墙加固规则...");
 
-        crate::logic::firewall::FirewallManager::harden_with_ports(ports).await?;
+        crate::logic::security::firewall::FirewallManager::harden_with_ports(ports).await?;
 
         progress_callback("🛡️ 正在配置暴力破解防护 (Fail2Ban)...");
         if let Err(e) = crate::logic::fail2ban::Fail2BanManager::setup().await {
@@ -385,16 +385,16 @@ impl MaintenanceManager {
     }
 
     pub async fn allow_port(port: u16) -> Result<()> {
-        crate::logic::firewall::FirewallManager::add_port(port).await?;
+        crate::logic::security::firewall::FirewallManager::add_port(port).await?;
         Ok(())
     }
 
     pub async fn is_ufw_active() -> bool {
-        crate::logic::ufw::UfwClient::is_active().await
+        crate::logic::security::ufw::UfwClient::is_active().await
     }
 
     pub async fn is_firewalld_active() -> bool {
-        crate::logic::firewalld::FirewalldClient::is_active().await
+        crate::logic::security::firewalld::FirewalldClient::is_active().await
     }
 
     /// 允许端口范围（IPv4）
@@ -402,12 +402,12 @@ impl MaintenanceManager {
     pub async fn allow_port_range(start: u16, end: u16) -> Result<()> {
         // 检测 ufw 是否激活
         if Self::is_ufw_active().await {
-            crate::logic::ufw::UfwClient::add_port_range(start, end, "udp").await?;
+            crate::logic::security::ufw::UfwClient::add_port_range(start, end, "udp").await?;
         }
 
         // 检测 firewalld 是否激活
         if Self::is_firewalld_active().await {
-            crate::logic::firewalld::FirewalldClient::add_port_range(start, end, "udp").await?;
+            crate::logic::security::firewalld::FirewalldClient::add_port_range(start, end, "udp").await?;
         }
 
         Ok(())
@@ -418,7 +418,7 @@ impl MaintenanceManager {
     pub async fn allow_port_range_v6(start: u16, end: u16) -> Result<()> {
         // 检测 ufw 是否激活
         if Self::is_ufw_active().await {
-            crate::logic::ufw::UfwClient::add_port_range_v6(start, end, "udp").await?;
+            crate::logic::security::ufw::UfwClient::add_port_range_v6(start, end, "udp").await?;
         }
 
         // firewalld 自动处理 IPv6，无需额外调用
@@ -431,12 +431,12 @@ impl MaintenanceManager {
     pub async fn remove_port_range(start: u16, end: u16) -> Result<()> {
         // 检测 ufw 是否激活
         if Self::is_ufw_active().await {
-            crate::logic::ufw::UfwClient::remove_port_range(start, end, "udp").await?;
+            crate::logic::security::ufw::UfwClient::remove_port_range(start, end, "udp").await?;
         }
 
         // 检测 firewalld 是否激活
         if Self::is_firewalld_active().await {
-            crate::logic::firewalld::FirewalldClient::remove_port_range(start, end, "udp").await?;
+            crate::logic::security::firewalld::FirewalldClient::remove_port_range(start, end, "udp").await?;
         }
 
         Ok(())
@@ -446,7 +446,7 @@ impl MaintenanceManager {
     pub async fn remove_port_range_v6(start: u16, end: u16) -> Result<()> {
         // 检测 ufw 是否激活
         if Self::is_ufw_active().await {
-            crate::logic::ufw::UfwClient::remove_port_range_v6(start, end, "udp").await?;
+            crate::logic::security::ufw::UfwClient::remove_port_range_v6(start, end, "udp").await?;
         }
 
         Ok(())

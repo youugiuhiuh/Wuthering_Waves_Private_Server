@@ -4,7 +4,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rust_embed::RustEmbed;
 
-use crate::logic::sni_state::{SNIPersistence, SNIState};
+use super::state::{SNIPersistence, SNIState};
 
 pub mod sni_proto {
     include!(concat!(env!("OUT_DIR"), "/sni.rs"));

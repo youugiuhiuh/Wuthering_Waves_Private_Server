@@ -3,7 +3,7 @@ use futures_util::future::BoxFuture;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::logic::maintenance::MaintenanceManager;
+use crate::logic::system::maintenance::MaintenanceManager;
 
 pub trait SelfDestructExecutor: Send + Sync {
     fn execute(&self) -> BoxFuture<'static, Result<()>>;
