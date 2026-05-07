@@ -1,0 +1,6 @@
+interface:
+  display_name: "Wuthering Waves Private Server"
+  short_description: "Repo-specific patterns and workflows for Wuthering_Waves_Private_Server"
+  default_prompt: "Use the Wuthering_Waves_Private_Server repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
