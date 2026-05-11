@@ -7,10 +7,10 @@ use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
+use crate::core::paths::maintenance::{BBR3_PENDING_FLAG_FILE, DESTRUCT_SERVICES, DESTRUCT_TARGETS};
 use crate::core::paths::xray;
 use crate::logic::cmd_async::{run_cmd_checked, run_cmd_output, run_cmd_status};
 use crate::logic::utils::{format_download_progress, should_report};
-pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/tgbot/bbr3_pending.flag";
 
 pub struct MaintenanceManager;
 
@@ -453,15 +453,8 @@ impl MaintenanceManager {
     }
 
     /// 默认的自毁目标路径列表
-    pub const DESTRUCT_TARGETS: &[&str] = &[
-        "/etc/wwps",
-        "/var/log",
-        "/root/.acme.sh",
-        "/etc/systemd/system/wwps-tgbot.service",
-    ];
-
-    /// 默认需要停止的服务列表
-    pub const DESTRUCT_SERVICES: &[&str] = &["wwps-core", "wwps-box", "nginx"];
+    pub const DESTRUCT_TARGETS: &[&str] = DESTRUCT_TARGETS;
+pub const DESTRUCT_SERVICES: &[&str] = DESTRUCT_SERVICES;
 
     /// 安全擦除指定的目标路径列表，返回每个路径的擦除结果
     ///

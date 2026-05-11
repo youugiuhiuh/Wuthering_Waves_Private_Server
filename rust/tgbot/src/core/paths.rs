@@ -4,21 +4,6 @@
 
 pub const WWPS_BASE_DIR: &str = "/etc/wwps";
 
-/// Xray-core 相关路径
-pub mod xray {
-    pub const DIR: &str = "/etc/wwps/wwps-core";
-    pub const BIN: &str = "/etc/wwps/wwps-core/wwps-core";
-    pub const CONF_DIR: &str = "/etc/wwps/wwps-core/conf";
-    pub const BACKUP_DIR: &str = "/etc/wwps/wwps-core/backup";
-    pub const TEMP_DIR: &str = "/tmp/wwps-core-installer";
-
-    pub const DEFAULT_OWNER: &str = "XTLS";
-    pub const DEFAULT_REPO: &str = "Xray-core";
-    pub const DEFAULT_SERVICE: &str = "wwps-core";
-    pub const DEFAULT_TEMP_DIR: &str = "/tmp/wwps-core-upgrade";
-    pub const DEFAULT_BACKUP_PREFIX: &str = "wwps-core-backup";
-}
-
 /// Sing-box 相关路径
 pub mod singbox {
     pub const DIR: &str = "/etc/wwps/wwps-box";
@@ -33,7 +18,37 @@ pub mod singbox {
 pub mod bot {
     pub const DIR: &str = "/etc/wwps/tgbot";
     pub const KEY_FILE: &str = "/etc/wwps/tgbot/.key";
-    pub const BBR3_PENDING_FLAG: &str = "/etc/wwps/tgbot/bbr3_pending.flag";
+    pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/tgbot/bbr3_pending.flag";
+}
+
+/// Xray-core 相关路径
+pub mod xray {
+    pub const DIR: &str = "/etc/wwps/wwps-core";
+    pub const BIN: &str = "/etc/wwps/wwps-core/wwps-core";
+    pub const CONF_DIR: &str = "/etc/wwps/wwps-core/conf";
+    pub const BACKUP_DIR: &str = "/etc/wwps/wwps-core/backup";
+    pub const TEMP_DIR: &str = "/tmp/wwps-core-installer";
+    pub const PQ_SEED_PATH: &str = "/etc/wwps/reality_pq.seed";
+    pub const PQ_PUB_PATH: &str = "/etc/wwps/reality_pq.pub";
+
+    pub const DEFAULT_OWNER: &str = "XTLS";
+    pub const DEFAULT_REPO: &str = "Xray-core";
+    pub const DEFAULT_SERVICE: &str = "wwps-core";
+    pub const DEFAULT_TEMP_DIR: &str = "/tmp/wwps-core-upgrade";
+    pub const DEFAULT_BACKUP_PREFIX: &str = "wwps-core-backup";
+}
+
+/// Maintenance 相关路径
+pub mod maintenance {
+    pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/tgbot/bbr3_pending.flag";
+    pub const UPGRADE_FLAG_FILE: &str = "/etc/wwps/tgbot/upgrade.flag";
+    pub const DESTRUCT_TARGETS: &[&str] = &[
+        "/etc/wwps",
+        "/var/log",
+        "/root/.acme.sh",
+        "/etc/systemd/system/wwps-tgbot.service",
+    ];
+    pub const DESTRUCT_SERVICES: &[&str] = &["wwps-core", "wwps-box", "nginx"];
 }
 
 /// WARP 相关路径
@@ -76,6 +91,23 @@ mod tests {
     fn test_bot_paths() {
         assert_eq!(bot::DIR, "/etc/wwps/tgbot");
         assert_eq!(bot::KEY_FILE, "/etc/wwps/tgbot/.key");
+        assert_eq!(bot::BBR3_PENDING_FLAG_FILE, "/etc/wwps/tgbot/bbr3_pending.flag");
+    }
+
+    #[test]
+    fn test_xray_pq_paths() {
+        assert_eq!(xray::PQ_SEED_PATH, "/etc/wwps/reality_pq.seed");
+        assert_eq!(xray::PQ_PUB_PATH, "/etc/wwps/reality_pq.pub");
+    }
+
+    #[test]
+    fn test_maintenance_paths() {
+        assert_eq!(maintenance::BBR3_PENDING_FLAG_FILE, "/etc/wwps/tgbot/bbr3_pending.flag");
+        assert_eq!(maintenance::UPGRADE_FLAG_FILE, "/etc/wwps/tgbot/upgrade.flag");
+        assert!(!maintenance::DESTRUCT_TARGETS.is_empty());
+        assert!(maintenance::DESTRUCT_TARGETS.contains(&"/etc/wwps"));
+        assert!(!maintenance::DESTRUCT_SERVICES.is_empty());
+        assert!(maintenance::DESTRUCT_SERVICES.contains(&"wwps-core"));
     }
 
     #[test]
