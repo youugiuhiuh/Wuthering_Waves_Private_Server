@@ -41,10 +41,8 @@ use tgbot::logic::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use tgbot::logic::self_destruct::production_executor;
 use tgbot::logic::system::SystemMonitor;
 use tgbot::logic::totp::TotpManager;
-use tgbot::logic::upgrade::{
-    UPGRADE_FLAG_FILE, UpgradeManager,
-    wwps_core::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager},
-};
+use tgbot::logic::bot_upgrade::{UpgradeManager, UPGRADE_FLAG_FILE};
+use tgbot::logic::core_upgrade::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
 use tgbot::logic::log_audit::{LogAudit, SERVICE_WWPS_CORE, SERVICE_SING_BOX};
 // TOTP 防爆破参数
 // TOTP 防爆破参数

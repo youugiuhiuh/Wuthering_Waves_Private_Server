@@ -10,7 +10,11 @@ pub mod system;
 pub mod cmd_async;
 pub mod utils;
 pub mod totp;
-pub mod upgrade;
+pub mod bot_upgrade;
+pub mod core_upgrade;
+
+pub use bot_upgrade::{UpgradeManager, ReleaseArtifact, UPGRADE_FLAG_FILE};
+pub use core_upgrade::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreReleaseInfo, WwpsCoreUpgradeManager};
 
 // ========== 向后兼容 re-export ==========
 // 原 logic::security (SecurityManager) → logic::security::crypto
