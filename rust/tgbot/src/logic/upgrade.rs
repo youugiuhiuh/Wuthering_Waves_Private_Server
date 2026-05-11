@@ -48,7 +48,7 @@ fn tgbot_release_api_bases() -> Vec<String> {
     ]
 }
 
-pub const UPGRADE_FLAG_FILE: &str = "/etc/wwps/tgbot/upgrade.flag";
+pub use crate::core::paths::maintenance::UPGRADE_FLAG_FILE;
 
 static SHA256_LINE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)sha256[:\s]+([0-9a-f]{64})").expect("valid sha256 regex"));
