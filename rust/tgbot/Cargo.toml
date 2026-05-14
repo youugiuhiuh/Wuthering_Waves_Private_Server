@@ -36,7 +36,7 @@ percent-encoding = "2.3"
 tokio-rustls = "0.24"
 rustls = "0.21"
 x509-parser = "0.16"
-dashmap = "5"
+dashmap = "6"
 
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 regex = "1"
