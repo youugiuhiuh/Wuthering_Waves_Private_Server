@@ -17,7 +17,7 @@ jobs:
         env:
             FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - uses: actions/setup-go@v5
               with:
@@ -59,7 +59,7 @@ jobs:
         env:
             FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - uses: actions/setup-go@v5
               with:
@@ -101,7 +101,7 @@ jobs:
         env:
             FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Install protoc
               run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
