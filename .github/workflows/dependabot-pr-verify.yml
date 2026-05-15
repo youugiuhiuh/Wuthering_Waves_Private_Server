@@ -10,41 +10,29 @@ permissions:
   pull-requests: write
 
 jobs:
-  verify:
+  go-installer:
+    if: ${{ github.actor == 'dependabot[bot]' && contains(github.event.pull_request.labels.*.name, 'dependencies') && (startsWith(github.event.pull_request.title, '[go/installer]') || contains(github.event.pull_request.title, '/go/installer')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      # Rust 构建 & 测试
-      - name: Rust setup
-        if: contains(github.event.pull_request.title, 'rust/tgbot')
-        run: |
-          sudo apt-get update && sudo apt-get install -y protobuf-compiler
-          cd rust/tgbot && cargo build --release && cargo test
-
-      # Go 构建 & 测试
-      - name: Setup Go
-        if: contains(github.event.pull_request.title, 'sni_tester') || contains(github.event.pull_request.title, 'go/installer')
-        uses: actions/setup-go@v6
+      - uses: actions/setup-go@v5
         with:
           go-version: "1.26.2"
+          cache-dependency-path: go/installer/go.sum
 
-      - name: Go build & test
-        if: contains(github.event.pull_request.title, 'sni_tester')
-        run: cd sni_tester && go build -o sni_tester . && go test ./...
+      - name: Build
+        run: cd go/installer && go build -o installer .
 
-      - name: Go build & test
-        if: contains(github.event.pull_request.title, 'go/installer')
-        run: cd go/installer && go build -o installer . && go test ./...
+      - name: Test
+        run: cd go/installer && go test -v ./...
 
-      # 成功 → 添加 automerge 标签
       - name: Add automerge label
         if: success()
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         with:
           script: |
             github.rest.issues.addLabels({
@@ -53,11 +41,91 @@ jobs:
               issue_number: context.issue.number,
               labels: ['automerge']
             })
-
-      # 失败 → 添加 automerge-failed 标签
       - name: Add failed label
         if: failure()
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['automerge-failed']
+            })
+  sni-tester:
+    if: ${{ github.actor == 'dependabot[bot]' && contains(github.event.pull_request.labels.*.name, 'dependencies') && (startsWith(github.event.pull_request.title, '[sni_tester]') || contains(github.event.pull_request.title, '/sni_tester')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.2"
+          cache-dependency-path: sni_tester/go.sum
+
+      - name: Build
+        run: cd sni_tester && go build -o sni_tester .
+
+      - name: Test
+        run: cd sni_tester && go test -v ./...
+
+      - name: Add automerge label
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['automerge']
+            })
+      - name: Add failed label
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['automerge-failed']
+            })
+  rust-tgbot:
+    if: ${{ github.actor == 'dependabot[bot]' && contains(github.event.pull_request.labels.*.name, 'dependencies') && (startsWith(github.event.pull_request.title, '[rust/tgbot]') || contains(github.event.pull_request.title, '/rust/tgbot')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Build
+        run: cd rust/tgbot && cargo build --release
+
+      - name: Test
+        run: cd rust/tgbot && cargo test
+
+      - name: Add automerge label
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['automerge']
+            })
+      - name: Add failed label
+        if: failure()
+        uses: actions/github-script@v7
         with:
           script: |
             github.rest.issues.addLabels({
