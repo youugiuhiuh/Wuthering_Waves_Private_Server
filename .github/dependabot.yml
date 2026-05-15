@@ -16,6 +16,6 @@ updates:
           interval: "weekly"
 
     - package-ecosystem: "github-actions"
-      directory: ".github/workflows"   # 只写目录，不加 *
+      directory: ".github"   # 只写目录，不加 *
       schedule:
           interval: "weekly"
