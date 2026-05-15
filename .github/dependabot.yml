@@ -1,21 +1,21 @@
-version: 2
+version: 3
 updates:
-    - package-ecosystem: "cargo"
-      directory: "rust/tgbot"
-      schedule:
-          interval: "weekly"
+  - package-ecosystem: "cargo"
+    directory: "rust/tgbot"
+    schedule:
+      interval: "weekly"
 
-    - package-ecosystem: "gomod"
-      directory: "sni_tester"
-      schedule:
-          interval: "weekly"
+  - package-ecosystem: "gomod"
+    directory: "sni_tester"
+    schedule:
+      interval: "weekly"
 
-    - package-ecosystem: "gomod"
-      directory: "go/installer"
-      schedule:
-          interval: "weekly"
+  - package-ecosystem: "gomod"
+    directory: "go/installer"
+    schedule:
+      interval: "weekly"
 
-    - package-ecosystem: "github-actions"
-      directory: ".github"   # 只写目录，不加 *
-      schedule:
-          interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: ".github" # 只写目录，不加 *
+    schedule:
+      interval: "weekly"
