@@ -1,7 +1,7 @@
-name: Auto Merge
+name: Dependabot Auto Merge
 
 on:
-    pull_request:
+    pull_request_target:
         types: [labeled]
 
 permissions:
@@ -9,14 +9,12 @@ permissions:
     pull-requests: write
 
 jobs:
-    auto-merge:
-        if: contains(github.event.pull_request.labels.*.name, 'automerge')
+    automerge:
         runs-on: ubuntu-latest
         steps:
             - name: Auto merge PR
-              env:
-                  GH_TOKEN: ${{ secrets.PAT_TOKEN }}
-              run: |
-                  pr_url="${{ github.event.pull_request.html_url }}"
-                  echo "Auto-merging PR: $pr_url"
-                  gh pr merge --admin --merge "$pr_url"
+              if: ${{ github.event.label.name == 'automerge' && github.actor == 'dependabot[bot]' }}
+              uses: pascalgn/automerge-action@v0.17.1
+              with:
+                  mergeMethod: squash
+                  githubToken: ${{ secrets.GITHUB_TOKEN }}
