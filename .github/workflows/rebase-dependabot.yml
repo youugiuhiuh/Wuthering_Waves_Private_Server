@@ -1,0 +1,26 @@
+name: Rebase Dependabot PRs
+
+on:
+  push:
+    branches:
+      - main # 主分支更新触发
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Rebase open Dependabot PRs
+        uses: peter-evans/rebase@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # 可选：只处理 Dependabot PR
+          author: dependabot[bot]
+          base: main
+          # 可选：合并失败自动标记
+          fail-on-conflict: false

@@ -12,9 +12,9 @@ jobs:
     automerge:
         runs-on: ubuntu-latest
         steps:
-            - name: Auto merge PR
+            - name: Auto merge Dependabot PR
               if: ${{ github.event.label.name == 'automerge' && github.actor == 'dependabot[bot]' }}
-              uses: pascalgn/automerge-action@v0.17.1
+              uses: pascalgn/automerge-action@v0.16.4
               with:
                   mergeMethod: squash
                   githubToken: ${{ secrets.GITHUB_TOKEN }}

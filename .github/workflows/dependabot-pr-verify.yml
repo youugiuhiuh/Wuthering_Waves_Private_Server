@@ -19,15 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Rust build & test
+      # Rust 构建 & 测试
       - name: Rust setup
-        if: ${{ github.event.pull_request.head.repo.name == 'tgbot' || github.event.pull_request.title contains 'rust/tgbot' }}
+        if: ${{ github.event.pull_request.title contains 'rust/tgbot' }}
         run: |
           sudo apt-get update && sudo apt-get install -y protobuf-compiler
           cd rust/tgbot && cargo build --release && cargo test
 
-      # Go build & test
-      - name: Go setup
+      # Go 构建 & 测试
+      - name: Setup Go
         if: ${{ github.event.pull_request.title contains 'sni_tester' || github.event.pull_request.title contains 'go/installer' }}
         uses: actions/setup-go@v6
         with:
@@ -39,7 +39,7 @@ jobs:
         if: ${{ github.event.pull_request.title contains 'go/installer' }}
         run: cd go/installer && go build -o installer . && go test ./...
 
-      # Success label
+      # 成功 → 添加 automerge 标签
       - name: Add automerge label
         if: success()
         uses: actions/github-script@v9
@@ -52,7 +52,7 @@ jobs:
               labels: ['automerge']
             })
 
-      # Failure label
+      # 失败 → 添加 automerge-failed 标签
       - name: Add failed label
         if: failure()
         uses: actions/github-script@v9
