@@ -13,7 +13,7 @@ jobs:
   test:
     if: ${{ github.actor == 'dependabot[bot]' && contains(github.event.pull_request.labels.*.name, 'dependencies') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       matrix:
         project:
@@ -26,6 +26,9 @@ jobs:
           - name: sni-tester
             path: sni_tester
             language: go
+          - name: github-actions
+            path: .github
+            language: gha # GitHub Actions workflow
 
     steps:
       - name: Checkout
@@ -36,7 +39,11 @@ jobs:
         run: |
           git fetch origin ${{ github.event.pull_request.base.ref }}
           CHANGED_FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }} ${{ github.sha }})
-          echo "$CHANGED_FILES" | grep -q "${{ matrix.project.path }}" && echo "changed=true" >> $GITHUB_OUTPUT || echo "changed=false" >> $GITHUB_OUTPUT
+          if echo "$CHANGED_FILES" | grep -q "${{ matrix.project.path }}"; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Skip if no changes
         if: ${{ steps.check.outputs.changed == 'false' }}
@@ -50,10 +57,15 @@ jobs:
             echo "Setting up Go..."
             sudo apt-get update
             sudo apt-get install -y golang-go
-          else
+          elif [ "${{ matrix.project.language }}" = "rust" ]; then
             echo "Setting up Rust..."
             sudo apt-get update
             sudo apt-get install -y cargo protobuf-compiler
+          else
+            echo "Setting up environment for GitHub Actions workflow validation..."
+            # 这里只是检查 YAML 是否合法
+            sudo apt-get update
+            sudo apt-get install -y yamllint
           fi
 
       - name: Build and Test
@@ -62,9 +74,12 @@ jobs:
           if [ "${{ matrix.project.language }}" = "go" ]; then
             go build -o ${{ matrix.project.name }} .
             go test ./...
-          else
+          elif [ "${{ matrix.project.language }}" = "rust" ]; then
             cargo build --release
             cargo test
+          else
+            # GitHub Actions workflow 格式化检查
+            yamllint .
           fi
 
       - name: Add automerge label
