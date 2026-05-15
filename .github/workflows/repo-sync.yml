@@ -53,3 +53,24 @@ jobs:
                   repo: wuthering_waves_private_server
                   username: EGfrthtu
                   password: ${{ secrets.GITLAB_TOKEN }}
+
+mirror-forgejo:
+    name: Mirror to Forgejo
+    if: "!contains(github.event.head_commit.message, 'chore(deps)')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+        - name: Checkout
+          uses: actions/checkout@v6
+          with:
+              fetch-depth: 0
+
+        - name: Mirror to Forgejo
+          uses: cssnr/mirror-repository-action@v1
+          with:
+              host: https://v15.next.forgejo.org
+              owner: youugiuhiuh
+              repo: Wuthering_Waves_Private_Server
+              username: youugiuhiuh
+              password: ${{ secrets.FORGEJO_TOKEN }}
+              create: true
