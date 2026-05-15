@@ -1,20 +1,25 @@
-name: Dependabot Auto Merge
+name: Dependabot Auto Merge (Official)
 
 on:
-  pull_request_target:
-    types: [labeled]
+  workflow_run:
+    workflows: ["Dependabot PR Verify"] # 依赖你的 Verify workflow 名称
+    types:
+      - completed
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  automerge:
+  enable-automerge:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }} # 只在 Verify 成功时启用
     steps:
-      - name: Auto merge Dependabot PR
-        if: ${{ github.event.label.name == 'automerge' && github.actor == 'dependabot[bot]' }}
-        uses: pascalgn/automerge-action@v0.16.4
+      - name: Enable GitHub Auto Merge
+        uses: peter-evans/enable-pull-request-automerge@v3
         with:
-          mergeMethod: squash
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          # PR 要启用自动合并
+          pull-request-number: ${{ github.event.workflow_run.pull_requests[0].number }}
+          merge-method: squash # squash/rebase/merge
+          commit-title: "auto merge: Dependabot PR"
+          commit-message: "Merged automatically after verification"
