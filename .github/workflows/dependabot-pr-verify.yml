@@ -21,22 +21,24 @@ jobs:
 
       # Rust 构建 & 测试
       - name: Rust setup
-        if: ${{ github.event.pull_request.title contains 'rust/tgbot' }}
+        if: contains(github.event.pull_request.title, 'rust/tgbot')
         run: |
           sudo apt-get update && sudo apt-get install -y protobuf-compiler
           cd rust/tgbot && cargo build --release && cargo test
 
       # Go 构建 & 测试
       - name: Setup Go
-        if: ${{ github.event.pull_request.title contains 'sni_tester' || github.event.pull_request.title contains 'go/installer' }}
+        if: contains(github.event.pull_request.title, 'sni_tester') || contains(github.event.pull_request.title, 'go/installer')
         uses: actions/setup-go@v6
         with:
           go-version: "1.26.2"
+
       - name: Go build & test
-        if: ${{ github.event.pull_request.title contains 'sni_tester' }}
+        if: contains(github.event.pull_request.title, 'sni_tester')
         run: cd sni_tester && go build -o sni_tester . && go test ./...
+
       - name: Go build & test
-        if: ${{ github.event.pull_request.title contains 'go/installer' }}
+        if: contains(github.event.pull_request.title, 'go/installer')
         run: cd go/installer && go build -o installer . && go test ./...
 
       # 成功 → 添加 automerge 标签
