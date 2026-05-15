@@ -28,7 +28,7 @@ jobs:
             language: go
           - name: github-actions
             path: .github
-            language: gha # GitHub Actions workflow
+            language: gha
 
     steps:
       - name: Checkout
@@ -62,10 +62,7 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y cargo protobuf-compiler
           else
-            echo "Setting up environment for GitHub Actions workflow validation..."
-            # 这里只是检查 YAML 是否合法
-            sudo apt-get update
-            sudo apt-get install -y yamllint
+            echo "Setting up action-yaml-format for GitHub Actions workflow..."
           fi
 
       - name: Build and Test
@@ -78,8 +75,8 @@ jobs:
             cargo build --release
             cargo test
           else
-            # GitHub Actions workflow 格式化检查
-            yamllint .
+            # 使用 action-yaml-format 检查并格式化 YAML
+            gh workflow run action-yaml-format.yml --repo ${{ github.repository }}
           fi
 
       - name: Add automerge label
