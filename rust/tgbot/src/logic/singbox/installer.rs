@@ -8,14 +8,15 @@ pub struct SingBoxInstaller;
 
 impl SingBoxInstaller {
     pub async fn is_installed() -> bool {
-        fs::try_exists(singbox::BIN)
-            .await
-            .unwrap_or(false)
+        fs::try_exists(singbox::BIN).await.unwrap_or(false)
     }
 
     pub async fn install() -> Result<()> {
         let old_service_path = "/etc/systemd/system/sing-box.service";
-        if tokio::fs::try_exists(old_service_path).await.unwrap_or(false) {
+        if tokio::fs::try_exists(old_service_path)
+            .await
+            .unwrap_or(false)
+        {
             let _ = tokio::process::Command::new("systemctl")
                 .args(["stop", "sing-box"])
                 .output()
@@ -99,7 +100,11 @@ impl SingBoxInstaller {
 
         Ok(format!(
             "⚙️ <b>Sing-box 状态</b>: {}",
-            if running { "🟢 运行中" } else { "🔴 未运行" }
+            if running {
+                "🟢 运行中"
+            } else {
+                "🔴 未运行"
+            }
         ))
     }
 
@@ -123,8 +128,8 @@ impl SingBoxInstaller {
             .await
             .context("获取版本信息失败")?;
 
-        let json: serde_json::Value = serde_json::from_slice(&output.stdout)
-            .context("解析版本信息失败")?;
+        let json: serde_json::Value =
+            serde_json::from_slice(&output.stdout).context("解析版本信息失败")?;
 
         let tag_name = json["tag_name"]
             .as_str()
@@ -219,10 +224,7 @@ WantedBy=multi-user.target
             .context("重启服务失败")?;
 
         if !output.status.success() {
-            anyhow::bail!(
-                "重启服务失败: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
+            anyhow::bail!("重启服务失败: {}", String::from_utf8_lossy(&output.stderr));
         }
 
         Ok(())

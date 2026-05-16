@@ -5,6 +5,7 @@ use teloxide::prelude::*;
 
 use crate::app::state::{AppState, AuthFailureOutcome};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn process_auth_code(
     bot: &Bot,
     chat_id: ChatId,

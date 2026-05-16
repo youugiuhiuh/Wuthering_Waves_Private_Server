@@ -9,7 +9,7 @@ use std::path::Path;
 use std::time::Duration;
 use tokio::fs;
 
-use crate::core::paths::{xray, warp};
+use crate::core::paths::{warp, xray};
 use crate::core::types::{BatchCreationResult, IpVersion};
 use crate::logic::cmd_async::run_cmd_output;
 
@@ -84,6 +84,7 @@ pub enum Proto {
 pub struct ConfigManager;
 
 impl ConfigManager {
+    #[allow(dead_code)]
     const CONFIG_BASE_PATH: &'static str = xray::DIR;
     const TIMEOUT_WWPS_CORE: Duration = Duration::from_secs(5);
 
@@ -105,7 +106,7 @@ impl ConfigManager {
 
     pub async fn list_all_inbound_files() -> Result<Vec<String>> {
         let mut out = Vec::new();
-        
+
         if let Ok(mut rd) = fs::read_dir(xray::CONF_DIR).await {
             while let Ok(Some(entry)) = rd.next_entry().await {
                 if let Some(name) = entry.file_name().to_str()
@@ -116,7 +117,7 @@ impl ConfigManager {
                 }
             }
         }
-        
+
         Ok(out)
     }
 
@@ -456,8 +457,7 @@ impl ConfigManager {
         ip_version: IpVersion,
         mask_codes: &[&str],
     ) -> Result<BatchCreationResult> {
-        let masks = KcpMask::parse_codes(mask_codes)
-            .map_err(|e| anyhow!("{}", e))?;
+        let masks = KcpMask::parse_codes(mask_codes).map_err(|e| anyhow!("{}", e))?;
 
         let mask_types: Vec<&str> = masks.iter().map(|m| m.type_str()).collect();
         let mask_label = mask_types.join("+");
@@ -487,23 +487,20 @@ impl ConfigManager {
             let uuid = Self::generate_wwps_uuid().await?;
             let uuid_short = Self::uuid_short_prefix(&uuid);
 
-let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
-        let tag = format!("KCP-{}-{}", i + 1, uuid_short);
+            let email = format!("{}-vless-kcp-{}", uuid_short, mask_label);
+            let tag = format!("KCP-{}-{}", i + 1, uuid_short);
 
-        let config = Self::build_kcp_inbound(
-            &tag, port, &uuid, &email, ip_version, &masks,
-        );
-        batch_configs.push(config);
+            let config = Self::build_kcp_inbound(&tag, port, &uuid, &email, ip_version, &masks);
+            batch_configs.push(config);
 
-        let link = Self::generate_kcp_client_link(
-            &uuid, &host, port, &email, ip_version, &masks,
-        );
+            let link =
+                Self::generate_kcp_client_link(&uuid, &host, port, &email, ip_version, &masks);
             links.push(link);
 
             let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
-Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
+        Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
     }
 
     pub async fn batch_create_reality_vision_enhanced(
@@ -540,8 +537,7 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
                 None
             };
             let (port, uuid, priv_key, pub_key, short_id, sni, email, tag, path) =
-                Self::generate_enhanced_config(&mut rng, sni, i, Proto::Vision, preferred)
-                    .await?;
+                Self::generate_enhanced_config(&mut rng, sni, i, Proto::Vision, preferred).await?;
 
             let config = Self::build_reality_vless_inbound(
                 &tag,
@@ -615,8 +611,7 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
                 None
             };
             let (port, uuid, priv_key, pub_key, short_id, sni, email, tag, path) =
-                Self::generate_enhanced_config(&mut rng, sni, i, Proto::XHTTP, preferred)
-                    .await?;
+                Self::generate_enhanced_config(&mut rng, sni, i, Proto::XHTTP, preferred).await?;
 
             let config = Self::build_reality_vless_inbound(
                 &tag,
@@ -693,7 +688,8 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
             } else {
                 loop {
                     let p = rng.gen_range(10000..60000);
-                    if crate::logic::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                    if crate::logic::port_allocator::PortAllocator::is_port_in_locked_range(p).await
+                    {
                         continue;
                     }
                     if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
@@ -786,11 +782,10 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
                     uuid, fmt_host, port, encoded_sni, encoded_pbk, short_id,
                 );
 
-                if enable_pq
-                    && let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
-                        let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
-                        link.push_str(&format!("&pqv={}", encoded_pqv));
-                    }
+                if enable_pq && let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
+                    let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
+                    link.push_str(&format!("&pqv={}", encoded_pqv));
+                }
 
                 format!("{}#{}", link, encoded_email)
             }
@@ -831,11 +826,10 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
                     }
                 }
 
-                if enable_pq
-                    && let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
-                        let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
-                        link.push_str(&format!("&pqv={}", encoded_pqv));
-                    }
+                if enable_pq && let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
+                    let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
+                    link.push_str(&format!("&pqv={}", encoded_pqv));
+                }
 
                 format!("{}#{}", link, encoded_email)
             }
@@ -862,8 +856,7 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
         });
 
         // 保存文件
-        let content = serde_json::to_string_pretty(&config)
-            .context("序列化配置失败")?;
+        let content = serde_json::to_string_pretty(&config).context("序列化配置失败")?;
         fs::write(&config_path, content)
             .await
             .context("写入配置文件失败")?;
@@ -877,6 +870,7 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
         })
     }
 
+    #[allow(dead_code)]
     async fn backup_config_file(path: &str) -> Result<String> {
         let timestamp = chrono::Utc::now().timestamp();
         let backup_path = format!("{}.backup.{}", path, timestamp);
@@ -906,9 +900,10 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
         let mut file_with_time = Vec::new();
         for f in files {
             if let Ok(meta) = std::fs::metadata(&f)
-                && let Ok(time) = meta.modified() {
-                    file_with_time.push((f, time));
-                }
+                && let Ok(time) = meta.modified()
+            {
+                file_with_time.push((f, time));
+            }
         }
         file_with_time.sort_by_key(|a| a.1);
 
@@ -1161,8 +1156,7 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
             ]
         });
 
-        let content = serde_json::to_string_pretty(&base_config)
-            .context("序列化基础配置失败")?;
+        let content = serde_json::to_string_pretty(&base_config).context("序列化基础配置失败")?;
         tokio::fs::write(&base_path, content)
             .await
             .context("写入基础配置失败")?;
@@ -1173,12 +1167,8 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
 }
 
 async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
-    let (status, stdout, stderr) = run_cmd_output(
-        xray::BIN,
-        args,
-        ConfigManager::TIMEOUT_WWPS_CORE,
-    )
-    .await?;
+    let (status, stdout, stderr) =
+        run_cmd_output(xray::BIN, args, ConfigManager::TIMEOUT_WWPS_CORE).await?;
 
     if status.success() {
         Ok(stdout)
@@ -1197,9 +1187,27 @@ mod tests {
     #[test]
     fn test_header_size_values() {
         assert_eq!(KcpMask::MkcpOriginal.header_size(), Some(6));
-        assert_eq!(KcpMask::MkcpAes128Gcm { password: "test".to_string() }.header_size(), Some(28));
-        assert_eq!(KcpMask::Salamander { password: "test".to_string() }.header_size(), Some(8));
-        assert_eq!(KcpMask::HeaderDns { domain: "example.com".to_string() }.header_size(), Some(29));
+        assert_eq!(
+            KcpMask::MkcpAes128Gcm {
+                password: "test".to_string()
+            }
+            .header_size(),
+            Some(28)
+        );
+        assert_eq!(
+            KcpMask::Salamander {
+                password: "test".to_string()
+            }
+            .header_size(),
+            Some(8)
+        );
+        assert_eq!(
+            KcpMask::HeaderDns {
+                domain: "example.com".to_string()
+            }
+            .header_size(),
+            Some(29)
+        );
         assert_eq!(KcpMask::HeaderWechat.header_size(), Some(13));
         assert_eq!(KcpMask::HeaderSrtp.header_size(), Some(4));
         assert_eq!(KcpMask::HeaderUtp.header_size(), Some(4));
@@ -1208,16 +1216,54 @@ mod tests {
         assert_eq!(KcpMask::HeaderCustom.header_size(), Some(4));
 
         assert_eq!(KcpMask::Noise.header_size(), None);
-        assert_eq!(KcpMask::Sudoku { password: "test".to_string() }.header_size(), None);
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.header_size(), None);
-        assert_eq!(KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 }.header_size(), None);
+        assert_eq!(
+            KcpMask::Sudoku {
+                password: "test".to_string()
+            }
+            .header_size(),
+            None
+        );
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .header_size(),
+            None
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                listen_ip: "0.0.0.0".to_string(),
+                id: 0
+            }
+            .header_size(),
+            None
+        );
     }
 
     #[test]
     fn test_dns_header_size_dynamic() {
-        assert_eq!(KcpMask::HeaderDns { domain: "a.io".to_string() }.header_size(), Some(22));
-        assert_eq!(KcpMask::HeaderDns { domain: "example.com".to_string() }.header_size(), Some(29));
-        assert_eq!(KcpMask::HeaderDns { domain: "sub.domain.example.com".to_string() }.header_size(), Some(40));
+        assert_eq!(
+            KcpMask::HeaderDns {
+                domain: "a.io".to_string()
+            }
+            .header_size(),
+            Some(22)
+        );
+        assert_eq!(
+            KcpMask::HeaderDns {
+                domain: "example.com".to_string()
+            }
+            .header_size(),
+            Some(29)
+        );
+        assert_eq!(
+            KcpMask::HeaderDns {
+                domain: "sub.domain.example.com".to_string()
+            }
+            .header_size(),
+            Some(40)
+        );
     }
 
     #[test]
@@ -1487,9 +1533,7 @@ mod tests {
     #[test]
     fn test_kcp_mask_code_roundtrip() {
         let codes = [
-            "mo", "ma", "no", "sa", "su",
-            "hd", "hw", "hs", "hu", "hdt", "hwg",
-            "xd", "xi", "hc",
+            "mo", "ma", "no", "sa", "su", "hd", "hw", "hs", "hu", "hdt", "hwg", "xd", "xi", "hc",
         ];
         for code in codes {
             let mask = KcpMask::from_code(code);
@@ -1501,18 +1545,53 @@ mod tests {
     #[test]
     fn test_kcp_mask_type_str() {
         assert_eq!(KcpMask::MkcpOriginal.type_str(), "mkcp-original");
-        assert_eq!(KcpMask::MkcpAes128Gcm { password: "x".into() }.type_str(), "mkcp-aes128gcm");
+        assert_eq!(
+            KcpMask::MkcpAes128Gcm {
+                password: "x".into()
+            }
+            .type_str(),
+            "mkcp-aes128gcm"
+        );
         assert_eq!(KcpMask::Noise.type_str(), "noise");
-        assert_eq!(KcpMask::Salamander { password: "x".into() }.type_str(), "salamander");
-        assert_eq!(KcpMask::Sudoku { password: "x".into() }.type_str(), "sudoku");
-        assert_eq!(KcpMask::HeaderDns { domain: "x".into() }.type_str(), "header-dns");
+        assert_eq!(
+            KcpMask::Salamander {
+                password: "x".into()
+            }
+            .type_str(),
+            "salamander"
+        );
+        assert_eq!(
+            KcpMask::Sudoku {
+                password: "x".into()
+            }
+            .type_str(),
+            "sudoku"
+        );
+        assert_eq!(
+            KcpMask::HeaderDns { domain: "x".into() }.type_str(),
+            "header-dns"
+        );
         assert_eq!(KcpMask::HeaderWechat.type_str(), "header-wechat");
         assert_eq!(KcpMask::HeaderSrtp.type_str(), "header-srtp");
         assert_eq!(KcpMask::HeaderUtp.type_str(), "header-utp");
         assert_eq!(KcpMask::HeaderDtls.type_str(), "header-dtls");
         assert_eq!(KcpMask::HeaderWireguard.type_str(), "header-wireguard");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.type_str(), "xdns");
-        assert_eq!(KcpMask::Xicmp { listen_ip: "0.0.0.0".into(), id: 0 }.type_str(), "xicmp");
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .type_str(),
+            "xdns"
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                listen_ip: "0.0.0.0".into(),
+                id: 0
+            }
+            .type_str(),
+            "xicmp"
+        );
         assert_eq!(KcpMask::HeaderCustom.type_str(), "header-custom");
     }
 
@@ -1526,7 +1605,9 @@ mod tests {
 
     #[test]
     fn test_kcp_mask_as_json_aes128gcm() {
-        let mask = KcpMask::MkcpAes128Gcm { password: "testpass".into() };
+        let mask = KcpMask::MkcpAes128Gcm {
+            password: "testpass".into(),
+        };
         let json = mask.as_json();
         assert_eq!(json["type"], "mkcp-aes128gcm");
         assert_eq!(json["settings"]["password"], "testpass");
@@ -1542,7 +1623,9 @@ mod tests {
 
     #[test]
     fn test_kcp_mask_as_json_salamander() {
-        let mask = KcpMask::Salamander { password: "salpass".into() };
+        let mask = KcpMask::Salamander {
+            password: "salpass".into(),
+        };
         let json = mask.as_json();
         assert_eq!(json["type"], "salamander");
         assert_eq!(json["settings"]["password"], "salpass");
@@ -1550,7 +1633,9 @@ mod tests {
 
     #[test]
     fn test_kcp_mask_as_json_sudoku() {
-        let mask = KcpMask::Sudoku { password: "sudpass".into() };
+        let mask = KcpMask::Sudoku {
+            password: "sudpass".into(),
+        };
         let json = mask.as_json();
         assert_eq!(json["type"], "sudoku");
         assert_eq!(json["settings"]["password"], "sudpass");
@@ -1570,7 +1655,10 @@ mod tests {
 
     #[test]
     fn test_kcp_mask_as_json_xicmp() {
-        let mask = KcpMask::Xicmp { listen_ip: "0.0.0.0".into(), id: 12345 };
+        let mask = KcpMask::Xicmp {
+            listen_ip: "0.0.0.0".into(),
+            id: 12345,
+        };
         let json = mask.as_json();
         assert_eq!(json["type"], "xicmp");
         assert_eq!(json["settings"]["listenIp"], "0.0.0.0");
@@ -1589,7 +1677,10 @@ mod tests {
     fn test_kcp_mask_from_code_aes_generates_password() {
         let mask = KcpMask::from_code("ma").unwrap();
         if let KcpMask::MkcpAes128Gcm { password } = mask {
-            assert!(!password.is_empty(), "AES password should be auto-generated");
+            assert!(
+                !password.is_empty(),
+                "AES password should be auto-generated"
+            );
         } else {
             panic!("Expected MkcpAes128Gcm variant");
         }
@@ -1599,7 +1690,10 @@ mod tests {
     fn test_kcp_mask_from_code_salamander_generates_password() {
         let mask = KcpMask::from_code("sa").unwrap();
         if let KcpMask::Salamander { password } = mask {
-            assert!(!password.is_empty(), "Salamander password should be auto-generated");
+            assert!(
+                !password.is_empty(),
+                "Salamander password should be auto-generated"
+            );
         } else {
             panic!("Expected Salamander variant");
         }
@@ -1609,7 +1703,10 @@ mod tests {
     fn test_kcp_mask_from_code_sudoku_generates_password() {
         let mask = KcpMask::from_code("su").unwrap();
         if let KcpMask::Sudoku { password } = mask {
-            assert!(!password.is_empty(), "Sudoku password should be auto-generated");
+            assert!(
+                !password.is_empty(),
+                "Sudoku password should be auto-generated"
+            );
         } else {
             panic!("Expected Sudoku variant");
         }
@@ -1684,7 +1781,11 @@ mod tests {
             .collect();
         codes.sort();
         codes.dedup();
-        assert_eq!(codes.len(), 4, "should have exactly 4 unique category codes");
+        assert_eq!(
+            codes.len(),
+            4,
+            "should have exactly 4 unique category codes"
+        );
     }
 
     #[test]
@@ -1845,9 +1946,18 @@ mod tests {
         );
 
         let kcp = &config["streamSettings"]["kcpSettings"];
-        assert!(kcp.get("congestion").is_none(), "congestion should be removed");
-        assert!(kcp.get("readBufferSize").is_none(), "readBufferSize should be removed");
-        assert!(kcp.get("writeBufferSize").is_none(), "writeBufferSize should be removed");
+        assert!(
+            kcp.get("congestion").is_none(),
+            "congestion should be removed"
+        );
+        assert!(
+            kcp.get("readBufferSize").is_none(),
+            "readBufferSize should be removed"
+        );
+        assert!(
+            kcp.get("writeBufferSize").is_none(),
+            "writeBufferSize should be removed"
+        );
     }
 
     #[test]
@@ -1904,12 +2014,18 @@ mod tests {
     #[test]
     fn test_build_kcp_inbound_masks_slice() {
         let masks = vec![
-            KcpMask::MkcpAes128Gcm { password: "testpass".into() },
+            KcpMask::MkcpAes128Gcm {
+                password: "testpass".into(),
+            },
             KcpMask::HeaderSrtp,
         ];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::IPv4, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &masks,
         );
         let udp = &config["streamSettings"]["finalmask"]["udp"];
         assert_eq!(udp[0]["type"], "mkcp-aes128gcm");
@@ -1922,8 +2038,12 @@ mod tests {
     fn test_build_kcp_inbound_single_mask() {
         let masks = vec![KcpMask::MkcpOriginal];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::IPv4, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &masks,
         );
         let udp = &config["streamSettings"]["finalmask"]["udp"];
         assert_eq!(udp.as_array().unwrap().len(), 1);
@@ -1933,13 +2053,19 @@ mod tests {
     #[test]
     fn test_build_kcp_inbound_three_masks() {
         let masks = vec![
-            KcpMask::MkcpAes128Gcm { password: "pw".into() },
+            KcpMask::MkcpAes128Gcm {
+                password: "pw".into(),
+            },
             KcpMask::Noise,
             KcpMask::HeaderDtls,
         ];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::IPv6, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv6,
+            &masks,
         );
         assert_eq!(config["listen"], "::");
         let udp = &config["streamSettings"]["finalmask"]["udp"];
@@ -1953,8 +2079,12 @@ mod tests {
     fn test_build_kcp_inbound_split_stack_v4() {
         let masks = vec![KcpMask::MkcpOriginal];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::SplitStackV4Primary, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::SplitStackV4Primary,
+            &masks,
         );
         assert_eq!(config["listen"], "0.0.0.0");
     }
@@ -1963,8 +2093,12 @@ mod tests {
     fn test_build_kcp_inbound_split_stack_v6() {
         let masks = vec![KcpMask::MkcpOriginal];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::SplitStackV6Primary, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::SplitStackV6Primary,
+            &masks,
         );
         assert_eq!(config["listen"], "::");
     }
@@ -1972,12 +2106,20 @@ mod tests {
     #[test]
     fn test_generate_kcp_client_link_masks_slice() {
         let masks = vec![
-            KcpMask::MkcpAes128Gcm { password: "testpass".into() },
-            KcpMask::HeaderDns { domain: "dns.google".into() },
+            KcpMask::MkcpAes128Gcm {
+                password: "testpass".into(),
+            },
+            KcpMask::HeaderDns {
+                domain: "dns.google".into(),
+            },
         ];
         let link = ConfigManager::generate_kcp_client_link(
-            "test-uuid", "192.168.1.1", 34456, "test-user",
-            IpVersion::IPv4, &masks,
+            "test-uuid",
+            "192.168.1.1",
+            34456,
+            "test-user",
+            IpVersion::IPv4,
+            &masks,
         );
         assert!(link.starts_with("vless://test-uuid@192.168.1.1:34456"));
         assert!(link.contains("type=kcp"));
@@ -1999,8 +2141,12 @@ mod tests {
     fn test_generate_kcp_client_link_ipv6() {
         let masks = vec![KcpMask::MkcpOriginal, KcpMask::HeaderWechat];
         let link = ConfigManager::generate_kcp_client_link(
-            "test-uuid", "2001:db8::1", 34456, "test-user",
-            IpVersion::IPv6, &masks,
+            "test-uuid",
+            "2001:db8::1",
+            34456,
+            "test-user",
+            IpVersion::IPv6,
+            &masks,
         );
         assert!(link.starts_with("vless://test-uuid@[2001:db8::1]:34456"));
     }
@@ -2009,8 +2155,12 @@ mod tests {
     fn test_generate_kcp_client_link_split_stack_v4() {
         let masks = vec![KcpMask::MkcpOriginal];
         let link = ConfigManager::generate_kcp_client_link(
-            "test-uuid", "1.2.3.4", 34456, "test-user",
-            IpVersion::SplitStackV4Primary, &masks,
+            "test-uuid",
+            "1.2.3.4",
+            34456,
+            "test-user",
+            IpVersion::SplitStackV4Primary,
+            &masks,
         );
         assert!(link.starts_with("vless://test-uuid@1.2.3.4:34456"));
     }
@@ -2019,8 +2169,12 @@ mod tests {
     fn test_generate_kcp_client_link_split_stack_v6() {
         let masks = vec![KcpMask::MkcpOriginal];
         let link = ConfigManager::generate_kcp_client_link(
-            "test-uuid", "2001:db8::1", 34456, "test-user",
-            IpVersion::SplitStackV6Primary, &masks,
+            "test-uuid",
+            "2001:db8::1",
+            34456,
+            "test-user",
+            IpVersion::SplitStackV6Primary,
+            &masks,
         );
         assert!(link.starts_with("vless://test-uuid@[2001:db8::1]:34456"));
     }
@@ -2029,8 +2183,12 @@ mod tests {
     fn test_kcp_mask_noise_json() {
         let masks = vec![KcpMask::MkcpOriginal, KcpMask::Noise];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::IPv4, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &masks,
         );
         let udp = &config["streamSettings"]["finalmask"]["udp"];
         assert_eq!(udp[0]["type"], "mkcp-original");
@@ -2040,10 +2198,16 @@ mod tests {
 
     #[test]
     fn test_kcp_mask_salamander_json() {
-        let masks = vec![KcpMask::Salamander { password: "salpass".into() }];
+        let masks = vec![KcpMask::Salamander {
+            password: "salpass".into(),
+        }];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::IPv4, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &masks,
         );
         let udp = &config["streamSettings"]["finalmask"]["udp"];
         assert_eq!(udp[0]["type"], "salamander");
@@ -2052,10 +2216,16 @@ mod tests {
 
     #[test]
     fn test_kcp_mask_sudoku_json() {
-        let masks = vec![KcpMask::Sudoku { password: "sudpass".into() }];
+        let masks = vec![KcpMask::Sudoku {
+            password: "sudpass".into(),
+        }];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::IPv4, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &masks,
         );
         let udp = &config["streamSettings"]["finalmask"]["udp"];
         assert_eq!(udp[0]["type"], "sudoku");
@@ -2069,8 +2239,12 @@ mod tests {
             resolvers: vec!["+udp://8.8.8.8".into()],
         }];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::IPv4, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &masks,
         );
         let udp = &config["streamSettings"]["finalmask"]["udp"];
         assert_eq!(udp[0]["type"], "xdns");
@@ -2081,10 +2255,17 @@ mod tests {
 
     #[test]
     fn test_kcp_mask_xicmp_json() {
-        let masks = vec![KcpMask::Xicmp { listen_ip: "0.0.0.0".into(), id: 99999 }];
+        let masks = vec![KcpMask::Xicmp {
+            listen_ip: "0.0.0.0".into(),
+            id: 99999,
+        }];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::IPv4, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &masks,
         );
         let udp = &config["streamSettings"]["finalmask"]["udp"];
         assert_eq!(udp[0]["type"], "xicmp");
@@ -2096,8 +2277,12 @@ mod tests {
     fn test_kcp_mask_header_custom_json() {
         let masks = vec![KcpMask::HeaderCustom];
         let config = ConfigManager::build_kcp_inbound(
-            "KCP-TEST", 34456, "test-uuid", "test-email",
-            IpVersion::IPv4, &masks,
+            "KCP-TEST",
+            34456,
+            "test-uuid",
+            "test-email",
+            IpVersion::IPv4,
+            &masks,
         );
         let udp = &config["streamSettings"]["finalmask"]["udp"];
         assert_eq!(udp[0]["type"], "header-custom");
@@ -2106,10 +2291,19 @@ mod tests {
 
     #[test]
     fn test_kcp_client_link_with_noise_and_salamander() {
-        let masks = vec![KcpMask::Noise, KcpMask::Salamander { password: "salpw".into() }];
+        let masks = vec![
+            KcpMask::Noise,
+            KcpMask::Salamander {
+                password: "salpw".into(),
+            },
+        ];
         let link = ConfigManager::generate_kcp_client_link(
-            "test-uuid", "1.2.3.4", 443, "test-user",
-            IpVersion::IPv4, &masks,
+            "test-uuid",
+            "1.2.3.4",
+            443,
+            "test-user",
+            IpVersion::IPv4,
+            &masks,
         );
         let fm_start = link.find("fm=").unwrap() + 3;
         let fm_end = link.find('#').unwrap();
@@ -2147,9 +2341,24 @@ mod tests {
     #[test]
     fn test_is_header_conn_classification() {
         assert!(KcpMask::MkcpOriginal.is_header_conn());
-        assert!(KcpMask::MkcpAes128Gcm { password: "test".to_string() }.is_header_conn());
-        assert!(KcpMask::Salamander { password: "test".to_string() }.is_header_conn());
-        assert!(KcpMask::HeaderDns { domain: "example.com".to_string() }.is_header_conn());
+        assert!(
+            KcpMask::MkcpAes128Gcm {
+                password: "test".to_string()
+            }
+            .is_header_conn()
+        );
+        assert!(
+            KcpMask::Salamander {
+                password: "test".to_string()
+            }
+            .is_header_conn()
+        );
+        assert!(
+            KcpMask::HeaderDns {
+                domain: "example.com".to_string()
+            }
+            .is_header_conn()
+        );
         assert!(KcpMask::HeaderWechat.is_header_conn());
         assert!(KcpMask::HeaderSrtp.is_header_conn());
         assert!(KcpMask::HeaderUtp.is_header_conn());
@@ -2158,15 +2367,37 @@ mod tests {
         assert!(KcpMask::HeaderCustom.is_header_conn());
 
         assert!(!KcpMask::Noise.is_header_conn());
-        assert!(!KcpMask::Sudoku { password: "test".to_string() }.is_header_conn());
-        assert!(!KcpMask::Xdns { domains: vec![], resolvers: vec![] }.is_header_conn());
-        assert!(!KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 }.is_header_conn());
+        assert!(
+            !KcpMask::Sudoku {
+                password: "test".to_string()
+            }
+            .is_header_conn()
+        );
+        assert!(
+            !KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .is_header_conn()
+        );
+        assert!(
+            !KcpMask::Xicmp {
+                listen_ip: "0.0.0.0".to_string(),
+                id: 0
+            }
+            .is_header_conn()
+        );
     }
 
     #[test]
     fn test_is_disguise_header_includes_custom() {
         assert!(KcpMask::HeaderCustom.is_disguise_header());
-        assert!(KcpMask::HeaderDns { domain: "example.com".to_string() }.is_disguise_header());
+        assert!(
+            KcpMask::HeaderDns {
+                domain: "example.com".to_string()
+            }
+            .is_disguise_header()
+        );
         assert!(KcpMask::HeaderWechat.is_disguise_header());
         assert!(KcpMask::HeaderSrtp.is_disguise_header());
         assert!(KcpMask::HeaderUtp.is_disguise_header());
@@ -2174,7 +2405,12 @@ mod tests {
         assert!(KcpMask::HeaderWireguard.is_disguise_header());
 
         assert!(!KcpMask::MkcpOriginal.is_disguise_header());
-        assert!(!KcpMask::Salamander { password: "test".to_string() }.is_disguise_header());
+        assert!(
+            !KcpMask::Salamander {
+                password: "test".to_string()
+            }
+            .is_disguise_header()
+        );
         assert!(!KcpMask::Noise.is_disguise_header());
     }
 
@@ -2182,7 +2418,10 @@ mod tests {
     fn test_canonical_order_transport_replacement_last() {
         let masks = vec![
             KcpMask::HeaderSrtp,
-            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+            KcpMask::Xicmp {
+                listen_ip: "0.0.0.0".to_string(),
+                id: 0,
+            },
         ];
         let ordered = KcpMask::canonical_order(&masks);
         assert!(ordered.last().unwrap().is_xicmp());
@@ -2191,9 +2430,13 @@ mod tests {
     #[test]
     fn test_canonical_order_sudoku_first() {
         let masks = vec![
-            KcpMask::Sudoku { password: "test".to_string() },
+            KcpMask::Sudoku {
+                password: "test".to_string(),
+            },
             KcpMask::HeaderSrtp,
-            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::MkcpAes128Gcm {
+                password: "test".to_string(),
+            },
         ];
         let ordered = KcpMask::canonical_order(&masks);
         assert!(ordered[0].is_sudoku());
@@ -2202,28 +2445,48 @@ mod tests {
     #[test]
     fn test_canonical_order_encryption_before_disguise() {
         let masks = vec![
-            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::MkcpAes128Gcm {
+                password: "test".to_string(),
+            },
             KcpMask::HeaderSrtp,
         ];
         let ordered = KcpMask::canonical_order(&masks);
         let enc_pos = ordered.iter().position(|m| m.is_encryption()).unwrap();
         let dis_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
-        assert!(enc_pos < dis_pos, "encryption should come before disguise header (innermost)");
+        assert!(
+            enc_pos < dis_pos,
+            "encryption should come before disguise header (innermost)"
+        );
     }
 
     #[test]
     fn test_canonical_order_salamander_before_disguise_after_encryption() {
         let masks = vec![
-            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
-            KcpMask::Salamander { password: "test".to_string() },
-            KcpMask::HeaderDns { domain: "example.com".to_string() },
+            KcpMask::MkcpAes128Gcm {
+                password: "test".to_string(),
+            },
+            KcpMask::Salamander {
+                password: "test".to_string(),
+            },
+            KcpMask::HeaderDns {
+                domain: "example.com".to_string(),
+            },
         ];
         let ordered = KcpMask::canonical_order(&masks);
         let enc_pos = ordered.iter().position(|m| m.is_encryption()).unwrap();
-        let sal_pos = ordered.iter().position(|m| matches!(m, KcpMask::Salamander { .. })).unwrap();
+        let sal_pos = ordered
+            .iter()
+            .position(|m| matches!(m, KcpMask::Salamander { .. }))
+            .unwrap();
         let dis_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
-        assert!(enc_pos < sal_pos, "encryption should be innermost (before salamander)");
-        assert!(sal_pos < dis_pos, "salamander should be before disguise header (outermost)");
+        assert!(
+            enc_pos < sal_pos,
+            "encryption should be innermost (before salamander)"
+        );
+        assert!(
+            sal_pos < dis_pos,
+            "salamander should be before disguise header (outermost)"
+        );
     }
 
     #[test]
@@ -2231,30 +2494,56 @@ mod tests {
         let masks = vec![
             KcpMask::HeaderSrtp,
             KcpMask::Noise,
-            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+            KcpMask::Xicmp {
+                listen_ip: "0.0.0.0".to_string(),
+                id: 0,
+            },
         ];
         let ordered = KcpMask::canonical_order(&masks);
         let header_pos = ordered.iter().position(|m| m.is_disguise_header()).unwrap();
-        let noise_pos = ordered.iter().position(|m| matches!(m, KcpMask::Noise)).unwrap();
+        let noise_pos = ordered
+            .iter()
+            .position(|m| matches!(m, KcpMask::Noise))
+            .unwrap();
         let xicmp_pos = ordered.iter().position(|m| m.is_xicmp()).unwrap();
-        assert!(header_pos < noise_pos, "disguise header should be innermost (before noise)");
-        assert!(noise_pos < xicmp_pos, "noise should be before xicmp (outermost)");
+        assert!(
+            header_pos < noise_pos,
+            "disguise header should be innermost (before noise)"
+        );
+        assert!(
+            noise_pos < xicmp_pos,
+            "noise should be before xicmp (outermost)"
+        );
     }
 
     #[test]
     fn test_canonical_order_full_stack() {
         let masks = vec![
-            KcpMask::Sudoku { password: "test".to_string() },
-            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
-            KcpMask::HeaderDns { domain: "example.com".to_string() },
-            KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 },
+            KcpMask::Sudoku {
+                password: "test".to_string(),
+            },
+            KcpMask::MkcpAes128Gcm {
+                password: "test".to_string(),
+            },
+            KcpMask::HeaderDns {
+                domain: "example.com".to_string(),
+            },
+            KcpMask::Xicmp {
+                listen_ip: "0.0.0.0".to_string(),
+                id: 0,
+            },
             KcpMask::Noise,
-            KcpMask::Salamander { password: "test".to_string() },
+            KcpMask::Salamander {
+                password: "test".to_string(),
+            },
         ];
         let ordered = KcpMask::canonical_order(&masks);
         assert!(ordered[0].is_sudoku(), "sudoku innermost (first)");
         assert!(ordered[1].is_encryption(), "mKCP second");
-        assert!(matches!(ordered[2], KcpMask::Salamander { .. }), "salamander third");
+        assert!(
+            matches!(ordered[2], KcpMask::Salamander { .. }),
+            "salamander third"
+        );
         assert!(ordered[3].is_disguise_header(), "headers fourth");
         assert!(matches!(ordered[4], KcpMask::Noise), "noise fifth");
         assert!(ordered[5].is_xicmp(), "xicmp outermost (last)");
@@ -2263,19 +2552,27 @@ mod tests {
     #[test]
     fn test_canonical_order_simple_stack() {
         let masks = vec![
-            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
+            KcpMask::MkcpAes128Gcm {
+                password: "test".to_string(),
+            },
             KcpMask::HeaderSrtp,
         ];
         let ordered = KcpMask::canonical_order(&masks);
         assert!(ordered[0].is_encryption(), "encryption innermost (first)");
-        assert!(ordered[1].is_disguise_header(), "disguise outermost (second)");
+        assert!(
+            ordered[1].is_disguise_header(),
+            "disguise outermost (second)"
+        );
     }
 
     #[test]
     fn test_validate_stack_xdns_not_enforced_first() {
         let masks = vec![
             KcpMask::HeaderSrtp,
-            KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] },
+            KcpMask::Xdns {
+                domains: vec!["example.com".to_string()],
+                resolvers: vec![],
+            },
         ];
         assert!(KcpMask::validate_stack(&masks).is_ok());
     }
@@ -2283,8 +2580,12 @@ mod tests {
     #[test]
     fn test_validate_stack_sudoku_duplicate() {
         let masks = vec![
-            KcpMask::Sudoku { password: "test1".to_string() },
-            KcpMask::Sudoku { password: "test2".to_string() },
+            KcpMask::Sudoku {
+                password: "test1".to_string(),
+            },
+            KcpMask::Sudoku {
+                password: "test2".to_string(),
+            },
         ];
         assert!(KcpMask::validate_stack(&masks).is_err());
     }
@@ -2292,39 +2593,68 @@ mod tests {
     #[test]
     fn test_validate_stack_no_layer_limit() {
         let masks = vec![
-            KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] },
+            KcpMask::Xdns {
+                domains: vec!["example.com".to_string()],
+                resolvers: vec![],
+            },
             KcpMask::Noise,
-            KcpMask::HeaderDns { domain: "a.com".to_string() },
+            KcpMask::HeaderDns {
+                domain: "a.com".to_string(),
+            },
             KcpMask::HeaderSrtp,
-            KcpMask::Salamander { password: "test".to_string() },
-            KcpMask::MkcpAes128Gcm { password: "test".to_string() },
-            KcpMask::Sudoku { password: "test".to_string() },
+            KcpMask::Salamander {
+                password: "test".to_string(),
+            },
+            KcpMask::MkcpAes128Gcm {
+                password: "test".to_string(),
+            },
+            KcpMask::Sudoku {
+                password: "test".to_string(),
+            },
         ];
         assert!(KcpMask::validate_stack(&masks).is_ok());
     }
 
     #[test]
     fn test_compatible_with_xdns_xicmp_exclusive() {
-        let existing = vec![KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 }];
-        let xdns = KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] };
+        let existing = vec![KcpMask::Xicmp {
+            listen_ip: "0.0.0.0".to_string(),
+            id: 0,
+        }];
+        let xdns = KcpMask::Xdns {
+            domains: vec!["example.com".to_string()],
+            resolvers: vec![],
+        };
         assert!(xdns.is_compatible_with(&existing).is_err());
 
-        let existing2 = vec![KcpMask::Xdns { domains: vec!["example.com".to_string()], resolvers: vec![] }];
-        let xicmp = KcpMask::Xicmp { listen_ip: "0.0.0.0".to_string(), id: 0 };
+        let existing2 = vec![KcpMask::Xdns {
+            domains: vec!["example.com".to_string()],
+            resolvers: vec![],
+        }];
+        let xicmp = KcpMask::Xicmp {
+            listen_ip: "0.0.0.0".to_string(),
+            id: 0,
+        };
         assert!(xicmp.is_compatible_with(&existing2).is_err());
     }
 
     #[test]
     fn test_compatible_with_duplicate_encryption() {
-        let existing = vec![KcpMask::MkcpAes128Gcm { password: "test".to_string() }];
+        let existing = vec![KcpMask::MkcpAes128Gcm {
+            password: "test".to_string(),
+        }];
         let dup = KcpMask::MkcpOriginal;
         assert!(dup.is_compatible_with(&existing).is_err());
     }
 
     #[test]
     fn test_compatible_with_duplicate_sudoku() {
-        let existing = vec![KcpMask::Sudoku { password: "test1".to_string() }];
-        let dup = KcpMask::Sudoku { password: "test2".to_string() };
+        let existing = vec![KcpMask::Sudoku {
+            password: "test1".to_string(),
+        }];
+        let dup = KcpMask::Sudoku {
+            password: "test2".to_string(),
+        };
         assert!(dup.is_compatible_with(&existing).is_err());
     }
 
@@ -2348,7 +2678,9 @@ mod tests {
     #[test]
     fn test_validate_stack_header_overflow() {
         let masks: Vec<KcpMask> = (0..200)
-            .map(|_| KcpMask::HeaderDns { domain: "sub.domain.example.com".to_string() })
+            .map(|_| KcpMask::HeaderDns {
+                domain: "sub.domain.example.com".to_string(),
+            })
             .collect();
         assert!(KcpMask::validate_stack(&masks).is_err());
     }

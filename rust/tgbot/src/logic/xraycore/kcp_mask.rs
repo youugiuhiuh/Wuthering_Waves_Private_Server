@@ -4,18 +4,32 @@ use serde_json::{Value, json};
 #[derive(Debug, Clone)]
 pub enum KcpMask {
     MkcpOriginal,
-    MkcpAes128Gcm { password: String },
+    MkcpAes128Gcm {
+        password: String,
+    },
     Noise,
-    Salamander { password: String },
-    Sudoku { password: String },
-    HeaderDns { domain: String },
+    Salamander {
+        password: String,
+    },
+    Sudoku {
+        password: String,
+    },
+    HeaderDns {
+        domain: String,
+    },
     HeaderWechat,
     HeaderSrtp,
     HeaderUtp,
     HeaderDtls,
     HeaderWireguard,
-    Xdns { domains: Vec<String>, resolvers: Vec<String> },
-    Xicmp { listen_ip: String, id: u32 },
+    Xdns {
+        domains: Vec<String>,
+        resolvers: Vec<String>,
+    },
+    Xicmp {
+        listen_ip: String,
+        id: u32,
+    },
     HeaderCustom,
 }
 
@@ -69,20 +83,48 @@ impl KcpMask {
 
     pub fn detail(&self) -> &'static str {
         match self {
-            KcpMask::MkcpOriginal => "轻量级XOR混淆传输。仅提供FNV1a完整性校验，不含真正加密，仅能抵御被动检测。性能开销最低，安全性最低。建议至少配合一个伪装层使用",
-            KcpMask::MkcpAes128Gcm { .. } => "AES-128-GCM端到端认证加密。密码经SHA256派生为128位密钥，提供加密+认证双重保护。推荐首选加密层，安全性高，性能开销适中",
-            KcpMask::Noise => "随机噪声填充。在数据包中注入随机长度的噪声数据，有效抵抗基于包大小的流量分析。不提供加密功能，建议与加密层叠加使用",
-            KcpMask::Salamander { .. } => "蝾螈混淆协议。使用密码派生的混淆变换，可抵抗深度包检测(DPI)。与Hysteria2的Salamander混淆采用相同算法。建议与加密层叠加使用",
-            KcpMask::Sudoku { .. } => "数独混淆算法。基于密码派生的混淆，包含ASCII混淆和随机填充。混淆强度高于Salamander，性能开销略大",
-            KcpMask::HeaderDns { .. } => "伪装为DNS查询流量。每个数据包添加DNS查询头部，默认域名www.baidu.com。适合仅允许DNS流量通过的严格网络环境",
-            KcpMask::HeaderWechat => "伪装为微信视频通话流量。数据包头部模拟微信VoIP协议格式，适合允许微信通信的网络环境",
-            KcpMask::HeaderSrtp => "伪装为安全实时传输协议(SRTP)流量。数据包看起来像音视频流媒体传输，适合允许视频通话的网络",
-            KcpMask::HeaderUtp => "伪装为BitTorrent uTP协议流量。数据包头部模拟uTP格式，可能绕过允许P2P流量的限制策略",
-            KcpMask::HeaderDtls => "伪装为DTLS 1.2加密数据包。使流量看起来像正常的加密UDP通信(TLS的UDP版本)，具有较好的伪装效果",
-            KcpMask::HeaderWireguard => "伪装为WireGuard VPN流量。数据包头部模拟WireGuard协议格式，可能混入VPN流量中，适合允许VPN使用的网络",
-            KcpMask::Xdns { .. } => "扩展DNS伪装。支持自定义域名列表和DNS解析器(默认1.1.1.1 UDP)，提供比HeaderDns更灵活的DNS流量模拟。适合需要精确控制DNS伪装行为的场景",
-            KcpMask::Xicmp { .. } => "ICMP数据包伪装。将数据包封装为ICMP回显请求/应答格式。适合仅允许ping流量通过的极端限制网络",
-            KcpMask::HeaderCustom => "自定义UDP头部伪装。允许高级用户定义自定义的UDP包头部格式。适合有特殊伪装需求的场景",
+            KcpMask::MkcpOriginal => {
+                "轻量级XOR混淆传输。仅提供FNV1a完整性校验，不含真正加密，仅能抵御被动检测。性能开销最低，安全性最低。建议至少配合一个伪装层使用"
+            }
+            KcpMask::MkcpAes128Gcm { .. } => {
+                "AES-128-GCM端到端认证加密。密码经SHA256派生为128位密钥，提供加密+认证双重保护。推荐首选加密层，安全性高，性能开销适中"
+            }
+            KcpMask::Noise => {
+                "随机噪声填充。在数据包中注入随机长度的噪声数据，有效抵抗基于包大小的流量分析。不提供加密功能，建议与加密层叠加使用"
+            }
+            KcpMask::Salamander { .. } => {
+                "蝾螈混淆协议。使用密码派生的混淆变换，可抵抗深度包检测(DPI)。与Hysteria2的Salamander混淆采用相同算法。建议与加密层叠加使用"
+            }
+            KcpMask::Sudoku { .. } => {
+                "数独混淆算法。基于密码派生的混淆，包含ASCII混淆和随机填充。混淆强度高于Salamander，性能开销略大"
+            }
+            KcpMask::HeaderDns { .. } => {
+                "伪装为DNS查询流量。每个数据包添加DNS查询头部，默认域名www.baidu.com。适合仅允许DNS流量通过的严格网络环境"
+            }
+            KcpMask::HeaderWechat => {
+                "伪装为微信视频通话流量。数据包头部模拟微信VoIP协议格式，适合允许微信通信的网络环境"
+            }
+            KcpMask::HeaderSrtp => {
+                "伪装为安全实时传输协议(SRTP)流量。数据包看起来像音视频流媒体传输，适合允许视频通话的网络"
+            }
+            KcpMask::HeaderUtp => {
+                "伪装为BitTorrent uTP协议流量。数据包头部模拟uTP格式，可能绕过允许P2P流量的限制策略"
+            }
+            KcpMask::HeaderDtls => {
+                "伪装为DTLS 1.2加密数据包。使流量看起来像正常的加密UDP通信(TLS的UDP版本)，具有较好的伪装效果"
+            }
+            KcpMask::HeaderWireguard => {
+                "伪装为WireGuard VPN流量。数据包头部模拟WireGuard协议格式，可能混入VPN流量中，适合允许VPN使用的网络"
+            }
+            KcpMask::Xdns { .. } => {
+                "扩展DNS伪装。支持自定义域名列表和DNS解析器(默认1.1.1.1 UDP)，提供比HeaderDns更灵活的DNS流量模拟。适合需要精确控制DNS伪装行为的场景"
+            }
+            KcpMask::Xicmp { .. } => {
+                "ICMP数据包伪装。将数据包封装为ICMP回显请求/应答格式。适合仅允许ping流量通过的极端限制网络"
+            }
+            KcpMask::HeaderCustom => {
+                "自定义UDP头部伪装。允许高级用户定义自定义的UDP包头部格式。适合有特殊伪装需求的场景"
+            }
         }
     }
 
@@ -123,8 +165,12 @@ impl KcpMask {
         match self {
             KcpMask::MkcpOriginal | KcpMask::MkcpAes128Gcm { .. } => "🔐 加密层",
             KcpMask::Noise | KcpMask::Salamander { .. } | KcpMask::Sudoku { .. } => "🌀 混淆层",
-            KcpMask::HeaderDns { .. } | KcpMask::HeaderWechat | KcpMask::HeaderSrtp
-            | KcpMask::HeaderUtp | KcpMask::HeaderDtls | KcpMask::HeaderWireguard => "🎭 伪装层",
+            KcpMask::HeaderDns { .. }
+            | KcpMask::HeaderWechat
+            | KcpMask::HeaderSrtp
+            | KcpMask::HeaderUtp
+            | KcpMask::HeaderDtls
+            | KcpMask::HeaderWireguard => "🎭 伪装层",
             KcpMask::Xdns { .. } | KcpMask::Xicmp { .. } | KcpMask::HeaderCustom => "⚡ 扩展层",
         }
     }
@@ -247,18 +293,32 @@ impl KcpMask {
     pub fn all_variants() -> Vec<Self> {
         vec![
             KcpMask::MkcpOriginal,
-            KcpMask::MkcpAes128Gcm { password: String::new() },
+            KcpMask::MkcpAes128Gcm {
+                password: String::new(),
+            },
             KcpMask::Noise,
-            KcpMask::Salamander { password: String::new() },
-            KcpMask::Sudoku { password: String::new() },
-            KcpMask::HeaderDns { domain: String::new() },
+            KcpMask::Salamander {
+                password: String::new(),
+            },
+            KcpMask::Sudoku {
+                password: String::new(),
+            },
+            KcpMask::HeaderDns {
+                domain: String::new(),
+            },
             KcpMask::HeaderWechat,
             KcpMask::HeaderSrtp,
             KcpMask::HeaderUtp,
             KcpMask::HeaderDtls,
             KcpMask::HeaderWireguard,
-            KcpMask::Xdns { domains: Vec::new(), resolvers: Vec::new() },
-            KcpMask::Xicmp { listen_ip: String::new(), id: 0 },
+            KcpMask::Xdns {
+                domains: Vec::new(),
+                resolvers: Vec::new(),
+            },
+            KcpMask::Xicmp {
+                listen_ip: String::new(),
+                id: 0,
+            },
             KcpMask::HeaderCustom,
         ]
     }
@@ -266,8 +326,8 @@ impl KcpMask {
     pub fn parse_codes(mask_codes: &[&str]) -> Result<Vec<Self>, String> {
         let mut masks = Vec::new();
         for code in mask_codes {
-            let mask = Self::from_code(code)
-                .ok_or_else(|| format!("Invalid mask code: {}", code))?;
+            let mask =
+                Self::from_code(code).ok_or_else(|| format!("Invalid mask code: {}", code))?;
             masks.push(mask);
         }
         Ok(masks)
@@ -371,8 +431,7 @@ impl KcpMask {
     fn sort_priority(&self) -> u8 {
         match self {
             KcpMask::Sudoku { .. } => 0,
-            KcpMask::MkcpOriginal
-            | KcpMask::MkcpAes128Gcm { .. } => 10,
+            KcpMask::MkcpOriginal | KcpMask::MkcpAes128Gcm { .. } => 10,
             KcpMask::Salamander { .. } => 20,
             KcpMask::HeaderDns { .. }
             | KcpMask::HeaderWechat
@@ -394,28 +453,27 @@ impl KcpMask {
     }
 
     pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
-        if self.is_transport_replacement()
-            && existing.iter().any(|m| m.is_transport_replacement()) {
-                let name = if self.is_xdns() { "XDNS" } else { "XICMP" };
-                let other = if self.is_xdns() { "XICMP" } else { "XDNS" };
-                return Err(format!("{}和{}不能同时使用", name, other));
-            }
+        if self.is_transport_replacement() && existing.iter().any(|m| m.is_transport_replacement())
+        {
+            let name = if self.is_xdns() { "XDNS" } else { "XICMP" };
+            let other = if self.is_xdns() { "XICMP" } else { "XDNS" };
+            return Err(format!("{}和{}不能同时使用", name, other));
+        }
 
-        if self.is_encryption()
-            && existing.iter().any(|m| m.is_encryption()) {
-                return Err("重复的加密层".to_string());
-            }
+        if self.is_encryption() && existing.iter().any(|m| m.is_encryption()) {
+            return Err("重复的加密层".to_string());
+        }
 
-        if self.is_sudoku()
-            && existing.iter().any(|m| m.is_sudoku()) {
-                return Err("重复的Sudoku".to_string());
-            }
+        if self.is_sudoku() && existing.iter().any(|m| m.is_sudoku()) {
+            return Err("重复的Sudoku".to_string());
+        }
 
         if existing.iter().any(|m| m.code() == self.code()) {
             return Err(format!("重复的{}", self.display_name()));
         }
 
-        let total_header: usize = existing.iter()
+        let total_header: usize = existing
+            .iter()
             .filter_map(|m| m.header_size())
             .sum::<usize>()
             + self.header_size().unwrap_or(0);
@@ -425,7 +483,10 @@ impl KcpMask {
             0
         };
         if total_header + sudoku_reserve > 3800 {
-            return Err(format!("header总大小{}字节过大，可能超出UDP包限制(4096字节)", total_header));
+            return Err(format!(
+                "header总大小{}字节过大，可能超出UDP包限制(4096字节)",
+                total_header
+            ));
         }
 
         Ok(())
@@ -445,7 +506,11 @@ impl KcpMask {
             return Err("重复的Sudoku".to_string());
         }
         let total_header: usize = masks.iter().filter_map(|m| m.header_size()).sum();
-        let sudoku_reserve = if masks.iter().any(|m| m.is_sudoku()) { 2400 } else { 0 };
+        let sudoku_reserve = if masks.iter().any(|m| m.is_sudoku()) {
+            2400
+        } else {
+            0
+        };
         if total_header + sudoku_reserve > 3800 {
             return Err(format!(
                 "header总大小{}字节过大，可能超出UDP包限制(4096字节)",

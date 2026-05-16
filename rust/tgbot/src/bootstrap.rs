@@ -62,9 +62,10 @@ impl BotSettings {
         let path = config_dir().join(BOT_SETTINGS_FILE);
         if path.exists()
             && let Ok(data) = fs::read_to_string(&path)
-                && let Ok(s) = serde_json::from_str::<BotSettings>(&data) {
-                    return s;
-                }
+            && let Ok(s) = serde_json::from_str::<BotSettings>(&data)
+        {
+            return s;
+        }
         BotSettings {
             session_timeout_secs: DEFAULT_SESSION_TIMEOUT_SECS,
         }

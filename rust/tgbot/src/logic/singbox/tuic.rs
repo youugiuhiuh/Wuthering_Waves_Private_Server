@@ -1,4 +1,4 @@
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde_json::Value;

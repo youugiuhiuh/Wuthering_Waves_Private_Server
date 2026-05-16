@@ -94,7 +94,10 @@ mod tests {
     fn test_bot_paths() {
         assert_eq!(bot::DIR, "/etc/wwps/tgbot");
         assert_eq!(bot::KEY_FILE, "/etc/wwps/tgbot/.key");
-        assert_eq!(bot::BBR3_PENDING_FLAG_FILE, "/etc/wwps/tgbot/bbr3_pending.flag");
+        assert_eq!(
+            bot::BBR3_PENDING_FLAG_FILE,
+            "/etc/wwps/tgbot/bbr3_pending.flag"
+        );
     }
 
     #[test]
@@ -105,8 +108,14 @@ mod tests {
 
     #[test]
     fn test_maintenance_paths() {
-        assert_eq!(maintenance::BBR3_PENDING_FLAG_FILE, "/etc/wwps/tgbot/bbr3_pending.flag");
-        assert_eq!(maintenance::UPGRADE_FLAG_FILE, "/etc/wwps/tgbot/upgrade.flag");
+        assert_eq!(
+            maintenance::BBR3_PENDING_FLAG_FILE,
+            "/etc/wwps/tgbot/bbr3_pending.flag"
+        );
+        assert_eq!(
+            maintenance::UPGRADE_FLAG_FILE,
+            "/etc/wwps/tgbot/upgrade.flag"
+        );
         assert!(!maintenance::DESTRUCT_TARGETS.is_empty());
         assert!(maintenance::DESTRUCT_TARGETS.contains(&"/etc/wwps"));
         assert!(!maintenance::DESTRUCT_SERVICES.is_empty());
@@ -116,14 +125,23 @@ mod tests {
     #[test]
     fn test_warp_paths() {
         assert_eq!(warp::ACCOUNT_FILE, "/etc/wwps/wwps-core/warp_account.json");
-        assert_eq!(warp::ROUTING_FILE, "/etc/wwps/wwps-core/conf/10_warp_routing.json");
+        assert_eq!(
+            warp::ROUTING_FILE,
+            "/etc/wwps/wwps-core/conf/10_warp_routing.json"
+        );
     }
 
     #[test]
     fn test_auto_update_paths() {
-        assert_eq!(maintenance::UNATTENDED_UPGRADES_CONF, "/etc/apt/apt.conf.d/50unattended-upgrades");
+        assert_eq!(
+            maintenance::UNATTENDED_UPGRADES_CONF,
+            "/etc/apt/apt.conf.d/50unattended-upgrades"
+        );
         assert_eq!(maintenance::DNF_AUTOMATIC_CONF, "/etc/dnf/automatic.conf");
-        assert_eq!(maintenance::REBOOT_REQUIRED_FLAG, "/var/run/reboot-required");
+        assert_eq!(
+            maintenance::REBOOT_REQUIRED_FLAG,
+            "/var/run/reboot-required"
+        );
     }
 
     #[test]

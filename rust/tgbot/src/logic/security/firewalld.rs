@@ -136,7 +136,9 @@ impl FirewalldClient {
             .await
             .unwrap_or(false)
         {
-            let _ = zone_proxy.add_port(&zone, &port_range_str, protocol, 0).await;
+            let _ = zone_proxy
+                .add_port(&zone, &port_range_str, protocol, 0)
+                .await;
         }
 
         // 2. Permanent: Add port range to config
@@ -163,7 +165,9 @@ impl FirewalldClient {
                 .await
                 .unwrap_or(false)
             {
-                config_zone_proxy.add_port(&port_range_str, protocol).await?;
+                config_zone_proxy
+                    .add_port(&port_range_str, protocol)
+                    .await?;
             }
         }
 
@@ -181,7 +185,9 @@ impl FirewalldClient {
         let port_range_str = format!("{}-{}", start, end);
 
         // 1. Runtime: Remove port range (Safe to fail)
-        let _ = zone_proxy.remove_port(&zone, &port_range_str, protocol).await;
+        let _ = zone_proxy
+            .remove_port(&zone, &port_range_str, protocol)
+            .await;
 
         // 2. Permanent: Remove port range from config
         let config_path = match proxy.config().await {
@@ -207,7 +213,9 @@ impl FirewalldClient {
                 .await
                 .unwrap_or(false)
             {
-                config_zone_proxy.remove_port(&port_range_str, protocol).await?;
+                config_zone_proxy
+                    .remove_port(&port_range_str, protocol)
+                    .await?;
             }
         }
 

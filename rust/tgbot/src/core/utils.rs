@@ -1,17 +1,18 @@
 //! 共享工具函数
 
-use rand::{rngs::StdRng, Rng, SeedableRng};
-use crate::core::types::IpVersion;
 use crate::core::error::{AppError, Result};
+use crate::core::types::IpVersion;
 use crate::logic::maintenance::MaintenanceManager;
+use rand::{Rng, SeedableRng, rngs::StdRng};
 
 /// 通用端口选择
 pub async fn select_available_port(preferred: Option<u16>) -> Result<u16> {
     if let Some(port) = preferred
-        && MaintenanceManager::is_port_available(port).await {
-            return Ok(port);
-        }
-    
+        && MaintenanceManager::is_port_available(port).await
+    {
+        return Ok(port);
+    }
+
     let mut rng = StdRng::from_entropy();
     for _ in 0..1000 {
         let port = rng.gen_range(10000..60000);
@@ -19,7 +20,7 @@ pub async fn select_available_port(preferred: Option<u16>) -> Result<u16> {
             return Ok(port);
         }
     }
-    
+
     Err(AppError::PortUnavailable(0))
 }
 
@@ -67,7 +68,11 @@ mod tests {
     #[test]
     fn test_generate_random_suffix_characters() {
         let suffix = generate_random_suffix(1000);
-        assert!(suffix.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+        assert!(
+            suffix
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        );
     }
 
     #[test]
@@ -109,8 +114,14 @@ mod tests {
 
     #[test]
     fn test_parse_ip_version_split_stack() {
-        assert_eq!(parse_ip_version("split6"), Some(IpVersion::SplitStackV6Primary));
-        assert_eq!(parse_ip_version("split4"), Some(IpVersion::SplitStackV4Primary));
+        assert_eq!(
+            parse_ip_version("split6"),
+            Some(IpVersion::SplitStackV6Primary)
+        );
+        assert_eq!(
+            parse_ip_version("split4"),
+            Some(IpVersion::SplitStackV4Primary)
+        );
     }
 
     #[test]

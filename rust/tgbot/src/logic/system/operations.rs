@@ -30,9 +30,7 @@ impl DistroFamily {
         {
             Ok(Self::Rhel)
         } else {
-            anyhow::bail!(
-                "❌ 无法识别当前系统发行版 (仅支持 Debian/Ubuntu 和 RHEL/CentOS/Fedora)"
-            )
+            anyhow::bail!("❌ 无法识别当前系统发行版 (仅支持 Debian/Ubuntu 和 RHEL/CentOS/Fedora)")
         }
     }
 
@@ -106,8 +104,7 @@ emit_via = motd
             DistroFamily::Debian => "apt-get",
             DistroFamily::Rhel => "dnf",
         };
-        run_cmd_checked(package_manager, &["install", "-y", package], TIMEOUT_APT)
-            .await?;
+        run_cmd_checked(package_manager, &["install", "-y", package], TIMEOUT_APT).await?;
         Ok(())
     }
 
@@ -122,8 +119,7 @@ emit_via = motd
 
     pub async fn enable_service(distro: DistroFamily) -> Result<()> {
         let service = distro.auto_update_service();
-        run_cmd_checked("systemctl", &["enable", "--now", service], TIMEOUT_APT)
-            .await?;
+        run_cmd_checked("systemctl", &["enable", "--now", service], TIMEOUT_APT).await?;
 
         match distro {
             DistroFamily::Debian => {
@@ -173,18 +169,13 @@ impl Operations {
 
     pub async fn check_reboot_needed(distro: DistroFamily) -> Result<bool> {
         match distro {
-            DistroFamily::Debian => {
-                Ok(tokio::fs::try_exists(paths::maintenance::REBOOT_REQUIRED_FLAG)
-                    .await
-                    .unwrap_or(false))
-            }
+            DistroFamily::Debian => Ok(tokio::fs::try_exists(
+                paths::maintenance::REBOOT_REQUIRED_FLAG,
+            )
+            .await
+            .unwrap_or(false)),
             DistroFamily::Rhel => {
-                let status = run_cmd_status(
-                    "dnf",
-                    &["needs-restarting", "-r"],
-                    TIMEOUT_APT,
-                )
-                .await;
+                let status = run_cmd_status("dnf", &["needs-restarting", "-r"], TIMEOUT_APT).await;
                 match status {
                     Ok(s) if s.success() => Ok(false),
                     Ok(s) if s.code() == Some(1) => Ok(true),
@@ -238,7 +229,11 @@ impl Operations {
         let cleanup_cmds = Self::cleanup_commands(distro);
         let total = cleanup_cmds.len();
         for (i, (cmd, args)) in cleanup_cmds.iter().enumerate() {
-            let step_desc = if i == 0 { "移除无用包" } else { "清理缓存" };
+            let step_desc = if i == 0 {
+                "移除无用包"
+            } else {
+                "清理缓存"
+            };
             log.push_str(&format!("  {} ({}/{})...\n", step_desc, i + 1, total));
             match run_cmd_checked(cmd, args, TIMEOUT_APT).await {
                 Ok(_) => log.push_str(&format!("  ✅ {}完成\n", step_desc)),

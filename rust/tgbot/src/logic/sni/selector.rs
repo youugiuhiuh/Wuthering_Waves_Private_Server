@@ -72,26 +72,28 @@ impl SNISelector {
         let cache_key = format!("sni_{}", code);
 
         if let Some(ref persistence) = *SNI_PERSISTENCE
-            && let Some(state) = persistence.load(&cache_key) {
-                log::info!(
-                    "Loaded persisted SNI state for {}: {} domains, remaining={}, used={}",
-                    cache_key,
-                    state.domains.len(),
-                    state.shuffled_indices.len(),
-                    state.used_count
-                );
-                return Self {
-                    domains: state.domains,
-                    shuffled_indices: state.shuffled_indices,
-                    used_count: state.used_count,
-                    cache_key,
-                };
-            }
+            && let Some(state) = persistence.load(&cache_key)
+        {
+            log::info!(
+                "Loaded persisted SNI state for {}: {} domains, remaining={}, used={}",
+                cache_key,
+                state.domains.len(),
+                state.shuffled_indices.len(),
+                state.used_count
+            );
+            return Self {
+                domains: state.domains,
+                shuffled_indices: state.shuffled_indices,
+                used_count: state.used_count,
+                cache_key,
+            };
+        }
 
         if let Some(ref persistence) = *SNI_PERSISTENCE
-            && let Err(e) = persistence.save(&cache_key, &state) {
-                log::warn!("Failed to save initial SNI state: {}", e);
-            }
+            && let Err(e) = persistence.save(&cache_key, &state)
+        {
+            log::warn!("Failed to save initial SNI state: {}", e);
+        }
 
         Self {
             domains: state.domains,
@@ -195,7 +197,7 @@ mod tests {
     fn get_for_country_returns_selector_with_domains() {
         let selector = SNISelector::get_for_country("US");
         let mut s = selector;
-        let first = s.next();
+        let first = s.get_next();
         assert!(!first.is_empty());
         assert!(first.contains('.'));
     }
@@ -204,7 +206,7 @@ mod tests {
     fn get_for_country_unknown_falls_back_to_default() {
         let selector = SNISelector::get_for_country("XX");
         let mut s = selector;
-        let d = s.next();
+        let d = s.get_next();
         assert!(!d.is_empty());
     }
 
@@ -256,8 +258,8 @@ mod tests {
         let selector_gb = SNISelector::get_for_country("GB");
         let mut s1 = selector_uk;
         let mut s2 = selector_gb;
-        assert!(!s1.next().is_empty());
-        assert!(!s2.next().is_empty());
+        assert!(!s1.get_next().is_empty());
+        assert!(!s2.get_next().is_empty());
     }
 
     #[test]

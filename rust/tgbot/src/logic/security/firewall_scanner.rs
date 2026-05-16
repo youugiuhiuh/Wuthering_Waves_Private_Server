@@ -173,10 +173,12 @@ impl FirewallScanner {
         let mut entries = fs::read_dir(dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if path.is_file() && path.extension().is_some_and(|ext| ext == "json")
-                && let Ok(file_ports) = Self::extract_ports_from_file(&path).await {
-                    ports.extend(file_ports);
-                }
+            if path.is_file()
+                && path.extension().is_some_and(|ext| ext == "json")
+                && let Ok(file_ports) = Self::extract_ports_from_file(&path).await
+            {
+                ports.extend(file_ports);
+            }
         }
         Ok(ports)
     }
@@ -218,10 +220,11 @@ impl FirewallScanner {
             // 提取端口
             if let Some(caps) = PORT_RE.captures(line)
                 && !is_local_context
-                    && let Some(port_match) = caps.get(1)
-                        && let Ok(port) = port_match.as_str().parse::<u16>() {
-                            ports.insert(port);
-                        }
+                && let Some(port_match) = caps.get(1)
+                && let Ok(port) = port_match.as_str().parse::<u16>()
+            {
+                ports.insert(port);
+            }
 
             // 如果看到对象结束，也可以重置 (简单近似)
             if line.contains('}') {
@@ -288,7 +291,9 @@ mod tests {
         assert!(!regex.is_match("\"listen\": \"0.0.0.0\""));
     }
 
+    #[cfg(target_os = "linux")]
     #[tokio::test]
+    #[ignore = "requires /etc/ssh/sshd_config"]
     async fn test_detect_ssh_port_default() {
         let result = FirewallScanner::detect_ssh_port().await;
         assert!(result.is_ok());

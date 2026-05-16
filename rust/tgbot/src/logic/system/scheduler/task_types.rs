@@ -147,10 +147,7 @@ mod tests {
 
     #[test]
     fn test_task_type_display_names() {
-        assert_eq!(
-            TaskType::Unknown.get_display_name(),
-            "未知任务 (已弃用)"
-        );
+        assert_eq!(TaskType::Unknown.get_display_name(), "未知任务 (已弃用)");
         assert_eq!(
             TaskType::GeoUpdate.get_display_name(),
             "GeoData 更新 (Update GeoData)"

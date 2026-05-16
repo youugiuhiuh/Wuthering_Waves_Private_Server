@@ -1,6 +1,6 @@
-use crate::core::paths::{xray, warp as warp_paths};
-use crate::logic::system::maintenance::MaintenanceManager;
+use crate::core::paths::{warp as warp_paths, xray};
 use crate::logic::core_upgrade::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
+use crate::logic::system::maintenance::MaintenanceManager;
 use anyhow::{Context, Result, anyhow};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -234,12 +234,13 @@ impl RealityInstallerInternal {
         if crate::logic::firewall::FirewallManager::detect_backend()
             .await
             .is_none()
-            && !manager.check_installed("firewalld").await {
-                manager
-                    .install(&["firewalld"])
-                    .await
-                    .with_context(|| "安装 firewalld 失败")?;
-            }
+            && !manager.check_installed("firewalld").await
+        {
+            manager
+                .install(&["firewalld"])
+                .await
+                .with_context(|| "安装 firewalld 失败")?;
+        }
         Ok(())
     }
 
@@ -567,7 +568,8 @@ async fn install_systemd_service() -> Result<()> {
     const SERVICE_PATH: &str = "/etc/systemd/system/wwps-core.service";
     let unit = format!(
         "[Unit]\nDescription=wwps-core Service\nAfter=network.target\n\n[Service]\nUser=root\nType=simple\nExecStart={}/wwps-core run -confdir {}/conf\nRestart=always\nRestartSec=5\nLimitNOFILE=51200\n\n[Install]\nWantedBy=multi-user.target\n",
-        xray::DIR, xray::DIR
+        xray::DIR,
+        xray::DIR
     );
 
     fs::write(SERVICE_PATH, unit)
@@ -583,7 +585,8 @@ async fn install_openrc_service() -> Result<()> {
     const SERVICE_PATH: &str = "/etc/init.d/wwps-core";
     let script = format!(
         "#!/sbin/openrc-run\ndescription=\"wwps-core Service\"\ncommand=\"{}/wwps-core\"\ncommand_args=\"run -confdir {}/conf\"\npidfile=/run/wwps-core.pid\ncommand_background=yes\ndepend() {{\n    need net\n}}\n",
-        xray::DIR, xray::DIR
+        xray::DIR,
+        xray::DIR
     );
 
     fs::write(SERVICE_PATH, script)
@@ -665,14 +668,26 @@ mod tests {
             RealityInstallOutcome::AlreadyReady,
             RealityInstallOutcome::AlreadyReady
         );
-        assert_eq!(RealityInstallOutcome::Completed, RealityInstallOutcome::Completed);
-        assert_eq!(RealityInstallOutcome::InProgress, RealityInstallOutcome::InProgress);
+        assert_eq!(
+            RealityInstallOutcome::Completed,
+            RealityInstallOutcome::Completed
+        );
+        assert_eq!(
+            RealityInstallOutcome::InProgress,
+            RealityInstallOutcome::InProgress
+        );
     }
 
     #[test]
     fn test_reality_install_outcome_not_equal() {
-        assert_ne!(RealityInstallOutcome::AlreadyReady, RealityInstallOutcome::Completed);
-        assert_ne!(RealityInstallOutcome::Completed, RealityInstallOutcome::InProgress);
+        assert_ne!(
+            RealityInstallOutcome::AlreadyReady,
+            RealityInstallOutcome::Completed
+        );
+        assert_ne!(
+            RealityInstallOutcome::Completed,
+            RealityInstallOutcome::InProgress
+        );
     }
 
     #[test]
