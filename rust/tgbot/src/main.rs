@@ -928,7 +928,7 @@ fn handle_callback(
                             InlineKeyboardButton::callback("🔄 重启系统", "a_sys_reboot"),
                             InlineKeyboardButton::callback("♻️ 重启核心", "a_reload"),
                         ],
-                        vec![InlineKeyboardButton::callback("🧹 系统维护", "a_sys_maint")],
+                        vec![InlineKeyboardButton::callback("⚙️ 配置自动更新", "a_sys_maint")],
                         vec![InlineKeyboardButton::callback(
                             "⬅️ 返回运维中心",
                             "m_ops_center",
@@ -4281,14 +4281,14 @@ d if d.starts_with("u_kcp_ok:") => {
                     if logic::operations::MAINTENANCE_FLAG.load(std::sync::atomic::Ordering::SeqCst)
                     {
                         bot.answer_callback_query(q.id.clone())
-                            .text("❌ 维护任务正在执行中，请稍后再试")
+                            .text("❌ 配置任务正在执行中，请稍后再试")
                             .await?;
                         return Ok(());
                     }
 
                     let keyboard =
                         InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-                            "🔄 维护中... (请等待)",
+                            "⚙️ 配置中... (请等待)",
                             "a_sys_maint_disabled",
                         )]]);
                     let _ = bot
@@ -4297,7 +4297,7 @@ d if d.starts_with("u_kcp_ok:") => {
                         .await;
 
                     bot.answer_callback_query(q.id.clone())
-                        .text("🧹 正在执行系统维护...")
+                        .text("⚙️ 正在配置自动安全更新...")
                         .await?;
                     let bot_c = bot.clone();
                     tokio::spawn(async move {
@@ -4312,7 +4312,7 @@ d if d.starts_with("u_kcp_ok:") => {
                                     .send_message(
                                         chat_id,
                                         format!(
-                                            "✅ <b>系统维护完成</b>\n\n<pre>{}</pre>",
+                                            "✅ <b>自动安全更新配置完成</b>\n\n<pre>{}</pre>",
                                             log_tail
                                         ),
                                     )
