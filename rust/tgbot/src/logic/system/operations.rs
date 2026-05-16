@@ -6,7 +6,7 @@ use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::time::Duration;
 
-use crate::logic::cmd_async::{run_cmd_checked, run_cmd_output, run_cmd_status};
+use crate::logic::cmd_async::{run_cmd_checked, run_cmd_status};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DistroFamily {
