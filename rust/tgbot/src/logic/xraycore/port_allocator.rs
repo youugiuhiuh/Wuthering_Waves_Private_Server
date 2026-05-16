@@ -39,7 +39,6 @@ async fn load_port_alloc() -> Result<PortAllocData> {
     Ok(data)
 }
 
-#[allow(dead_code)]
 async fn save_port_alloc(data: &PortAllocData) -> Result<()> {
     let path = PathBuf::from(PORT_ALLOC_FILE);
     if let Some(parent) = path.parent() {
@@ -161,9 +160,21 @@ impl PortAllocator {
 
     pub async fn allocate_hysteria2() -> Result<(u16, (u16, u16))> {
         let occupied = Self::scan_all_occupied_ports().await?;
-
         let main_port = Self::find_consecutive_range(&occupied, HOP_SIZE)?;
         let hop_end = main_port + 99;
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let mut data = load_port_alloc().await.unwrap_or_default();
+        data.locked_ranges.push(LockedRange {
+            start: main_port,
+            end: hop_end,
+            protocol: "hysteria2".to_string(),
+            created_at: now,
+        });
+        save_port_alloc(&data).await?;
 
         log::info!(
             "Hysteria2 端口分配: 主端口 {}, 跳跃范围 {}-{}",
@@ -175,8 +186,25 @@ impl PortAllocator {
         Ok((main_port, (main_port + 1, hop_end)))
     }
 
-    pub async fn release_hysteria2_range(_main_port: u16) -> Result<()> {
-        log::info!("Hysteria2 端口范围已释放");
+    pub async fn release_hysteria2_range(main_port: u16) -> Result<()> {
+        let mut data = load_port_alloc().await.unwrap_or_default();
+        let before = data.locked_ranges.len();
+        data.locked_ranges
+            .retain(|r| !(r.protocol == "hysteria2" && r.start == main_port));
+
+        if data.locked_ranges.len() < before {
+            save_port_alloc(&data).await?;
+            log::info!(
+                "Hysteria2 端口范围已释放: 主端口 {}",
+                main_port
+            );
+        } else {
+            log::warn!(
+                "Hysteria2 端口范围未找到: 主端口 {} (可能已被释放)",
+                main_port
+            );
+        }
+
         Ok(())
     }
 
@@ -236,5 +264,50 @@ mod tests {
         assert!(result.is_ok());
         let start = result.unwrap();
         assert!(start < 100 || start > 111);
+    }
+
+    #[test]
+    fn test_release_removes_matching_range() {
+        let mut data = PortAllocData {
+            locked_ranges: vec![
+                LockedRange {
+                    start: 10000,
+                    end: 10099,
+                    protocol: "hysteria2".to_string(),
+                    created_at: 1234567890,
+                },
+                LockedRange {
+                    start: 20000,
+                    end: 20099,
+                    protocol: "hysteria2".to_string(),
+                    created_at: 1234567891,
+                },
+            ],
+            initialized: true,
+        };
+        data.locked_ranges.retain(|r| !(r.protocol == "hysteria2" && r.start == 10000));
+        assert_eq!(data.locked_ranges.len(), 1);
+        assert_eq!(data.locked_ranges[0].start, 20000);
+    }
+
+    #[test]
+    fn test_release_no_match_is_noop() {
+        let data = PortAllocData {
+            locked_ranges: vec![LockedRange {
+                start: 20000,
+                end: 20099,
+                protocol: "hysteria2".to_string(),
+                created_at: 1234567890,
+            }],
+            initialized: true,
+        };
+        let filtered: Vec<_> = data
+            .locked_ranges
+            .iter()
+            .filter(|r| !(r.protocol == "hysteria2" && r.start == 9999))
+            .cloned()
+            .collect();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].start, 20000);
     }
 }

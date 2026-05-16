@@ -67,6 +67,12 @@ pub use network::geoip;
 // 原 logic::warp_api → logic::network::warp_api
 pub use network::warp_api;
 
+// 原 bot_upgrade/core_upgrade 共享的 Release API 类型和类型别名
+pub use network::release_api::{
+    parse_digest, parse_sha256_manifest, extract_sha256_from_body, fetch_json_from_mirrors,
+    ReleaseAsset as LogicReleaseAsset, ReleaseResponse as LogicReleaseResponse, SHA256_LINE_RE,
+};
+
 // 原 logic::log_audit → logic::system::log_audit
 pub use system::log_audit;
 

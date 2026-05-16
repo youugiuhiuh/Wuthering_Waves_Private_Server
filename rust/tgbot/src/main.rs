@@ -22,7 +22,7 @@ use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use teloxide::net::Download;
@@ -2591,7 +2591,8 @@ fn handle_callback(
                             let mut temp_file = NamedTempFile::new()?;
                             temp_file.write_all(links_text.as_bytes())?;
                             temp_file.flush()?;
-                            let file_path = temp_file.path().to_path_buf();
+                            let temp_path = temp_file.into_temp_path();
+                            let file_path = PathBuf::from(temp_path.as_os_str());
                             if let Ok(msg) = bot
                                 .send_document(chat_id, InputFile::file(&file_path))
                                 .caption("完整链接列表，建议尽快复制/导入")
@@ -3265,7 +3266,8 @@ fn handle_callback(
                             let mut temp_file = NamedTempFile::new()?;
                             temp_file.write_all(links_text.as_bytes())?;
                             temp_file.flush()?;
-                            let file_path = temp_file.path().to_path_buf();
+                            let temp_path = temp_file.into_temp_path();
+                            let file_path = PathBuf::from(temp_path.as_os_str());
                             if let Ok(msg) = bot
                                 .send_document(chat_id, InputFile::file(&file_path))
                                 .caption(format!("KCP {} 完整链接列表", mask_label))
