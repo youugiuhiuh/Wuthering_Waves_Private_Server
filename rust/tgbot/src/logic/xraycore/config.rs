@@ -284,6 +284,7 @@ impl ConfigManager {
             .collect::<String>()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_reality_vless_inbound(
         tag: &str,
         port: i32,
@@ -754,6 +755,7 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
         ))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn generate_client_link(
         uuid: &str,
         host: &str,
