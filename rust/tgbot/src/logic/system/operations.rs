@@ -124,6 +124,19 @@ emit_via = motd
         let service = distro.auto_update_service();
         run_cmd_checked("systemctl", &["enable", "--now", service], TIMEOUT_APT)
             .await?;
+
+        match distro {
+            DistroFamily::Debian => {
+                run_cmd_checked(
+                    "systemctl",
+                    &["enable", "--now", "apt-daily-upgrade.timer"],
+                    TIMEOUT_APT,
+                )
+                .await?;
+            }
+            DistroFamily::Rhel => {}
+        }
+
         Ok(())
     }
 }
