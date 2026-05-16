@@ -22,7 +22,7 @@ static SNI_PERSISTENCE: Lazy<Option<SNIPersistence>> = Lazy::new(|| match SNIPer
     }
 });
 
-static LARGEST_PB: Lazy<Option<(String, usize)>> = Lazy::new(|| find_file_with_most_domains());
+static LARGEST_PB: Lazy<Option<(String, usize)>> = Lazy::new(find_file_with_most_domains);
 
 fn find_file_with_most_domains() -> Option<(String, usize)> {
     SniAssets::iter()
@@ -66,33 +66,33 @@ impl SNISelector {
             c => c,
         };
 
-        let domains = Self::load_domains(&code);
+        let domains = Self::load_domains(code);
         let state = SNIState::new(domains.clone());
 
         let cache_key = format!("sni_{}", code);
 
-        if let Some(ref persistence) = *SNI_PERSISTENCE {
-            if let Some(state) = persistence.load(&cache_key) {
-                log::info!(
-                    "Loaded persisted SNI state for {}: {} domains, remaining={}, used={}",
-                    cache_key,
-                    state.domains.len(),
-                    state.shuffled_indices.len(),
-                    state.used_count
-                );
-                return Self {
-                    domains: state.domains,
-                    shuffled_indices: state.shuffled_indices,
-                    used_count: state.used_count,
-                    cache_key,
-                };
-            }
+        if let Some(ref persistence) = *SNI_PERSISTENCE
+            && let Some(state) = persistence.load(&cache_key)
+        {
+            log::info!(
+                "Loaded persisted SNI state for {}: {} domains, remaining={}, used={}",
+                cache_key,
+                state.domains.len(),
+                state.shuffled_indices.len(),
+                state.used_count
+            );
+            return Self {
+                domains: state.domains,
+                shuffled_indices: state.shuffled_indices,
+                used_count: state.used_count,
+                cache_key,
+            };
         }
 
-        if let Some(ref persistence) = *SNI_PERSISTENCE {
-            if let Err(e) = persistence.save(&cache_key, &state) {
-                log::warn!("Failed to save initial SNI state: {}", e);
-            }
+        if let Some(ref persistence) = *SNI_PERSISTENCE
+            && let Err(e) = persistence.save(&cache_key, &state)
+        {
+            log::warn!("Failed to save initial SNI state: {}", e);
         }
 
         Self {
@@ -133,7 +133,7 @@ impl SNISelector {
         vec![]
     }
 
-    pub fn next(&mut self) -> String {
+    pub fn get_next(&mut self) -> String {
         if self.domains.is_empty() {
             return String::new();
         }
@@ -197,7 +197,7 @@ mod tests {
     fn get_for_country_returns_selector_with_domains() {
         let selector = SNISelector::get_for_country("US");
         let mut s = selector;
-        let first = s.next();
+        let first = s.get_next();
         assert!(!first.is_empty());
         assert!(first.contains('.'));
     }
@@ -206,7 +206,7 @@ mod tests {
     fn get_for_country_unknown_falls_back_to_default() {
         let selector = SNISelector::get_for_country("XX");
         let mut s = selector;
-        let d = s.next();
+        let d = s.get_next();
         assert!(!d.is_empty());
     }
 
@@ -227,7 +227,7 @@ mod tests {
 
         let mut results = Vec::new();
         for _ in 0..5 {
-            results.push(selector.next());
+            results.push(selector.get_next());
         }
 
         let unique: std::collections::HashSet<_> = results.iter().collect();
@@ -244,11 +244,11 @@ mod tests {
             cache_key: String::new(),
         };
 
-        selector.next();
-        selector.next();
+        selector.get_next();
+        selector.get_next();
         assert_eq!(selector.remaining(), 0);
 
-        selector.next();
+        selector.get_next();
         assert_eq!(selector.remaining(), 1);
     }
 
@@ -258,8 +258,8 @@ mod tests {
         let selector_gb = SNISelector::get_for_country("GB");
         let mut s1 = selector_uk;
         let mut s2 = selector_gb;
-        assert!(!s1.next().is_empty());
-        assert!(!s2.next().is_empty());
+        assert!(!s1.get_next().is_empty());
+        assert!(!s2.get_next().is_empty());
     }
 
     #[test]
@@ -276,9 +276,9 @@ mod tests {
         };
 
         assert_eq!(selector.remaining(), 3);
-        selector.next();
+        selector.get_next();
         assert_eq!(selector.remaining(), 2);
-        selector.next();
+        selector.get_next();
         assert_eq!(selector.remaining(), 1);
     }
 

@@ -5,6 +5,7 @@ use crate::logic::cmd_async::run_cmd_output;
 
 const TIMEOUT_SHORT: Duration = Duration::from_secs(30);
 const MAX_LOG_CHARS: usize = 4000;
+#[allow(dead_code)]
 const TAIL_LINES: usize = 50;
 
 pub const SERVICE_WWPS_CORE: &str = "wwps-core";

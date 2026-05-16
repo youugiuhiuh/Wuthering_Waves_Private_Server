@@ -126,7 +126,7 @@ pub async fn handle_message_flow(
                 let mut content = Vec::new();
                 bot.download_file(&file.path, &mut content)
                     .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                    .map_err(std::io::Error::other)?;
 
                 let mut hasher = Sha256::new();
                 hasher.update(&content);

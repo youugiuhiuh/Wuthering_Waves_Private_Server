@@ -7,7 +7,9 @@ use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-use crate::core::paths::maintenance::{BBR3_PENDING_FLAG_FILE, DESTRUCT_SERVICES, DESTRUCT_TARGETS};
+use crate::core::paths::maintenance::{
+    BBR3_PENDING_FLAG_FILE, DESTRUCT_SERVICES, DESTRUCT_TARGETS,
+};
 use crate::core::paths::xray;
 use crate::logic::cmd_async::{run_cmd_checked, run_cmd_output, run_cmd_status};
 use crate::logic::utils::{format_download_progress, should_report};
@@ -243,19 +245,14 @@ impl MaintenanceManager {
         for (file, url) in sources {
             let target_path = format!("{}/{}", dir, file);
 
-            if tokio::fs::try_exists(&target_path)
-                .await
-                .unwrap_or(false)
-            {
+            if tokio::fs::try_exists(&target_path).await.unwrap_or(false) {
                 log::info!("geodata 文件已存在，跳过: {}", target_path);
                 continue;
             }
 
             log::info!("正在下载 geodata: {}", file);
 
-            if let Err(e) =
-                Self::download_file_atomic(&client, url, &target_path).await
-            {
+            if let Err(e) = Self::download_file_atomic(&client, url, &target_path).await {
                 log::warn!("下载 {} 失败: {} (服务可能仍可启动)", file, e);
             }
         }
@@ -263,11 +260,7 @@ impl MaintenanceManager {
         Ok(())
     }
 
-    async fn download_file_atomic(
-        client: &reqwest::Client,
-        url: &str,
-        path: &str,
-    ) -> Result<()> {
+    async fn download_file_atomic(client: &reqwest::Client, url: &str, path: &str) -> Result<()> {
         let temp_path = format!("{}.tmp", path);
 
         let result = Self::download_file(client, url, &temp_path, |_, _| {}).await;
@@ -303,8 +296,7 @@ impl MaintenanceManager {
         ];
 
         // 确保目标目录存在
-        std::fs::create_dir_all(xray::DIR)
-            .context("创建 xray 目录失败")?;
+        std::fs::create_dir_all(xray::DIR).context("创建 xray 目录失败")?;
 
         let client = reqwest::Client::builder()
             .timeout(TIMEOUT_LONG)
@@ -407,7 +399,8 @@ impl MaintenanceManager {
 
         // 检测 firewalld 是否激活
         if Self::is_firewalld_active().await {
-            crate::logic::security::firewalld::FirewalldClient::add_port_range(start, end, "udp").await?;
+            crate::logic::security::firewalld::FirewalldClient::add_port_range(start, end, "udp")
+                .await?;
         }
 
         Ok(())
@@ -436,7 +429,10 @@ impl MaintenanceManager {
 
         // 检测 firewalld 是否激活
         if Self::is_firewalld_active().await {
-            crate::logic::security::firewalld::FirewalldClient::remove_port_range(start, end, "udp").await?;
+            crate::logic::security::firewalld::FirewalldClient::remove_port_range(
+                start, end, "udp",
+            )
+            .await?;
         }
 
         Ok(())
@@ -454,7 +450,7 @@ impl MaintenanceManager {
 
     /// 默认的自毁目标路径列表
     pub const DESTRUCT_TARGETS: &[&str] = DESTRUCT_TARGETS;
-pub const DESTRUCT_SERVICES: &[&str] = DESTRUCT_SERVICES;
+    pub const DESTRUCT_SERVICES: &[&str] = DESTRUCT_SERVICES;
 
     /// 安全擦除指定的目标路径列表，返回每个路径的擦除结果
     ///
@@ -610,7 +606,7 @@ async fn download_xanmod_gpg_key() -> Result<()> {
 
     for url in key_urls {
         let result = tokio::process::Command::new("sh")
-            .args(&[
+            .args([
                 "-c",
                 &format!(
                     "wget -qO - '{}' | gpg --batch --yes --no-tty --dearmor -vo {}",
@@ -789,12 +785,11 @@ async fn ensure_bbr3_dependencies() -> Result<()> {
             DepCheckKind::Command(cmd) => command_exists(cmd).await,
             DepCheckKind::File(path) => package_file_exists(path).await,
         };
-        if !present {
-            if install_apt_package(dep.primary).await.is_err() {
-                if let Some(fallback) = dep.fallback {
-                    install_apt_package(fallback).await?;
-                }
-            }
+        if !present
+            && install_apt_package(dep.primary).await.is_err()
+            && let Some(fallback) = dep.fallback
+        {
+            install_apt_package(fallback).await?;
         }
     }
 

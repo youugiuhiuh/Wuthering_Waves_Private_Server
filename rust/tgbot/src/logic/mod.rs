@@ -1,20 +1,22 @@
 // 功能域子模块
-pub mod xraycore;
-pub mod sni;
-pub mod singbox;    // 已有，不动
-pub mod security;
 pub mod network;
+pub mod security;
+pub mod singbox; // 已有，不动
+pub mod sni;
 pub mod system;
+pub mod xraycore;
 
 // 根级模块（不动）
-pub mod cmd_async;
-pub mod utils;
-pub mod totp;
 pub mod bot_upgrade;
+pub mod cmd_async;
 pub mod core_upgrade;
+pub mod totp;
+pub mod utils;
 
-pub use bot_upgrade::{UpgradeManager, ReleaseArtifact, UPGRADE_FLAG_FILE};
-pub use core_upgrade::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreReleaseInfo, WwpsCoreUpgradeManager};
+pub use bot_upgrade::{ReleaseArtifact, UPGRADE_FLAG_FILE, UpgradeManager};
+pub use core_upgrade::{
+    CpuArch, WwpsCoreReleaseInfo, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager,
+};
 
 // ========== 向后兼容 re-export ==========
 // 原 logic::security (SecurityManager) → logic::security::crypto

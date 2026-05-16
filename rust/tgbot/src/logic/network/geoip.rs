@@ -49,6 +49,12 @@ pub struct GeoIPService {
     client: Client,
 }
 
+impl Default for GeoIPService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GeoIPService {
     pub fn new() -> Self {
         Self {

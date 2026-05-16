@@ -39,6 +39,7 @@ async fn load_port_alloc() -> Result<PortAllocData> {
     Ok(data)
 }
 
+#[allow(dead_code)]
 async fn save_port_alloc(data: &PortAllocData) -> Result<()> {
     let path = PathBuf::from(PORT_ALLOC_FILE);
     if let Some(parent) = path.parent() {
@@ -60,16 +61,16 @@ impl PortAllocator {
 
         let mut count = 0;
         let mut entries = fs::read_dir(&conf_dir).await?;
-        
+
         while let Ok(Some(entry)) = entries.next_entry().await {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.ends_with(".json") {
-                    let path = entry.path();
-                    if let Ok(content) = fs::read_to_string(&path).await {
-                        if content.contains("hysteria2") {
-                            count += 1;
-                        }
-                    }
+            if let Some(name) = entry.file_name().to_str()
+                && name.ends_with(".json")
+            {
+                let path = entry.path();
+                if let Ok(content) = fs::read_to_string(&path).await
+                    && content.contains("hysteria2")
+                {
+                    count += 1;
                 }
             }
         }
@@ -91,14 +92,15 @@ impl PortAllocator {
         if let Ok(entries) = fs::read_dir(&singbox::CONF_DIR).await {
             let mut dir = entries;
             while let Ok(Some(entry)) = dir.next_entry().await {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name.ends_with(".json") && !name.starts_with("00_") {
-                        let path = entry.path();
-                        if let Ok(content) = fs::read_to_string(&path).await {
-                            if let Ok(ports) = Self::extract_ports_from_json(&content) {
-                                occupied.extend(ports);
-                            }
-                        }
+                if let Some(name) = entry.file_name().to_str()
+                    && name.ends_with(".json")
+                    && !name.starts_with("00_")
+                {
+                    let path = entry.path();
+                    if let Ok(content) = fs::read_to_string(&path).await
+                        && let Ok(ports) = Self::extract_ports_from_json(&content)
+                    {
+                        occupied.extend(ports);
                     }
                 }
             }
@@ -120,21 +122,25 @@ impl PortAllocator {
                 return Ok(main_port);
             }
         }
-        anyhow::bail!("在 {} 范围内找不到连续的 {} 个空闲端口", XRAY_PORT_MIN, size)
+        anyhow::bail!(
+            "在 {} 范围内找不到连续的 {} 个空闲端口",
+            XRAY_PORT_MIN,
+            size
+        )
     }
 
     fn extract_ports_from_json(content: &str) -> Result<Vec<u16>> {
         let mut ports = Vec::new();
-        
+
         let re = regex::Regex::new(r#""listen_port"\s*:\s*(\d+)"#).unwrap();
         for cap in re.captures_iter(content) {
-            if let Some(m) = cap.get(1) {
-                if let Ok(p) = m.as_str().parse::<u16>() {
-                    ports.push(p);
-                }
+            if let Some(m) = cap.get(1)
+                && let Ok(p) = m.as_str().parse::<u16>()
+            {
+                ports.push(p);
             }
         }
-        
+
         Ok(ports)
     }
 
@@ -148,7 +154,9 @@ impl PortAllocator {
 
     pub async fn is_port_in_locked_range(port: u16) -> bool {
         let ranges = Self::get_locked_ranges().await;
-        ranges.iter().any(|(start, end)| port >= *start && port <= *end)
+        ranges
+            .iter()
+            .any(|(start, end)| port >= *start && port <= *end)
     }
 
     pub async fn allocate_hysteria2() -> Result<(u16, (u16, u16))> {
@@ -157,8 +165,12 @@ impl PortAllocator {
         let main_port = Self::find_consecutive_range(&occupied, HOP_SIZE)?;
         let hop_end = main_port + 99;
 
-        log::info!("Hysteria2 端口分配: 主端口 {}, 跳跃范围 {}-{}", 
-            main_port, main_port + 1, hop_end);
+        log::info!(
+            "Hysteria2 端口分配: 主端口 {}, 跳跃范围 {}-{}",
+            main_port,
+            main_port + 1,
+            hop_end
+        );
 
         Ok((main_port, (main_port + 1, hop_end)))
     }
@@ -219,7 +231,7 @@ mod tests {
         let mut occupied = HashSet::new();
         occupied.insert(100);
         occupied.insert(101);
-        
+
         let result = PortAllocator::find_consecutive_range(&occupied, 10);
         assert!(result.is_ok());
         let start = result.unwrap();

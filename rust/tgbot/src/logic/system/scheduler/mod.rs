@@ -17,6 +17,12 @@ pub struct SchedulerState {
     pub tasks: Vec<ScheduledTask>,
 }
 
+impl Default for SchedulerState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SchedulerState {
     pub fn new() -> Self {
         Self {
@@ -24,7 +30,7 @@ impl SchedulerState {
         }
     }
 
-    pub fn default() -> Self {
+    pub fn get_default() -> Self {
         Self::new()
     }
 
@@ -236,6 +242,12 @@ impl SchedulerManager {
 }
 
 pub struct SchedulerValidator;
+
+impl Default for SchedulerValidator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl SchedulerValidator {
     pub fn new() -> Self {

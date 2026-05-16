@@ -1,7 +1,7 @@
 use crate::core::paths::xray;
+use crate::logic::bot_upgrade::SHA256_LINE_RE;
 use crate::logic::cmd_async::run_cmd_status;
 use crate::logic::utils::{format_download_progress, human_readable_size, should_report};
-use crate::logic::bot_upgrade::SHA256_LINE_RE;
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use futures_util::StreamExt;
@@ -371,8 +371,7 @@ impl WwpsCoreUpgradeManager {
         {
             hash
         } else if let Some(body) = release.body.as_deref() {
-            extract_sha256_from_body(body)
-                .ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
+            extract_sha256_from_body(body).ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
         } else {
             anyhow::bail!("Release 中缺少 SHA256 信息");
         };
@@ -568,10 +567,9 @@ impl WwpsCoreUpgradeManager {
 
     pub async fn verify_service_active(&self) -> Result<()> {
         let unit = format!("{}.service", self.config.service_name);
-        let status =
-            run_cmd_status("systemctl", &["is-active", &unit], Duration::from_secs(15))
-                .await
-                .context("执行 systemctl is-active 失败")?;
+        let status = run_cmd_status("systemctl", &["is-active", &unit], Duration::from_secs(15))
+            .await
+            .context("执行 systemctl is-active 失败")?;
 
         if status.success() {
             Ok(())

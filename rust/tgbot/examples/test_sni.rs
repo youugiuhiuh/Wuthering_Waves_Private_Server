@@ -22,7 +22,7 @@ async fn main() {
 
     log::info!("Generating 5 SNIs for {}:", country);
     for i in 0..5 {
-        let sni = selector.next();
+        let sni = selector.get_next();
         log::info!("  [{}] {}", i + 1, sni);
     }
 
@@ -30,13 +30,13 @@ async fn main() {
     log::info!("Testing US SNI (should be cleaned):");
     let mut us_selector = SNISelector::get_for_country("US");
     for i in 0..5 {
-        let sni = us_selector.next();
+        let sni = us_selector.get_next();
         log::info!("  [US-{}] '{}'", i + 1, sni);
     }
 
     // 4. Test Fallback (Unknown country)
     log::info!("Testing SNI Selector for UNKNOWN country");
     let mut fallback_selector = SNISelector::get_for_country("UNKNOWN");
-    let fallback_sni = fallback_selector.next();
+    let fallback_sni = fallback_selector.get_next();
     log::info!("  Fallback SNI: {}", fallback_sni);
 }

@@ -74,14 +74,14 @@ impl SecurityManager {
         }
 
         let cipher = Aes256Gcm::new_from_slice(self.key.as_slice())
-            .map_err(|e| anyhow::anyhow!("{}: {}", obfstr!("Cipher init error").to_string(), e))?;
+            .map_err(|e| anyhow::anyhow!("{}: {}", obfstr!("Cipher init error"), e))?;
 
         let nonce = Nonce::from_slice(&encrypted_data[..12]);
         let ciphertext = &encrypted_data[12..];
 
         let decrypted = cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|e| anyhow::anyhow!("{}: {}", obfstr!("Decryption error").to_string(), e))?;
+            .map_err(|e| anyhow::anyhow!("{}: {}", obfstr!("Decryption error"), e))?;
 
         // Keep decrypted bytes zeroized on early-return paths, then move ownership out
         // without reallocating so mlock applies to the final backing allocation.

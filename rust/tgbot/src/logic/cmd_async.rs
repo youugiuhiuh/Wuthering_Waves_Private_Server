@@ -87,10 +87,7 @@ where
                     }
                 }
                 line = stderr_reader.next_line() => {
-                    match line {
-                        Ok(Some(l)) => on_line(l),
-                        _ => {}
-                    }
+                    if let Ok(Some(l)) = line { on_line(l) }
                 }
             }
         }

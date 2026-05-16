@@ -18,7 +18,7 @@ pub struct TlsProbeResult {
     pub leaf_pubkey_alg: String,
 }
 
-static TLS_PROBE_CACHE: Lazy<DashMap<String, TlsProbeResult>> = Lazy::new(|| DashMap::new());
+static TLS_PROBE_CACHE: Lazy<DashMap<String, TlsProbeResult>> = Lazy::new(DashMap::new);
 
 struct NoCertificateVerification;
 

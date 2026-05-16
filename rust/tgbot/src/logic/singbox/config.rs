@@ -8,7 +8,7 @@ use crate::logic::system::SystemMonitor;
 use anyhow::{Context, Result};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::fs;
 
 use super::hysteria2::Hysteria2Config;
@@ -18,19 +18,19 @@ pub struct SingBoxConfigManager;
 
 impl SingBoxConfigManager {
     pub async fn is_installed() -> bool {
-        fs::try_exists(singbox::BIN)
-            .await
-            .unwrap_or(false)
+        fs::try_exists(singbox::BIN).await.unwrap_or(false)
     }
 
     pub async fn list_all_inbound_files() -> Result<Vec<String>> {
         let mut out = Vec::new();
         if let Ok(mut rd) = fs::read_dir(singbox::CONF_DIR).await {
             while let Ok(Some(entry)) = rd.next_entry().await {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name.ends_with(".json") && !name.starts_with("00_") && !name.starts_with("01_") {
-                        out.push(entry.path().to_string_lossy().to_string());
-                    }
+                if let Some(name) = entry.file_name().to_str()
+                    && name.ends_with(".json")
+                    && !name.starts_with("00_")
+                    && !name.starts_with("01_")
+                {
+                    out.push(entry.path().to_string_lossy().to_string());
                 }
             }
         }
@@ -40,72 +40,87 @@ impl SingBoxConfigManager {
     async fn extract_main_port_from_config(path: &str) -> Result<u16> {
         let content = fs::read_to_string(path).await?;
         let json: Value = serde_json::from_str(&content)?;
-        
+
         let port = json["inbounds"][0]["listen_port"]
             .as_u64()
             .ok_or_else(|| anyhow::anyhow!("无法解析主端口"))? as u16;
-        
+
         Ok(port)
     }
 
-    async fn cleanup_specific_hysteria2_rules(
-        main_port: u16, 
-        hop_range: (u16, u16)
-    ) -> Result<()> {
+    async fn cleanup_specific_hysteria2_rules(main_port: u16, hop_range: (u16, u16)) -> Result<()> {
         use tokio::process::Command;
-        
+
         let range_str = format!("{}:{}", hop_range.0, hop_range.1);
         let _ = Command::new("iptables")
             .args([
-                "-t", "nat", "-D", "PREROUTING", "-p", "udp",
-                "--dport", &range_str,
-                "-j", "REDIRECT",
-                "--to-ports", &main_port.to_string(),
+                "-t",
+                "nat",
+                "-D",
+                "PREROUTING",
+                "-p",
+                "udp",
+                "--dport",
+                &range_str,
+                "-j",
+                "REDIRECT",
+                "--to-ports",
+                &main_port.to_string(),
             ])
             .output()
             .await;
-        
+
         let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
         if has_ipv6 {
             let _ = Command::new("ip6tables")
                 .args([
-                    "-t", "nat", "-D", "PREROUTING", "-p", "udp",
-                    "--dport", &range_str,
-                    "-j", "REDIRECT",
-                    "--to-ports", &main_port.to_string(),
+                    "-t",
+                    "nat",
+                    "-D",
+                    "PREROUTING",
+                    "-p",
+                    "udp",
+                    "--dport",
+                    &range_str,
+                    "-j",
+                    "REDIRECT",
+                    "--to-ports",
+                    &main_port.to_string(),
                 ])
                 .output()
                 .await;
-            
+
             let _ = MaintenanceManager::remove_port_range_v6(hop_range.0, hop_range.1).await;
         }
-        
+
         let _ = MaintenanceManager::remove_port_range(main_port, main_port).await;
         let _ = MaintenanceManager::remove_port_range(hop_range.0, hop_range.1).await;
-        
-        log::info!("已清理 Hysteria2 端口跳跃规则: 主端口 {}, 范围 {}", main_port, range_str);
+
+        log::info!(
+            "已清理 Hysteria2 端口跳跃规则: 主端口 {}, 范围 {}",
+            main_port,
+            range_str
+        );
         Ok(())
     }
 
-pub async fn delete_specific_configuration(path: &str) -> Result<()> {
+    pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         let main_port = Self::extract_main_port_from_config(path).await?;
         let hop_range = (main_port + 1, main_port + 99);
-        
-        fs::remove_file(path)
-            .await
-            .context("删除配置文件失败")?;
-        
+
+        fs::remove_file(path).await.context("删除配置文件失败")?;
+
         Self::cleanup_specific_hysteria2_rules(main_port, hop_range).await?;
-        
+
         let _ = PortAllocator::release_hysteria2_range(main_port).await;
-        
+
         let remaining = Self::list_all_inbound_files().await?;
         let has_hysteria2 = remaining.iter().any(|f| f.contains("hysteria2"));
-        
+
         if !has_hysteria2 {
             let _ = PortAllocator::release_hysteria2_range(main_port).await;
         }
-        
+
         Self::reload_service().await?;
         Ok(())
     }
@@ -113,18 +128,18 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
     pub async fn delete_all_configurations() -> Result<usize> {
         let files = Self::list_all_inbound_files().await?;
         let count = files.len();
-        
+
         for file in &files {
-            if file.contains("hysteria2") || file.contains("hysteria") {
-                if let Ok(main_port) = Self::extract_main_port_from_config(file).await {
-                    let hop_range = (main_port + 1, main_port + 99);
-                    Self::cleanup_specific_hysteria2_rules(main_port, hop_range).await?;
-                }
+            if (file.contains("hysteria2") || file.contains("hysteria"))
+                && let Ok(main_port) = Self::extract_main_port_from_config(file).await
+            {
+                let hop_range = (main_port + 1, main_port + 99);
+                Self::cleanup_specific_hysteria2_rules(main_port, hop_range).await?;
             }
-            
+
             let _ = fs::remove_file(file).await;
         }
-        
+
         if count > 0 {
             Self::reload_service().await?;
         }
@@ -133,7 +148,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
 
     pub async fn delete_by_count(count: usize) -> Result<usize> {
         let files = Self::list_all_inbound_files().await?;
-        
+
         if files.is_empty() {
             return Ok(0);
         }
@@ -141,20 +156,19 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         let mut sorted_files: Vec<(std::path::PathBuf, std::time::SystemTime)> = Vec::new();
         for file in &files {
             let path = std::path::PathBuf::from(file);
-            if let Ok(metadata) = tokio::fs::metadata(&path).await {
-                if let Ok(modified) = metadata.modified() {
-                    sorted_files.push((path, modified));
-                }
+            if let Ok(metadata) = tokio::fs::metadata(&path).await
+                && let Ok(modified) = metadata.modified()
+            {
+                sorted_files.push((path, modified));
             }
         }
 
-        sorted_files.sort_by(|a, b| a.1.cmp(&b.1));
+        sorted_files.sort_by_key(|a| a.1);
 
         let delete_count = count.min(sorted_files.len());
         let mut deleted = 0;
 
-        for i in 0..delete_count {
-            let path = &sorted_files[i].0;
+        for (path, _) in sorted_files.iter().take(delete_count) {
             if fs::remove_file(path).await.is_ok() {
                 deleted += 1;
             }
@@ -172,6 +186,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         Ok(files.len())
     }
 
+    #[allow(dead_code)]
     async fn cleanup_port_hopping_firewall() -> Result<()> {
         use tokio::process::Command;
 
@@ -182,9 +197,16 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
             // 清理 IPv4 规则（总是）
             let _ = Command::new("iptables")
                 .args([
-                    "-t", "nat", "-D", "PREROUTING", "-p", "udp",
-                    "-j", "REDIRECT",
-                    "--to-ports", &main_port.to_string(),
+                    "-t",
+                    "nat",
+                    "-D",
+                    "PREROUTING",
+                    "-p",
+                    "udp",
+                    "-j",
+                    "REDIRECT",
+                    "--to-ports",
+                    &main_port.to_string(),
                 ])
                 .output()
                 .await;
@@ -196,9 +218,16 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
             if has_ipv6 {
                 let _ = Command::new("ip6tables")
                     .args([
-                        "-t", "nat", "-D", "PREROUTING", "-p", "udp",
-                        "-j", "REDIRECT",
-                        "--to-ports", &main_port.to_string(),
+                        "-t",
+                        "nat",
+                        "-D",
+                        "PREROUTING",
+                        "-p",
+                        "udp",
+                        "-j",
+                        "REDIRECT",
+                        "--to-ports",
+                        &main_port.to_string(),
                     ])
                     .output()
                     .await;
@@ -266,8 +295,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
             ]
         });
 
-        let content = serde_json::to_string_pretty(&base_config)
-            .context("序列化基础配置失败")?;
+        let content = serde_json::to_string_pretty(&base_config).context("序列化基础配置失败")?;
         tokio::fs::write(&base_path, content)
             .await
             .context("写入基础配置失败")?;
@@ -391,7 +419,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         let mut configs = Vec::new();
 
         for i in 0..count {
-            let sni = selector.next();
+            let sni = selector.get_next();
 
             let (main_port, hop_range) = PortAllocator::allocate_hysteria2().await?;
 
@@ -402,7 +430,13 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
 
             let config = if enable_obfs {
                 let obfs_password = Hysteria2Config::generate_obfs_password();
-                Hysteria2Config::with_obfs(port, password.clone(), sni.clone(), "salamander".to_string(), obfs_password)
+                Hysteria2Config::with_obfs(
+                    port,
+                    password.clone(),
+                    sni.clone(),
+                    "salamander".to_string(),
+                    obfs_password,
+                )
             } else {
                 Hysteria2Config::new(port, password.clone(), sni.clone())
             };
@@ -442,16 +476,28 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         })
     }
 
-    async fn add_port_hopping_firewall_rules_v4(main_port: u16, hop_range: (u16, u16)) -> Result<()> {
+    async fn add_port_hopping_firewall_rules_v4(
+        main_port: u16,
+        hop_range: (u16, u16),
+    ) -> Result<()> {
         use tokio::process::Command;
 
         let range_str = format!("{}:{}", hop_range.0, hop_range.1);
 
         let output = Command::new("iptables")
             .args([
-                "-t", "nat", "-A", "PREROUTING", "-p", "udp",
-                "--dport", &range_str, "-j", "REDIRECT",
-                "--to-ports", &main_port.to_string(),
+                "-t",
+                "nat",
+                "-A",
+                "PREROUTING",
+                "-p",
+                "udp",
+                "--dport",
+                &range_str,
+                "-j",
+                "REDIRECT",
+                "--to-ports",
+                &main_port.to_string(),
             ])
             .output()
             .await;
@@ -460,20 +506,36 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
             log::warn!("添加 iptables 规则失败 (可能需要 root 权限): {}", e);
         }
 
-        log::info!("已配置 Hysteria2 IPv4 端口跳跃: 主端口 {}, 跳跃范围 {}", main_port, range_str);
+        log::info!(
+            "已配置 Hysteria2 IPv4 端口跳跃: 主端口 {}, 跳跃范围 {}",
+            main_port,
+            range_str
+        );
         Ok(())
     }
 
-    async fn add_port_hopping_firewall_rules_v6(main_port: u16, hop_range: (u16, u16)) -> Result<()> {
+    async fn add_port_hopping_firewall_rules_v6(
+        main_port: u16,
+        hop_range: (u16, u16),
+    ) -> Result<()> {
         use tokio::process::Command;
 
         let range_str = format!("{}:{}", hop_range.0, hop_range.1);
 
         let output = Command::new("ip6tables")
             .args([
-                "-t", "nat", "-A", "PREROUTING", "-p", "udp",
-                "--dport", &range_str, "-j", "REDIRECT",
-                "--to-ports", &main_port.to_string(),
+                "-t",
+                "nat",
+                "-A",
+                "PREROUTING",
+                "-p",
+                "udp",
+                "--dport",
+                &range_str,
+                "-j",
+                "REDIRECT",
+                "--to-ports",
+                &main_port.to_string(),
             ])
             .output()
             .await;
@@ -482,7 +544,11 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
             log::warn!("添加 ip6tables 规则失败 (可能需要 root 权限): {}", e);
         }
 
-        log::info!("已配置 Hysteria2 IPv6 端口跳跃: 主端口 {}, 跳跃范围 {}", main_port, range_str);
+        log::info!(
+            "已配置 Hysteria2 IPv6 端口跳跃: 主端口 {}, 跳跃范围 {}",
+            main_port,
+            range_str
+        );
         Ok(())
     }
 
@@ -510,7 +576,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         let port_443_available = MaintenanceManager::is_port_available(443).await;
 
         for i in 0..count {
-            let sni = selector.next();
+            let sni = selector.get_next();
 
             let port = if i == 0 && port_443_available {
                 443u16
@@ -571,10 +637,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         }
     }
 
-    async fn save_standalone_config(
-        configs: Vec<Value>,
-        proto: &str,
-    ) -> Result<(String, String)> {
+    async fn save_standalone_config(configs: Vec<Value>, proto: &str) -> Result<(String, String)> {
         use rand::Rng;
 
         fs::create_dir_all(singbox::CONF_DIR)
@@ -629,7 +692,11 @@ mod tests {
 
     #[test]
     fn test_hysteria2_config_struct() {
-        let config = Hysteria2Config::new(8443, "test_password".to_string(), "sni.example.com".to_string());
+        let config = Hysteria2Config::new(
+            8443,
+            "test_password".to_string(),
+            "sni.example.com".to_string(),
+        );
         assert_eq!(config.port, 8443);
         assert_eq!(config.password, "test_password");
         assert_eq!(config.sni, "sni.example.com");
@@ -637,7 +704,12 @@ mod tests {
 
     #[test]
     fn test_tuic_config_struct() {
-        let config = TUICConfig::new(9443, "test-uuid".to_string(), "password".to_string(), "sni.example.com".to_string());
+        let config = TUICConfig::new(
+            9443,
+            "test-uuid".to_string(),
+            "password".to_string(),
+            "sni.example.com".to_string(),
+        );
         assert_eq!(config.port, 9443);
         assert_eq!(config.uuid, "test-uuid");
         assert_eq!(config.congestion_control, "bbr");
@@ -647,7 +719,7 @@ mod tests {
     async fn test_ensure_base_config_creates_base_file() {
         let temp_dir = tempfile::tempdir().unwrap();
         let conf_dir = temp_dir.path().to_str().unwrap();
-        
+
         // 修改 singbox::CONF_DIR 为临时目录来测试
         // 通过直接测试文件创建逻辑
         let base_path = format!("{}/00_base.json", conf_dir);
