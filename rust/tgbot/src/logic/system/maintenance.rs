@@ -610,7 +610,7 @@ async fn download_xanmod_gpg_key() -> Result<()> {
 
     for url in key_urls {
         let result = tokio::process::Command::new("sh")
-            .args(&[
+            .args([
                 "-c",
                 &format!(
                     "wget -qO - '{}' | gpg --batch --yes --no-tty --dearmor -vo {}",
@@ -789,13 +789,11 @@ async fn ensure_bbr3_dependencies() -> Result<()> {
             DepCheckKind::Command(cmd) => command_exists(cmd).await,
             DepCheckKind::File(path) => package_file_exists(path).await,
         };
-        if !present {
-            if install_apt_package(dep.primary).await.is_err() {
-                if let Some(fallback) = dep.fallback {
+        if !present
+            && install_apt_package(dep.primary).await.is_err()
+                && let Some(fallback) = dep.fallback {
                     install_apt_package(fallback).await?;
                 }
-            }
-        }
     }
 
     Ok(())

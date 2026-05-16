@@ -387,7 +387,7 @@ async fn handle_command(
                 let mut content = Vec::new();
                 bot.download_file(&file.path, &mut content)
                     .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                    .map_err(std::io::Error::other)?;
 
                 // Calculate SHA-256
                 let mut hasher = Sha256::new();
@@ -403,7 +403,7 @@ async fn handle_command(
                 // Save config
                 save_config(&state)
                     .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                    .map_err(std::io::Error::other)?;
 
                 bot.send_message(
                     msg.chat.id,
@@ -449,8 +449,8 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Respons
         return Ok(());
     }
 
-    if let Some(text) = msg.text() {
-        if text.len() > MAX_INPUT_LENGTH {
+    if let Some(text) = msg.text()
+        && text.len() > MAX_INPUT_LENGTH {
             bot.send_message(
                 chat_id,
                 format!("⚠️ 输入过长，请控制在 {} 字符以内。", MAX_INPUT_LENGTH),
@@ -458,7 +458,6 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Respons
             .await?;
             return Ok(());
         }
-    }
 
     match state
         .schedule_timeout_status(chat_id, Duration::from_secs(180))
@@ -495,7 +494,7 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Respons
         TimeoutStatus::Active => {
             if let Some(text) = msg.text() {
                 let rules: Vec<String> = text
-                    .split(|c| c == ',' || c == '，' || c == '\n')
+                    .split([',', '，', '\n'])
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
                     .collect();
@@ -784,8 +783,8 @@ fn handle_callback(
                 || data.starts_with("s_custom_set:")
                 || data == "s_custom_confirm"
                 || data == "s_custom_cancel";
-            if is_custom_followup {
-                if state
+            if is_custom_followup
+                && state
                     .schedule_timeout_status(chat_id, Duration::from_secs(180))
                     .await
                     == TimeoutStatus::Expired
@@ -802,7 +801,6 @@ fn handle_callback(
                         .await?;
                     continue;
                 }
-            }
 
             if destruct_flow::handle_callback_action(
                 &bot,
@@ -1315,11 +1313,10 @@ fn handle_callback(
                                         combined_links.clear();
                                     }
                                 }
-                                if !combined_links.is_empty() {
-                                    if let Ok(msg) = bot_clone.send_message(chat_id_clone, combined_links).parse_mode(ParseMode::Html).await {
+                                if !combined_links.is_empty()
+                                    && let Ok(msg) = bot_clone.send_message(chat_id_clone, combined_links).parse_mode(ParseMode::Html).await {
                                         message_ids.push(msg.id);
                                     }
-                                }
 
                                 let links_text = result.links.join("\n");
                                 let timestamp = chrono::Utc::now().timestamp();
@@ -1405,11 +1402,10 @@ fn handle_callback(
                                         combined_links.clear();
                                     }
                                 }
-                                if !combined_links.is_empty() {
-                                    if let Ok(msg) = bot_clone.send_message(chat_id_clone, combined_links).parse_mode(ParseMode::Html).await {
+                                if !combined_links.is_empty()
+                                    && let Ok(msg) = bot_clone.send_message(chat_id_clone, combined_links).parse_mode(ParseMode::Html).await {
                                         message_ids.push(msg.id);
                                     }
-                                }
 
                                 let links_text = result.links.join("\n");
                                 let timestamp = chrono::Utc::now().timestamp();
@@ -2096,7 +2092,7 @@ fn handle_callback(
                     let hash_prefix = d.strip_prefix("a_warp_del:").unwrap_or("");
                     if let Err(e) = validate_hash_prefix(hash_prefix) {
                         bot.answer_callback_query(q.id.clone())
-                            .text(&format!("❌ {}", e))
+                            .text(format!("❌ {}", e))
                             .await?;
                         continue;
                     }
@@ -2148,7 +2144,7 @@ fn handle_callback(
                     let hash_prefix = d.strip_prefix("a_warp_del_confirm:").unwrap_or("");
                     if let Err(e) = validate_hash_prefix(hash_prefix) {
                         bot.answer_callback_query(q.id.clone())
-                            .text(&format!("❌ {}", e))
+                            .text(format!("❌ {}", e))
                             .await?;
                         continue;
                     }
@@ -2619,15 +2615,14 @@ fn handle_callback(
                                     combined_links.clear();
                                 }
                             }
-                            if !combined_links.is_empty() {
-                                if let Ok(msg) = bot
+                            if !combined_links.is_empty()
+                                && let Ok(msg) = bot
                                     .send_message(chat_id, combined_links)
                                     .parse_mode(ParseMode::Html)
                                     .await
                                 {
                                     message_ids.push(msg.id);
                                 }
-                            }
 
                             // 生成 .txt 附件文件
                             let links_text = result.links.join("\n");
@@ -2675,7 +2670,7 @@ fn handle_callback(
 
                             // 启动后台任务，60秒后自动删除所有消息
                             let bot_clone = bot.clone();
-                            let chat_id_clone = chat_id.clone();
+                            let chat_id_clone = chat_id;
                             tokio::spawn(async move {
                                 tokio::time::sleep(Duration::from_secs(60)).await;
                                 for msg_id in message_ids {
@@ -2800,7 +2795,7 @@ d if d.starts_with("u_kcp_add:") => {
             return Ok(());
         }
         let stack_display = format!("1️⃣ {}", m.display_name());
-        let mut buttons = vec![
+        let buttons = vec![
             vec![InlineKeyboardButton::callback(
                 "➕ 继续添加遮罩层",
                 format!("u_kcp_more:{}", code),
@@ -3100,7 +3095,7 @@ d if d.starts_with("u_kcp_done:") => {
 
     let warnings = KcpMask::get_stack_warnings(&ordered);
     let stack_display: Vec<String> = ordered.iter().map(|m| {
-        format!("{}", m.display_name())
+        m.display_name().to_string()
     }).collect();
 
     let ordered_codes: Vec<String> = ordered.iter().map(|m| m.code().to_string()).collect();
@@ -3268,15 +3263,14 @@ d if d.starts_with("u_kcp_ok:") => {
                     combined_links.clear();
                 }
             }
-            if !combined_links.is_empty() {
-                if let Ok(msg) = bot
+            if !combined_links.is_empty()
+                && let Ok(msg) = bot
                     .send_message(chat_id, combined_links)
                     .parse_mode(ParseMode::Html)
                     .await
                 {
                     message_ids.push(msg.id);
                 }
-            }
 
             let links_text = result.links.join("\n");
             let timestamp = chrono::Utc::now().timestamp();
@@ -3338,7 +3332,7 @@ d if d.starts_with("u_kcp_ok:") => {
                         .unwrap_or_default();
                     if let Err(e) = validate_idx(idx, inbounds.len(), "用户配置") {
                         bot.answer_callback_query(q.id.clone())
-                            .text(&format!("❌ {}", e))
+                            .text(format!("❌ {}", e))
                             .await?;
                         continue;
                     }
@@ -3677,13 +3671,12 @@ d if d.starts_with("u_kcp_ok:") => {
 
                     let mut file_with_time = Vec::new();
                     for f in files {
-                        if let Ok(meta) = std::fs::metadata(&f) {
-                            if let Ok(time) = meta.modified() {
+                        if let Ok(meta) = std::fs::metadata(&f)
+                            && let Ok(time) = meta.modified() {
                                 file_with_time.push((f, time));
                             }
-                        }
                     }
-                    file_with_time.sort_by(|a, b| a.1.cmp(&b.1));
+                    file_with_time.sort_by_key(|a| a.1);
 
                     let to_delete = file_with_time.iter().take(n);
                     let mut deleted_count = 0;
@@ -3802,7 +3795,7 @@ d if d.starts_with("u_kcp_ok:") => {
 
                     if let Err(e) = validate_idx(idx, files.len(), "配置文件") {
                         bot.answer_callback_query(q.id.clone())
-                            .text(&format!("❌ {}", e))
+                            .text(format!("❌ {}", e))
                             .await?;
                         continue;
                     }
@@ -4480,7 +4473,7 @@ d if d.starts_with("u_kcp_ok:") => {
                             ScheduleInputState {
                                 updated_at: Instant::now(),
                                 task_type: task_type.clone(),
-                                frequency: frequency.clone(),
+                                frequency,
                                 timezone: "UTC".to_string(),
                                 day_of_week: None,
                                 hour: None,
@@ -4810,7 +4803,7 @@ d if d.starts_with("u_kcp_ok:") => {
                         if let Err(e) = validate_idx(idx, state.tasks.len(), "任务") {
                             drop(state);
                             bot.answer_callback_query(q.id.clone())
-                                .text(&format!("❌ {}", e))
+                                .text(format!("❌ {}", e))
                                 .await?;
                             continue;
                         }
@@ -4950,8 +4943,7 @@ async fn main() -> Result<()> {
         .context("解密 totp_secret 失败")?;
 
     let token: String = String::from_utf8(token_vec.expose_secret().to_vec())
-        .context("token 包含无效的 UTF-8 字符")?
-        .into();
+        .context("token 包含无效的 UTF-8 字符")?;
     let admin_id_str: String = String::from_utf8(admin_id_vec.expose_secret().to_vec())
         .context("admin_id 包含无效的 UTF-8 字符")?;
     let totp_secret: String = String::from_utf8(totp_sec_vec.expose_secret().to_vec())

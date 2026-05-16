@@ -37,17 +37,15 @@ pub fn check_debugger() {
             for line in status.lines() {
                 if line.starts_with("TracerPid:") {
                     let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() > 1 {
-                        if let Ok(tracer_pid) = parts[1].parse::<i32>() {
-                            if tracer_pid != 0 {
+                    if parts.len() > 1
+                        && let Ok(tracer_pid) = parts[1].parse::<i32>()
+                            && tracer_pid != 0 {
                                 warn!(
                                     "❌ 严重安全警告: 检测到调试器附加 (Tracer PID: {})",
                                     tracer_pid
                                 );
                                 process::exit(1);
                             }
-                        }
-                    }
                     break;
                 }
             }

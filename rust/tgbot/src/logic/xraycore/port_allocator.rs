@@ -62,16 +62,14 @@ impl PortAllocator {
         let mut entries = fs::read_dir(&conf_dir).await?;
         
         while let Ok(Some(entry)) = entries.next_entry().await {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.ends_with(".json") {
+            if let Some(name) = entry.file_name().to_str()
+                && name.ends_with(".json") {
                     let path = entry.path();
-                    if let Ok(content) = fs::read_to_string(&path).await {
-                        if content.contains("hysteria2") {
+                    if let Ok(content) = fs::read_to_string(&path).await
+                        && content.contains("hysteria2") {
                             count += 1;
                         }
-                    }
                 }
-            }
         }
 
         Ok(count < 50)
@@ -91,16 +89,14 @@ impl PortAllocator {
         if let Ok(entries) = fs::read_dir(&singbox::CONF_DIR).await {
             let mut dir = entries;
             while let Ok(Some(entry)) = dir.next_entry().await {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name.ends_with(".json") && !name.starts_with("00_") {
+                if let Some(name) = entry.file_name().to_str()
+                    && name.ends_with(".json") && !name.starts_with("00_") {
                         let path = entry.path();
-                        if let Ok(content) = fs::read_to_string(&path).await {
-                            if let Ok(ports) = Self::extract_ports_from_json(&content) {
+                        if let Ok(content) = fs::read_to_string(&path).await
+                            && let Ok(ports) = Self::extract_ports_from_json(&content) {
                                 occupied.extend(ports);
                             }
-                        }
                     }
-                }
             }
         }
 
@@ -128,11 +124,10 @@ impl PortAllocator {
         
         let re = regex::Regex::new(r#""listen_port"\s*:\s*(\d+)"#).unwrap();
         for cap in re.captures_iter(content) {
-            if let Some(m) = cap.get(1) {
-                if let Ok(p) = m.as_str().parse::<u16>() {
+            if let Some(m) = cap.get(1)
+                && let Ok(p) = m.as_str().parse::<u16>() {
                     ports.push(p);
                 }
-            }
         }
         
         Ok(ports)

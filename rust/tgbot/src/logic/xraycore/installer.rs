@@ -234,14 +234,12 @@ impl RealityInstallerInternal {
         if crate::logic::firewall::FirewallManager::detect_backend()
             .await
             .is_none()
-        {
-            if !manager.check_installed("firewalld").await {
+            && !manager.check_installed("firewalld").await {
                 manager
                     .install(&["firewalld"])
                     .await
                     .with_context(|| "安装 firewalld 失败")?;
             }
-        }
         Ok(())
     }
 
@@ -467,7 +465,7 @@ impl PackageManager {
             PackageManager::Apt => {
                 // dpkg -s <pkg>
                 Command::new("dpkg")
-                    .args(&["-s", pkg])
+                    .args(["-s", pkg])
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
                     .status()
@@ -478,7 +476,7 @@ impl PackageManager {
             PackageManager::Yum => {
                 // rpm -q <pkg>
                 Command::new("rpm")
-                    .args(&["-q", pkg])
+                    .args(["-q", pkg])
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
                     .status()
@@ -489,7 +487,7 @@ impl PackageManager {
             PackageManager::Apk => {
                 // apk info -e <pkg>
                 Command::new("apk")
-                    .args(&["info", "-e", pkg])
+                    .args(["info", "-e", pkg])
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
                     .status()

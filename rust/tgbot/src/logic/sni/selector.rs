@@ -22,7 +22,7 @@ static SNI_PERSISTENCE: Lazy<Option<SNIPersistence>> = Lazy::new(|| match SNIPer
     }
 });
 
-static LARGEST_PB: Lazy<Option<(String, usize)>> = Lazy::new(|| find_file_with_most_domains());
+static LARGEST_PB: Lazy<Option<(String, usize)>> = Lazy::new(find_file_with_most_domains);
 
 fn find_file_with_most_domains() -> Option<(String, usize)> {
     SniAssets::iter()
@@ -66,13 +66,13 @@ impl SNISelector {
             c => c,
         };
 
-        let domains = Self::load_domains(&code);
+        let domains = Self::load_domains(code);
         let state = SNIState::new(domains.clone());
 
         let cache_key = format!("sni_{}", code);
 
-        if let Some(ref persistence) = *SNI_PERSISTENCE {
-            if let Some(state) = persistence.load(&cache_key) {
+        if let Some(ref persistence) = *SNI_PERSISTENCE
+            && let Some(state) = persistence.load(&cache_key) {
                 log::info!(
                     "Loaded persisted SNI state for {}: {} domains, remaining={}, used={}",
                     cache_key,
@@ -87,13 +87,11 @@ impl SNISelector {
                     cache_key,
                 };
             }
-        }
 
-        if let Some(ref persistence) = *SNI_PERSISTENCE {
-            if let Err(e) = persistence.save(&cache_key, &state) {
+        if let Some(ref persistence) = *SNI_PERSISTENCE
+            && let Err(e) = persistence.save(&cache_key, &state) {
                 log::warn!("Failed to save initial SNI state: {}", e);
             }
-        }
 
         Self {
             domains: state.domains,

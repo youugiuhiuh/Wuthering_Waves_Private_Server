@@ -52,14 +52,13 @@ impl Hysteria2Config {
         tls_map.insert("certificate_path".to_string(), serde_json::json!("/etc/wwps/wwps-box/certs/tls.cer"));
         map.insert("tls".to_string(), serde_json::json!(tls_map));
 
-        if let Some(ref obfs_type) = self.obfs_type {
-            if let Some(ref obfs_password) = self.obfs_password {
+        if let Some(ref obfs_type) = self.obfs_type
+            && let Some(ref obfs_password) = self.obfs_password {
                 let mut obfs_map = serde_json::Map::new();
                 obfs_map.insert("type".to_string(), serde_json::json!(obfs_type));
                 obfs_map.insert("password".to_string(), serde_json::json!(obfs_password));
                 map.insert("obfs".to_string(), serde_json::json!(obfs_map));
             }
-        }
 
         serde_json::Value::Object(map)
     }

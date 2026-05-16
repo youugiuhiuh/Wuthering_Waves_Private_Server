@@ -7,11 +7,10 @@ use crate::logic::maintenance::MaintenanceManager;
 
 /// 通用端口选择
 pub async fn select_available_port(preferred: Option<u16>) -> Result<u16> {
-    if let Some(port) = preferred {
-        if MaintenanceManager::is_port_available(port).await {
+    if let Some(port) = preferred
+        && MaintenanceManager::is_port_available(port).await {
             return Ok(port);
         }
-    }
     
     let mut rng = StdRng::from_entropy();
     for _ in 0..1000 {

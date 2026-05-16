@@ -394,25 +394,22 @@ impl KcpMask {
     }
 
     pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
-        if self.is_transport_replacement() {
-            if existing.iter().any(|m| m.is_transport_replacement()) {
+        if self.is_transport_replacement()
+            && existing.iter().any(|m| m.is_transport_replacement()) {
                 let name = if self.is_xdns() { "XDNS" } else { "XICMP" };
                 let other = if self.is_xdns() { "XICMP" } else { "XDNS" };
                 return Err(format!("{}和{}不能同时使用", name, other));
             }
-        }
 
-        if self.is_encryption() {
-            if existing.iter().any(|m| m.is_encryption()) {
+        if self.is_encryption()
+            && existing.iter().any(|m| m.is_encryption()) {
                 return Err("重复的加密层".to_string());
             }
-        }
 
-        if self.is_sudoku() {
-            if existing.iter().any(|m| m.is_sudoku()) {
+        if self.is_sudoku()
+            && existing.iter().any(|m| m.is_sudoku()) {
                 return Err("重复的Sudoku".to_string());
             }
-        }
 
         if existing.iter().any(|m| m.code() == self.code()) {
             return Err(format!("重复的{}", self.display_name()));

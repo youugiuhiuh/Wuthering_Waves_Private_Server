@@ -84,7 +84,7 @@ impl FirewallScanner {
         let mut ports = HashSet::new();
         for proto_flag in &["-t", "-u"] {
             let output = tokio::process::Command::new("ss")
-                .args(&["-H", proto_flag, "-nl"])
+                .args(["-H", proto_flag, "-nl"])
                 .output()
                 .await?;
 
@@ -112,7 +112,7 @@ impl FirewallScanner {
 
     async fn scan_with_netstat() -> Result<HashSet<u16>> {
         let output = tokio::process::Command::new("netstat")
-            .args(&["-tunl"])
+            .args(["-tunl"])
             .output()
             .await?;
 
@@ -173,11 +173,10 @@ impl FirewallScanner {
         let mut entries = fs::read_dir(dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
-                if let Ok(file_ports) = Self::extract_ports_from_file(&path).await {
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "json")
+                && let Ok(file_ports) = Self::extract_ports_from_file(&path).await {
                     ports.extend(file_ports);
                 }
-            }
         }
         Ok(ports)
     }
@@ -217,15 +216,12 @@ impl FirewallScanner {
             }
 
             // 提取端口
-            if let Some(caps) = PORT_RE.captures(line) {
-                if !is_local_context {
-                    if let Some(port_match) = caps.get(1) {
-                        if let Ok(port) = port_match.as_str().parse::<u16>() {
+            if let Some(caps) = PORT_RE.captures(line)
+                && !is_local_context
+                    && let Some(port_match) = caps.get(1)
+                        && let Ok(port) = port_match.as_str().parse::<u16>() {
                             ports.insert(port);
                         }
-                    }
-                }
-            }
 
             // 如果看到对象结束，也可以重置 (简单近似)
             if line.contains('}') {
@@ -245,7 +241,7 @@ impl FirewallScanner {
 }
 
 fn parse_port_from_addr(addr: &str) -> Option<u16> {
-    addr.split(':').last()?.parse::<u16>().ok()
+    addr.split(':').next_back()?.parse::<u16>().ok()
 }
 
 #[cfg(test)]

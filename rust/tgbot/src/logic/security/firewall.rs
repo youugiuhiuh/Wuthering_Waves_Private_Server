@@ -22,11 +22,9 @@ impl FirewallManager {
             std::time::Duration::from_secs(2),
         )
         .await
-        {
-            if status.success() {
+            && status.success() {
                 return Some(FirewallBackend::Firewalld);
             }
-        }
 
         // 检查 UFW 是否活跃
         if let Ok((status, stdout, _)) = crate::logic::cmd_async::run_cmd_output(
@@ -35,11 +33,9 @@ impl FirewallManager {
             std::time::Duration::from_secs(2),
         )
         .await
-        {
-            if status.success() && stdout.contains("active") {
+            && status.success() && stdout.contains("active") {
                 return Some(FirewallBackend::Ufw);
             }
-        }
 
         // 2. 启发式回退：基于二进制存在性和操作系统类型
 

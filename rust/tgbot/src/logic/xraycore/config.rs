@@ -784,12 +784,11 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
                     uuid, fmt_host, port, encoded_sni, encoded_pbk, short_id,
                 );
 
-                if enable_pq {
-                    if let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
+                if enable_pq
+                    && let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
                         let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
                         link.push_str(&format!("&pqv={}", encoded_pqv));
                     }
-                }
 
                 format!("{}#{}", link, encoded_email)
             }
@@ -830,12 +829,11 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
                     }
                 }
 
-                if enable_pq {
-                    if let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
+                if enable_pq
+                    && let Some(pqv) = reality_pq_verify_as_base64url(&REALITY_PQ_VERIFY) {
                         let encoded_pqv = utf8_percent_encode(&pqv, NON_ALPHANUMERIC).to_string();
                         link.push_str(&format!("&pqv={}", encoded_pqv));
                     }
-                }
 
                 format!("{}#{}", link, encoded_email)
             }
@@ -905,13 +903,12 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
         // 按修改时间排序（从旧到新）
         let mut file_with_time = Vec::new();
         for f in files {
-            if let Ok(meta) = std::fs::metadata(&f) {
-                if let Ok(time) = meta.modified() {
+            if let Ok(meta) = std::fs::metadata(&f)
+                && let Ok(time) = meta.modified() {
                     file_with_time.push((f, time));
                 }
-            }
         }
-        file_with_time.sort_by(|a, b| a.1.cmp(&b.1));
+        file_with_time.sort_by_key(|a| a.1);
 
         let to_delete = file_with_time.iter().take(count);
         let mut deleted_count = 0;

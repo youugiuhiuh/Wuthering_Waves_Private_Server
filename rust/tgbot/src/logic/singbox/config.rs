@@ -27,11 +27,10 @@ impl SingBoxConfigManager {
         let mut out = Vec::new();
         if let Ok(mut rd) = fs::read_dir(singbox::CONF_DIR).await {
             while let Ok(Some(entry)) = rd.next_entry().await {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name.ends_with(".json") && !name.starts_with("00_") && !name.starts_with("01_") {
+                if let Some(name) = entry.file_name().to_str()
+                    && name.ends_with(".json") && !name.starts_with("00_") && !name.starts_with("01_") {
                         out.push(entry.path().to_string_lossy().to_string());
                     }
-                }
             }
         }
         Ok(out)
@@ -115,12 +114,11 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         let count = files.len();
         
         for file in &files {
-            if file.contains("hysteria2") || file.contains("hysteria") {
-                if let Ok(main_port) = Self::extract_main_port_from_config(file).await {
+            if (file.contains("hysteria2") || file.contains("hysteria"))
+                && let Ok(main_port) = Self::extract_main_port_from_config(file).await {
                     let hop_range = (main_port + 1, main_port + 99);
                     Self::cleanup_specific_hysteria2_rules(main_port, hop_range).await?;
                 }
-            }
             
             let _ = fs::remove_file(file).await;
         }
@@ -141,14 +139,13 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         let mut sorted_files: Vec<(std::path::PathBuf, std::time::SystemTime)> = Vec::new();
         for file in &files {
             let path = std::path::PathBuf::from(file);
-            if let Ok(metadata) = tokio::fs::metadata(&path).await {
-                if let Ok(modified) = metadata.modified() {
+            if let Ok(metadata) = tokio::fs::metadata(&path).await
+                && let Ok(modified) = metadata.modified() {
                     sorted_files.push((path, modified));
                 }
-            }
         }
 
-        sorted_files.sort_by(|a, b| a.1.cmp(&b.1));
+        sorted_files.sort_by_key(|a| a.1);
 
         let delete_count = count.min(sorted_files.len());
         let mut deleted = 0;
