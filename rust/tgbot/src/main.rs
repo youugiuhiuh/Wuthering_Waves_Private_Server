@@ -8,6 +8,7 @@ use obfstr::obfstr;
 use tgbot::logic;
 
 use crate::app::auth;
+use crate::app::batch_handler::send_singbox_batch_result;
 use crate::app::destruct_flow::{self, MessageFlowOutcome};
 use crate::app::state::{AppState, ScheduleFrequency, ScheduleInputState, TimeoutStatus};
 use crate::bootstrap::{
@@ -20,6 +21,7 @@ use futures_util::future::BoxFuture;
 use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -29,6 +31,7 @@ use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode,
 };
 use teloxide::utils::command::BotCommands;
+use tempfile::NamedTempFile;
 use tgbot::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use tgbot::core::paths::{singbox, xray};
 use tgbot::core::types::IpVersion;
@@ -1349,97 +1352,16 @@ fn handle_callback(
                         .await
                         {
                             Ok(result) => {
-                                let mut message_ids: Vec<MessageId> = Vec::new();
-
-                                let header_msg = format!(
-                                    "✅ <b>Hysteria2 批量创建完成</b>\n\n已创建 {} 个配置:\n📁 配置文件: <code>{}</code>\n\n",
-                                    result.created_count,
-                                    result.config_file.as_deref().unwrap_or("未知")
-                                );
-                                if let Ok(msg) = bot_clone
-                                    .send_message(chat_id_clone, header_msg)
-                                    .parse_mode(ParseMode::Html)
-                                    .await
+                                if let Err(e) = send_singbox_batch_result(
+                                    &bot_clone,
+                                    chat_id_clone,
+                                    "Hysteria2",
+                                    &result,
+                                )
+                                .await
                                 {
-                                    message_ids.push(msg.id);
+                                    log::warn!("发送批量创建结果失败: {}", e);
                                 }
-
-                                let mut combined_links = String::new();
-                                for (i, link) in result.links.iter().enumerate() {
-                                    combined_links.push_str(&format!("<code>{}</code>\n\n", link));
-                                    if (i + 1) % 2 == 0 {
-                                        if let Ok(msg) = bot_clone
-                                            .send_message(chat_id_clone, combined_links.clone())
-                                            .parse_mode(ParseMode::Html)
-                                            .await
-                                        {
-                                            message_ids.push(msg.id);
-                                        }
-                                        combined_links.clear();
-                                    }
-                                }
-                                if !combined_links.is_empty()
-                                    && let Ok(msg) = bot_clone
-                                        .send_message(chat_id_clone, combined_links)
-                                        .parse_mode(ParseMode::Html)
-                                        .await
-                                {
-                                    message_ids.push(msg.id);
-                                }
-
-                                let links_text = result.links.join("\n");
-                                let timestamp = chrono::Utc::now().timestamp();
-                                let temp_file_path =
-                                    format!("/tmp/singbox_hysteria2_links_{}.txt", timestamp);
-
-                                if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await
-                                {
-                                    log::warn!("写入临时文件失败: {}", e);
-                                } else {
-                                    let doc_sent = bot_clone
-                                        .send_document(
-                                            chat_id_clone,
-                                            InputFile::file(&temp_file_path),
-                                        )
-                                        .caption("完整链接列表，建议尽快复制/导入")
-                                        .await;
-                                    if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
-                                        log::warn!("删除临时文件失败: {}", e);
-                                    }
-                                    if let Ok(msg) = doc_sent {
-                                        message_ids.push(msg.id);
-                                    }
-                                }
-
-                                // 发送结果信息
-                                let result_msg = format!(
-                                    "✅ 批量创建完成！\n\n📊 生成数量: {}",
-                                    result.created_count
-                                );
-                                if let Ok(msg) =
-                                    bot_clone.send_message(chat_id_clone, result_msg).await
-                                {
-                                    message_ids.push(msg.id);
-                                }
-
-                                // 启动后台任务，60秒后自动删除所有消息
-                                let bot_clone2 = bot_clone.clone();
-                                let chat_id_clone2 = chat_id_clone;
-                                tokio::spawn(async move {
-                                    tokio::time::sleep(Duration::from_secs(60)).await;
-                                    for msg_id in message_ids {
-                                        if let Err(e) =
-                                            bot_clone2.delete_message(chat_id_clone2, msg_id).await
-                                        {
-                                            log::warn!(
-                                                "删除消息失败 (chat_id: {}, msg_id: {}): {}",
-                                                chat_id_clone2,
-                                                msg_id,
-                                                e
-                                            );
-                                        }
-                                    }
-                                });
                             }
                             Err(e) => {
                                 let _ = bot_clone
@@ -1481,97 +1403,16 @@ fn handle_callback(
                     tokio::spawn(async move {
                         match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
                             Ok(result) => {
-                                let mut message_ids: Vec<MessageId> = Vec::new();
-
-                                let header_msg = format!(
-                                    "✅ <b>TUIC 批量创建完成</b>\n\n已创建 {} 个配置:\n📁 配置文件: <code>{}</code>\n\n",
-                                    result.created_count,
-                                    result.config_file.as_deref().unwrap_or("未知")
-                                );
-                                if let Ok(msg) = bot_clone
-                                    .send_message(chat_id_clone, header_msg)
-                                    .parse_mode(ParseMode::Html)
-                                    .await
+                                if let Err(e) = send_singbox_batch_result(
+                                    &bot_clone,
+                                    chat_id_clone,
+                                    "TUIC",
+                                    &result,
+                                )
+                                .await
                                 {
-                                    message_ids.push(msg.id);
+                                    log::warn!("发送批量创建结果失败: {}", e);
                                 }
-
-                                let mut combined_links = String::new();
-                                for (i, link) in result.links.iter().enumerate() {
-                                    combined_links.push_str(&format!("<code>{}</code>\n\n", link));
-                                    if (i + 1) % 2 == 0 {
-                                        if let Ok(msg) = bot_clone
-                                            .send_message(chat_id_clone, combined_links.clone())
-                                            .parse_mode(ParseMode::Html)
-                                            .await
-                                        {
-                                            message_ids.push(msg.id);
-                                        }
-                                        combined_links.clear();
-                                    }
-                                }
-                                if !combined_links.is_empty()
-                                    && let Ok(msg) = bot_clone
-                                        .send_message(chat_id_clone, combined_links)
-                                        .parse_mode(ParseMode::Html)
-                                        .await
-                                {
-                                    message_ids.push(msg.id);
-                                }
-
-                                let links_text = result.links.join("\n");
-                                let timestamp = chrono::Utc::now().timestamp();
-                                let temp_file_path =
-                                    format!("/tmp/singbox_tuic_links_{}.txt", timestamp);
-
-                                if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await
-                                {
-                                    log::warn!("写入临时文件失败: {}", e);
-                                } else {
-                                    let doc_sent = bot_clone
-                                        .send_document(
-                                            chat_id_clone,
-                                            InputFile::file(&temp_file_path),
-                                        )
-                                        .caption("完整链接列表，建议尽快复制/导入")
-                                        .await;
-                                    if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
-                                        log::warn!("删除临时文件失败: {}", e);
-                                    }
-                                    if let Ok(msg) = doc_sent {
-                                        message_ids.push(msg.id);
-                                    }
-                                }
-
-                                // 发送结果信息
-                                let result_msg = format!(
-                                    "✅ 批量创建完成！\n\n📊 生成数量: {}",
-                                    result.created_count
-                                );
-                                if let Ok(msg) =
-                                    bot_clone.send_message(chat_id_clone, result_msg).await
-                                {
-                                    message_ids.push(msg.id);
-                                }
-
-                                // 启动后台任务，60秒后自动删除所有消息
-                                let bot_clone2 = bot_clone.clone();
-                                let chat_id_clone2 = chat_id_clone;
-                                tokio::spawn(async move {
-                                    tokio::time::sleep(Duration::from_secs(60)).await;
-                                    for msg_id in message_ids {
-                                        if let Err(e) =
-                                            bot_clone2.delete_message(chat_id_clone2, msg_id).await
-                                        {
-                                            log::warn!(
-                                                "删除消息失败 (chat_id: {}, msg_id: {}): {}",
-                                                chat_id_clone2,
-                                                msg_id,
-                                                e
-                                            );
-                                        }
-                                    }
-                                });
                             }
                             Err(e) => {
                                 let _ = bot_clone
@@ -2746,31 +2587,17 @@ fn handle_callback(
                                 message_ids.push(msg.id);
                             }
 
-                            // 生成 .txt 附件文件
                             let links_text = result.links.join("\n");
-                            let timestamp = chrono::Utc::now().timestamp();
-                            let temp_file_path =
-                                format!("/tmp/wwps_reality_links_{}.txt", timestamp);
-
-                            // 写入临时文件
-                            if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await {
-                                log::warn!("写入临时文件失败: {}", e);
-                            } else {
-                                // 发送文档
-                                let document_sent = bot
-                                    .send_document(chat_id, InputFile::file(&temp_file_path))
-                                    .caption("完整链接列表，建议尽快复制/导入")
-                                    .await;
-
-                                // 无论发送成功或失败，都立即删除临时文件
-                                if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
-                                    log::warn!("删除临时文件失败: {}", e);
-                                }
-
-                                // 如果发送成功，收集文档消息的 ID
-                                if let Ok(msg) = document_sent {
-                                    message_ids.push(msg.id);
-                                }
+                            let mut temp_file = NamedTempFile::new()?;
+                            temp_file.write_all(links_text.as_bytes())?;
+                            temp_file.flush()?;
+                            let file_path = temp_file.path().to_path_buf();
+                            if let Ok(msg) = bot
+                                .send_document(chat_id, InputFile::file(&file_path))
+                                .caption("完整链接列表，建议尽快复制/导入")
+                                .await
+                            {
+                                message_ids.push(msg.id);
                             }
 
                             // 发送结果信息
@@ -3435,24 +3262,16 @@ fn handle_callback(
                             }
 
                             let links_text = result.links.join("\n");
-                            let timestamp = chrono::Utc::now().timestamp();
-                            let temp_file_path = format!("/tmp/wwps_kcp_links_{}.txt", timestamp);
-
-                            if let Err(e) = tokio::fs::write(&temp_file_path, &links_text).await {
-                                log::warn!("写入临时文件失败: {}", e);
-                            } else {
-                                let document_sent = bot
-                                    .send_document(chat_id, InputFile::file(&temp_file_path))
-                                    .caption(format!("KCP {} 完整链接列表", mask_label))
-                                    .await;
-
-                                if let Err(e) = tokio::fs::remove_file(&temp_file_path).await {
-                                    log::warn!("删除临时文件失败: {}", e);
-                                }
-
-                                if let Ok(msg) = document_sent {
-                                    message_ids.push(msg.id);
-                                }
+                            let mut temp_file = NamedTempFile::new()?;
+                            temp_file.write_all(links_text.as_bytes())?;
+                            temp_file.flush()?;
+                            let file_path = temp_file.path().to_path_buf();
+                            if let Ok(msg) = bot
+                                .send_document(chat_id, InputFile::file(&file_path))
+                                .caption(format!("KCP {} 完整链接列表", mask_label))
+                                .await
+                            {
+                                message_ids.push(msg.id);
                             }
 
                             let mut result_msg = format!(
