@@ -1,12 +1,14 @@
 use crate::core::paths::xray;
-use crate::logic::bot_upgrade::SHA256_LINE_RE;
 use crate::logic::cmd_async::run_cmd_status;
+use crate::logic::network::release_api::{
+    parse_digest, parse_sha256_manifest, extract_sha256_from_body, fetch_json_from_mirrors,
+    ReleaseAsset, ReleaseResponse,
+};
 use crate::logic::utils::{format_download_progress, human_readable_size, should_report};
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use futures_util::StreamExt;
 use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, USER_AGENT};
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs::{File as StdFile, OpenOptions};
@@ -26,37 +28,6 @@ const WWPS_CORE_DEFAULT_SERVICE: &str = xray::DEFAULT_SERVICE;
 const WWPS_CORE_DEFAULT_INSTALL_DIR: &str = xray::DIR;
 const WWPS_CORE_DEFAULT_TEMP_DIR: &str = xray::DEFAULT_TEMP_DIR;
 const WWPS_CORE_DEFAULT_BACKUP_PREFIX: &str = xray::DEFAULT_BACKUP_PREFIX;
-
-#[derive(Debug, Deserialize)]
-struct ReleaseResponse {
-    tag_name: String,
-    body: Option<String>,
-    assets: Vec<ReleaseAsset>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReleaseAsset {
-    name: String,
-    #[serde(default)]
-    browser_download_url: String,
-    #[serde(default)]
-    url: String,
-    size: Option<u64>,
-    #[serde(default)]
-    digest: Option<String>,
-}
-
-impl ReleaseAsset {
-    fn download_url(&self) -> &str {
-        if !self.browser_download_url.is_empty() {
-            return &self.browser_download_url;
-        }
-        if !self.url.is_empty() {
-            return &self.url;
-        }
-        ""
-    }
-}
 
 /// wwps-core Release API 根地址列表（含 /repos），按顺序尝试
 fn wwps_core_release_api_bases() -> Vec<String> {
@@ -130,85 +101,6 @@ pub struct WwpsCoreUpgradeManager {
 }
 
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
-
-async fn fetch_json_from_mirrors<T: serde::de::DeserializeOwned>(
-    client: &reqwest::Client,
-    bases: &[String],
-    api_path: &str,
-    token: Option<&str>,
-) -> Result<T> {
-    let mut last_err = None::<anyhow::Error>;
-    for base in bases {
-        let url = format!(
-            "{}/{}",
-            base.trim_end_matches('/'),
-            api_path.trim_start_matches('/')
-        );
-        let mut builder = client
-            .get(&url)
-            .header(USER_AGENT, HeaderValue::from_static(USER_AGENT_VALUE))
-            .header(
-                ACCEPT,
-                HeaderValue::from_static("application/vnd.github+json"),
-            );
-        if let Some(t) = token {
-            builder = builder.bearer_auth(t);
-        }
-        let response = match builder.send().await {
-            Ok(r) => r,
-            Err(e) => {
-                last_err = Some(e.into());
-                continue;
-            }
-        };
-        let response = match response.error_for_status() {
-            Ok(r) => r,
-            Err(e) => {
-                last_err = Some(e.into());
-                continue;
-            }
-        };
-        match response.json::<T>().await {
-            Ok(data) => return Ok(data),
-            Err(e) => {
-                last_err = Some(e.into());
-                continue;
-            }
-        }
-    }
-    Err(last_err.unwrap_or_else(|| anyhow!("所有镜像源均失败")))
-}
-
-fn parse_digest(input: &str) -> Option<String> {
-    let lower = input.to_lowercase();
-    lower
-        .strip_prefix("sha256:")
-        .map(|s| s.trim().to_string())
-        .filter(|s| s.len() == 64)
-}
-
-fn parse_sha256_manifest(manifest: &str, target_asset: &str) -> Option<String> {
-    for line in manifest.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let mut parts = line.split_whitespace();
-        let hash = parts.next()?;
-        let filename = parts.next().unwrap_or("");
-        if (filename.ends_with(target_asset) || filename == target_asset) && hash.len() == 64 {
-            return Some(hash.to_string());
-        }
-    }
-    None
-}
-
-fn extract_sha256_from_body(body: &str) -> Option<String> {
-    SHA256_LINE_RE
-        .captures(body)
-        .and_then(|caps| caps.get(1))
-        .map(|m| m.as_str().to_string())
-}
 
 impl WwpsCoreUpgradeConfig {
     pub fn new(

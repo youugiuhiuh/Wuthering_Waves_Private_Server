@@ -1,11 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use obfstr::obfstr;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, USER_AGENT};
-use serde::Deserialize;
-use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -17,6 +13,10 @@ use tokio::io::AsyncWriteExt;
 use tokio::task;
 use tokio::time::sleep;
 
+use crate::logic::network::release_api::{
+    parse_digest, parse_sha256_manifest, extract_sha256_from_body, fetch_json_from_mirrors,
+    ReleaseAsset, ReleaseResponse,
+};
 use crate::logic::utils::{format_download_progress, human_readable_size, should_report};
 
 const DEFAULT_RELEASE_REPOSITORIES: &[(&str, &str)] = &[
@@ -46,9 +46,6 @@ fn tgbot_release_api_bases() -> Vec<String> {
 }
 
 pub use crate::core::paths::maintenance::UPGRADE_FLAG_FILE;
-
-pub static SHA256_LINE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)sha256[:\s]+([0-9a-f]{64})").expect("valid sha256 regex"));
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ReleaseRepo {
@@ -110,54 +107,6 @@ fn configured_release_repositories() -> Vec<ReleaseRepo> {
         .collect()
 }
 
-async fn fetch_json_from_mirrors<T: DeserializeOwned>(
-    client: &reqwest::Client,
-    bases: &[String],
-    api_path: &str,
-    token: Option<&str>,
-) -> Result<T> {
-    let mut last_err = None::<anyhow::Error>;
-    for base in bases {
-        let url = format!(
-            "{}/{}",
-            base.trim_end_matches('/'),
-            api_path.trim_start_matches('/')
-        );
-        let mut builder = client
-            .get(&url)
-            .header(USER_AGENT, HeaderValue::from_static(USER_AGENT_VALUE))
-            .header(
-                ACCEPT,
-                HeaderValue::from_static("application/vnd.github+json"),
-            );
-        if let Some(t) = token {
-            builder = builder.bearer_auth(t);
-        }
-        let response = match builder.send().await {
-            Ok(r) => r,
-            Err(e) => {
-                last_err = Some(e.into());
-                continue;
-            }
-        };
-        let response = match response.error_for_status() {
-            Ok(r) => r,
-            Err(e) => {
-                last_err = Some(e.into());
-                continue;
-            }
-        };
-        match response.json::<T>().await {
-            Ok(data) => return Ok(data),
-            Err(e) => {
-                last_err = Some(e.into());
-                continue;
-            }
-        }
-    }
-    Err(last_err.unwrap_or_else(|| anyhow!("所有镜像源均失败")))
-}
-
 pub struct UpgradeManager {
     client: reqwest::Client,
     repositories: Vec<ReleaseRepo>,
@@ -173,38 +122,6 @@ pub struct ReleaseArtifact {
     pub download_url: String,
     pub sha256: String,
     pub size: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReleaseResponse {
-    tag_name: String,
-    body: Option<String>,
-    assets: Vec<ReleaseAsset>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReleaseAsset {
-    name: String,
-    #[serde(default)]
-    browser_download_url: String,
-    /// Gitea/Codeberg 等可能使用 url 而非 browser_download_url
-    #[serde(default)]
-    url: String,
-    size: Option<u64>,
-    #[serde(default)]
-    digest: Option<String>,
-}
-
-impl ReleaseAsset {
-    fn download_url(&self) -> &str {
-        if !self.browser_download_url.is_empty() {
-            return &self.browser_download_url;
-        }
-        if !self.url.is_empty() {
-            return &self.url;
-        }
-        ""
-    }
 }
 
 impl UpgradeManager {
@@ -546,71 +463,11 @@ impl UpgradeManager {
     }
 }
 
-fn parse_digest(input: &str) -> Option<String> {
-    let lower = input.to_lowercase();
-    lower
-        .strip_prefix("sha256:")
-        .map(|s| s.trim().to_string())
-        .filter(|s| s.len() == 64)
-}
-
-fn parse_sha256_manifest(manifest: &str, target_asset: &str) -> Option<String> {
-    for line in manifest.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let mut parts = line.split_whitespace();
-        let hash = parts.next()?;
-        let filename = parts.next().unwrap_or("");
-        if (filename.ends_with(target_asset) || filename == target_asset) && hash.len() == 64 {
-            return Some(hash.to_string());
-        }
-    }
-    None
-}
-
-fn extract_sha256_from_body(body: &str) -> Option<String> {
-    SHA256_LINE_RE
-        .captures(body)
-        .and_then(|caps| caps.get(1))
-        .map(|m| m.as_str().to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::logic::utils::PROGRESS_SIZE_STEP;
     use std::time::Duration;
-
-    #[test]
-    fn test_parse_digest_valid_and_invalid() {
-        assert_eq!(
-            parse_digest("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
-            Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string())
-        );
-        assert!(parse_digest("md5:abcd").is_none());
-        assert!(parse_digest("sha256:1234").is_none());
-    }
-
-    #[test]
-    fn test_parse_sha256_manifest() {
-        let manifest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  tgbot\n";
-        let result = parse_sha256_manifest(manifest, "tgbot");
-        assert_eq!(
-            result,
-            Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string())
-        );
-        assert!(parse_sha256_manifest("", "tgbot").is_none());
-    }
-
-    #[test]
-    fn test_extract_sha256_from_body() {
-        let body = "Release notes\nSHA256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        let result = extract_sha256_from_body(body);
-        assert!(result.is_some());
-        assert!(extract_sha256_from_body("no hash here").is_none());
-    }
 
     #[test]
     fn test_should_report_on_percent_and_size() {
