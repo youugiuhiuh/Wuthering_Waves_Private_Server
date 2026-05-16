@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 
 use crate::core::paths;
 use once_cell::sync::Lazy;
-use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::time::Duration;
 
@@ -189,7 +188,7 @@ impl Operations {
         if MAINTENANCE_FLAG.swap(true, Ordering::SeqCst) {
             anyhow::bail!("❌ 维护任务正在执行中，请稍后再试");
         }
-        let _guard = ManuallyDrop::new(FlagGuard(&MAINTENANCE_FLAG));
+        let _guard = FlagGuard(&MAINTENANCE_FLAG);
 
         let mut log = String::new();
         log.push_str("🔄 正在开始系统维护...\n");
@@ -263,7 +262,7 @@ impl Operations {
         if REBOOT_FLAG.swap(true, Ordering::SeqCst) {
             anyhow::bail!("❌ 重启任务正在执行中，请稍后再试");
         }
-        let _guard = ManuallyDrop::new(FlagGuard(&REBOOT_FLAG));
+        let _guard = FlagGuard(&REBOOT_FLAG);
 
         run_cmd_checked("reboot", &[], TIMEOUT_REBOOT)
             .await
