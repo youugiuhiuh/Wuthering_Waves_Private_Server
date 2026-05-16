@@ -1,11 +1,69 @@
 use anyhow::{Context, Result};
 
+use crate::core::paths;
 use once_cell::sync::Lazy;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::time::Duration;
 
 use crate::logic::cmd_async::{run_cmd_checked, run_cmd_output};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DistroFamily {
+    Debian,
+    Rhel,
+}
+
+impl DistroFamily {
+    pub async fn detect() -> Result<Self> {
+        if tokio::fs::try_exists("/etc/debian_version")
+            .await
+            .unwrap_or(false)
+        {
+            Ok(Self::Debian)
+        } else if tokio::fs::try_exists("/etc/redhat-release")
+            .await
+            .unwrap_or(false)
+            || tokio::fs::try_exists("/etc/centos-release")
+                .await
+                .unwrap_or(false)
+        {
+            Ok(Self::Rhel)
+        } else {
+            anyhow::bail!(
+                "❌ 无法识别当前系统发行版 (仅支持 Debian/Ubuntu 和 RHEL/CentOS/Fedora)"
+            )
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Debian => "Debian",
+            Self::Rhel => "RHEL",
+        }
+    }
+
+    pub fn auto_update_config_path(&self) -> &'static str {
+        match self {
+            Self::Debian => paths::maintenance::UNATTENDED_UPGRADES_CONF,
+            Self::Rhel => paths::maintenance::DNF_AUTOMATIC_CONF,
+        }
+    }
+
+    pub fn auto_update_package(&self) -> &'static str {
+        match self {
+            Self::Debian => "unattended-upgrades",
+            Self::Rhel => "dnf-automatic",
+        }
+    }
+
+    pub fn auto_update_service(&self) -> &'static str {
+        match self {
+            Self::Debian => "unattended-upgrades",
+            Self::Rhel => "dnf-automatic-install.timer",
+        }
+    }
+}
 
 const TIMEOUT_APT: Duration = Duration::from_secs(120);
 const TIMEOUT_REBOOT: Duration = Duration::from_secs(15);
@@ -146,5 +204,19 @@ mod tests {
     fn test_timeout_constants() {
         assert!(TIMEOUT_APT.as_secs() > 0);
         assert!(TIMEOUT_REBOOT.as_secs() > 0);
+    }
+
+    #[test]
+    fn test_distro_family_variants() {
+        assert_eq!(DistroFamily::Debian.as_str(), "Debian");
+        assert_eq!(DistroFamily::Rhel.as_str(), "RHEL");
+    }
+
+    #[test]
+    fn test_distro_family_config_paths() {
+        let debian = DistroFamily::Debian;
+        let rhel = DistroFamily::Rhel;
+        assert!(debian.auto_update_config_path().contains("apt"));
+        assert!(rhel.auto_update_config_path().contains("dnf"));
     }
 }
