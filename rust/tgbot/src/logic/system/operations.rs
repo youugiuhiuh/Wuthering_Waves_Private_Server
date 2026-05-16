@@ -65,6 +65,91 @@ impl DistroFamily {
     }
 }
 
+pub struct AutoUpdateConfigurator;
+
+impl AutoUpdateConfigurator {
+    pub fn generate_config(distro: DistroFamily) -> String {
+        match distro {
+            DistroFamily::Debian => Self::debian_config(),
+            DistroFamily::Rhel => Self::rhel_config(),
+        }
+    }
+
+    fn debian_config() -> String {
+        r#"Unattended-Upgrade "1";
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+};
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "03:00";
+"#
+        .to_string()
+    }
+
+    fn rhel_config() -> String {
+        r#"[commands]
+upgrade_type = security
+apply_updates = yes
+reboot = when-needed
+
+[emitters]
+emit_via = motd
+"#
+        .to_string()
+    }
+
+    pub async fn install_package(distro: DistroFamily) -> Result<()> {
+        match distro {
+            DistroFamily::Debian => {
+                run_cmd_checked(
+                    "apt-get",
+                    &["install", "-y", "unattended-upgrades"],
+                    TIMEOUT_APT,
+                )
+                .await?;
+            }
+            DistroFamily::Rhel => {
+                run_cmd_checked("dnf", &["install", "-y", "dnf-automatic"], TIMEOUT_APT)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn write_config(distro: DistroFamily) -> Result<()> {
+        let config = Self::generate_config(distro);
+        let path = distro.auto_update_config_path();
+        tokio::fs::write(path, &config)
+            .await
+            .with_context(|| format!("❌ 写入配置文件 {} 失败", path))?;
+        Ok(())
+    }
+
+    pub async fn enable_service(distro: DistroFamily) -> Result<()> {
+        match distro {
+            DistroFamily::Debian => {
+                run_cmd_checked(
+                    "systemctl",
+                    &["enable", "--now", "unattended-upgrades"],
+                    TIMEOUT_APT,
+                )
+                .await?;
+            }
+            DistroFamily::Rhel => {
+                run_cmd_checked(
+                    "systemctl",
+                    &["enable", "--now", "dnf-automatic-install.timer"],
+                    TIMEOUT_APT,
+                )
+                .await?;
+            }
+        }
+        Ok(())
+    }
+}
+
 const TIMEOUT_APT: Duration = Duration::from_secs(120);
 const TIMEOUT_REBOOT: Duration = Duration::from_secs(15);
 
@@ -218,5 +303,22 @@ mod tests {
         let rhel = DistroFamily::Rhel;
         assert!(debian.auto_update_config_path().contains("apt"));
         assert!(rhel.auto_update_config_path().contains("dnf"));
+    }
+
+    #[test]
+    fn test_debian_config_content() {
+        let config = AutoUpdateConfigurator::generate_config(DistroFamily::Debian);
+        assert!(config.contains("Unattended-Upgrade"));
+        assert!(config.contains("security"));
+        assert!(config.contains("Automatic-Reboot"));
+    }
+
+    #[test]
+    fn test_rhel_config_content() {
+        let config = AutoUpdateConfigurator::generate_config(DistroFamily::Rhel);
+        assert!(config.contains("upgrade_type"));
+        assert!(config.contains("security"));
+        assert!(config.contains("apply_updates"));
+        assert!(config.contains("reboot"));
     }
 }
