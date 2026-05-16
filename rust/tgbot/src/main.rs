@@ -560,7 +560,7 @@ async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
 
 fn schedule_task_name(task_type: &TaskType) -> &'static str {
     match task_type {
-        TaskType::SystemMaintenance => "系统维护+重启",
+        TaskType::Unknown => "未知任务",
         TaskType::Reboot => "系统重启",
         TaskType::GeoUpdate => "GeoData 更新",
         TaskType::ReloadCore => "重载核心",
@@ -4459,10 +4459,10 @@ d if d.starts_with("u_kcp_ok:") => {
 
                     let (task_type, frequency) = match (task_part, freq_part) {
                         (Some("maint"), Some("daily")) => {
-                            (TaskType::SystemMaintenance, ScheduleFrequency::Daily)
+                            (TaskType::Unknown, ScheduleFrequency::Daily)
                         }
                         (Some("maint"), Some("weekly")) => {
-                            (TaskType::SystemMaintenance, ScheduleFrequency::Weekly)
+                            (TaskType::Unknown, ScheduleFrequency::Weekly)
                         }
                         (Some("geo"), Some("daily")) => {
                             (TaskType::GeoUpdate, ScheduleFrequency::Daily)
@@ -4776,7 +4776,7 @@ d if d.starts_with("u_kcp_ok:") => {
                     let template = d.strip_prefix("s_add:").unwrap_or(d);
                     let (task_type, cron) = match template {
                         "maint_sun_4" => (
-                            logic::scheduler::task_types::TaskType::SystemMaintenance,
+                            logic::scheduler::task_types::TaskType::Unknown,
                             "0 4 * * Sun",
                         ),
                         "reboot_daily_3" => {
@@ -4787,7 +4787,7 @@ d if d.starts_with("u_kcp_ok:") => {
                             "0 4 * * *",
                         ),
                         _ => (
-                            logic::scheduler::task_types::TaskType::SystemMaintenance,
+                            logic::scheduler::task_types::TaskType::Unknown,
                             "0 4 * * Sun",
                         ),
                     };

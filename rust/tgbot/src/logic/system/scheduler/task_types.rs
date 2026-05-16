@@ -6,62 +6,25 @@ use teloxide::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum TaskType {
-    SystemMaintenance,
-    GeoUpdate,  // Matches main.rs
-    Reboot,     // Matches main.rs
-    ReloadCore, // Matches main.rs
+    GeoUpdate,
+    Reboot,
+    ReloadCore,
+    #[serde(other)]
+    Unknown,
 }
 
 impl TaskType {
     pub fn get_display_name(&self) -> &str {
         match self {
-            TaskType::SystemMaintenance => "配置自动安全更新 (Auto Security Updates)",
             TaskType::GeoUpdate => "GeoData 更新 (Update GeoData)",
             TaskType::Reboot => "系统重启 (Reboot)",
             TaskType::ReloadCore => "重载核心 (Reload Core)",
+            TaskType::Unknown => "未知任务 (已弃用)",
         }
     }
 
     pub async fn execute(&self, bot: &Bot, chat_id: ChatId) -> Result<()> {
         match self {
-            TaskType::SystemMaintenance => {
-                let _ = bot
-                    .send_message(
-                        chat_id,
-                        "⚙️ [定时任务] 开始配置自动安全更新...",
-                    )
-                    .await;
-                let result = Operations::perform_maintenance().await;
-                match result {
-                    Ok(log_text) => {
-                        let log_tail = if log_text.len() > 4000 {
-                            format!("... (Truncated)\n{}", &log_text[log_text.len() - 3000..])
-                        } else {
-                            log_text
-                        };
-                        bot.send_message(
-                            chat_id,
-                            format!(
-                                "✅ [定时任务] 自动安全更新配置完成。\n\n<pre>{}</pre>",
-                                log_tail
-                            ),
-                        )
-                        .parse_mode(teloxide::types::ParseMode::Html)
-                        .await?;
-                        Ok(())
-                    }
-                    Err(e) => {
-                        report_result(
-                            bot,
-                            chat_id,
-                            "自动安全更新配置",
-                            "✅ [定时任务] 自动安全更新配置完成",
-                            Err(e),
-                        )
-                        .await
-                    }
-                }
-            }
             TaskType::GeoUpdate => {
                 log::info!("执行 GeoData 更新任务...");
                 let _ = bot
@@ -93,6 +56,15 @@ impl TaskType {
             TaskType::ReloadCore => {
                 let _ = bot.send_message(chat_id, "🔄 重载核心服务...").await;
                 MaintenanceManager::reload_core().await?;
+                Ok(())
+            }
+            TaskType::Unknown => {
+                let _ = bot
+                    .send_message(
+                        chat_id,
+                        "⚠️ 此任务类型已弃用，自动安全更新已由系统定时器管理。",
+                    )
+                    .await;
                 Ok(())
             }
         }
@@ -152,10 +124,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_unknown_variant_deserialization() {
+        let json = r#""SystemMaintenance""#;
+        let task_type: TaskType = serde_json::from_str(json).unwrap();
+        assert_eq!(task_type, TaskType::Unknown);
+
+        let json2 = r#""Unknown""#;
+        let task_type2: TaskType = serde_json::from_str(json2).unwrap();
+        assert_eq!(task_type2, TaskType::Unknown);
+    }
+
+    #[test]
+    fn test_unknown_variant_serialization() {
+        let serialized = serde_json::to_string(&TaskType::Unknown).unwrap();
+        assert_eq!(serialized, r#""Unknown""#);
+    }
+
+    #[test]
+    fn test_unknown_display_name() {
+        assert_eq!(TaskType::Unknown.get_display_name(), "未知任务 (已弃用)");
+    }
+
+    #[test]
     fn test_task_type_display_names() {
         assert_eq!(
-            TaskType::SystemMaintenance.get_display_name(),
-            "配置自动安全更新 (Auto Security Updates)"
+            TaskType::Unknown.get_display_name(),
+            "未知任务 (已弃用)"
         );
         assert_eq!(
             TaskType::GeoUpdate.get_display_name(),
@@ -191,7 +185,7 @@ mod tests {
     fn test_task_type_serialization() {
         let json = r#""SystemMaintenance""#;
         let task_type: TaskType = serde_json::from_str(json).unwrap();
-        assert_eq!(task_type, TaskType::SystemMaintenance);
+        assert_eq!(task_type, TaskType::Unknown);
 
         let task = ScheduledTask::new(TaskType::ReloadCore, "*/5 * * * *");
         let serialized = serde_json::to_string(&task).unwrap();
