@@ -15,7 +15,7 @@ pub enum TaskType {
 impl TaskType {
     pub fn get_display_name(&self) -> &str {
         match self {
-            TaskType::SystemMaintenance => "系统维护+重启 (Maintenance + Reboot)",
+            TaskType::SystemMaintenance => "配置自动安全更新 (Auto Security Updates)",
             TaskType::GeoUpdate => "GeoData 更新 (Update GeoData)",
             TaskType::Reboot => "系统重启 (Reboot)",
             TaskType::ReloadCore => "重载核心 (Reload Core)",
@@ -28,7 +28,7 @@ impl TaskType {
                 let _ = bot
                     .send_message(
                         chat_id,
-                        "🔧 [定时任务] 开始执行系统维护，完成后将自动重启...",
+                        "⚙️ [定时任务] 开始配置自动安全更新...",
                     )
                     .await;
                 let result = Operations::perform_maintenance().await;
@@ -42,22 +42,20 @@ impl TaskType {
                         bot.send_message(
                             chat_id,
                             format!(
-                                "✅ [定时任务] 系统维护完成，3 秒后自动重启。\n\n<pre>{}</pre>",
+                                "✅ [定时任务] 自动安全更新配置完成。\n\n<pre>{}</pre>",
                                 log_tail
                             ),
                         )
                         .parse_mode(teloxide::types::ParseMode::Html)
                         .await?;
-                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                        Operations::reboot_system().await?;
                         Ok(())
                     }
                     Err(e) => {
                         report_result(
                             bot,
                             chat_id,
-                            "系统维护",
-                            "✅ [定时任务] 系统维护完成",
+                            "自动安全更新配置",
+                            "✅ [定时任务] 自动安全更新配置完成",
                             Err(e),
                         )
                         .await
@@ -157,7 +155,7 @@ mod tests {
     fn test_task_type_display_names() {
         assert_eq!(
             TaskType::SystemMaintenance.get_display_name(),
-            "系统维护+重启 (Maintenance + Reboot)"
+            "配置自动安全更新 (Auto Security Updates)"
         );
         assert_eq!(
             TaskType::GeoUpdate.get_display_name(),

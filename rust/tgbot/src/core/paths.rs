@@ -42,6 +42,9 @@ pub mod xray {
 pub mod maintenance {
     pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/tgbot/bbr3_pending.flag";
     pub const UPGRADE_FLAG_FILE: &str = "/etc/wwps/tgbot/upgrade.flag";
+    pub const UNATTENDED_UPGRADES_CONF: &str = "/etc/apt/apt.conf.d/50unattended-upgrades";
+    pub const DNF_AUTOMATIC_CONF: &str = "/etc/dnf/automatic.conf";
+    pub const REBOOT_REQUIRED_FLAG: &str = "/var/run/reboot-required";
     pub const DESTRUCT_TARGETS: &[&str] = &[
         "/etc/wwps",
         "/var/log",
@@ -114,6 +117,13 @@ mod tests {
     fn test_warp_paths() {
         assert_eq!(warp::ACCOUNT_FILE, "/etc/wwps/wwps-core/warp_account.json");
         assert_eq!(warp::ROUTING_FILE, "/etc/wwps/wwps-core/conf/10_warp_routing.json");
+    }
+
+    #[test]
+    fn test_auto_update_paths() {
+        assert_eq!(maintenance::UNATTENDED_UPGRADES_CONF, "/etc/apt/apt.conf.d/50unattended-upgrades");
+        assert_eq!(maintenance::DNF_AUTOMATIC_CONF, "/etc/dnf/automatic.conf");
+        assert_eq!(maintenance::REBOOT_REQUIRED_FLAG, "/var/run/reboot-required");
     }
 
     #[test]
