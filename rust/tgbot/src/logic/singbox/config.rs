@@ -388,7 +388,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         let mut configs = Vec::new();
 
         for i in 0..count {
-            let sni = selector.next();
+            let sni = selector.get_next();
 
             let (main_port, hop_range) = PortAllocator::allocate_hysteria2().await?;
 
@@ -507,7 +507,7 @@ pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         let port_443_available = MaintenanceManager::is_port_available(443).await;
 
         for i in 0..count {
-            let sni = selector.next();
+            let sni = selector.get_next();
 
             let port = if i == 0 && port_443_available {
                 443u16

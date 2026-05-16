@@ -30,7 +30,7 @@ impl SchedulerState {
         }
     }
 
-    pub fn default() -> Self {
+    pub fn get_default() -> Self {
         Self::new()
     }
 

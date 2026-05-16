@@ -529,7 +529,7 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
             crate::logic::maintenance::MaintenanceManager::is_port_available(443).await;
 
         for i in 0..count {
-            let sni = selector.next();
+            let sni = selector.get_next();
 
             // 判断当前 SNI 是否适合启用 PQ（证书链长度 + 公钥算法）。
             let pq_ok = crate::logic::tls_probe::sni_is_pq_friendly(&sni).await;
@@ -605,7 +605,7 @@ Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
             crate::logic::maintenance::MaintenanceManager::is_port_available(443).await;
 
         for i in 0..count {
-            let sni = selector.next();
+            let sni = selector.get_next();
 
             let pq_ok = crate::logic::tls_probe::sni_is_pq_friendly(&sni).await;
 

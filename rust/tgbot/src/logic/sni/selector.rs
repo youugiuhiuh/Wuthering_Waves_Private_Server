@@ -131,7 +131,7 @@ impl SNISelector {
         vec![]
     }
 
-    pub fn next(&mut self) -> String {
+    pub fn get_next(&mut self) -> String {
         if self.domains.is_empty() {
             return String::new();
         }
@@ -225,7 +225,7 @@ mod tests {
 
         let mut results = Vec::new();
         for _ in 0..5 {
-            results.push(selector.next());
+            results.push(selector.get_next());
         }
 
         let unique: std::collections::HashSet<_> = results.iter().collect();
@@ -242,11 +242,11 @@ mod tests {
             cache_key: String::new(),
         };
 
-        selector.next();
-        selector.next();
+        selector.get_next();
+        selector.get_next();
         assert_eq!(selector.remaining(), 0);
 
-        selector.next();
+        selector.get_next();
         assert_eq!(selector.remaining(), 1);
     }
 
@@ -274,9 +274,9 @@ mod tests {
         };
 
         assert_eq!(selector.remaining(), 3);
-        selector.next();
+        selector.get_next();
         assert_eq!(selector.remaining(), 2);
-        selector.next();
+        selector.get_next();
         assert_eq!(selector.remaining(), 1);
     }
 
