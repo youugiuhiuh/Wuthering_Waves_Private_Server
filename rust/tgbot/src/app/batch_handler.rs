@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::path::PathBuf;
 
 use teloxide::prelude::*;
 use teloxide::types::{ChatId, InputFile, MessageId, ParseMode};
@@ -61,8 +62,8 @@ pub async fn send_singbox_batch_result(
     let mut temp_file = NamedTempFile::new()?;
     temp_file.write_all(links_text.as_bytes())?;
     temp_file.flush()?;
-
-    let file_path = temp_file.path().to_path_buf();
+    let temp_path = temp_file.into_temp_path();
+    let file_path = PathBuf::from(temp_path.as_os_str());
     if let Ok(msg) = bot
         .send_document(chat_id, InputFile::file(&file_path))
         .caption("完整链接列表，建议尽快复制/导入")
