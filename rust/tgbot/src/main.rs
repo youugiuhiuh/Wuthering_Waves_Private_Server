@@ -4382,10 +4382,6 @@ d if d.starts_with("u_kcp_ok:") => {
                     state.remove_schedule_input(chat_id).await;
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![InlineKeyboardButton::callback(
-                            "每周日 4点 维护+重启",
-                            "s_add:maint_sun_4",
-                        )],
-                        vec![InlineKeyboardButton::callback(
                             "每天 4点 重启核心",
                             "s_add:reload_daily_4",
                         )],
@@ -4406,16 +4402,6 @@ d if d.starts_with("u_kcp_ok:") => {
                 }
                 "s_add_custom_menu" => {
                     let keyboard = InlineKeyboardMarkup::new(vec![
-                        vec![
-                            InlineKeyboardButton::callback(
-                                "维护+重启 - 每天",
-                                "s_custom:maint:daily",
-                            ),
-                            InlineKeyboardButton::callback(
-                                "维护+重启 - 每周",
-                                "s_custom:maint:weekly",
-                            ),
-                        ],
                         vec![
                             InlineKeyboardButton::callback("Geo更新 - 每天", "s_custom:geo:daily"),
                             InlineKeyboardButton::callback("Geo更新 - 每周", "s_custom:geo:weekly"),
@@ -4458,12 +4444,6 @@ d if d.starts_with("u_kcp_ok:") => {
                     let freq_part = parts.next();
 
                     let (task_type, frequency) = match (task_part, freq_part) {
-                        (Some("maint"), Some("daily")) => {
-                            (TaskType::Unknown, ScheduleFrequency::Daily)
-                        }
-                        (Some("maint"), Some("weekly")) => {
-                            (TaskType::Unknown, ScheduleFrequency::Weekly)
-                        }
                         (Some("geo"), Some("daily")) => {
                             (TaskType::GeoUpdate, ScheduleFrequency::Daily)
                         }
@@ -4775,10 +4755,6 @@ d if d.starts_with("u_kcp_ok:") => {
                 d if d.starts_with("s_add:") => {
                     let template = d.strip_prefix("s_add:").unwrap_or(d);
                     let (task_type, cron) = match template {
-                        "maint_sun_4" => (
-                            logic::scheduler::task_types::TaskType::Unknown,
-                            "0 4 * * Sun",
-                        ),
                         "reboot_daily_3" => {
                             (logic::scheduler::task_types::TaskType::Reboot, "0 3 * * *")
                         }
@@ -4787,8 +4763,8 @@ d if d.starts_with("u_kcp_ok:") => {
                             "0 4 * * *",
                         ),
                         _ => (
-                            logic::scheduler::task_types::TaskType::Unknown,
-                            "0 4 * * Sun",
+                            logic::scheduler::task_types::TaskType::GeoUpdate,
+                            "0 4 * * *",
                         ),
                     };
 
