@@ -6,7 +6,7 @@ use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::time::Duration;
 
-use crate::logic::cmd_async::{run_cmd_checked, run_cmd_output};
+use crate::logic::cmd_async::{run_cmd_checked, run_cmd_output, run_cmd_status};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DistroFamily {
@@ -167,7 +167,42 @@ impl Drop for FlagGuard {
 pub struct Operations;
 
 impl Operations {
-    /// 执行完整的系统维护：更新、升级、清理
+    pub fn cleanup_commands(distro: DistroFamily) -> Vec<(&'static str, Vec<&'static str>)> {
+        match distro {
+            DistroFamily::Debian => vec![
+                ("apt-get", vec!["autoremove", "-y"]),
+                ("apt-get", vec!["autoclean"]),
+            ],
+            DistroFamily::Rhel => vec![
+                ("dnf", vec!["autoremove", "-y"]),
+                ("dnf", vec!["clean", "all"]),
+            ],
+        }
+    }
+
+    pub async fn check_reboot_needed(distro: DistroFamily) -> Result<bool> {
+        match distro {
+            DistroFamily::Debian => {
+                Ok(tokio::fs::try_exists(paths::maintenance::REBOOT_REQUIRED_FLAG)
+                    .await
+                    .unwrap_or(false))
+            }
+            DistroFamily::Rhel => {
+                let status = run_cmd_status(
+                    "dnf",
+                    &["needs-restarting", "-r"],
+                    TIMEOUT_APT,
+                )
+                .await;
+                match status {
+                    Ok(s) if s.success() => Ok(false),
+                    Ok(s) if s.code() == Some(1) => Ok(true),
+                    _ => Ok(false),
+                }
+            }
+        }
+    }
+
     pub async fn perform_maintenance() -> Result<String> {
         if MAINTENANCE_FLAG.swap(true, Ordering::SeqCst) {
             anyhow::bail!("❌ 维护任务正在执行中，请稍后再试");
@@ -175,43 +210,69 @@ impl Operations {
         let _guard = ManuallyDrop::new(FlagGuard(&MAINTENANCE_FLAG));
 
         let mut log = String::new();
-
         log.push_str("🔄 正在开始系统维护...\n");
 
-        // 1. apt-get update
-        log.push_str("📥 [1/4] 更新软件源列表...\n");
-        match Self::run_apt(&["update"]).await {
-            Ok(_) => log.push_str("✅ 更新成功\n"),
-            Err(e) => log.push_str(&format!("❌ 更新失败: {}\n", e)),
+        // 1. Detect distro family
+        log.push_str("🔍 [1/4] 检测系统发行版...\n");
+        let distro = match DistroFamily::detect().await {
+            Ok(d) => {
+                log.push_str(&format!("✅ 检测到: {}\n", distro_to_display(d)));
+                d
+            }
+            Err(e) => {
+                log.push_str(&format!("❌ 检测失败: {}\n", e));
+                anyhow::bail!("{}", e);
+            }
+        };
+
+        // 2. Install, configure, and enable auto-update service
+        log.push_str("⚙️ [2/4] 配置自动安全更新...\n");
+        match AutoUpdateConfigurator::install_package(distro).await {
+            Ok(_) => log.push_str("✅ 安装完成\n"),
+            Err(e) => log.push_str(&format!("❌ 安装失败: {}\n", e)),
         }
 
-        // 2. apt-get full-upgrade -y
-        log.push_str("📦 [2/4] 执行全量升级...\n");
-        match Self::run_apt(&["full-upgrade", "-y"]).await {
-            Ok(_) => log.push_str("✅ 升级成功\n"),
-            Err(e) => log.push_str(&format!("❌ 升级失败: {}\n", e)),
+        match AutoUpdateConfigurator::write_config(distro).await {
+            Ok(_) => log.push_str("✅ 配置写入完成\n"),
+            Err(e) => log.push_str(&format!("❌ 配置写入失败: {}\n", e)),
         }
 
-        // 3. apt-get autoremove -y
-        log.push_str("🧹 [3/4] 自动移除无用包...\n");
-        match Self::run_apt(&["autoremove", "-y"]).await {
-            Ok(_) => log.push_str("✅ 移除成功\n"),
-            Err(e) => log.push_str(&format!("❌ 移除失败: {}\n", e)),
+        match AutoUpdateConfigurator::enable_service(distro).await {
+            Ok(_) => log.push_str("✅ 自动更新服务已启用\n"),
+            Err(e) => log.push_str(&format!("❌ 启用服务失败: {}\n", e)),
         }
 
-        // 4. apt-get autoclean
-        log.push_str("✨ [4/4] 清理缓存...\n");
-        match Self::run_apt(&["autoclean"]).await {
-            Ok(_) => log.push_str("✅ 清理成功\n"),
-            Err(e) => log.push_str(&format!("❌ 清理失败: {}\n", e)),
+        // 3. One-time cleanup
+        log.push_str("🧹 [3/4] 清理无用包...\n");
+        let cleanup_cmds = Self::cleanup_commands(distro);
+        let total = cleanup_cmds.len();
+        for (i, (cmd, args)) in cleanup_cmds.iter().enumerate() {
+            let step_desc = if i == 0 { "移除无用包" } else { "清理缓存" };
+            log.push_str(&format!("  {} ({}/{})...\n", step_desc, i + 1, total));
+            match run_cmd_checked(cmd, args, TIMEOUT_APT).await {
+                Ok(_) => log.push_str(&format!("  ✅ {}完成\n", step_desc)),
+                Err(e) => log.push_str(&format!("  ❌ {}失败: {}\n", step_desc, e)),
+            }
         }
 
-        log.push_str("\n🎉 维护操作已完成。\n");
+        // 4. Check if reboot is needed
+        log.push_str("🔄 [4/4] 检查是否需要重启...\n");
+        match Self::check_reboot_needed(distro).await {
+            Ok(true) => {
+                log.push_str("⚠️ 需要重启系统以完成安全更新\n");
+            }
+            Ok(false) => {
+                log.push_str("✅ 当前无需重启\n");
+            }
+            Err(e) => {
+                log.push_str(&format!("⚠️ 无法检查重启状态: {}\n", e));
+            }
+        }
 
+        log.push_str("\n🎉 维护操作已完成。自动安全更新已配置。\n");
         Ok(log)
     }
 
-    /// 执行安全重启
     pub async fn reboot_system() -> Result<()> {
         if REBOOT_FLAG.swap(true, Ordering::SeqCst) {
             anyhow::bail!("❌ 重启任务正在执行中，请稍后再试");
@@ -223,46 +284,12 @@ impl Operations {
             .context("❌ 执行重启命令失败")?;
         Ok(())
     }
+}
 
-    /// 辅助函数：运行 apt 命令，包含自动处理 dpkg 中断的逻辑
-    async fn run_apt(args: &[&str]) -> Result<()> {
-        let (status, _out, stderr) = run_cmd_output("apt-get", args, TIMEOUT_APT)
-            .await
-            .context(format!("❌ 执行 apt-get 命令 {:?} 失败", args))?;
-
-        if status.success() {
-            Ok(())
-        } else {
-            // 检测是否发生了 dpkg 被中断的错误
-            if stderr.contains("dpkg --configure -a") || stderr.contains("dpkg was interrupted") {
-                log::warn!("检测到 dpkg 中断错误，尝试自动修复...");
-
-                // 尝试修复 dpkg
-                let (fix_status, _, fix_stderr) =
-                    run_cmd_output("dpkg", &["--configure", "-a"], TIMEOUT_APT)
-                        .await
-                        .context("❌ 执行 dpkg --configure -a 失败")?;
-
-                if fix_status.success() {
-                    log::info!("dpkg 修复成功，正在重试原始命令...");
-                    // 重试原始命令
-                    let (retry_status, _, retry_stderr) =
-                        run_cmd_output("apt-get", args, TIMEOUT_APT)
-                            .await
-                            .context(format!("❌ 重试 apt-get 命令 {:?} 失败", args))?;
-
-                    if retry_status.success() {
-                        return Ok(());
-                    } else {
-                        anyhow::bail!("❌ 重试仍然失败: {}", retry_stderr);
-                    }
-                } else {
-                    anyhow::bail!("❌ 自动修复 dpkg 失败: {}", fix_stderr);
-                }
-            }
-
-            anyhow::bail!("❌ apt-get 命令 {:?} 执行失败: {}", args, stderr)
-        }
+fn distro_to_display(distro: DistroFamily) -> &'static str {
+    match distro {
+        DistroFamily::Debian => "Debian/Ubuntu",
+        DistroFamily::Rhel => "RHEL/CentOS/Fedora",
     }
 }
 
@@ -320,5 +347,21 @@ mod tests {
         assert!(config.contains("security"));
         assert!(config.contains("apply_updates"));
         assert!(config.contains("reboot"));
+    }
+
+    #[test]
+    fn test_cleanup_commands_debian() {
+        let cmds = Operations::cleanup_commands(DistroFamily::Debian);
+        assert_eq!(cmds.len(), 2);
+        assert_eq!(cmds[0].0, "apt-get");
+        assert_eq!(cmds[1].0, "apt-get");
+    }
+
+    #[test]
+    fn test_cleanup_commands_rhel() {
+        let cmds = Operations::cleanup_commands(DistroFamily::Rhel);
+        assert_eq!(cmds.len(), 2);
+        assert_eq!(cmds[0].0, "dnf");
+        assert_eq!(cmds[1].0, "dnf");
     }
 }
