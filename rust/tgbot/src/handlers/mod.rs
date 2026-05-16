@@ -1,4 +1,5 @@
 pub mod kcp;
+pub mod schedule;
 pub mod utils;
 pub mod xray_config;
 
