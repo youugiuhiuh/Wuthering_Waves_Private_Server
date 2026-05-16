@@ -144,6 +144,7 @@ impl AppState {
         *self.session_timeout_secs.lock().await
     }
 
+    #[allow(dead_code)]
     pub async fn set_session_timeout_secs(&self, secs: u64) {
         *self.session_timeout_secs.lock().await = secs;
     }
@@ -359,6 +360,7 @@ impl AppState {
         destructs.get_mut(&chat_id).map(f)
     }
 
+    #[allow(dead_code)]
     pub async fn start_warp_input(&self, chat_id: ChatId, now: Instant) {
         self.pending_warp_inputs.lock().await.insert(chat_id, now);
     }

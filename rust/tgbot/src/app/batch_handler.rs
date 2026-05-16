@@ -12,6 +12,7 @@ use tgbot::core::types::BatchCreationResult;
 /// then auto-delete all messages after 60 seconds.
 ///
 /// Uses NamedTempFile for automatic cleanup of the temporary document file.
+#[allow(dead_code)]
 pub async fn send_singbox_batch_result(
     bot: &Bot,
     chat_id: ChatId,
