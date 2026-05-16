@@ -30,6 +30,7 @@ pub fn escape_html(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+#[allow(dead_code)]
 pub fn validate_hash_prefix(prefix: &str) -> anyhow::Result<&str> {
     if prefix.is_empty() {
         anyhow::bail!("hash 前缀不能为空");
@@ -55,6 +56,7 @@ pub fn validate_idx(idx: usize, max: usize, field_name: &str) -> anyhow::Result<
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn show_reality_batch_prompt(
     bot: &Bot,
     chat_id: ChatId,
@@ -110,6 +112,7 @@ pub async fn show_reality_batch_prompt(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn show_reality_qty_prompt(
     bot: &Bot,
     chat_id: ChatId,
@@ -164,6 +167,7 @@ pub async fn show_reality_qty_prompt(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn trigger_reality_auto_init(bot: Bot, chat_id: ChatId, msg_id: MessageId) {
     tokio::spawn(async move {
         match RealityInstaller::run(bot.clone(), chat_id, msg_id).await {
