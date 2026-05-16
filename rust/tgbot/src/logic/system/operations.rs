@@ -101,20 +101,13 @@ emit_via = motd
     }
 
     pub async fn install_package(distro: DistroFamily) -> Result<()> {
-        match distro {
-            DistroFamily::Debian => {
-                run_cmd_checked(
-                    "apt-get",
-                    &["install", "-y", "unattended-upgrades"],
-                    TIMEOUT_APT,
-                )
-                .await?;
-            }
-            DistroFamily::Rhel => {
-                run_cmd_checked("dnf", &["install", "-y", "dnf-automatic"], TIMEOUT_APT)
-                    .await?;
-            }
-        }
+        let package = distro.auto_update_package();
+        let package_manager = match distro {
+            DistroFamily::Debian => "apt-get",
+            DistroFamily::Rhel => "dnf",
+        };
+        run_cmd_checked(package_manager, &["install", "-y", package], TIMEOUT_APT)
+            .await?;
         Ok(())
     }
 
@@ -128,24 +121,9 @@ emit_via = motd
     }
 
     pub async fn enable_service(distro: DistroFamily) -> Result<()> {
-        match distro {
-            DistroFamily::Debian => {
-                run_cmd_checked(
-                    "systemctl",
-                    &["enable", "--now", "unattended-upgrades"],
-                    TIMEOUT_APT,
-                )
-                .await?;
-            }
-            DistroFamily::Rhel => {
-                run_cmd_checked(
-                    "systemctl",
-                    &["enable", "--now", "dnf-automatic-install.timer"],
-                    TIMEOUT_APT,
-                )
-                .await?;
-            }
-        }
+        let service = distro.auto_update_service();
+        run_cmd_checked("systemctl", &["enable", "--now", service], TIMEOUT_APT)
+            .await?;
         Ok(())
     }
 }
