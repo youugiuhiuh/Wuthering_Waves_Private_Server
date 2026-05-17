@@ -47,8 +47,9 @@ pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
     if matches!(data, "m_main" | "m_ops_center" | "m_settings" | "m_net_opt" | "m_security"
         | "m_sys_cmd" | "m_mon" | "m_usr" | "m_danger" | "m_session_timeout"
         | "a_wwps_core_menu" | "a_wwps_box_menu" | "a_wwps_box_restart" | "a_wwps_box_status"
-        | "a_wwps_core_latest" | "a_wwps_core_tags" | "a_geo_menu"
-        | "set_timeout:") || data.starts_with("wwps_core_tag:")
+        | "a_wwps_core_latest" | "a_wwps_core_tags" | "a_geo_menu")
+        || data.starts_with("set_timeout:")
+        || data.starts_with("wwps_core_tag:")
     {
         return Ok(Some(menu::handle(ctx).await?));
     }

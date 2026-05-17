@@ -7,7 +7,6 @@ use anyhow::Result;
 pub struct CallbackContext {
     pub bot: Bot,
     pub q: CallbackQuery,
-    #[allow(dead_code)]
     pub state: Arc<AppState>,
     pub chat_id: ChatId,
     pub msg_id: MessageId,

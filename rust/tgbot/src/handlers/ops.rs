@@ -291,6 +291,37 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let _ = Operations::reboot_system().await;
             });
         }
+        "a_bbr3_reboot_now" => {
+            ctx.bot.answer_callback_query(ctx.q.id.clone())
+                .text("⚠️ 系统将于 3 秒后重启...")
+                .await?;
+            ctx.bot.send_message(
+                ctx.chat_id,
+                "⚠️ <b>系统将于 3 秒后重启</b>\nBBR3 新内核将在重启后生效。",
+            )
+            .parse_mode(ParseMode::Html)
+            .await?;
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                let _ = Operations::reboot_system().await;
+            });
+        }
+        "a_bbr3_reboot_later" => {
+            ctx.bot.answer_callback_query(ctx.q.id.clone())
+                .text("✅ 已选择稍后重启")
+                .await?;
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    "✅ <b>已记录为稍后重启</b>\n\nBBR3 已安装完成，待你手动重启系统后切换到新内核生效。",
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(vec![vec![
+                    InlineKeyboardButton::callback("⬅️ 返回网络优化", "m_net_opt"),
+                ]]))
+                .await?;
+        }
         _ => {
             ctx.bot.answer_callback_query(ctx.q.id.clone()).await?;
         }

@@ -72,7 +72,7 @@ pub fn handle_callback(
             {
                 break Ok(());
             }
-            // ============ 【插入分发器拦截开始】 ============
+
             let ctx = crate::handlers::context::CallbackContext {
                 bot: bot.clone(),
                 q: q.clone(),
@@ -83,7 +83,6 @@ pub fn handle_callback(
                 data: data.clone(),
             };
 
-            // 1. 尝试让新模块处理，并显式捕获 anyhow 错误
             match crate::handlers::dispatch(&ctx).await {
                 Ok(Some(action)) => {
                     match action {
@@ -91,30 +90,22 @@ pub fn handle_callback(
                         crate::handlers::context::HandlerAction::Redirect(new_data) => {
                             let new_q = q.clone();
                             q = CallbackQuery { data: Some(new_data), ..new_q };
-                            continue; // 跳转逻辑
+                            continue;
                         }
                     }
                 }
-                Ok(None) => {} // 未匹配到日志相关路由，安全放行给下方的老 match 块
+                Ok(None) => {} // No handler matched
                 Err(e) => {
-                    // 业务执行出错：在服务端打印错误详情
-                    eprintln!("[ERROR] 运维分发器业务执行失败: {:?}", e);
-
-                    // 给 Telegram 客户端弹窗报错，防止用户点击按钮后“死机转圈”
+                    eprintln!("[ERROR] Handler dispatch failed: {:?}", e);
                     let _ = bot.answer_callback_query(q.id.clone())
                         .text("❌ 内部运维业务错误，请查看后台日志")
                         .show_alert(true)
                         .await;
+                    break Ok(());
+                }
+            }
 
-                    break Ok(()); // 优雅退出，不干扰 Telegram 的更新主循环
-                }
-            }
-            // ============ 【插入分发器拦截结束】 ============
-            match data.as_str() {
-                _ => {
-                    bot.answer_callback_query(q.id).await?;
-                }
-            }
+            bot.answer_callback_query(q.id).await?;
             break Ok(());
         }
     })

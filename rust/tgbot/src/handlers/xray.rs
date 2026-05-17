@@ -6,7 +6,7 @@ use std::sync::Arc;
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode};
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 use tempfile::NamedTempFile;
 use tgbot::core::paths::xray;
 use tgbot::core::types::IpVersion;
@@ -14,7 +14,6 @@ use tgbot::logic::config::{ConfigManager, KcpMask, Proto};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller};
 use tgbot::logic::maintenance::MaintenanceManager;
 use tgbot::logic::system::SystemMonitor;
-use crate::app::batch_handler::send_singbox_batch_result;
 use crate::app::state::TimeoutStatus;
 use crate::utils;
 
