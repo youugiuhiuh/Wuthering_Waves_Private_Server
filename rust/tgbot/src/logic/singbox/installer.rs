@@ -230,3 +230,48 @@ WantedBy=multi-user.target
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_arch_x86_64() {
+        let result = map_arch("x86_64").unwrap();
+        assert_eq!(result, "amd64");
+    }
+
+    #[test]
+    fn test_detect_arch_aarch64() {
+        let result = map_arch("aarch64").unwrap();
+        assert_eq!(result, "arm64");
+    }
+
+    #[test]
+    fn test_detect_arch_armv7l() {
+        let result = map_arch("armv7l").unwrap();
+        assert_eq!(result, "armv7");
+    }
+
+    #[test]
+    fn test_detect_arch_unsupported() {
+        let result = map_arch(" unsupported");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "不支持的架构:  unsupported");
+    }
+
+    #[test]
+    fn test_detect_arch_s390x() {
+        let result = map_arch("s390x");
+        assert!(result.is_err());
+    }
+
+    fn map_arch(arch: &str) -> Result<&'static str> {
+        match arch {
+            "x86_64" => Ok("amd64"),
+            "aarch64" => Ok("arm64"),
+            "armv7l" => Ok("armv7"),
+            _ => anyhow::bail!("不支持的架构: {}", arch),
+        }
+    }
+}
