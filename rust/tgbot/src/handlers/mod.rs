@@ -5,6 +5,7 @@ pub mod ops;
 pub mod schedule;
 pub mod singbox;
 pub mod warp;
+pub mod xray;
 pub(crate) mod callback;
 pub(crate) mod message;
 
@@ -67,6 +68,12 @@ pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
         || data == "a_upgrade" || data == "a_geo"
     {
         return Ok(Some(ops::handle(ctx).await?));
+    }
+
+    if data == "m_xray_mgmt" || data == "m_del_cfg" || data == "m_pq_mgmt" || data == "a_inst_base"
+        || data.starts_with("u_") || data.starts_with("cfg_") || data.starts_with("m_pq_")
+    {
+        return Ok(Some(xray::handle(ctx).await?));
     }
 
     let menu_patterns = [
