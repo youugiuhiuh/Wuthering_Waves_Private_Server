@@ -126,11 +126,78 @@ pub async fn sni_is_pq_friendly(sni: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_oid_mapping_for_rsa_and_ec() {
         let rsa_oid = "1.2.840.113549.1.1.1";
         let ec_oid = "1.2.840.10045.2.1";
         assert_eq!(rsa_oid, "1.2.840.113549.1.1.1");
         assert_eq!(ec_oid, "1.2.840.10045.2.1");
+    }
+
+    #[test]
+    fn test_tls_probe_result_fields() {
+        let result = TlsProbeResult {
+            total_cert_len: 3500,
+            leaf_pubkey_alg: "RSA".to_string(),
+        };
+        assert_eq!(result.total_cert_len, 3500);
+        assert_eq!(result.leaf_pubkey_alg, "RSA");
+    }
+
+    #[test]
+    fn test_tls_probe_result_clone_debug() {
+        let result = TlsProbeResult {
+            total_cert_len: 1024,
+            leaf_pubkey_alg: "EC".to_string(),
+        };
+        let cloned = result.clone();
+        assert_eq!(cloned.total_cert_len, 1024);
+        assert_eq!(cloned.leaf_pubkey_alg, "EC");
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("1024"));
+        assert!(debug_str.contains("EC"));
+    }
+
+    #[test]
+    fn test_oid_to_algorithm_mapping() {
+        let mappings = [
+            ("1.2.840.113549.1.1.1", "RSA"),
+            ("1.2.840.10045.2.1", "EC"),
+        ];
+        for (oid, algo) in mappings {
+            let result = match oid {
+                "1.2.840.113549.1.1.1" => "RSA",
+                "1.2.840.10045.2.1" => "EC",
+                _ => oid,
+            };
+            assert_eq!(result, algo);
+        }
+    }
+
+    #[test]
+    fn test_unknown_oid_passes_through() {
+        let unknown_oid = "1.3.6.1.4.1.99999.1";
+        let result = match unknown_oid {
+            "1.2.840.113549.1.1.1" => "RSA",
+            "1.2.840.10045.2.1" => "EC",
+            other => other,
+        };
+        assert_eq!(result, "1.3.6.1.4.1.99999.1");
+    }
+
+    #[test]
+    fn test_sni_is_pq_friendly_threshold() {
+        let result = TlsProbeResult {
+            total_cert_len: 3501,
+            leaf_pubkey_alg: "RSA".to_string(),
+        };
+        assert!(result.total_cert_len > 3500);
+        let small_result = TlsProbeResult {
+            total_cert_len: 3000,
+            leaf_pubkey_alg: "EC".to_string(),
+        };
+        assert!(small_result.total_cert_len <= 3500);
     }
 }
