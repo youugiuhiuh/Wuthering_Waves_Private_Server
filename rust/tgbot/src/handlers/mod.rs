@@ -1,6 +1,7 @@
 pub mod context;
 pub mod log;
 pub mod menu;
+pub mod ops;
 pub mod schedule;
 pub mod singbox;
 pub mod warp;
@@ -59,6 +60,13 @@ pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
 
     if data == "m_warp" || data.starts_with("a_warp_") {
         return Ok(Some(warp::handle(ctx).await?));
+    }
+
+    if data.starts_with("a_bbr3") || data == "a_fw" || data == "a_reload"
+        || data == "a_sys_maint" || data == "a_sys_reboot" || data == "a_tune"
+        || data == "a_upgrade" || data == "a_geo"
+    {
+        return Ok(Some(ops::handle(ctx).await?));
     }
 
     let menu_patterns = [
