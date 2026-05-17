@@ -8,9 +8,14 @@
 4. 计划批准后，使用 **subagent-driven-development** 或 **executing-plans** 执行——每个任务分发独立子 Agent，经过「规格合规」与「代码质量」两阶段审查，或按批次执行并设置人工检查点。
 5. 实现阶段严格使用 **test-driven-development** 技能，执行 RED → GREEN → REFACTOR 循环：先写失败测试、确认失败，再写最小实现、确认通过，最后提交。测试前编写的代码一律删除。
 6. 每个任务完成后使用 **requesting-code-review** 对照计划审查代码，按严重程度上报问题，Critical 问题阻塞后续进展。
-7. 所有任务完成后使用 **finishing-a-development-branch** 收尾：验证测试、并使用cargo clippy --fix --allow-dirty和cargo fmt之后选择处置方式（merge / PR / keep / discard），并清理工作树。
+7. 所有任务完成后使用 **finishing-a-development-branch** 收尾：验证测试、选择处置方式（merge / PR / keep / discard），并清理工作树。
 
 **自动读取规则**：  
 如果任务涉及新功能、重构或修复，请在执行任何步骤前自动加载并使用对应 Superpowers 技能。如果技能未触发，请明确说明原因并尝试手动加载（use skill XXX）。
+
+**语言特定规则**：
+
+- 处理 Rust 代码时，必须加载 **rust-lint-format** 技能（`.agents/skills/rust-lint-format/SKILL.md`）并在完成任务前执行强制规则
+- 处理 Go 代码时，必须加载 **go-lint-format** 技能（`.agents/skills/go-lint-format/SKILL.md`）并在完成任务前执行强制规则
 
 此规则优先级最高，始终生效，不得违反。
