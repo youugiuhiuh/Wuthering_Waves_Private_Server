@@ -696,28 +696,42 @@ mod tests {
 
     #[test]
     fn test_wwps_core_release_api_bases_default() {
+        let original = std::env::var("WWPS_CORE_RELEASE_MIRRORS").ok();
         unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
         let bases = wwps_core_release_api_bases();
         assert!(!bases.is_empty());
         assert!(bases[0].contains("github.com"));
+        if let Some(val) = original {
+            unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", val) };
+        }
     }
 
     #[test]
     fn test_wwps_core_release_api_bases_env_override() {
+        let original = std::env::var("WWPS_CORE_RELEASE_MIRRORS").ok();
         unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", "https://mirror1.example.com,https://mirror2.example.com") };
         let bases = wwps_core_release_api_bases();
         assert_eq!(bases.len(), 2);
         assert_eq!(bases[0], "https://mirror1.example.com");
         assert_eq!(bases[1], "https://mirror2.example.com");
-        unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
+        if let Some(val) = original {
+            unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", val) };
+        } else {
+            unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
+        }
     }
 
     #[test]
     fn test_wwps_core_release_api_bases_trailing_slash_stripped() {
+        let original = std::env::var("WWPS_CORE_RELEASE_MIRRORS").ok();
         unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", "https://mirror.example.com/,https://other.example.com/repos/") };
         let bases = wwps_core_release_api_bases();
         assert_eq!(bases[0], "https://mirror.example.com");
         assert_eq!(bases[1], "https://other.example.com/repos");
-        unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
+        if let Some(val) = original {
+            unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", val) };
+        } else {
+            unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
+        }
     }
 }
