@@ -1,5 +1,6 @@
 pub mod context;
 pub mod log;
+pub mod menu;
 pub mod schedule;
 pub mod singbox;
 pub(crate) mod callback;
@@ -53,6 +54,17 @@ pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
         || data.starts_with("s_del:") || data.starts_with("s_del_confirm:")
     {
         return Ok(Some(schedule::handle(ctx).await?));
+    }
+
+    let menu_patterns = [
+        "m_main", "m_ops_center", "m_settings", "m_net_opt", "m_security",
+        "m_sys_cmd", "m_mon", "m_usr", "m_danger", "m_session_timeout",
+        "a_wwps_core_menu", "a_wwps_core_latest", "a_wwps_core_tags",
+        "a_wwps_box_menu", "a_wwps_box_restart", "a_wwps_box_status",
+        "a_geo_menu",
+    ];
+    if menu_patterns.contains(&data) || data.starts_with("set_timeout:") || data.starts_with("wwps_core_tag:") {
+        return Ok(Some(menu::handle(ctx).await?));
     }
 
     Ok(None)

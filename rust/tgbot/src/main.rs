@@ -5,6 +5,8 @@ mod bootstrap;
 mod utils;
 mod handlers;
 
+use crate::handlers::menu;
+
 use crate::app::auth;
 use crate::app::batch_handler::send_singbox_batch_result;
 use crate::app::destruct_flow::{self, MessageFlowOutcome};
@@ -380,7 +382,7 @@ async fn handle_command(
                 .await?;
                 return Ok(());
             }
-            send_main_menu(bot, msg.chat.id).await?;
+            menu::send_main_menu(bot, msg.chat.id).await?;
         }
     }
 
@@ -388,25 +390,6 @@ async fn handle_command(
 }
 
 const MAX_INPUT_LENGTH: usize = 4096;
-
-async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
-    let keyboard = InlineKeyboardMarkup::new(vec![
-        vec![
-            InlineKeyboardButton::callback("📊 系统状态", "m_mon"),
-            InlineKeyboardButton::callback("👥 用户管理", "m_usr"),
-        ],
-        vec![InlineKeyboardButton::callback(
-            "🛠 运维中心 (Ops)",
-            "m_ops_center",
-        )],
-        vec![InlineKeyboardButton::callback("⚙️ 系统设置", "m_settings")],
-    ]);
-    bot.send_message(chat_id, "🏠 <b>主菜单</b>\n请选择操作类目:")
-        .parse_mode(ParseMode::Html)
-        .reply_markup(keyboard)
-        .await?;
-    Ok(())
-}
 
 async fn save_config(state: &Arc<AppState>) -> Result<()> {
     let config_dir = config_dir();
