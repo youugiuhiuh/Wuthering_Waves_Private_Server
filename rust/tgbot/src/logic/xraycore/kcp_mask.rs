@@ -536,66 +536,191 @@ mod tests {
     #[test]
     fn test_type_str_all_variants() {
         assert_eq!(KcpMask::MkcpOriginal.type_str(), "mkcp-original");
-        assert_eq!(KcpMask::MkcpAes128Gcm { password: "test".into() }.type_str(), "mkcp-aes128gcm");
+        assert_eq!(
+            KcpMask::MkcpAes128Gcm {
+                password: "test".into()
+            }
+            .type_str(),
+            "mkcp-aes128gcm"
+        );
         assert_eq!(KcpMask::Noise.type_str(), "noise");
-        assert_eq!(KcpMask::Salamander { password: "test".into() }.type_str(), "salamander");
-        assert_eq!(KcpMask::Sudoku { password: "test".into() }.type_str(), "sudoku");
-        assert_eq!(KcpMask::HeaderDns { domain: "example.com".into() }.type_str(), "header-dns");
+        assert_eq!(
+            KcpMask::Salamander {
+                password: "test".into()
+            }
+            .type_str(),
+            "salamander"
+        );
+        assert_eq!(
+            KcpMask::Sudoku {
+                password: "test".into()
+            }
+            .type_str(),
+            "sudoku"
+        );
+        assert_eq!(
+            KcpMask::HeaderDns {
+                domain: "example.com".into()
+            }
+            .type_str(),
+            "header-dns"
+        );
         assert_eq!(KcpMask::HeaderWechat.type_str(), "header-wechat");
         assert_eq!(KcpMask::HeaderSrtp.type_str(), "header-srtp");
         assert_eq!(KcpMask::HeaderUtp.type_str(), "header-utp");
         assert_eq!(KcpMask::HeaderDtls.type_str(), "header-dtls");
         assert_eq!(KcpMask::HeaderWireguard.type_str(), "header-wireguard");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.type_str(), "xdns");
-        assert_eq!(KcpMask::Xicmp { listen_ip: "0.0.0.0".into(), id: 1 }.type_str(), "xicmp");
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .type_str(),
+            "xdns"
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                listen_ip: "0.0.0.0".into(),
+                id: 1
+            }
+            .type_str(),
+            "xicmp"
+        );
         assert_eq!(KcpMask::HeaderCustom.type_str(), "header-custom");
     }
 
     #[test]
     fn test_display_name_spot_check() {
         assert_eq!(KcpMask::MkcpOriginal.display_name(), "🔀 mKCP Original");
-        assert_eq!(KcpMask::MkcpAes128Gcm { password: "x".into() }.display_name(), "🔐 mKCP AES-128-GCM");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.display_name(), "📡 XDNS 扩展DNS");
-        assert_eq!(KcpMask::Xicmp { listen_ip: "0.0.0.0".into(), id: 1 }.display_name(), "💓 XICMP");
+        assert_eq!(
+            KcpMask::MkcpAes128Gcm {
+                password: "x".into()
+            }
+            .display_name(),
+            "🔐 mKCP AES-128-GCM"
+        );
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .display_name(),
+            "📡 XDNS 扩展DNS"
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                listen_ip: "0.0.0.0".into(),
+                id: 1
+            }
+            .display_name(),
+            "💓 XICMP"
+        );
         assert_eq!(KcpMask::HeaderCustom.display_name(), "✏️ Custom 自定义");
     }
 
     #[test]
     fn test_code_all_variants() {
         assert_eq!(KcpMask::MkcpOriginal.code(), "mo");
-        assert_eq!(KcpMask::MkcpAes128Gcm { password: "x".into() }.code(), "ma");
+        assert_eq!(
+            KcpMask::MkcpAes128Gcm {
+                password: "x".into()
+            }
+            .code(),
+            "ma"
+        );
         assert_eq!(KcpMask::Noise.code(), "no");
-        assert_eq!(KcpMask::Salamander { password: "x".into() }.code(), "sa");
-        assert_eq!(KcpMask::Sudoku { password: "x".into() }.code(), "su");
+        assert_eq!(
+            KcpMask::Salamander {
+                password: "x".into()
+            }
+            .code(),
+            "sa"
+        );
+        assert_eq!(
+            KcpMask::Sudoku {
+                password: "x".into()
+            }
+            .code(),
+            "su"
+        );
         assert_eq!(KcpMask::HeaderDns { domain: "x".into() }.code(), "hd");
         assert_eq!(KcpMask::HeaderWechat.code(), "hw");
         assert_eq!(KcpMask::HeaderSrtp.code(), "hs");
         assert_eq!(KcpMask::HeaderUtp.code(), "hu");
         assert_eq!(KcpMask::HeaderDtls.code(), "hdt");
         assert_eq!(KcpMask::HeaderWireguard.code(), "hwg");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.code(), "xd");
-        assert_eq!(KcpMask::Xicmp { listen_ip: "x".into(), id: 1 }.code(), "xi");
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .code(),
+            "xd"
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                listen_ip: "x".into(),
+                id: 1
+            }
+            .code(),
+            "xi"
+        );
         assert_eq!(KcpMask::HeaderCustom.code(), "hc");
     }
 
     #[test]
     fn test_brief_spot_check() {
         assert_eq!(KcpMask::MkcpOriginal.brief(), "轻量级XOR混淆，仅FNV1a校验");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.brief(), "扩展DNS，支持自定义域名和解析器");
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .brief(),
+            "扩展DNS，支持自定义域名和解析器"
+        );
     }
 
     #[test]
     fn test_category_code_all_categories() {
         assert_eq!(KcpMask::MkcpOriginal.category_code(), "enc");
-        assert_eq!(KcpMask::MkcpAes128Gcm { password: "x".into() }.category_code(), "enc");
+        assert_eq!(
+            KcpMask::MkcpAes128Gcm {
+                password: "x".into()
+            }
+            .category_code(),
+            "enc"
+        );
         assert_eq!(KcpMask::Noise.category_code(), "obf");
-        assert_eq!(KcpMask::Salamander { password: "x".into() }.category_code(), "obf");
-        assert_eq!(KcpMask::Sudoku { password: "x".into() }.category_code(), "obf");
-        assert_eq!(KcpMask::HeaderDns { domain: "x".into() }.category_code(), "dis");
+        assert_eq!(
+            KcpMask::Salamander {
+                password: "x".into()
+            }
+            .category_code(),
+            "obf"
+        );
+        assert_eq!(
+            KcpMask::Sudoku {
+                password: "x".into()
+            }
+            .category_code(),
+            "obf"
+        );
+        assert_eq!(
+            KcpMask::HeaderDns { domain: "x".into() }.category_code(),
+            "dis"
+        );
         assert_eq!(KcpMask::HeaderWechat.category_code(), "dis");
         assert_eq!(KcpMask::HeaderSrtp.category_code(), "dis");
         assert_eq!(KcpMask::HeaderUtp.category_code(), "dis");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.category_code(), "ext");
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .category_code(),
+            "ext"
+        );
     }
 
     #[test]
@@ -603,7 +728,14 @@ mod tests {
         assert_eq!(KcpMask::MkcpOriginal.category(), "🔐 加密层");
         assert_eq!(KcpMask::Noise.category(), "🌀 混淆层");
         assert_eq!(KcpMask::HeaderWechat.category(), "🎭 伪装层");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.category(), "⚡ 扩展层");
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .category(),
+            "⚡ 扩展层"
+        );
     }
 
     #[test]
@@ -618,30 +750,62 @@ mod tests {
     #[test]
     fn test_is_encryption() {
         assert!(KcpMask::MkcpOriginal.is_encryption());
-        assert!(KcpMask::MkcpAes128Gcm { password: "x".into() }.is_encryption());
+        assert!(
+            KcpMask::MkcpAes128Gcm {
+                password: "x".into()
+            }
+            .is_encryption()
+        );
         assert!(!KcpMask::Noise.is_encryption());
         assert!(!KcpMask::HeaderWechat.is_encryption());
     }
 
     #[test]
     fn test_is_sudoku() {
-        assert!(KcpMask::Sudoku { password: "x".into() }.is_sudoku());
+        assert!(
+            KcpMask::Sudoku {
+                password: "x".into()
+            }
+            .is_sudoku()
+        );
         assert!(!KcpMask::MkcpOriginal.is_sudoku());
         assert!(!KcpMask::Noise.is_sudoku());
     }
 
     #[test]
     fn test_is_transport_replacement() {
-        assert!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.is_transport_replacement());
-        assert!(KcpMask::Xicmp { listen_ip: "0.0.0.0".into(), id: 1 }.is_transport_replacement());
+        assert!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .is_transport_replacement()
+        );
+        assert!(
+            KcpMask::Xicmp {
+                listen_ip: "0.0.0.0".into(),
+                id: 1
+            }
+            .is_transport_replacement()
+        );
         assert!(!KcpMask::MkcpOriginal.is_transport_replacement());
     }
 
     #[test]
     fn test_is_header_conn() {
         assert!(KcpMask::MkcpOriginal.is_header_conn());
-        assert!(KcpMask::MkcpAes128Gcm { password: "x".into() }.is_header_conn());
-        assert!(KcpMask::Salamander { password: "x".into() }.is_header_conn());
+        assert!(
+            KcpMask::MkcpAes128Gcm {
+                password: "x".into()
+            }
+            .is_header_conn()
+        );
+        assert!(
+            KcpMask::Salamander {
+                password: "x".into()
+            }
+            .is_header_conn()
+        );
         assert!(KcpMask::HeaderDns { domain: "x".into() }.is_header_conn());
         assert!(KcpMask::HeaderWechat.is_header_conn());
         assert!(!KcpMask::Noise.is_header_conn());
@@ -650,8 +814,20 @@ mod tests {
     #[test]
     fn test_header_size_all_variants() {
         assert_eq!(KcpMask::MkcpOriginal.header_size(), Some(6));
-        assert_eq!(KcpMask::MkcpAes128Gcm { password: "x".into() }.header_size(), Some(28));
-        assert_eq!(KcpMask::Salamander { password: "x".into() }.header_size(), Some(8));
+        assert_eq!(
+            KcpMask::MkcpAes128Gcm {
+                password: "x".into()
+            }
+            .header_size(),
+            Some(28)
+        );
+        assert_eq!(
+            KcpMask::Salamander {
+                password: "x".into()
+            }
+            .header_size(),
+            Some(8)
+        );
         assert_eq!(KcpMask::HeaderWechat.header_size(), Some(13));
         assert_eq!(KcpMask::HeaderSrtp.header_size(), Some(4));
         assert_eq!(KcpMask::HeaderUtp.header_size(), Some(4));
@@ -659,26 +835,62 @@ mod tests {
         assert_eq!(KcpMask::HeaderWireguard.header_size(), Some(4));
         assert_eq!(KcpMask::HeaderCustom.header_size(), Some(4));
         assert_eq!(KcpMask::Noise.header_size(), None);
-        assert_eq!(KcpMask::Sudoku { password: "x".into() }.header_size(), None);
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.header_size(), None);
-        assert_eq!(KcpMask::Xicmp { listen_ip: "x".into(), id: 1 }.header_size(), None);
+        assert_eq!(
+            KcpMask::Sudoku {
+                password: "x".into()
+            }
+            .header_size(),
+            None
+        );
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .header_size(),
+            None
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                listen_ip: "x".into(),
+                id: 1
+            }
+            .header_size(),
+            None
+        );
     }
 
     #[test]
     fn test_header_size_dns_domain() {
-        let short = KcpMask::HeaderDns { domain: "a.io".into() };
-        let long = KcpMask::HeaderDns { domain: "www.example.com".into() };
+        let short = KcpMask::HeaderDns {
+            domain: "a.io".into(),
+        };
+        let long = KcpMask::HeaderDns {
+            domain: "www.example.com".into(),
+        };
         assert_eq!(short.header_size(), Some(22));
         assert_eq!(long.header_size(), Some(33));
     }
 
     #[test]
     fn test_from_code() {
-        assert!(matches!(KcpMask::from_code("mo"), Some(KcpMask::MkcpOriginal)));
+        assert!(matches!(
+            KcpMask::from_code("mo"),
+            Some(KcpMask::MkcpOriginal)
+        ));
         assert!(matches!(KcpMask::from_code("no"), Some(KcpMask::Noise)));
-        assert!(matches!(KcpMask::from_code("hw"), Some(KcpMask::HeaderWechat)));
-        assert!(matches!(KcpMask::from_code("hs"), Some(KcpMask::HeaderSrtp)));
-        assert!(matches!(KcpMask::from_code("hc"), Some(KcpMask::HeaderCustom)));
+        assert!(matches!(
+            KcpMask::from_code("hw"),
+            Some(KcpMask::HeaderWechat)
+        ));
+        assert!(matches!(
+            KcpMask::from_code("hs"),
+            Some(KcpMask::HeaderSrtp)
+        ));
+        assert!(matches!(
+            KcpMask::from_code("hc"),
+            Some(KcpMask::HeaderCustom)
+        ));
         assert!(matches!(KcpMask::from_code("invalid"), None));
     }
 
@@ -721,18 +933,32 @@ mod tests {
         let json = KcpMask::MkcpOriginal.as_json();
         assert_eq!(json["type"], "mkcp-original");
 
-        let json_aes = KcpMask::MkcpAes128Gcm { password: "pw".into() }.as_json();
+        let json_aes = KcpMask::MkcpAes128Gcm {
+            password: "pw".into(),
+        }
+        .as_json();
         assert_eq!(json_aes["type"], "mkcp-aes128gcm");
         assert_eq!(json_aes["settings"]["password"], "pw");
 
-        let json_dns = KcpMask::HeaderDns { domain: "ex.com".into() }.as_json();
+        let json_dns = KcpMask::HeaderDns {
+            domain: "ex.com".into(),
+        }
+        .as_json();
         assert_eq!(json_dns["type"], "header-dns");
         assert_eq!(json_dns["settings"]["domain"], "ex.com");
 
-        let json_xdns = KcpMask::Xdns { domains: vec!["a.com".into()], resolvers: vec!["8.8.8.8".into()] }.as_json();
+        let json_xdns = KcpMask::Xdns {
+            domains: vec!["a.com".into()],
+            resolvers: vec!["8.8.8.8".into()],
+        }
+        .as_json();
         assert_eq!(json_xdns["type"], "xdns");
 
-        let json_xicmp = KcpMask::Xicmp { listen_ip: "0.0.0.0".into(), id: 42 }.as_json();
+        let json_xicmp = KcpMask::Xicmp {
+            listen_ip: "0.0.0.0".into(),
+            id: 42,
+        }
+        .as_json();
         assert_eq!(json_xicmp["type"], "xicmp");
     }
 
@@ -750,14 +976,22 @@ mod tests {
 
     #[test]
     fn test_is_compatible_with_double_encryption() {
-        let mask = KcpMask::MkcpAes128Gcm { password: "x".into() };
+        let mask = KcpMask::MkcpAes128Gcm {
+            password: "x".into(),
+        };
         assert!(mask.is_compatible_with(&[KcpMask::MkcpOriginal]).is_err());
     }
 
     #[test]
     fn test_is_compatible_with_transport_conflict() {
-        let xdns = KcpMask::Xdns { domains: vec![], resolvers: vec![] };
-        let xicmp = KcpMask::Xicmp { listen_ip: "0.0.0.0".into(), id: 1 };
+        let xdns = KcpMask::Xdns {
+            domains: vec![],
+            resolvers: vec![],
+        };
+        let xicmp = KcpMask::Xicmp {
+            listen_ip: "0.0.0.0".into(),
+            id: 1,
+        };
         assert!(xdns.is_compatible_with(&[xicmp]).is_err());
     }
 
@@ -774,8 +1008,14 @@ mod tests {
     #[test]
     fn test_validate_stack_xdns_xicmp_conflict() {
         let masks = [
-            KcpMask::Xdns { domains: vec![], resolvers: vec![] },
-            KcpMask::Xicmp { listen_ip: "0.0.0.0".into(), id: 1 },
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![],
+            },
+            KcpMask::Xicmp {
+                listen_ip: "0.0.0.0".into(),
+                id: 1,
+            },
         ];
         assert!(KcpMask::validate_stack(&masks).is_err());
     }
@@ -783,7 +1023,10 @@ mod tests {
     #[test]
     fn test_canonical_order() {
         let masks = [
-            KcpMask::Xdns { domains: vec![], resolvers: vec![] },
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![],
+            },
             KcpMask::MkcpOriginal,
         ];
         let ordered = KcpMask::canonical_order(&masks);

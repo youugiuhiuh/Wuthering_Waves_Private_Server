@@ -1,8 +1,8 @@
 use crate::core::paths::xray;
 use crate::logic::cmd_async::run_cmd_status;
 use crate::logic::network::release_api::{
-    parse_digest, parse_sha256_manifest, extract_sha256_from_body, fetch_json_from_mirrors,
-    ReleaseAsset, ReleaseResponse,
+    ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors, parse_digest,
+    parse_sha256_manifest,
 };
 use crate::logic::utils::{format_download_progress, human_readable_size, should_report};
 use anyhow::{Context, Result, anyhow};
@@ -709,7 +709,12 @@ mod tests {
     #[test]
     fn test_wwps_core_release_api_bases_env_override() {
         let original = std::env::var("WWPS_CORE_RELEASE_MIRRORS").ok();
-        unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", "https://mirror1.example.com,https://mirror2.example.com") };
+        unsafe {
+            std::env::set_var(
+                "WWPS_CORE_RELEASE_MIRRORS",
+                "https://mirror1.example.com,https://mirror2.example.com",
+            )
+        };
         let bases = wwps_core_release_api_bases();
         assert_eq!(bases.len(), 2);
         assert_eq!(bases[0], "https://mirror1.example.com");
@@ -724,7 +729,12 @@ mod tests {
     #[test]
     fn test_wwps_core_release_api_bases_trailing_slash_stripped() {
         let original = std::env::var("WWPS_CORE_RELEASE_MIRRORS").ok();
-        unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", "https://mirror.example.com/,https://other.example.com/repos/") };
+        unsafe {
+            std::env::set_var(
+                "WWPS_CORE_RELEASE_MIRRORS",
+                "https://mirror.example.com/,https://other.example.com/repos/",
+            )
+        };
         let bases = wwps_core_release_api_bases();
         assert_eq!(bases[0], "https://mirror.example.com");
         assert_eq!(bases[1], "https://other.example.com/repos");

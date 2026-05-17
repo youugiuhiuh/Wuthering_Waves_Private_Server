@@ -162,10 +162,7 @@ mod tests {
 
     #[test]
     fn test_oid_to_algorithm_mapping() {
-        let mappings = [
-            ("1.2.840.113549.1.1.1", "RSA"),
-            ("1.2.840.10045.2.1", "EC"),
-        ];
+        let mappings = [("1.2.840.113549.1.1.1", "RSA"), ("1.2.840.10045.2.1", "EC")];
         for (oid, algo) in mappings {
             let result = match oid {
                 "1.2.840.113549.1.1.1" => "RSA",

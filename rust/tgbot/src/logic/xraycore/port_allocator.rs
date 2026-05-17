@@ -194,10 +194,7 @@ impl PortAllocator {
 
         if data.locked_ranges.len() < before {
             save_port_alloc(&data).await?;
-            log::info!(
-                "Hysteria2 端口范围已释放: 主端口 {}",
-                main_port
-            );
+            log::info!("Hysteria2 端口范围已释放: 主端口 {}", main_port);
         } else {
             log::warn!(
                 "Hysteria2 端口范围未找到: 主端口 {} (可能已被释放)",
@@ -285,7 +282,8 @@ mod tests {
             ],
             initialized: true,
         };
-        data.locked_ranges.retain(|r| !(r.protocol == "hysteria2" && r.start == 10000));
+        data.locked_ranges
+            .retain(|r| !(r.protocol == "hysteria2" && r.start == 10000));
         assert_eq!(data.locked_ranges.len(), 1);
         assert_eq!(data.locked_ranges[0].start, 20000);
     }

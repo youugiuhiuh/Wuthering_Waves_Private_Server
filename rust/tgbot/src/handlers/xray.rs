@@ -1,21 +1,19 @@
+use super::context::{CallbackContext, HandlerAction, HandlerResult};
+use crate::utils;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-use std::sync::Arc;
-use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode};
-use sha2::Sha256;
+use teloxide::types::{
+    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode,
+};
 use tempfile::NamedTempFile;
-use tgbot::core::paths::xray;
 use tgbot::core::types::IpVersion;
 use tgbot::logic::config::{ConfigManager, KcpMask, Proto};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller};
 use tgbot::logic::maintenance::MaintenanceManager;
 use tgbot::logic::system::SystemMonitor;
-use crate::app::state::TimeoutStatus;
-use crate::utils;
 
 async fn show_reality_batch_prompt(
     bot: &Bot,
@@ -172,10 +170,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if inbounds.is_empty() {
                 buttons.push(vec![
                     InlineKeyboardButton::callback("🚀 Reality 批量备份", "u_batch_init"),
-                    InlineKeyboardButton::callback(
-                        "🚀 Xhttp 批量备份",
-                        "u_xhttp_batch_init",
-                    ),
+                    InlineKeyboardButton::callback("🚀 Xhttp 批量备份", "u_xhttp_batch_init"),
                 ]);
                 buttons.push(vec![InlineKeyboardButton::callback(
                     "🔐 ML-DSA-65 管理",
@@ -203,24 +198,22 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )]);
                 buttons.push(vec![
                     InlineKeyboardButton::callback("🚀 Reality 批量备份", "u_batch_init"),
-                    InlineKeyboardButton::callback(
-                        "🚀 Xhttp 批量备份",
-                        "u_xhttp_batch_init",
-                    ),
+                    InlineKeyboardButton::callback("🚀 Xhttp 批量备份", "u_xhttp_batch_init"),
                 ]);
                 buttons.push(vec![
                     InlineKeyboardButton::callback("🚀 KCP (mKCP+FinalMask)", "u_kcp_init"),
                     InlineKeyboardButton::callback("🔐 ML-DSA-65 管理", "m_pq_mgmt"),
                 ]);
                 buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "🅧 <b>Xray-core 管理</b>\n选择配置文件 (支持批量删除):",
-                )
-                .parse_mode(ParseMode::Html)
-                .reply_markup(InlineKeyboardMarkup::new(buttons))
-                .await?;
+                ctx.bot
+                    .edit_message_text(
+                        ctx.chat_id,
+                        ctx.msg_id,
+                        "🅧 <b>Xray-core 管理</b>\n选择配置文件 (支持批量删除):",
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
             }
 
             Ok(HandlerAction::Done)
@@ -265,7 +258,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .await?;
                 }
                 Err(e) => {
-                    ctx.bot.answer_callback_query(ctx.q.id.clone())
+                    ctx.bot
+                        .answer_callback_query(ctx.q.id.clone())
                         .text(format!("❌ 删除失败: {}", e))
                         .show_alert(true)
                         .await?;
@@ -283,7 +277,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .await?;
                 }
                 Err(e) => {
-                    ctx.bot.answer_callback_query(ctx.q.id.clone())
+                    ctx.bot
+                        .answer_callback_query(ctx.q.id.clone())
                         .text(format!("❌ 初始化失败: {}", e))
                         .show_alert(true)
                         .await?;
@@ -314,14 +309,15 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )],
                 vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
             ]);
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                "🗑️ <b>删除管理</b> — 当前筛选：📋 全部\n\n请选择删除方式 (操作不可逆):",
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(keyboard)
-            .await?;
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    "🗑️ <b>删除管理</b> — 当前筛选：📋 全部\n\n请选择删除方式 (操作不可逆):",
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -355,17 +351,18 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )],
                 vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
             ]);
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!(
-                    "🗑️ <b>删除管理</b> — 当前筛选：{}\n\n请选择删除方式 (操作不可逆):",
-                    filter_label
-                ),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(keyboard)
-            .await?;
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    format!(
+                        "🗑️ <b>删除管理</b> — 当前筛选：{}\n\n请选择删除方式 (操作不可逆):",
+                        filter_label
+                    ),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -409,7 +406,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     "xhttp" => Proto::XHTTP,
                     "kcp" => Proto::Kcp,
                     _ => {
-                        ctx.bot.answer_callback_query(ctx.q.id.clone())
+                        ctx.bot
+                            .answer_callback_query(ctx.q.id.clone())
                             .text("❌ 未知筛选类型")
                             .await?;
                         return Ok(HandlerAction::Redirect("m_del_cfg".to_string()));
@@ -427,7 +425,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 }
                 count
             };
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text(format!("✅ 已彻底清空 {} 个配置文件", count))
                 .show_alert(true)
                 .await?;
@@ -466,17 +465,18 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 ],
                 vec![InlineKeyboardButton::callback("⬅️ 返回", "cfg_filter:all")],
             ]);
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!(
-                    "➗ <b>按数量删除 ({})</b>\n请选择要删除的文件数量:",
-                    filter_label
-                ),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(keyboard)
-            .await?;
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    format!(
+                        "➗ <b>按数量删除 ({})</b>\n请选择要删除的文件数量:",
+                        filter_label
+                    ),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -522,7 +522,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if deleted_count > 0 {
                 let _ = MaintenanceManager::reload_core().await;
             }
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text(format!("✅ 已成功清理 {} 个旧配置", deleted_count))
                 .show_alert(true)
                 .await?;
@@ -565,17 +566,18 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 "🔙 返回筛选",
                 "cfg_filter:all",
             )]);
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!(
-                    "🎯 <b>指定配置删除 ({})</b>\n点击以永久删除对应文件:",
-                    filter_label
-                ),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(InlineKeyboardMarkup::new(buttons))
-            .await?;
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    format!(
+                        "🎯 <b>指定配置删除 ({})</b>\n点击以永久删除对应文件:",
+                        filter_label
+                    ),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(buttons))
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -622,7 +624,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .reply_markup(keyboard)
                 .await?;
             } else {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text("❌ 文件不存在或已被删除")
                     .await?;
             }
@@ -652,7 +655,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             };
 
             if let Err(e) = utils::validate_idx(idx, files.len(), "配置文件") {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text(format!("❌ {}", e))
                     .await?;
                 return Ok(HandlerAction::Done);
@@ -660,25 +664,31 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             if let Some(path) = files.get(idx) {
                 let _ = ConfigManager::delete_specific_configuration(path).await;
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text("✅ 文件已永久删除")
                     .show_alert(true)
                     .await?;
             } else {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text("❌ 文件不存在")
                     .show_alert(true)
                     .await?;
             }
 
-            Ok(HandlerAction::Redirect(format!("cfg_del_select:{}", filter)))
+            Ok(HandlerAction::Redirect(format!(
+                "cfg_del_select:{}",
+                filter
+            )))
         }
 
         "a_inst_base" => {
             if MaintenanceManager::is_reality_base_ready().await {
                 show_reality_batch_prompt(&ctx.bot, ctx.chat_id, ctx.msg_id, Proto::Vision).await?;
             } else {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text("⏳ 正在准备 Reality 母版，请稍候...")
                     .await?;
                 ctx.bot.edit_message_text(
@@ -697,7 +707,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if MaintenanceManager::is_reality_base_ready().await {
                 show_reality_batch_prompt(&ctx.bot, ctx.chat_id, ctx.msg_id, Proto::Vision).await?;
             } else {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text("⏳ 正在准备 Reality 母版，请稍候...")
                     .await?;
                 ctx.bot.edit_message_text(
@@ -716,7 +727,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if MaintenanceManager::is_reality_base_ready().await {
                 show_reality_batch_prompt(&ctx.bot, ctx.chat_id, ctx.msg_id, Proto::XHTTP).await?;
             } else {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text("⏳ 正在准备 Reality 母版，请稍候...")
                     .await?;
                 ctx.bot.edit_message_text(
@@ -769,7 +781,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             };
 
             if !MaintenanceManager::is_reality_base_ready().await {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text("⚙️ 基础配置缺失，正在自动初始化...")
                     .await?;
                 trigger_reality_auto_init(ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
@@ -789,7 +802,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 Proto::Kcp => "KCP",
             };
 
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text(format!(
                     "⏳ 正在生成 {} 个 {} 增强配置 ({}, 独立文件)...",
                     n, proto_str, ip_str
@@ -816,7 +830,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     for (i, link) in result.links.iter().enumerate() {
                         combined_links.push_str(&format!("<code>{}</code>\n\n", link));
                         if (i + 1) % 2 == 0 {
-                            if let Ok(msg) = ctx.bot
+                            if let Ok(msg) = ctx
+                                .bot
                                 .send_message(ctx.chat_id, combined_links.clone())
                                 .parse_mode(ParseMode::Html)
                                 .await
@@ -827,7 +842,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         }
                     }
                     if !combined_links.is_empty()
-                        && let Ok(msg) = ctx.bot
+                        && let Ok(msg) = ctx
+                            .bot
                             .send_message(ctx.chat_id, combined_links)
                             .parse_mode(ParseMode::Html)
                             .await
@@ -841,7 +857,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     temp_file.flush()?;
                     let temp_path = temp_file.into_temp_path();
                     let file_path = PathBuf::from(temp_path.as_os_str());
-                    if let Ok(msg) = ctx.bot
+                    if let Ok(msg) = ctx
+                        .bot
                         .send_document(ctx.chat_id, InputFile::file(&file_path))
                         .caption("完整链接列表，建议尽快复制/导入")
                         .await
@@ -870,9 +887,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     tokio::spawn(async move {
                         tokio::time::sleep(Duration::from_secs(60)).await;
                         for msg_id in message_ids {
-                            if let Err(e) =
-                                bot_clone.delete_message(chat_id_clone, msg_id).await
-                            {
+                            if let Err(e) = bot_clone.delete_message(chat_id_clone, msg_id).await {
                                 log::warn!(
                                     "删除消息失败 (chat_id: {}, msg_id: {}): {}",
                                     chat_id_clone,
@@ -886,15 +901,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 Err(e) => {
                     let err_msg = e.to_string();
                     if err_msg.contains("未找到 Reality 配置文件") {
-                        ctx.bot.send_message(
-                            ctx.chat_id,
-                            "⚠️ <b>检测到 Reality 母版缺失，正在自动初始化...</b>",
-                        )
-                        .parse_mode(ParseMode::Html)
-                        .await?;
+                        ctx.bot
+                            .send_message(
+                                ctx.chat_id,
+                                "⚠️ <b>检测到 Reality 母版缺失，正在自动初始化...</b>",
+                            )
+                            .parse_mode(ParseMode::Html)
+                            .await?;
                         trigger_reality_auto_init(ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
                     } else {
-                        ctx.bot.send_message(ctx.chat_id, format!("❌ 生成失败: {}", err_msg))
+                        ctx.bot
+                            .send_message(ctx.chat_id, format!("❌ 生成失败: {}", err_msg))
                             .await?;
                     }
                 }
@@ -919,20 +936,21 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 "m_xray_mgmt",
             )]);
 
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                "🚀 <b>KCP (mKCP+FinalMask) 配置</b>\n\n\
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    "🚀 <b>KCP (mKCP+FinalMask) 配置</b>\n\n\
                  ✨ <b>特点:</b>\n\
                  • 基于 mKCP 协议的可靠传输\n\
                  • FinalMask 多层遮罩任意叠加(1-5层)\n\
                  • 支持加密、混淆、伪装、扩展四大类遮罩\n\n\
                  📋 <b>步骤 1: 选择遮罩类别</b>\n\
                  ⚠️ 至少选择1层，建议加密层+伪装层组合",
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(InlineKeyboardMarkup::new(buttons))
-            .await?;
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(buttons))
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -962,14 +980,15 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .collect::<Vec<_>>()
                 .join("\n\n");
 
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!("<b>{}</b> — 选择要添加的遮罩\n\n{}", cat_name, mask_list),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(InlineKeyboardMarkup::new(buttons))
-            .await?;
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    format!("<b>{}</b> — 选择要添加的遮罩\n\n{}", cat_name, mask_list),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(buttons))
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -978,7 +997,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let code = d.strip_prefix("u_kcp_add:").unwrap_or("mo");
             if let Some(m) = KcpMask::from_code(code) {
                 if let Err(e) = m.is_compatible_with(&[]) {
-                    ctx.bot.answer_callback_query(ctx.q.id.clone())
+                    ctx.bot
+                        .answer_callback_query(ctx.q.id.clone())
                         .text(format!("❌ {}", e))
                         .await?;
                     return Ok(HandlerAction::Done);
@@ -995,18 +1015,19 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     )],
                     vec![InlineKeyboardButton::callback("🗑️ 清空重选", "u_kcp_init")],
                 ];
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    format!(
-                        "📋 <b>当前遮罩栈:</b>\n{}\n\n\
+                ctx.bot
+                    .edit_message_text(
+                        ctx.chat_id,
+                        ctx.msg_id,
+                        format!(
+                            "📋 <b>当前遮罩栈:</b>\n{}\n\n\
                          ➕ 可以继续添加，或完成配置",
-                        stack_display
-                    ),
-                )
-                .parse_mode(ParseMode::Html)
-                .reply_markup(InlineKeyboardMarkup::new(buttons))
-                .await?;
+                            stack_display
+                        ),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
             }
 
             Ok(HandlerAction::Done)
@@ -1109,19 +1130,20 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 "u_kcp_init",
             )]);
 
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!(
-                    "📋 <b>当前遮罩栈:</b>\n{}\n\n\
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    format!(
+                        "📋 <b>当前遮罩栈:</b>\n{}\n\n\
                      ➕ <b>选择要添加的遮罩类别</b> (已达{}层)",
-                    stack_display.join("\n"),
-                    existing_codes.len()
-                ),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(InlineKeyboardMarkup::new(buttons))
-            .await?;
+                        stack_display.join("\n"),
+                        existing_codes.len()
+                    ),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(buttons))
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -1200,20 +1222,21 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .collect::<Vec<_>>()
                 .join("\n\n");
 
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!(
-                    "📋 <b>当前遮罩栈:</b>\n{}\n\n\
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    format!(
+                        "📋 <b>当前遮罩栈:</b>\n{}\n\n\
                      <b>{}</b> — 选择要添加的遮罩\n\n{}",
-                    stack_display.join("\n"),
-                    cat_name,
-                    mask_list
-                ),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(InlineKeyboardMarkup::new(buttons))
-            .await?;
+                        stack_display.join("\n"),
+                        cat_name,
+                        mask_list
+                    ),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(buttons))
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -1242,7 +1265,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let new_mask = match KcpMask::from_code(new_code) {
                 Some(m) => m,
                 None => {
-                    ctx.bot.answer_callback_query(ctx.q.id.clone())
+                    ctx.bot
+                        .answer_callback_query(ctx.q.id.clone())
                         .text("❌ 未知遮罩类型")
                         .await?;
                     return Ok(HandlerAction::Done);
@@ -1250,7 +1274,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             };
 
             if let Err(e) = new_mask.is_compatible_with(&current_masks) {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text(format!("❌ {}", e))
                     .await?;
                 return Ok(HandlerAction::Done);
@@ -1288,18 +1313,19 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 "u_kcp_init",
             )]);
 
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!(
-                    "📋 <b>当前遮罩栈:</b>\n{}\n\n\
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    format!(
+                        "📋 <b>当前遮罩栈:</b>\n{}\n\n\
                      ➕ 可以继续添加，或完成配置",
-                    stack_display.join("\n"),
-                ),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(InlineKeyboardMarkup::new(buttons))
-            .await?;
+                        stack_display.join("\n"),
+                    ),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(buttons))
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -1309,19 +1335,20 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let codes: Vec<&str> = mask_codes_str.split(',').collect();
 
             if codes.is_empty() {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text("❌ 请至少选择1层遮罩")
                     .await?;
                 return Ok(HandlerAction::Done);
             }
 
-            let masks: Vec<KcpMask> =
-                codes.iter().filter_map(|c| KcpMask::from_code(c)).collect();
+            let masks: Vec<KcpMask> = codes.iter().filter_map(|c| KcpMask::from_code(c)).collect();
 
             let ordered = KcpMask::canonical_order(&masks);
 
             if let Err(e) = KcpMask::validate_stack(&ordered) {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text(format!("❌ {}", e))
                     .await?;
                 return Ok(HandlerAction::Done);
@@ -1333,8 +1360,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .map(|m| m.display_name().to_string())
                 .collect();
 
-            let ordered_codes: Vec<String> =
-                ordered.iter().map(|m| m.code().to_string()).collect();
+            let ordered_codes: Vec<String> = ordered.iter().map(|m| m.code().to_string()).collect();
             let ordered_str = ordered_codes.join(",");
 
             let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
@@ -1367,20 +1393,21 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 format!("\n\n{}", warnings.join("\n"))
             };
 
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!(
-                    "🚀 <b>KCP 配置</b>\n\n\
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    format!(
+                        "🚀 <b>KCP 配置</b>\n\n\
                      📋 <b>遮罩栈 (外层→内层):</b>\n{}{}\n\n\
                      ⬇️ <b>请选择网络协议版本:</b>",
-                    stack_display.join(" → "),
-                    warning_text
-                ),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(InlineKeyboardMarkup::new(buttons))
-            .await?;
+                        stack_display.join(" → "),
+                        warning_text
+                    ),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(buttons))
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -1449,21 +1476,22 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )],
             ];
 
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!(
-                    "🚀 <b>KCP 配置 - 批量生成</b>\n\n\
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    format!(
+                        "🚀 <b>KCP 配置 - 批量生成</b>\n\n\
                      📋 <b>遮罩栈:</b>\n{}\n\n\
                      🌐 网络协议: <b>{}</b>\n\n\
                      ⬇️ <b>请选择生成数量:</b>",
-                    stack_display.join("\n"),
-                    ip_display
-                ),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(InlineKeyboardMarkup::new(buttons))
-            .await?;
+                        stack_display.join("\n"),
+                        ip_display
+                    ),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(buttons))
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -1501,7 +1529,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .collect();
             let mask_label = mask_names.join("+");
 
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text(format!("⏳ 正在生成 {} 个 KCP 配置...", n))
                 .await?;
 
@@ -1515,7 +1544,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     for (i, link) in result.links.iter().enumerate() {
                         combined_links.push_str(&format!("<code>{}</code>\n\n", link));
                         if (i + 1) % 2 == 0 {
-                            if let Ok(msg) = ctx.bot
+                            if let Ok(msg) = ctx
+                                .bot
                                 .send_message(ctx.chat_id, combined_links.clone())
                                 .parse_mode(ParseMode::Html)
                                 .await
@@ -1526,7 +1556,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         }
                     }
                     if !combined_links.is_empty()
-                        && let Ok(msg) = ctx.bot
+                        && let Ok(msg) = ctx
+                            .bot
                             .send_message(ctx.chat_id, combined_links)
                             .parse_mode(ParseMode::Html)
                             .await
@@ -1540,7 +1571,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     temp_file.flush()?;
                     let temp_path = temp_file.into_temp_path();
                     let file_path = PathBuf::from(temp_path.as_os_str());
-                    if let Ok(msg) = ctx.bot
+                    if let Ok(msg) = ctx
+                        .bot
                         .send_document(ctx.chat_id, InputFile::file(&file_path))
                         .caption(format!("KCP {} 完整链接列表", mask_label))
                         .await
@@ -1568,9 +1600,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     tokio::spawn(async move {
                         tokio::time::sleep(Duration::from_secs(60)).await;
                         for msg_id in message_ids {
-                            if let Err(e) =
-                                bot_clone.delete_message(chat_id_clone, msg_id).await
-                            {
+                            if let Err(e) = bot_clone.delete_message(chat_id_clone, msg_id).await {
                                 log::warn!(
                                     "删除消息失败 (chat_id: {}, msg_id: {}): {}",
                                     chat_id_clone,
@@ -1582,7 +1612,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     });
                 }
                 Err(e) => {
-                    ctx.bot.send_message(ctx.chat_id, format!("❌ 生成失败: {}", e))
+                    ctx.bot
+                        .send_message(ctx.chat_id, format!("❌ 生成失败: {}", e))
                         .parse_mode(ParseMode::Html)
                         .await?;
                 }
@@ -1597,7 +1628,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .await
                 .unwrap_or_default();
             if let Err(e) = utils::validate_idx(idx, inbounds.len(), "用户配置") {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text(format!("❌ {}", e))
                     .await?;
                 return Ok(HandlerAction::Done);
@@ -1618,17 +1650,18 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     )]);
                 }
                 buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    format!(
-                        "👥 <b>用户列表</b>\n文件: <code>{}</code>",
-                        path.split('/').next_back().unwrap_or("Unknown")
-                    ),
-                )
-                .parse_mode(ParseMode::Html)
-                .reply_markup(InlineKeyboardMarkup::new(buttons))
-                .await?;
+                ctx.bot
+                    .edit_message_text(
+                        ctx.chat_id,
+                        ctx.msg_id,
+                        format!(
+                            "👥 <b>用户列表</b>\n文件: <code>{}</code>",
+                            path.split('/').next_back().unwrap_or("Unknown")
+                        ),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
             }
 
             Ok(HandlerAction::Done)
@@ -1664,7 +1697,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     .reply_markup(keyboard)
                     .await?;
                 } else {
-                    ctx.bot.answer_callback_query(ctx.q.id.clone())
+                    ctx.bot
+                        .answer_callback_query(ctx.q.id.clone())
                         .text("❌ 配置文件不存在")
                         .await?;
                 }
@@ -1681,7 +1715,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .collect();
             if parts.len() == 2 {
                 let email = parts[1];
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text(format!("🗑 暂不支持删除单个用户: {}", email))
                     .show_alert(true)
                     .await?;

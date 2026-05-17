@@ -98,7 +98,12 @@ mod tests {
 
     #[test]
     fn test_tuic_to_inbound_json_structure() {
-        let config = TUICConfig::new(9443, "uuid-1234".to_string(), "password".to_string(), "sni.example.com".to_string());
+        let config = TUICConfig::new(
+            9443,
+            "uuid-1234".to_string(),
+            "password".to_string(),
+            "sni.example.com".to_string(),
+        );
         let json = config.to_inbound_json("test-tag");
         assert_eq!(json["type"], "tuic");
         assert_eq!(json["tag"], "test-tag");
@@ -110,18 +115,31 @@ mod tests {
 
     #[test]
     fn test_tuic_to_inbound_json_tls_fields() {
-        let config = TUICConfig::new(9443, "uuid-1234".to_string(), "password".to_string(), "sni.example.com".to_string());
+        let config = TUICConfig::new(
+            9443,
+            "uuid-1234".to_string(),
+            "password".to_string(),
+            "sni.example.com".to_string(),
+        );
         let json = config.to_inbound_json("test-tag");
         assert!(json["tls"]["enabled"].as_bool().unwrap());
         assert_eq!(json["tls"]["server_name"], "sni.example.com");
         assert_eq!(json["tls"]["alpn"], serde_json::json!(["h3"]));
         assert_eq!(json["tls"]["key_path"], "/etc/wwps/wwps-box/certs/tls.key");
-        assert_eq!(json["tls"]["certificate_path"], "/etc/wwps/wwps-box/certs/tls.cer");
+        assert_eq!(
+            json["tls"]["certificate_path"],
+            "/etc/wwps/wwps-box/certs/tls.cer"
+        );
     }
 
     #[test]
     fn test_tuic_to_inbound_json_heartbeat_zero_rtt() {
-        let config = TUICConfig::new(9443, "uuid-1234".to_string(), "password".to_string(), "sni.example.com".to_string());
+        let config = TUICConfig::new(
+            9443,
+            "uuid-1234".to_string(),
+            "password".to_string(),
+            "sni.example.com".to_string(),
+        );
         let json = config.to_inbound_json("test-tag");
         assert_eq!(json["heartbeat"], "30s");
         assert_eq!(json["zero_rtt_handshake"], false);
@@ -130,7 +148,12 @@ mod tests {
 
     #[test]
     fn test_tuic_to_client_link_format() {
-        let config = TUICConfig::new(9443, "uuid-1234".to_string(), "password".to_string(), "sni.example.com".to_string());
+        let config = TUICConfig::new(
+            9443,
+            "uuid-1234".to_string(),
+            "password".to_string(),
+            "sni.example.com".to_string(),
+        );
         let link = config.to_client_link("1.2.3.4", "MyNode");
         assert!(link.starts_with("tuic://"));
         assert!(link.contains("uuid-1234:password@"));
@@ -142,7 +165,12 @@ mod tests {
 
     #[test]
     fn test_tuic_to_client_link_encoding() {
-        let config = TUICConfig::new(9443, "uuid-1234".to_string(), "p@ss!word".to_string(), "sni.example.com".to_string());
+        let config = TUICConfig::new(
+            9443,
+            "uuid-1234".to_string(),
+            "p@ss!word".to_string(),
+            "sni.example.com".to_string(),
+        );
         let link = config.to_client_link("1.2.3.4", "MyNode");
         assert!(link.contains("p%40ss%21word"));
     }

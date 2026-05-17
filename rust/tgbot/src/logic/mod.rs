@@ -69,8 +69,8 @@ pub use network::warp_api;
 
 // 原 bot_upgrade/core_upgrade 共享的 Release API 类型和类型别名
 pub use network::release_api::{
-    parse_digest, parse_sha256_manifest, extract_sha256_from_body, fetch_json_from_mirrors,
     ReleaseAsset as LogicReleaseAsset, ReleaseResponse as LogicReleaseResponse, SHA256_LINE_RE,
+    extract_sha256_from_body, fetch_json_from_mirrors, parse_digest, parse_sha256_manifest,
 };
 
 // 原 logic::log_audit → logic::system::log_audit

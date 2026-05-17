@@ -1,17 +1,18 @@
+use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use std::time::Duration;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
-use super::context::{CallbackContext, HandlerAction, HandlerResult};
-use tgbot::logic::maintenance::MaintenanceManager;
-use tgbot::logic::operations::{Operations, MAINTENANCE_FLAG, REBOOT_FLAG};
 use tgbot::logic::UpgradeManager;
+use tgbot::logic::maintenance::MaintenanceManager;
+use tgbot::logic::operations::{MAINTENANCE_FLAG, Operations, REBOOT_FLAG};
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     let data = ctx.data.as_str();
     match data {
         "a_reload" => {
             let _ = MaintenanceManager::reload_core().await;
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text("✅ 已重启核心")
                 .await?;
         }
@@ -58,9 +59,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         let _ = tx.send(format!("❌ 失败: {}", err));
                     }
                     Err(_) => {
-                        let _ = tx.send(
-                            "❌ 失败: 操作超时 (45s)，请检查系统 nftables 状态".to_string(),
-                        );
+                        let _ = tx
+                            .send("❌ 失败: 操作超时 (45s)，请检查系统 nftables 状态".to_string());
                     }
                 }
 
@@ -68,12 +68,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let _ = update_task.await;
             });
 
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text("⚙️ 正在启动防火墙扫描与加固...")
                 .await?;
         }
         "a_upgrade" => {
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text("⚙️ 正在启动 Bot 自更新...")
                 .await?;
             let bot_clone = ctx.bot.clone();
@@ -83,19 +85,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     Ok(manager) => {
                         if let Err(err) = manager.run(bot_clone.clone(), chat_id_clone).await {
                             let _ = bot_clone
-                                .send_message(
-                                    chat_id_clone,
-                                    format!("❌ 自更新失败: {}", err),
-                                )
+                                .send_message(chat_id_clone, format!("❌ 自更新失败: {}", err))
                                 .await;
                         }
                     }
                     Err(err) => {
                         let _ = bot_clone
-                            .send_message(
-                                chat_id_clone,
-                                format!("❌ 无法启动自更新: {}", err),
-                            )
+                            .send_message(chat_id_clone, format!("❌ 无法启动自更新: {}", err))
                             .await;
                     }
                 }
@@ -131,16 +127,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     }
                     Err(e) => {
                         let _ = bot_clone
-                            .send_message(
-                                chat_id_clone,
-                                format!("❌ GeoData 更新失败: {}", e),
-                            )
+                            .send_message(chat_id_clone, format!("❌ GeoData 更新失败: {}", e))
                             .await;
                     }
                 }
             });
 
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text("🌍 GeoData 已启动更新 (后台执行)")
                 .await?;
         }
@@ -148,7 +142,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             return Ok(HandlerAction::Redirect("a_bbr3".to_string()));
         }
         "a_bbr3" => {
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text("🚀 正在启动 BBR3 安装向导...")
                 .await?;
             let bot_clone = ctx.bot.clone();
@@ -213,7 +208,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "a_sys_maint" => {
             if MAINTENANCE_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text("❌ 配置任务正在执行中，请稍后再试")
                     .await?;
                 return Ok(HandlerAction::Done);
@@ -229,7 +225,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .reply_markup(keyboard)
                 .await;
 
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text("⚙️ 正在配置自动安全更新...")
                 .await?;
             let bot_c = ctx.bot.clone();
@@ -255,10 +252,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     }
                     Err(e) => {
                         let _ = bot_c
-                            .send_message(
-                                chat_id,
-                                format!("❌ <b>维护失败</b>\n\n原因: {}", e),
-                            )
+                            .send_message(chat_id, format!("❌ <b>维护失败</b>\n\n原因: {}", e))
                             .parse_mode(ParseMode::Html)
                             .await;
                     }
@@ -267,7 +261,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "a_sys_reboot" => {
             if REBOOT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-                ctx.bot.answer_callback_query(ctx.q.id.clone())
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
                     .text("❌ 重启任务正在执行中，请稍后再试")
                     .await?;
                 return Ok(HandlerAction::Done);
@@ -283,7 +278,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .reply_markup(keyboard)
                 .await;
 
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text("⚠️ 系统将于 3 秒后重启...")
                 .await?;
             tokio::spawn(async move {
@@ -292,22 +288,25 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             });
         }
         "a_bbr3_reboot_now" => {
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text("⚠️ 系统将于 3 秒后重启...")
                 .await?;
-            ctx.bot.send_message(
-                ctx.chat_id,
-                "⚠️ <b>系统将于 3 秒后重启</b>\nBBR3 新内核将在重启后生效。",
-            )
-            .parse_mode(ParseMode::Html)
-            .await?;
+            ctx.bot
+                .send_message(
+                    ctx.chat_id,
+                    "⚠️ <b>系统将于 3 秒后重启</b>\nBBR3 新内核将在重启后生效。",
+                )
+                .parse_mode(ParseMode::Html)
+                .await?;
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(3)).await;
                 let _ = Operations::reboot_system().await;
             });
         }
         "a_bbr3_reboot_later" => {
-            ctx.bot.answer_callback_query(ctx.q.id.clone())
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
                 .text("✅ 已选择稍后重启")
                 .await?;
             ctx.bot

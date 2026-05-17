@@ -1,8 +1,8 @@
+use crate::app::state::AppState;
+use anyhow::Result;
 use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::{CallbackQuery, ChatId, MessageId};
-use crate::app::state::AppState;
-use anyhow::Result;
 
 pub struct CallbackContext {
     pub bot: Bot,
@@ -16,8 +16,8 @@ pub struct CallbackContext {
 }
 
 pub enum HandlerAction {
-    Done,                     // 处理完了，直接结束
-    Redirect(String),         // 内部跳转（相当于老代码的 continue）
+    Done,             // 处理完了，直接结束
+    Redirect(String), // 内部跳转（相当于老代码的 continue）
 }
 
 pub type HandlerResult = Result<HandlerAction>;

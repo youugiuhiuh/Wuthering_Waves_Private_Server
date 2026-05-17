@@ -1,12 +1,12 @@
-use std::sync::Arc;
-use std::time::Duration;
-use teloxide::Bot;
-use teloxide::prelude::{CallbackQuery, ChatId, Requester, ResponseResult};
-use futures_util::future::BoxFuture;
-use teloxide::payloads::AnswerCallbackQuerySetters;
 use crate::app::destruct_flow;
 use crate::app::destruct_flow::MessageFlowOutcome;
 use crate::app::state::{AppState, TimeoutStatus};
+use futures_util::future::BoxFuture;
+use std::sync::Arc;
+use std::time::Duration;
+use teloxide::Bot;
+use teloxide::payloads::AnswerCallbackQuerySetters;
+use teloxide::prelude::{CallbackQuery, ChatId, Requester, ResponseResult};
 
 pub fn handle_callback(
     bot: Bot,
@@ -84,20 +84,22 @@ pub fn handle_callback(
             };
 
             match crate::handlers::dispatch(&ctx).await {
-                Ok(Some(action)) => {
-                    match action {
-                        crate::handlers::context::HandlerAction::Done => break Ok(()),
-                        crate::handlers::context::HandlerAction::Redirect(new_data) => {
-                            let new_q = q.clone();
-                            q = CallbackQuery { data: Some(new_data), ..new_q };
-                            continue;
-                        }
+                Ok(Some(action)) => match action {
+                    crate::handlers::context::HandlerAction::Done => break Ok(()),
+                    crate::handlers::context::HandlerAction::Redirect(new_data) => {
+                        let new_q = q.clone();
+                        q = CallbackQuery {
+                            data: Some(new_data),
+                            ..new_q
+                        };
+                        continue;
                     }
-                }
+                },
                 Ok(None) => {} // No handler matched
                 Err(e) => {
                     eprintln!("[ERROR] Handler dispatch failed: {:?}", e);
-                    let _ = bot.answer_callback_query(q.id.clone())
+                    let _ = bot
+                        .answer_callback_query(q.id.clone())
                         .text("❌ 内部运维业务错误，请查看后台日志")
                         .show_alert(true)
                         .await;

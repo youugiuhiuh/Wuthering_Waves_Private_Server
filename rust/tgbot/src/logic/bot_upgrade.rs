@@ -14,8 +14,8 @@ use tokio::task;
 use tokio::time::sleep;
 
 use crate::logic::network::release_api::{
-    parse_digest, parse_sha256_manifest, extract_sha256_from_body, fetch_json_from_mirrors,
-    ReleaseAsset, ReleaseResponse,
+    ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors, parse_digest,
+    parse_sha256_manifest,
 };
 use crate::logic::utils::{format_download_progress, human_readable_size, should_report};
 

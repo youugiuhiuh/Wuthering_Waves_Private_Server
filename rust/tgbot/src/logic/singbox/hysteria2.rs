@@ -169,7 +169,11 @@ mod tests {
 
     #[test]
     fn test_hysteria2_config_new() {
-        let config = Hysteria2Config::new(8443, "test_password".to_string(), "sni.example.com".to_string());
+        let config = Hysteria2Config::new(
+            8443,
+            "test_password".to_string(),
+            "sni.example.com".to_string(),
+        );
         assert_eq!(config.port, 8443);
         assert_eq!(config.password, "test_password");
         assert_eq!(config.sni, "sni.example.com");
@@ -206,7 +210,13 @@ mod tests {
 
     #[test]
     fn test_hysteria2_to_inbound_json_with_obfs() {
-        let config = Hysteria2Config::with_obfs(8443, "pw".to_string(), "sni.example.com".to_string(), "salamander".to_string(), "obfs123".to_string());
+        let config = Hysteria2Config::with_obfs(
+            8443,
+            "pw".to_string(),
+            "sni.example.com".to_string(),
+            "salamander".to_string(),
+            "obfs123".to_string(),
+        );
         let json = config.to_inbound_json("test-tag");
         assert!(json["obfs"].is_object());
         assert_eq!(json["obfs"]["type"], "salamander");
@@ -218,13 +228,20 @@ mod tests {
         let config = Hysteria2Config::new(8443, "pw".to_string(), "sni.example.com".to_string());
         let json = config.to_inbound_json("test-tag");
         assert_eq!(json["tls"]["key_path"], "/etc/wwps/wwps-box/certs/tls.key");
-        assert_eq!(json["tls"]["certificate_path"], "/etc/wwps/wwps-box/certs/tls.cer");
+        assert_eq!(
+            json["tls"]["certificate_path"],
+            "/etc/wwps/wwps-box/certs/tls.cer"
+        );
         assert_eq!(json["tls"]["alpn"], serde_json::json!(["h3"]));
     }
 
     #[test]
     fn test_hysteria2_to_client_link_basic() {
-        let config = Hysteria2Config::new(8443, "mypassword".to_string(), "sni.example.com".to_string());
+        let config = Hysteria2Config::new(
+            8443,
+            "mypassword".to_string(),
+            "sni.example.com".to_string(),
+        );
         let link = config.to_client_link("1.2.3.4", "MyNode");
         assert!(link.starts_with("hysteria2://"));
         assert!(link.contains("@1.2.3.4:8443"));
@@ -234,14 +251,19 @@ mod tests {
 
     #[test]
     fn test_hysteria2_to_client_link_encoding() {
-        let config = Hysteria2Config::new(8443, "p@ss!word".to_string(), "sni.example.com".to_string());
+        let config =
+            Hysteria2Config::new(8443, "p@ss!word".to_string(), "sni.example.com".to_string());
         let link = config.to_client_link("1.2.3.4", "MyNode");
         assert!(link.contains("p%40ss%21word"));
     }
 
     #[test]
     fn test_hysteria2_to_client_link_with_hopping() {
-        let config = Hysteria2Config::new(8443, "mypassword".to_string(), "sni.example.com".to_string());
+        let config = Hysteria2Config::new(
+            8443,
+            "mypassword".to_string(),
+            "sni.example.com".to_string(),
+        );
         let link = config.to_client_link_with_hopping("1.2.3.4", "MyNode", (8444, 8543));
         assert!(link.contains("8444-8543"));
         assert!(link.contains("hop_interval=30s"));
@@ -249,7 +271,13 @@ mod tests {
 
     #[test]
     fn test_hysteria2_to_client_link_with_hopping_and_obfs() {
-        let config = Hysteria2Config::with_obfs(8443, "mypassword".to_string(), "sni.example.com".to_string(), "salamander".to_string(), "obfs123".to_string());
+        let config = Hysteria2Config::with_obfs(
+            8443,
+            "mypassword".to_string(),
+            "sni.example.com".to_string(),
+            "salamander".to_string(),
+            "obfs123".to_string(),
+        );
         let link = config.to_client_link_with_hopping_and_obfs("1.2.3.4", "MyNode", (8444, 8543));
         assert!(link.contains("obfs=salamander"));
         assert!(link.contains("obfs-password=obfs123"));

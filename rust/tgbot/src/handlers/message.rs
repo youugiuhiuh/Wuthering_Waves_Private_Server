@@ -1,12 +1,12 @@
+use crate::MAX_INPUT_LENGTH;
+use crate::app::destruct_flow;
+use crate::app::destruct_flow::MessageFlowOutcome;
+use crate::app::state::{AppState, TimeoutStatus};
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::Bot;
 use teloxide::prelude::{Message, Requester, ResponseResult};
 use tgbot::logic::config::ConfigManager;
-use crate::app::destruct_flow;
-use crate::app::destruct_flow::MessageFlowOutcome;
-use crate::app::state::{AppState, TimeoutStatus};
-use crate::MAX_INPUT_LENGTH;
 
 pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> ResponseResult<()> {
     let chat_id = msg.chat.id;
