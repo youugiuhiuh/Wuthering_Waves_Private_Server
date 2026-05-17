@@ -1,5 +1,6 @@
 pub mod context;
 pub mod log;
+pub mod schedule;
 pub mod singbox;
 pub(crate) mod callback;
 pub(crate) mod message;
@@ -43,6 +44,15 @@ pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
         if data.starts_with(prefix) {
             return Ok(Some(singbox::handle(ctx).await?));
         }
+    }
+
+    if data == "m_sched" || data == "s_add_menu" || data == "s_add_custom_menu"
+        || data == "s_custom_confirm" || data == "s_custom_cancel" || data == "s_del_menu"
+        || data == "a_geo_sched_menu" || data == "geo_sched_off"
+        || data.starts_with("s_custom") || data.starts_with("s_add:")
+        || data.starts_with("s_del:") || data.starts_with("s_del_confirm:")
+    {
+        return Ok(Some(schedule::handle(ctx).await?));
     }
 
     Ok(None)
