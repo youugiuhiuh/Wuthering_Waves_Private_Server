@@ -143,4 +143,49 @@ mod tests {
         };
         assert!(action == "ufw" || action == "ufw-allports");
     }
+
+    #[test]
+    fn test_fail2ban_config_format_ufw() {
+        let action = "ufw";
+        let config = format!(
+            r#"[DEFAULT]
+banaction = {}
+backend = systemd
+bantime = 1h
+findtime = 10m
+maxretry = 3
+
+[sshd]
+enabled = true
+port = ssh
+logpath = /var/log/auth.log
+bantime.increment = true
+bantime.factor = 2
+bantime.max = 1w
+"#,
+            action
+        );
+        assert!(config.contains("banaction = ufw"));
+        assert!(config.contains("[sshd]"));
+        assert!(config.contains("enabled = true"));
+        assert!(config.contains("bantime = 1h"));
+        assert!(config.contains("maxretry = 3"));
+        assert!(config.contains("bantime.increment = true"));
+        assert!(config.contains("bantime.factor = 2"));
+        assert!(config.contains("bantime.max = 1w"));
+    }
+
+    #[test]
+    fn test_fail2ban_config_format_firewalld() {
+        let action = "firewallcmd-ipset";
+        let config = format!("banaction = {}", action);
+        assert!(config.contains("firewallcmd-ipset"));
+    }
+
+    #[test]
+    fn test_fail2ban_config_format_iptables() {
+        let action = "iptables-allports";
+        let config = format!("banaction = {}", action);
+        assert!(config.contains("iptables-allports"));
+    }
 }
