@@ -3,6 +3,7 @@ pub mod log;
 pub mod menu;
 pub mod schedule;
 pub mod singbox;
+pub mod warp;
 pub(crate) mod callback;
 pub(crate) mod message;
 
@@ -54,6 +55,10 @@ pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
         || data.starts_with("s_del:") || data.starts_with("s_del_confirm:")
     {
         return Ok(Some(schedule::handle(ctx).await?));
+    }
+
+    if data == "m_warp" || data.starts_with("a_warp_") {
+        return Ok(Some(warp::handle(ctx).await?));
     }
 
     let menu_patterns = [
