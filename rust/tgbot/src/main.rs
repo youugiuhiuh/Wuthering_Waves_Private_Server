@@ -2,19 +2,19 @@
 #![allow(clippy::vec_init_then_push)]
 mod app;
 mod bootstrap;
+mod utils;
+mod handlers;
 
 use obfstr::obfstr;
-
 use tgbot::logic;
-
 use crate::app::auth;
 use crate::app::batch_handler::send_singbox_batch_result;
 use crate::app::destruct_flow::{self, MessageFlowOutcome};
 use crate::app::state::{AppState, ScheduleFrequency, ScheduleInputState, TimeoutStatus};
 use crate::bootstrap::{
-    BOT_VERSION, BotSettings, CONFIG_FILE, ConfigValidator, DEFAULT_SESSION_TIMEOUT_SECS,
-    EncryptedConfig, KEY_FILE, config_dir, harden_process, run_setup, run_setup_from_stdin,
-    verify_integrity,
+    config_dir, harden_process, run_setup, run_setup_from_stdin, verify_integrity,
+    BotSettings, ConfigValidator, EncryptedConfig, BOT_VERSION, CONFIG_FILE, DEFAULT_SESSION_TIMEOUT_SECS,
+    KEY_FILE,
 };
 use anyhow::{Context, Result};
 use futures_util::future::BoxFuture;
@@ -35,7 +35,7 @@ use tempfile::NamedTempFile;
 use tgbot::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use tgbot::core::paths::{singbox, xray};
 use tgbot::core::types::IpVersion;
-use tgbot::logic::bot_upgrade::{UPGRADE_FLAG_FILE, UpgradeManager};
+use tgbot::logic::bot_upgrade::{UpgradeManager, UPGRADE_FLAG_FILE};
 use tgbot::logic::config::{ConfigManager, KcpMask, Proto, WarpMode};
 use tgbot::logic::core_upgrade::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
 use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
@@ -48,6 +48,8 @@ use tgbot::logic::self_destruct::production_executor;
 use tgbot::logic::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use tgbot::logic::system::SystemMonitor;
 use tgbot::logic::totp::TotpManager;
+use crate::utils::format_duration_human;
+
 // TOTP 防爆破参数
 // TOTP 防爆破参数
 const TOTP_FAIL_MAX: u32 = 5; // 窗口内最大失败次数
@@ -60,56 +62,6 @@ const LOCKOUT_DURATIONS: [Duration; 4] = [
     Duration::from_secs(24 * 60 * 60),
     Duration::from_secs(48 * 60 * 60),
 ];
-
-fn format_duration_human(secs: u64) -> String {
-    if secs < 60 {
-        format!("{}秒", secs)
-    } else if secs < 3600 {
-        format!("{}分钟", secs / 60)
-    } else if secs < 86400 {
-        let h = secs / 3600;
-        let m = (secs % 3600) / 60;
-        if m == 0 {
-            format!("{}小时", h)
-        } else {
-            format!("{}小时{}分", h, m)
-        }
-    } else {
-        format!("{}天", secs / 86400)
-    }
-}
-
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
-fn validate_hash_prefix(prefix: &str) -> Result<&str> {
-    if prefix.is_empty() {
-        anyhow::bail!("hash 前缀不能为空");
-    }
-    if prefix.len() > 8 {
-        anyhow::bail!("hash 前缀过长: {} (最大 8)", prefix.len());
-    }
-    if !prefix.chars().all(|c| c.is_ascii_hexdigit()) {
-        anyhow::bail!("hash 前缀包含无效字符");
-    }
-    Ok(prefix)
-}
-
-fn validate_idx(idx: usize, max: usize, field_name: &str) -> Result<()> {
-    if idx >= max {
-        anyhow::bail!(
-            "{} 索引 {} 超出范围 (最大 {})",
-            field_name,
-            idx,
-            max.saturating_sub(1)
-        );
-    }
-    Ok(())
-}
 
 const MAX_FILE_DOWNLOAD_SIZE: u64 = 10 * 1024 * 1024;
 
@@ -1697,7 +1649,7 @@ fn handle_callback(
                                         chat_id_c,
                                         format!(
                                             "🅧 Xray-core 最近日志 (最近 50 行):\n\n<pre>{}</pre>",
-                                            escape_html(&log)
+                                            utils::escape_html(&log)
                                         ),
                                     )
                                     .parse_mode(ParseMode::Html)
@@ -1725,7 +1677,7 @@ fn handle_callback(
                                         chat_id_c,
                                         format!(
                                             "📦 Sing-box 最近日志 (最近 50 行):\n\n<pre>{}</pre>",
-                                            escape_html(&log)
+                                            utils::escape_html(&log)
                                         ),
                                     )
                                     .parse_mode(ParseMode::Html)
@@ -1860,7 +1812,7 @@ fn handle_callback(
                         "<i>(无规则)</i>".to_string()
                     } else {
                         let escaped_rules: Vec<String> =
-                            current_rules.iter().map(|r| escape_html(r)).collect();
+                            current_rules.iter().map(|r| utils::escape_html(r)).collect();
                         if escaped_rules.len() > 5 {
                             format!(
                                 "{} (共 {} 条)",
@@ -2040,9 +1992,9 @@ fn handle_callback(
                         let short_hash = &hash[..8];
 
                         let display_rule = if rule.len() > 30 {
-                            format!("{}...", escape_html(&rule[..27]))
+                            format!("{}...", utils::escape_html(&rule[..27]))
                         } else {
-                            escape_html(rule)
+                            utils::escape_html(rule)
                         };
 
                         buttons.push(vec![InlineKeyboardButton::callback(
@@ -2063,7 +2015,7 @@ fn handle_callback(
                 }
                 d if d.starts_with("a_warp_del:") => {
                     let hash_prefix = d.strip_prefix("a_warp_del:").unwrap_or("");
-                    if let Err(e) = validate_hash_prefix(hash_prefix) {
+                    if let Err(e) = utils::validate_hash_prefix(hash_prefix) {
                         bot.answer_callback_query(q.id.clone())
                             .text(format!("❌ {}", e))
                             .await?;
@@ -2095,7 +2047,7 @@ fn handle_callback(
                             msg_id,
                             format!(
                                 "⚠️ <b>删除确认</b>\n\n您确定要删除分流规则 <code>{}</code> 吗？",
-                                escape_html(rule)
+                                utils::escape_html(rule)
                             ),
                         )
                         .parse_mode(ParseMode::Html)
@@ -2115,7 +2067,7 @@ fn handle_callback(
                 }
                 d if d.starts_with("a_warp_del_confirm:") => {
                     let hash_prefix = d.strip_prefix("a_warp_del_confirm:").unwrap_or("");
-                    if let Err(e) = validate_hash_prefix(hash_prefix) {
+                    if let Err(e) = utils::validate_hash_prefix(hash_prefix) {
                         bot.answer_callback_query(q.id.clone())
                             .text(format!("❌ {}", e))
                             .await?;
@@ -3313,7 +3265,7 @@ fn handle_callback(
                     let inbounds = ConfigManager::list_all_inbound_files()
                         .await
                         .unwrap_or_default();
-                    if let Err(e) = validate_idx(idx, inbounds.len(), "用户配置") {
+                    if let Err(e) = utils::validate_idx(idx, inbounds.len(), "用户配置") {
                         bot.answer_callback_query(q.id.clone())
                             .text(format!("❌ {}", e))
                             .await?;
@@ -3374,7 +3326,7 @@ fn handle_callback(
                             bot.edit_message_text(
                             chat_id,
                             msg_id,
-                            format!("⚠️ <b>删除确认</b>\n\n您确定要删除用户 <code>{}</code> 吗？\n(注意：当前版本暂未实现单个用户删除逻辑，此操作可能仅用于演示 UI)", escape_html(email))
+                            format!("⚠️ <b>删除确认</b>\n\n您确定要删除用户 <code>{}</code> 吗？\n(注意：当前版本暂未实现单个用户删除逻辑，此操作可能仅用于演示 UI)", utils::escape_html(email))
                         )
                         .parse_mode(ParseMode::Html)
                         .reply_markup(keyboard)
@@ -3793,7 +3745,7 @@ fn handle_callback(
                         bot.edit_message_text(
                             chat_id,
                             msg_id,
-                            format!("⚠️ <b>删除确认</b>\n\n您确定要删除配置文件 <code>{}</code> 吗？\n此操作不可恢复！", escape_html(filename)),
+                            format!("⚠️ <b>删除确认</b>\n\n您确定要删除配置文件 <code>{}</code> 吗？\n此操作不可恢复！", utils::escape_html(filename)),
                         )
                         .parse_mode(ParseMode::Html)
                         .reply_markup(keyboard)
@@ -3825,7 +3777,7 @@ fn handle_callback(
                             .unwrap_or_default()
                     };
 
-                    if let Err(e) = validate_idx(idx, files.len(), "配置文件") {
+                    if let Err(e) = utils::validate_idx(idx, files.len(), "配置文件") {
                         bot.answer_callback_query(q.id.clone())
                             .text(format!("❌ {}", e))
                             .await?;
@@ -4824,7 +4776,7 @@ fn handle_callback(
 
                     if let Some(manager) = logic::scheduler::get_manager().await {
                         let state = manager.state.lock().await;
-                        if let Err(e) = validate_idx(idx, state.tasks.len(), "任务") {
+                        if let Err(e) = utils::validate_idx(idx, state.tasks.len(), "任务") {
                             drop(state);
                             bot.answer_callback_query(q.id.clone())
                                 .text(format!("❌ {}", e))
@@ -4848,7 +4800,7 @@ fn handle_callback(
                             msg_id,
                             format!(
                                 "⚠️ <b>删除确认</b>\n\n您确定要删除定时任务 <code>{}</code> 吗？",
-                                escape_html(&task_name)
+                                utils::escape_html(&task_name)
                             ),
                         )
                         .parse_mode(ParseMode::Html)
