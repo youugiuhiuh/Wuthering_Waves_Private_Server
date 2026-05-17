@@ -670,4 +670,54 @@ mod tests {
 
         assert!(config.validate().is_err());
     }
+
+    #[test]
+    fn test_cpu_arch_from_amd64() {
+        assert_eq!(CpuArch::from_arch_str("amd64").unwrap(), CpuArch::Amd64);
+    }
+
+    #[test]
+    fn test_cpu_arch_from_arm64() {
+        assert_eq!(CpuArch::from_arch_str("arm64").unwrap(), CpuArch::Arm64);
+    }
+
+    #[test]
+    fn test_cpu_arch_equality() {
+        assert_eq!(CpuArch::Amd64, CpuArch::Amd64);
+        assert_eq!(CpuArch::Arm64, CpuArch::Arm64);
+        assert_ne!(CpuArch::Amd64, CpuArch::Arm64);
+    }
+
+    #[test]
+    fn test_cpu_arch_asset_basename() {
+        assert_eq!(CpuArch::Amd64.asset_basename(), "Xray-linux-64");
+        assert_eq!(CpuArch::Arm64.asset_basename(), "Xray-linux-arm64-v8a");
+    }
+
+    #[test]
+    fn test_wwps_core_release_api_bases_default() {
+        unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
+        let bases = wwps_core_release_api_bases();
+        assert!(!bases.is_empty());
+        assert!(bases[0].contains("github.com"));
+    }
+
+    #[test]
+    fn test_wwps_core_release_api_bases_env_override() {
+        unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", "https://mirror1.example.com,https://mirror2.example.com") };
+        let bases = wwps_core_release_api_bases();
+        assert_eq!(bases.len(), 2);
+        assert_eq!(bases[0], "https://mirror1.example.com");
+        assert_eq!(bases[1], "https://mirror2.example.com");
+        unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
+    }
+
+    #[test]
+    fn test_wwps_core_release_api_bases_trailing_slash_stripped() {
+        unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", "https://mirror.example.com/,https://other.example.com/repos/") };
+        let bases = wwps_core_release_api_bases();
+        assert_eq!(bases[0], "https://mirror.example.com");
+        assert_eq!(bases[1], "https://other.example.com/repos");
+        unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
+    }
 }
