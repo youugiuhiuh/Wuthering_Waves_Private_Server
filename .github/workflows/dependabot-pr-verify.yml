@@ -66,16 +66,20 @@ jobs:
           fi
 
       - name: Build and Test
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           cd ${{ matrix.project.path }}
+
           if [ "${{ matrix.project.language }}" = "go" ]; then
             go build -o ${{ matrix.project.name }} .
             go test ./...
+
           elif [ "${{ matrix.project.language }}" = "rust" ]; then
             cargo build --release
             cargo test
+
           else
-            # 使用 action-yaml-format 检查并格式化 YAML
             gh workflow run action-yaml-format.yml --repo ${{ github.repository }}
           fi
 
