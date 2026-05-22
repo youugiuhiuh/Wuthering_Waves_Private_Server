@@ -2,7 +2,7 @@ name: Dependabot Auto Merge (Official)
 
 on:
   workflow_run:
-    workflows: ["Dependabot PR Verify"] # 依赖你的 Verify workflow 名称
+    workflows: ["Dependabot PR Verify"]
     types:
       - completed
 
@@ -13,13 +13,32 @@ permissions:
 jobs:
   enable-automerge:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }} # 只在 Verify 成功时启用
+    # 【修复 1】必须同时满足：1. Verify 成功 2. 触发原始工作流的人必须是 dependabot
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.actor.login == 'dependabot[bot]' }}
+
     steps:
+      # 【修复 2】不依赖不稳定的 pull_requests[0] 数组，直接用 GitHub CLI 精准定位 PR 号
+      - name: Get Pull Request Number
+        id: get_pr
+        run: |
+          PR_NUMBER=$(gh pr list \
+            --repo "${{ github.repository }}" \
+            --head "${{ github.event.workflow_run.head_branch }}" \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            echo "❌ 未找到对应的 PR，可能已经被合并或关闭"
+            exit 1
+          fi
+          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Enable GitHub Auto Merge
         uses: peter-evans/enable-pull-request-automerge@v3
         with:
-          # PR 要启用自动合并
-          pull-request-number: ${{ github.event.workflow_run.pull_requests[0].number }}
-          merge-method: squash # squash/rebase/merge
-          commit-title: "auto merge: Dependabot PR"
-          commit-message: "Merged automatically after verification"
+          pull-request-number: ${{ steps.get_pr.outputs.PR_NUMBER }}
+          merge-method: squash
+          commit-title: "auto merge: Dependabot PR #${{ steps.get_pr.outputs.PR_NUMBER }}"
+          commit-message: "Merged automatically after verification workflow success"
