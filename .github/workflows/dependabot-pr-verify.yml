@@ -11,94 +11,88 @@ permissions:
 
 jobs:
   test:
-    if: ${{ github.actor == 'dependabot[bot]' }}
+    # 仅在 Dependabot 提交 PR 时运行，节省 Action 分钟数
+    if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
+      fail-fast: false # 即使其中一个项目失败，其他项目也继续测试
       matrix:
         project:
-          - name: rust-tgbot
-            path: rust/tgbot
-            language: rust
-          - name: go-installer
-            path: go/installer
-            language: go
-          - name: sni-tester
-            path: sni_tester
-            language: go
-          - name: github-actions
-            path: .github
-            language: gha
+          - { name: "rust-tgbot", path: "rust/tgbot", language: "rust" }
+          - { name: "go-installer", path: "go/installer", language: "go" }
+          - { name: "sni-tester", path: "sni_tester", language: "go" }
+          - { name: "github-actions", path: ".github", language: "gha" }
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 需要获取历史记录以进行 diff 检查
 
       - name: Determine if project changed
         id: check
         run: |
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }} ${{ github.sha }})
-          if echo "$CHANGED_FILES" | grep -q "${{ matrix.project.path }}"; then
+          # 检查 base 分支和当前提交之间的差异
+          CHANGED=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }} ${{ github.sha }} | grep "^${{ matrix.project.path }}" || true)
+          if [ -n "$CHANGED" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Skip if no changes
-        if: ${{ steps.check.outputs.changed == 'false' }}
-        run: |
-          echo "No changes in ${{ matrix.project.path }}, skipping..."
-          exit 0
+      # ---------------- 环境配置 (加速优化) ----------------
+      - name: Setup Go
+        if: steps.check.outputs.changed == 'true' && matrix.project.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+          cache-dependency-path: ${{ matrix.project.path }}/go.sum
 
-      - name: Setup environment
-        run: |
-          if [ "${{ matrix.project.language }}" = "go" ]; then
-            echo "Setting up Go..."
-            sudo apt-get update
-            sudo apt-get install -y golang-go
-          elif [ "${{ matrix.project.language }}" = "rust" ]; then
-            echo "Setting up Rust..."
-            sudo apt-get update
-            sudo apt-get install -y cargo protobuf-compiler
-          else
-            echo "Setting up action-yaml-format for GitHub Actions workflow..."
-          fi
+      - name: Setup Rust
+        if: steps.check.outputs.changed == 'true' && matrix.project.language == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
 
+      # ---------------- 构建与测试 ----------------
       - name: Build and Test
+        if: steps.check.outputs.changed == 'true'
         run: |
           cd ${{ matrix.project.path }}
           if [ "${{ matrix.project.language }}" = "go" ]; then
-            go build -o ${{ matrix.project.name }} .
             go test ./...
           elif [ "${{ matrix.project.language }}" = "rust" ]; then
-            cargo build --release
             cargo test
           else
-            # 使用 action-yaml-format 检查并格式化 YAML
             gh workflow run action-yaml-format.yml --repo ${{ github.repository }}
           fi
+        env:
+          GH_TOKEN: ${{ github.token }}
 
-      - name: Add automerge label
-        if: success()
-        uses: actions/github-script@v9
+      # ---------------- 标签管理 ----------------
+      - name: Update PR Labels
+        if: steps.check.outputs.changed == 'true' && always()
+        uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.addLabels({
+            const label = "${{ job.status }}" === "success" ? "automerge" : "automerge-failed";
+            const removeLabel = "${{ job.status }}" === "success" ? "automerge-failed" : "automerge";
+
+            // 添加新标签
+            await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              labels: ['automerge']
-            })
+              labels: [label]
+            });
 
-      - name: Add failed label
-        if: failure()
-        uses: actions/github-script@v9
-        with:
-          script: |
-            github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              labels: ['automerge-failed']
-            })
+            // 尝试移除旧标签（避免冲突）
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: removeLabel
+              });
+            } catch (e) {}
