@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    if: ${{ github.actor == 'dependabot[bot]' && contains(github.event.pull_request.labels.*.name, 'dependencies') }}
+    if: ${{ github.actor == 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
