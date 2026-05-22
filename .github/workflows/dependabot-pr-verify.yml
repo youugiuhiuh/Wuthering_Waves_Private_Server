@@ -67,25 +67,25 @@ jobs:
           else
             echo "🔍 开始内联检查 GitHub Actions YAML 语法..."
             python3 -c "
-            import yaml, glob, sys
-            files = glob.glob('workflows/*.yml') + glob.glob('workflows/*.yaml')
-            if not files:
-                print('❌ 未找到任何工作流文件！')
-                sys.exit(1)
-            
-            has_error = False
-            for f in files:
-                try:
-                    with open(f, 'r', encoding='utf-8') as stream:
-                        yaml.safe_load(stream)
-                    print(f'✅ {f} 语法正确')
-                except Exception as e:
-                    print(f'❌ {f} 语法错误:\n{e}')
-                    has_error = True
-            
-            if has_error:
-                sys.exit(1)
-            "
+          import yaml, glob, sys
+          files = glob.glob('workflows/*.yml') + glob.glob('workflows/*.yaml')
+          if not files:
+              print('❌ 未找到任何工作流文件！')
+              sys.exit(1)
+
+          has_error = False
+          for f in files:
+              try:
+                  with open(f, 'r', encoding='utf-8') as stream:
+                      yaml.safe_load(stream)
+                  print(f'✅ {f} 语法正确')
+              except Exception as e:
+                  print(f'❌ {f} 语法错误:\n{e}')
+                  has_error = True
+
+          if has_error:
+              sys.exit(1)
+          "
           fi
 
       # ---------------- 标签管理 ----------------
