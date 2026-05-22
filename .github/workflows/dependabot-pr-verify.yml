@@ -44,7 +44,7 @@ jobs:
       # ---------------- 环境配置 (加速优化) ----------------
       - name: Setup Go
         if: steps.check.outputs.changed == 'true' && matrix.project.language == 'go'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "stable"
           cache-dependency-path: ${{ matrix.project.path }}/go.sum
