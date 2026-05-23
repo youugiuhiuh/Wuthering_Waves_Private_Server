@@ -43,7 +43,9 @@ pub mod maintenance {
     pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/tgbot/bbr3_pending.flag";
     pub const UPGRADE_FLAG_FILE: &str = "/etc/wwps/tgbot/upgrade.flag";
     pub const UNATTENDED_UPGRADES_CONF: &str = "/etc/apt/apt.conf.d/50unattended-upgrades";
+    pub const AUTO_UPGRADES_PERIODIC_CONF: &str = "/etc/apt/apt.conf.d/20auto-upgrades";
     pub const DNF_AUTOMATIC_CONF: &str = "/etc/dnf/automatic.conf";
+    pub const NEEDRESTART_CONF: &str = "/etc/needrestart/needrestart.conf";
     pub const REBOOT_REQUIRED_FLAG: &str = "/var/run/reboot-required";
     pub const DESTRUCT_TARGETS: &[&str] = &[
         "/etc/wwps",
@@ -141,6 +143,18 @@ mod tests {
         assert_eq!(
             maintenance::REBOOT_REQUIRED_FLAG,
             "/var/run/reboot-required"
+        );
+    }
+
+    #[test]
+    fn test_auto_update_supplementary_paths() {
+        assert_eq!(
+            maintenance::AUTO_UPGRADES_PERIODIC_CONF,
+            "/etc/apt/apt.conf.d/20auto-upgrades"
+        );
+        assert_eq!(
+            maintenance::NEEDRESTART_CONF,
+            "/etc/needrestart/needrestart.conf"
         );
     }
 
