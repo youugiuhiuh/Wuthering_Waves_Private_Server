@@ -71,6 +71,13 @@ impl DistroFamily {
     pub fn needrestart_conf_path(&self) -> &'static str {
         paths::maintenance::NEEDRESTART_CONF
     }
+
+    pub fn supplementary_packages(&self) -> &'static [&'static str] {
+        match self {
+            Self::Debian => &["needrestart"],
+            Self::Rhel => &["needrestart"],
+        }
+    }
 }
 
 pub struct AutoUpdateConfigurator;
@@ -108,6 +115,7 @@ emit_via = motd
         .to_string()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn debian_periodic_config() -> String {
         r#"APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
@@ -116,6 +124,7 @@ APT::Periodic::AutocleanInterval "7";
         .to_string()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn needrestart_config() -> String {
         r#"$nrconf{restart} = 'a';
 "#
@@ -156,6 +165,60 @@ APT::Periodic::AutocleanInterval "7";
             }
             DistroFamily::Rhel => {}
         }
+
+        Ok(())
+    }
+
+    pub async fn install_supplementary_packages(
+        distro: DistroFamily,
+    ) -> Vec<(&'static str, Result<()>)> {
+        let package_manager = match distro {
+            DistroFamily::Debian => "apt-get",
+            DistroFamily::Rhel => "dnf",
+        };
+
+        let pkgs = distro.supplementary_packages();
+        let mut results = Vec::new();
+
+        for &pkg in pkgs {
+            let result = run_cmd_checked(package_manager, &["install", "-y", pkg], TIMEOUT_APT)
+                .await
+                .map(|_| ());
+            results.push((pkg, result));
+        }
+
+        results
+    }
+
+    pub async fn write_periodic_config(distro: DistroFamily) -> Result<()> {
+        match distro {
+            DistroFamily::Debian => {
+                let path = distro.periodic_config_path().unwrap();
+                if let Some(parent) = std::path::Path::new(path).parent() {
+                    tokio::fs::create_dir_all(parent)
+                        .await
+                        .with_context(|| format!("创建目录 {} 失败", parent.display()))?;
+                }
+                tokio::fs::write(path, Self::debian_periodic_config())
+                    .await
+                    .with_context(|| format!("写入 APT Periodic 配置 {} 失败", path))?;
+                Ok(())
+            }
+            DistroFamily::Rhel => Ok(()),
+        }
+    }
+
+    pub async fn configure_needrestart(distro: DistroFamily) -> Result<()> {
+        let conf_path = distro.needrestart_conf_path();
+        if let Some(parent) = std::path::Path::new(conf_path).parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("创建 needrestart 配置目录 {} 失败", parent.display()))?;
+        }
+
+        tokio::fs::write(conf_path, Self::needrestart_config())
+            .await
+            .with_context(|| format!("写入 needrestart 配置 {} 失败", conf_path))?;
 
         Ok(())
     }
@@ -410,5 +473,17 @@ mod tests {
     fn test_needrestart_config_content() {
         let config = AutoUpdateConfigurator::needrestart_config();
         assert!(config.contains("$nrconf{restart} = 'a'"));
+    }
+
+    #[test]
+    fn test_supplementary_packages_debian() {
+        let pkgs = DistroFamily::Debian.supplementary_packages();
+        assert!(pkgs.contains(&"needrestart"));
+    }
+
+    #[test]
+    fn test_supplementary_packages_rhel() {
+        let pkgs = DistroFamily::Rhel.supplementary_packages();
+        assert!(pkgs.contains(&"needrestart"));
     }
 }
