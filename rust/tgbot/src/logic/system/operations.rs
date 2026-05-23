@@ -115,7 +115,6 @@ emit_via = motd
         .to_string()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn debian_periodic_config() -> String {
         r#"APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
@@ -124,7 +123,6 @@ APT::Periodic::AutocleanInterval "7";
         .to_string()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn needrestart_config() -> String {
         r#"$nrconf{restart} = 'a';
 "#
