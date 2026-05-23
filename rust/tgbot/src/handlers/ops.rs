@@ -1,7 +1,10 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
-use std::time::Duration;
+use super::schedule::{build_custom_schedule_keyboard, build_custom_schedule_text};
+use std::time::{Duration, Instant};
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
+use crate::app::state::{ScheduleFrequency, ScheduleInputState};
+use crate::logic::scheduler::TaskType;
 use tgbot::logic::UpgradeManager;
 use tgbot::logic::maintenance::MaintenanceManager;
 use tgbot::logic::operations::{MAINTENANCE_FLAG, Operations, REBOOT_FLAG};
@@ -207,57 +210,38 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             });
         }
         "a_sys_maint" => {
-            if MAINTENANCE_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-                ctx.bot
-                    .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 配置任务正在执行中，请稍后再试")
-                    .await?;
-                return Ok(HandlerAction::Done);
-            }
-
-            let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-                "⚙️ 配置中... (请等待)",
-                "a_sys_maint_disabled",
-            )]]);
-            let _ = ctx
-                .bot
-                .edit_message_reply_markup(ctx.chat_id, ctx.msg_id)
-                .reply_markup(keyboard)
+            ctx.state.remove_schedule_input(ctx.chat_id).await;
+            ctx.state
+                .insert_schedule_input(
+                    ctx.chat_id,
+                    ScheduleInputState {
+                        updated_at: Instant::now(),
+                        task_type: TaskType::SecurityUpdate,
+                        frequency: ScheduleFrequency::Daily,
+                        timezone: "UTC".to_string(),
+                        day_of_week: None,
+                        hour: None,
+                        minute: None,
+                        return_to: "m_sys_cmd".to_string(),
+                    },
+                )
                 .await;
 
+            let Some(input_state) = ctx.state.schedule_input_snapshot(ctx.chat_id).await else {
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
+                    .text("⚠️ 初始化配置状态失败，请重试。")
+                    .await?;
+                return Ok(HandlerAction::Done);
+            };
+            let text = build_custom_schedule_text(&input_state);
+            let ret = input_state.return_to.clone();
+
             ctx.bot
-                .answer_callback_query(ctx.q.id.clone())
-                .text("⚙️ 正在配置自动安全更新...")
+                .edit_message_text(ctx.chat_id, ctx.msg_id, text)
+                .parse_mode(ParseMode::Html)
+                .reply_markup(build_custom_schedule_keyboard(&ret))
                 .await?;
-            let bot_c = ctx.bot.clone();
-            let chat_id = ctx.chat_id;
-            tokio::spawn(async move {
-                match Operations::perform_maintenance().await {
-                    Ok(log) => {
-                        let log_tail = if log.len() > 4000 {
-                            format!("... (Truncated)\n{}", &log[log.len() - 3000..])
-                        } else {
-                            log
-                        };
-                        let _ = bot_c
-                            .send_message(
-                                chat_id,
-                                format!(
-                                    "✅ <b>自动安全更新配置完成</b>\n\n<pre>{}</pre>",
-                                    log_tail
-                                ),
-                            )
-                            .parse_mode(ParseMode::Html)
-                            .await;
-                    }
-                    Err(e) => {
-                        let _ = bot_c
-                            .send_message(chat_id, format!("❌ <b>维护失败</b>\n\n原因: {}", e))
-                            .parse_mode(ParseMode::Html)
-                            .await;
-                    }
-                }
-            });
         }
         "a_sys_reboot" => {
             if REBOOT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
