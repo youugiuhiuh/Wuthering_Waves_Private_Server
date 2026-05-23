@@ -60,6 +60,17 @@ impl DistroFamily {
             Self::Rhel => "dnf-automatic-install.timer",
         }
     }
+
+    pub fn periodic_config_path(&self) -> Option<&'static str> {
+        match self {
+            Self::Debian => Some(paths::maintenance::AUTO_UPGRADES_PERIODIC_CONF),
+            Self::Rhel => None,
+        }
+    }
+
+    pub fn needrestart_conf_path(&self) -> &'static str {
+        paths::maintenance::NEEDRESTART_CONF
+    }
 }
 
 pub struct AutoUpdateConfigurator;
@@ -73,8 +84,7 @@ impl AutoUpdateConfigurator {
     }
 
     fn debian_config() -> String {
-        r#"Unattended-Upgrade "1";
-Unattended-Upgrade::Allowed-Origins {
+        r#"Unattended-Upgrade::Allowed-Origins {
     "${distro_id}:${distro_codename}-security";
 };
 Unattended-Upgrade::AutoFixInterruptedDpkg "true";
@@ -88,11 +98,26 @@ Unattended-Upgrade::Automatic-Reboot-Time "03:00";
     fn rhel_config() -> String {
         r#"[commands]
 upgrade_type = security
+download_updates = yes
 apply_updates = yes
 reboot = when-needed
 
 [emitters]
 emit_via = motd
+"#
+        .to_string()
+    }
+
+    pub(crate) fn debian_periodic_config() -> String {
+        r#"APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+"#
+        .to_string()
+    }
+
+    pub(crate) fn needrestart_config() -> String {
+        r#"$nrconf{restart} = 'a';
 "#
         .to_string()
     }
@@ -320,9 +345,11 @@ mod tests {
     #[test]
     fn test_debian_config_content() {
         let config = AutoUpdateConfigurator::generate_config(DistroFamily::Debian);
-        assert!(config.contains("Unattended-Upgrade"));
+        assert!(config.contains("Allowed-Origins"));
         assert!(config.contains("security"));
         assert!(config.contains("Automatic-Reboot"));
+        assert!(config.contains("AutoFixInterruptedDpkg"));
+        assert!(!config.contains("MailOnlyOnError"));
     }
 
     #[test]
@@ -331,6 +358,7 @@ mod tests {
         assert!(config.contains("upgrade_type"));
         assert!(config.contains("security"));
         assert!(config.contains("apply_updates"));
+        assert!(config.contains("download_updates"));
         assert!(config.contains("reboot"));
     }
 
@@ -348,5 +376,39 @@ mod tests {
         assert_eq!(cmds.len(), 2);
         assert_eq!(cmds[0].0, "dnf");
         assert_eq!(cmds[1].0, "dnf");
+    }
+
+    #[test]
+    fn test_distro_periodic_config_path() {
+        assert!(DistroFamily::Debian.periodic_config_path().is_some());
+        assert!(DistroFamily::Rhel.periodic_config_path().is_none());
+    }
+
+    #[test]
+    fn test_distro_needrestart_conf_path() {
+        assert!(
+            DistroFamily::Debian
+                .needrestart_conf_path()
+                .contains("needrestart")
+        );
+        assert!(
+            DistroFamily::Rhel
+                .needrestart_conf_path()
+                .contains("needrestart")
+        );
+    }
+
+    #[test]
+    fn test_debian_periodic_config_content() {
+        let config = AutoUpdateConfigurator::debian_periodic_config();
+        assert!(config.contains("APT::Periodic::Update-Package-Lists \"1\""));
+        assert!(config.contains("APT::Periodic::Unattended-Upgrade \"1\""));
+        assert!(config.contains("APT::Periodic::AutocleanInterval \"7\""));
+    }
+
+    #[test]
+    fn test_needrestart_config_content() {
+        let config = AutoUpdateConfigurator::needrestart_config();
+        assert!(config.contains("$nrconf{restart} = 'a'"));
     }
 }
