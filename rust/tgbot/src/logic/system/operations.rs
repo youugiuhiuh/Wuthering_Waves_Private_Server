@@ -434,9 +434,12 @@ mod tests {
         let config = AutoUpdateConfigurator::generate_config(DistroFamily::Debian);
         assert!(config.contains("Allowed-Origins"));
         assert!(config.contains("security"));
-        assert!(config.contains("Automatic-Reboot"));
         assert!(config.contains("AutoFixInterruptedDpkg"));
+        assert!(config.contains("Automatic-Reboot"));
+        assert!(config.contains("Automatic-Reboot-Time"));
+        assert!(config.contains("Remove-Unused-Dependencies"));
         assert!(!config.contains("MailOnlyOnError"));
+        assert!(!config.contains("Unattended-Upgrade \"1\""));
     }
 
     #[test]
@@ -444,9 +447,12 @@ mod tests {
         let config = AutoUpdateConfigurator::generate_config(DistroFamily::Rhel);
         assert!(config.contains("upgrade_type"));
         assert!(config.contains("security"));
-        assert!(config.contains("apply_updates"));
         assert!(config.contains("download_updates"));
+        assert!(config.contains("apply_updates"));
         assert!(config.contains("reboot"));
+        assert!(config.contains("when-needed"));
+        assert!(config.contains("emit_via"));
+        assert!(config.contains("motd"));
     }
 
     #[test]
@@ -486,20 +492,6 @@ mod tests {
     }
 
     #[test]
-    fn test_debian_periodic_config_content() {
-        let config = AutoUpdateConfigurator::debian_periodic_config();
-        assert!(config.contains("APT::Periodic::Update-Package-Lists \"1\""));
-        assert!(config.contains("APT::Periodic::Unattended-Upgrade \"1\""));
-        assert!(config.contains("APT::Periodic::AutocleanInterval \"7\""));
-    }
-
-    #[test]
-    fn test_needrestart_config_content() {
-        let config = AutoUpdateConfigurator::needrestart_config();
-        assert!(config.contains("$nrconf{restart} = 'a'"));
-    }
-
-    #[test]
     fn test_supplementary_packages_debian() {
         let pkgs = DistroFamily::Debian.supplementary_packages();
         assert!(pkgs.contains(&"needrestart"));
@@ -509,5 +501,45 @@ mod tests {
     fn test_supplementary_packages_rhel() {
         let pkgs = DistroFamily::Rhel.supplementary_packages();
         assert!(pkgs.contains(&"needrestart"));
+    }
+
+    #[test]
+    fn test_debian_periodic_config() {
+        let config = AutoUpdateConfigurator::debian_periodic_config();
+        assert!(config.contains("APT::Periodic::Update-Package-Lists \"1\""));
+        assert!(config.contains("APT::Periodic::Unattended-Upgrade \"1\""));
+        assert!(config.contains("APT::Periodic::AutocleanInterval \"7\""));
+    }
+
+    #[test]
+    fn test_needrestart_config() {
+        let config = AutoUpdateConfigurator::needrestart_config();
+        assert!(config.contains("$nrconf{restart} = 'a'"));
+    }
+
+    #[test]
+    fn test_supplementary_packages_contains_needrestart() {
+        assert!(
+            DistroFamily::Debian
+                .supplementary_packages()
+                .contains(&"needrestart")
+        );
+        assert!(
+            DistroFamily::Rhel
+                .supplementary_packages()
+                .contains(&"needrestart")
+        );
+    }
+
+    #[test]
+    fn test_needrestart_conf_path() {
+        assert_eq!(
+            DistroFamily::Debian.needrestart_conf_path(),
+            "/etc/needrestart/needrestart.conf"
+        );
+        assert_eq!(
+            DistroFamily::Rhel.needrestart_conf_path(),
+            "/etc/needrestart/needrestart.conf"
+        );
     }
 }
