@@ -83,23 +83,25 @@ impl DistroFamily {
 pub struct AutoUpdateConfigurator;
 
 impl AutoUpdateConfigurator {
-    pub fn generate_config(distro: DistroFamily) -> String {
+    pub fn generate_config(distro: DistroFamily, reboot_time: &str) -> String {
         match distro {
-            DistroFamily::Debian => Self::debian_config(),
+            DistroFamily::Debian => Self::debian_config(reboot_time),
             DistroFamily::Rhel => Self::rhel_config(),
         }
     }
 
-    fn debian_config() -> String {
-        r#"Unattended-Upgrade::Allowed-Origins {
-    "${distro_id}:${distro_codename}-security";
-};
+    fn debian_config(reboot_time: &str) -> String {
+        format!(
+            r#"Unattended-Upgrade::Allowed-Origins {{
+    "${{distro_id}}:${{distro_codename}}-security";
+}};
 Unattended-Upgrade::AutoFixInterruptedDpkg "true";
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
 Unattended-Upgrade::Automatic-Reboot "true";
-Unattended-Upgrade::Automatic-Reboot-Time "03:00";
-"#
-        .to_string()
+Unattended-Upgrade::Automatic-Reboot-Time "{}";
+"#,
+            reboot_time
+        )
     }
 
     fn rhel_config() -> String {
@@ -139,8 +141,8 @@ APT::Periodic::AutocleanInterval "7";
         Ok(())
     }
 
-    pub async fn write_config(distro: DistroFamily) -> Result<()> {
-        let config = Self::generate_config(distro);
+    pub async fn write_config(distro: DistroFamily, reboot_time: &str) -> Result<()> {
+        let config = Self::generate_config(distro, reboot_time);
         let path = distro.auto_update_config_path();
         tokio::fs::write(path, &config)
             .await
@@ -271,6 +273,10 @@ impl Operations {
     }
 
     pub async fn perform_maintenance() -> Result<String> {
+        Self::perform_maintenance_with_reboot_time("03:00").await
+    }
+
+    pub async fn perform_maintenance_with_reboot_time(reboot_time: &str) -> Result<String> {
         if MAINTENANCE_FLAG.swap(true, Ordering::SeqCst) {
             anyhow::bail!("❌ 维护任务正在执行中，请稍后再试");
         }
@@ -279,7 +285,6 @@ impl Operations {
         let mut log = String::new();
         log.push_str("🔄 正在开始系统维护...\n");
 
-        // 1. Detect distro family
         log.push_str("🔍 [1/7] 检测系统发行版...\n");
         let distro = match DistroFamily::detect().await {
             Ok(d) => {
@@ -292,7 +297,6 @@ impl Operations {
             }
         };
 
-        // 2. Install primary auto-update package
         log.push_str("📦 [2/7] 安装自动更新包...\n");
         match AutoUpdateConfigurator::install_package(distro).await {
             Ok(_) => log.push_str("✅ 自动更新包安装完成\n"),
@@ -302,7 +306,6 @@ impl Operations {
             }
         };
 
-        // 3. Install supplementary packages (needrestart, etc.) — non-fatal
         log.push_str("📦 [3/7] 安装辅助包 (needrestart)...\n");
         let supp_results = AutoUpdateConfigurator::install_supplementary_packages(distro).await;
         for (pkg, result) in &supp_results {
@@ -312,14 +315,12 @@ impl Operations {
             }
         }
 
-        // 4. Write main config (50unattended-upgrades / automatic.conf)
         log.push_str("📝 [4/7] 写入自动更新配置...\n");
-        match AutoUpdateConfigurator::write_config(distro).await {
+        match AutoUpdateConfigurator::write_config(distro, reboot_time).await {
             Ok(_) => log.push_str("✅ 主配置写入完成\n"),
             Err(e) => log.push_str(&format!("❌ 主配置写入失败: {}\n", e)),
         }
 
-        // 5. Write supplementary configs (20auto-upgrades + needrestart.conf)
         log.push_str("📝 [5/7] 写入辅助配置...\n");
         match AutoUpdateConfigurator::write_periodic_config(distro).await {
             Ok(_) => log.push_str("✅ APT Periodic 配置写入完成\n"),
@@ -336,22 +337,16 @@ impl Operations {
             log.push_str("⚠️ needrestart 未安装，跳过自动重启配置\n");
         }
 
-        // 6. Enable services
         log.push_str("⚡ [6/7] 启用自动更新服务...\n");
         match AutoUpdateConfigurator::enable_service(distro).await {
             Ok(_) => log.push_str("✅ 自动更新服务已启用\n"),
             Err(e) => log.push_str(&format!("❌ 启用服务失败: {}\n", e)),
         }
 
-        // 7. One-time cleanup + check reboot
         log.push_str("🧹 [7/7] 清理与检查...\n");
         let cleanup_cmds = Self::cleanup_commands(distro);
         for (i, (cmd, args)) in cleanup_cmds.iter().enumerate() {
-            let step_desc = if i == 0 {
-                "移除无用包"
-            } else {
-                "清理缓存"
-            };
+            let step_desc = if i == 0 { "移除无用包" } else { "清理缓存" };
             match run_cmd_checked(cmd, args, TIMEOUT_APT).await {
                 Ok(_) => log.push_str(&format!("  ✅ {}完成\n", step_desc)),
                 Err(e) => log.push_str(&format!("  ⚠️ {}失败: {}\n", step_desc, e)),
@@ -369,7 +364,28 @@ impl Operations {
     }
 
     pub async fn perform_security_update_task() -> Result<()> {
-        todo!("SecurityUpdate task implementation - Task 2 will implement this")
+        let distro = DistroFamily::detect().await?;
+        match distro {
+            DistroFamily::Debian => {
+                run_cmd_checked(
+                    "sh",
+                    &["-c", "unattended-upgrade -v"],
+                    TIMEOUT_APT,
+                )
+                .await
+                .context("执行 unattended-upgrade 失败")?;
+            }
+            DistroFamily::Rhel => {
+                run_cmd_checked(
+                    "sh",
+                    &["-c", "dnf automatic --installupdates"],
+                    TIMEOUT_APT,
+                )
+                .await
+                .context("执行 dnf automatic 失败")?;
+            }
+        }
+        Ok(())
     }
 
     pub async fn reboot_system() -> Result<()> {
@@ -433,20 +449,27 @@ mod tests {
 
     #[test]
     fn test_debian_config_content() {
-        let config = AutoUpdateConfigurator::generate_config(DistroFamily::Debian);
+        let config = AutoUpdateConfigurator::generate_config(DistroFamily::Debian, "03:00");
         assert!(config.contains("Allowed-Origins"));
         assert!(config.contains("security"));
         assert!(config.contains("AutoFixInterruptedDpkg"));
         assert!(config.contains("Automatic-Reboot"));
         assert!(config.contains("Automatic-Reboot-Time"));
+        assert!(config.contains("03:00"));
         assert!(config.contains("Remove-Unused-Dependencies"));
         assert!(!config.contains("MailOnlyOnError"));
         assert!(!config.contains("Unattended-Upgrade \"1\""));
     }
 
     #[test]
+    fn test_debian_config_custom_reboot_time() {
+        let config = AutoUpdateConfigurator::generate_config(DistroFamily::Debian, "05:30");
+        assert!(config.contains("Automatic-Reboot-Time \"05:30\";"));
+    }
+
+    #[test]
     fn test_rhel_config_content() {
-        let config = AutoUpdateConfigurator::generate_config(DistroFamily::Rhel);
+        let config = AutoUpdateConfigurator::generate_config(DistroFamily::Rhel, "03:00");
         assert!(config.contains("upgrade_type"));
         assert!(config.contains("security"));
         assert!(config.contains("download_updates"));
