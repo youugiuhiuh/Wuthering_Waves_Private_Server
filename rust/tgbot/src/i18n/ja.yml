@@ -1,4 +1,7 @@
 # Japanese
+common:
+  yes: "はい"
+  no: "いいえ"
 menu:
   main: "🏠 メインメニュー\n機能モジュールを選択してください:"
   main_prompt: "🏠 メインメニュー\n操作カテゴリを選択してください:"
@@ -24,6 +27,7 @@ auth:
 
 session:
   title: "🔐 セッション有効時間設定"
+  timeout_title: "🔐 <b>セッション有効時間設定</b>\n\n現在: <b>%current%</b>\n\nTOTP認証後のセッション有効時間。期限切れの場合は再認証が必要です。"
   current: "現在: %duration%"
   description: "\n\nTOTP認証後のセッション有効時間。期限切れの場合は再認証が必要です。"
   set_success: "✅ セッション有効時間を %duration% に設定しました"
@@ -64,6 +68,7 @@ schedule:
   no_tasks: "📝 スケジュールタスクはまだありません"
   add: "➕ タスクを追加"
   remove: "➖ タスクを削除"
+  daily_no_day: "⚠️ デイリータスクの実行時間が指定されていません。時間を選択してください。"
   add_title: "➕ クイックタスクを追加\nプリセットテンプレートを選択してください:"
   custom_title: "🧩 カスタムスケジュールタスク\nまずタスクタイプと周期を選択:"
   custom_config: "🧩 カスタムスケジュールタスク\n\n📌 タスク: %task%\n🔁 周期: %freq%%day_line%\n🌍 タイムゾーン: %tz_label%\n   %tz%\n🕒 時間: %hour%:%minute%\n\nボタンをクリックして設定を完了してください。"
@@ -269,11 +274,16 @@ startup:
   scheduler_init: "⏰ スケジューラの初期化を開始..."
   scheduler_done: "✅ スケジューラの初期化が完了しました"
   scheduler_failed: "❌ スケジューラの初期化に失敗しました"
+  task_geo_update: "GeoData 更新"
+  task_reboot: "システム再起動"
+  task_reload_core: "コアリロード"
+  task_unknown: "不明なタスク (非推奨)"
   bot_starting: "🚀 Botが起動しています..."
   online_msg: "🤖 Botがオンラインになりました\n\n🌍 IP: %ip%\n💻 システム: %sys%"
   upgrade_success: "✅ Botが %version% に正常に更新されました。"
   upgrade_success_no_version: "✅ Botの自己更新が完了しました。"
   bbr3_reboot_title: "✅ BBR3 再起動後検証結果"
+  bbr3_reboot_result: "✅ <b>BBR3 再起動後検証結果</b>\n\n<code>uname -r</code>\n<code>%uname_r%</code>\n\n<code>sysctl net.ipv4.tcp_congestion_control</code>\n<code>net.ipv4.tcp_congestion_control = %tcp_cc%</code>\n\n<code>cat /proc/version</code>\n<code>%proc_version%</code>\n\nカーネル名に XanMod を含む: <b>%has_xanmod_kernel%</b>\n/proc/version に XanMod を含む: <b>%has_xanmod_proc%</b>"
   config_missing: "設定ファイル %path% は存在しますが、%key% は存在しません。setup時に生成された .key と config.enc をこのマシンにデプロイするか、このマシンで tgbot --setup を再実行して初期化を完了してください。"
 
 commands:

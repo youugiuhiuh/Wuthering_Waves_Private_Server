@@ -1,4 +1,7 @@
 # English
+common:
+  yes: "Yes"
+  no: "No"
 menu:
   main: "🏠 Main Menu\nPlease select a function module:"
   main_prompt: "🏠 Main Menu\nPlease select an operation category:"
@@ -24,6 +27,7 @@ auth:
 
 session:
   title: "🔐 Session Duration Setting"
+  timeout_title: "🔐 <b>Session Duration Setting</b>\n\nCurrent: <b>%current%</b>\n\nDuration of session validity after TOTP authentication. Re-authentication required after expiry."
   current: "Current: %duration%"
   description: "\n\nSession duration after TOTP authentication. Re-authentication required after expiry."
   set_success: "✅ Session duration set to %duration%"
@@ -269,11 +273,16 @@ startup:
   scheduler_init: "⏰ Initializing scheduler..."
   scheduler_done: "✅ Scheduler initialized"
   scheduler_failed: "❌ Scheduler initialization failed"
+  task_geo_update: "GeoData Update"
+  task_reboot: "System Reboot"
+  task_reload_core: "Reload Core"
+  task_unknown: "Unknown Task (Deprecated)"
   bot_starting: "🚀 Bot is starting..."
   online_msg: "🤖 Bot is online\n\n🌍 IP: %ip%\n💻 System: %sys%"
   upgrade_success: "✅ Bot successfully updated to %version%."
   upgrade_success_no_version: "✅ Bot self-update complete."
   bbr3_reboot_title: "✅ BBR3 Post-reboot Verification Result"
+  bbr3_reboot_result: "✅ <b>BBR3 Post-reboot Verification Result</b>\n\n<code>uname -r</code>\n<code>%uname_r%</code>\n\n<code>sysctl net.ipv4.tcp_congestion_control</code>\n<code>net.ipv4.tcp_congestion_control = %tcp_cc%</code>\n\n<code>cat /proc/version</code>\n<code>%proc_version%</code>\n\nKernel name contains XanMod: <b>%has_xanmod_kernel%</b>\n/proc/version contains XanMod: <b>%has_xanmod_proc%</b>"
   config_missing: "Config file %path% exists, but %key% does not exist. Please deploy the .key generated during setup along with config.enc to this machine, or re-run tgbot --setup on this machine to complete initialization."
 
 commands:

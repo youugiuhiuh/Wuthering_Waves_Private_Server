@@ -435,7 +435,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     let _ = bot_clone
                         .send_message(
                             chat_id_clone,
-                            t!("xray.upgrade_failed", locale = "zh-CN")
+                            t!("xray.upgrade_failed", locale = &lang)
                                 .replace("%error%", &err.to_string()),
                         )
                         .await;
@@ -536,7 +536,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     let _ = bot_clone
                         .send_message(
                             chat_id_clone,
-                            t!("xray.upgrade_failed", locale = "zh-CN")
+                            t!("xray.upgrade_failed", locale = &lang)
                                 .replace("%error%", &err.to_string()),
                         )
                         .await;

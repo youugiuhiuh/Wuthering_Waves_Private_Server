@@ -23,6 +23,15 @@ impl TaskType {
         }
     }
 
+    pub fn i18n_key(&self) -> &'static str {
+        match self {
+            TaskType::GeoUpdate => "scheduler.task_geo_update",
+            TaskType::Reboot => "scheduler.task_reboot",
+            TaskType::ReloadCore => "scheduler.task_reload_core",
+            TaskType::Unknown => "scheduler.task_unknown",
+        }
+    }
+
     pub async fn execute(&self, bot: &Bot, chat_id: ChatId) -> Result<()> {
         match self {
             TaskType::GeoUpdate => {

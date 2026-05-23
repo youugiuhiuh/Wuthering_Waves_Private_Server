@@ -9,7 +9,6 @@ use tgbot::logic::installer::WarpInstaller;
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     let data = ctx.data.as_str();
-    let _lang = ctx.state.language().await;
 
     match data {
         "m_warp" => {

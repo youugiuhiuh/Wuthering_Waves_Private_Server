@@ -23,10 +23,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
             let msg_id_clone = ctx.msg_id;
+            let lang_for_task = lang.clone();
 
             tokio::spawn(async move {
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-                let lang_inner = "zh-CN".to_string();
+                let lang_inner = lang_for_task;
                 let lang_for_task = lang_inner.clone();
 
                 let bot_for_updates = bot_clone.clone();
@@ -93,8 +94,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .await?;
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
+            let lang_inner = lang.clone();
             tokio::spawn(async move {
-                let lang_inner = "zh-CN".to_string();
                 match UpgradeManager::new() {
                     Ok(manager) => {
                         if let Err(err) = manager.run(bot_clone.clone(), chat_id_clone).await {
@@ -123,11 +124,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
             let msg_id_clone = ctx.msg_id;
-            let lang_inner = Arc::new("zh-CN".to_string());
+            let lang_arc = Arc::new(lang.clone());
+            let lang_for_success = lang_arc.clone();
 
             tokio::spawn(async move {
                 let bot_for_cb = bot_clone.clone();
-                let lang_arc = lang_inner.clone();
+                let lang_arc = lang_arc.clone();
                 let progress_cb = move |_: f64, text: &str| {
                     let bot = bot_for_cb.clone();
                     let text = text.to_string();
@@ -154,7 +156,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         let _ = bot_clone
                             .send_message(
                                 chat_id_clone,
-                                t!("ops.geo_success", locale = lang_inner.as_str()),
+                                t!("ops.geo_success", locale = lang_for_success.as_str()),
                             )
                             .await;
                     }
@@ -162,7 +164,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         let _ = bot_clone
                             .send_message(
                                 chat_id_clone,
-                                t!("ops.geo_failed", locale = lang_inner.as_str())
+                                t!("ops.geo_failed", locale = lang_for_success.as_str())
                                     .replace("%error%", &e.to_string()),
                             )
                             .await;
@@ -186,10 +188,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
             let msg_id_clone = ctx.msg_id;
+            let lang_for_task = lang.clone();
 
             tokio::spawn(async move {
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-                let lang_inner = "zh-CN".to_string();
+                let lang_inner = lang_for_task;
                 let lang_for_task = lang_inner.clone();
 
                 let bot_for_updates = bot_clone.clone();
@@ -280,8 +283,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .await?;
             let bot_c = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
+            let lang_inner = lang.clone();
             tokio::spawn(async move {
-                let lang_inner = "zh-CN".to_string();
                 match Operations::perform_maintenance().await {
                     Ok(log) => {
                         let log_tail = if log.len() > 4000 {

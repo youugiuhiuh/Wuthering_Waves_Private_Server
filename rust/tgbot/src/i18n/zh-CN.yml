@@ -1,4 +1,7 @@
 # Chinese (Simplified) - Default fallback language
+common:
+  yes: "是"
+  no: "否"
 menu:
   main: "🏠 主菜单\n请选择功能模块:"
   main_prompt: "🏠 主菜单\n请选择操作类目:"
@@ -73,6 +76,7 @@ schedule:
   no_tasks: "📝 暂无定时任务"
   add: "➕ 添加任务"
   remove: "➖ 删除任务"
+  daily_no_day: "⚠️ 每日任务未指定执行时间，请先选择时间"
   add_title: "➕ 添加快速任务\n请选择预设模板:"
   custom_title: "🧩 自定义定时任务\n先选择任务类型和周期:"
   custom_config: "🧩 自定义定时任务\n\n📌 任务: %task%\n🔁 周期: %freq%%day_line%\n🌍 时区: %tz_label%\n   %tz%\n🕒 时间: %hour%:%minute%\n\n请继续点击按钮完成设置。"
@@ -285,11 +289,16 @@ startup:
   scheduler_init: "⏰ 开始初始化调度器..."
   scheduler_done: "✅ 调度器初始化完成"
   scheduler_failed: "❌ 初始化调度器失败"
+  task_geo_update: "GeoData 更新"
+  task_reboot: "系统重启"
+  task_reload_core: "重载核心"
+  task_unknown: "未知任务 (已弃用)"
   bot_starting: "🚀 Bot is starting..."
   online_msg: "🤖 Bot 已上线\n\n🌍 IP: %ip%\n💻 系统: %sys%"
   upgrade_success: "✅ Bot 已成功更新至 %version%。"
   upgrade_success_no_version: "✅ Bot 已完成自更新。"
   bbr3_reboot_title: "✅ BBR3 重启后校验结果"
+  bbr3_reboot_result: "✅ <b>BBR3 重启后校验结果</b>\n\n<code>uname -r</code>\n<code>%uname_r%</code>\n\n<code>sysctl net.ipv4.tcp_congestion_control</code>\n<code>net.ipv4.tcp_congestion_control = %tcp_cc%</code>\n\n<code>cat /proc/version</code>\n<code>%proc_version%</code>\n\n内核名包含 XanMod: <b>%has_xanmod_kernel%</b>\n/proc/version 包含 XanMod: <b>%has_xanmod_proc%</b>"
   config_missing: "配置文件 %path% 存在，但 %key% 不存在。请将 setup 时生成的 .key 与 config.enc 一并部署到本机，或在本机重新执行 tgbot --setup 完成初始化。"
 
 commands:

@@ -502,7 +502,7 @@ async fn notify_upgrade_success(bot: &Bot, admin_id: i64, lang: &str) -> Result<
     Ok(())
 }
 
-async fn notify_bbr3_reboot_result(bot: &Bot, admin_id: i64, _lang: &str) -> Result<()> {
+async fn notify_bbr3_reboot_result(bot: &Bot, admin_id: i64, lang: &str) -> Result<()> {
     let flag_path = Path::new(BBR3_PENDING_FLAG_FILE);
     if !flag_path.exists() {
         return Ok(());
@@ -514,17 +514,23 @@ async fn notify_bbr3_reboot_result(bot: &Bot, admin_id: i64, _lang: &str) -> Res
         eprintln!("[WARN] 无法删除 BBR3 标记文件: {}", e);
     }
 
-    let kernel_hint = if info.has_xanmod_kernel { "是" } else { "否" };
-    let proc_hint = if info.has_xanmod_proc_version {
-        "是"
+    let kernel_hint = if info.has_xanmod_kernel {
+        t!("common.yes", locale = lang)
     } else {
-        "否"
+        t!("common.no", locale = lang)
+    };
+    let proc_hint = if info.has_xanmod_proc_version {
+        t!("common.yes", locale = lang)
+    } else {
+        t!("common.no", locale = lang)
     };
 
-    let message = format!(
-        "✅ <b>BBR3 重启后校验结果</b>\n\n<code>uname -r</code>\n<code>{}</code>\n\n<code>sysctl net.ipv4.tcp_congestion_control</code>\n<code>net.ipv4.tcp_congestion_control = {}</code>\n\n<code>cat /proc/version</code>\n<code>{}</code>\n\n内核名包含 XanMod: <b>{}</b>\n/proc/version 包含 XanMod: <b>{}</b>",
-        info.uname_r, info.tcp_congestion_control, info.proc_version, kernel_hint, proc_hint
-    );
+    let message = t!("ops.bbr3_reboot_result", locale = lang)
+        .replace("%uname_r%", &info.uname_r)
+        .replace("%tcp_cc%", &info.tcp_congestion_control)
+        .replace("%proc_version%", &info.proc_version)
+        .replace("%has_xanmod_kernel%", &kernel_hint)
+        .replace("%has_xanmod_proc%", &proc_hint);
 
     bot.send_message(ChatId(admin_id), message)
         .parse_mode(ParseMode::Html)

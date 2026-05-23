@@ -8,7 +8,6 @@ use tgbot::logic::system::SystemMonitor;
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     let data = ctx.data.as_str();
-    let _lang = ctx.state.language().await;
 
     match data {
         "m_singbox_mgmt" => {
