@@ -52,6 +52,7 @@ chrono-tz = "0.10.4"
 prost = "0.14"
 thiserror = "2.0"
 tempfile = "3.8"
+rust-i18n = "4"
 
 [dev-dependencies]
 env_logger = "0.11.8"
