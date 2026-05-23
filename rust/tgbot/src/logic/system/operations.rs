@@ -60,6 +60,24 @@ impl DistroFamily {
             Self::Rhel => "dnf-automatic-install.timer",
         }
     }
+
+    pub fn periodic_config_path(&self) -> Option<&'static str> {
+        match self {
+            Self::Debian => Some(paths::maintenance::AUTO_UPGRADES_PERIODIC_CONF),
+            Self::Rhel => None,
+        }
+    }
+
+    pub fn needrestart_conf_path(&self) -> &'static str {
+        paths::maintenance::NEEDRESTART_CONF
+    }
+
+    pub fn supplementary_packages(&self) -> &'static [&'static str] {
+        match self {
+            Self::Debian => &["needrestart"],
+            Self::Rhel => &["needrestart"],
+        }
+    }
 }
 
 pub struct AutoUpdateConfigurator;
@@ -73,8 +91,7 @@ impl AutoUpdateConfigurator {
     }
 
     fn debian_config() -> String {
-        r#"Unattended-Upgrade "1";
-Unattended-Upgrade::Allowed-Origins {
+        r#"Unattended-Upgrade::Allowed-Origins {
     "${distro_id}:${distro_codename}-security";
 };
 Unattended-Upgrade::AutoFixInterruptedDpkg "true";
@@ -88,11 +105,26 @@ Unattended-Upgrade::Automatic-Reboot-Time "03:00";
     fn rhel_config() -> String {
         r#"[commands]
 upgrade_type = security
+download_updates = yes
 apply_updates = yes
 reboot = when-needed
 
 [emitters]
 emit_via = motd
+"#
+        .to_string()
+    }
+
+    pub(crate) fn debian_periodic_config() -> String {
+        r#"APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+"#
+        .to_string()
+    }
+
+    pub(crate) fn needrestart_config() -> String {
+        r#"$nrconf{restart} = 'a';
 "#
         .to_string()
     }
@@ -131,6 +163,60 @@ emit_via = motd
             }
             DistroFamily::Rhel => {}
         }
+
+        Ok(())
+    }
+
+    pub async fn install_supplementary_packages(
+        distro: DistroFamily,
+    ) -> Vec<(&'static str, Result<()>)> {
+        let package_manager = match distro {
+            DistroFamily::Debian => "apt-get",
+            DistroFamily::Rhel => "dnf",
+        };
+
+        let pkgs = distro.supplementary_packages();
+        let mut results = Vec::new();
+
+        for &pkg in pkgs {
+            let result = run_cmd_checked(package_manager, &["install", "-y", pkg], TIMEOUT_APT)
+                .await
+                .map(|_| ());
+            results.push((pkg, result));
+        }
+
+        results
+    }
+
+    pub async fn write_periodic_config(distro: DistroFamily) -> Result<()> {
+        match distro {
+            DistroFamily::Debian => {
+                let path = distro.periodic_config_path().unwrap();
+                if let Some(parent) = std::path::Path::new(path).parent() {
+                    tokio::fs::create_dir_all(parent)
+                        .await
+                        .with_context(|| format!("创建目录 {} 失败", parent.display()))?;
+                }
+                tokio::fs::write(path, Self::debian_periodic_config())
+                    .await
+                    .with_context(|| format!("写入 APT Periodic 配置 {} 失败", path))?;
+                Ok(())
+            }
+            DistroFamily::Rhel => Ok(()),
+        }
+    }
+
+    pub async fn configure_needrestart(distro: DistroFamily) -> Result<()> {
+        let conf_path = distro.needrestart_conf_path();
+        if let Some(parent) = std::path::Path::new(conf_path).parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("创建 needrestart 配置目录 {} 失败", parent.display()))?;
+        }
+
+        tokio::fs::write(conf_path, Self::needrestart_config())
+            .await
+            .with_context(|| format!("写入 needrestart 配置 {} 失败", conf_path))?;
 
         Ok(())
     }
@@ -194,7 +280,7 @@ impl Operations {
         log.push_str("🔄 正在开始系统维护...\n");
 
         // 1. Detect distro family
-        log.push_str("🔍 [1/4] 检测系统发行版...\n");
+        log.push_str("🔍 [1/7] 检测系统发行版...\n");
         let distro = match DistroFamily::detect().await {
             Ok(d) => {
                 log.push_str(&format!("✅ 检测到: {}\n", distro_to_display(d)));
@@ -206,52 +292,76 @@ impl Operations {
             }
         };
 
-        // 2. Install, configure, and enable auto-update service
-        log.push_str("⚙️ [2/4] 配置自动安全更新...\n");
+        // 2. Install primary auto-update package
+        log.push_str("📦 [2/7] 安装自动更新包...\n");
         match AutoUpdateConfigurator::install_package(distro).await {
-            Ok(_) => log.push_str("✅ 安装完成\n"),
-            Err(e) => log.push_str(&format!("❌ 安装失败: {}\n", e)),
+            Ok(_) => log.push_str("✅ 自动更新包安装完成\n"),
+            Err(e) => {
+                log.push_str(&format!("❌ 安装失败: {}\n", e));
+                anyhow::bail!("安装自动更新包失败: {}", e);
+            }
+        };
+
+        // 3. Install supplementary packages (needrestart, etc.) — non-fatal
+        log.push_str("📦 [3/7] 安装辅助包 (needrestart)...\n");
+        let supp_results = AutoUpdateConfigurator::install_supplementary_packages(distro).await;
+        for (pkg, result) in &supp_results {
+            match result {
+                Ok(_) => log.push_str(&format!("  ✅ {} 安装完成\n", pkg)),
+                Err(e) => log.push_str(&format!("  ⚠️ {} 安装失败 (非致命): {}\n", pkg, e)),
+            }
         }
 
+        // 4. Write main config (50unattended-upgrades / automatic.conf)
+        log.push_str("📝 [4/7] 写入自动更新配置...\n");
         match AutoUpdateConfigurator::write_config(distro).await {
-            Ok(_) => log.push_str("✅ 配置写入完成\n"),
-            Err(e) => log.push_str(&format!("❌ 配置写入失败: {}\n", e)),
+            Ok(_) => log.push_str("✅ 主配置写入完成\n"),
+            Err(e) => log.push_str(&format!("❌ 主配置写入失败: {}\n", e)),
         }
 
+        // 5. Write supplementary configs (20auto-upgrades + needrestart.conf)
+        log.push_str("📝 [5/7] 写入辅助配置...\n");
+        match AutoUpdateConfigurator::write_periodic_config(distro).await {
+            Ok(_) => log.push_str("✅ APT Periodic 配置写入完成\n"),
+            Err(e) => log.push_str(&format!("⚠️ APT Periodic 配置写入失败: {}\n", e)),
+        }
+
+        let needrestart_installed = supp_results.iter().any(|(_, r)| r.is_ok());
+        if needrestart_installed {
+            match AutoUpdateConfigurator::configure_needrestart(distro).await {
+                Ok(_) => log.push_str("✅ needrestart 自动重启配置写入完成\n"),
+                Err(e) => log.push_str(&format!("⚠️ needrestart 配置写入失败: {}\n", e)),
+            }
+        } else {
+            log.push_str("⚠️ needrestart 未安装，跳过自动重启配置\n");
+        }
+
+        // 6. Enable services
+        log.push_str("⚡ [6/7] 启用自动更新服务...\n");
         match AutoUpdateConfigurator::enable_service(distro).await {
             Ok(_) => log.push_str("✅ 自动更新服务已启用\n"),
             Err(e) => log.push_str(&format!("❌ 启用服务失败: {}\n", e)),
         }
 
-        // 3. One-time cleanup
-        log.push_str("🧹 [3/4] 清理无用包...\n");
+        // 7. One-time cleanup + check reboot
+        log.push_str("🧹 [7/7] 清理与检查...\n");
         let cleanup_cmds = Self::cleanup_commands(distro);
-        let total = cleanup_cmds.len();
         for (i, (cmd, args)) in cleanup_cmds.iter().enumerate() {
             let step_desc = if i == 0 {
                 "移除无用包"
             } else {
                 "清理缓存"
             };
-            log.push_str(&format!("  {} ({}/{})...\n", step_desc, i + 1, total));
             match run_cmd_checked(cmd, args, TIMEOUT_APT).await {
                 Ok(_) => log.push_str(&format!("  ✅ {}完成\n", step_desc)),
-                Err(e) => log.push_str(&format!("  ❌ {}失败: {}\n", step_desc, e)),
+                Err(e) => log.push_str(&format!("  ⚠️ {}失败: {}\n", step_desc, e)),
             }
         }
 
-        // 4. Check if reboot is needed
-        log.push_str("🔄 [4/4] 检查是否需要重启...\n");
         match Self::check_reboot_needed(distro).await {
-            Ok(true) => {
-                log.push_str("⚠️ 需要重启系统以完成安全更新\n");
-            }
-            Ok(false) => {
-                log.push_str("✅ 当前无需重启\n");
-            }
-            Err(e) => {
-                log.push_str(&format!("⚠️ 无法检查重启状态: {}\n", e));
-            }
+            Ok(true) => log.push_str("⚠️ 需要重启系统以完成安全更新\n"),
+            Ok(false) => log.push_str("✅ 当前无需重启\n"),
+            Err(e) => log.push_str(&format!("⚠️ 无法检查重启状态: {}\n", e)),
         }
 
         log.push_str("\n🎉 维护操作已完成。自动安全更新已配置。\n");
@@ -320,9 +430,14 @@ mod tests {
     #[test]
     fn test_debian_config_content() {
         let config = AutoUpdateConfigurator::generate_config(DistroFamily::Debian);
-        assert!(config.contains("Unattended-Upgrade"));
+        assert!(config.contains("Allowed-Origins"));
         assert!(config.contains("security"));
+        assert!(config.contains("AutoFixInterruptedDpkg"));
         assert!(config.contains("Automatic-Reboot"));
+        assert!(config.contains("Automatic-Reboot-Time"));
+        assert!(config.contains("Remove-Unused-Dependencies"));
+        assert!(!config.contains("MailOnlyOnError"));
+        assert!(!config.contains("Unattended-Upgrade \"1\""));
     }
 
     #[test]
@@ -330,8 +445,12 @@ mod tests {
         let config = AutoUpdateConfigurator::generate_config(DistroFamily::Rhel);
         assert!(config.contains("upgrade_type"));
         assert!(config.contains("security"));
+        assert!(config.contains("download_updates"));
         assert!(config.contains("apply_updates"));
         assert!(config.contains("reboot"));
+        assert!(config.contains("when-needed"));
+        assert!(config.contains("emit_via"));
+        assert!(config.contains("motd"));
     }
 
     #[test]
@@ -348,5 +467,77 @@ mod tests {
         assert_eq!(cmds.len(), 2);
         assert_eq!(cmds[0].0, "dnf");
         assert_eq!(cmds[1].0, "dnf");
+    }
+
+    #[test]
+    fn test_distro_periodic_config_path() {
+        assert!(DistroFamily::Debian.periodic_config_path().is_some());
+        assert!(DistroFamily::Rhel.periodic_config_path().is_none());
+    }
+
+    #[test]
+    fn test_distro_needrestart_conf_path() {
+        assert!(
+            DistroFamily::Debian
+                .needrestart_conf_path()
+                .contains("needrestart")
+        );
+        assert!(
+            DistroFamily::Rhel
+                .needrestart_conf_path()
+                .contains("needrestart")
+        );
+    }
+
+    #[test]
+    fn test_supplementary_packages_debian() {
+        let pkgs = DistroFamily::Debian.supplementary_packages();
+        assert!(pkgs.contains(&"needrestart"));
+    }
+
+    #[test]
+    fn test_supplementary_packages_rhel() {
+        let pkgs = DistroFamily::Rhel.supplementary_packages();
+        assert!(pkgs.contains(&"needrestart"));
+    }
+
+    #[test]
+    fn test_debian_periodic_config() {
+        let config = AutoUpdateConfigurator::debian_periodic_config();
+        assert!(config.contains("APT::Periodic::Update-Package-Lists \"1\""));
+        assert!(config.contains("APT::Periodic::Unattended-Upgrade \"1\""));
+        assert!(config.contains("APT::Periodic::AutocleanInterval \"7\""));
+    }
+
+    #[test]
+    fn test_needrestart_config() {
+        let config = AutoUpdateConfigurator::needrestart_config();
+        assert!(config.contains("$nrconf{restart} = 'a'"));
+    }
+
+    #[test]
+    fn test_supplementary_packages_contains_needrestart() {
+        assert!(
+            DistroFamily::Debian
+                .supplementary_packages()
+                .contains(&"needrestart")
+        );
+        assert!(
+            DistroFamily::Rhel
+                .supplementary_packages()
+                .contains(&"needrestart")
+        );
+    }
+
+    #[test]
+    fn test_needrestart_conf_path() {
+        assert_eq!(
+            DistroFamily::Debian.needrestart_conf_path(),
+            "/etc/needrestart/needrestart.conf"
+        );
+        assert_eq!(
+            DistroFamily::Rhel.needrestart_conf_path(),
+            "/etc/needrestart/needrestart.conf"
+        );
     }
 }
