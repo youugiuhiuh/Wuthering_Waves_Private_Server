@@ -295,7 +295,7 @@ duration:
 message:
   input_too_long: "⚠️ 输入过长，请控制在 %max% 字符以内。"
   schedule_timeout: "⏳ 定时任务选择超时 (180s)，已自动取消。"
-  schedule_active: "ℹ️ 请通过面板按钮选择 星期/小时/分钟，然后点击"确认创建任务"。"
+  schedule_active: "ℹ️ 请通过面板按钮选择 星期/小时/分钟，然后点击「确认创建任务」。"
   warp_timeout: "⏳ 输入超时 (60s)，已自动取消。"
   warp_rules_added: "✅ WARP 分流规则已添加并重载核心。"
   warp_add_failed: "❌ 添加失败: %error%"
