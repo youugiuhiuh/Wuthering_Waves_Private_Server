@@ -42,7 +42,7 @@ pub async fn process_auth_code(
         bot.send_message(
             chat_id,
             t!("auth.success", locale = &lang)
-                .replace("%duration%", &crate::format_duration_human(timeout)),
+                .replace("%duration%", &crate::format_duration_human(timeout, &lang)),
         )
         .await?;
         return Ok(true);

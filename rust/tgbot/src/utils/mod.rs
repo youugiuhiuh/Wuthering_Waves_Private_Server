@@ -1,23 +1,26 @@
-pub fn format_duration_human(secs: u64) -> String {
+use rust_i18n::t;
+
+pub fn format_duration_human(secs: u64, lang: &str) -> String {
     if secs < 60 {
-        format!("{}秒", secs)
+        t!("duration.seconds", locale = lang, count = secs).to_string()
     } else if secs < 3600 {
-        format!("{}分钟", secs / 60)
+        t!("duration.minutes", locale = lang, count = secs / 60).to_string()
     } else if secs < 86400 {
         let h = secs / 3600;
         let m = (secs % 3600) / 60;
         if m == 0 {
-            format!("{}小时", h)
+            t!("duration.hours", locale = lang, count = h).to_string()
         } else {
-            format!("{}小时{}分", h, m)
+            t!("duration.hours_minutes", locale = lang, h = h, m = m).to_string()
         }
     } else {
         let d = secs / 86400;
         let remaining = secs % 86400;
         if remaining >= 3600 {
-            format!("{}天{}小时", d, remaining / 3600)
+            let h = remaining / 3600;
+            t!("duration.days_hours", locale = lang, count = d, h = h).to_string()
         } else {
-            format!("{}天", d)
+            t!("duration.days", locale = lang, count = d).to_string()
         }
     }
 }
@@ -58,34 +61,38 @@ pub fn validate_idx(idx: usize, max: usize, field_name: &str) -> anyhow::Result<
 mod tests {
     use super::*;
 
+    fn tr(key: &str) -> String {
+        rust_i18n::t!(key, locale = "zh-CN").to_string()
+    }
+
     #[test]
     fn format_duration_seconds() {
-        assert_eq!(format_duration_human(0), "0秒");
-        assert_eq!(format_duration_human(30), "30秒");
-        assert_eq!(format_duration_human(59), "59秒");
+        assert_eq!(format_duration_human(0, "zh-CN"), "0秒");
+        assert_eq!(format_duration_human(30, "zh-CN"), "30秒");
+        assert_eq!(format_duration_human(59, "zh-CN"), "59秒");
     }
 
     #[test]
     fn format_duration_minutes() {
-        assert_eq!(format_duration_human(60), "1分钟");
-        assert_eq!(format_duration_human(90), "1分钟");
-        assert_eq!(format_duration_human(120), "2分钟");
-        assert_eq!(format_duration_human(3599), "59分钟");
+        assert_eq!(format_duration_human(60, "zh-CN"), "1分钟");
+        assert_eq!(format_duration_human(90, "zh-CN"), "1分钟");
+        assert_eq!(format_duration_human(120, "zh-CN"), "2分钟");
+        assert_eq!(format_duration_human(3599, "zh-CN"), "59分钟");
     }
 
     #[test]
     fn format_duration_hours() {
-        assert_eq!(format_duration_human(3600), "1小时");
-        assert_eq!(format_duration_human(3660), "1小时1分");
-        assert_eq!(format_duration_human(7200), "2小时");
-        assert_eq!(format_duration_human(7320), "2小时2分");
+        assert_eq!(format_duration_human(3600, "zh-CN"), "1小时");
+        assert_eq!(format_duration_human(3660, "zh-CN"), "1小时1分");
+        assert_eq!(format_duration_human(7200, "zh-CN"), "2小时");
+        assert_eq!(format_duration_human(7320, "zh-CN"), "2小时2分");
     }
 
     #[test]
     fn format_duration_days() {
-        assert_eq!(format_duration_human(86400), "1天");
-        assert_eq!(format_duration_human(172800), "2天");
-        assert_eq!(format_duration_human(90000), "1天1小时");
+        assert_eq!(format_duration_human(86400, "zh-CN"), "1天");
+        assert_eq!(format_duration_human(172800, "zh-CN"), "2天");
+        assert_eq!(format_duration_human(90000, "zh-CN"), "1天1小时");
     }
 
     #[test]

@@ -159,6 +159,7 @@ fn trigger_reality_auto_init(bot: Bot, chat_id: ChatId, msg_id: MessageId) {
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     let data = ctx.data.as_str();
+    let _lang = ctx.state.language().await;
 
     match data {
         "m_xray_mgmt" => {

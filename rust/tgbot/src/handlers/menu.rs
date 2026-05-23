@@ -93,7 +93,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let timeout_label = format!(
                 "🔐 {} ({})",
                 t!("session.title", locale = &lang),
-                format_duration_human(timeout)
+                format_duration_human(timeout, &lang)
             );
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
@@ -348,7 +348,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     ctx.chat_id,
                     ctx.msg_id,
                     t!("session.timeout_title", locale = &lang)
-                        .replace("%current%", &format_duration_human(current)),
+                        .replace("%current%", &format_duration_human(current, &lang)),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(rows))
@@ -375,7 +375,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .answer_callback_query(ctx.q.id.clone())
                 .text(
                     t!("session.set_success", locale = &lang)
-                        .replace("%duration%", &format_duration_human(secs)),
+                        .replace("%duration%", &format_duration_human(secs, &lang)),
                 )
                 .await?;
 

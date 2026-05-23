@@ -8,6 +8,7 @@ mod utils;
 rust_i18n::i18n!("src/i18n", fallback = "zh-CN");
 
 use crate::handlers::menu;
+use rust_i18n::t;
 
 use crate::app::auth;
 use crate::app::state::AppState;
@@ -62,18 +63,30 @@ async fn register_bot_commands(bot: &Bot) -> Result<()> {
 }
 
 #[derive(BotCommands, Clone)]
-#[command(rename_rule = "lowercase", description = "支持以下命令:")]
+#[command(rename_rule = "lowercase", description = "")]
 enum Command {
-    #[command(description = "显示帮助信息")]
+    #[command(description = "")]
     Help,
-    #[command(description = "启动机器人")]
+    #[command(description = "")]
     Start,
-    #[command(description = "显示管理菜单")]
+    #[command(description = "")]
     Menu,
-    #[command(description = "验证 TOTP 认证码")]
+    #[command(description = "")]
     Auth(String),
-    #[command(description = "设置自毁验证文件 (需附带文件)")]
+    #[command(description = "")]
     SetSecurityFile,
+}
+
+impl Command {
+    fn localized_description(&self, lang: &str) -> String {
+        match self {
+            Command::Help => t!("commands.help", locale = lang).to_string(),
+            Command::Start => t!("commands.start", locale = lang).to_string(),
+            Command::Menu => t!("commands.menu", locale = lang).to_string(),
+            Command::Auth(_) => t!("commands.auth", locale = lang).to_string(),
+            Command::SetSecurityFile => t!("commands.set_security_file", locale = lang).to_string(),
+        }
+    }
 }
 
 fn looks_like_totp_code(text: &str) -> bool {
@@ -106,8 +119,9 @@ async fn handle_command(
     cmd: Command,
     state: Arc<AppState>,
 ) -> ResponseResult<()> {
+    let lang = state.language().await;
     let Some(from) = msg.from.as_ref() else {
-        bot.send_message(msg.chat.id, "⚠️ 无法识别用户身份，请访问管理员检查权限")
+        bot.send_message(msg.chat.id, t!("auth.no_identity", locale = &lang))
             .await?;
         return Ok(());
     };
@@ -115,28 +129,34 @@ async fn handle_command(
 
     match cmd {
         Command::Help => {
-            bot.send_message(msg.chat.id, Command::descriptions().to_string())
-                .await?;
+            let descriptions: String =
+                std::iter::once(t!("commands.descriptions", locale = &lang).to_string())
+                    .chain(
+                        [
+                            Command::Help.localized_description(&lang),
+                            Command::Start.localized_description(&lang),
+                            Command::Menu.localized_description(&lang),
+                            Command::Auth("code".to_string()).localized_description(&lang),
+                            Command::SetSecurityFile.localized_description(&lang),
+                        ]
+                        .iter()
+                        .map(|s| format!(" - {}", s)),
+                    )
+                    .collect::<Vec<_>>()
+                    .join("\n");
+            bot.send_message(msg.chat.id, descriptions).await?;
         }
         Command::Start => {
-            bot.send_message(
-                msg.chat.id,
-                "👋 欢迎使用 wwps 管理机器人！
-
-请发送 6 位 TOTP 验证码（或使用 /auth <验证码>）解锁 24 小时管理权限。",
-            )
-            .await?;
+            bot.send_message(msg.chat.id, t!("auth.welcome", locale = &lang))
+                .await?;
         }
         Command::Auth(code) => {
             let _ = process_auth_code(&bot, msg.chat.id, user_id, &code, &state).await?;
         }
         Command::SetSecurityFile => {
             if !state.is_recently_authenticated(user_id).await {
-                bot.send_message(
-                    msg.chat.id,
-                    "⚠️ 此操作需要重新认证。请先发送 TOTP 验证码（或 /auth <验证码>）进行认证，5 分钟内再试。",
-                )
-                .await?;
+                bot.send_message(msg.chat.id, t!("auth.need_reauth", locale = &lang))
+                    .await?;
                 return Ok(());
             }
 
@@ -164,9 +184,11 @@ async fn handle_command(
                 if file.size as u64 > MAX_FILE_DOWNLOAD_SIZE {
                     bot.send_message(
                         msg.chat.id,
-                        format!(
-                            "❌ 文件过大 ({} bytes)，最大允许 {} bytes",
-                            file.size, MAX_FILE_DOWNLOAD_SIZE
+                        t!(
+                            "file.too_large",
+                            locale = &lang,
+                            size = file.size,
+                            max = MAX_FILE_DOWNLOAD_SIZE
                         ),
                     )
                     .await?;
@@ -194,24 +216,19 @@ async fn handle_command(
 
                 bot.send_message(
                     msg.chat.id,
-                    format!("✅ 安全验证文件已设置。\nHash: `{}`", hash_hex),
+                    t!("file.hash_set", locale = &lang, hash = hash_hex),
                 )
                 .parse_mode(ParseMode::MarkdownV2)
                 .await?;
             } else {
-                bot.send_message(
-                    msg.chat.id,
-                    "⚠️ 请发送一个文件或图片，并附带 caption `/setsecurityfile`，或者回复该命令到文件消息。",
-                ).await?;
+                bot.send_message(msg.chat.id, t!("file.security_file_prompt", locale = &lang))
+                    .await?;
             }
         }
         Command::Menu => {
             if !state.is_authorized(user_id).await {
-                bot.send_message(
-                    msg.chat.id,
-                    "🔐 请先发送 6 位 TOTP 验证码进行认证（或 /auth <验证码>）。",
-                )
-                .await?;
+                bot.send_message(msg.chat.id, t!("auth.unauthorized", locale = &lang))
+                    .await?;
                 return Ok(());
             }
             menu::send_main_menu(bot, msg.chat.id).await?;
@@ -330,7 +347,7 @@ async fn main() -> Result<()> {
         production_executor(),
         encrypted_config.self_destruct_key_hash.clone(),
         bot_settings.session_timeout_secs,
-        language,
+        language.clone(),
     ));
 
     let bot = Bot::new(&token);
@@ -349,14 +366,15 @@ async fn main() -> Result<()> {
     // 先启动 Dispatcher，再在后台初始化调度器与通知，避免 /start 等命令因启动阻塞而无响应
     println!("🚀 Bot is starting...");
     let bot_for_init = bot.clone();
+    let lang_for_init = language.clone();
     tokio::spawn(async move {
         if let Err(e) =
             logic::scheduler::start_scheduler(bot_for_init.clone(), ChatId(admin_id)).await
         {
             log::error!("❌ 初始化调度器失败: {}", e);
         }
-        let _ = notify_upgrade_success(&bot_for_init, admin_id).await;
-        let _ = notify_bbr3_reboot_result(&bot_for_init, admin_id).await;
+        let _ = notify_upgrade_success(&bot_for_init, admin_id, &lang_for_init).await;
+        let _ = notify_bbr3_reboot_result(&bot_for_init, admin_id, &lang_for_init).await;
         let _ = notify_online(&bot_for_init, admin_id).await;
     });
 
@@ -407,22 +425,22 @@ mod tests {
 
     #[test]
     fn format_duration_human_seconds() {
-        assert_eq!(format_duration_human(0), "0秒");
-        assert_eq!(format_duration_human(45), "45秒");
+        assert_eq!(format_duration_human(0, "zh-CN"), "0秒");
+        assert_eq!(format_duration_human(45, "zh-CN"), "45秒");
     }
 
     #[test]
     fn format_duration_human_minutes() {
-        assert_eq!(format_duration_human(60), "1分钟");
-        assert_eq!(format_duration_human(90), "1分钟");
-        assert_eq!(format_duration_human(120), "2分钟");
+        assert_eq!(format_duration_human(60, "zh-CN"), "1分钟");
+        assert_eq!(format_duration_human(90, "zh-CN"), "1分钟");
+        assert_eq!(format_duration_human(120, "zh-CN"), "2分钟");
     }
 
     #[test]
     fn format_duration_human_hours_and_days() {
-        assert_eq!(format_duration_human(3600), "1小时");
-        assert_eq!(format_duration_human(3661), "1小时1分");
-        assert!(format_duration_human(86400).starts_with("1天"));
+        assert_eq!(format_duration_human(3600, "zh-CN"), "1小时");
+        assert_eq!(format_duration_human(3661, "zh-CN"), "1小时1分");
+        assert!(format_duration_human(86400, "zh-CN").starts_with("1天"));
     }
 }
 
@@ -451,7 +469,7 @@ async fn notify_online(bot: &Bot, admin_id: i64) -> Result<()> {
     let sys_info = "Linux"; // 可以扩展调用 SystemMonitor 获取更详细信息
 
     let msg = format!(
-        "🤖 **Bot 已上线**\n\n🌍 IP: `{}`\n💻 系统: {}",
+        "🤖 **Bot is online**\n\n🌍 IP: `{}`\n💻 System: {}",
         masked_ip, sys_info
     );
 
@@ -462,7 +480,7 @@ async fn notify_online(bot: &Bot, admin_id: i64) -> Result<()> {
     Ok(())
 }
 
-async fn notify_upgrade_success(bot: &Bot, admin_id: i64) -> Result<()> {
+async fn notify_upgrade_success(bot: &Bot, admin_id: i64, lang: &str) -> Result<()> {
     let flag_path = Path::new(UPGRADE_FLAG_FILE);
     if !flag_path.exists() {
         return Ok(());
@@ -475,16 +493,16 @@ async fn notify_upgrade_success(bot: &Bot, admin_id: i64) -> Result<()> {
     }
 
     let message = if version.is_empty() {
-        "✅ Bot 已完成自更新。".to_string()
+        t!("startup.upgrade_success_no_version", locale = lang).to_string()
     } else {
-        format!("✅ Bot 已成功更新至 {}。", version)
+        t!("startup.upgrade_success", locale = lang, version = version).to_string()
     };
 
     bot.send_message(ChatId(admin_id), message).await?;
     Ok(())
 }
 
-async fn notify_bbr3_reboot_result(bot: &Bot, admin_id: i64) -> Result<()> {
+async fn notify_bbr3_reboot_result(bot: &Bot, admin_id: i64, _lang: &str) -> Result<()> {
     let flag_path = Path::new(BBR3_PENDING_FLAG_FILE);
     if !flag_path.exists() {
         return Ok(());
