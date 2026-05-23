@@ -265,6 +265,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     InlineKeyboardButton::callback("系统重启 - 每天", "s_custom:reboot:daily"),
                     InlineKeyboardButton::callback("系统重启 - 每周", "s_custom:reboot:weekly"),
                 ],
+                vec![
+                    InlineKeyboardButton::callback("安全更新 - 每天", "s_custom:secupd:daily"),
+                    InlineKeyboardButton::callback("安全更新 - 每周", "s_custom:secupd:weekly"),
+                ],
                 vec![InlineKeyboardButton::callback("⬅️ 返回", "s_add_menu")],
             ]);
             ctx.bot
@@ -292,6 +296,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 }
                 (Some("reboot"), Some("daily")) => (TaskType::Reboot, ScheduleFrequency::Daily),
                 (Some("reboot"), Some("weekly")) => (TaskType::Reboot, ScheduleFrequency::Weekly),
+                (Some("secupd"), Some("daily")) => (TaskType::SecurityUpdate, ScheduleFrequency::Daily),
+                (Some("secupd"), Some("weekly")) => (TaskType::SecurityUpdate, ScheduleFrequency::Weekly),
                 _ => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
