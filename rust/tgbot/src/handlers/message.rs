@@ -2,6 +2,7 @@ use crate::MAX_INPUT_LENGTH;
 use crate::app::destruct_flow;
 use crate::app::destruct_flow::MessageFlowOutcome;
 use crate::app::state::{AppState, TimeoutStatus};
+use rust_i18n::t;
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::Bot;
@@ -10,8 +11,9 @@ use tgbot::logic::config::ConfigManager;
 
 pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> ResponseResult<()> {
     let chat_id = msg.chat.id;
+    let lang = state.language().await;
     let Some(from) = msg.from.as_ref() else {
-        bot.send_message(chat_id, "⚠️ 无法识别用户身份，请访问管理员检查权限")
+        bot.send_message(chat_id, t!("auth.no_identity", locale = &lang))
             .await?;
         return Ok(());
     };
@@ -26,7 +28,8 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
     {
         bot.send_message(
             chat_id,
-            format!("⚠️ 输入过长，请控制在 {} 字符以内。", MAX_INPUT_LENGTH),
+            t!("message.input_too_long", locale = &lang)
+                .replace("%max%", &MAX_INPUT_LENGTH.to_string()),
         )
         .await?;
         return Ok(());
@@ -38,17 +41,14 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
     {
         TimeoutStatus::Expired => {
             state.remove_schedule_input(chat_id).await;
-            bot.send_message(chat_id, "⏳ 定时任务选择超时 (180s)，已自动取消。")
+            bot.send_message(chat_id, t!("message.schedule_timeout", locale = &lang))
                 .await?;
             return Ok(());
         }
         TimeoutStatus::Active => {
             if msg.text().is_some() || msg.document().is_some() || msg.photo().is_some() {
-                bot.send_message(
-                    chat_id,
-                    "ℹ️ 请通过面板按钮选择 星期/小时/分钟，然后点击“确认创建任务”。",
-                )
-                .await?;
+                bot.send_message(chat_id, t!("message.schedule_active", locale = &lang))
+                    .await?;
             }
             return Ok(());
         }
@@ -60,7 +60,7 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
         .await
     {
         TimeoutStatus::Expired => {
-            bot.send_message(chat_id, "⏳ 输入超时 (60s)，已自动取消。")
+            bot.send_message(chat_id, t!("message.warp_timeout", locale = &lang))
                 .await?;
             return Ok(());
         }
@@ -73,19 +73,23 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
                     .collect();
 
                 if rules.is_empty() {
-                    bot.send_message(chat_id, "⚠️ 输入为空，请重新输入或使用 /menu 返回。")
+                    bot.send_message(chat_id, t!("message.warp_input_empty", locale = &lang))
                         .await?;
                     return Ok(());
                 }
 
                 match ConfigManager::add_warp_routing_rules(rules).await {
                     Ok(_) => {
-                        bot.send_message(chat_id, "✅ WARP 分流规则已添加并重载核心。")
+                        bot.send_message(chat_id, t!("message.warp_rules_added", locale = &lang))
                             .await?;
                     }
                     Err(e) => {
-                        bot.send_message(chat_id, format!("❌ 添加失败: {}", e))
-                            .await?;
+                        bot.send_message(
+                            chat_id,
+                            t!("message.warp_add_failed", locale = &lang)
+                                .replace("%error%", &e.to_string()),
+                        )
+                        .await?;
                     }
                 }
             }

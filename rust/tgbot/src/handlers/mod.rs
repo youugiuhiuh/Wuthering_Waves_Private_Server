@@ -77,8 +77,11 @@ pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
             | "a_wwps_core_latest"
             | "a_wwps_core_tags"
             | "a_geo_menu"
+            | "m_language"
+            | "m_default_schedule"
     ) || data.starts_with("set_timeout:")
         || data.starts_with("wwps_core_tag:")
+        || data.starts_with("set_lang:")
     {
         return Ok(Some(menu::handle(ctx).await?));
     }

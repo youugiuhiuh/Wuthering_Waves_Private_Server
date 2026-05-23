@@ -5,6 +5,8 @@ mod bootstrap;
 mod handlers;
 mod utils;
 
+rust_i18n::i18n!("src/i18n", fallback = "zh-CN");
+
 use crate::handlers::menu;
 
 use crate::app::auth;

@@ -1,4 +1,6 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
+use rust_i18n::t;
+use std::sync::Arc;
 use std::time::Duration;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
@@ -7,13 +9,14 @@ use tgbot::logic::maintenance::MaintenanceManager;
 use tgbot::logic::operations::{MAINTENANCE_FLAG, Operations, REBOOT_FLAG};
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
+    let lang = ctx.state.language().await;
     let data = ctx.data.as_str();
     match data {
         "a_reload" => {
             let _ = MaintenanceManager::reload_core().await;
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("✅ 已重启核心")
+                .text(t!("ops.reload", locale = &lang))
                 .await?;
         }
         "a_fw" => {
@@ -23,6 +26,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             tokio::spawn(async move {
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                let lang_inner = "zh-CN".to_string();
+                let lang_for_task = lang_inner.clone();
 
                 let bot_for_updates = bot_clone.clone();
                 let update_task = tokio::spawn(async move {
@@ -36,7 +41,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             .edit_message_text(
                                 chat_id_clone,
                                 msg_id_clone,
-                                format!("🛡️ <b>防火墙安全加固</b>\n{}", text),
+                                format!(
+                                    "{} {}\n{}",
+                                    t!("ops.firewall", locale = &lang_for_task),
+                                    t!("ops.hardening_in_progress", locale = &lang_for_task),
+                                    text
+                                ),
                             )
                             .parse_mode(ParseMode::Html)
                             .await;
@@ -56,11 +66,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 match res_timeout {
                     Ok(Ok(_)) => {}
                     Ok(Err(err)) => {
-                        let _ = tx.send(format!("❌ 失败: {}", err));
+                        let _ = tx.send(
+                            t!("ops.firewall_failed", locale = &lang_inner)
+                                .replace("%error%", &err.to_string()),
+                        );
                     }
                     Err(_) => {
-                        let _ = tx
-                            .send("❌ 失败: 操作超时 (45s)，请检查系统 nftables 状态".to_string());
+                        let _ =
+                            tx.send(t!("ops.firewall_timeout", locale = &lang_inner).to_string());
                     }
                 }
 
@@ -70,28 +83,37 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⚙️ 正在启动防火墙扫描与加固...")
+                .text(t!("ops.firewall_starting", locale = &lang))
                 .await?;
         }
         "a_upgrade" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⚙️ 正在启动 Bot 自更新...")
+                .text(t!("ops.bot_upgrade_starting", locale = &lang))
                 .await?;
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
             tokio::spawn(async move {
+                let lang_inner = "zh-CN".to_string();
                 match UpgradeManager::new() {
                     Ok(manager) => {
                         if let Err(err) = manager.run(bot_clone.clone(), chat_id_clone).await {
                             let _ = bot_clone
-                                .send_message(chat_id_clone, format!("❌ 自更新失败: {}", err))
+                                .send_message(
+                                    chat_id_clone,
+                                    t!("ops.bot_upgrade_failed", locale = &lang_inner)
+                                        .replace("%error%", &err.to_string()),
+                                )
                                 .await;
                         }
                     }
                     Err(err) => {
                         let _ = bot_clone
-                            .send_message(chat_id_clone, format!("❌ 无法启动自更新: {}", err))
+                            .send_message(
+                                chat_id_clone,
+                                t!("ops.bot_upgrade_cannot_start", locale = &lang_inner)
+                                    .replace("%error%", &err.to_string()),
+                            )
                             .await;
                     }
                 }
@@ -101,18 +123,26 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
             let msg_id_clone = ctx.msg_id;
+            let lang_inner = Arc::new("zh-CN".to_string());
 
             tokio::spawn(async move {
                 let bot_for_cb = bot_clone.clone();
+                let lang_arc = lang_inner.clone();
                 let progress_cb = move |_: f64, text: &str| {
                     let bot = bot_for_cb.clone();
                     let text = text.to_string();
+                    let lang = lang_arc.clone();
                     tokio::spawn(async move {
                         let _ = bot
                             .edit_message_text(
                                 chat_id_clone,
                                 msg_id_clone,
-                                format!("🌍 <b>GeoData 更新中</b>\n{}", text),
+                                format!(
+                                    "{} {}\n{}",
+                                    t!("ops.geo_updating", locale = lang.as_str()),
+                                    t!("ops.hardening_in_progress", locale = lang.as_str()),
+                                    text
+                                ),
                             )
                             .parse_mode(ParseMode::Html)
                             .await;
@@ -122,12 +152,19 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 match MaintenanceManager::update_geodata(progress_cb).await {
                     Ok(_) => {
                         let _ = bot_clone
-                            .send_message(chat_id_clone, "✅ GeoData 更新成功")
+                            .send_message(
+                                chat_id_clone,
+                                t!("ops.geo_success", locale = lang_inner.as_str()),
+                            )
                             .await;
                     }
                     Err(e) => {
                         let _ = bot_clone
-                            .send_message(chat_id_clone, format!("❌ GeoData 更新失败: {}", e))
+                            .send_message(
+                                chat_id_clone,
+                                t!("ops.geo_failed", locale = lang_inner.as_str())
+                                    .replace("%error%", &e.to_string()),
+                            )
                             .await;
                     }
                 }
@@ -135,7 +172,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("🌍 GeoData 已启动更新 (后台执行)")
+                .text(t!("ops.geo_started", locale = &lang))
                 .await?;
         }
         "a_tune" => {
@@ -144,7 +181,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_bbr3" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("🚀 正在启动 BBR3 安装向导...")
+                .text(t!("ops.bbr3_starting", locale = &lang))
                 .await?;
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
@@ -152,6 +189,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             tokio::spawn(async move {
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                let lang_inner = "zh-CN".to_string();
+                let lang_for_task = lang_inner.clone();
 
                 let bot_for_updates = bot_clone.clone();
                 let update_task = tokio::spawn(async move {
@@ -165,7 +204,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             .edit_message_text(
                                 chat_id_clone,
                                 msg_id_clone,
-                                format!("🚀 <b>BBR3 安装中</b>\n{}", text),
+                                format!(
+                                    "{} {}\n{}",
+                                    t!("ops.bbr3", locale = &lang_for_task),
+                                    t!("ops.bbr3_installing", locale = &lang_for_task),
+                                    text
+                                ),
                             )
                             .parse_mode(ParseMode::Html)
                             .await;
@@ -185,20 +229,25 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 match res {
                     Ok(Ok(status)) => {
                         let reboot_text = if status.reboot_required {
-                            "\n\n🔄 <b>需要重启系统才能启用 BBR3</b>\n\n点击「立即重启」按钮，或稍后手动执行 reboot 命令。"
+                            t!("ops.bbr3_reboot_required", locale = &lang_inner).to_string()
                         } else {
-                            ""
+                            String::new()
                         };
-                        let _ = tx.send(format!(
-                            "✅ <b>BBR3 安装完成</b>\n\n内核: {}\n拥塞控制: {}{}",
-                            status.kernel_version, status.congestion_control, reboot_text
-                        ));
+                        let _ = tx.send(
+                            t!("ops.bbr3_done", locale = &lang_inner)
+                                .replace("%kernel%", &status.kernel_version)
+                                .replace("%cc%", &status.congestion_control)
+                                .replace("%reboot%", &reboot_text),
+                        );
                     }
                     Ok(Err(err)) => {
-                        let _ = tx.send(format!("❌ BBR3 安装失败: {}", err));
+                        let _ = tx.send(
+                            t!("ops.bbr3_failed", locale = &lang_inner)
+                                .replace("%error%", &err.to_string()),
+                        );
                     }
                     Err(_) => {
-                        let _ = tx.send("❌ BBR3 安装超时 (5分钟)，请稍后重试".to_string());
+                        let _ = tx.send(t!("ops.bbr3_timeout", locale = &lang_inner).to_string());
                     }
                 }
 
@@ -210,13 +259,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if MAINTENANCE_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 配置任务正在执行中，请稍后再试")
+                    .text(t!("ops.maint_busy", locale = &lang))
                     .await?;
                 return Ok(HandlerAction::Done);
             }
 
             let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-                "⚙️ 配置中... (请等待)",
+                t!("ops.maint_configuring", locale = &lang),
                 "a_sys_maint_disabled",
             )]]);
             let _ = ctx
@@ -227,11 +276,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⚙️ 正在配置自动安全更新...")
+                .text(t!("ops.maint_start", locale = &lang))
                 .await?;
             let bot_c = ctx.bot.clone();
-            let chat_id = ctx.chat_id;
+            let chat_id_clone = ctx.chat_id;
             tokio::spawn(async move {
+                let lang_inner = "zh-CN".to_string();
                 match Operations::perform_maintenance().await {
                     Ok(log) => {
                         let log_tail = if log.len() > 4000 {
@@ -241,18 +291,20 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         };
                         let _ = bot_c
                             .send_message(
-                                chat_id,
-                                format!(
-                                    "✅ <b>自动安全更新配置完成</b>\n\n<pre>{}</pre>",
-                                    log_tail
-                                ),
+                                chat_id_clone,
+                                t!("ops.maint_done", locale = &lang_inner)
+                                    .replace("%log%", &log_tail),
                             )
                             .parse_mode(ParseMode::Html)
                             .await;
                     }
                     Err(e) => {
                         let _ = bot_c
-                            .send_message(chat_id, format!("❌ <b>维护失败</b>\n\n原因: {}", e))
+                            .send_message(
+                                chat_id_clone,
+                                t!("ops.maint_failed", locale = &lang_inner)
+                                    .replace("%error%", &e.to_string()),
+                            )
                             .parse_mode(ParseMode::Html)
                             .await;
                     }
@@ -263,13 +315,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if REBOOT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 重启任务正在执行中，请稍后再试")
+                    .text(t!("ops.reboot_busy", locale = &lang))
                     .await?;
                 return Ok(HandlerAction::Done);
             }
 
             let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-                "⚠️ 重启中... (请等待)",
+                t!("ops.reboot_disabled", locale = &lang),
                 "a_sys_reboot_disabled",
             )]]);
             let _ = ctx
@@ -280,7 +332,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⚠️ 系统将于 3 秒后重启...")
+                .text(t!("ops.reboot_restarting", locale = &lang))
                 .await?;
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(3)).await;
@@ -290,13 +342,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_bbr3_reboot_now" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⚠️ 系统将于 3 秒后重启...")
+                .text(t!("ops.reboot_restarting", locale = &lang))
                 .await?;
             ctx.bot
-                .send_message(
-                    ctx.chat_id,
-                    "⚠️ <b>系统将于 3 秒后重启</b>\nBBR3 新内核将在重启后生效。",
-                )
+                .send_message(ctx.chat_id, t!("ops.reboot_now", locale = &lang))
                 .parse_mode(ParseMode::Html)
                 .await?;
             tokio::spawn(async move {
@@ -307,17 +356,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_bbr3_reboot_later" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("✅ 已选择稍后重启")
+                .text(t!("ops.reboot_later", locale = &lang))
                 .await?;
             ctx.bot
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    "✅ <b>已记录为稍后重启</b>\n\nBBR3 已安装完成，待你手动重启系统后切换到新内核生效。",
+                    t!("ops.reboot_later_msg", locale = &lang),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(vec![vec![
-                    InlineKeyboardButton::callback("⬅️ 返回网络优化", "m_net_opt"),
+                    InlineKeyboardButton::callback(t!("ops.net_opt", locale = &lang), "m_net_opt"),
                 ]]))
                 .await?;
         }

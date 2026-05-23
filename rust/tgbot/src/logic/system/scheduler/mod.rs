@@ -118,7 +118,7 @@ impl SchedulerState {
                     "{}. {} {}\n   Cron: `{}`\n   TZ: `{}`\n\n",
                     i + 1,
                     status,
-                    task.task_type.get_display_name(),
+                    task.task_type.get_display_name("zh-CN"),
                     task.cron_expression,
                     task.timezone
                 )
@@ -241,7 +241,7 @@ impl SchedulerManager {
 
         Ok(format!(
             "✅ 新任务已添加: {} ({}, {})",
-            task.task_type.get_display_name(),
+            task.task_type.get_display_name("zh-CN"),
             task.cron_expression,
             task.timezone
         ))

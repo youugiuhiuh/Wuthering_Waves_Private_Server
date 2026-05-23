@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use rust_i18n::t;
 use teloxide::prelude::*;
 
 use crate::app::state::{AppState, AuthFailureOutcome};
@@ -16,8 +17,11 @@ pub async fn process_auth_code(
     failure_window: Duration,
     lockout_durations: &[Duration],
 ) -> ResponseResult<bool> {
+    let lang = state.language().await;
+
     if !state.is_admin_user(user_id) {
-        bot.send_message(chat_id, "❌ 无权操作").await?;
+        bot.send_message(chat_id, t!("auth.unauthorized", locale = &lang))
+            .await?;
         return Ok(false);
     }
 
@@ -25,11 +29,9 @@ pub async fn process_auth_code(
     if let Some(remaining) = state.auth_cooldown_remaining(user_id, now).await {
         bot.send_message(
             chat_id,
-            format!(
-                "⚠️ 尝试过于频繁，请稍后再试。冷却剩余约 {} 分 {} 秒。",
-                remaining.as_secs() / 60,
-                remaining.as_secs() % 60
-            ),
+            t!("auth.cooldown", locale = &lang)
+                .replace("%min%", &(remaining.as_secs() / 60).to_string())
+                .replace("%sec%", &(remaining.as_secs() % 60).to_string()),
         )
         .await?;
         return Ok(false);
@@ -39,10 +41,8 @@ pub async fn process_auth_code(
         let timeout = state.record_auth_success(user_id, now).await;
         bot.send_message(
             chat_id,
-            format!(
-                "✅ 认证成功！会话有效期 {}。请使用 /menu 开始管理。",
-                crate::format_duration_human(timeout)
-            ),
+            t!("auth.success", locale = &lang)
+                .replace("%duration%", &crate::format_duration_human(timeout)),
         )
         .await?;
         return Ok(true);
@@ -60,16 +60,21 @@ pub async fn process_auth_code(
     {
         AuthFailureOutcome::Locked { duration } => {
             let duration_str = if duration.as_secs() >= 3600 {
-                format!("{} 小时", duration.as_secs() / 3600)
+                format!(
+                    "{} {}",
+                    duration.as_secs() / 3600,
+                    t!("duration.hours", locale = &lang)
+                )
             } else {
-                format!("{} 分钟", duration.as_secs() / 60)
+                format!(
+                    "{} {}",
+                    duration.as_secs() / 60,
+                    t!("duration.minutes", locale = &lang)
+                )
             };
             bot.send_message(
                 chat_id,
-                format!(
-                    "❌ 验证失败次数过多，已进入冷却。\n⏱️ 锁定时间: {}\n⚠️ 请稍后再试。",
-                    duration_str
-                ),
+                t!("auth.locked", locale = &lang).replace("%duration%", &duration_str),
             )
             .await?;
         }
@@ -79,10 +84,9 @@ pub async fn process_auth_code(
         } => {
             bot.send_message(
                 chat_id,
-                format!(
-                    "❌ TOTP 验证码无效，请检查后重试。（已失败 {} 次 / {} 次）",
-                    attempts, max_attempts
-                ),
+                t!("auth.invalid_code", locale = &lang)
+                    .replace("%attempts%", &attempts.to_string())
+                    .replace("%max%", &max_attempts.to_string()),
             )
             .await?;
         }

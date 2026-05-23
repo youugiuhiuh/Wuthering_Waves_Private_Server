@@ -14,12 +14,12 @@ pub enum TaskType {
 }
 
 impl TaskType {
-    pub fn get_display_name(&self) -> &str {
+    pub fn get_display_name(&self, _lang: &str) -> String {
         match self {
-            TaskType::GeoUpdate => "GeoData 更新 (Update GeoData)",
-            TaskType::Reboot => "系统重启 (Reboot)",
-            TaskType::ReloadCore => "重载核心 (Reload Core)",
-            TaskType::Unknown => "未知任务 (已弃用)",
+            TaskType::GeoUpdate => "GeoData 更新".to_string(),
+            TaskType::Reboot => "系统重启".to_string(),
+            TaskType::ReloadCore => "重载核心".to_string(),
+            TaskType::Unknown => "未知任务 (已弃用)".to_string(),
         }
     }
 
@@ -142,21 +142,24 @@ mod tests {
 
     #[test]
     fn test_unknown_display_name() {
-        assert_eq!(TaskType::Unknown.get_display_name(), "未知任务 (已弃用)");
+        assert_eq!(
+            TaskType::Unknown.get_display_name("zh-CN"),
+            "未知任务 (已弃用)"
+        );
     }
 
     #[test]
     fn test_task_type_display_names() {
-        assert_eq!(TaskType::Unknown.get_display_name(), "未知任务 (已弃用)");
         assert_eq!(
-            TaskType::GeoUpdate.get_display_name(),
-            "GeoData 更新 (Update GeoData)"
+            TaskType::Unknown.get_display_name("zh-CN"),
+            "未知任务 (已弃用)"
         );
-        assert_eq!(TaskType::Reboot.get_display_name(), "系统重启 (Reboot)");
         assert_eq!(
-            TaskType::ReloadCore.get_display_name(),
-            "重载核心 (Reload Core)"
+            TaskType::GeoUpdate.get_display_name("zh-CN"),
+            "GeoData 更新"
         );
+        assert_eq!(TaskType::Reboot.get_display_name("zh-CN"), "系统重启");
+        assert_eq!(TaskType::ReloadCore.get_display_name("zh-CN"), "重载核心");
     }
 
     #[test]

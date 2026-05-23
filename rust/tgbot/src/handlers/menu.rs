@@ -1,27 +1,32 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
-use crate::bootstrap::{BOT_VERSION, BotSettings, DEFAULT_SESSION_TIMEOUT_SECS};
+use crate::bootstrap::{BotSettings, DEFAULT_SESSION_TIMEOUT_SECS};
 use crate::logic::singbox::SingBoxInstaller;
 use crate::logic::system::SystemMonitor;
 use crate::logic::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
 use crate::utils::format_duration_human;
+use rust_i18n::t;
 use std::path::Path;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 use tgbot::core::paths::{singbox, xray};
 
 pub async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
+    let lang = "zh-CN";
     let keyboard = InlineKeyboardMarkup::new(vec![
         vec![
-            InlineKeyboardButton::callback("📊 系统状态", "m_mon"),
-            InlineKeyboardButton::callback("👥 用户管理", "m_usr"),
+            InlineKeyboardButton::callback(t!("menu.status", locale = lang), "m_mon"),
+            InlineKeyboardButton::callback(t!("menu.users", locale = lang), "m_usr"),
         ],
         vec![InlineKeyboardButton::callback(
-            "🛠 运维中心 (Ops)",
+            t!("menu.ops_center", locale = lang),
             "m_ops_center",
         )],
-        vec![InlineKeyboardButton::callback("⚙️ 系统设置", "m_settings")],
+        vec![InlineKeyboardButton::callback(
+            t!("menu.settings", locale = lang),
+            "m_settings",
+        )],
     ]);
-    bot.send_message(chat_id, "🏠 <b>主菜单</b>\n请选择操作类目:")
+    bot.send_message(chat_id, t!("menu.main_prompt", locale = lang))
         .parse_mode(ParseMode::Html)
         .reply_markup(keyboard)
         .await?;
@@ -29,21 +34,28 @@ pub async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
 }
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
+    let lang = ctx.state.language().await;
     let data = ctx.data.as_str();
     match data {
         "m_main" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("📊 状态监控", "m_mon"),
-                    InlineKeyboardButton::callback("👥 用户管理", "m_usr"),
+                    InlineKeyboardButton::callback(t!("menu.status", locale = &lang), "m_mon"),
+                    InlineKeyboardButton::callback(t!("menu.users", locale = &lang), "m_usr"),
                 ],
                 vec![
-                    InlineKeyboardButton::callback("🛠 运维中心", "m_ops_center"),
-                    InlineKeyboardButton::callback("⚙️ 系统设置", "m_settings"),
+                    InlineKeyboardButton::callback(
+                        t!("menu.ops_center", locale = &lang),
+                        "m_ops_center",
+                    ),
+                    InlineKeyboardButton::callback(
+                        t!("menu.settings", locale = &lang),
+                        "m_settings",
+                    ),
                 ],
             ]);
             ctx.bot
-                .edit_message_text(ctx.chat_id, ctx.msg_id, "🏠 <b>主菜单</b>\n请选择功能模块:")
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("menu.main", locale = &lang))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -51,20 +63,26 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_ops_center" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("🌩 网络优化", "m_net_opt"),
-                    InlineKeyboardButton::callback("🛡 安全防护", "m_security"),
+                    InlineKeyboardButton::callback(t!("ops.net_opt", locale = &lang), "m_net_opt"),
+                    InlineKeyboardButton::callback(
+                        t!("ops.security", locale = &lang),
+                        "m_security",
+                    ),
                 ],
                 vec![
-                    InlineKeyboardButton::callback("💻 系统指令", "m_sys_cmd"),
-                    InlineKeyboardButton::callback("📄 日志审计", "m_log"),
+                    InlineKeyboardButton::callback(t!("ops.sys_cmd", locale = &lang), "m_sys_cmd"),
+                    InlineKeyboardButton::callback(t!("ops.log", locale = &lang), "m_log"),
                 ],
-                vec![InlineKeyboardButton::callback("⬅️ 返回主菜单", "m_main")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_main", locale = &lang),
+                    "m_main",
+                )],
             ]);
             ctx.bot
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    "🛠 <b>运维中心</b>\n集成网络、安全及系统管理工具:",
+                    t!("menu.ops_center", locale = &lang),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
@@ -72,29 +90,62 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "m_settings" => {
             let timeout = ctx.state.session_timeout_secs().await;
-            let timeout_label = format!("🔐 会话有效期 ({})", format_duration_human(timeout));
+            let timeout_label = format!(
+                "🔐 {} ({})",
+                t!("session.title", locale = &lang),
+                format_duration_human(timeout)
+            );
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("🛰 Xray-core 管理", "a_wwps_core_menu"),
-                    InlineKeyboardButton::callback("📦 Sing-box 管理", "a_wwps_box_menu"),
+                    InlineKeyboardButton::callback(
+                        t!("settings.xray_manage", locale = &lang),
+                        "a_wwps_core_menu",
+                    ),
+                    InlineKeyboardButton::callback(
+                        t!("settings.singbox_manage", locale = &lang),
+                        "a_wwps_box_menu",
+                    ),
                 ],
-                vec![InlineKeyboardButton::callback("⏰ 定时任务", "m_sched")],
+                vec![InlineKeyboardButton::callback(
+                    t!("settings.schedule", locale = &lang),
+                    "m_sched",
+                )],
                 vec![
-                    InlineKeyboardButton::callback("🌍 Geo数据", "a_geo_menu"),
-                    InlineKeyboardButton::callback("⚙️ Bot更新", "a_upgrade"),
+                    InlineKeyboardButton::callback(
+                        t!("settings.geo_data", locale = &lang),
+                        "a_geo_menu",
+                    ),
+                    InlineKeyboardButton::callback(
+                        t!("settings.bot_upgrade", locale = &lang),
+                        "a_upgrade",
+                    ),
                 ],
                 vec![InlineKeyboardButton::callback(
                     &timeout_label,
                     "m_session_timeout",
                 )],
-                vec![InlineKeyboardButton::callback("⚠️ 危险区域", "m_danger")],
-                vec![InlineKeyboardButton::callback("⬅️ 返回主菜单", "m_main")],
+                vec![InlineKeyboardButton::callback(
+                    t!("settings.danger_zone", locale = &lang),
+                    "m_danger",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("settings.language", locale = &lang),
+                    "m_language",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("settings.default_schedule", locale = &lang),
+                    "m_default_schedule",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_main", locale = &lang),
+                    "m_main",
+                )],
             ]);
             ctx.bot
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    "⚙️ <b>系统设置</b>\n管理核心版本、任务调度及数据更新:",
+                    t!("settings.title", locale = &lang),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
@@ -103,33 +154,41 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_net_opt" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("🌩 WARP 分流", "m_warp"),
-                    InlineKeyboardButton::callback("🚀 BBR3 + 通用优化", "a_bbr3"),
+                    InlineKeyboardButton::callback(t!("ops.warp", locale = &lang), "m_warp"),
+                    InlineKeyboardButton::callback(t!("ops.bbr3", locale = &lang), "a_bbr3"),
                 ],
                 vec![InlineKeyboardButton::callback(
-                    "⬅️ 返回运维中心",
-                    "m_ops_center",
-                )],
-            ]);
-            ctx.bot.edit_message_text(
-            ctx.chat_id,
-            ctx.msg_id,
-            "🌩 <b>网络优化</b>\n选择优化方案:\n\n<code>BBR3 + 通用优化</code> 会同时处理内核安装与 sysctl 调优。",
-        )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(keyboard)
-            .await?;
-        }
-        "m_security" => {
-            let keyboard = InlineKeyboardMarkup::new(vec![
-                vec![InlineKeyboardButton::callback("🛡 防火墙加固", "a_fw")],
-                vec![InlineKeyboardButton::callback(
-                    "⬅️ 返回运维中心",
+                    t!("menu.back_ops", locale = &lang),
                     "m_ops_center",
                 )],
             ]);
             ctx.bot
-                .edit_message_text(ctx.chat_id, ctx.msg_id, "🛡 <b>安全防护</b>\n系统安全配置:")
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    t!("ops.net_opt_title", locale = &lang),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
+        }
+        "m_security" => {
+            let keyboard = InlineKeyboardMarkup::new(vec![
+                vec![InlineKeyboardButton::callback(
+                    t!("ops.firewall", locale = &lang),
+                    "a_fw",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_ops", locale = &lang),
+                    "m_ops_center",
+                )],
+            ]);
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    t!("ops.security_title", locale = &lang),
+                )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -137,15 +196,18 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_sys_cmd" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("🔄 重启系统", "a_sys_reboot"),
-                    InlineKeyboardButton::callback("♻️ 重启核心", "a_reload"),
+                    InlineKeyboardButton::callback(
+                        t!("ops.reboot", locale = &lang),
+                        "a_sys_reboot",
+                    ),
+                    InlineKeyboardButton::callback(t!("ops.reload", locale = &lang), "a_reload"),
                 ],
                 vec![InlineKeyboardButton::callback(
-                    "⚙️ 配置自动更新",
+                    t!("ops.auto_update", locale = &lang),
                     "a_sys_maint",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "⬅️ 返回运维中心",
+                    t!("menu.back_ops", locale = &lang),
                     "m_ops_center",
                 )],
             ]);
@@ -153,7 +215,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    "💻 <b>系统指令</b>\n执行系统级操作:",
+                    t!("ops.sys_cmd_title", locale = &lang),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
@@ -161,19 +223,21 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "a_geo_menu" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
-                vec![InlineKeyboardButton::callback("🔄 立即更新", "a_geo")],
                 vec![InlineKeyboardButton::callback(
-                    "⏰ 自动调度",
+                    t!("geo.update_now", locale = &lang),
+                    "a_geo",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("geo.auto_schedule", locale = &lang),
                     "a_geo_sched_menu",
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_settings", locale = &lang),
+                    "m_settings",
+                )],
             ]);
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "🌍 <b>Geo数据管理</b>\n管理 GeoIP/GeoSite 数据库:",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("geo.title", locale = &lang))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -181,20 +245,22 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_mon" => {
             let report = SystemMonitor::get_status_report()
                 .await
-                .unwrap_or_else(|e| format!("❌ 获取状态失败: {}", e));
-            let (wwps_core, wwps_box) = SystemMonitor::get_core_status().await;
+                .unwrap_or_else(|e| {
+                    t!("misc.internal_error", locale = &lang).replace("%error%", &e.to_string())
+                });
+            let (_wwps_core, _wwps_box) = SystemMonitor::get_core_status().await;
 
-            let status_text = format!(
-                "{}\n\n🤖 <b>Bot 版本</b>: v{}\n\n⚙️ <b>核心进程</b>:\n- Xray-core: {}\n- Sing-box: {}",
-                report,
-                BOT_VERSION,
-                if wwps_core { "🟢" } else { "🔴" },
-                if wwps_box { "🟢" } else { "🔴" }
-            );
+            let status_text = report.to_string();
 
             let keyboard = InlineKeyboardMarkup::new(vec![
-                vec![InlineKeyboardButton::callback("🔄 刷新", "m_mon")],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")],
+                vec![InlineKeyboardButton::callback(
+                    t!("ops.refresh", locale = &lang),
+                    "m_mon",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_main", locale = &lang),
+                    "m_main",
+                )],
             ]);
             ctx.bot
                 .edit_message_text(ctx.chat_id, ctx.msg_id, status_text)
@@ -209,30 +275,33 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             if !wwps_core_config_exists && !singbox_config_exists {
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    "🚀 初始化 wwps 环境",
+                    t!("users.init_wwps", locale = &lang),
                     "a_inst_base",
                 )]);
-                ctx.bot.edit_message_text(ctx.chat_id, ctx.msg_id,
-                    "👥 <b>用户管理</b>\n\n❌ <b>未检测到 wwps 配置</b>\n\n当前系统尚未安装 wwps 或配置目录不存在。\n\n请先安装并配置 wwps 后再使用用户管理功能。")
+                ctx.bot
+                    .edit_message_text(
+                        ctx.chat_id,
+                        ctx.msg_id,
+                        t!("users.no_config", locale = &lang),
+                    )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
                     .await?;
             } else {
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    "🅧 Xray-core 管理",
+                    t!("users.xray_manage", locale = &lang),
                     "m_xray_mgmt",
                 )]);
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    "📦 Sing-box 管理",
+                    t!("users.singbox_manage", locale = &lang),
                     "m_singbox_mgmt",
                 )]);
-                buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_main")]);
+                buttons.push(vec![InlineKeyboardButton::callback(
+                    t!("menu.back_main", locale = &lang),
+                    "m_main",
+                )]);
                 ctx.bot
-                    .edit_message_text(
-                        ctx.chat_id,
-                        ctx.msg_id,
-                        "👥 <b>用户管理</b>\n\n请选择核心类型:",
-                    )
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("users.title", locale = &lang))
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
                     .await?;
@@ -240,14 +309,20 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "m_session_timeout" => {
             let current = ctx.state.session_timeout_secs().await;
-            let options: Vec<(u64, &str)> = vec![
-                (5 * 60, "5分钟"),
-                (10 * 60, "10分钟"),
-                (30 * 60, "30分钟"),
-                (60 * 60, "1小时"),
-                (4 * 3600, "4小时"),
-                (12 * 3600, "12小时"),
-                (24 * 3600, "24小时"),
+            let options: Vec<(u64, String)> = vec![
+                (5 * 60, t!("session.5_min", locale = &lang).to_string()),
+                (10 * 60, t!("session.10_min", locale = &lang).to_string()),
+                (30 * 60, t!("session.30_min", locale = &lang).to_string()),
+                (60 * 60, t!("session.1_hour", locale = &lang).to_string()),
+                (4 * 3600, t!("session.4_hours", locale = &lang).to_string()),
+                (
+                    12 * 3600,
+                    t!("session.12_hours", locale = &lang).to_string(),
+                ),
+                (
+                    24 * 3600,
+                    t!("session.24_hours", locale = &lang).to_string(),
+                ),
             ];
             let mut rows = Vec::new();
             for chunk in options.chunks(3) {
@@ -264,21 +339,20 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 rows.push(row);
             }
             rows.push(vec![InlineKeyboardButton::callback(
-                "⬅️ 返回设置",
+                t!("menu.back_settings", locale = &lang),
                 "m_settings",
             )]);
 
-            ctx.bot.edit_message_text(
-            ctx.chat_id,
-            ctx.msg_id,
-            format!(
-                "🔐 <b>会话有效期设置</b>\n\n当前: <b>{}</b>\n\nTOTP 认证后的会话有效时长，过期需重新认证。",
-                format_duration_human(current)
-            ),
-        )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(InlineKeyboardMarkup::new(rows))
-            .await?;
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    t!("session.timeout_title", locale = &lang)
+                        .replace("%current%", &format_duration_human(current)),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(rows))
+                .await?;
         }
         d if d.starts_with("set_timeout:") => {
             let secs: u64 = d
@@ -292,14 +366,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 ..Default::default()
             };
             if let Err(e) = settings.save() {
-                log::error!("保存会话设置失败: {}", e);
+                log::error!(
+                    "{}",
+                    t!("session.save_error", locale = &lang).replace("%error%", &e.to_string())
+                );
             }
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text(format!(
-                    "✅ 会话有效期已设为 {}",
-                    format_duration_human(secs)
-                ))
+                .text(
+                    t!("session.set_success", locale = &lang)
+                        .replace("%duration%", &format_duration_human(secs)),
+                )
                 .await?;
 
             return Ok(HandlerAction::Redirect("m_session_timeout".to_string()));
@@ -307,17 +384,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_danger" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "💥 立即自毁 (VPS过期一键删)",
+                    t!("danger.destroy_btn", locale = &lang),
                     "a_destroy_ask",
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_settings", locale = &lang),
+                    "m_settings",
+                )],
             ]);
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "⚠️ <b>危险区域</b>\n\n此处包含不可逆的破坏性操作。\n请谨慎操作！",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("danger.title", locale = &lang))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -325,22 +401,21 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_wwps_core_menu" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "🔄 更新到最新 (默认)",
+                    t!("xray.update_latest", locale = &lang),
                     "a_wwps_core_latest",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "📜 选择版本 (最近 5 个)",
+                    t!("xray.select_version", locale = &lang),
                     "a_wwps_core_tags",
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_settings", locale = &lang),
+                    "m_settings",
+                )],
             ]);
 
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "🛰️ <b>wwps-core 管理</b>\n默认更新到最新版本，或选择指定版本。",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("xray.manage", locale = &lang))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -348,7 +423,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_wwps_core_latest" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("🛰️ 正在启动 wwps-core 升级 (最新版本)...")
+                .text(t!("xray.upgrading", locale = &lang))
                 .await?;
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
@@ -358,7 +433,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .await
                 {
                     let _ = bot_clone
-                        .send_message(chat_id_clone, format!("❌ wwps-core 升级失败: {}", err))
+                        .send_message(
+                            chat_id_clone,
+                            t!("xray.upgrade_failed", locale = "zh-CN")
+                                .replace("%error%", &err.to_string()),
+                        )
                         .await;
                 }
             });
@@ -366,7 +445,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_wwps_core_tags" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("📜 正在获取最近 5 个版本...")
+                .text(t!("xray.upgrading", locale = &lang))
                 .await?;
 
             let reply =
@@ -381,14 +460,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                 )]);
                             }
                             buttons.push(vec![InlineKeyboardButton::callback(
-                                "⬅️ 返回",
+                                t!("menu.back_main", locale = &lang),
                                 "a_wwps_core_menu",
                             )]);
                             ctx.bot
                                 .edit_message_text(
                                     ctx.chat_id,
                                     ctx.msg_id,
-                                    "请选择要安装的 wwps-core 版本：",
+                                    t!("xray.select_version_title", locale = &lang),
                                 )
                                 .reply_markup(InlineKeyboardMarkup::new(buttons))
                                 .await
@@ -398,7 +477,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                 .edit_message_text(
                                     ctx.chat_id,
                                     ctx.msg_id,
-                                    "未获取到可用版本，请稍后重试。",
+                                    t!("xray.no_versions", locale = &lang),
                                 )
                                 .await
                         }
@@ -407,7 +486,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                 .edit_message_text(
                                     ctx.chat_id,
                                     ctx.msg_id,
-                                    format!("❌ 获取版本列表失败: {}", err),
+                                    t!("xray.version_fetch_error", locale = &lang)
+                                        .replace("%error%", &err.to_string()),
                                 )
                                 .await
                         }
@@ -417,7 +497,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             .edit_message_text(
                                 ctx.chat_id,
                                 ctx.msg_id,
-                                format!("❌ wwps-core 配置错误: {}", err),
+                                t!("xray.config_error", locale = &lang)
+                                    .replace("%error%", &err.to_string()),
                             )
                             .await
                     }
@@ -426,10 +507,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if reply.is_err() {
                 let _ = ctx
                     .bot
-                    .send_message(
-                        ctx.chat_id,
-                        "❌ 无法获取版本列表，请检查网络或 GitHub 访问。",
-                    )
+                    .send_message(ctx.chat_id, t!("xray.network_error", locale = &lang))
                     .await;
             }
         }
@@ -438,14 +516,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if tag.is_empty() {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 版本信息为空")
+                    .text(t!("xray.version_empty", locale = &lang))
                     .await?;
                 return Ok(HandlerAction::Done);
             }
 
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text(format!("🛰️ 正在升级到版本 {}...", tag))
+                .text(t!("xray.upgrading_version", locale = &lang).replace("%version%", &tag))
                 .await?;
 
             let bot_clone = ctx.bot.clone();
@@ -456,7 +534,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .await
                 {
                     let _ = bot_clone
-                        .send_message(chat_id_clone, format!("❌ wwps-core 升级失败: {}", err))
+                        .send_message(
+                            chat_id_clone,
+                            t!("xray.upgrade_failed", locale = "zh-CN")
+                                .replace("%error%", &err.to_string()),
+                        )
                         .await;
                 }
             });
@@ -464,21 +546,24 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_wwps_box_menu" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "🔄 重启服务",
+                    t!("singbox.restart", locale = &lang),
                     "a_wwps_box_restart",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "📊 查看状态",
+                    t!("singbox.view_status", locale = &lang),
                     "a_wwps_box_status",
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_settings", locale = &lang),
+                    "m_settings",
+                )],
             ]);
 
             ctx.bot
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    "📦 <b>Sing-box 管理</b>\n管理 Sing-box 服务状态",
+                    t!("singbox.manage", locale = &lang),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
@@ -487,19 +572,28 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_wwps_box_restart" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("🔄 正在重启 Sing-box 服务...")
+                .text(t!("singbox.restarting", locale = &lang))
                 .await?;
 
             match SingBoxInstaller::restart_service().await {
                 Ok(_) => {
                     ctx.bot
-                        .edit_message_text(ctx.chat_id, ctx.msg_id, "✅ <b>Sing-box 重启成功</b>")
+                        .edit_message_text(
+                            ctx.chat_id,
+                            ctx.msg_id,
+                            t!("singbox.restart_success", locale = &lang),
+                        )
                         .parse_mode(ParseMode::Html)
                         .await?;
                 }
                 Err(err) => {
                     ctx.bot
-                        .edit_message_text(ctx.chat_id, ctx.msg_id, format!("❌ 重启失败: {}", err))
+                        .edit_message_text(
+                            ctx.chat_id,
+                            ctx.msg_id,
+                            t!("singbox.restart_failed", locale = &lang)
+                                .replace("%error%", &err.to_string()),
+                        )
                         .await?;
                 }
             }
@@ -507,7 +601,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_wwps_box_status" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("📊 正在获取状态...")
+                .text(t!("singbox.fetching_status", locale = &lang))
                 .await?;
 
             match SingBoxInstaller::status().await {
@@ -516,7 +610,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .edit_message_text(
                             ctx.chat_id,
                             ctx.msg_id,
-                            format!("📦 <b>Sing-box 状态</b>\n\n{}", status),
+                            t!("singbox.status_title", locale = &lang).replace("%status%", &status),
                         )
                         .parse_mode(ParseMode::Html)
                         .await?;
@@ -526,11 +620,92 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .edit_message_text(
                             ctx.chat_id,
                             ctx.msg_id,
-                            format!("❌ 获取状态失败: {}", err),
+                            t!("singbox.status_failed", locale = &lang)
+                                .replace("%error%", &err.to_string()),
                         )
                         .await?;
                 }
             }
+        }
+        "m_default_schedule" => {
+            let keyboard = InlineKeyboardMarkup::new(vec![
+                vec![
+                    InlineKeyboardButton::callback(
+                        t!("default_schedule.frequency", locale = &lang),
+                        "ds_freq",
+                    ),
+                    InlineKeyboardButton::callback(
+                        t!("default_schedule.time", locale = &lang),
+                        "ds_time",
+                    ),
+                ],
+                vec![InlineKeyboardButton::callback(
+                    t!("default_schedule.timezone", locale = &lang),
+                    "ds_tz",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("default_schedule.confirm", locale = &lang),
+                    "ds_confirm",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_settings", locale = &lang),
+                    "m_settings",
+                )],
+            ]);
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    t!("default_schedule.title", locale = &lang),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
+        }
+        "m_language" => {
+            let current_lang = ctx.state.language().await.clone();
+            let current_label = match current_lang.as_str() {
+                "zh-CN" => "🇨🇳 中文",
+                "en" => "🇺🇸 English",
+                "ja" => "🇯🇵 日本語",
+                _ => &current_lang,
+            };
+            let keyboard = InlineKeyboardMarkup::new(vec![
+                vec![InlineKeyboardButton::callback(
+                    t!("language.btn_zh_cn", locale = &lang),
+                    "set_lang:zh-CN",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("language.btn_en", locale = &lang),
+                    "set_lang:en",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("language.btn_ja", locale = &lang),
+                    "set_lang:ja",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_settings", locale = &lang),
+                    "m_settings",
+                )],
+            ]);
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    t!("language.title", locale = &lang).replace("%current%", current_label),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
+        }
+        d if d.starts_with("set_lang:") => {
+            let lang_code = d.strip_prefix("set_lang:").unwrap_or("zh-CN");
+            ctx.state.set_language(lang_code).await;
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
+                .text(t!("language.set_success", locale = &lang_code))
+                .await?;
+            return Ok(HandlerAction::Redirect("m_language".to_string()));
         }
         _ => {}
     }

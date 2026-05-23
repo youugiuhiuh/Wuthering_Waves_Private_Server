@@ -27,6 +27,15 @@ session:
   current: "当前: %duration%"
   description: "\n\nTOTP 认证后的会话有效时长，过期需重新认证。"
   set_success: "✅ 会话有效期已设为 %duration%"
+  timeout_title: "🔐 <b>会话有效期设置</b>\n\n当前: <b>%current%</b>\n\nTOTP 认证后的会话有效时长，过期需重新认证。"
+  save_error: "保存会话设置失败: %error%"
+  5_min: "5分钟"
+  10_min: "10分钟"
+  30_min: "30分钟"
+  1_hour: "1小时"
+  4_hours: "4小时"
+  12_hours: "12小时"
+  24_hours: "24小时"
 
 settings:
   title: "⚙️ 系统设置\n管理核心版本、任务调度及数据更新:"
@@ -164,6 +173,13 @@ ops:
   reboot_now: "⚠️ 系统将于 3 秒后重启\nBBR3 新内核将在重启后生效。"
   reboot_later: "✅ 已选择稍后重启"
   reboot_later_msg: "✅ 已记录为稍后重启\n\nBBR3 已安装完成，待你手动重启系统后切换到新内核生效。"
+  firewall_starting: "⚙️ 正在启动防火墙扫描与加固..."
+  firewall_failed: "❌ 失败: %error%"
+  firewall_timeout: "❌ 失败: 操作超时 (45s)，请检查系统 nftables 状态"
+  hardening_in_progress: "安全加固中"
+  bot_upgrade_starting: "⚙️ 正在启动 Bot 自更新..."
+  bot_upgrade_failed: "❌ 自更新失败: %error%"
+  bot_upgrade_cannot_start: "❌ 无法启动自更新: %error%"
 
 log:
   title: "📄 日志审计\n通过 systemd journal 获取服务日志:"

@@ -2,6 +2,7 @@ use crate::app::destruct_flow;
 use crate::app::destruct_flow::MessageFlowOutcome;
 use crate::app::state::{AppState, TimeoutStatus};
 use futures_util::future::BoxFuture;
+use rust_i18n::t;
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::Bot;
@@ -14,11 +15,12 @@ pub fn handle_callback(
     state: Arc<AppState>,
 ) -> BoxFuture<'static, ResponseResult<()>> {
     Box::pin(async move {
+        let lang = state.language().await;
         loop {
             let user_id = q.from.id.0 as i64;
             if !state.is_authorized(user_id).await {
                 bot.answer_callback_query(q.id)
-                    .text("🚫 会话已过期，请发送 6 位 TOTP 验证码重新认证")
+                    .text(t!("auth.expired", locale = &lang))
                     .await?;
                 break Ok(());
             }
@@ -53,7 +55,7 @@ pub fn handle_callback(
                     ..new_q
                 };
                 bot.answer_callback_query(q.id.clone())
-                    .text("⏳ 自定义定时会话已超时，请重新进入。")
+                    .text(t!("schedule.custom_expired", locale = &lang))
                     .show_alert(true)
                     .await?;
                 continue;
@@ -100,7 +102,7 @@ pub fn handle_callback(
                     eprintln!("[ERROR] Handler dispatch failed: {:?}", e);
                     let _ = bot
                         .answer_callback_query(q.id.clone())
-                        .text("❌ 内部运维业务错误，请查看后台日志")
+                        .text(t!("misc.internal_error", locale = &lang))
                         .show_alert(true)
                         .await;
                     break Ok(());
