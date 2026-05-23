@@ -24,6 +24,22 @@ impl Default for SchedulerState {
 }
 
 impl SchedulerState {
+    pub fn build_default_cron(
+        hour: u8,
+        minute: u8,
+        frequency: &str,
+        day_of_week: Option<&str>,
+    ) -> String {
+        match frequency {
+            "daily" => format!("{} {} * * *", minute, hour),
+            "weekly" => {
+                let day = day_of_week.unwrap_or("Sun");
+                format!("{} {} * * {}", minute, hour, day)
+            }
+            _ => format!("{} {} * * *", minute, hour),
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             tasks: vec![ScheduledTask::new(TaskType::GeoUpdate, "0 4 * * 0")],
@@ -32,6 +48,28 @@ impl SchedulerState {
 
     pub fn get_default() -> Self {
         Self::new()
+    }
+
+    pub fn from_settings(
+        default_schedule_hour: u8,
+        default_schedule_minute: u8,
+        default_schedule_frequency: &str,
+        default_schedule_day_of_week: Option<&str>,
+        default_schedule_timezone: &str,
+    ) -> Self {
+        let cron = Self::build_default_cron(
+            default_schedule_hour,
+            default_schedule_minute,
+            default_schedule_frequency,
+            default_schedule_day_of_week,
+        );
+        Self {
+            tasks: vec![ScheduledTask::new_with_timezone(
+                TaskType::GeoUpdate,
+                &cron,
+                default_schedule_timezone,
+            )],
+        }
     }
 
     pub fn save_to_file(&self, path: &str) -> Result<()> {
@@ -418,5 +456,29 @@ mod tests {
         assert!(result.starts_with("❌"));
         assert!(!state_path.exists());
         assert!(manager.state.lock().await.tasks.is_empty());
+    }
+
+    #[test]
+    fn build_default_cron_daily() {
+        assert_eq!(
+            SchedulerState::build_default_cron(4, 0, "daily", None),
+            "0 4 * * *"
+        );
+    }
+
+    #[test]
+    fn build_default_cron_weekly() {
+        assert_eq!(
+            SchedulerState::build_default_cron(4, 0, "weekly", Some("Sun")),
+            "0 4 * * Sun"
+        );
+    }
+
+    #[test]
+    fn build_default_cron_weekly_no_day_defaults_to_sun() {
+        assert_eq!(
+            SchedulerState::build_default_cron(4, 0, "weekly", None),
+            "0 4 * * Sun"
+        );
     }
 }
