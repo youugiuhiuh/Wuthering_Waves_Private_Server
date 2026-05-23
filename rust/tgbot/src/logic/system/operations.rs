@@ -282,7 +282,7 @@ impl Operations {
         log.push_str("🔄 正在开始系统维护...\n");
 
         // 1. Detect distro family
-        log.push_str("🔍 [1/4] 检测系统发行版...\n");
+        log.push_str("🔍 [1/7] 检测系统发行版...\n");
         let distro = match DistroFamily::detect().await {
             Ok(d) => {
                 log.push_str(&format!("✅ 检测到: {}\n", distro_to_display(d)));
@@ -294,52 +294,76 @@ impl Operations {
             }
         };
 
-        // 2. Install, configure, and enable auto-update service
-        log.push_str("⚙️ [2/4] 配置自动安全更新...\n");
+        // 2. Install primary auto-update package
+        log.push_str("📦 [2/7] 安装自动更新包...\n");
         match AutoUpdateConfigurator::install_package(distro).await {
-            Ok(_) => log.push_str("✅ 安装完成\n"),
-            Err(e) => log.push_str(&format!("❌ 安装失败: {}\n", e)),
+            Ok(_) => log.push_str("✅ 自动更新包安装完成\n"),
+            Err(e) => {
+                log.push_str(&format!("❌ 安装失败: {}\n", e));
+                anyhow::bail!("安装自动更新包失败: {}", e);
+            }
+        };
+
+        // 3. Install supplementary packages (needrestart, etc.) — non-fatal
+        log.push_str("📦 [3/7] 安装辅助包 (needrestart)...\n");
+        let supp_results = AutoUpdateConfigurator::install_supplementary_packages(distro).await;
+        for (pkg, result) in &supp_results {
+            match result {
+                Ok(_) => log.push_str(&format!("  ✅ {} 安装完成\n", pkg)),
+                Err(e) => log.push_str(&format!("  ⚠️ {} 安装失败 (非致命): {}\n", pkg, e)),
+            }
         }
 
+        // 4. Write main config (50unattended-upgrades / automatic.conf)
+        log.push_str("📝 [4/7] 写入自动更新配置...\n");
         match AutoUpdateConfigurator::write_config(distro).await {
-            Ok(_) => log.push_str("✅ 配置写入完成\n"),
-            Err(e) => log.push_str(&format!("❌ 配置写入失败: {}\n", e)),
+            Ok(_) => log.push_str("✅ 主配置写入完成\n"),
+            Err(e) => log.push_str(&format!("❌ 主配置写入失败: {}\n", e)),
         }
 
+        // 5. Write supplementary configs (20auto-upgrades + needrestart.conf)
+        log.push_str("📝 [5/7] 写入辅助配置...\n");
+        match AutoUpdateConfigurator::write_periodic_config(distro).await {
+            Ok(_) => log.push_str("✅ APT Periodic 配置写入完成\n"),
+            Err(e) => log.push_str(&format!("⚠️ APT Periodic 配置写入失败: {}\n", e)),
+        }
+
+        let needrestart_installed = supp_results.iter().any(|(_, r)| r.is_ok());
+        if needrestart_installed {
+            match AutoUpdateConfigurator::configure_needrestart(distro).await {
+                Ok(_) => log.push_str("✅ needrestart 自动重启配置写入完成\n"),
+                Err(e) => log.push_str(&format!("⚠️ needrestart 配置写入失败: {}\n", e)),
+            }
+        } else {
+            log.push_str("⚠️ needrestart 未安装，跳过自动重启配置\n");
+        }
+
+        // 6. Enable services
+        log.push_str("⚡ [6/7] 启用自动更新服务...\n");
         match AutoUpdateConfigurator::enable_service(distro).await {
             Ok(_) => log.push_str("✅ 自动更新服务已启用\n"),
             Err(e) => log.push_str(&format!("❌ 启用服务失败: {}\n", e)),
         }
 
-        // 3. One-time cleanup
-        log.push_str("🧹 [3/4] 清理无用包...\n");
+        // 7. One-time cleanup + check reboot
+        log.push_str("🧹 [7/7] 清理与检查...\n");
         let cleanup_cmds = Self::cleanup_commands(distro);
-        let total = cleanup_cmds.len();
         for (i, (cmd, args)) in cleanup_cmds.iter().enumerate() {
             let step_desc = if i == 0 {
                 "移除无用包"
             } else {
                 "清理缓存"
             };
-            log.push_str(&format!("  {} ({}/{})...\n", step_desc, i + 1, total));
             match run_cmd_checked(cmd, args, TIMEOUT_APT).await {
                 Ok(_) => log.push_str(&format!("  ✅ {}完成\n", step_desc)),
-                Err(e) => log.push_str(&format!("  ❌ {}失败: {}\n", step_desc, e)),
+                Err(e) => log.push_str(&format!("  ⚠️ {}失败: {}\n", step_desc, e)),
             }
         }
 
-        // 4. Check if reboot is needed
-        log.push_str("🔄 [4/4] 检查是否需要重启...\n");
         match Self::check_reboot_needed(distro).await {
-            Ok(true) => {
-                log.push_str("⚠️ 需要重启系统以完成安全更新\n");
-            }
-            Ok(false) => {
-                log.push_str("✅ 当前无需重启\n");
-            }
-            Err(e) => {
-                log.push_str(&format!("⚠️ 无法检查重启状态: {}\n", e));
-            }
+            Ok(true) => log.push_str("⚠️ 需要重启系统以完成安全更新\n"),
+            Ok(false) => log.push_str("✅ 当前无需重启\n"),
+            Err(e) => log.push_str(&format!("⚠️ 无法检查重启状态: {}\n", e)),
         }
 
         log.push_str("\n🎉 维护操作已完成。自动安全更新已配置。\n");
