@@ -1,6 +1,7 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::app::state::{ScheduleFrequency, ScheduleInputState};
 use crate::logic;
+use crate::logic::operations::Operations;
 use crate::logic::scheduler::TaskType;
 use crate::utils;
 use std::time::Instant;
@@ -296,8 +297,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 }
                 (Some("reboot"), Some("daily")) => (TaskType::Reboot, ScheduleFrequency::Daily),
                 (Some("reboot"), Some("weekly")) => (TaskType::Reboot, ScheduleFrequency::Weekly),
-                (Some("secupd"), Some("daily")) => (TaskType::SecurityUpdate, ScheduleFrequency::Daily),
-                (Some("secupd"), Some("weekly")) => (TaskType::SecurityUpdate, ScheduleFrequency::Weekly),
+                (Some("secupd"), Some("daily")) => {
+                    (TaskType::SecurityUpdate, ScheduleFrequency::Daily)
+                }
+                (Some("secupd"), Some("weekly")) => {
+                    (TaskType::SecurityUpdate, ScheduleFrequency::Weekly)
+                }
                 _ => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
@@ -511,7 +516,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             }
         }
         "s_custom_confirm" => {
-            let Some((cron, task_type, timezone, return_to)) = ctx
+            let Some((cron, task_type, timezone, return_to, hour, minute)) = ctx
                 .state
                 .with_schedule_input(ctx.chat_id, |input| {
                     input.updated_at = Instant::now();
@@ -520,6 +525,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         input.task_type.clone(),
                         input.timezone.clone(),
                         input.return_to.clone(),
+                        input.hour,
+                        input.minute,
                     )
                 })
                 .await
@@ -543,7 +550,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             ctx.state.remove_schedule_input(ctx.chat_id).await;
             if let Some(manager) = logic::scheduler::get_manager().await {
                 let task = logic::scheduler::ScheduledTask::new_with_timezone(
-                    task_type,
+                    task_type.clone(),
                     &cron_expression,
                     &timezone,
                 );
@@ -556,8 +563,48 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             .answer_callback_query(ctx.q.id.clone())
                             .text("✅ 任务添加成功")
                             .await?;
+                        if task_type == TaskType::SecurityUpdate {
+                            let reboot_time =
+                                format!("{:02}:{:02}", hour.unwrap_or(3), minute.unwrap_or(0));
+                            let bot_clone = ctx.bot.clone();
+                            let chat_id_clone = ctx.chat_id;
+                            tokio::spawn(async move {
+                                match Operations::perform_maintenance_with_reboot_time(&reboot_time)
+                                    .await
+                                {
+                                    Ok(log) => {
+                                        let log_tail = if log.len() > 3000 {
+                                            format!("... (Truncated)\n{}", &log[log.len() - 2000..])
+                                        } else {
+                                            log
+                                        };
+                                        let _ = bot_clone
+                                            .send_message(
+                                                chat_id_clone,
+                                                format!(
+                                                    "📋 <b>安全更新初始配置日志</b>\n\n<pre>{}</pre>",
+                                                    log_tail
+                                                ),
+                                            )
+                                            .parse_mode(ParseMode::Html)
+                                            .await;
+                                    }
+                                    Err(e) => {
+                                        let _ = bot_clone
+                                            .send_message(
+                                                chat_id_clone,
+                                                format!("❌ <b>安全更新初始配置失败</b>\n\n{}", e),
+                                            )
+                                            .parse_mode(ParseMode::Html)
+                                            .await;
+                                    }
+                                }
+                            });
+                        }
                         let back_label = if return_to == "a_geo_sched_menu" {
                             "⬅️ 返回 Geo 调度"
+                        } else if return_to == "m_sys_cmd" {
+                            "⬅️ 返回系统指令"
                         } else {
                             "⬅️ 返回定时任务"
                         };
