@@ -47,15 +47,60 @@ impl Drop for EncryptedConfig {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
 pub struct BotSettings {
     #[serde(default = "BotSettings::default_session_timeout")]
     pub session_timeout_secs: u64,
+    #[serde(default = "BotSettings::default_language")]
+    pub language: String,
+    #[serde(default = "BotSettings::default_schedule_hour")]
+    pub default_schedule_hour: u8,
+    #[serde(default = "BotSettings::default_schedule_minute")]
+    pub default_schedule_minute: u8,
+    #[serde(default = "BotSettings::default_schedule_frequency")]
+    pub default_schedule_frequency: String,
+    #[serde(default = "BotSettings::default_schedule_day_of_week")]
+    pub default_schedule_day_of_week: Option<String>,
+    #[serde(default = "BotSettings::default_schedule_timezone")]
+    pub default_schedule_timezone: String,
 }
 
 impl BotSettings {
     fn default_session_timeout() -> u64 {
         DEFAULT_SESSION_TIMEOUT_SECS
+    }
+
+    fn default_language() -> String {
+        "zh-CN".to_string()
+    }
+
+    fn default_schedule_hour() -> u8 {
+        4
+    }
+
+    fn default_schedule_minute() -> u8 {
+        0
+    }
+
+    fn default_schedule_frequency() -> String {
+        "weekly".to_string()
+    }
+
+    fn default_schedule_day_of_week() -> Option<String> {
+        Some("Sun".to_string())
+    }
+
+    fn default_schedule_timezone() -> String {
+        "UTC".to_string()
+    }
+
+    #[allow(dead_code)]
+    pub fn timezone_for_language(lang: &str) -> &'static str {
+        match lang {
+            "zh-CN" => "Asia/Shanghai",
+            "ja" => "Asia/Tokyo",
+            _ => "UTC",
+        }
     }
 
     pub fn load() -> Self {
@@ -68,6 +113,12 @@ impl BotSettings {
         }
         BotSettings {
             session_timeout_secs: DEFAULT_SESSION_TIMEOUT_SECS,
+            language: Self::default_language(),
+            default_schedule_hour: Self::default_schedule_hour(),
+            default_schedule_minute: Self::default_schedule_minute(),
+            default_schedule_frequency: Self::default_schedule_frequency(),
+            default_schedule_day_of_week: Self::default_schedule_day_of_week(),
+            default_schedule_timezone: Self::default_schedule_timezone(),
         }
     }
 
@@ -425,5 +476,21 @@ mod config_validator_tests {
                 )
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn bot_settings_defaults_are_backward_compatible() {
+        let json = r#"{"session_timeout_secs":600}"#;
+        let settings: BotSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.session_timeout_secs, 600);
+        assert_eq!(settings.language, "zh-CN");
+        assert_eq!(settings.default_schedule_hour, 4);
+        assert_eq!(settings.default_schedule_minute, 0);
+        assert_eq!(settings.default_schedule_frequency, "weekly");
+        assert_eq!(
+            settings.default_schedule_day_of_week,
+            Some("Sun".to_string())
+        );
+        assert_eq!(settings.default_schedule_timezone, "UTC");
     }
 }

@@ -289,6 +289,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             ctx.state.set_session_timeout_secs(secs).await;
             let settings = BotSettings {
                 session_timeout_secs: secs,
+                ..Default::default()
             };
             if let Err(e) = settings.save() {
                 log::error!("保存会话设置失败: {}", e);
