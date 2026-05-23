@@ -13,10 +13,26 @@
 **自动读取规则**：  
 如果任务涉及新功能、重构或修复，请在执行任何步骤前自动加载并使用对应 Superpowers 技能。如果技能未触发，请明确说明原因并尝试手动加载（use skill XXX）。
 
+**模式选择规则**（由 main-workflow 技能强制执行）：
+
+| 模式 | 触发条件 | 工作流 |
+|------|---------|--------|
+| **strict** | 新功能、重构、架构变更、数据库变更、安全逻辑、影响 >3 文件 | 完整流程：brainstorming → worktree → plans → subagent → TDD → review → finish |
+| **normal** | 标准 bugfix、中等复杂度任务、小功能 | plans → executing → review（跳过 brainstorming/worktree，除非风险增加）|
+| **rapid** | 文档、注释、typo 修复、格式化、简单单文件修改 | implement → validate（不调用 brainstorming/worktree/TDD/subagents）|
+
 **语言特定规则**：
 
-- 处理 Rust 代码时，必须加载 **rust-lint-format** 技能（`.agents/skills/rust-lint-format/SKILL.md`）并在完成任务前执行强制规则
-- 处理 Go 代码时，必须加载 **go-lint-format** 技能（`.agents/skills/go-lint-format/SKILL.md`）并在完成任务前执行强制规则
-- 添加或删除 Go/Rust 依赖时，必须加载 **dependency-management** 技能（`.agents/skills/dependency-management/SKILL.md`），使用 `go get` / `cargo add` / `cargo remove` 命令，禁止直接编辑 `go.mod`、`go.sum`、`Cargo.toml`
+- 处理 Rust 代码时，必须加载 **rust-lint-format** 技能并在完成任务前执行强制规则
+- 处理 Go 代码时，必须加载 **go-lint-format** 技能并在完成任务前执行强制规则
+- 添加或删除 Go/Rust 依赖时，必须加载 **dependency-management** 技能，使用 `go get` / `cargo add` / `cargo remove` 命令，禁止直接编辑依赖文件
+
+**上下文优化规则**：
+- 避免不必要的仓库扫描
+- 只加载相关技能（基于模式和语言）
+- 最小化 token 使用
+- 阻止 >200 行的 patch，拆分大更改
+- 阻止不相关的重构
+- 阻止修改 >3 文件，除非 strict 模式要求
 
 此规则优先级最高，始终生效，不得违反。
