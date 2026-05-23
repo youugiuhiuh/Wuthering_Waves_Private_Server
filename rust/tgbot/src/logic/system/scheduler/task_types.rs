@@ -9,6 +9,7 @@ pub enum TaskType {
     GeoUpdate,
     Reboot,
     ReloadCore,
+    SecurityUpdate,
     #[serde(other)]
     Unknown,
 }
@@ -19,6 +20,7 @@ impl TaskType {
             TaskType::GeoUpdate => "GeoData 更新 (Update GeoData)",
             TaskType::Reboot => "系统重启 (Reboot)",
             TaskType::ReloadCore => "重载核心 (Reload Core)",
+            TaskType::SecurityUpdate => "安全更新 (Security Update)",
             TaskType::Unknown => "未知任务 (已弃用)",
         }
     }
@@ -57,6 +59,23 @@ impl TaskType {
                 let _ = bot.send_message(chat_id, "🔄 重载核心服务...").await;
                 MaintenanceManager::reload_core().await?;
                 Ok(())
+            }
+            TaskType::SecurityUpdate => {
+                log::info!("执行安全更新定时任务...");
+                let _ = bot
+                    .send_message(chat_id, "⏳ [定时任务] 开始执行安全更新...")
+                    .await;
+
+                let result = Operations::perform_security_update_task().await;
+
+                report_result(
+                    bot,
+                    chat_id,
+                    "安全更新",
+                    "✅ [定时任务] 安全更新执行完成。",
+                    result,
+                )
+                .await
             }
             TaskType::Unknown => {
                 let _ = bot
@@ -176,6 +195,21 @@ mod tests {
         assert_eq!(task.timezone, "Asia/Shanghai");
         assert!(task.enabled);
         assert_eq!(task.task_type, TaskType::GeoUpdate);
+    }
+
+    #[test]
+    fn test_security_update_display_name() {
+        assert_eq!(
+            TaskType::SecurityUpdate.get_display_name(),
+            "安全更新 (Security Update)"
+        );
+    }
+
+    #[test]
+    fn test_security_update_serialization() {
+        let json = r#""SecurityUpdate""#;
+        let task_type: TaskType = serde_json::from_str(json).unwrap();
+        assert_eq!(task_type, TaskType::SecurityUpdate);
     }
 
     #[test]

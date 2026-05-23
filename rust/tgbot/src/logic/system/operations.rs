@@ -368,6 +368,10 @@ impl Operations {
         Ok(log)
     }
 
+    pub async fn perform_security_update_task() -> Result<()> {
+        todo!("SecurityUpdate task implementation - Task 2 will implement this")
+    }
+
     pub async fn reboot_system() -> Result<()> {
         if REBOOT_FLAG.swap(true, Ordering::SeqCst) {
             anyhow::bail!("❌ 重启任务正在执行中，请稍后再试");

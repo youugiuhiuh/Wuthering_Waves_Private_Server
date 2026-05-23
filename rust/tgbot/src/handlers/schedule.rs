@@ -13,6 +13,7 @@ pub(crate) fn schedule_task_name(task_type: &TaskType) -> &'static str {
         TaskType::Reboot => "系统重启",
         TaskType::GeoUpdate => "GeoData 更新",
         TaskType::ReloadCore => "重载核心",
+        TaskType::SecurityUpdate => "安全更新",
     }
 }
 
