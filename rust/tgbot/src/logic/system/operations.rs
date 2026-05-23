@@ -346,7 +346,11 @@ impl Operations {
         log.push_str("🧹 [7/7] 清理与检查...\n");
         let cleanup_cmds = Self::cleanup_commands(distro);
         for (i, (cmd, args)) in cleanup_cmds.iter().enumerate() {
-            let step_desc = if i == 0 { "移除无用包" } else { "清理缓存" };
+            let step_desc = if i == 0 {
+                "移除无用包"
+            } else {
+                "清理缓存"
+            };
             match run_cmd_checked(cmd, args, TIMEOUT_APT).await {
                 Ok(_) => log.push_str(&format!("  ✅ {}完成\n", step_desc)),
                 Err(e) => log.push_str(&format!("  ⚠️ {}失败: {}\n", step_desc, e)),
@@ -367,22 +371,14 @@ impl Operations {
         let distro = DistroFamily::detect().await?;
         match distro {
             DistroFamily::Debian => {
-                run_cmd_checked(
-                    "sh",
-                    &["-c", "unattended-upgrade -v"],
-                    TIMEOUT_APT,
-                )
-                .await
-                .context("执行 unattended-upgrade 失败")?;
+                run_cmd_checked("sh", &["-c", "unattended-upgrade -v"], TIMEOUT_APT)
+                    .await
+                    .context("执行 unattended-upgrade 失败")?;
             }
             DistroFamily::Rhel => {
-                run_cmd_checked(
-                    "sh",
-                    &["-c", "dnf automatic --installupdates"],
-                    TIMEOUT_APT,
-                )
-                .await
-                .context("执行 dnf automatic 失败")?;
+                run_cmd_checked("sh", &["-c", "dnf automatic --installupdates"], TIMEOUT_APT)
+                    .await
+                    .context("执行 dnf automatic 失败")?;
             }
         }
         Ok(())
