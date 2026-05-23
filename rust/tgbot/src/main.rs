@@ -321,12 +321,14 @@ async fn main() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("初始化 TOTP 验证器失败: {}", e))?;
 
     let bot_settings = BotSettings::load();
+    let language = bot_settings.language.clone();
     let state = Arc::new(AppState::new(
         admin_id,
         totp_manager_instance,
         production_executor(),
         encrypted_config.self_destruct_key_hash.clone(),
         bot_settings.session_timeout_secs,
+        language,
     ));
 
     let bot = Bot::new(&token);

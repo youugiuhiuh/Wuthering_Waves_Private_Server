@@ -12,7 +12,13 @@ pub fn format_duration_human(secs: u64) -> String {
             format!("{}小时{}分", h, m)
         }
     } else {
-        format!("{}天", secs / 86400)
+        let d = secs / 86400;
+        let remaining = secs % 86400;
+        if remaining >= 3600 {
+            format!("{}天{}小时", d, remaining / 3600)
+        } else {
+            format!("{}天", d)
+        }
     }
 }
 

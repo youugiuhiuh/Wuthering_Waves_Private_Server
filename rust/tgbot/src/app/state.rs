@@ -79,6 +79,7 @@ pub struct AppState {
     pending_warp_inputs: Mutex<HashMap<ChatId, Instant>>,
     pending_schedule_inputs: Mutex<HashMap<ChatId, ScheduleInputState>>,
     session_timeout_secs: Mutex<u64>,
+    language: Mutex<String>,
 }
 
 impl AppState {
@@ -88,6 +89,7 @@ impl AppState {
         self_destruct_executor: Arc<dyn SelfDestructExecutor>,
         self_destruct_key_hash: Option<String>,
         session_timeout_secs: u64,
+        language: String,
     ) -> Self {
         Self {
             admin_id,
@@ -100,6 +102,7 @@ impl AppState {
             pending_warp_inputs: Mutex::new(HashMap::new()),
             pending_schedule_inputs: Mutex::new(HashMap::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
+            language: Mutex::new(language),
         }
     }
 
@@ -146,6 +149,14 @@ impl AppState {
 
     pub async fn set_session_timeout_secs(&self, secs: u64) {
         *self.session_timeout_secs.lock().await = secs;
+    }
+
+    pub async fn language(&self) -> String {
+        self.language.lock().await.clone()
+    }
+
+    pub async fn set_language(&self, lang: &str) {
+        *self.language.lock().await = lang.to_string();
     }
 
     pub fn self_destruct_executor(&self) -> Arc<dyn SelfDestructExecutor> {
@@ -446,6 +457,7 @@ mod tests {
             Arc::new(NoopExecutor),
             None,
             600,
+            "zh-CN".to_string(),
         )
     }
 
