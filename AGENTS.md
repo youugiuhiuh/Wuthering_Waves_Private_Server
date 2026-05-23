@@ -17,5 +17,6 @@
 
 - 处理 Rust 代码时，必须加载 **rust-lint-format** 技能（`.agents/skills/rust-lint-format/SKILL.md`）并在完成任务前执行强制规则
 - 处理 Go 代码时，必须加载 **go-lint-format** 技能（`.agents/skills/go-lint-format/SKILL.md`）并在完成任务前执行强制规则
+- 添加或删除 Go/Rust 依赖时，必须加载 **dependency-management** 技能（`.agents/skills/dependency-management/SKILL.md`），使用 `go get` / `cargo add` / `cargo remove` 命令，禁止直接编辑 `go.mod`、`go.sum`、`Cargo.toml`
 
 此规则优先级最高，始终生效，不得违反。
