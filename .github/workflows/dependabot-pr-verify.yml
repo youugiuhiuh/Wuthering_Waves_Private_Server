@@ -10,60 +10,73 @@ permissions:
   pull-requests: write
 
 jobs:
-  test:
-    # 仅在 Dependabot 提交 PR 时运行，节省 Action 分钟数
+  # 1. 探测任务：极其轻量，只负责找出哪个项目变了
+  detect-changes:
     if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    strategy:
-      fail-fast: false # 即使其中一个项目失败，其他项目也继续测试
-      matrix:
-        project:
-          - { name: "rust-tgbot", path: "rust/tgbot", language: "rust" }
-          - { name: "go-installer", path: "go/installer", language: "go" }
-          - { name: "sni-tester", path: "sni_tester", language: "go" }
-          - { name: "github-actions", path: ".github", language: "gha" }
-
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # 需要获取历史记录以进行 diff 检查
+          fetch-depth: 0
 
-      - name: Determine if project changed
-        id: check
+      - name: Generate Dynamic Matrix
+        id: set-matrix
         run: |
-          # 检查 base 分支和当前提交之间的差异
-          CHANGED=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }} ${{ github.sha }} | grep "^${{ matrix.project.path }}" || true)
-          if [ -n "$CHANGED" ]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
+          # 定义所有的项目映射
+          PROJECTS='[
+            {"name": "rust-tgbot", "path": "rust/tgbot", "language": "rust"},
+            {"name": "go-installer", "path": "go/installer", "language": "go"},
+            {"name": "sni-tester", "path": "sni_tester", "language": "go"},
+            {"name": "github-actions", "path": ".github", "language": "gha"}
+          ]'
 
-      # ---------------- 环境配置 (加速优化) ----------------
+          # 过滤出真正发生改变的项目
+          FILTERED_PRJ=$(echo "$PROJECTS" | jq -c "[ .[] | select(.path as \$p | (exec git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | grep \"^\$p\") != null) ]")
+
+          echo "最终需要测试的项目: $FILTERED_PRJ"
+          echo "matrix=$FILTERED_PRJ" >> $GITHUB_OUTPUT
+
+  # 2. 测试任务：动态接收上一步的结果
+  test:
+    needs: detect-changes
+    # 如果没有任何项目改变（比如改了根目录的其他无关文件），直接跳过
+    if: needs.detect-changes.outputs.matrix != '[]' && needs.detect-changes.outputs.matrix != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # 这里不再写死，而是动态解析 JSON
+        project: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # ---------------- 环境配置 (此时进来的必定是需要测试的项目) ----------------
       - name: Setup Go
-        if: steps.check.outputs.changed == 'true' && matrix.project.language == 'go'
+        if: matrix.project.language == 'go'
         uses: actions/setup-go@v6
         with:
           go-version: "stable"
           cache-dependency-path: ${{ matrix.project.path }}/go.sum
 
       - name: Setup Rust
-        if: steps.check.outputs.changed == 'true' && matrix.project.language == 'rust'
+        if: matrix.project.language == 'rust'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
 
       - name: Install protoc
-        if: steps.check.outputs.changed == 'true' && matrix.project.language == 'rust'
+        if: matrix.project.language == 'rust'
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
 
       # ---------------- 构建与测试 ----------------
       - name: Build and Test
-        if: steps.check.outputs.changed == 'true'
         run: |
           cd ${{ matrix.project.path }}
           if [ "${{ matrix.project.language }}" = "go" ]; then
@@ -75,35 +88,35 @@ jobs:
             python3 -c "
           import yaml, glob, sys
           files = glob.glob('workflows/*.yml') + glob.glob('workflows/*.yaml')
-          if not files:
-              print('❌ 未找到任何工作流文件！')
-              sys.exit(1)
-
-          has_error = False
+          if not files: sys.exit(1)
           for f in files:
               try:
-                  with open(f, 'r', encoding='utf-8') as stream:
-                      yaml.safe_load(stream)
-                  print(f'✅ {f} 语法正确')
-              except Exception as e:
-                  print(f'❌ {f} 语法错误:\n{e}')
-                  has_error = True
-
-          if has_error:
-              sys.exit(1)
+                  with open(f, 'r') as s: yaml.safe_load(s)
+              except Exception as e: sys.exit(1)
           "
           fi
 
-      # ---------------- 标签管理 ----------------
+  # 3. 统一标签管理
+  update-labels:
+    needs: [detect-changes, test]
+    if: github.actor == 'dependabot[bot]' && always()
+    runs-on: ubuntu-latest
+    steps:
       - name: Update PR Labels
-        if: steps.check.outputs.changed == 'true' && always()
         uses: actions/github-script@v9
         with:
           script: |
-            const label = "${{ job.status }}" === "success" ? "automerge" : "automerge-failed";
-            const removeLabel = "${{ job.status }}" === "success" ? "automerge-failed" : "automerge";
+            // 如果检测到没有项目需要测试，或者测试成功，都视为可以合并（取决于你的业务逻辑）
+            const testResult = "${{ needs.test.result }}";
+            const detectResult = "${{ needs.detect-changes.result }}";
 
-            // 添加新标签
+            let label = "automerge-failed";
+            if (detectResult === "success" && (testResult === "success" || testResult === "skipped")) {
+              label = "automerge";
+            }
+
+            const removeLabel = label === "automerge" ? "automerge-failed" : "automerge";
+
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -111,7 +124,6 @@ jobs:
               labels: [label]
             });
 
-            // 尝试移除旧标签（避免冲突）
             try {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
