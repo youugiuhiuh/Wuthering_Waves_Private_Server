@@ -32,7 +32,14 @@ jobs:
             {"name": "github-actions", "path": ".github", "language": "gha"}
           ]'
 
-          FILTERED_PRJ=$(echo "$PROJECTS" | jq -c "[ .[] | select(.path as \$p | (exec git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | grep \"^\$p\") != null) ]")
+          # 1. 先把变动的文件列表格式化为标准的 JSON 字符串数组
+          CHANGED_JSON=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | jq -R -s 'split("\n") | map(select(length > 0))')
+
+          # 2. 将两个 JSON 丢给 jq 做纯粹的数组过滤，不再混用 Shell 命令
+          FILTERED_PRJ=$(jq -c -n \
+            --argjson projs "$PROJECTS" \
+            --argjson files "$CHANGED_JSON" \
+            '$projs | [ .[] | select(.path as $p | any($files[]; startswith($p))) ]')
 
           echo "最终需要测试的项目: $FILTERED_PRJ"
           echo "matrix=$FILTERED_PRJ" >> $GITHUB_OUTPUT
