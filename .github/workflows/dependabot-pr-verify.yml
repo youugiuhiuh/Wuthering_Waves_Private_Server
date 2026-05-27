@@ -25,7 +25,6 @@ jobs:
       - name: Generate Dynamic Matrix
         id: set-matrix
         run: |
-          # 定义所有的项目映射
           PROJECTS='[
             {"name": "rust-tgbot", "path": "rust/tgbot", "language": "rust"},
             {"name": "go-installer", "path": "go/installer", "language": "go"},
@@ -33,41 +32,47 @@ jobs:
             {"name": "github-actions", "path": ".github", "language": "gha"}
           ]'
 
-          # 过滤出真正发生改变的项目
           FILTERED_PRJ=$(echo "$PROJECTS" | jq -c "[ .[] | select(.path as \$p | (exec git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | grep \"^\$p\") != null) ]")
 
           echo "最终需要测试的项目: $FILTERED_PRJ"
           echo "matrix=$FILTERED_PRJ" >> $GITHUB_OUTPUT
 
-  # 2. 测试任务：动态接收上一步的结果
+  # 2. 测试任务：动态接收上一步的结果并应用缓存
   test:
     needs: detect-changes
-    # 如果没有任何项目改变（比如改了根目录的其他无关文件），直接跳过
     if: needs.detect-changes.outputs.matrix != '[]' && needs.detect-changes.outputs.matrix != ''
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        # 这里不再写死，而是动态解析 JSON
         project: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # ---------------- 环境配置 (此时进来的必定是需要测试的项目) ----------------
+      # ---------------- Go 环境与缓存 ----------------
       - name: Setup Go
         if: matrix.project.language == 'go'
         uses: actions/setup-go@v6
         with:
           go-version: "stable"
+          cache: true # ⚡ 开启内置的 Go Module 和 Build 编译缓存
           cache-dependency-path: ${{ matrix.project.path }}/go.sum
 
+      # ---------------- Rust 环境与缓存 ----------------
       - name: Setup Rust
         if: matrix.project.language == 'rust'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
+
+      - name: Setup Rust Cache
+        if: matrix.project.language == 'rust'
+        uses: swatinem/rust-cache@v2
+        with:
+          # ⚡ 针对 Monorepo 显式指定工作区路径，防止多项目间缓存相互覆盖或污染
+          workspaces: ${{ matrix.project.path }}
 
       - name: Install protoc
         if: matrix.project.language == 'rust'
@@ -82,6 +87,7 @@ jobs:
           if [ "${{ matrix.project.language }}" = "go" ]; then
             go test ./...
           elif [ "${{ matrix.project.language }}" = "rust" ]; then
+            # 💡 得益于 rust-cache，第二次及以后的 Dependabot PR 速度会大幅提升
             cargo test
           else
             echo "🔍 开始内联检查 GitHub Actions YAML 语法..."
@@ -106,7 +112,6 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            // 如果检测到没有项目需要测试，或者测试成功，都视为可以合并（取决于你的业务逻辑）
             const testResult = "${{ needs.test.result }}";
             const detectResult = "${{ needs.detect-changes.result }}";
 
