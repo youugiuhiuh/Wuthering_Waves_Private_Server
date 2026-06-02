@@ -260,7 +260,7 @@ mod tests {
         let result = PortAllocator::find_consecutive_range(&occupied, 10);
         assert!(result.is_ok());
         let start = result.unwrap();
-        assert!(start < 100 || start > 111);
+        assert!(!(100..=111).contains(&start));
     }
 
     #[test]
