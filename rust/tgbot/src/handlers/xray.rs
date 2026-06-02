@@ -1069,11 +1069,6 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     KcpMask::variants_by_category("obf").len(),
                 ),
                 (
-                    "dis",
-                    "🎭 伪装层",
-                    KcpMask::variants_by_category("dis").len(),
-                ),
-                (
                     "ext",
                     "⚡ 扩展层",
                     KcpMask::variants_by_category("ext").len(),
