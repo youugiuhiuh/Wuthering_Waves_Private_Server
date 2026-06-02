@@ -310,18 +310,14 @@ mod tests {
     #[test]
     fn test_aggregate_network_traffic_empty() {
         let networks = Networks::new_with_refreshed_list();
-        let (rx, tx) = aggregate_network_traffic(&networks);
-        assert!(rx >= 0);
-        assert!(tx >= 0);
+        let (_rx, _tx) = aggregate_network_traffic(&networks);
     }
 
     #[test]
     fn test_aggregate_network_traffic_with_data() {
         let mut networks = Networks::new_with_refreshed_list();
         networks.refresh();
-        let (rx, tx) = aggregate_network_traffic(&networks);
-        assert!(rx >= 0);
-        assert!(tx >= 0);
+        let (_rx, _tx) = aggregate_network_traffic(&networks);
     }
 
     #[tokio::test]
