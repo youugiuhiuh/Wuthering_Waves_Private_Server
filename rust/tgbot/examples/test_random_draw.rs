@@ -41,7 +41,7 @@ fn main() {
         }
 
         let idx = indices.pop().unwrap();
-        results.push(domains[idx].clone());
+        results.push(domains[idx].to_string());
         count += 1;
 
         if count % 5 == 0 {
