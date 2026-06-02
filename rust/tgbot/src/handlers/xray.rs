@@ -993,8 +993,42 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             Ok(HandlerAction::Done)
         }
 
-        d if d.starts_with("u_kcp_add:") => {
-            let code = d.strip_prefix("u_kcp_add:").unwrap_or("mo");
+d if d.starts_with("u_kcp_add:") => {
+            let code = d.strip_prefix("u_kcp_add:").unwrap_or("ml");
+            if code == "rl" {
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
+                    .text("🕳️ Realm 需要额外配置。请在选择完成后，手动编辑生成的配置文件中的 realm.url 和 realm.stunServers 字段")
+                    .await?;
+                let m = KcpMask::from_code(code).unwrap();
+                let stack_display = format!("1️⃣ {}", m.display_name());
+                let buttons = vec![
+                    vec![InlineKeyboardButton::callback(
+                        "➕ 继续添加遮罩层",
+                        format!("u_kcp_more:{}", code),
+                    )],
+                    vec![InlineKeyboardButton::callback(
+                        "✅ 完成配置",
+                        format!("u_kcp_done:{}", code),
+                    )],
+                    vec![InlineKeyboardButton::callback("🗑️ 清空重选", "u_kcp_init")],
+                ];
+                ctx.bot
+                    .edit_message_text(
+                        ctx.chat_id,
+                        ctx.msg_id,
+                        format!(
+                            "📋 <b>当前遮罩栈:</b>\n{}\n\n\
+                             ⚠️ <b>注意:</b> Realm 需要手动配置 url 和 stunServers\n\n\
+                             ➕ 可以继续添加，或完成配置",
+                            stack_display
+                        ),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
+                return Ok(HandlerAction::Done);
+            }
             if let Some(m) = KcpMask::from_code(code) {
                 if let Err(e) = m.is_compatible_with(&[]) {
                     ctx.bot
@@ -1021,7 +1055,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         ctx.msg_id,
                         format!(
                             "📋 <b>当前遮罩栈:</b>\n{}\n\n\
-                         ➕ 可以继续添加，或完成配置",
+                             ➕ 可以继续添加，或完成配置",
                             stack_display
                         ),
                     )
@@ -1067,11 +1101,6 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     "obf",
                     "🌀 混淆层",
                     KcpMask::variants_by_category("obf").len(),
-                ),
-                (
-                    "dis",
-                    "🎭 伪装层",
-                    KcpMask::variants_by_category("dis").len(),
                 ),
                 (
                     "ext",
