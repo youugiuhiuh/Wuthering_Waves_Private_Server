@@ -679,7 +679,7 @@ mod tests {
     use crate::logic::singbox::hysteria2::Hysteria2Config;
     use crate::logic::singbox::tuic::TUICConfig;
 
-#[tokio::test]
+    #[tokio::test]
     async fn test_singbox_is_installed_returns_bool() {
         let result = SingBoxConfigManager::is_installed().await;
         let _: bool = result;
