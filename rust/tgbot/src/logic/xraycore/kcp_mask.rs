@@ -674,10 +674,10 @@ mod tests {
     fn test_is_compatible_with_transport_replacement() {
         let xdns = KcpMask::Xdns { domains: vec![], resolvers: vec![] };
         let xicmp = KcpMask::Xicmp { dgram: false, ips: vec![] };
-        assert!(xdns.is_compatible_with(&[xicmp.clone()]).is_err());
+        assert!(xdns.is_compatible_with(std::slice::from_ref(&xicmp)).is_err());
 
         let realm = KcpMask::Realm { url: "".into(), stun_servers: vec![] };
-        assert!(xdns.is_compatible_with(&[realm.clone()]).is_err());
+        assert!(xdns.is_compatible_with(std::slice::from_ref(&realm)).is_err());
         assert!(xicmp.is_compatible_with(&[realm]).is_err());
     }
 
