@@ -1451,7 +1451,7 @@ mod tests {
     #[test]
     fn test_kcp_mask_code_roundtrip() {
         let codes = [
-            "ml", "mla", "no", "sa", "su", "mld", "mlw", "mls", "mlu", "mldt", "mlg", "xd", "xi",
+            "ml", "mla", "no", "sa", "su", "mld", "mlw", "mls", "mlu", "mldt", "mlg", "xd", "xi", "rl",
         ];
         for code in codes {
             let mask = KcpMask::from_code(code);

@@ -309,8 +309,8 @@ impl KcpMask {
         match self {
             KcpMask::MkcpLegacy { header: None, value: None } => Some(6),
             KcpMask::MkcpLegacy { header: None, .. } => Some(28),
-            KcpMask::MkcpLegacy { header: Some(h), .. } => match h.as_str() {
-                "dns" => Some(Self::dns_header_size("www.baidu.com")),
+            KcpMask::MkcpLegacy { header: Some(h), value } => match h.as_str() {
+                "dns" => Some(Self::dns_header_size(value.as_deref().unwrap_or("www.baidu.com"))),
                 "wechat" => Some(13),
                 "srtp" => Some(4),
                 "utp" => Some(4),
