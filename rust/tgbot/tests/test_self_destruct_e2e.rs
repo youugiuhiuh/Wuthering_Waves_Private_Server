@@ -40,10 +40,10 @@ impl FakeServerFs {
         let service_file = service_dir.join("wwps-tgbot.service");
 
         // 创建目录结构
-        fs::create_dir_all(&etc_wwps.join("tgbot")).unwrap();
-        fs::create_dir_all(&etc_wwps.join("wwps-core/conf")).unwrap();
-        fs::create_dir_all(&var_log.join("journal")).unwrap();
-        fs::create_dir_all(&var_log.join("nginx")).unwrap();
+        fs::create_dir_all(etc_wwps.join("tgbot")).unwrap();
+        fs::create_dir_all(etc_wwps.join("wwps-core/conf")).unwrap();
+        fs::create_dir_all(var_log.join("journal")).unwrap();
+        fs::create_dir_all(var_log.join("nginx")).unwrap();
         fs::create_dir_all(&acme_sh).unwrap();
         fs::create_dir_all(&service_dir).unwrap();
 
