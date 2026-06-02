@@ -130,7 +130,7 @@ mod tests {
     #[tokio::test]
     async fn test_ufw_is_installed_returns_bool() {
         let result = UfwClient::is_installed().await;
-        assert!(result || !result);
+        let _: bool = result;
     }
 
     #[test]
