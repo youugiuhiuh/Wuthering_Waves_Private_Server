@@ -435,7 +435,11 @@ async fn notify_bbr3_reboot_result(bot: &Bot, admin_id: i64) -> Result<()> {
     }
 
     let kernel_hint = if info.has_xanmod_kernel { "是" } else { "否" };
-    let proc_hint = if info.has_xanmod_proc_version { "是" } else { "否" };
+    let proc_hint = if info.has_xanmod_proc_version {
+        "是"
+    } else {
+        "否"
+    };
 
     let message = format!(
         "✅ <b>BBR3 重启后校验结果</b>\n\n<code>uname -r</code>\n<code>{}</code>\n\n<code>sysctl net.ipv4.tcp_congestion_control</code>\n<code>net.ipv4.tcp_congestion_control = {}</code>\n\n<code>cat /proc/version</code>\n<code>{}</code>\n\n内核名包含 XanMod: <b>{}</b>\n/proc/version 包含 XanMod: <b>{}</b>",

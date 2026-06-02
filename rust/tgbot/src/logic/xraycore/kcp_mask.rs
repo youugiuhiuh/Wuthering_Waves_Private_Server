@@ -3,13 +3,30 @@ use serde_json::{Value, json};
 
 #[derive(Debug, Clone)]
 pub enum KcpMask {
-    MkcpLegacy { header: Option<String>, value: Option<String> },
+    MkcpLegacy {
+        header: Option<String>,
+        value: Option<String>,
+    },
     Noise,
-    Salamander { password: String, packet_size: Option<String> },
-    Sudoku { password: String },
-    Xdns { domains: Vec<String>, resolvers: Vec<String> },
-    Xicmp { dgram: bool, ips: Vec<String> },
-    Realm { url: String, stun_servers: Vec<String> },
+    Salamander {
+        password: String,
+        packet_size: Option<String>,
+    },
+    Sudoku {
+        password: String,
+    },
+    Xdns {
+        domains: Vec<String>,
+        resolvers: Vec<String>,
+    },
+    Xicmp {
+        dgram: bool,
+        ips: Vec<String>,
+    },
+    Realm {
+        url: String,
+        stun_servers: Vec<String>,
+    },
 }
 
 pub(crate) fn generate_aes_password() -> String {
@@ -36,9 +53,14 @@ impl KcpMask {
 
     pub fn display_name(&self) -> &'static str {
         match self {
-            KcpMask::MkcpLegacy { header: None, value: None } => "🔀 mKCP Original (XOR)",
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None,
+            } => "🔀 mKCP Original (XOR)",
             KcpMask::MkcpLegacy { header: None, .. } => "🔐 mKCP AES-128-GCM",
-            KcpMask::MkcpLegacy { header: Some(h), .. } => match h.as_str() {
+            KcpMask::MkcpLegacy {
+                header: Some(h), ..
+            } => match h.as_str() {
                 "dns" => "🌐 mKCP + DNS伪装",
                 "wechat" => "💬 mKCP + 微信伪装",
                 "srtp" => "🎬 mKCP + SRTP伪装",
@@ -58,13 +80,16 @@ impl KcpMask {
 
     pub fn detail(&self) -> &'static str {
         match self {
-            KcpMask::MkcpLegacy { header: None, value: None } => {
-                "无加密，仅FNV1a校验。建议配合混淆层使用"
-            }
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None,
+            } => "无加密，仅FNV1a校验。建议配合混淆层使用",
             KcpMask::MkcpLegacy { header: None, .. } => {
                 "AES-128-GCM端到端认证加密，密码经SHA256派生为128位密钥"
             }
-            KcpMask::MkcpLegacy { header: Some(h), .. } => match h.as_str() {
+            KcpMask::MkcpLegacy {
+                header: Some(h), ..
+            } => match h.as_str() {
                 "dns" => "DNS查询流量伪装，使用指定域名构建DNS请求头部",
                 "wechat" => "微信视频通话流量伪装，数据包模拟微信VoIP协议格式",
                 "srtp" => "安全实时传输协议(SRTP)流量伪装，看起来像音视频流媒体",
@@ -88,17 +113,20 @@ impl KcpMask {
             KcpMask::Xicmp { .. } => {
                 "ICMP数据包伪装。将数据包封装为ICMP回显请求/应答格式。适合仅允许ping流量通过的极端限制网络。支持dgram模式和multi-ips"
             }
-            KcpMask::Realm { .. } => {
-                "UDP打洞(Hysteria)。通过STUN服务器建立UDP隧道，实现NAT穿透"
-            }
+            KcpMask::Realm { .. } => "UDP打洞(Hysteria)。通过STUN服务器建立UDP隧道，实现NAT穿透",
         }
     }
 
     pub fn brief(&self) -> &'static str {
         match self {
-            KcpMask::MkcpLegacy { header: None, value: None } => "XOR混淆，仅FNV1a校验",
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None,
+            } => "XOR混淆，仅FNV1a校验",
             KcpMask::MkcpLegacy { header: None, .. } => "AES-128-GCM认证加密",
-            KcpMask::MkcpLegacy { header: Some(h), .. } => match h.as_str() {
+            KcpMask::MkcpLegacy {
+                header: Some(h), ..
+            } => match h.as_str() {
                 "dns" => "加密+DNS头部伪装",
                 "wechat" => "加密+微信头部伪装",
                 "srtp" => "加密+SRTP头部伪装",
@@ -135,9 +163,14 @@ impl KcpMask {
 
     pub fn code(&self) -> &'static str {
         match self {
-            KcpMask::MkcpLegacy { header: None, value: None } => "ml",
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None,
+            } => "ml",
             KcpMask::MkcpLegacy { header: None, .. } => "mla",
-            KcpMask::MkcpLegacy { header: Some(h), .. } => match h.as_str() {
+            KcpMask::MkcpLegacy {
+                header: Some(h), ..
+            } => match h.as_str() {
                 "dns" => "mld",
                 "wechat" => "mlw",
                 "srtp" => "mls",
@@ -157,23 +190,58 @@ impl KcpMask {
 
     pub fn from_code(code: &str) -> Option<Self> {
         match code {
-            "ml" => Some(KcpMask::MkcpLegacy { header: None, value: None }),
-            "mla" => Some(KcpMask::MkcpLegacy { header: None, value: Some(generate_aes_password()) }),
-            "mld" => Some(KcpMask::MkcpLegacy { header: Some("dns".into()), value: Some("www.baidu.com".into()) }),
-            "mlw" => Some(KcpMask::MkcpLegacy { header: Some("wechat".into()), value: None }),
-            "mls" => Some(KcpMask::MkcpLegacy { header: Some("srtp".into()), value: None }),
-            "mlu" => Some(KcpMask::MkcpLegacy { header: Some("utp".into()), value: None }),
-            "mldt" => Some(KcpMask::MkcpLegacy { header: Some("dtls".into()), value: None }),
-            "mlg" => Some(KcpMask::MkcpLegacy { header: Some("wireguard".into()), value: None }),
+            "ml" => Some(KcpMask::MkcpLegacy {
+                header: None,
+                value: None,
+            }),
+            "mla" => Some(KcpMask::MkcpLegacy {
+                header: None,
+                value: Some(generate_aes_password()),
+            }),
+            "mld" => Some(KcpMask::MkcpLegacy {
+                header: Some("dns".into()),
+                value: Some("www.baidu.com".into()),
+            }),
+            "mlw" => Some(KcpMask::MkcpLegacy {
+                header: Some("wechat".into()),
+                value: None,
+            }),
+            "mls" => Some(KcpMask::MkcpLegacy {
+                header: Some("srtp".into()),
+                value: None,
+            }),
+            "mlu" => Some(KcpMask::MkcpLegacy {
+                header: Some("utp".into()),
+                value: None,
+            }),
+            "mldt" => Some(KcpMask::MkcpLegacy {
+                header: Some("dtls".into()),
+                value: None,
+            }),
+            "mlg" => Some(KcpMask::MkcpLegacy {
+                header: Some("wireguard".into()),
+                value: None,
+            }),
             "no" => Some(KcpMask::Noise),
-            "sa" => Some(KcpMask::Salamander { password: generate_aes_password(), packet_size: None }),
-            "su" => Some(KcpMask::Sudoku { password: generate_aes_password() }),
+            "sa" => Some(KcpMask::Salamander {
+                password: generate_aes_password(),
+                packet_size: None,
+            }),
+            "su" => Some(KcpMask::Sudoku {
+                password: generate_aes_password(),
+            }),
             "xd" => Some(KcpMask::Xdns {
                 domains: vec!["www.baidu.com".into()],
                 resolvers: vec!["www.baidu.com+udp://1.1.1.1:53".into()],
             }),
-            "xi" => Some(KcpMask::Xicmp { dgram: false, ips: vec![] }),
-            "rl" => Some(KcpMask::Realm { url: String::new(), stun_servers: vec![] }),
+            "xi" => Some(KcpMask::Xicmp {
+                dgram: false,
+                ips: vec![],
+            }),
+            "rl" => Some(KcpMask::Realm {
+                url: String::new(),
+                stun_servers: vec![],
+            }),
             _ => None,
         }
     }
@@ -198,11 +266,20 @@ impl KcpMask {
                 }
             }
             KcpMask::Noise => json!({"type": "noise"}),
-            KcpMask::Salamander { password, packet_size } => {
+            KcpMask::Salamander {
+                password,
+                packet_size,
+            } => {
                 let mut settings = serde_json::Map::new();
-                settings.insert("password".to_string(), serde_json::Value::String(password.clone()));
+                settings.insert(
+                    "password".to_string(),
+                    serde_json::Value::String(password.clone()),
+                );
                 if let Some(ps) = packet_size {
-                    settings.insert("packetSize".to_string(), serde_json::Value::String(ps.clone()));
+                    settings.insert(
+                        "packetSize".to_string(),
+                        serde_json::Value::String(ps.clone()),
+                    );
                 }
                 json!({
                     "type": "salamander",
@@ -242,20 +319,58 @@ impl KcpMask {
 
     pub fn all_variants() -> Vec<Self> {
         vec![
-            KcpMask::MkcpLegacy { header: None, value: None },
-            KcpMask::MkcpLegacy { header: None, value: Some("default".into()) },
-            KcpMask::MkcpLegacy { header: Some("dns".into()), value: Some("www.baidu.com".into()) },
-            KcpMask::MkcpLegacy { header: Some("wechat".into()), value: None },
-            KcpMask::MkcpLegacy { header: Some("srtp".into()), value: None },
-            KcpMask::MkcpLegacy { header: Some("utp".into()), value: None },
-            KcpMask::MkcpLegacy { header: Some("dtls".into()), value: None },
-            KcpMask::MkcpLegacy { header: Some("wireguard".into()), value: None },
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None,
+            },
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: Some("default".into()),
+            },
+            KcpMask::MkcpLegacy {
+                header: Some("dns".into()),
+                value: Some("www.baidu.com".into()),
+            },
+            KcpMask::MkcpLegacy {
+                header: Some("wechat".into()),
+                value: None,
+            },
+            KcpMask::MkcpLegacy {
+                header: Some("srtp".into()),
+                value: None,
+            },
+            KcpMask::MkcpLegacy {
+                header: Some("utp".into()),
+                value: None,
+            },
+            KcpMask::MkcpLegacy {
+                header: Some("dtls".into()),
+                value: None,
+            },
+            KcpMask::MkcpLegacy {
+                header: Some("wireguard".into()),
+                value: None,
+            },
             KcpMask::Noise,
-            KcpMask::Salamander { password: String::new(), packet_size: None },
-            KcpMask::Sudoku { password: String::new() },
-            KcpMask::Xdns { domains: vec![], resolvers: vec![] },
-            KcpMask::Xicmp { dgram: false, ips: vec![] },
-            KcpMask::Realm { url: String::new(), stun_servers: vec![] },
+            KcpMask::Salamander {
+                password: String::new(),
+                packet_size: None,
+            },
+            KcpMask::Sudoku {
+                password: String::new(),
+            },
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![],
+            },
+            KcpMask::Xicmp {
+                dgram: false,
+                ips: vec![],
+            },
+            KcpMask::Realm {
+                url: String::new(),
+                stun_servers: vec![],
+            },
         ]
     }
 
@@ -294,7 +409,10 @@ impl KcpMask {
     }
 
     pub fn is_transport_replacement(&self) -> bool {
-        matches!(self, KcpMask::Xdns { .. } | KcpMask::Xicmp { .. } | KcpMask::Realm { .. })
+        matches!(
+            self,
+            KcpMask::Xdns { .. } | KcpMask::Xicmp { .. } | KcpMask::Realm { .. }
+        )
     }
 
     pub fn is_xdns(&self) -> bool {
@@ -307,10 +425,18 @@ impl KcpMask {
 
     pub fn header_size(&self) -> Option<usize> {
         match self {
-            KcpMask::MkcpLegacy { header: None, value: None } => Some(6),
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None,
+            } => Some(6),
             KcpMask::MkcpLegacy { header: None, .. } => Some(28),
-            KcpMask::MkcpLegacy { header: Some(h), value } => match h.as_str() {
-                "dns" => Some(Self::dns_header_size(value.as_deref().unwrap_or("www.baidu.com"))),
+            KcpMask::MkcpLegacy {
+                header: Some(h),
+                value,
+            } => match h.as_str() {
+                "dns" => Some(Self::dns_header_size(
+                    value.as_deref().unwrap_or("www.baidu.com"),
+                )),
                 "wechat" => Some(13),
                 "srtp" => Some(4),
                 "utp" => Some(4),
@@ -357,8 +483,15 @@ impl KcpMask {
     }
 
     pub fn is_compatible_with(&self, existing: &[KcpMask]) -> Result<(), String> {
-        if self.is_transport_replacement() && existing.iter().any(|m| m.is_transport_replacement()) {
-            let name = if self.is_xdns() { "XDNS" } else if matches!(self, KcpMask::Xicmp { .. }) { "XICMP" } else { "Realm" };
+        if self.is_transport_replacement() && existing.iter().any(|m| m.is_transport_replacement())
+        {
+            let name = if self.is_xdns() {
+                "XDNS"
+            } else if matches!(self, KcpMask::Xicmp { .. }) {
+                "XICMP"
+            } else {
+                "Realm"
+            };
             return Err(format!("{}和其他传输层不能同时使用", name));
         }
 
@@ -434,7 +567,15 @@ impl KcpMask {
 
     pub fn get_stack_warnings(masks: &[KcpMask]) -> Vec<String> {
         let mut warnings = Vec::new();
-        if masks.len() == 1 && matches!(masks[0], KcpMask::MkcpLegacy { header: None, value: None }) {
+        if masks.len() == 1
+            && matches!(
+                masks[0],
+                KcpMask::MkcpLegacy {
+                    header: None,
+                    value: None
+                }
+            )
+        {
             warnings.push("⚠️ mKCP Original 单独使用安全性低，建议配合混淆层使用".to_string());
         }
         warnings
@@ -447,20 +588,36 @@ mod tests {
 
     #[test]
     fn test_mkcp_legacy_as_json() {
-        let json = KcpMask::MkcpLegacy { header: None, value: None }.as_json();
+        let json = KcpMask::MkcpLegacy {
+            header: None,
+            value: None,
+        }
+        .as_json();
         assert_eq!(json["type"], "mkcp-legacy");
         assert!(json["settings"].is_null());
 
-        let json = KcpMask::MkcpLegacy { header: None, value: Some("pwd".into()) }.as_json();
+        let json = KcpMask::MkcpLegacy {
+            header: None,
+            value: Some("pwd".into()),
+        }
+        .as_json();
         assert_eq!(json["type"], "mkcp-legacy");
         assert_eq!(json["settings"]["value"], "pwd");
 
-        let json = KcpMask::MkcpLegacy { header: Some("dns".into()), value: Some("example.com".into()) }.as_json();
+        let json = KcpMask::MkcpLegacy {
+            header: Some("dns".into()),
+            value: Some("example.com".into()),
+        }
+        .as_json();
         assert_eq!(json["type"], "mkcp-legacy");
         assert_eq!(json["settings"]["header"], "dns");
         assert_eq!(json["settings"]["value"], "example.com");
 
-        let json = KcpMask::MkcpLegacy { header: Some("wechat".into()), value: None }.as_json();
+        let json = KcpMask::MkcpLegacy {
+            header: Some("wechat".into()),
+            value: None,
+        }
+        .as_json();
         assert_eq!(json["type"], "mkcp-legacy");
         assert_eq!(json["settings"]["header"], "wechat");
         assert!(json["settings"]["value"].is_null());
@@ -468,12 +625,20 @@ mod tests {
 
     #[test]
     fn test_salamander_with_packet_size() {
-        let json = KcpMask::Salamander { password: "obfs".into(), packet_size: Some("512-1200".into()) }.as_json();
+        let json = KcpMask::Salamander {
+            password: "obfs".into(),
+            packet_size: Some("512-1200".into()),
+        }
+        .as_json();
         assert_eq!(json["type"], "salamander");
         assert_eq!(json["settings"]["password"], "obfs");
         assert_eq!(json["settings"]["packetSize"], "512-1200");
 
-        let json_no_ps = KcpMask::Salamander { password: "obfs".into(), packet_size: None }.as_json();
+        let json_no_ps = KcpMask::Salamander {
+            password: "obfs".into(),
+            packet_size: None,
+        }
+        .as_json();
         assert!(json_no_ps["settings"]["packetSize"].is_null());
     }
 
@@ -482,19 +647,31 @@ mod tests {
         let json = KcpMask::Xdns {
             domains: vec!["example.com:aaaa".into()],
             resolvers: vec!["example.com:aaaa+udp://1.1.1.1:53".into()],
-        }.as_json();
+        }
+        .as_json();
         assert_eq!(json["type"], "xdns");
         assert_eq!(json["settings"]["domains"][0], "example.com:aaaa");
-        assert_eq!(json["settings"]["resolvers"][0], "example.com:aaaa+udp://1.1.1.1:53");
+        assert_eq!(
+            json["settings"]["resolvers"][0],
+            "example.com:aaaa+udp://1.1.1.1:53"
+        );
     }
 
     #[test]
     fn test_xicmp_new_format() {
-        let json = KcpMask::Xicmp { dgram: false, ips: vec![] }.as_json();
+        let json = KcpMask::Xicmp {
+            dgram: false,
+            ips: vec![],
+        }
+        .as_json();
         assert_eq!(json["type"], "xicmp");
         assert!(json["settings"].is_null());
 
-        let json = KcpMask::Xicmp { dgram: true, ips: vec!["1.2.3.4".into(), "5.6.7.8".into()] }.as_json();
+        let json = KcpMask::Xicmp {
+            dgram: true,
+            ips: vec!["1.2.3.4".into(), "5.6.7.8".into()],
+        }
+        .as_json();
         assert_eq!(json["type"], "xicmp");
         assert_eq!(json["settings"]["dgram"], true);
         assert_eq!(json["settings"]["ips"][0], "1.2.3.4");
@@ -505,60 +682,231 @@ mod tests {
         let json = KcpMask::Realm {
             url: "realm://example.com:1234".into(),
             stun_servers: vec!["stun:stun.l.google.com:19302".into()],
-        }.as_json();
+        }
+        .as_json();
         assert_eq!(json["type"], "realm");
         assert_eq!(json["settings"]["url"], "realm://example.com:1234");
-        assert_eq!(json["settings"]["stunServers"][0], "stun:stun.l.google.com:19302");
+        assert_eq!(
+            json["settings"]["stunServers"][0],
+            "stun:stun.l.google.com:19302"
+        );
     }
 
     #[test]
     fn test_display_name_spot_check() {
-        assert_eq!(KcpMask::MkcpLegacy { header: None, value: None }.display_name(), "🔀 mKCP Original (XOR)");
-        assert_eq!(KcpMask::MkcpLegacy { header: None, value: Some("x".into()) }.display_name(), "🔐 mKCP AES-128-GCM");
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("dns".into()), value: None }.display_name(), "🌐 mKCP + DNS伪装");
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }
+            .display_name(),
+            "🔀 mKCP Original (XOR)"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: Some("x".into())
+            }
+            .display_name(),
+            "🔐 mKCP AES-128-GCM"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("dns".into()),
+                value: None
+            }
+            .display_name(),
+            "🌐 mKCP + DNS伪装"
+        );
         assert_eq!(KcpMask::Noise.display_name(), "📊 Noise");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.display_name(), "📡 XDNS 扩展DNS");
-        assert_eq!(KcpMask::Xicmp { dgram: false, ips: vec![] }.display_name(), "💓 XICMP");
-        assert_eq!(KcpMask::Realm { url: "".into(), stun_servers: vec![] }.display_name(), "🕳️ Realm");
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .display_name(),
+            "📡 XDNS 扩展DNS"
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                dgram: false,
+                ips: vec![]
+            }
+            .display_name(),
+            "💓 XICMP"
+        );
+        assert_eq!(
+            KcpMask::Realm {
+                url: "".into(),
+                stun_servers: vec![]
+            }
+            .display_name(),
+            "🕳️ Realm"
+        );
     }
 
     #[test]
     fn test_code_all_variants() {
-        assert_eq!(KcpMask::MkcpLegacy { header: None, value: None }.code(), "ml");
-        assert_eq!(KcpMask::MkcpLegacy { header: None, value: Some("x".into()) }.code(), "mla");
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("dns".into()), value: None }.code(), "mld");
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("wechat".into()), value: None }.code(), "mlw");
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("srtp".into()), value: None }.code(), "mls");
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("utp".into()), value: None }.code(), "mlu");
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("dtls".into()), value: None }.code(), "mldt");
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("wireguard".into()), value: None }.code(), "mlg");
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }
+            .code(),
+            "ml"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: Some("x".into())
+            }
+            .code(),
+            "mla"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("dns".into()),
+                value: None
+            }
+            .code(),
+            "mld"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("wechat".into()),
+                value: None
+            }
+            .code(),
+            "mlw"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("srtp".into()),
+                value: None
+            }
+            .code(),
+            "mls"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("utp".into()),
+                value: None
+            }
+            .code(),
+            "mlu"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("dtls".into()),
+                value: None
+            }
+            .code(),
+            "mldt"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("wireguard".into()),
+                value: None
+            }
+            .code(),
+            "mlg"
+        );
         assert_eq!(KcpMask::Noise.code(), "no");
-        assert_eq!(KcpMask::Salamander { password: "x".into(), packet_size: None }.code(), "sa");
-        assert_eq!(KcpMask::Sudoku { password: "x".into() }.code(), "su");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.code(), "xd");
-        assert_eq!(KcpMask::Xicmp { dgram: false, ips: vec![] }.code(), "xi");
-        assert_eq!(KcpMask::Realm { url: "".into(), stun_servers: vec![] }.code(), "rl");
+        assert_eq!(
+            KcpMask::Salamander {
+                password: "x".into(),
+                packet_size: None
+            }
+            .code(),
+            "sa"
+        );
+        assert_eq!(
+            KcpMask::Sudoku {
+                password: "x".into()
+            }
+            .code(),
+            "su"
+        );
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .code(),
+            "xd"
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                dgram: false,
+                ips: vec![]
+            }
+            .code(),
+            "xi"
+        );
+        assert_eq!(
+            KcpMask::Realm {
+                url: "".into(),
+                stun_servers: vec![]
+            }
+            .code(),
+            "rl"
+        );
     }
 
     #[test]
     fn test_from_code() {
-        assert!(matches!(KcpMask::from_code("ml"), Some(KcpMask::MkcpLegacy { header: None, value: None })));
-        assert!(matches!(KcpMask::from_code("mla"), Some(KcpMask::MkcpLegacy { header: None, value: Some(_) })));
-        assert!(matches!(KcpMask::from_code("mld"), Some(KcpMask::MkcpLegacy { header: Some(h), value: Some(v) }) if h == "dns" && v == "www.baidu.com"));
-        assert!(matches!(KcpMask::from_code("mlw"), Some(KcpMask::MkcpLegacy { header: Some(h), value: None }) if h == "wechat"));
+        assert!(matches!(
+            KcpMask::from_code("ml"),
+            Some(KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            })
+        ));
+        assert!(matches!(
+            KcpMask::from_code("mla"),
+            Some(KcpMask::MkcpLegacy {
+                header: None,
+                value: Some(_)
+            })
+        ));
+        assert!(
+            matches!(KcpMask::from_code("mld"), Some(KcpMask::MkcpLegacy { header: Some(h), value: Some(v) }) if h == "dns" && v == "www.baidu.com")
+        );
+        assert!(
+            matches!(KcpMask::from_code("mlw"), Some(KcpMask::MkcpLegacy { header: Some(h), value: None }) if h == "wechat")
+        );
         assert!(matches!(KcpMask::from_code("no"), Some(KcpMask::Noise)));
-        assert!(matches!(KcpMask::from_code("sa"), Some(KcpMask::Salamander { .. })));
-        assert!(matches!(KcpMask::from_code("su"), Some(KcpMask::Sudoku { .. })));
-        assert!(matches!(KcpMask::from_code("xd"), Some(KcpMask::Xdns { .. })));
-        assert!(matches!(KcpMask::from_code("xi"), Some(KcpMask::Xicmp { dgram: false, ips } ) if ips.is_empty()));
-        assert!(matches!(KcpMask::from_code("rl"), Some(KcpMask::Realm { url, stun_servers }) if url.is_empty() && stun_servers.is_empty()));
+        assert!(matches!(
+            KcpMask::from_code("sa"),
+            Some(KcpMask::Salamander { .. })
+        ));
+        assert!(matches!(
+            KcpMask::from_code("su"),
+            Some(KcpMask::Sudoku { .. })
+        ));
+        assert!(matches!(
+            KcpMask::from_code("xd"),
+            Some(KcpMask::Xdns { .. })
+        ));
+        assert!(
+            matches!(KcpMask::from_code("xi"), Some(KcpMask::Xicmp { dgram: false, ips } ) if ips.is_empty())
+        );
+        assert!(
+            matches!(KcpMask::from_code("rl"), Some(KcpMask::Realm { url, stun_servers }) if url.is_empty() && stun_servers.is_empty())
+        );
         assert!(KcpMask::from_code("invalid").is_none());
     }
 
     #[test]
     fn test_from_code_generates_password() {
         let mask = KcpMask::from_code("mla").unwrap();
-        assert!(matches!(mask, KcpMask::MkcpLegacy { header: None, value: Some(_) }));
+        assert!(matches!(
+            mask,
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: Some(_)
+            }
+        ));
         let mask = KcpMask::from_code("sa").unwrap();
         assert!(matches!(mask, KcpMask::Salamander { password: p, .. } if !p.is_empty()));
     }
@@ -566,27 +914,98 @@ mod tests {
     #[test]
     fn test_xdns_from_code_new_resolver_format() {
         let mask = KcpMask::from_code("xd").unwrap();
-        assert!(matches!(mask, KcpMask::Xdns { domains, resolvers } if domains == vec!["www.baidu.com"] && resolvers == vec!["www.baidu.com+udp://1.1.1.1:53"]));
+        assert!(
+            matches!(mask, KcpMask::Xdns { domains, resolvers } if domains == vec!["www.baidu.com"] && resolvers == vec!["www.baidu.com+udp://1.1.1.1:53"])
+        );
     }
 
     #[test]
     fn test_category_code_all_categories() {
-        assert_eq!(KcpMask::MkcpLegacy { header: None, value: None }.category_code(), "enc");
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("dns".into()), value: None }.category_code(), "enc");
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }
+            .category_code(),
+            "enc"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("dns".into()),
+                value: None
+            }
+            .category_code(),
+            "enc"
+        );
         assert_eq!(KcpMask::Noise.category_code(), "obf");
-        assert_eq!(KcpMask::Salamander { password: "x".into(), packet_size: None }.category_code(), "obf");
-        assert_eq!(KcpMask::Sudoku { password: "x".into() }.category_code(), "obf");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.category_code(), "ext");
-        assert_eq!(KcpMask::Xicmp { dgram: false, ips: vec![] }.category_code(), "ext");
-        assert_eq!(KcpMask::Realm { url: "".into(), stun_servers: vec![] }.category_code(), "ext");
+        assert_eq!(
+            KcpMask::Salamander {
+                password: "x".into(),
+                packet_size: None
+            }
+            .category_code(),
+            "obf"
+        );
+        assert_eq!(
+            KcpMask::Sudoku {
+                password: "x".into()
+            }
+            .category_code(),
+            "obf"
+        );
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .category_code(),
+            "ext"
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                dgram: false,
+                ips: vec![]
+            }
+            .category_code(),
+            "ext"
+        );
+        assert_eq!(
+            KcpMask::Realm {
+                url: "".into(),
+                stun_servers: vec![]
+            }
+            .category_code(),
+            "ext"
+        );
     }
 
     #[test]
     fn test_category_spot_check() {
-        assert_eq!(KcpMask::MkcpLegacy { header: None, value: None }.category(), "🔐 加密层");
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }
+            .category(),
+            "🔐 加密层"
+        );
         assert_eq!(KcpMask::Noise.category(), "🌀 混淆层");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.category(), "⚡ 扩展层");
-        assert_eq!(KcpMask::Realm { url: "".into(), stun_servers: vec![] }.category(), "⚡ 扩展层");
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .category(),
+            "⚡ 扩展层"
+        );
+        assert_eq!(
+            KcpMask::Realm {
+                url: "".into(),
+                stun_servers: vec![]
+            }
+            .category(),
+            "⚡ 扩展层"
+        );
     }
 
     #[test]
@@ -600,41 +1019,163 @@ mod tests {
 
     #[test]
     fn test_is_encryption() {
-        assert!(KcpMask::MkcpLegacy { header: None, value: None }.is_encryption());
-        assert!(KcpMask::MkcpLegacy { header: Some("dns".into()), value: None }.is_encryption());
+        assert!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }
+            .is_encryption()
+        );
+        assert!(
+            KcpMask::MkcpLegacy {
+                header: Some("dns".into()),
+                value: None
+            }
+            .is_encryption()
+        );
         assert!(!KcpMask::Noise.is_encryption());
-        assert!(!KcpMask::Xdns { domains: vec![], resolvers: vec![] }.is_encryption());
+        assert!(
+            !KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .is_encryption()
+        );
     }
 
     #[test]
     fn test_is_sudoku() {
-        assert!(KcpMask::Sudoku { password: "x".into() }.is_sudoku());
-        assert!(!KcpMask::MkcpLegacy { header: None, value: None }.is_sudoku());
+        assert!(
+            KcpMask::Sudoku {
+                password: "x".into()
+            }
+            .is_sudoku()
+        );
+        assert!(
+            !KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }
+            .is_sudoku()
+        );
         assert!(!KcpMask::Noise.is_sudoku());
     }
 
     #[test]
     fn test_is_transport_replacement() {
-        assert!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.is_transport_replacement());
-        assert!(KcpMask::Xicmp { dgram: false, ips: vec![] }.is_transport_replacement());
-        assert!(KcpMask::Realm { url: "".into(), stun_servers: vec![] }.is_transport_replacement());
-        assert!(!KcpMask::MkcpLegacy { header: None, value: None }.is_transport_replacement());
+        assert!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .is_transport_replacement()
+        );
+        assert!(
+            KcpMask::Xicmp {
+                dgram: false,
+                ips: vec![]
+            }
+            .is_transport_replacement()
+        );
+        assert!(
+            KcpMask::Realm {
+                url: "".into(),
+                stun_servers: vec![]
+            }
+            .is_transport_replacement()
+        );
+        assert!(
+            !KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }
+            .is_transport_replacement()
+        );
         assert!(!KcpMask::Noise.is_transport_replacement());
     }
 
     #[test]
     fn test_header_size_all_variants() {
-        assert_eq!(KcpMask::MkcpLegacy { header: None, value: None }.header_size(), Some(6));
-        assert_eq!(KcpMask::MkcpLegacy { header: None, value: Some("x".into()) }.header_size(), Some(28));
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("wechat".into()), value: None }.header_size(), Some(13));
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("dns".into()), value: Some("www.baidu.com".into()) }.header_size(), Some(31));
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("srtp".into()), value: None }.header_size(), Some(4));
-        assert_eq!(KcpMask::Salamander { password: "x".into(), packet_size: None }.header_size(), Some(8));
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }
+            .header_size(),
+            Some(6)
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: Some("x".into())
+            }
+            .header_size(),
+            Some(28)
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("wechat".into()),
+                value: None
+            }
+            .header_size(),
+            Some(13)
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("dns".into()),
+                value: Some("www.baidu.com".into())
+            }
+            .header_size(),
+            Some(31)
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("srtp".into()),
+                value: None
+            }
+            .header_size(),
+            Some(4)
+        );
+        assert_eq!(
+            KcpMask::Salamander {
+                password: "x".into(),
+                packet_size: None
+            }
+            .header_size(),
+            Some(8)
+        );
         assert_eq!(KcpMask::Noise.header_size(), None);
-        assert_eq!(KcpMask::Sudoku { password: "x".into() }.header_size(), None);
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.header_size(), None);
-        assert_eq!(KcpMask::Xicmp { dgram: false, ips: vec![] }.header_size(), None);
-        assert_eq!(KcpMask::Realm { url: "".into(), stun_servers: vec![] }.header_size(), None);
+        assert_eq!(
+            KcpMask::Sudoku {
+                password: "x".into()
+            }
+            .header_size(),
+            None
+        );
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .header_size(),
+            None
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                dgram: false,
+                ips: vec![]
+            }
+            .header_size(),
+            None
+        );
+        assert_eq!(
+            KcpMask::Realm {
+                url: "".into(),
+                stun_servers: vec![]
+            }
+            .header_size(),
+            None
+        );
     }
 
     #[test]
@@ -654,30 +1195,66 @@ mod tests {
 
     #[test]
     fn test_is_compatible_with_empty() {
-        let mask = KcpMask::MkcpLegacy { header: None, value: None };
+        let mask = KcpMask::MkcpLegacy {
+            header: None,
+            value: None,
+        };
         assert!(mask.is_compatible_with(&[]).is_ok());
     }
 
     #[test]
     fn test_is_compatible_with_duplicate() {
-        let mask = KcpMask::MkcpLegacy { header: None, value: None };
-        assert!(mask.is_compatible_with(&[KcpMask::MkcpLegacy { header: None, value: None }]).is_err());
+        let mask = KcpMask::MkcpLegacy {
+            header: None,
+            value: None,
+        };
+        assert!(
+            mask.is_compatible_with(&[KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }])
+            .is_err()
+        );
     }
 
     #[test]
     fn test_is_compatible_with_double_encryption() {
-        let mask = KcpMask::MkcpLegacy { header: Some("dns".into()), value: None };
-        assert!(mask.is_compatible_with(&[KcpMask::MkcpLegacy { header: None, value: None }]).is_err());
+        let mask = KcpMask::MkcpLegacy {
+            header: Some("dns".into()),
+            value: None,
+        };
+        assert!(
+            mask.is_compatible_with(&[KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }])
+            .is_err()
+        );
     }
 
     #[test]
     fn test_is_compatible_with_transport_replacement() {
-        let xdns = KcpMask::Xdns { domains: vec![], resolvers: vec![] };
-        let xicmp = KcpMask::Xicmp { dgram: false, ips: vec![] };
-        assert!(xdns.is_compatible_with(std::slice::from_ref(&xicmp)).is_err());
+        let xdns = KcpMask::Xdns {
+            domains: vec![],
+            resolvers: vec![],
+        };
+        let xicmp = KcpMask::Xicmp {
+            dgram: false,
+            ips: vec![],
+        };
+        assert!(
+            xdns.is_compatible_with(std::slice::from_ref(&xicmp))
+                .is_err()
+        );
 
-        let realm = KcpMask::Realm { url: "".into(), stun_servers: vec![] };
-        assert!(xdns.is_compatible_with(std::slice::from_ref(&realm)).is_err());
+        let realm = KcpMask::Realm {
+            url: "".into(),
+            stun_servers: vec![],
+        };
+        assert!(
+            xdns.is_compatible_with(std::slice::from_ref(&realm))
+                .is_err()
+        );
         assert!(xicmp.is_compatible_with(&[realm]).is_err());
     }
 
@@ -688,17 +1265,29 @@ mod tests {
 
     #[test]
     fn test_validate_stack_valid() {
-        assert!(KcpMask::validate_stack(&[
-            KcpMask::MkcpLegacy { header: None, value: None },
-            KcpMask::Noise
-        ]).is_ok());
+        assert!(
+            KcpMask::validate_stack(&[
+                KcpMask::MkcpLegacy {
+                    header: None,
+                    value: None
+                },
+                KcpMask::Noise
+            ])
+            .is_ok()
+        );
     }
 
     #[test]
     fn test_validate_stack_xdns_xicmp_conflict() {
         let masks = [
-            KcpMask::Xdns { domains: vec![], resolvers: vec![] },
-            KcpMask::Xicmp { dgram: false, ips: vec![] },
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![],
+            },
+            KcpMask::Xicmp {
+                dgram: false,
+                ips: vec![],
+            },
         ];
         assert!(KcpMask::validate_stack(&masks).is_err());
     }
@@ -706,8 +1295,14 @@ mod tests {
     #[test]
     fn test_validate_stack_xdns_realm_conflict() {
         let masks = [
-            KcpMask::Xdns { domains: vec![], resolvers: vec![] },
-            KcpMask::Realm { url: "".into(), stun_servers: vec![] },
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![],
+            },
+            KcpMask::Realm {
+                url: "".into(),
+                stun_servers: vec![],
+            },
         ];
         assert!(KcpMask::validate_stack(&masks).is_err());
     }
@@ -715,8 +1310,14 @@ mod tests {
     #[test]
     fn test_canonical_order() {
         let masks = [
-            KcpMask::Xdns { domains: vec![], resolvers: vec![] },
-            KcpMask::MkcpLegacy { header: None, value: None },
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![],
+            },
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None,
+            },
         ];
         let ordered = KcpMask::canonical_order(&masks);
         assert!(matches!(&ordered[0], KcpMask::MkcpLegacy { .. }));
@@ -725,13 +1326,19 @@ mod tests {
 
     #[test]
     fn test_get_stack_warnings_alone() {
-        let warnings = KcpMask::get_stack_warnings(&[KcpMask::MkcpLegacy { header: None, value: None }]);
+        let warnings = KcpMask::get_stack_warnings(&[KcpMask::MkcpLegacy {
+            header: None,
+            value: None,
+        }]);
         assert!(!warnings.is_empty());
     }
 
     #[test]
     fn test_get_stack_warnings_no_warning_for_encrypted() {
-        let warnings = KcpMask::get_stack_warnings(&[KcpMask::MkcpLegacy { header: None, value: Some("pwd".into()) }]);
+        let warnings = KcpMask::get_stack_warnings(&[KcpMask::MkcpLegacy {
+            header: None,
+            value: Some("pwd".into()),
+        }]);
         assert!(warnings.is_empty());
     }
 
@@ -755,19 +1362,74 @@ mod tests {
 
     #[test]
     fn test_type_str_all_variants() {
-        assert_eq!(KcpMask::MkcpLegacy { header: None, value: None }.type_str(), "mkcp-legacy");
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }
+            .type_str(),
+            "mkcp-legacy"
+        );
         assert_eq!(KcpMask::Noise.type_str(), "noise");
-        assert_eq!(KcpMask::Salamander { password: "x".into(), packet_size: None }.type_str(), "salamander");
-        assert_eq!(KcpMask::Sudoku { password: "x".into() }.type_str(), "sudoku");
-        assert_eq!(KcpMask::Xdns { domains: vec![], resolvers: vec![] }.type_str(), "xdns");
-        assert_eq!(KcpMask::Xicmp { dgram: false, ips: vec![] }.type_str(), "xicmp");
-        assert_eq!(KcpMask::Realm { url: "".into(), stun_servers: vec![] }.type_str(), "realm");
+        assert_eq!(
+            KcpMask::Salamander {
+                password: "x".into(),
+                packet_size: None
+            }
+            .type_str(),
+            "salamander"
+        );
+        assert_eq!(
+            KcpMask::Sudoku {
+                password: "x".into()
+            }
+            .type_str(),
+            "sudoku"
+        );
+        assert_eq!(
+            KcpMask::Xdns {
+                domains: vec![],
+                resolvers: vec![]
+            }
+            .type_str(),
+            "xdns"
+        );
+        assert_eq!(
+            KcpMask::Xicmp {
+                dgram: false,
+                ips: vec![]
+            }
+            .type_str(),
+            "xicmp"
+        );
+        assert_eq!(
+            KcpMask::Realm {
+                url: "".into(),
+                stun_servers: vec![]
+            }
+            .type_str(),
+            "realm"
+        );
     }
 
     #[test]
     fn test_brief_spot_check() {
-        assert_eq!(KcpMask::MkcpLegacy { header: None, value: None }.brief(), "XOR混淆，仅FNV1a校验");
-        assert_eq!(KcpMask::MkcpLegacy { header: Some("dns".into()), value: None }.brief(), "加密+DNS头部伪装");
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: None,
+                value: None
+            }
+            .brief(),
+            "XOR混淆，仅FNV1a校验"
+        );
+        assert_eq!(
+            KcpMask::MkcpLegacy {
+                header: Some("dns".into()),
+                value: None
+            }
+            .brief(),
+            "加密+DNS头部伪装"
+        );
         assert_eq!(KcpMask::Noise.brief(), "随机噪声填充，抗流量分析");
     }
 }
