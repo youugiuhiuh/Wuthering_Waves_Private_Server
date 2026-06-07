@@ -67,6 +67,26 @@ impl FirewallManager {
         Ok(())
     }
 
+    pub async fn remove_port(port: u16) -> Result<()> {
+        match Self::detect_backend().await {
+            Some(FirewallBackend::Ufw) => UfwClient::remove_port(port, "tcp").await?,
+            Some(FirewallBackend::Firewalld) => {
+                FirewalldClient::remove_port(port, "tcp").await?;
+                FirewalldClient::remove_port(port, "udp").await?;
+            }
+            None => anyhow::bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
+        }
+        Ok(())
+    }
+
+    pub async fn list_allowed_ports() -> Result<HashSet<u16>> {
+        match Self::detect_backend().await {
+            Some(FirewallBackend::Ufw) => UfwClient::list_allowed_ports().await,
+            Some(FirewallBackend::Firewalld) => FirewalldClient::list_allowed_ports().await,
+            None => anyhow::bail!("未检测到支持的防火墙后端 (ufw 或 firewalld)"),
+        }
+    }
+
     pub async fn harden_with_ports(ports: HashSet<u16>) -> Result<()> {
         match Self::detect_backend().await {
             Some(FirewallBackend::Ufw) => UfwClient::harden_with_ports(ports).await,
