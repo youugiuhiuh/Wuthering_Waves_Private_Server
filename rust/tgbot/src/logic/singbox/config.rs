@@ -56,15 +56,16 @@ impl SingBoxConfigManager {
         value: &serde_json::Value,
         ports: &mut std::collections::HashSet<u16>,
     ) {
-        if let Some(port) = value.get("listen_port").and_then(|v| v.as_u64()) {
-            if port <= u16::MAX as u64 {
-                let main_port = port as u16;
-                ports.insert(main_port);
-                // If this is a hysteria2 inbound, also include hopping range
-                if value.get("type").and_then(|v| v.as_str()) == Some("hysteria2") {
-                    for p in (main_port + 1)..=(main_port + 99) {
-                        ports.insert(p);
-                    }
+        if let Some(main_port) = value
+            .get("listen_port")
+            .and_then(|v| v.as_u64())
+            .and_then(|p| u16::try_from(p).ok())
+        {
+            ports.insert(main_port);
+            // If this is a hysteria2 inbound, also include hopping range
+            if value.get("type").and_then(|v| v.as_str()) == Some("hysteria2") {
+                for p in (main_port + 1)..=(main_port + 99) {
+                    ports.insert(p);
                 }
             }
         }

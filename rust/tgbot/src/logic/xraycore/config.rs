@@ -126,14 +126,14 @@ impl ConfigManager {
         let mut ports = std::collections::HashSet::new();
         for file in &files {
             if let Ok(content) = fs::read_to_string(file).await {
-                if let Ok(json) = serde_json::from_str::<Value>(&content) {
-                    if let Some(inbounds) = json.get("inbounds").and_then(|v| v.as_array()) {
-                        for inbound in inbounds {
-                            if let Some(port) = inbound.get("port").and_then(|v| v.as_u64()) {
-                                if port <= u16::MAX as u64 {
-                                    ports.insert(port as u16);
-                                }
-                            }
+                if let Ok(json) = serde_json::from_str::<Value>(&content)
+                    && let Some(inbounds) = json.get("inbounds").and_then(|v| v.as_array())
+                {
+                    for inbound in inbounds {
+                        if let Some(port) = inbound.get("port").and_then(|v| v.as_u64())
+                            && port <= u16::MAX as u64
+                        {
+                            ports.insert(port as u16);
                         }
                     }
                 }

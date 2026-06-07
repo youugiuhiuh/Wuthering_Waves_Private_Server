@@ -185,8 +185,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )
                 .await;
 
+                let mut reboot_needed = false;
+
                 match res {
                     Ok(Ok(status)) => {
+                        reboot_needed = status.reboot_required;
                         let reboot_text = if status.reboot_required {
                             "\n\n🔄 <b>需要重启系统才能启用 BBR3</b>\n\n点击「立即重启」按钮，或稍后手动执行 reboot 命令。"
                         } else {
@@ -207,6 +210,23 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
                 drop(tx);
                 let _ = update_task.await;
+
+                if reboot_needed {
+                    let keyboard = InlineKeyboardMarkup::new(vec![
+                        vec![InlineKeyboardButton::callback(
+                            "🔄 立即重启",
+                            "a_bbr3_reboot_now",
+                        )],
+                        vec![InlineKeyboardButton::callback(
+                            "⏰ 稍后重启",
+                            "a_bbr3_reboot_later",
+                        )],
+                    ]);
+                    let _ = bot_clone
+                        .send_message(chat_id_clone, "🔄 请选择重启时间：")
+                        .reply_markup(keyboard)
+                        .await;
+                }
             });
         }
         "a_sys_maint" => {
