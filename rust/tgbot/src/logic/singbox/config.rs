@@ -37,6 +37,46 @@ impl SingBoxConfigManager {
         Ok(out)
     }
 
+    pub async fn collect_all_ports() -> Result<std::collections::HashSet<u16>> {
+        let files = Self::list_all_inbound_files().await?;
+        let mut ports = std::collections::HashSet::new();
+        for file in &files {
+            if let Ok(content) = fs::read_to_string(file).await {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    Self::extract_ports_recursive(&json, &mut ports);
+                }
+            } else {
+                log::warn!("无法读取配置文件: {}", file);
+            }
+        }
+        Ok(ports)
+    }
+
+    fn extract_ports_recursive(value: &serde_json::Value, ports: &mut std::collections::HashSet<u16>) {
+        if let Some(port) = value.get("listen_port").and_then(|v| v.as_u64()) {
+            if port <= u16::MAX as u64 {
+                let main_port = port as u16;
+                ports.insert(main_port);
+                // If this is a hysteria2 inbound, also include hopping range
+                if value.get("type").and_then(|v| v.as_str()) == Some("hysteria2") {
+                    for p in (main_port + 1)..=(main_port + 99) {
+                        ports.insert(p);
+                    }
+                }
+            }
+        }
+        if let Some(obj) = value.as_object() {
+            for (_, v) in obj {
+                Self::extract_ports_recursive(v, ports);
+            }
+        }
+        if let Some(arr) = value.as_array() {
+            for v in arr {
+                Self::extract_ports_recursive(v, ports);
+            }
+        }
+    }
+
     async fn extract_main_port_from_config(path: &str) -> Result<u16> {
         let content = fs::read_to_string(path).await?;
         let json: Value = serde_json::from_str(&content)?;
