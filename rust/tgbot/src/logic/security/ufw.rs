@@ -200,4 +200,70 @@ mod tests {
         assert!(std::mem::size_of::<Mutex<()>>() > 0);
         let _ = mutex;
     }
+
+    #[test]
+    fn test_parse_ufw_allowed_ports_simple() {
+        let output = "\
+[ 1] 22/tcp                     ALLOW IN    0.0.0.0/0
+[ 2] 80/tcp                     ALLOW IN    0.0.0.0/0
+[ 3] 443/tcp                    ALLOW IN    0.0.0.0/0
+";
+        let ports = parse_ufw_allowed_ports(output);
+        assert!(ports.contains(&22));
+        assert!(ports.contains(&80));
+        assert!(ports.contains(&443));
+        assert_eq!(ports.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_ufw_allowed_ports_skips_non_allow_lines() {
+        let output = "\
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing)
+New profiles: skip
+
+[ 1] 22/tcp                     ALLOW IN    0.0.0.0/0
+[ 2] 443/tcp                    ALLOW IN    0.0.0.0/0
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    0.0.0.0/0
+";
+        let ports = parse_ufw_allowed_ports(output);
+        assert!(ports.contains(&22));
+        assert!(ports.contains(&443));
+        assert_eq!(ports.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_ufw_allowed_ports_empty() {
+        let ports = parse_ufw_allowed_ports("");
+        assert!(ports.is_empty());
+    }
+
+    #[test]
+    fn test_parse_ufw_allowed_ports_no_allow_lines() {
+        let output = "\
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing)
+";
+        let ports = parse_ufw_allowed_ports(output);
+        assert!(ports.is_empty());
+    }
+
+    #[test]
+    fn test_parse_ufw_allowed_ports_mixed_protocols() {
+        let output = "\
+[ 1] 22/tcp                     ALLOW IN    0.0.0.0/0
+[ 2] 51820/udp                  ALLOW IN    0.0.0.0/0
+[ 3] 20001:20100/udp            ALLOW IN    0.0.0.0/0
+";
+        let ports = parse_ufw_allowed_ports(output);
+        assert!(ports.contains(&22));
+        assert!(ports.contains(&51820));
+        assert!(!ports.contains(&20001)); // range, not single port
+        assert_eq!(ports.len(), 2);
+    }
 }

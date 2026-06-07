@@ -69,7 +69,10 @@ impl FirewallManager {
 
     pub async fn remove_port(port: u16) -> Result<()> {
         match Self::detect_backend().await {
-            Some(FirewallBackend::Ufw) => UfwClient::remove_port(port, "tcp").await?,
+            Some(FirewallBackend::Ufw) => {
+                let _ = UfwClient::remove_port(port, "tcp").await;
+                let _ = UfwClient::remove_port(port, "udp").await;
+            }
             Some(FirewallBackend::Firewalld) => {
                 FirewalldClient::remove_port(port, "tcp").await?;
                 FirewalldClient::remove_port(port, "udp").await?;

@@ -177,15 +177,7 @@ impl FirewalldClient {
             anyhow::bail!("firewall-cmd --list-ports 失败: {}", stderr);
         }
 
-        let mut ports = HashSet::new();
-        for entry in stdout.trim().split_whitespace() {
-            if let Some(port_str) = entry.split('/').next() {
-                if let Ok(port) = port_str.parse::<u16>() {
-                    ports.insert(port);
-                }
-            }
-        }
-
+        let ports = parse_firewalld_ports(&stdout);
         Ok(ports)
     }
 
@@ -356,6 +348,18 @@ impl FirewalldClient {
     }
 }
 
+fn parse_firewalld_ports(output: &str) -> HashSet<u16> {
+    let mut ports = HashSet::new();
+    for entry in output.trim().split_whitespace() {
+        if let Some(port_str) = entry.split('/').next() {
+            if let Ok(port) = port_str.parse::<u16>() {
+                ports.insert(port);
+            }
+        }
+    }
+    ports
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,5 +375,38 @@ mod tests {
         assert!(std::mem::size_of::<FirewallD1ZoneProxy>() > 0);
         assert!(std::mem::size_of::<FirewallD1ConfigProxy>() > 0);
         assert!(std::mem::size_of::<FirewallD1ConfigZoneProxy>() > 0);
+    }
+
+    #[test]
+    fn test_parse_firewalld_ports_simple() {
+        let output = "8080/tcp 9090/udp 443/tcp";
+        let ports = parse_firewalld_ports(output);
+        assert!(ports.contains(&8080));
+        assert!(ports.contains(&9090));
+        assert!(ports.contains(&443));
+        assert_eq!(ports.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_firewalld_ports_empty() {
+        assert!(parse_firewalld_ports("").is_empty());
+        assert!(parse_firewalld_ports("  ").is_empty());
+    }
+
+    #[test]
+    fn test_parse_firewalld_ports_ignores_non_numeric() {
+        let output = "8080/tcp high/udp 443/tcp";
+        let ports = parse_firewalld_ports(output);
+        assert!(ports.contains(&8080));
+        assert!(ports.contains(&443));
+        assert_eq!(ports.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_firewalld_ports_deduplicates() {
+        let output = "22/tcp 22/udp 22/sctp";
+        let ports = parse_firewalld_ports(output);
+        assert!(ports.contains(&22));
+        assert_eq!(ports.len(), 1);
     }
 }
