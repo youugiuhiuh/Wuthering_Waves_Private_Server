@@ -169,10 +169,10 @@ fn parse_ufw_allowed_ports(stdout: &str) -> HashSet<u16> {
         }
         let parts: Vec<&str> = line.split_whitespace().collect();
         for part in parts {
-            if let Some(port_str) = part.split('/').next() {
-                if let Ok(port) = port_str.parse::<u16>() {
-                    ports.insert(port);
-                }
+            if let Some(port_str) = part.split('/').next()
+                && let Ok(port) = port_str.parse::<u16>()
+            {
+                ports.insert(port);
             }
         }
     }

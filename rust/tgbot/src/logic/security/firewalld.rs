@@ -350,11 +350,11 @@ impl FirewalldClient {
 
 fn parse_firewalld_ports(output: &str) -> HashSet<u16> {
     let mut ports = HashSet::new();
-    for entry in output.trim().split_whitespace() {
-        if let Some(port_str) = entry.split('/').next() {
-            if let Ok(port) = port_str.parse::<u16>() {
-                ports.insert(port);
-            }
+    for entry in output.split_whitespace() {
+        if let Some(port_str) = entry.split('/').next()
+            && let Ok(port) = port_str.parse::<u16>()
+        {
+            ports.insert(port);
         }
     }
     ports
