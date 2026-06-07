@@ -65,6 +65,13 @@ impl UfwClient {
             .with_context(|| format!("UFW 允许端口 {} 失败", port_spec))
     }
 
+    pub async fn remove_port(port: u16, protocol: &str) -> Result<()> {
+        let port_spec = format!("{}/{}", port, protocol);
+        Self::run_ufw(&["delete", "allow", &port_spec])
+            .await
+            .with_context(|| format!("UFW 删除端口 {} 失败", port_spec))
+    }
+
     pub async fn add_port_range(start: u16, end: u16, protocol: &str) -> Result<()> {
         let port_spec = format!("{}:{}/{}", start, end, protocol);
         Self::run_ufw(&["allow", &port_spec])
@@ -102,6 +109,36 @@ impl UfwClient {
         }
     }
 
+    pub async fn list_allowed_ports() -> Result<HashSet<u16>> {
+        let _lock = UFW_MUTEX.lock().await;
+        let mut last_err = None;
+
+        for i in 0..3 {
+            if i > 0 {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+
+            match run_cmd_output("ufw", &["status", "numbered"], Duration::from_secs(10)).await {
+                Ok((status, stdout, stderr)) => {
+                    if !status.success() {
+                        let err_msg = format!("{}{}", stdout, stderr);
+                        if err_msg.contains("lock") || err_msg.contains("Another app") {
+                            last_err = Some(anyhow::anyhow!("UFW 锁冲突: {}", err_msg));
+                            continue;
+                        }
+                        anyhow::bail!("UFW status 失败: {}", err_msg);
+                    }
+                    return Ok(parse_ufw_allowed_ports(&stdout));
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("UFW status 命令最终失败")))
+    }
+
     pub async fn harden_with_ports(ports: HashSet<u16>) -> Result<()> {
         // 1. 重置 UFW
         let _ = Self::run_ufw(&["--force", "reset"]).await;
@@ -121,6 +158,25 @@ impl UfwClient {
 
         Ok(())
     }
+}
+
+fn parse_ufw_allowed_ports(stdout: &str) -> HashSet<u16> {
+    let mut ports = HashSet::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if !line.contains("ALLOW") {
+            continue;
+        }
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        for part in parts {
+            if let Some(port_str) = part.split('/').next() {
+                if let Ok(port) = port_str.parse::<u16>() {
+                    ports.insert(port);
+                }
+            }
+        }
+    }
+    ports
 }
 
 #[cfg(test)]
