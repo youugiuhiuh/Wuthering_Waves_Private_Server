@@ -120,6 +120,75 @@ impl FirewalldClient {
         Ok(())
     }
 
+    pub async fn remove_port(port: u16, protocol: &str) -> Result<()> {
+        let connection = zbus::Connection::system().await?;
+        let proxy = FirewallD1Proxy::new(&connection).await?;
+        let zone_proxy = FirewallD1ZoneProxy::new(&connection).await?;
+        let zone = proxy.get_default_zone().await?;
+        let port_str = port.to_string();
+
+        // 1. Runtime: Remove port (Safe to fail if not present)
+        let _ = zone_proxy.remove_port(&zone, &port_str, protocol).await;
+
+        // 2. Permanent: Remove port from config
+        let config_path = match proxy.config().await {
+            Ok(path) => path,
+            Err(_) => {
+                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
+                    .unwrap()
+            }
+        };
+        let config_proxy = FirewallD1ConfigProxy::builder(&connection)
+            .path(config_path)?
+            .build()
+            .await?;
+
+        if let Ok(zone_path) = config_proxy.get_zone_by_name(&zone).await {
+            let config_zone_proxy = FirewallD1ConfigZoneProxy::builder(&connection)
+                .path(zone_path)?
+                .build()
+                .await?;
+
+            if config_zone_proxy
+                .query_port(&port_str, protocol)
+                .await
+                .unwrap_or(false)
+            {
+                config_zone_proxy.remove_port(&port_str, protocol).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn list_allowed_ports() -> Result<HashSet<u16>> {
+        let connection = zbus::Connection::system().await?;
+        let proxy = FirewallD1Proxy::new(&connection).await?;
+        let zone = proxy.get_default_zone().await?;
+
+        let (status, stdout, stderr) = crate::logic::cmd_async::run_cmd_output(
+            "firewall-cmd",
+            &["--zone", &zone, "--list-ports"],
+            std::time::Duration::from_secs(10),
+        )
+        .await?;
+
+        if !status.success() {
+            anyhow::bail!("firewall-cmd --list-ports 失败: {}", stderr);
+        }
+
+        let mut ports = HashSet::new();
+        for entry in stdout.trim().split_whitespace() {
+            if let Some(port_str) = entry.split('/').next() {
+                if let Ok(port) = port_str.parse::<u16>() {
+                    ports.insert(port);
+                }
+            }
+        }
+
+        Ok(ports)
+    }
+
     pub async fn add_port_range(start: u16, end: u16, protocol: &str) -> Result<()> {
         let connection = zbus::Connection::system().await?;
 
