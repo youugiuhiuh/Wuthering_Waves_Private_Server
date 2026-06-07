@@ -65,6 +65,13 @@ impl UfwClient {
             .with_context(|| format!("UFW 允许端口 {} 失败", port_spec))
     }
 
+    pub async fn remove_port(port: u16, protocol: &str) -> Result<()> {
+        let port_spec = format!("{}/{}", port, protocol);
+        Self::run_ufw(&["delete", "allow", &port_spec])
+            .await
+            .with_context(|| format!("UFW 删除端口 {} 失败", port_spec))
+    }
+
     pub async fn add_port_range(start: u16, end: u16, protocol: &str) -> Result<()> {
         let port_spec = format!("{}:{}/{}", start, end, protocol);
         Self::run_ufw(&["allow", &port_spec])
@@ -102,6 +109,36 @@ impl UfwClient {
         }
     }
 
+    pub async fn list_allowed_ports() -> Result<HashSet<u16>> {
+        let _lock = UFW_MUTEX.lock().await;
+        let mut last_err = None;
+
+        for i in 0..3 {
+            if i > 0 {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+
+            match run_cmd_output("ufw", &["status", "numbered"], Duration::from_secs(10)).await {
+                Ok((status, stdout, stderr)) => {
+                    if !status.success() {
+                        let err_msg = format!("{}{}", stdout, stderr);
+                        if err_msg.contains("lock") || err_msg.contains("Another app") {
+                            last_err = Some(anyhow::anyhow!("UFW 锁冲突: {}", err_msg));
+                            continue;
+                        }
+                        anyhow::bail!("UFW status 失败: {}", err_msg);
+                    }
+                    return Ok(parse_ufw_allowed_ports(&stdout));
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("UFW status 命令最终失败")))
+    }
+
     pub async fn harden_with_ports(ports: HashSet<u16>) -> Result<()> {
         // 1. 重置 UFW
         let _ = Self::run_ufw(&["--force", "reset"]).await;
@@ -121,6 +158,25 @@ impl UfwClient {
 
         Ok(())
     }
+}
+
+fn parse_ufw_allowed_ports(stdout: &str) -> HashSet<u16> {
+    let mut ports = HashSet::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if !line.contains("ALLOW") {
+            continue;
+        }
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        for part in parts {
+            if let Some(port_str) = part.split('/').next() {
+                if let Ok(port) = port_str.parse::<u16>() {
+                    ports.insert(port);
+                }
+            }
+        }
+    }
+    ports
 }
 
 #[cfg(test)]
@@ -143,5 +199,71 @@ mod tests {
         let mutex = &UFW_MUTEX;
         assert!(std::mem::size_of::<Mutex<()>>() > 0);
         let _ = mutex;
+    }
+
+    #[test]
+    fn test_parse_ufw_allowed_ports_simple() {
+        let output = "\
+[ 1] 22/tcp                     ALLOW IN    0.0.0.0/0
+[ 2] 80/tcp                     ALLOW IN    0.0.0.0/0
+[ 3] 443/tcp                    ALLOW IN    0.0.0.0/0
+";
+        let ports = parse_ufw_allowed_ports(output);
+        assert!(ports.contains(&22));
+        assert!(ports.contains(&80));
+        assert!(ports.contains(&443));
+        assert_eq!(ports.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_ufw_allowed_ports_skips_non_allow_lines() {
+        let output = "\
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing)
+New profiles: skip
+
+[ 1] 22/tcp                     ALLOW IN    0.0.0.0/0
+[ 2] 443/tcp                    ALLOW IN    0.0.0.0/0
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    0.0.0.0/0
+";
+        let ports = parse_ufw_allowed_ports(output);
+        assert!(ports.contains(&22));
+        assert!(ports.contains(&443));
+        assert_eq!(ports.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_ufw_allowed_ports_empty() {
+        let ports = parse_ufw_allowed_ports("");
+        assert!(ports.is_empty());
+    }
+
+    #[test]
+    fn test_parse_ufw_allowed_ports_no_allow_lines() {
+        let output = "\
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing)
+";
+        let ports = parse_ufw_allowed_ports(output);
+        assert!(ports.is_empty());
+    }
+
+    #[test]
+    fn test_parse_ufw_allowed_ports_mixed_protocols() {
+        let output = "\
+[ 1] 22/tcp                     ALLOW IN    0.0.0.0/0
+[ 2] 51820/udp                  ALLOW IN    0.0.0.0/0
+[ 3] 20001:20100/udp            ALLOW IN    0.0.0.0/0
+";
+        let ports = parse_ufw_allowed_ports(output);
+        assert!(ports.contains(&22));
+        assert!(ports.contains(&51820));
+        assert!(!ports.contains(&20001)); // range, not single port
+        assert_eq!(ports.len(), 2);
     }
 }

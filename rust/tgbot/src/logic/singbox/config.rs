@@ -37,6 +37,49 @@ impl SingBoxConfigManager {
         Ok(out)
     }
 
+    pub async fn collect_all_ports() -> Result<std::collections::HashSet<u16>> {
+        let files = Self::list_all_inbound_files().await?;
+        let mut ports = std::collections::HashSet::new();
+        for file in &files {
+            if let Ok(content) = fs::read_to_string(file).await {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    Self::extract_ports_recursive(&json, &mut ports);
+                }
+            } else {
+                log::warn!("无法读取配置文件: {}", file);
+            }
+        }
+        Ok(ports)
+    }
+
+    fn extract_ports_recursive(
+        value: &serde_json::Value,
+        ports: &mut std::collections::HashSet<u16>,
+    ) {
+        if let Some(port) = value.get("listen_port").and_then(|v| v.as_u64()) {
+            if port <= u16::MAX as u64 {
+                let main_port = port as u16;
+                ports.insert(main_port);
+                // If this is a hysteria2 inbound, also include hopping range
+                if value.get("type").and_then(|v| v.as_str()) == Some("hysteria2") {
+                    for p in (main_port + 1)..=(main_port + 99) {
+                        ports.insert(p);
+                    }
+                }
+            }
+        }
+        if let Some(obj) = value.as_object() {
+            for (_, v) in obj {
+                Self::extract_ports_recursive(v, ports);
+            }
+        }
+        if let Some(arr) = value.as_array() {
+            for v in arr {
+                Self::extract_ports_recursive(v, ports);
+            }
+        }
+    }
+
     async fn extract_main_port_from_config(path: &str) -> Result<u16> {
         let content = fs::read_to_string(path).await?;
         let json: Value = serde_json::from_str(&content)?;
@@ -785,5 +828,56 @@ mod tests {
         // 第二次调用（应该幂等）
         let result = tokio::fs::write(&base_path, "test").await;
         assert!(result.is_ok(), "幂等性检查：文件已存在时应该可覆盖");
+    }
+}
+
+#[cfg(test)]
+mod port_collection_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_extract_ports_hysteria2_includes_hopping() {
+        let json = serde_json::json!({
+            "inbounds": [{
+                "type": "hysteria2",
+                "listen_port": 20001,
+                "listen": "::"
+            }]
+        });
+        let mut ports = HashSet::new();
+        SingBoxConfigManager::extract_ports_recursive(&json, &mut ports);
+        assert!(ports.contains(&20001));
+        assert!(ports.contains(&20002));
+        assert!(ports.contains(&20100));
+        assert_eq!(ports.len(), 100);
+    }
+
+    #[test]
+    fn test_extract_ports_tuic_single_port() {
+        let json = serde_json::json!({
+            "type": "tuic",
+            "listen_port": 30001
+        });
+        let mut ports = HashSet::new();
+        SingBoxConfigManager::extract_ports_recursive(&json, &mut ports);
+        assert!(ports.contains(&30001));
+        assert_eq!(ports.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_ports_nested() {
+        let json = serde_json::json!({
+            "inbounds": [
+                {"type": "tuic", "listen_port": 30001},
+                {"type": "hysteria2", "listen_port": 20001}
+            ]
+        });
+        let mut ports = HashSet::new();
+        SingBoxConfigManager::extract_ports_recursive(&json, &mut ports);
+        assert!(ports.contains(&30001));
+        assert!(ports.contains(&20001));
+        assert!(ports.contains(&20050));
+        assert!(ports.contains(&20100));
     }
 }
