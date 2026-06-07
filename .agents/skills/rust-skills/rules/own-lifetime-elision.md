@@ -48,7 +48,7 @@ impl Display for Wrapper<'_> {
 
 1. **Each input reference gets its own lifetime:**
    ```rust
-   fn foo(x: &str, y: &str)
+   fn foo(x: &str, y: &str) 
    // becomes
    fn foo<'a, 'b>(x: &'a str, y: &'b str)
    ```

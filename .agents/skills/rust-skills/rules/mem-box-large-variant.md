@@ -13,10 +13,10 @@ enum Message {
     Quit,                              // 0 bytes of data
     Move { x: i32, y: i32 },          // 8 bytes
     Text(String),                      // 24 bytes
-    Image {
+    Image { 
         data: [u8; 1024],             // 1024 bytes - forces entire enum to ~1032 bytes!
-        width: u32,
-        height: u32
+        width: u32, 
+        height: u32 
     },
 }
 

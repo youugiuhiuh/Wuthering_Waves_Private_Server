@@ -38,7 +38,7 @@ fn filter_loop(data: &[Vec<i32>]) {
 // Reuse buffer with collect_into
 fn filter_loop(data: &[Vec<i32>]) {
     let mut buffer = Vec::new();
-
+    
     for batch in data {
         buffer.clear();  // Keep allocation
         batch.iter()
@@ -52,7 +52,7 @@ fn filter_loop(data: &[Vec<i32>]) {
 // Also works with extend pattern
 fn filter_loop_extend(data: &[Vec<i32>]) {
     let mut buffer = Vec::new();
-
+    
     for batch in data {
         buffer.clear();
         buffer.extend(
@@ -72,7 +72,7 @@ Before `collect_into()` was stabilized, use `extend()`:
 ```rust
 fn reuse_buffer(data: &[Vec<i32>]) {
     let mut buffer = Vec::new();
-
+    
     for batch in data {
         buffer.clear();
         buffer.extend(batch.iter().filter(|&&x| x > 0).copied());
@@ -87,17 +87,17 @@ fn reuse_buffer(data: &[Vec<i32>]) {
 fn transform_batches(batches: &[Vec<RawData>]) -> Vec<ProcessedData> {
     let mut temp = Vec::new();
     let mut all_results = Vec::new();
-
+    
     for batch in batches {
         temp.clear();
         batch.iter()
             .map(ProcessedData::from)
             .collect_into(&mut temp);
-
+        
         // Process temp, append to results
         all_results.extend(temp.drain(..).filter(|p| p.is_valid()));
     }
-
+    
     all_results
 }
 ```

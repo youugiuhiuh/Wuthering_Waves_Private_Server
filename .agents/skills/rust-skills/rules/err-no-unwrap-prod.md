@@ -13,7 +13,7 @@ fn process_request(req: Request) -> Response {
     let user_id = req.headers.get("X-User-Id").unwrap();  // Why did it fail?
     let user = database.find_user(user_id).unwrap();       // Which operation?
     let data = user.preferences.get("theme").unwrap();     // No context
-
+    
     Response::new(data)
 }
 
@@ -29,13 +29,13 @@ fn process_request(req: Request) -> Result<Response, AppError> {
     let user_id = req.headers
         .get("X-User-Id")
         .ok_or(AppError::MissingHeader("X-User-Id"))?;
-
+    
     let user = database.find_user(user_id)?;
-
+    
     let data = user.preferences
         .get("theme")
         .ok_or(AppError::MissingPreference("theme"))?;
-
+    
     Ok(Response::new(data))
 }
 

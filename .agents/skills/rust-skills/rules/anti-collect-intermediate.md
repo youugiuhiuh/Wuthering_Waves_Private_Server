@@ -14,11 +14,11 @@ fn process(data: Vec<i32>) -> Vec<i32> {
     let step1: Vec<_> = data.into_iter()
         .filter(|x| *x > 0)
         .collect();
-
+    
     let step2: Vec<_> = step1.into_iter()
         .map(|x| x * 2)
         .collect();
-
+    
     step2.into_iter()
         .filter(|x| *x < 100)
         .collect()

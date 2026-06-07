@@ -48,10 +48,10 @@ pub enum Status {
 pub struct Config {
     /// Maximum time to wait for a response before timing out.
     pub timeout: Duration,
-
+    
     /// Number of retry attempts for failed requests.
     pub retries: u32,
-
+    
     /// Base URL for all API requests.
     pub base_url: String,
 }

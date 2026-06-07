@@ -141,7 +141,7 @@ impl Config {
             path: PathBuf::new(),
         }
     }
-
+    
     fn path(mut self, path: impl Into<PathBuf>) -> Self {
         self.path = path.into();
         self

@@ -34,38 +34,38 @@ use std::simd::*;
 
 fn sum_simd(data: &[f32]) -> f32 {
     let (prefix, middle, suffix) = data.as_simd::<8>();
-
+    
     // Handle unaligned prefix
     let mut sum = prefix.iter().sum::<f32>();
-
+    
     // SIMD loop - 8 floats at a time
     let mut simd_sum = f32x8::splat(0.0);
     for chunk in middle {
         simd_sum += *chunk;
     }
     sum += simd_sum.reduce_sum();
-
+    
     // Handle unaligned suffix
     sum += suffix.iter().sum::<f32>();
-
+    
     sum
 }
 
 fn dot_product(a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(a.len(), b.len());
-
+    
     let (a_pre, a_mid, a_suf) = a.as_simd::<8>();
     let (b_pre, b_mid, b_suf) = b.as_simd::<8>();
-
+    
     let scalar: f32 = a_pre.iter().zip(b_pre).map(|(x, y)| x * y).sum();
-
+    
     let mut simd_sum = f32x8::splat(0.0);
     for (av, bv) in a_mid.iter().zip(b_mid) {
         simd_sum += *av * *bv;
     }
-
+    
     let suffix: f32 = a_suf.iter().zip(b_suf).map(|(x, y)| x * y).sum();
-
+    
     scalar + simd_sum.reduce_sum() + suffix
 }
 ```
@@ -87,9 +87,9 @@ fn process_simd(data: &mut [f32]) {
 fn blend_images(a: &[u8], b: &[u8], alpha: f32, out: &mut [u8]) {
     let alpha_v = f32x8::splat(alpha);
     let one_minus = f32x8::splat(1.0 - alpha);
-
-    for ((a_chunk, b_chunk), out_chunk) in
-        a.chunks_exact(8).zip(b.chunks_exact(8)).zip(out.chunks_exact_mut(8))
+    
+    for ((a_chunk, b_chunk), out_chunk) in 
+        a.chunks_exact(8).zip(b.chunks_exact(8)).zip(out.chunks_exact_mut(8)) 
     {
         let av = f32x8::from([
             a_chunk[0] as f32, a_chunk[1] as f32, /* ... */
@@ -97,7 +97,7 @@ fn blend_images(a: &[u8], b: &[u8], alpha: f32, out: &mut [u8]) {
         let bv = f32x8::from([
             b_chunk[0] as f32, b_chunk[1] as f32, /* ... */
         ]);
-
+        
         let result = av * one_minus + bv * alpha_v;
         // Convert back to u8...
     }
@@ -114,12 +114,12 @@ use std::arch::x86_64::*;
 #[target_feature(enable = "avx2")]
 unsafe fn sum_avx2(data: &[f32]) -> f32 {
     let mut sum = _mm256_setzero_ps();
-
+    
     for chunk in data.chunks_exact(8) {
         let v = _mm256_loadu_ps(chunk.as_ptr());
         sum = _mm256_add_ps(sum, v);
     }
-
+    
     // Horizontal sum
     let high = _mm256_extractf128_ps(sum, 1);
     let low = _mm256_castps256_ps128(sum);

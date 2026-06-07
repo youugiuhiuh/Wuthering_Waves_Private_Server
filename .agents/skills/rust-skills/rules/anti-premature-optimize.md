@@ -23,7 +23,7 @@ fn sum(data: &[i32]) -> i32 {
 
 // Complex caching with no evidence it's needed
 lazy_static! {
-    static ref CACHE: RwLock<HashMap<String, Arc<Result>>> =
+    static ref CACHE: RwLock<HashMap<String, Arc<Result>>> = 
         RwLock::new(HashMap::new());
 }
 
@@ -138,13 +138,13 @@ valgrind --tool=massif ./target/release/app
 
 ```rust
 /// Lookup table for fast character classification.
-///
+/// 
 /// # Performance
-///
+/// 
 /// Benchmarked with criterion (benchmarks/char_class.rs):
 /// - Table lookup: 2.3ns/op
 /// - Match statement: 8.7ns/op
-///
+/// 
 /// Justified for hot path in parser (called 10M+ times).
 static CHAR_CLASS: [CharClass; 256] = [/* ... */];
 ```

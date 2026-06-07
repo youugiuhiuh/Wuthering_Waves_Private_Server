@@ -48,12 +48,12 @@ impl Config {
     fn set_name(&mut self, name: &str) {
         self.name = name.to_string();
     }
-
+    
     // Or accept owned String if caller usually has one
     fn set_name_owned(&mut self, name: String) {
         self.name = name;
     }
-
+    
     // Or be generic
     fn set_name_into(&mut self, name: impl Into<String>) {
         self.name = name.into();

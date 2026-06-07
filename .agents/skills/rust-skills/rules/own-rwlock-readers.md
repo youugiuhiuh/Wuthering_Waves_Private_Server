@@ -107,7 +107,7 @@ impl CachedData {
         if let Some(cached) = self.cache.read().as_ref() {
             return cached.clone();
         }
-
+        
         // Slow path: compute and cache
         let result = compute_expensive();
         *self.cache.write() = Some(result.clone());

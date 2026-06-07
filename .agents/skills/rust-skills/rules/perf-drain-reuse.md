@@ -12,7 +12,7 @@
 // Allocates new Vec every iteration
 fn process_batches(data: Vec<Item>) {
     let mut remaining = data;
-
+    
     while !remaining.is_empty() {
         let batch: Vec<_> = remaining.drain(..100.min(remaining.len())).collect();
         process_batch(batch);
@@ -37,7 +37,7 @@ fn reuse_buffer() {
 // Reuses allocation with drain
 fn process_batches(mut data: Vec<Item>) {
     let mut batch = Vec::with_capacity(100);
-
+    
     while !data.is_empty() {
         batch.extend(data.drain(..100.min(data.len())));
         process_batch(&batch);
@@ -48,7 +48,7 @@ fn process_batches(mut data: Vec<Item>) {
 // Reuses buffer across iterations
 fn reuse_buffer() {
     let mut buffer = Vec::new();
-
+    
     for _ in 0..1000 {
         buffer.clear();  // Keeps capacity
         fill_buffer(&mut buffer);

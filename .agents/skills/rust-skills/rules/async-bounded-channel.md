@@ -140,7 +140,7 @@ let (tx, rx) = watch::channel::<State>(initial);
 async fn process_with_workers(items: Vec<Item>) -> Vec<Result> {
     let (tx, rx) = mpsc::channel(100);
     let rx = Arc::new(Mutex::new(rx));
-
+    
     // Spawn worker pool
     let workers: Vec<_> = (0..4).map(|_| {
         let rx = rx.clone();
@@ -157,13 +157,13 @@ async fn process_with_workers(items: Vec<Item>) -> Vec<Result> {
             }
         })
     }).collect();
-
+    
     // Send items
     for item in items {
         tx.send(item).await.unwrap();
     }
     drop(tx);  // Signal workers to stop
-
+    
     futures::future::join_all(workers).await;
 }
 ```

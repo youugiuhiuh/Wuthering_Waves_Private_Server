@@ -52,7 +52,7 @@ if (x = 5) { }  // Probably meant x == 5
 
 ```rust
 // WARN: Suspicious map usage
-let _: Vec<_> = vec.iter().map(|x| {
+let _: Vec<_> = vec.iter().map(|x| { 
     println!("{}", x);  // Side effect in map
     x
 }).collect();  // Use for_each instead

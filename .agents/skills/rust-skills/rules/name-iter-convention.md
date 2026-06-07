@@ -26,7 +26,7 @@ impl<T> MyCollection<T> {
     fn iter(&self) -> impl Iterator<Item = &T> {
         self.items.iter()
     }
-
+    
     /// Returns an iterator over mutable references.
     fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.items.iter_mut()
@@ -37,7 +37,7 @@ impl<T> MyCollection<T> {
 impl<T> IntoIterator for MyCollection<T> {
     type Item = T;
     type IntoIter = std::vec::IntoIter<T>;
-
+    
     fn into_iter(self) -> Self::IntoIter {
         self.items.into_iter()
     }
@@ -47,7 +47,7 @@ impl<T> IntoIterator for MyCollection<T> {
 impl<'a, T> IntoIterator for &'a MyCollection<T> {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
-
+    
     fn into_iter(self) -> Self::IntoIter {
         self.items.iter()
     }
@@ -56,7 +56,7 @@ impl<'a, T> IntoIterator for &'a MyCollection<T> {
 impl<'a, T> IntoIterator for &'a mut MyCollection<T> {
     type Item = &'a mut T;
     type IntoIter = std::slice::IterMut<'a, T>;
-
+    
     fn into_iter(self) -> Self::IntoIter {
         self.items.iter_mut()
     }
@@ -98,7 +98,7 @@ impl MyCollection<T> {
     fn iter_valid(&self) -> impl Iterator<Item = &T> {
         self.iter().filter(|x| x.is_valid())
     }
-
+    
     // Specific slice
     fn iter_range(&self, start: usize, end: usize) -> impl Iterator<Item = &T> {
         self.items[start..end].iter()

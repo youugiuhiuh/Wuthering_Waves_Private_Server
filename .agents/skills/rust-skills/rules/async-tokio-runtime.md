@@ -38,7 +38,7 @@ async fn main() {
     let handles: Vec<_> = urls.iter()
         .map(|url| tokio::spawn(fetch(url.clone())))
         .collect();
-
+    
     futures::future::join_all(handles).await;
 }
 
@@ -64,7 +64,7 @@ fn main() {
         .thread_name("my-worker")
         .build()
         .unwrap();
-
+    
     runtime.block_on(async_main());
 }
 ```
@@ -120,15 +120,15 @@ impl App {
                 .unwrap(),
         }
     }
-
-    fn spawn_io<F>(&self, future: F)
-    where F: Future + Send + 'static, F::Output: Send + 'static
+    
+    fn spawn_io<F>(&self, future: F) 
+    where F: Future + Send + 'static, F::Output: Send + 'static 
     {
         self.io_runtime.spawn(future);
     }
-
-    fn spawn_cpu<F>(&self, task: F)
-    where F: FnOnce() + Send + 'static
+    
+    fn spawn_cpu<F>(&self, task: F) 
+    where F: FnOnce() + Send + 'static 
     {
         self.cpu_runtime.spawn_blocking(task);
     }

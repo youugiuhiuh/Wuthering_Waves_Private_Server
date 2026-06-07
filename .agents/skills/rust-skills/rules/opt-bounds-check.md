@@ -38,7 +38,7 @@ fn apply_filter(data: &mut [u8]) {
     for window in data.windows(3) {
         // window[0], window[1], window[2] are all valid
     }
-
+    
     // Or use chunks
     for chunk in data.chunks_exact(4) {
         process_simd(chunk);
@@ -74,11 +74,11 @@ let (left, right) = data.split_at(mid);
 fn parallel_sum(data: &[i32]) -> i32 {
     // Split into independent chunks
     let (left, right) = data.split_at(data.len() / 2);
-
+    
     // Process chunks without bounds checks
     let sum_left: i32 = left.iter().sum();
     let sum_right: i32 = right.iter().sum();
-
+    
     sum_left + sum_right
 }
 ```
@@ -90,14 +90,14 @@ fn matrix_multiply(a: &[f64], b: &[f64], c: &mut [f64], n: usize) {
     assert!(a.len() >= n * n);
     assert!(b.len() >= n * n);
     assert!(c.len() >= n * n);
-
+    
     for i in 0..n {
         for j in 0..n {
             let mut sum = 0.0;
             for k in 0..n {
                 // SAFETY: bounds verified by asserts above
                 unsafe {
-                    sum += a.get_unchecked(i * n + k)
+                    sum += a.get_unchecked(i * n + k) 
                          * b.get_unchecked(k * n + j);
                 }
             }
@@ -118,7 +118,7 @@ fn process_header(data: &[u8]) -> Option<Header> {
     let [a, b, c, d, rest @ ..] = data else {
         return None;
     };
-
+    
     Some(Header {
         magic: *a,
         version: *b,

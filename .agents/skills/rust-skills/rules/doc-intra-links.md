@@ -10,7 +10,7 @@ Intra-doc links (`[TypeName]`, `[method](Self::method)`) create clickable refere
 
 ```rust
 /// Returns the length of the buffer.
-///
+/// 
 /// See also `capacity()` for the allocated size, and the
 /// `Buffer` struct for more details.
 pub fn len(&self) -> usize {
@@ -28,7 +28,7 @@ pub fn parse<T: FromStr>(input: &str) -> Result<T, Error> {
 
 ```rust
 /// Returns the length of the buffer.
-///
+/// 
 /// See also [`capacity()`](Self::capacity) for the allocated size, and
 /// [`Buffer`] for more details.
 pub fn len(&self) -> usize {
@@ -65,7 +65,7 @@ impl Buffer {
     ///
     /// Use [`with_capacity`](Self::with_capacity) if you know the size.
     pub fn new() -> Self { /* ... */ }
-
+    
     /// Creates a buffer with pre-allocated capacity.
     ///
     /// See [`new`](Self::new) for the default constructor.

@@ -63,13 +63,15 @@ overflow-checks = true
 lto = "fat"
 codegen-units = 1
 
-# From sol-trade-sdk
-# https://github.com/0xfnzero/sol-trade-sdk
-[profile.release]
+# From ripgrep (release-lto profile)
+# https://github.com/BurntSushi/ripgrep/blob/master/Cargo.toml
+[profile.release-lto]
+inherits = "release"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+strip = "symbols"
 ```
 
 ## Complete Optimized Profile

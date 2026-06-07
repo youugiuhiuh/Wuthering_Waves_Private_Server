@@ -10,7 +10,7 @@ Intra-doc links (`[`TypeName`]`) create clickable references in generated docume
 
 ```rust
 /// Parses input and returns a ParseResult.
-///
+/// 
 /// See also: ParseError for error types.
 /// Uses the Tokenizer internally.
 pub fn parse(input: &str) -> ParseResult {
@@ -107,7 +107,7 @@ impl Config {
 /// Implements [`Iterator`] for lazy evaluation.
 ///
 /// The [`Iterator::next`] method advances the cursor.
-///
+/// 
 /// For parallel iteration, see [`rayon::ParallelIterator`].
 pub struct MyIterator { ... }
 

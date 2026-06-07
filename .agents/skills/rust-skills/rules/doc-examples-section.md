@@ -15,7 +15,7 @@ pub fn parse(s: &str) -> Result<Foo, Error> {
 }
 
 /// A widget for doing things.
-///
+/// 
 /// This widget is very useful.
 pub struct Widget {
     // Still no examples

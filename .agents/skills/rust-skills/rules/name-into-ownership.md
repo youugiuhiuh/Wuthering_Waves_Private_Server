@@ -14,7 +14,7 @@ impl Wrapper {
     fn get_inner(self) -> Inner {  
         self.inner
     }
-
+    
     // Misleading: suggests borrowing
     fn as_inner(self) -> Inner {  // Takes self by value!
         self.inner
@@ -78,7 +78,7 @@ for item in vec.iter() {
 impl IntoIterator for MyCollection {
     type Item = Element;
     type IntoIter = std::vec::IntoIter<Element>;
-
+    
     fn into_iter(self) -> Self::IntoIter {
         self.elements.into_iter()  // Consumes self
     }
@@ -98,17 +98,17 @@ impl Buffer {
     fn as_slice(&self) -> &[u8] {
         &self.data
     }
-
+    
     // to_ : allocates, creates new value
     fn to_vec(&self) -> Vec<u8> {
         self.data.clone()
     }
-
+    
     // into_ : consumes self, usually cheap
     fn into_inner(self) -> Vec<u8> {
         self.data
     }
-
+    
     // into_ : can destructure into parts
     fn into_parts(self) -> (Vec<u8>, String) {
         (self.data, self.name)

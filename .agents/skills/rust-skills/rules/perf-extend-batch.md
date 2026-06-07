@@ -12,7 +12,7 @@
 // Multiple potential reallocations
 fn collect_results(sources: Vec<Source>) -> Vec<Result> {
     let mut results = Vec::new();
-
+    
     for source in sources {
         for result in source.get_results() {
             results.push(result);  // May reallocate
@@ -45,7 +45,7 @@ fn combine(mut a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
 // Single extend with size hint
 fn collect_results(sources: Vec<Source>) -> Vec<Result> {
     let mut results = Vec::new();
-
+    
     for source in sources {
         results.extend(source.get_results());
     }
@@ -72,7 +72,7 @@ For best performance, combine with `reserve()`:
 fn merge_all(chunks: Vec<Vec<Item>>) -> Vec<Item> {
     // Calculate total size
     let total: usize = chunks.iter().map(|c| c.len()).sum();
-
+    
     let mut result = Vec::with_capacity(total);
     for chunk in chunks {
         result.extend(chunk);

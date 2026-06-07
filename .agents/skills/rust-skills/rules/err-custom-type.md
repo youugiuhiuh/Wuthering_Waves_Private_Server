@@ -41,13 +41,13 @@ use thiserror::Error;
 pub enum ValidationError {
     #[error("name cannot be empty")]
     EmptyName,
-
+    
     #[error("name exceeds maximum length of {max} characters")]
     NameTooLong { max: usize, actual: usize },
-
+    
     #[error("invalid age {0}: must be between 0 and 150")]
     InvalidAge(u8),
-
+    
     #[error("email format is invalid: {0}")]
     InvalidEmail(String),
 }
@@ -57,9 +57,9 @@ fn validate_user(user: &User) -> Result<(), ValidationError> {
         return Err(ValidationError::EmptyName);
     }
     if user.name.len() > 100 {
-        return Err(ValidationError::NameTooLong {
-            max: 100,
-            actual: user.name.len()
+        return Err(ValidationError::NameTooLong { 
+            max: 100, 
+            actual: user.name.len() 
         });
     }
     if user.age > 150 {

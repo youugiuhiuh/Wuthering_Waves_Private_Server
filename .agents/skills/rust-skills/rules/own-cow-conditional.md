@@ -104,17 +104,17 @@ fn collect_errors<'a>(
     dynamic_errors: Vec<String>,
 ) -> Vec<Cow<'a, str>> {
     let mut errors: Vec<Cow<str>> = Vec::new();
-
+    
     // Static strings - no allocation
     for &e in static_errors {
         errors.push(Cow::Borrowed(e));
     }
-
+    
     // Dynamic strings - take ownership
     for e in dynamic_errors {
         errors.push(Cow::Owned(e));
     }
-
+    
     errors
 }
 ```
