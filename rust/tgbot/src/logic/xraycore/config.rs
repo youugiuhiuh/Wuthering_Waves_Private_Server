@@ -121,6 +121,29 @@ impl ConfigManager {
         Ok(out)
     }
 
+    pub async fn collect_all_ports() -> Result<std::collections::HashSet<u16>> {
+        let files = Self::list_all_inbound_files().await?;
+        let mut ports = std::collections::HashSet::new();
+        for file in &files {
+            if let Ok(content) = fs::read_to_string(file).await {
+                if let Ok(json) = serde_json::from_str::<Value>(&content) {
+                    if let Some(inbounds) = json.get("inbounds").and_then(|v| v.as_array()) {
+                        for inbound in inbounds {
+                            if let Some(port) = inbound.get("port").and_then(|v| v.as_u64()) {
+                                if port <= u16::MAX as u64 {
+                                    ports.insert(port as u16);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                log::warn!("无法读取配置文件: {}", file);
+            }
+        }
+        Ok(ports)
+    }
+
     pub async fn list_inbound_files_by_proto(proto: Proto) -> Result<Vec<String>> {
         let all = Self::list_all_inbound_files().await?;
         let prefix = match proto {
