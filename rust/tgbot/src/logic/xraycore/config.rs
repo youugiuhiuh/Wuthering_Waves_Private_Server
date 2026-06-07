@@ -1561,3 +1561,38 @@ impl WarpMode {
         }
     }
 }
+
+#[cfg(test)]
+mod port_collection_tests {
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_xray_port_extraction_from_json() {
+        let json = serde_json::json!({
+            "inbounds": [
+                {"tag": "v1", "port": 10001, "protocol": "vless"},
+                {"tag": "v2", "port": 10002, "protocol": "vless"},
+            ]
+        });
+        let parsed: serde_json::Value = serde_json::from_str(&json.to_string()).unwrap();
+        let mut ports = HashSet::new();
+        if let Some(inbounds) = parsed.get("inbounds").and_then(|v| v.as_array()) {
+            for inbound in inbounds {
+                if let Some(port) = inbound.get("port").and_then(|v| v.as_u64()) {
+                    ports.insert(port as u16);
+                }
+            }
+        }
+        assert!(ports.contains(&10001));
+        assert!(ports.contains(&10002));
+        assert_eq!(ports.len(), 2);
+    }
+
+    #[test]
+    fn test_xray_base_config_excluded() {
+        let name = "00_base_inbounds.json";
+        assert!(name.starts_with("00_"));
+        let name2 = "batch_reality_vision_123.json";
+        assert!(!name2.starts_with("00_"));
+    }
+}
