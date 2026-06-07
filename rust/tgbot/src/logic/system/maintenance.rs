@@ -100,6 +100,11 @@ impl MaintenanceManager {
             Self::control_service("wwps-box", "restart").await?;
         }
 
+        // Sync firewall rules after restart: remove stale ports
+        if let Err(e) = Self::sync_firewall_with_configs().await {
+            log::error!("防火墙端口同步失败: {}", e);
+        }
+
         Ok(())
     }
 
@@ -379,6 +384,66 @@ impl MaintenanceManager {
 
     pub async fn allow_port(port: u16) -> Result<()> {
         crate::logic::security::firewall::FirewallManager::add_port(port).await?;
+        Ok(())
+    }
+
+    pub async fn remove_port(port: u16) -> Result<()> {
+        crate::logic::security::firewall::FirewallManager::remove_port(port).await?;
+        Ok(())
+    }
+
+    pub async fn sync_firewall_with_configs() -> Result<()> {
+        use std::collections::HashSet;
+
+        let xray_ports = crate::logic::xraycore::ConfigManager::collect_all_ports()
+            .await
+            .unwrap_or_default();
+
+        let singbox_ports = crate::logic::singbox::SingBoxConfigManager::collect_all_ports()
+            .await
+            .unwrap_or_default();
+
+        let mut required: HashSet<u16> = HashSet::new();
+        required.extend(xray_ports);
+        required.extend(singbox_ports);
+        required.insert(22); // SSH
+
+        let current = crate::logic::security::firewall::FirewallManager::list_allowed_ports()
+            .await
+            .unwrap_or_default();
+
+        let stale: HashSet<u16> = current.difference(&required).copied().collect();
+
+        if stale.is_empty() {
+            log::info!("防火墙端口同步: 无需清理");
+            return Ok(());
+        }
+
+        log::warn!(
+            "防火墙端口同步: 发现 {} 个过期端口待清理: {:?}",
+            stale.len(),
+            stale.iter().take(20).collect::<Vec<_>>()
+        );
+
+        let mut removed = 0u32;
+        for port in &stale {
+            match crate::logic::security::firewall::FirewallManager::remove_port(*port).await {
+                Ok(()) => {
+                    removed += 1;
+                    log::info!("防火墙: 已移除过期端口 {}", port);
+                }
+                Err(e) => {
+                    log::warn!("防火墙: 移除端口 {} 失败: {}", port, e);
+                }
+            }
+        }
+
+        log::info!(
+            "防火墙端口同步完成: 移除 {} / {} 个过期端口",
+            removed,
+            stale.len()
+        );
+
         Ok(())
     }
 
