@@ -3,9 +3,9 @@ name: Dependabot Auto Merge
 on:
 workflow_run:
 workflows:
-- Dependabot PR Verify
+  - Dependabot PR Verify
 types:
-- completed
+  - completed
 
 permissions:
 contents: write
@@ -16,7 +16,6 @@ handle-pr:
 if: github.event.workflow_run.actor.login == 'dependabot[bot]'
 runs-on: ubuntu-latest
 
-```
 steps:
   - name: Get Pull Request Number
     id: pr
@@ -54,4 +53,3 @@ steps:
       gh pr close \
         "${{ steps.pr.outputs.number }}" \
         --comment "❌ Automated verification failed. Closing this Dependabot PR."
-```
