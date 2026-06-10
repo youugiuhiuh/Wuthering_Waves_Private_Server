@@ -1,37 +1,28 @@
 name: Dependabot Auto Merge
 
 on:
-  workflow_run:
-    workflows:
-      - Dependabot PR Verify
+  pull_request:
     types:
-      - completed
+      - labeled
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  handle-pr:
-    if: >
-      github.event.workflow_run.actor.login == 'dependabot[bot]'
+  automerge:
+    if: |
+      github.actor == 'dependabot[bot]' &&
+      github.event.label.name == 'automerge'
+
     runs-on: ubuntu-latest
+
     steps:
       - name: Enable Auto Merge
-        if: github.event.workflow_run.conclusion == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh pr merge \
             --auto \
             --squash \
-            "${{ github.event.workflow_run.pull_requests[0].number }}"
-
-      - name: Close Failed PR
-        if: github.event.workflow_run.conclusion != 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh pr close \
-            "${{ github.event.workflow_run.pull_requests[0].number }}" \
-            --comment "❌ Automated verification failed. Closing this Dependabot PR."
+            "${{ github.event.pull_request.number }}"
