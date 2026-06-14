@@ -38,11 +38,14 @@
 
 此规则优先级最高，始终生效，不得违反。
 
-## CodeGraph
+## CodeGraph（强制代码探索规则）
 
-In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
+在存在 CodeGraph 索引的仓库中（即仓库根目录存在 `.codegraph/` 目录），**绝对禁止**使用 `grep`、`find`、`rg` 或直接读取文件（`Read`、`cat` 等）来搜索、理解或定位代码。
 
-- **MCP tools** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them. `codegraph_node` returns one symbol's source + callers, or reads a whole file with line numbers. If the tools are listed but deferred, load them by name via tool search.
-- **Shell** (always works): `codegraph explore "<symbol names or question>"` and `codegraph node <symbol-or-file>` print the same output.
+**必须默认且仅使用 CodeGraph** 进行所有代码探索：
 
-If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
+- **MCP tools**（首选）：`codegraph_explore` 可通过单次调用回答绝大多数代码问题（提供相关符号的完整源码及调用路径）。`codegraph_node` 返回单个符号的源码及调用者，或读取带行号的完整文件。若工具已列出但被延迟，请通过工具搜索按名称加载。
+- **Shell**（始终可用）：`codegraph explore "<符号名或问题>"` 和 `codegraph node <符号或文件>` 会输出相同结果。
+
+**回退规则**：
+仅当仓库根目录**不存在** `.codegraph/` 目录时，才允许跳过 CodeGraph 并回退到常规的搜索/读取工具。若存在 `.codegraph/` 但查询失败，必须报错并尝试调整查询词，**严禁私自降级使用 grep/Read**。
