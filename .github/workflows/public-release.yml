@@ -136,4 +136,4 @@ jobs:
 
                       ### Included Files
                       - `installer`: bootstrap executable
-                      - `tgbot`: runtime management executable
+                      - `aegis`: runtime management executable
