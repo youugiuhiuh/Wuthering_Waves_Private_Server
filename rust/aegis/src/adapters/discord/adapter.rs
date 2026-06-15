@@ -1,6 +1,4 @@
-use crate::adapters::common::{
-    BotAdapter, InlineButton, Markup, MessageContent, MessageId, Platform, TargetId,
-};
+use crate::adapters::common::{BotAdapter, Markup, MessageContent, MessageId, Platform, TargetId};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serenity::all::{ChannelId, MessageId as SerenityMessageId};

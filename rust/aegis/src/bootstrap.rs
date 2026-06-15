@@ -64,11 +64,21 @@ impl Drop for EncryptedConfig {
         self.token.zeroize();
         self.admin_id.zeroize();
         self.totp_secret.zeroize();
-        if let Some(v) = &mut self.matrix_homeserver { v.zeroize(); }
-        if let Some(v) = &mut self.matrix_username { v.zeroize(); }
-        if let Some(v) = &mut self.matrix_password { v.zeroize(); }
-        if let Some(v) = &mut self.matrix_admin_user { v.zeroize(); }
-        if let Some(v) = &mut self.matrix_room_id { v.zeroize(); }
+        if let Some(v) = &mut self.matrix_homeserver {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.matrix_username {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.matrix_password {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.matrix_admin_user {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.matrix_room_id {
+            v.zeroize();
+        }
     }
 }
 
@@ -150,11 +160,7 @@ fn sync_reality_pq_pub_on_setup() {
     }
 }
 
-pub async fn run_setup(
-    token: &str,
-    admin_id: &str,
-    totp_secret: &str,
-) -> Result<()> {
+pub async fn run_setup(token: &str, admin_id: &str, totp_secret: &str) -> Result<()> {
     let token = token.trim();
     let admin_id = admin_id.trim();
     let totp_secret = totp_secret.trim();

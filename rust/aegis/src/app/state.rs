@@ -107,6 +107,7 @@ impl AppState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn admin_id(&self) -> i64 {
         self.admin_id
     }
@@ -367,11 +368,7 @@ impl AppState {
         self.pending_warp_inputs.lock().await.insert(chat_id, now);
     }
 
-    pub async fn take_warp_input_status(
-        &self,
-        chat_id: &str,
-        timeout: Duration,
-    ) -> TimeoutStatus {
+    pub async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
         let mut warp_inputs = self.pending_warp_inputs.lock().await;
         match warp_inputs.remove(chat_id) {
             Some(start_time) if start_time.elapsed() > timeout => TimeoutStatus::Expired,
@@ -380,11 +377,7 @@ impl AppState {
         }
     }
 
-    pub async fn schedule_timeout_status(
-        &self,
-        chat_id: &str,
-        timeout: Duration,
-    ) -> TimeoutStatus {
+    pub async fn schedule_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
         let schedule_inputs = self.pending_schedule_inputs.lock().await;
         match schedule_inputs.get(chat_id) {
             Some(input) if input.updated_at.elapsed() > timeout => TimeoutStatus::Expired,
@@ -615,7 +608,9 @@ mod tests {
             minute: Some(0),
             return_to: "m_main".to_string(),
         };
-        state.insert_schedule_input(chat_id.clone(), input.clone()).await;
+        state
+            .insert_schedule_input(chat_id.clone(), input.clone())
+            .await;
         let snapshot = state.schedule_input_snapshot(&chat_id).await;
         assert!(snapshot.is_some());
         let snap = snapshot.unwrap();
@@ -641,7 +636,9 @@ mod tests {
     async fn warp_input_timeout_tracking() {
         let state = make_state();
         let chat_id = "200".to_string();
-        state.start_warp_input(chat_id.clone(), Instant::now()).await;
+        state
+            .start_warp_input(chat_id.clone(), Instant::now())
+            .await;
         let status = state
             .take_warp_input_status(&chat_id, Duration::from_secs(60))
             .await;
@@ -678,7 +675,7 @@ mod tests {
     #[tokio::test]
     async fn destruct_snapshot_returns_none_for_unknown_chat() {
         let state = make_state();
-        let snapshot = state.destruct_snapshot(ChatId(999)).await;
+        let snapshot = state.destruct_snapshot("999").await;
         assert!(snapshot.is_none());
     }
 }

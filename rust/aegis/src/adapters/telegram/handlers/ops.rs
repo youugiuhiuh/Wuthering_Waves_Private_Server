@@ -251,7 +251,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )
                 .await;
 
-            let Some(input_state) = ctx.state.schedule_input_snapshot(&ctx.chat_id.0.to_string()).await else {
+            let Some(input_state) = ctx
+                .state
+                .schedule_input_snapshot(&ctx.chat_id.0.to_string())
+                .await
+            else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
                     .text("⚠️ 初始化配置状态失败，请重试。")

@@ -148,7 +148,7 @@ impl UpgradeManager {
             .send_message(
                 target,
                 MessageContent {
-                    text: format!("{}", obfstr!("🔍 正在查询最新 Release...")),
+                    text: obfstr!("🔍 正在查询最新 Release...").to_string(),
                     markup: None,
                 },
             )

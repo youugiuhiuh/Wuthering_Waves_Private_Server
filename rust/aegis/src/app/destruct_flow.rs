@@ -233,7 +233,9 @@ pub async fn handle_callback_action(
                     .await?;
                 return Ok(MessageFlowOutcome::Handled);
             }
-            state.begin_destruct(chat_id_str.clone(), Instant::now()).await;
+            state
+                .begin_destruct(chat_id_str.clone(), Instant::now())
+                .await;
             let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
                 "🔙 取消",
                 "a_destroy_cancel",

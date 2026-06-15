@@ -63,7 +63,9 @@ pub fn parse(text: &str) -> Command {
     match parts[0].to_lowercase().as_str() {
         "auth" => {
             if parts.len() >= 2 {
-                Command::Auth { code: parts[1].to_string() }
+                Command::Auth {
+                    code: parts[1].to_string(),
+                }
             } else {
                 Command::Unknown("auth <code> - 需要 6 位验证码".to_string())
             }
@@ -77,10 +79,7 @@ pub fn parse(text: &str) -> Command {
         "destruct" => Command::Destruct,
         "sched" | "schedule" => parse_schedule(&parts[1..]),
         "warp" => parse_warp(&parts[1..]),
-        other => Command::Unknown(format!(
-            "未知命令: {}，输入 help 查看可用命令",
-            other
-        )),
+        other => Command::Unknown(format!("未知命令: {}，输入 help 查看可用命令", other)),
     }
 }
 
@@ -92,11 +91,9 @@ fn parse_xray(args: &[&str]) -> Command {
             let count = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
             Command::Xray(XraySubCommand::Add { proto, count })
         }
-        Some("del") | Some("delete") => {
-            Command::Xray(XraySubCommand::Del {
-                proto: args.get(1).map(|s| s.to_string()),
-            })
-        }
+        Some("del") | Some("delete") => Command::Xray(XraySubCommand::Del {
+            proto: args.get(1).map(|s| s.to_string()),
+        }),
         Some("pq") => match args.get(1).map(|s| s.to_lowercase()).as_deref() {
             Some("status") => Command::Xray(XraySubCommand::PqStatus),
             Some("gen" | "generate") => Command::Xray(XraySubCommand::PqGen),
@@ -127,9 +124,9 @@ fn parse_ops(args: &[&str]) -> Command {
         Some("bbr3") => Command::Ops(OpsSubCommand::Bbr3),
         Some("geo") => Command::Ops(OpsSubCommand::Geo),
         Some("fw") | Some("firewall") => Command::Ops(OpsSubCommand::Fw),
-        _ => Command::Unknown(format!(
-            "可用 ops 子命令: reload, upgrade, maintenance, bbr3, geo, fw"
-        )),
+        _ => Command::Unknown(
+            "可用 ops 子命令: reload, upgrade, maintenance, bbr3, geo, fw".to_string(),
+        ),
     }
 }
 
@@ -141,7 +138,7 @@ fn parse_schedule(args: &[&str]) -> Command {
             let index = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
             Command::Schedule(ScheduleSubCommand::Del { index })
         }
-        _ => Command::Unknown(format!("可用 schedule 子命令: list, add, del <index>")),
+        _ => Command::Unknown("可用 schedule 子命令: list, add, del <index>".to_string()),
     }
 }
 
@@ -150,7 +147,7 @@ fn parse_warp(args: &[&str]) -> Command {
         None | Some("status") => Command::Warp(WarpSubCommand::Status),
         Some("install") => Command::Warp(WarpSubCommand::Install),
         Some("uninstall") | Some("remove") => Command::Warp(WarpSubCommand::Uninstall),
-        _ => Command::Unknown(format!("可用 warp 子命令: status, install, uninstall")),
+        _ => Command::Unknown("可用 warp 子命令: status, install, uninstall".to_string()),
     }
 }
 
@@ -160,7 +157,12 @@ mod tests {
 
     #[test]
     fn parse_auth_command() {
-        assert_eq!(parse("auth 123456"), Command::Auth { code: "123456".to_string() });
+        assert_eq!(
+            parse("auth 123456"),
+            Command::Auth {
+                code: "123456".to_string()
+            }
+        );
     }
 
     #[test]
@@ -177,7 +179,10 @@ mod tests {
     fn parse_xray_add_with_count() {
         assert_eq!(
             parse("xray add reality 5"),
-            Command::Xray(XraySubCommand::Add { proto: "reality".to_string(), count: 5 })
+            Command::Xray(XraySubCommand::Add {
+                proto: "reality".to_string(),
+                count: 5
+            })
         );
     }
 

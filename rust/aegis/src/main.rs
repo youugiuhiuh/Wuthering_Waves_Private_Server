@@ -32,8 +32,7 @@ use aegis::core::totp::TotpManager;
 use anyhow::{Context, Result};
 use handlers::{callback, message};
 use matrix_sdk::{
-    Client as MatrixClient, Room, RoomState,
-    config::SyncSettings,
+    Client as MatrixClient, Room, RoomState, config::SyncSettings,
     ruma::events::room::message::OriginalSyncRoomMessageEvent,
 };
 use obfstr::obfstr;
@@ -342,23 +341,18 @@ async fn main() -> Result<()> {
 
     // ── Matrix 登录 ──
     let matrix_handle: Option<(MatrixClient, Room, Arc<dyn BotAdapter>)> = if enable_matrix {
-        let decrypt_matrix =
-            |field: &Option<Vec<u8>>| -> Result<String> {
-                let vec = security.decrypt(field.as_ref().with_context(|| "缺少 Matrix 配置项")?)?;
-                Ok(String::from_utf8(vec.expose_secret().to_vec())
-                    .map_err(|e| anyhow::anyhow!("Matrix 字段包含无效的 UTF-8: {}", e))?
-                    .trim()
-                    .to_string())
-            };
+        let decrypt_matrix = |field: &Option<Vec<u8>>| -> Result<String> {
+            let vec = security.decrypt(field.as_ref().with_context(|| "缺少 Matrix 配置项")?)?;
+            Ok(String::from_utf8(vec.expose_secret().to_vec())
+                .map_err(|e| anyhow::anyhow!("Matrix 字段包含无效的 UTF-8: {}", e))?
+                .trim()
+                .to_string())
+        };
 
-        let matrix_homeserver =
-            decrypt_matrix(&encrypted_config.matrix_homeserver)?;
-        let matrix_username =
-            decrypt_matrix(&encrypted_config.matrix_username)?;
-        let matrix_pwd =
-            decrypt_matrix(&encrypted_config.matrix_password)?;
-        let matrix_room_id_str =
-            decrypt_matrix(&encrypted_config.matrix_room_id)?;
+        let matrix_homeserver = decrypt_matrix(&encrypted_config.matrix_homeserver)?;
+        let matrix_username = decrypt_matrix(&encrypted_config.matrix_username)?;
+        let matrix_pwd = decrypt_matrix(&encrypted_config.matrix_password)?;
+        let matrix_room_id_str = decrypt_matrix(&encrypted_config.matrix_room_id)?;
 
         let client = MatrixClient::builder()
             .homeserver_url(&matrix_homeserver)
@@ -425,7 +419,9 @@ async fn main() -> Result<()> {
         let target = TargetId(room.room_id().to_string());
 
         fn parse_user_id(s: &str) -> i64 {
-            s.trim_start_matches('@').split(':').next()
+            s.trim_start_matches('@')
+                .split(':')
+                .next()
                 .and_then(|n| n.parse().ok())
                 .unwrap_or(0)
         }
@@ -449,8 +445,7 @@ async fn main() -> Result<()> {
                     }
                     let text = event.content.body().trim().to_string();
 
-                    if crate::looks_like_totp_code(&text) && !state.is_authorized(user_id).await
-                    {
+                    if crate::looks_like_totp_code(&text) && !state.is_authorized(user_id).await {
                         let _ = crate::process_auth_code(&state, &target, user_id, &text).await;
                         return;
                     }
@@ -638,6 +633,7 @@ async fn notify_bbr3_reboot_result(adapter: &dyn BotAdapter, target: &TargetId) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::format_duration_human;
     use aegis::core::security::self_destruct::SelfDestructExecutor;
     use anyhow::Result;
     use futures_util::future::BoxFuture;
