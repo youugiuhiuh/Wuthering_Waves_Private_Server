@@ -1,7 +1,7 @@
 pub mod config;
 pub mod error;
-pub mod hysteria2;
 pub mod hy2_batch;
+pub mod hysteria2;
 pub mod installer;
 pub mod tuic;
 pub mod tuic_batch;

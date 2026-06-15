@@ -73,7 +73,7 @@ pub fn handle_callback(
                 break Ok(());
             }
 
-            let ctx = crate::handlers::context::CallbackContext {
+            let ctx = super::context::CallbackContext {
                 bot: bot.clone(),
                 q: q.clone(),
                 state: state.clone(),
@@ -83,10 +83,10 @@ pub fn handle_callback(
                 data: data.clone(),
             };
 
-            match crate::handlers::dispatch(&ctx).await {
+            match super::dispatch(&ctx).await {
                 Ok(Some(action)) => match action {
-                    crate::handlers::context::HandlerAction::Done => break Ok(()),
-                    crate::handlers::context::HandlerAction::Redirect(new_data) => {
+                    super::context::HandlerAction::Done => break Ok(()),
+                    super::context::HandlerAction::Redirect(new_data) => {
                         let new_q = q.clone();
                         q = CallbackQuery {
                             data: Some(new_data),

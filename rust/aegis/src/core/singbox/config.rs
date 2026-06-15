@@ -1,10 +1,10 @@
 use crate::core::paths::singbox;
-use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::system::SystemMonitor;
+use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::xray::port_allocator::PortAllocator;
 use anyhow::{Context, Result};
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use serde_json::{Value, json};
 use tokio::fs;
 
@@ -430,7 +430,10 @@ impl SingBoxConfigManager {
         Ok(())
     }
 
-    pub(crate) async fn save_standalone_config(configs: Vec<Value>, proto: &str) -> Result<(String, String)> {
+    pub(crate) async fn save_standalone_config(
+        configs: Vec<Value>,
+        proto: &str,
+    ) -> Result<(String, String)> {
         use rand::Rng;
 
         fs::create_dir_all(singbox::CONF_DIR)

@@ -1,5 +1,11 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::utils;
+use aegis::core::system::SystemMonitor;
+use aegis::core::system::maintenance::MaintenanceManager;
+use aegis::core::types::IpVersion;
+use aegis::core::xray::KcpMask;
+use aegis::core::xray::installer::{RealityInstallOutcome, RealityInstaller};
+use aegis::core::xray::{ConfigManager, Proto};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -9,12 +15,6 @@ use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode,
 };
 use tempfile::NamedTempFile;
-use aegis::core::types::IpVersion;
-use aegis::core::xray::{ConfigManager, Proto};
-use aegis::core::xray::KcpMask;
-use aegis::core::xray::installer::{RealityInstallOutcome, RealityInstaller};
-use aegis::core::system::maintenance::MaintenanceManager;
-use aegis::core::system::SystemMonitor;
 
 async fn show_reality_batch_prompt(
     bot: &Bot,

@@ -1,8 +1,8 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::app::state::{ScheduleFrequency, ScheduleInputState};
+use crate::utils;
 use aegis::core::system::operations::Operations;
 use aegis::core::system::scheduler::TaskType;
-use crate::utils;
 use std::time::Instant;
 use teloxide::prelude::*;
 use teloxide::types::*;
@@ -208,7 +208,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     match data {
         "m_sched" => {
             ctx.state.remove_schedule_input(ctx.chat_id).await;
-            let summary = if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
+            let summary = if let Some(manager) = aegis::core::system::scheduler::get_manager().await
+            {
                 manager.get_summary().await
             } else {
                 "❌ 调度器未初始化".to_string()
@@ -661,7 +662,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         d if d.starts_with("s_add:") => {
             let template = d.strip_prefix("s_add:").unwrap_or(d);
             let (task_type, cron) = match template {
-                "reboot_daily_3" => (aegis::core::system::scheduler::task_types::TaskType::Reboot, "0 3 * * *"),
+                "reboot_daily_3" => (
+                    aegis::core::system::scheduler::task_types::TaskType::Reboot,
+                    "0 3 * * *",
+                ),
                 "reload_daily_4" => (
                     aegis::core::system::scheduler::task_types::TaskType::ReloadCore,
                     "0 4 * * *",
@@ -769,30 +773,31 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             }
         }
         "a_geo_sched_menu" => {
-            let geo_info = if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
-                let s = manager.state.lock().await;
-                let geo_tasks: Vec<_> = s
-                    .tasks
-                    .iter()
-                    .filter(|t| t.task_type == TaskType::GeoUpdate)
-                    .collect();
-                if geo_tasks.is_empty() {
-                    "📝 当前无 Geo 自动更新任务".to_string()
-                } else {
-                    let mut info = "⏰ <b>当前 Geo 定时任务</b>:\n\n".to_string();
-                    for (i, t) in geo_tasks.iter().enumerate() {
-                        info.push_str(&format!(
-                            "{}. Cron: <code>{}</code> | TZ: <code>{}</code>\n",
-                            i + 1,
-                            t.cron_expression,
-                            t.timezone
-                        ));
+            let geo_info =
+                if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
+                    let s = manager.state.lock().await;
+                    let geo_tasks: Vec<_> = s
+                        .tasks
+                        .iter()
+                        .filter(|t| t.task_type == TaskType::GeoUpdate)
+                        .collect();
+                    if geo_tasks.is_empty() {
+                        "📝 当前无 Geo 自动更新任务".to_string()
+                    } else {
+                        let mut info = "⏰ <b>当前 Geo 定时任务</b>:\n\n".to_string();
+                        for (i, t) in geo_tasks.iter().enumerate() {
+                            info.push_str(&format!(
+                                "{}. Cron: <code>{}</code> | TZ: <code>{}</code>\n",
+                                i + 1,
+                                t.cron_expression,
+                                t.timezone
+                            ));
+                        }
+                        info
                     }
-                    info
-                }
-            } else {
-                "❌ 调度器未初始化".to_string()
-            };
+                } else {
+                    "❌ 调度器未初始化".to_string()
+                };
 
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![

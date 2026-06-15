@@ -1,13 +1,13 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::bootstrap::{BOT_VERSION, BotSettings, DEFAULT_SESSION_TIMEOUT_SECS};
+use crate::utils::format_duration_human;
+use aegis::core::paths::{singbox, xray};
 use aegis::core::singbox::SingBoxInstaller;
 use aegis::core::system::SystemMonitor;
 use aegis::core::system::core_upgrade::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
-use crate::utils::format_duration_human;
 use std::path::Path;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
-use aegis::core::paths::{singbox, xray};
 
 pub async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
     let keyboard = InlineKeyboardMarkup::new(vec![

@@ -3,8 +3,8 @@ use serde_json::{Value, json};
 use std::path::Path;
 use tokio::fs;
 
-use crate::core::paths::{xray, warp};
 use super::config::ConfigManager;
+use crate::core::paths::{warp, xray};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WarpMode {

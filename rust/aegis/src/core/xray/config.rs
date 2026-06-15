@@ -6,11 +6,11 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::fs;
 
+use crate::core::cmd_async::run_cmd_output;
 use crate::core::paths::xray;
 use crate::core::types::{BatchCreationResult, IpVersion};
-use crate::core::cmd_async::run_cmd_output;
 
-use super::reality::{reality_pq_verify_as_base64url, REALITY_PQ_SEED, REALITY_PQ_VERIFY};
+use super::reality::{REALITY_PQ_SEED, REALITY_PQ_VERIFY, reality_pq_verify_as_base64url};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Proto {
@@ -289,11 +289,14 @@ impl ConfigManager {
             } else {
                 loop {
                     let p = rng.gen_range(10000..60000);
-                    if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await
+                    if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
+                        .await
                     {
                         continue;
                     }
-                    if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
+                    if crate::core::system::maintenance::MaintenanceManager::is_port_available(p)
+                        .await
+                    {
                         break p as i32;
                     }
                 }
@@ -301,10 +304,13 @@ impl ConfigManager {
         } else {
             loop {
                 let p = rng.gen_range(10000..60000);
-                if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
+                    .await
+                {
                     continue;
                 }
-                if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
+                if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await
+                {
                     break p as i32;
                 }
             }
@@ -531,7 +537,8 @@ impl ConfigManager {
     pub async fn ensure_base_config() -> Result<()> {
         use crate::core::paths::xray;
 
-        if let Err(e) = crate::core::system::maintenance::MaintenanceManager::ensure_geodata().await {
+        if let Err(e) = crate::core::system::maintenance::MaintenanceManager::ensure_geodata().await
+        {
             log::warn!("确保 geodata 文件失败: {}", e);
         }
 
@@ -594,8 +601,8 @@ pub(crate) async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::kcp_mask::KcpMask;
+    use super::*;
     use anyhow::anyhow;
     use percent_encoding::percent_decode_str;
 

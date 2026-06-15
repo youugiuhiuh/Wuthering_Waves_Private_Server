@@ -3,8 +3,8 @@
 //! 模拟安装器从 `aegis --generate-totp-secret` 读取输出（带换行）后写入配置，
 //! 启动时解密并 trim 再交给 TotpManager 应成功。
 
-use secrecy::SecretString;
 use aegis::core::totp::TotpManager;
+use secrecy::SecretString;
 
 #[test]
 fn totp_secret_with_trailing_newline_fails_without_trim() {

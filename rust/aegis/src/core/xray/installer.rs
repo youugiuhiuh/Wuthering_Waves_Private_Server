@@ -179,7 +179,8 @@ impl RealityInstallerInternal {
         if let Err(e) = crate::core::xray::config::ConfigManager::ensure_base_config().await {
             log::warn!("创建 wwps-core 基础配置失败: {}", e);
         }
-        if let Err(e) = crate::core::system::maintenance::MaintenanceManager::ensure_geodata().await {
+        if let Err(e) = crate::core::system::maintenance::MaintenanceManager::ensure_geodata().await
+        {
             log::warn!("确保 geodata 文件失败: {}", e);
         }
         let _ = MaintenanceManager::reload_core().await;
@@ -287,7 +288,9 @@ impl RealityInstallerInternal {
     }
 
     pub async fn step_enable_firewall() -> Result<()> {
-        if let Some(backend) = crate::core::security::firewall::FirewallManager::detect_backend().await {
+        if let Some(backend) =
+            crate::core::security::firewall::FirewallManager::detect_backend().await
+        {
             match backend {
                 crate::core::security::firewall::FirewallBackend::Ufw => {
                     let _ = run_command("ufw", &["--force", "enable"]).await;

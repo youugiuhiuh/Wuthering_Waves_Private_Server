@@ -1,9 +1,9 @@
 use anyhow::Result;
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 
-use crate::core::types::{BatchCreationResult, IpVersion};
 use super::config::ConfigManager;
+use crate::core::types::{BatchCreationResult, IpVersion};
 
 impl ConfigManager {
     pub async fn batch_create_xhttp_reality_enhanced(
@@ -39,7 +39,14 @@ impl ConfigManager {
                 None
             };
             let (port, uuid, priv_key, pub_key, short_id, sni, email, tag, path) =
-                ConfigManager::generate_enhanced_config(&mut rng, sni, i, super::config::Proto::XHTTP, preferred).await?;
+                ConfigManager::generate_enhanced_config(
+                    &mut rng,
+                    sni,
+                    i,
+                    super::config::Proto::XHTTP,
+                    preferred,
+                )
+                .await?;
 
             let config = ConfigManager::build_reality_vless_inbound(
                 &tag,
@@ -74,9 +81,11 @@ impl ConfigManager {
             );
             links.push(link);
 
-            let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
+            let _ =
+                crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
-        ConfigManager::create_standalone_config(batch_configs, links, super::config::Proto::XHTTP).await
+        ConfigManager::create_standalone_config(batch_configs, links, super::config::Proto::XHTTP)
+            .await
     }
 }

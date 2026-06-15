@@ -7,11 +7,11 @@ use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
+use crate::core::cmd_async::{run_cmd_checked, run_cmd_output, run_cmd_status};
 use crate::core::paths::maintenance::{
     BBR3_PENDING_FLAG_FILE, DESTRUCT_SERVICES, DESTRUCT_TARGETS,
 };
 use crate::core::paths::xray;
-use crate::core::cmd_async::{run_cmd_checked, run_cmd_output, run_cmd_status};
 use crate::core::utils::{format_download_progress, should_report};
 
 pub struct MaintenanceManager;
@@ -495,10 +495,8 @@ impl MaintenanceManager {
 
         // 检测 firewalld 是否激活
         if Self::is_firewalld_active().await {
-            crate::core::security::firewalld::FirewalldClient::remove_port_range(
-                start, end, "udp",
-            )
-            .await?;
+            crate::core::security::firewalld::FirewalldClient::remove_port_range(start, end, "udp")
+                .await?;
         }
 
         Ok(())

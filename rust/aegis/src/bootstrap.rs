@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-use aegis::core::security::SecurityManager;
 use aegis::core::paths::xray::{BIN, PQ_PUB_PATH, PQ_SEED_PATH};
+use aegis::core::security::SecurityManager;
 
 pub const CONFIG_DIR: &str = "/etc/wwps/aegis";
 

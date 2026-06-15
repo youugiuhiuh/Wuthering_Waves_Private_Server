@@ -8,13 +8,13 @@
 //!
 //! ⚠️ 所有操作均在 /tmp 临时目录中进行，不会影响真实系统。
 
+use aegis::core::security::secure_wipe_path;
+use aegis::core::system::maintenance::MaintenanceManager;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use aegis::core::system::maintenance::MaintenanceManager;
-use aegis::core::security::secure_wipe_path;
 
 // ============================================================
 // 辅助函数: 构建仿真文件系统

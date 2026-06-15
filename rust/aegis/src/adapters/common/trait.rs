@@ -35,6 +35,11 @@ pub enum Platform {
 pub trait BotAdapter: Send + Sync {
     fn platform(&self) -> Platform;
     async fn send_message(&self, target: &TargetId, content: MessageContent) -> Result<MessageId>;
-    async fn edit_message(&self, target: &TargetId, msg_id: &MessageId, content: MessageContent) -> Result<()>;
+    async fn edit_message(
+        &self,
+        target: &TargetId,
+        msg_id: &MessageId,
+        content: MessageContent,
+    ) -> Result<()>;
     async fn delete_message(&self, target: &TargetId, msg_id: &MessageId) -> Result<()>;
 }

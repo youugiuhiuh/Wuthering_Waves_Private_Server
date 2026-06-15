@@ -2,10 +2,10 @@
 //!
 //! 执行 `aegis --setup` 后读取 config.enc，解密 totp_secret 并 trim，用 TotpManager::new 断言成功。
 
-use secrecy::{ExposeSecret, SecretString};
-use std::fs;
 use aegis::core::security::SecurityManager;
 use aegis::core::totp::TotpManager;
+use secrecy::{ExposeSecret, SecretString};
+use std::fs;
 
 #[derive(serde::Deserialize)]
 struct EncryptedConfig {

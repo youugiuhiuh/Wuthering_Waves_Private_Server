@@ -2,9 +2,9 @@
 //!
 //! 验证加密/解密往返、密钥文件创建与读取。
 
+use aegis::core::security::SecurityManager;
 use secrecy::ExposeSecret;
 use std::fs;
-use aegis::core::security::SecurityManager;
 
 #[test]
 fn security_manager_creates_key_and_encrypt_decrypt_roundtrip() {

@@ -1,8 +1,8 @@
-use crate::core::types::{BatchCreationResult, IpVersion};
-use crate::core::system::maintenance::MaintenanceManager;
-use crate::core::xray::port_allocator::PortAllocator;
 use crate::core::sni::selector::SNISelector;
 use crate::core::system::SystemMonitor;
+use crate::core::system::maintenance::MaintenanceManager;
+use crate::core::types::{BatchCreationResult, IpVersion};
+use crate::core::xray::port_allocator::PortAllocator;
 use anyhow::Result;
 
 use super::config::SingBoxConfigManager;

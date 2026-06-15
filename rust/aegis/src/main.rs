@@ -1,8 +1,11 @@
 // mod logic; // Moved to lib.rs
 #![allow(clippy::vec_init_then_push)]
+#[path = "adapters/telegram/handlers/mod.rs"]
+mod handlers;
+
 mod app;
 mod bootstrap;
-mod handlers;
+
 mod utils;
 
 use crate::handlers::menu;
@@ -14,6 +17,13 @@ use crate::bootstrap::{
     harden_process, run_setup, run_setup_from_stdin, verify_integrity,
 };
 use crate::utils::format_duration_human;
+use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
+use aegis::core::security::SecurityManager;
+use aegis::core::security::self_destruct::production_executor;
+use aegis::core::system::SystemMonitor;
+use aegis::core::system::maintenance::MaintenanceManager;
+use aegis::core::system::upgrade::UPGRADE_FLAG_FILE;
+use aegis::core::totp::TotpManager;
 use anyhow::{Context, Result};
 use handlers::{callback, message};
 use obfstr::obfstr;
@@ -27,13 +37,6 @@ use teloxide::net::Download;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode;
 use teloxide::utils::command::BotCommands;
-use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
-use aegis::core::system::upgrade::UPGRADE_FLAG_FILE;
-use aegis::core::system::maintenance::MaintenanceManager;
-use aegis::core::security::SecurityManager;
-use aegis::core::security::self_destruct::production_executor;
-use aegis::core::system::SystemMonitor;
-use aegis::core::totp::TotpManager;
 
 // TOTP 防爆破参数
 // TOTP 防爆破参数
@@ -346,7 +349,8 @@ async fn main() -> Result<()> {
     let bot_for_init = bot.clone();
     tokio::spawn(async move {
         if let Err(e) =
-            aegis::core::system::scheduler::start_scheduler(bot_for_init.clone(), ChatId(admin_id)).await
+            aegis::core::system::scheduler::start_scheduler(bot_for_init.clone(), ChatId(admin_id))
+                .await
         {
             log::error!("❌ 初始化调度器失败: {}", e);
         }
@@ -454,10 +458,10 @@ async fn notify_bbr3_reboot_result(bot: &Bot, admin_id: i64) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aegis::core::security::self_destruct::SelfDestructExecutor;
     use anyhow::Result;
     use futures_util::future::BoxFuture;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use aegis::core::security::self_destruct::SelfDestructExecutor;
 
     struct CountingExecutor {
         calls: Arc<AtomicUsize>,

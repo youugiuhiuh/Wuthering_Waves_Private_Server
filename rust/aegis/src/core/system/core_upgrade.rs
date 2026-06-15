@@ -1,9 +1,9 @@
-use crate::core::paths::xray;
 use crate::core::cmd_async::run_cmd_status;
 use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors, parse_digest,
     parse_sha256_manifest,
 };
+use crate::core::paths::xray;
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;

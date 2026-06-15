@@ -1,15 +1,15 @@
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use once_cell::sync::Lazy;
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use std::path::Path;
 use tokio::fs;
 
-use crate::core::cmd_async::run_cmd_output;
-use crate::core::types::{BatchCreationResult, IpVersion};
 use super::config::ConfigManager;
 use super::config::run_wwps_core_cmd;
+use crate::core::cmd_async::run_cmd_output;
+use crate::core::types::{BatchCreationResult, IpVersion};
 
 pub(crate) static REALITY_PQ_SEED: Lazy<String> = Lazy::new(|| {
     if let Ok(v) = std::env::var("AEGIS_REALITY_PQ_SEED") {
@@ -177,7 +177,14 @@ impl ConfigManager {
                 None
             };
             let (port, uuid, priv_key, pub_key, short_id, sni, email, tag, path) =
-                ConfigManager::generate_enhanced_config(&mut rng, sni, i, super::config::Proto::Vision, preferred).await?;
+                ConfigManager::generate_enhanced_config(
+                    &mut rng,
+                    sni,
+                    i,
+                    super::config::Proto::Vision,
+                    preferred,
+                )
+                .await?;
 
             let config = ConfigManager::build_reality_vless_inbound(
                 &tag,
@@ -212,10 +219,12 @@ impl ConfigManager {
             );
             links.push(link);
 
-            let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
+            let _ =
+                crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
-        ConfigManager::create_standalone_config(batch_configs, links, super::config::Proto::Vision).await
+        ConfigManager::create_standalone_config(batch_configs, links, super::config::Proto::Vision)
+            .await
     }
 }
 

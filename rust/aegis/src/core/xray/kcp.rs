@@ -4,9 +4,9 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde_json::{Value, json};
 
-use crate::core::types::BatchCreationResult;
 use super::config::ConfigManager;
 use super::kcp_mask::KcpMask;
+use crate::core::types::BatchCreationResult;
 
 impl ConfigManager {
     pub(crate) fn build_kcp_inbound(
@@ -18,8 +18,10 @@ impl ConfigManager {
         masks: &[KcpMask],
     ) -> Value {
         let listen_ip = match ip_version {
-            crate::core::types::IpVersion::IPv4 | crate::core::types::IpVersion::SplitStackV4Primary => "0.0.0.0",
-            crate::core::types::IpVersion::IPv6 | crate::core::types::IpVersion::SplitStackV6Primary => "::",
+            crate::core::types::IpVersion::IPv4
+            | crate::core::types::IpVersion::SplitStackV4Primary => "0.0.0.0",
+            crate::core::types::IpVersion::IPv6
+            | crate::core::types::IpVersion::SplitStackV6Primary => "::",
         };
 
         let client = json!({
@@ -77,8 +79,10 @@ impl ConfigManager {
         let fm_encoded = utf8_percent_encode(&fm_str, NON_ALPHANUMERIC).to_string();
 
         let fmt_host = match ip_version {
-            crate::core::types::IpVersion::IPv6 | crate::core::types::IpVersion::SplitStackV6Primary => format!("[{}]", host),
-            crate::core::types::IpVersion::IPv4 | crate::core::types::IpVersion::SplitStackV4Primary => host.to_string(),
+            crate::core::types::IpVersion::IPv6
+            | crate::core::types::IpVersion::SplitStackV6Primary => format!("[{}]", host),
+            crate::core::types::IpVersion::IPv4
+            | crate::core::types::IpVersion::SplitStackV4Primary => host.to_string(),
         };
         let encoded_email = utf8_percent_encode(email, NON_ALPHANUMERIC).to_string();
 
@@ -112,10 +116,13 @@ impl ConfigManager {
         for i in 0..count {
             let port = loop {
                 let p = rng.gen_range(10000..60000);
-                if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
+                    .await
+                {
                     continue;
                 }
-                if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
+                if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await
+                {
                     break p as i32;
                 }
             };
@@ -133,9 +140,11 @@ impl ConfigManager {
                 Self::generate_kcp_client_link(&uuid, &host, port, &email, ip_version, &masks);
             links.push(link);
 
-            let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
+            let _ =
+                crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
-        ConfigManager::create_standalone_config(batch_configs, links, super::config::Proto::Kcp).await
+        ConfigManager::create_standalone_config(batch_configs, links, super::config::Proto::Kcp)
+            .await
     }
 }
