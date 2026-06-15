@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 )
 
@@ -79,4 +80,63 @@ func TestExtractBase32Secret(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildSetupPayload(t *testing.T) {
+	t.Run("without matrix", func(t *testing.T) {
+		payload := buildSetupPayload(
+			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
+			"", "", "", nil,
+		)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			t.Fatalf("无效 JSON: %v", err)
+		}
+		if string(parsed["token"].(string)) != "token:abc" {
+			t.Errorf("token = %v, want token:abc", parsed["token"])
+		}
+		if parsed["matrix_homeserver"] != nil {
+			t.Error("不应包含 matrix_homeserver")
+		}
+	})
+
+	t.Run("with matrix", func(t *testing.T) {
+		payload := buildSetupPayload(
+			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
+			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", []byte("pass123"),
+		)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			t.Fatalf("无效 JSON: %v", err)
+		}
+		if parsed["matrix_homeserver"] != "https://matrix.org" {
+			t.Errorf("homeserver = %v, want https://matrix.org", parsed["matrix_homeserver"])
+		}
+		if parsed["matrix_username"] != "@bot:matrix.org" {
+			t.Errorf("username = %v, want @bot:matrix.org", parsed["matrix_username"])
+		}
+		if parsed["matrix_password"] != "pass123" {
+			t.Errorf("password = %v, want pass123", parsed["matrix_password"])
+		}
+		if parsed["matrix_room_id"] != "!room:matrix.org" {
+			t.Errorf("room_id = %v, want !room:matrix.org", parsed["matrix_room_id"])
+		}
+	})
+
+	t.Run("partial matrix fields", func(t *testing.T) {
+		payload := buildSetupPayload(
+			[]byte("t"), []byte("1"), []byte("S"),
+			"https://matrix.org", "", "", nil,
+		)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			t.Fatalf("无效 JSON: %v", err)
+		}
+		if parsed["matrix_homeserver"] != "https://matrix.org" {
+			t.Errorf("homeserver = %v, want https://matrix.org", parsed["matrix_homeserver"])
+		}
+		if parsed["matrix_username"] != nil {
+			t.Error("不应包含 matrix_username")
+		}
+	})
 }
