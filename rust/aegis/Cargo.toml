@@ -1,6 +1,6 @@
 [package]
 name = "aegis"
-version = "2.7.9"
+version = "2.8.0"
 edition = "2024"
 
 [dependencies]
@@ -54,8 +54,13 @@ thiserror = "2.0"
 tempfile = "3.8"
 async-trait = "0.1"
 poise = "0.6.2"
-serenity = { version = "0.12.5", default-features = false, features = ["rustls_backend", "http"] }
-matrix-sdk = { version = "0.13", default-features = false, features = ["rustls-tls"] }
+serenity = { version = "0.12.5", default-features = false, features = [
+    "rustls_backend",
+    "http",
+] }
+matrix-sdk = { version = "0.13", default-features = false, features = [
+    "rustls-tls",
+] }
 
 [dev-dependencies]
 env_logger = "0.11.8"

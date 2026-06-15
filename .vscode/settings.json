@@ -1,5 +1,3 @@
 {
-    "rust-analyzer.linkedProjects": [
-        "rust/tgbot/Cargo.toml"
-    ]
+  "rust-analyzer.linkedProjects": ["rust/aegis/Cargo.toml"]
 }
