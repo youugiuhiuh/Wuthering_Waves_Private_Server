@@ -1,11 +1,9 @@
-use crate::adapters::common::{
-    BotAdapter, MessageContent, MessageId, Platform, TargetId,
-};
+use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
 use anyhow::Result;
 use async_trait::async_trait;
-use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+use matrix_sdk::room::Room;
 use matrix_sdk::ruma::OwnedEventId;
-use matrix_sdk::Room;
+use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 
 pub struct MatrixAdapter {
     room: Room,
@@ -28,13 +26,8 @@ impl BotAdapter for MatrixAdapter {
     }
 
     async fn send_message(&self, _target: &TargetId, content: MessageContent) -> Result<MessageId> {
-        let response = self
-            .room
-            .send(RoomMessageEventContent::text_html(
-                &content.text,
-                &content.text,
-            ))
-            .await?;
+        let body = RoomMessageEventContent::text_html(&content.text, &content.text);
+        let response = self.room.send(body).await?;
         Ok(MessageId(response.event_id.to_string()))
     }
 
@@ -44,19 +37,24 @@ impl BotAdapter for MatrixAdapter {
         msg_id: &MessageId,
         content: MessageContent,
     ) -> Result<()> {
-        let event_id: OwnedEventId = msg_id.0.parse()?;
-        let new_content =
-            RoomMessageEventContent::text_html(&content.text, &content.text);
-        let edit = new_content.make_replacement(
-            matrix_sdk::ruma::events::room::message::ReplacementMetadata::new(event_id, None),
-            None,
-        );
-        self.room.send(edit).await?;
+        let event_id: OwnedEventId = msg_id
+            .0
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Invalid event ID: {}", e))?;
+        let new_content = RoomMessageEventContent::text_html(&content.text, &content.text)
+            .make_replacement(
+                matrix_sdk::ruma::events::room::message::ReplacementMetadata::new(event_id, None),
+                None,
+            );
+        self.room.send(new_content).await?;
         Ok(())
     }
 
     async fn delete_message(&self, _target: &TargetId, msg_id: &MessageId) -> Result<()> {
-        let event_id: OwnedEventId = msg_id.0.parse()?;
+        let event_id: OwnedEventId = msg_id
+            .0
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Invalid event ID: {}", e))?;
         self.room.redact(&event_id, None, None).await?;
         Ok(())
     }
