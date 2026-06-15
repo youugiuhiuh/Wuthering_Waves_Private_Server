@@ -1,10 +1,10 @@
 use crate::core::paths::{singbox, xray};
 use crate::core::types::BatchCreationResult;
 use crate::core::types::IpVersion;
-use crate::logic::maintenance::MaintenanceManager;
-use crate::logic::port_allocator::PortAllocator;
-use crate::logic::sni_selector::SNISelector;
-use crate::logic::system::SystemMonitor;
+use crate::core::system::maintenance::MaintenanceManager;
+use crate::core::xray::port_allocator::PortAllocator;
+use crate::core::sni::selector::SNISelector;
+use crate::core::system::SystemMonitor;
 use anyhow::{Context, Result};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -454,7 +454,7 @@ impl SingBoxConfigManager {
             }
         };
 
-        let geoip = crate::logic::geoip::GeoIPService::new();
+        let geoip = crate::core::network::geoip::GeoIPService::new();
         let country_code = geoip.get_country_code().await;
 
         let mut selector = SNISelector::get_for_country(&country_code);
@@ -609,7 +609,7 @@ impl SingBoxConfigManager {
             }
         };
 
-        let geoip = crate::logic::geoip::GeoIPService::new();
+        let geoip = crate::core::network::geoip::GeoIPService::new();
         let country_code = geoip.get_country_code().await;
 
         let mut selector = SNISelector::get_for_country(&country_code);
@@ -659,7 +659,7 @@ impl SingBoxConfigManager {
     }
 
     async fn generate_uuid() -> Result<String> {
-        let (status, stdout, _) = crate::logic::cmd_async::run_cmd_output(
+        let (status, stdout, _) = crate::core::cmd_async::run_cmd_output(
             xray::BIN,
             &["uuid"],
             std::time::Duration::from_secs(5),
@@ -720,8 +720,8 @@ impl SingBoxConfigManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::singbox::hysteria2::Hysteria2Config;
-    use crate::logic::singbox::tuic::TUICConfig;
+    use crate::core::singbox::hysteria2::Hysteria2Config;
+    use crate::core::singbox::tuic::TUICConfig;
 
     #[tokio::test]
     async fn test_singbox_is_installed_returns_bool() {

@@ -5,9 +5,9 @@ use std::time::{Duration, Instant};
 use teloxide::types::ChatId;
 use tokio::sync::Mutex;
 
-use crate::logic::scheduler::task_types::TaskType;
-use crate::logic::self_destruct::SelfDestructExecutor;
-use crate::logic::totp::TotpManager;
+use aegis::core::system::scheduler::task_types::TaskType;
+use aegis::core::security::self_destruct::SelfDestructExecutor;
+use aegis::core::totp::TotpManager;
 
 const RECENT_AUTH_WINDOW_SECS: u64 = 5 * 60;
 

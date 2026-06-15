@@ -1,4 +1,4 @@
-use crate::logic::cmd_async::run_cmd_status;
+use crate::core::cmd_async::run_cmd_status;
 use anyhow::{Context, Result};
 use std::time::Duration;
 use tokio::fs;

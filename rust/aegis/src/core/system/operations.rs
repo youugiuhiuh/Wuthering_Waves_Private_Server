@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::time::Duration;
 
-use crate::logic::cmd_async::{run_cmd_checked, run_cmd_status};
+use crate::core::cmd_async::{run_cmd_checked, run_cmd_status};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DistroFamily {

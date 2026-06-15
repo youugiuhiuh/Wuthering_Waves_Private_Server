@@ -1,4 +1,4 @@
-use crate::logic::security::SecurityManager;
+use crate::core::security::SecurityManager;
 use anyhow::Result;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};

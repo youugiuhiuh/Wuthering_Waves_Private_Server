@@ -1,5 +1,5 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
-use crate::logic::log_audit::{LogAudit, SERVICE_SING_BOX, SERVICE_WWPS_CORE};
+use aegis::core::system::log_audit::{LogAudit, SERVICE_SING_BOX, SERVICE_WWPS_CORE};
 use crate::utils;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};

@@ -1,8 +1,8 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::bootstrap::{BOT_VERSION, BotSettings, DEFAULT_SESSION_TIMEOUT_SECS};
-use crate::logic::singbox::SingBoxInstaller;
-use crate::logic::system::SystemMonitor;
-use crate::logic::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
+use aegis::core::singbox::SingBoxInstaller;
+use aegis::core::system::SystemMonitor;
+use aegis::core::system::core_upgrade::{WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
 use crate::utils::format_duration_human;
 use std::path::Path;
 use teloxide::prelude::*;

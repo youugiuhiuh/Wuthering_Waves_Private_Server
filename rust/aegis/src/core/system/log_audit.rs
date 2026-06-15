@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::time::Duration;
 
-use crate::logic::cmd_async::run_cmd_output;
+use crate::core::cmd_async::run_cmd_output;
 
 const TIMEOUT_SHORT: Duration = Duration::from_secs(30);
 const MAX_LOG_CHARS: usize = 4000;

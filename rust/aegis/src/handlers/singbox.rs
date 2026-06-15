@@ -3,8 +3,8 @@ use crate::app::batch_handler::send_singbox_batch_result;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 use aegis::core::types::IpVersion;
-use aegis::logic::singbox::{SingBoxConfigManager, SingBoxInstaller};
-use aegis::logic::system::SystemMonitor;
+use aegis::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
+use aegis::core::system::SystemMonitor;
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     let data = ctx.data.as_str();

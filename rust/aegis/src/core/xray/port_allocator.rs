@@ -1,5 +1,5 @@
 use crate::core::paths::{singbox, xray};
-use crate::logic::security::firewall_scanner::FirewallScanner;
+use crate::core::security::firewall_scanner::FirewallScanner;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;

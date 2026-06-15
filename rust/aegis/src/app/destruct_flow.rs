@@ -323,7 +323,7 @@ pub async fn handle_callback_action(
                 .parse_mode(ParseMode::Html)
                 .await?;
                 let executor = state.self_destruct_executor();
-                aegis::logic::self_destruct::trigger(executor);
+                aegis::core::security::self_destruct::trigger(executor);
                 state.cancel_destruct(chat_id).await;
             } else {
                 bot.answer_callback_query(q.id.clone())

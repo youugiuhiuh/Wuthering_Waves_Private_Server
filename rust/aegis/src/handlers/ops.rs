@@ -1,13 +1,13 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use super::schedule::{build_custom_schedule_keyboard, build_custom_schedule_text};
 use crate::app::state::{ScheduleFrequency, ScheduleInputState};
-use crate::logic::scheduler::TaskType;
+use aegis::core::system::scheduler::TaskType;
 use std::time::{Duration, Instant};
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
-use aegis::logic::UpgradeManager;
-use aegis::logic::maintenance::MaintenanceManager;
-use aegis::logic::operations::{Operations, REBOOT_FLAG};
+use aegis::core::system::upgrade::UpgradeManager;
+use aegis::core::system::maintenance::MaintenanceManager;
+use aegis::core::system::operations::{Operations, REBOOT_FLAG};
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     let data = ctx.data.as_str();

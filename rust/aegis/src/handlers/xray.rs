@@ -10,10 +10,10 @@ use teloxide::types::{
 };
 use tempfile::NamedTempFile;
 use aegis::core::types::IpVersion;
-use aegis::logic::config::{ConfigManager, KcpMask, Proto};
-use aegis::logic::installer::{RealityInstallOutcome, RealityInstaller};
-use aegis::logic::maintenance::MaintenanceManager;
-use aegis::logic::system::SystemMonitor;
+use aegis::core::xray::config::{ConfigManager, KcpMask, Proto};
+use aegis::core::xray::installer::{RealityInstallOutcome, RealityInstaller};
+use aegis::core::system::maintenance::MaintenanceManager;
+use aegis::core::system::SystemMonitor;
 
 async fn show_reality_batch_prompt(
     bot: &Bot,

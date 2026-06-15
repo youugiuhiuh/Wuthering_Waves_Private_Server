@@ -11,8 +11,8 @@ use crate::core::paths::maintenance::{
     BBR3_PENDING_FLAG_FILE, DESTRUCT_SERVICES, DESTRUCT_TARGETS,
 };
 use crate::core::paths::xray;
-use crate::logic::cmd_async::{run_cmd_checked, run_cmd_output, run_cmd_status};
-use crate::logic::utils::{format_download_progress, should_report};
+use crate::core::cmd_async::{run_cmd_checked, run_cmd_output, run_cmd_status};
+use crate::core::utils::{format_download_progress, should_report};
 
 pub struct MaintenanceManager;
 
@@ -88,15 +88,15 @@ impl MaintenanceManager {
 
     pub async fn reload_core() -> Result<()> {
         let (wwps_core_running, wwps_box_running) =
-            crate::logic::system::SystemMonitor::get_core_status().await;
+            crate::core::system::SystemMonitor::get_core_status().await;
 
         if wwps_core_running {
-            crate::logic::config::ConfigManager::ensure_base_config().await?;
+            crate::core::xray::config::ConfigManager::ensure_base_config().await?;
             Self::control_service("wwps-core", "restart").await?;
         }
 
         if wwps_box_running {
-            crate::logic::singbox::SingBoxConfigManager::ensure_base_config().await?;
+            crate::core::singbox::SingBoxConfigManager::ensure_base_config().await?;
             Self::control_service("wwps-box", "restart").await?;
         }
 
@@ -204,7 +204,7 @@ impl MaintenanceManager {
     where
         F: Fn(&str) + Send + Sync + 'static,
     {
-        use crate::logic::security::firewall_scanner::FirewallScanner;
+        use crate::core::security::firewall_scanner::FirewallScanner;
 
         progress_callback("🔍 正在扫描系统端口...");
         let ports = FirewallScanner::scan_all_ports().await?;
@@ -214,10 +214,10 @@ impl MaintenanceManager {
 
         progress_callback("🛡️ 正在应用防火墙加固规则...");
 
-        crate::logic::security::firewall::FirewallManager::harden_with_ports(ports).await?;
+        crate::core::security::firewall::FirewallManager::harden_with_ports(ports).await?;
 
         progress_callback("🛡️ 正在配置暴力破解防护 (Fail2Ban)...");
-        if let Err(e) = crate::logic::fail2ban::Fail2BanManager::setup().await {
+        if let Err(e) = crate::core::security::fail2ban::Fail2BanManager::setup().await {
             progress_callback(&format!("⚠️ Fail2Ban 配置失败: {}", e));
         } else {
             progress_callback("✅ Fail2Ban 配置完成。");
@@ -383,23 +383,23 @@ impl MaintenanceManager {
     }
 
     pub async fn allow_port(port: u16) -> Result<()> {
-        crate::logic::security::firewall::FirewallManager::add_port(port).await?;
+        crate::core::security::firewall::FirewallManager::add_port(port).await?;
         Ok(())
     }
 
     pub async fn remove_port(port: u16) -> Result<()> {
-        crate::logic::security::firewall::FirewallManager::remove_port(port).await?;
+        crate::core::security::firewall::FirewallManager::remove_port(port).await?;
         Ok(())
     }
 
     pub async fn sync_firewall_with_configs() -> Result<()> {
         use std::collections::HashSet;
 
-        let xray_ports = crate::logic::xraycore::ConfigManager::collect_all_ports()
+        let xray_ports = crate::core::xray::ConfigManager::collect_all_ports()
             .await
             .unwrap_or_default();
 
-        let singbox_ports = crate::logic::singbox::SingBoxConfigManager::collect_all_ports()
+        let singbox_ports = crate::core::singbox::SingBoxConfigManager::collect_all_ports()
             .await
             .unwrap_or_default();
 
@@ -408,7 +408,7 @@ impl MaintenanceManager {
         required.extend(singbox_ports);
         required.insert(22); // SSH
 
-        let current = crate::logic::security::firewall::FirewallManager::list_allowed_ports()
+        let current = crate::core::security::firewall::FirewallManager::list_allowed_ports()
             .await
             .unwrap_or_default();
 
@@ -427,7 +427,7 @@ impl MaintenanceManager {
 
         let mut removed = 0u32;
         for port in &stale {
-            match crate::logic::security::firewall::FirewallManager::remove_port(*port).await {
+            match crate::core::security::firewall::FirewallManager::remove_port(*port).await {
                 Ok(()) => {
                     removed += 1;
                     log::info!("防火墙: 已移除过期端口 {}", port);
@@ -448,11 +448,11 @@ impl MaintenanceManager {
     }
 
     pub async fn is_ufw_active() -> bool {
-        crate::logic::security::ufw::UfwClient::is_active().await
+        crate::core::security::ufw::UfwClient::is_active().await
     }
 
     pub async fn is_firewalld_active() -> bool {
-        crate::logic::security::firewalld::FirewalldClient::is_active().await
+        crate::core::security::firewalld::FirewalldClient::is_active().await
     }
 
     /// 允许端口范围（IPv4）
@@ -460,12 +460,12 @@ impl MaintenanceManager {
     pub async fn allow_port_range(start: u16, end: u16) -> Result<()> {
         // 检测 ufw 是否激活
         if Self::is_ufw_active().await {
-            crate::logic::security::ufw::UfwClient::add_port_range(start, end, "udp").await?;
+            crate::core::security::ufw::UfwClient::add_port_range(start, end, "udp").await?;
         }
 
         // 检测 firewalld 是否激活
         if Self::is_firewalld_active().await {
-            crate::logic::security::firewalld::FirewalldClient::add_port_range(start, end, "udp")
+            crate::core::security::firewalld::FirewalldClient::add_port_range(start, end, "udp")
                 .await?;
         }
 
@@ -477,7 +477,7 @@ impl MaintenanceManager {
     pub async fn allow_port_range_v6(start: u16, end: u16) -> Result<()> {
         // 检测 ufw 是否激活
         if Self::is_ufw_active().await {
-            crate::logic::security::ufw::UfwClient::add_port_range_v6(start, end, "udp").await?;
+            crate::core::security::ufw::UfwClient::add_port_range_v6(start, end, "udp").await?;
         }
 
         // firewalld 自动处理 IPv6，无需额外调用
@@ -490,12 +490,12 @@ impl MaintenanceManager {
     pub async fn remove_port_range(start: u16, end: u16) -> Result<()> {
         // 检测 ufw 是否激活
         if Self::is_ufw_active().await {
-            crate::logic::security::ufw::UfwClient::remove_port_range(start, end, "udp").await?;
+            crate::core::security::ufw::UfwClient::remove_port_range(start, end, "udp").await?;
         }
 
         // 检测 firewalld 是否激活
         if Self::is_firewalld_active().await {
-            crate::logic::security::firewalld::FirewalldClient::remove_port_range(
+            crate::core::security::firewalld::FirewalldClient::remove_port_range(
                 start, end, "udp",
             )
             .await?;
@@ -508,7 +508,7 @@ impl MaintenanceManager {
     pub async fn remove_port_range_v6(start: u16, end: u16) -> Result<()> {
         // 检测 ufw 是否激活
         if Self::is_ufw_active().await {
-            crate::logic::security::ufw::UfwClient::remove_port_range_v6(start, end, "udp").await?;
+            crate::core::security::ufw::UfwClient::remove_port_range_v6(start, end, "udp").await?;
         }
 
         Ok(())
@@ -528,7 +528,7 @@ impl MaintenanceManager {
             .map(|&target| {
                 let path = std::path::Path::new(target);
                 let result = if path.exists() {
-                    crate::logic::security::secure_wipe_path(path)
+                    crate::core::security::secure_wipe_path(path)
                 } else {
                     Ok(())
                 };
@@ -540,7 +540,7 @@ impl MaintenanceManager {
     /// 安全擦除自身可执行文件
     pub fn wipe_self_executable() -> Result<()> {
         if let Ok(exe_path) = std::env::current_exe() {
-            crate::logic::security::secure_wipe_path(&exe_path)?;
+            crate::core::security::secure_wipe_path(&exe_path)?;
         }
         Ok(())
     }

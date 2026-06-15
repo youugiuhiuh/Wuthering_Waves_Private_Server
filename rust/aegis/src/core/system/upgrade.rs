@@ -13,11 +13,11 @@ use tokio::io::AsyncWriteExt;
 use tokio::task;
 use tokio::time::sleep;
 
-use crate::logic::network::release_api::{
+use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors, parse_digest,
     parse_sha256_manifest,
 };
-use crate::logic::utils::{format_download_progress, human_readable_size, should_report};
+use crate::core::utils::{format_download_progress, human_readable_size, should_report};
 
 const DEFAULT_RELEASE_REPOSITORIES: &[(&str, &str)] = &[
     ("NicholasDewar", "Wuthering_Waves_Private_Server"),
@@ -466,7 +466,7 @@ impl UpgradeManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::utils::PROGRESS_SIZE_STEP;
+    use crate::core::utils::PROGRESS_SIZE_STEP;
     use std::time::Duration;
 
     #[test]

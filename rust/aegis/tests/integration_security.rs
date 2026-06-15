@@ -4,7 +4,7 @@
 
 use secrecy::ExposeSecret;
 use std::fs;
-use aegis::logic::security::SecurityManager;
+use aegis::core::security::SecurityManager;
 
 #[test]
 fn security_manager_creates_key_and_encrypt_decrypt_roundtrip() {

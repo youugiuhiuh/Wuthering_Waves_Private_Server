@@ -166,7 +166,7 @@ impl FirewalldClient {
         let proxy = FirewallD1Proxy::new(&connection).await?;
         let zone = proxy.get_default_zone().await?;
 
-        let (status, stdout, stderr) = crate::logic::cmd_async::run_cmd_output(
+        let (status, stdout, stderr) = crate::core::cmd_async::run_cmd_output(
             "firewall-cmd",
             &["--zone", &zone, "--list-ports"],
             std::time::Duration::from_secs(10),

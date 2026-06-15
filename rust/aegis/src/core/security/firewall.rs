@@ -16,7 +16,7 @@ impl FirewallManager {
         // 1. 状态优先：检查活跃的服务
 
         // 检查 Firewalld 是否活跃
-        if let Ok((status, _, _)) = crate::logic::cmd_async::run_cmd_output(
+        if let Ok((status, _, _)) = crate::core::cmd_async::run_cmd_output(
             "systemctl",
             &["is-active", "firewalld"],
             std::time::Duration::from_secs(2),
@@ -28,7 +28,7 @@ impl FirewallManager {
         }
 
         // 检查 UFW 是否活跃
-        if let Ok((status, stdout, _)) = crate::logic::cmd_async::run_cmd_output(
+        if let Ok((status, stdout, _)) = crate::core::cmd_async::run_cmd_output(
             "ufw",
             &["status"],
             std::time::Duration::from_secs(2),

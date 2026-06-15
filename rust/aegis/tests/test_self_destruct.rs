@@ -285,7 +285,7 @@ fn test_secure_wipe_single_file() {
     assert!(file_path.exists());
 
     // 执行安全擦除
-    aegis::logic::security::secure_wipe_path(&file_path).unwrap();
+    aegis::core::security::secure_wipe_path(&file_path).unwrap();
 
     // 文件应被删除
     assert!(!file_path.exists(), "安全擦除后文件应不存在");
@@ -306,7 +306,7 @@ fn test_secure_wipe_directory_recursive() {
     assert!(target.exists());
 
     // 执行递归擦除
-    aegis::logic::security::secure_wipe_path(&target).unwrap();
+    aegis::core::security::secure_wipe_path(&target).unwrap();
 
     assert!(!target.exists(), "安全擦除后目录应不存在");
 }
@@ -316,7 +316,7 @@ fn test_secure_wipe_nonexistent_path() {
     let path = Path::new("/tmp/definitely_does_not_exist_wwps_test_12345");
 
     // 对不存在的路径应返回 Ok
-    let result = aegis::logic::security::secure_wipe_path(path);
+    let result = aegis::core::security::secure_wipe_path(path);
     assert!(result.is_ok(), "擦除不存在的路径应返回 Ok");
 }
 

@@ -28,13 +28,12 @@ use teloxide::prelude::*;
 use teloxide::types::ParseMode;
 use teloxide::utils::command::BotCommands;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
-use aegis::logic;
-use aegis::logic::bot_upgrade::UPGRADE_FLAG_FILE;
-use aegis::logic::maintenance::MaintenanceManager;
-use aegis::logic::security::SecurityManager;
-use aegis::logic::self_destruct::production_executor;
-use aegis::logic::system::SystemMonitor;
-use aegis::logic::totp::TotpManager;
+use aegis::core::system::upgrade::UPGRADE_FLAG_FILE;
+use aegis::core::system::maintenance::MaintenanceManager;
+use aegis::core::security::SecurityManager;
+use aegis::core::security::self_destruct::production_executor;
+use aegis::core::system::SystemMonitor;
+use aegis::core::totp::TotpManager;
 
 // TOTP 防爆破参数
 // TOTP 防爆破参数
@@ -241,7 +240,7 @@ async fn main() -> Result<()> {
     harden_process();
 
     // 立即执行防调试检查
-    crate::logic::anti_debug::check_debugger();
+    aegis::core::security::anti_debug::check_debugger();
 
     // CLI 仅输出模式：先处理，避免 verify_integrity 向 stdout 打印导致安装器把整段输出当成 TOTP 密钥
     let args: Vec<String> = std::env::args().collect();
@@ -347,7 +346,7 @@ async fn main() -> Result<()> {
     let bot_for_init = bot.clone();
     tokio::spawn(async move {
         if let Err(e) =
-            logic::scheduler::start_scheduler(bot_for_init.clone(), ChatId(admin_id)).await
+            aegis::core::system::scheduler::start_scheduler(bot_for_init.clone(), ChatId(admin_id)).await
         {
             log::error!("❌ 初始化调度器失败: {}", e);
         }
@@ -458,7 +457,7 @@ mod tests {
     use anyhow::Result;
     use futures_util::future::BoxFuture;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use aegis::logic::self_destruct::SelfDestructExecutor;
+    use aegis::core::security::self_destruct::SelfDestructExecutor;
 
     struct CountingExecutor {
         calls: Arc<AtomicUsize>,
@@ -481,7 +480,7 @@ mod tests {
             calls: calls.clone(),
         });
 
-        aegis::logic::self_destruct::trigger(executor);
+        aegis::core::security::self_destruct::trigger(executor);
         tokio::time::sleep(Duration::from_secs(3)).await;
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);

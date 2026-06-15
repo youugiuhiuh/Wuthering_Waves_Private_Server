@@ -4,8 +4,8 @@
 
 use secrecy::{ExposeSecret, SecretString};
 use std::fs;
-use aegis::logic::security::SecurityManager;
-use aegis::logic::totp::TotpManager;
+use aegis::core::security::SecurityManager;
+use aegis::core::totp::TotpManager;
 
 #[derive(serde::Deserialize)]
 struct EncryptedConfig {

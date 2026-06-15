@@ -1,5 +1,5 @@
-use crate::logic::maintenance::MaintenanceManager;
-use crate::logic::operations::Operations;
+use crate::core::system::maintenance::MaintenanceManager;
+use crate::core::system::operations::Operations;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use teloxide::prelude::*;

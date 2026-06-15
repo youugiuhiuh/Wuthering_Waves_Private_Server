@@ -1,6 +1,6 @@
 use crate::core::paths::{warp as warp_paths, xray};
-use crate::logic::core_upgrade::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
-use crate::logic::system::maintenance::MaintenanceManager;
+use crate::core::system::core_upgrade::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
+use crate::core::system::maintenance::MaintenanceManager;
 use anyhow::{Context, Result, anyhow};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -29,7 +29,7 @@ impl WarpInstaller {
 
     pub async fn install() -> Result<()> {
         // 1. Register Account
-        let config = crate::logic::warp_api::register_account()
+        let config = crate::core::network::warp_api::register_account()
             .await
             .context("Failed to register WARP account")?;
 
@@ -39,9 +39,9 @@ impl WarpInstaller {
         fs::write(account_path, content).await?;
 
         // 3. Update core routing config
-        crate::logic::config::ConfigManager::update_warp_routing_rules(
+        crate::core::xray::config::ConfigManager::update_warp_routing_rules(
             vec![],
-            crate::logic::config::WarpMode::Default,
+            crate::core::xray::config::WarpMode::Default,
         )
         .await?;
 
@@ -52,13 +52,13 @@ impl WarpInstaller {
         // Just remove the account config and the routing config
         let _ = fs::remove_file(warp_paths::ACCOUNT_FILE).await;
         let _ = fs::remove_file(warp_paths::ROUTING_FILE).await;
-        crate::logic::maintenance::MaintenanceManager::reload_core().await?;
+        crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
         Ok(())
     }
 
     pub async fn restart_service() -> Result<()> {
         // No service to restart, just reload core
-        crate::logic::maintenance::MaintenanceManager::reload_core().await?;
+        crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
         Ok(())
     }
 
@@ -176,10 +176,10 @@ impl RealityInstallerInternal {
             .context("安装依赖失败")?;
         Self::step_install_core(probe.arch).await?;
         Self::step_configure_service().await?;
-        if let Err(e) = crate::logic::config::ConfigManager::ensure_base_config().await {
+        if let Err(e) = crate::core::xray::config::ConfigManager::ensure_base_config().await {
             log::warn!("创建 wwps-core 基础配置失败: {}", e);
         }
-        if let Err(e) = crate::logic::maintenance::MaintenanceManager::ensure_geodata().await {
+        if let Err(e) = crate::core::system::maintenance::MaintenanceManager::ensure_geodata().await {
             log::warn!("确保 geodata 文件失败: {}", e);
         }
         let _ = MaintenanceManager::reload_core().await;
@@ -231,7 +231,7 @@ impl RealityInstallerInternal {
                 .with_context(|| format!("安装依赖 {:?} 失败", missing_packages))?;
         }
 
-        if crate::logic::firewall::FirewallManager::detect_backend()
+        if crate::core::security::firewall::FirewallManager::detect_backend()
             .await
             .is_none()
             && !manager.check_installed("firewalld").await
@@ -287,12 +287,12 @@ impl RealityInstallerInternal {
     }
 
     pub async fn step_enable_firewall() -> Result<()> {
-        if let Some(backend) = crate::logic::firewall::FirewallManager::detect_backend().await {
+        if let Some(backend) = crate::core::security::firewall::FirewallManager::detect_backend().await {
             match backend {
-                crate::logic::firewall::FirewallBackend::Ufw => {
+                crate::core::security::firewall::FirewallBackend::Ufw => {
                     let _ = run_command("ufw", &["--force", "enable"]).await;
                 }
-                crate::logic::firewall::FirewallBackend::Firewalld => {
+                crate::core::security::firewall::FirewallBackend::Firewalld => {
                     if is_systemd().await {
                         let _ = run_command("systemctl", &["enable", "--now", "firewalld"]).await;
                     } else if is_openrc().await {
@@ -366,7 +366,7 @@ impl RealityInstallerInternal {
                     .with_context(|| format!("安装 {} 失败", pkg))?;
             }
         }
-        if crate::logic::firewall::FirewallManager::detect_backend()
+        if crate::core::security::firewall::FirewallManager::detect_backend()
             .await
             .is_none()
         {

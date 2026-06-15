@@ -1,8 +1,7 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::app::state::{ScheduleFrequency, ScheduleInputState};
-use crate::logic;
-use crate::logic::operations::Operations;
-use crate::logic::scheduler::TaskType;
+use aegis::core::system::operations::Operations;
+use aegis::core::system::scheduler::TaskType;
 use crate::utils;
 use std::time::Instant;
 use teloxide::prelude::*;
@@ -209,7 +208,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     match data {
         "m_sched" => {
             ctx.state.remove_schedule_input(ctx.chat_id).await;
-            let summary = if let Some(manager) = logic::scheduler::get_manager().await {
+            let summary = if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                 manager.get_summary().await
             } else {
                 "❌ 调度器未初始化".to_string()
@@ -548,8 +547,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             };
 
             ctx.state.remove_schedule_input(ctx.chat_id).await;
-            if let Some(manager) = logic::scheduler::get_manager().await {
-                let task = logic::scheduler::ScheduledTask::new_with_timezone(
+            if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
+                let task = aegis::core::system::scheduler::ScheduledTask::new_with_timezone(
                     task_type.clone(),
                     &cron_expression,
                     &timezone,
@@ -662,19 +661,19 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         d if d.starts_with("s_add:") => {
             let template = d.strip_prefix("s_add:").unwrap_or(d);
             let (task_type, cron) = match template {
-                "reboot_daily_3" => (logic::scheduler::task_types::TaskType::Reboot, "0 3 * * *"),
+                "reboot_daily_3" => (aegis::core::system::scheduler::task_types::TaskType::Reboot, "0 3 * * *"),
                 "reload_daily_4" => (
-                    logic::scheduler::task_types::TaskType::ReloadCore,
+                    aegis::core::system::scheduler::task_types::TaskType::ReloadCore,
                     "0 4 * * *",
                 ),
                 _ => (
-                    logic::scheduler::task_types::TaskType::GeoUpdate,
+                    aegis::core::system::scheduler::task_types::TaskType::GeoUpdate,
                     "0 4 * * *",
                 ),
             };
 
-            if let Some(manager) = logic::scheduler::get_manager().await {
-                let task = logic::scheduler::ScheduledTask::new(task_type, cron);
+            if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
+                let task = aegis::core::system::scheduler::ScheduledTask::new(task_type, cron);
                 let _ = manager
                     .add_new_task(ctx.bot.clone(), ctx.state.admin_id(), task)
                     .await;
@@ -687,7 +686,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             }
         }
         "s_del_menu" => {
-            if let Some(manager) = logic::scheduler::get_manager().await {
+            if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                 let state = manager.state.lock().await;
                 let mut buttons = Vec::new();
                 for (i, task) in state.tasks.iter().enumerate() {
@@ -707,7 +706,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         d if d.starts_with("s_del:") => {
             let idx: usize = d.strip_prefix("s_del:").unwrap_or("0").parse().unwrap_or(0);
 
-            if let Some(manager) = logic::scheduler::get_manager().await {
+            if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                 let state = manager.state.lock().await;
                 if let Err(e) = utils::validate_idx(idx, state.tasks.len(), "任务") {
                     drop(state);
@@ -756,7 +755,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .unwrap()
                 .parse()
                 .unwrap_or(0);
-            if let Some(manager) = logic::scheduler::get_manager().await {
+            if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                 let _ = manager
                     .remove_task_at(ctx.bot.clone(), ctx.state.admin_id(), idx)
                     .await;
@@ -770,7 +769,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             }
         }
         "a_geo_sched_menu" => {
-            let geo_info = if let Some(manager) = logic::scheduler::get_manager().await {
+            let geo_info = if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                 let s = manager.state.lock().await;
                 let geo_tasks: Vec<_> = s
                     .tasks
@@ -824,7 +823,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .await?;
         }
         "geo_sched_off" => {
-            if let Some(manager) = logic::scheduler::get_manager().await {
+            if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                 let mut state_lock = manager.state.lock().await;
                 let mut removed = false;
                 for i in (0..state_lock.tasks.len()).rev() {

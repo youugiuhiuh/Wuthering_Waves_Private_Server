@@ -13,8 +13,8 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use aegis::logic::maintenance::MaintenanceManager;
-use aegis::logic::security::secure_wipe_path;
+use aegis::core::system::maintenance::MaintenanceManager;
+use aegis::core::security::secure_wipe_path;
 
 // ============================================================
 // 辅助函数: 构建仿真文件系统

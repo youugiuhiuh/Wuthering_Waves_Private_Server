@@ -11,7 +11,7 @@ use tokio::fs;
 
 use crate::core::paths::{warp, xray};
 use crate::core::types::{BatchCreationResult, IpVersion};
-use crate::logic::cmd_async::run_cmd_output;
+use crate::core::cmd_async::run_cmd_output;
 
 pub use super::kcp_mask::KcpMask;
 
@@ -487,8 +487,8 @@ impl ConfigManager {
 
         let (host, _) = Self::resolve_public_hosts(
             ip_version,
-            crate::logic::system::SystemMonitor::get_public_ip().await,
-            crate::logic::system::SystemMonitor::get_public_ipv6().await,
+            crate::core::system::SystemMonitor::get_public_ip().await,
+            crate::core::system::SystemMonitor::get_public_ipv6().await,
         )?;
 
         let mut rng = StdRng::from_entropy();
@@ -499,10 +499,10 @@ impl ConfigManager {
         for i in 0..count {
             let port = loop {
                 let p = rng.gen_range(10000..60000);
-                if crate::logic::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
                     continue;
                 }
-                if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
+                if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
                     break p as i32;
                 }
             };
@@ -520,7 +520,7 @@ impl ConfigManager {
                 Self::generate_kcp_client_link(&uuid, &host, port, &email, ip_version, &masks);
             links.push(link);
 
-            let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
+            let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
         Self::create_standalone_config(batch_configs, links, Proto::Kcp).await
@@ -532,27 +532,27 @@ impl ConfigManager {
     ) -> Result<BatchCreationResult> {
         let (host, _) = Self::resolve_public_hosts(
             ip_version,
-            crate::logic::system::SystemMonitor::get_public_ip().await,
-            crate::logic::system::SystemMonitor::get_public_ipv6().await,
+            crate::core::system::SystemMonitor::get_public_ip().await,
+            crate::core::system::SystemMonitor::get_public_ipv6().await,
         )?;
 
         let mut rng = StdRng::from_entropy();
-        let geoip = crate::logic::geoip::GeoIPService::new();
+        let geoip = crate::core::network::geoip::GeoIPService::new();
         let country_code = geoip.get_country_code().await;
 
-        let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(&country_code);
+        let mut selector = crate::core::sni::selector::SNISelector::get_for_country(&country_code);
 
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
 
         let port_443_available =
-            crate::logic::maintenance::MaintenanceManager::is_port_available(443).await;
+            crate::core::system::maintenance::MaintenanceManager::is_port_available(443).await;
 
         for i in 0..count {
             let sni = selector.get_next();
 
             // 判断当前 SNI 是否适合启用 PQ（证书链长度 + 公钥算法）。
-            let pq_ok = crate::logic::tls_probe::sni_is_pq_friendly(&sni).await;
+            let pq_ok = crate::core::security::tls_probe::sni_is_pq_friendly(&sni).await;
 
             let preferred = if i == 0 && port_443_available {
                 Some(443u16)
@@ -595,7 +595,7 @@ impl ConfigManager {
             );
             links.push(link);
 
-            let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
+            let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
         Self::create_standalone_config(batch_configs, links, Proto::Vision).await
@@ -607,26 +607,26 @@ impl ConfigManager {
     ) -> Result<BatchCreationResult> {
         let (host, host_secondary) = Self::resolve_public_hosts(
             ip_version,
-            crate::logic::system::SystemMonitor::get_public_ip().await,
-            crate::logic::system::SystemMonitor::get_public_ipv6().await,
+            crate::core::system::SystemMonitor::get_public_ip().await,
+            crate::core::system::SystemMonitor::get_public_ipv6().await,
         )?;
 
         let mut rng = StdRng::from_entropy();
-        let geoip = crate::logic::geoip::GeoIPService::new();
+        let geoip = crate::core::network::geoip::GeoIPService::new();
         let country_code = geoip.get_country_code().await;
 
-        let mut selector = crate::logic::sni_selector::SNISelector::get_for_country(&country_code);
+        let mut selector = crate::core::sni::selector::SNISelector::get_for_country(&country_code);
 
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
 
         let port_443_available =
-            crate::logic::maintenance::MaintenanceManager::is_port_available(443).await;
+            crate::core::system::maintenance::MaintenanceManager::is_port_available(443).await;
 
         for i in 0..count {
             let sni = selector.get_next();
 
-            let pq_ok = crate::logic::tls_probe::sni_is_pq_friendly(&sni).await;
+            let pq_ok = crate::core::security::tls_probe::sni_is_pq_friendly(&sni).await;
 
             let preferred = if i == 0 && port_443_available {
                 Some(443u16)
@@ -669,7 +669,7 @@ impl ConfigManager {
             );
             links.push(link);
 
-            let _ = crate::logic::maintenance::MaintenanceManager::allow_port(port as u16).await;
+            let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
         }
 
         Self::create_standalone_config(batch_configs, links, Proto::XHTTP).await
@@ -706,16 +706,16 @@ impl ConfigManager {
         Option<String>,
     )> {
         let port: i32 = if let Some(pp) = preferred_port {
-            if crate::logic::maintenance::MaintenanceManager::is_port_available(pp).await {
+            if crate::core::system::maintenance::MaintenanceManager::is_port_available(pp).await {
                 pp as i32
             } else {
                 loop {
                     let p = rng.gen_range(10000..60000);
-                    if crate::logic::port_allocator::PortAllocator::is_port_in_locked_range(p).await
+                    if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await
                     {
                         continue;
                     }
-                    if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
+                    if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
                         break p as i32;
                     }
                 }
@@ -723,10 +723,10 @@ impl ConfigManager {
         } else {
             loop {
                 let p = rng.gen_range(10000..60000);
-                if crate::logic::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
                     continue;
                 }
-                if crate::logic::maintenance::MaintenanceManager::is_port_available(p).await {
+                if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
                     break p as i32;
                 }
             }
@@ -883,7 +883,7 @@ impl ConfigManager {
         fs::write(&config_path, content)
             .await
             .context("写入配置文件失败")?;
-        crate::logic::maintenance::MaintenanceManager::reload_core().await?;
+        crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
 
         Ok(BatchCreationResult {
             links,
@@ -908,7 +908,7 @@ impl ConfigManager {
             let _ = fs::remove_file(file).await;
         }
         if count > 0 {
-            crate::logic::maintenance::MaintenanceManager::reload_core().await?;
+            crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
         }
         Ok(count)
     }
@@ -939,14 +939,14 @@ impl ConfigManager {
         }
 
         if deleted_count > 0 {
-            crate::logic::maintenance::MaintenanceManager::reload_core().await?;
+            crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
         }
         Ok(deleted_count)
     }
 
     pub async fn delete_specific_configuration(path: &str) -> Result<()> {
         fs::remove_file(path).await.context("❌ 删除配置文件失败")?;
-        crate::logic::maintenance::MaintenanceManager::reload_core().await?;
+        crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
         Ok(())
     }
 
@@ -1059,7 +1059,7 @@ impl ConfigManager {
 
         let content = serde_json::to_string_pretty(&config)?;
         fs::write(config_path, content).await?;
-        crate::logic::maintenance::MaintenanceManager::reload_core().await?;
+        crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
         Ok(())
     }
 
@@ -1139,7 +1139,7 @@ impl ConfigManager {
     pub async fn ensure_base_config() -> Result<()> {
         use crate::core::paths::xray;
 
-        if let Err(e) = crate::logic::maintenance::MaintenanceManager::ensure_geodata().await {
+        if let Err(e) = crate::core::system::maintenance::MaintenanceManager::ensure_geodata().await {
             log::warn!("确保 geodata 文件失败: {}", e);
         }
 
