@@ -38,13 +38,13 @@ Install with:
 
 ```bash
 # Use -t to force TTY allocation (required for interactive setup prompts)
-ssh -t root@YOUR_SERVER_IP "wget -O /root/installer 'https://github.com/NicholasDewar/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer && /root/installer"
+ssh -t root@YOUR_SERVER_IP "wget -O /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer && /root/installer"
 ```
 
 Or download and run directly if you have console access:
 
 ```bash
-wget -O /root/installer "https://github.com/NicholasDewar/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && ./installer
+wget -O /root/installer "https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && ./installer
 ```
 
 > **Note:** When running over SSH, use `ssh -t` to force TTY allocation. Without `-t`, some interactive prompts may fail silently.
