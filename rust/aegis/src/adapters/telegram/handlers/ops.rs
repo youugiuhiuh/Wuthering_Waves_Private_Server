@@ -4,6 +4,7 @@ use crate::app::state::{ScheduleFrequency, ScheduleInputState};
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::operations::{Operations, REBOOT_FLAG};
 use aegis::core::system::scheduler::TaskType;
+use aegis::adapters::common::TargetId;
 use aegis::core::system::upgrade::UpgradeManager;
 use std::time::{Duration, Instant};
 use teloxide::prelude::*;
@@ -81,12 +82,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .answer_callback_query(ctx.q.id.clone())
                 .text("⚙️ 正在启动 Bot 自更新...")
                 .await?;
+            let adapter = ctx.state.adapter.clone();
+            let target = TargetId(ctx.chat_id.0.to_string());
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
             tokio::spawn(async move {
                 match UpgradeManager::new() {
                     Ok(manager) => {
-                        if let Err(err) = manager.run(bot_clone.clone(), chat_id_clone).await {
+                        if let Err(err) = manager.run(adapter.as_ref(), &target).await {
                             let _ = bot_clone
                                 .send_message(chat_id_clone, format!("❌ 自更新失败: {}", err))
                                 .await;

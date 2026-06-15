@@ -1,3 +1,4 @@
+use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::cmd_async::run_cmd_status;
 use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors, parse_digest,
@@ -15,8 +16,6 @@ use std::fs::{File as StdFile, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use teloxide::prelude::*;
-use teloxide::types::MessageId;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::task;
@@ -279,9 +278,9 @@ impl WwpsCoreUpgradeManager {
     pub async fn download_release(
         &self,
         release: &WwpsCoreReleaseInfo,
-        bot: Option<&Bot>,
-        chat_id: Option<ChatId>,
-        msg_id: Option<MessageId>,
+        adapter: Option<&dyn BotAdapter>,
+        target: Option<&TargetId>,
+        msg_id: Option<&AegisMsgId>,
     ) -> Result<PathBuf> {
         let temp_file = self.config.temp_dir.join(format!(
             "wwps-core-{}-{}.zip",
@@ -324,7 +323,7 @@ impl WwpsCoreUpgradeManager {
                 .context("写入 wwps-core 临时包失败")?;
             downloaded += chunk.len() as u64;
 
-            if let (Some(bot), Some(chat_id), Some(msg_id)) = (bot, chat_id, msg_id)
+            if let (Some(adapter), Some(target), Some(msg_id)) = (adapter, target, msg_id)
                 && should_report(
                     downloaded,
                     total_size,
@@ -335,7 +334,16 @@ impl WwpsCoreUpgradeManager {
             {
                 last_instant = Instant::now();
                 let progress_text = format_download_progress(downloaded, total_size, start);
-                let _ = bot.edit_message_text(chat_id, msg_id, progress_text).await;
+                let _ = adapter
+                    .edit_message(
+                        target,
+                        msg_id,
+                        MessageContent {
+                            text: progress_text,
+                            markup: None,
+                        },
+                    )
+                    .await;
             }
         }
 
@@ -483,21 +491,35 @@ impl WwpsCoreUpgradeManager {
         }
     }
 
-    pub async fn run_upgrade(tag: Option<String>, bot: Bot, chat_id: ChatId) -> Result<()> {
-        let mut status_msg = bot
-            .send_message(chat_id, "🛰️ 正在检查 wwps-core 环境...")
+    pub async fn run_upgrade(
+        tag: Option<String>,
+        adapter: &dyn BotAdapter,
+        target: &TargetId,
+    ) -> Result<()> {
+        let status_msg_id = adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: "🛰️ 正在检查 wwps-core 环境...".to_string(),
+                    markup: None,
+                },
+            )
             .await?;
 
         let config = WwpsCoreUpgradeConfig::from_env()?;
         config.validate()?;
         let manager = WwpsCoreUpgradeManager::new(config)?;
 
-        if let Ok(updated) = bot
-            .edit_message_text(chat_id, status_msg.id, "📦 正在获取 wwps-core 版本信息...")
-            .await
-        {
-            status_msg = updated;
-        }
+        let _ = adapter
+            .edit_message(
+                target,
+                &status_msg_id,
+                MessageContent {
+                    text: "📦 正在获取 wwps-core 版本信息...".to_string(),
+                    markup: None,
+                },
+            )
+            .await;
 
         let release = manager.fetch_release(tag.as_deref()).await?;
 
@@ -512,43 +534,71 @@ SHA256: {}",
                 .unwrap_or_else(|| "未知".to_string()),
             release.sha256
         );
-        if let Ok(updated) = bot
-            .edit_message_text(chat_id, status_msg.id, info_text)
-            .await
-        {
-            status_msg = updated;
-        }
+        let _ = adapter
+            .edit_message(
+                target,
+                &status_msg_id,
+                MessageContent {
+                    text: info_text,
+                    markup: None,
+                },
+            )
+            .await;
 
         let archive_path = manager
-            .download_release(&release, Some(&bot), Some(chat_id), Some(status_msg.id))
+            .download_release(
+                &release,
+                Some(adapter),
+                Some(target),
+                Some(&status_msg_id),
+            )
             .await?;
 
-        if let Ok(updated) = bot
-            .edit_message_text(chat_id, status_msg.id, "🗜️ 正在解压核心...")
-            .await
-        {
-            status_msg = updated;
-        }
+        let _ = adapter
+            .edit_message(
+                target,
+                &status_msg_id,
+                MessageContent {
+                    text: "🗜️ 正在解压核心...".to_string(),
+                    markup: None,
+                },
+            )
+            .await;
         let unpack_dir = manager.extract_archive(&archive_path).await?;
 
-        if let Ok(updated) = bot
-            .edit_message_text(chat_id, status_msg.id, "💾 正在备份当前核心...")
-            .await
-        {
-            status_msg = updated;
-        }
+        let _ = adapter
+            .edit_message(
+                target,
+                &status_msg_id,
+                MessageContent {
+                    text: "💾 正在备份当前核心...".to_string(),
+                    markup: None,
+                },
+            )
+            .await;
         let backup_path = manager.backup_current_core().await?;
 
-        if let Ok(updated) = bot
-            .edit_message_text(chat_id, status_msg.id, "♻️ 正在替换核心...")
-            .await
-        {
-            status_msg = updated;
-        }
+        let _ = adapter
+            .edit_message(
+                target,
+                &status_msg_id,
+                MessageContent {
+                    text: "♻️ 正在替换核心...".to_string(),
+                    markup: None,
+                },
+            )
+            .await;
         manager.replace_core(&unpack_dir).await?;
 
-        let _ = bot
-            .edit_message_text(chat_id, status_msg.id, "🔁 正在重启 wwps-core 服务...")
+        let _ = adapter
+            .edit_message(
+                target,
+                &status_msg_id,
+                MessageContent {
+                    text: "🔁 正在重启 wwps-core 服务...".to_string(),
+                    markup: None,
+                },
+            )
             .await;
 
         manager.restart_service().await?;
@@ -558,15 +608,19 @@ SHA256: {}",
             .cleanup_paths(&[archive_path.clone(), unpack_dir.clone()])
             .await;
 
-        bot.send_message(
-            chat_id,
-            format!(
-                "✅ wwps-core 已更新至 {}！\n备份目录: {}",
-                release.tag_name,
-                backup_path.display()
-            ),
-        )
-        .await?;
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: format!(
+                        "✅ wwps-core 已更新至 {}！\n备份目录: {}",
+                        release.tag_name,
+                        backup_path.display()
+                    ),
+                    markup: None,
+                },
+            )
+            .await?;
 
         Ok(())
     }

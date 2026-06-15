@@ -1,8 +1,8 @@
+use crate::adapters::common::{BotAdapter, MessageContent, TargetId};
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::system::operations::Operations;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use teloxide::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum TaskType {
@@ -25,12 +25,18 @@ impl TaskType {
         }
     }
 
-    pub async fn execute(&self, bot: &Bot, chat_id: ChatId) -> Result<()> {
+    pub async fn execute(&self, adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
         match self {
             TaskType::GeoUpdate => {
                 log::info!("执行 GeoData 更新任务...");
-                let _ = bot
-                    .send_message(chat_id, "⏳ [定时任务] 开始更新 GeoData...")
+                let _ = adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: "⏳ [定时任务] 开始更新 GeoData...".to_string(),
+                            markup: None,
+                        },
+                    )
                     .await;
 
                 let result = MaintenanceManager::update_geodata(|_pct, msg| {
@@ -39,8 +45,8 @@ impl TaskType {
                 .await;
 
                 report_result(
-                    bot,
-                    chat_id,
+                    adapter,
+                    target,
                     "GeoData 更新",
                     "✅ [定时任务] GeoData 更新完成。",
                     result.map(|_| ()),
@@ -48,29 +54,49 @@ impl TaskType {
                 .await
             }
             TaskType::Reboot => {
-                let _ = bot
-                    .send_message(chat_id, "⚠️ 系统即将重启 (定时任务)...")
+                let _ = adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: "⚠️ 系统即将重启 (定时任务)...".to_string(),
+                            markup: None,
+                        },
+                    )
                     .await;
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                 Operations::reboot_system().await?;
                 Ok(())
             }
             TaskType::ReloadCore => {
-                let _ = bot.send_message(chat_id, "🔄 重载核心服务...").await;
+                let _ = adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: "🔄 重载核心服务...".to_string(),
+                            markup: None,
+                        },
+                    )
+                    .await;
                 MaintenanceManager::reload_core().await?;
                 Ok(())
             }
             TaskType::SecurityUpdate => {
                 log::info!("执行安全更新定时任务...");
-                let _ = bot
-                    .send_message(chat_id, "⏳ [定时任务] 开始执行安全更新...")
+                let _ = adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: "⏳ [定时任务] 开始执行安全更新...".to_string(),
+                            markup: None,
+                        },
+                    )
                     .await;
 
                 let result = Operations::perform_security_update_task().await;
 
                 report_result(
-                    bot,
-                    chat_id,
+                    adapter,
+                    target,
                     "安全更新",
                     "✅ [定时任务] 安全更新执行完成。",
                     result,
@@ -78,10 +104,14 @@ impl TaskType {
                 .await
             }
             TaskType::Unknown => {
-                let _ = bot
+                let _ = adapter
                     .send_message(
-                        chat_id,
-                        "⚠️ 此任务类型已弃用，自动安全更新已由系统定时器管理。",
+                        target,
+                        MessageContent {
+                            text: "⚠️ 此任务类型已弃用，自动安全更新已由系统定时器管理。"
+                                .to_string(),
+                            markup: None,
+                        },
                     )
                     .await;
                 Ok(())
@@ -91,19 +121,34 @@ impl TaskType {
 }
 
 async fn report_result(
-    bot: &Bot,
-    chat_id: ChatId,
+    adapter: &dyn BotAdapter,
+    target: &TargetId,
     task_name: &str,
     success_msg: &str,
     result: Result<()>,
 ) -> Result<()> {
     match result {
         Ok(()) => {
-            bot.send_message(chat_id, success_msg).await?;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: success_msg.to_string(),
+                        markup: None,
+                    },
+                )
+                .await?;
             Ok(())
         }
         Err(e) => {
-            bot.send_message(chat_id, format!("❌ [定时任务] {} 失败: {}", task_name, e))
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: format!("❌ [定时任务] {} 失败: {}", task_name, e),
+                        markup: None,
+                    },
+                )
                 .await?;
             Err(e)
         }

@@ -1,3 +1,4 @@
+use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use obfstr::obfstr;
@@ -6,8 +7,6 @@ use sha2::{Digest, Sha256};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use teloxide::prelude::*;
-use teloxide::types::MessageId;
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
 use tokio::task;
@@ -144,19 +143,28 @@ impl UpgradeManager {
         })
     }
 
-    pub async fn run(self, bot: Bot, chat_id: ChatId) -> Result<()> {
-        let mut progress_msg = bot
-            .send_message(chat_id, obfstr!("🔍 正在查询最新 Release..."))
+    pub async fn run(self, adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
+        let progress_msg_id = adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: format!("{}", obfstr!("🔍 正在查询最新 Release...")),
+                    markup: None,
+                },
+            )
             .await?;
 
         let artifact = match self.fetch_latest_release().await {
             Ok(a) => a,
             Err(e) => {
-                let _ = bot
-                    .edit_message_text(
-                        chat_id,
-                        progress_msg.id,
-                        format!("❌ 获取 Release 失败: {}", e),
+                let _ = adapter
+                    .edit_message(
+                        target,
+                        &progress_msg_id,
+                        MessageContent {
+                            text: format!("❌ 获取 Release 失败: {}", e),
+                            markup: None,
+                        },
                     )
                     .await;
                 return Err(e);
@@ -175,33 +183,50 @@ impl UpgradeManager {
             hash = &artifact.sha256
         );
 
-        progress_msg = bot
-            .edit_message_text(
-                chat_id,
-                progress_msg.id,
-                format!("{}\n\n准备开始下载...", summary),
+        let _ = adapter
+            .edit_message(
+                target,
+                &progress_msg_id,
+                MessageContent {
+                    text: format!("{}\n\n准备开始下载...", summary),
+                    markup: None,
+                },
             )
-            .await?;
+            .await;
 
         let update_path = match self
-            .download_with_progress(&artifact, &bot, chat_id, progress_msg.id)
+            .download_with_progress(&artifact, adapter, target, &progress_msg_id)
             .await
         {
             Ok(path) => path,
             Err(e) => {
-                let _ = bot
-                    .edit_message_text(chat_id, progress_msg.id, format!("❌ 下载失败: {}", e))
+                let _ = adapter
+                    .edit_message(
+                        target,
+                        &progress_msg_id,
+                        MessageContent {
+                            text: format!("❌ 下载失败: {}", e),
+                            markup: None,
+                        },
+                    )
                     .await;
                 return Err(e);
             }
         };
 
         if let Err(e) = self
-            .finalize_install(&artifact, &update_path, &bot, chat_id, progress_msg.id)
+            .finalize_install(&artifact, &update_path, adapter, target, &progress_msg_id)
             .await
         {
-            let _ = bot
-                .edit_message_text(chat_id, progress_msg.id, format!("❌ 安装失败: {}", e))
+            let _ = adapter
+                .edit_message(
+                    target,
+                    &progress_msg_id,
+                    MessageContent {
+                        text: format!("❌ 安装失败: {}", e),
+                        markup: None,
+                    },
+                )
                 .await;
             let _ = fs::remove_file(&update_path).await;
             return Err(e);
@@ -322,9 +347,9 @@ impl UpgradeManager {
     async fn download_with_progress(
         &self,
         artifact: &ReleaseArtifact,
-        bot: &Bot,
-        chat_id: ChatId,
-        progress_msg_id: MessageId,
+        adapter: &dyn BotAdapter,
+        target: &TargetId,
+        progress_msg_id: &AegisMsgId,
     ) -> Result<PathBuf> {
         let response = self
             .build_request(&artifact.download_url)
@@ -366,8 +391,15 @@ impl UpgradeManager {
             ) {
                 last_report = Instant::now();
                 let progress_text = format_download_progress(downloaded, total_size, start);
-                let _ = bot
-                    .edit_message_text(chat_id, progress_msg_id, progress_text)
+                let _ = adapter
+                    .edit_message(
+                        target,
+                        progress_msg_id,
+                        MessageContent {
+                            text: progress_text,
+                            markup: None,
+                        },
+                    )
                     .await;
             }
         }
@@ -394,8 +426,15 @@ impl UpgradeManager {
             );
         }
 
-        let _ = bot
-            .edit_message_text(chat_id, progress_msg_id, "✅ 下载完成，校验通过。")
+        let _ = adapter
+            .edit_message(
+                target,
+                progress_msg_id,
+                MessageContent {
+                    text: "✅ 下载完成，校验通过。".to_string(),
+                    markup: None,
+                },
+            )
             .await;
 
         Ok(update_path)
@@ -405,12 +444,19 @@ impl UpgradeManager {
         &self,
         artifact: &ReleaseArtifact,
         update_path: &Path,
-        bot: &Bot,
-        chat_id: ChatId,
-        progress_msg_id: MessageId,
+        adapter: &dyn BotAdapter,
+        target: &TargetId,
+        progress_msg_id: &AegisMsgId,
     ) -> Result<()> {
-        let _ = bot
-            .edit_message_text(chat_id, progress_msg_id, "🔁 正在替换运行中的实例...")
+        let _ = adapter
+            .edit_message(
+                target,
+                progress_msg_id,
+                MessageContent {
+                    text: "🔁 正在替换运行中的实例...".to_string(),
+                    markup: None,
+                },
+            )
             .await;
 
         let update_path_owned = update_path.to_path_buf();
@@ -425,11 +471,15 @@ impl UpgradeManager {
 
         self.write_upgrade_flag(&artifact.tag_name).await?;
 
-        bot.send_message(
-            chat_id,
-            format!("✅ Bot 已更新到 {}，即将重启...", artifact.tag_name),
-        )
-        .await?;
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: format!("✅ Bot 已更新到 {}，即将重启...", artifact.tag_name),
+                    markup: None,
+                },
+            )
+            .await?;
 
         sleep(Duration::from_secs(2)).await;
         std::process::exit(0);

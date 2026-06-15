@@ -1,3 +1,4 @@
+use crate::adapters::common::{BotAdapter, TargetId};
 use anyhow::{Context, Result};
 use chrono_tz::Tz;
 use once_cell::sync::Lazy;
@@ -5,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use teloxide::prelude::*;
 use tokio::sync::Mutex;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
@@ -96,10 +96,16 @@ pub struct SchedulerManager {
     pub scheduler: Arc<Mutex<Option<JobScheduler>>>,
     pub state: Arc<Mutex<SchedulerState>>,
     pub state_path: String,
+    pub adapter: Arc<dyn BotAdapter>,
+    pub target: TargetId,
 }
 
 impl SchedulerManager {
-    pub async fn new(bot: Bot, chat_id: ChatId, state_path: String) -> Result<Arc<Self>> {
+    pub async fn new(
+        adapter: Arc<dyn BotAdapter>,
+        target: TargetId,
+        state_path: String,
+    ) -> Result<Arc<Self>> {
         let path = state_path.clone();
         let state = tokio::task::spawn_blocking(move || {
             let s =
@@ -120,15 +126,16 @@ impl SchedulerManager {
             scheduler,
             state,
             state_path,
+            adapter,
+            target,
         });
 
-        let _ = manager.start_all_tasks(bot, chat_id.0).await;
+        let _ = manager.start_all_tasks().await;
 
         Ok(manager)
     }
 
-    pub async fn start_all_tasks(&self, bot: Bot, chat_id_raw: i64) -> Result<()> {
-        let chat_id = ChatId(chat_id_raw);
+    pub async fn start_all_tasks(&self) -> Result<()> {
         let tasks = {
             let state = self.state.lock().await;
             state.tasks.clone()
@@ -148,7 +155,12 @@ impl SchedulerManager {
         for task in tasks.iter() {
             if task.enabled {
                 let cron_expr = normalize_cron_expression(&task.cron_expression);
-                let job = build_job(task, cron_expr.as_str(), bot.clone(), chat_id);
+                let job = build_job(
+                    self.adapter.clone(),
+                    self.target.clone(),
+                    task,
+                    cron_expr.as_str(),
+                );
 
                 match job {
                     Ok(j) => {
@@ -171,12 +183,7 @@ impl SchedulerManager {
         Ok(())
     }
 
-    pub async fn add_new_task(
-        &self,
-        bot: Bot,
-        chat_id_raw: i64,
-        task: ScheduledTask,
-    ) -> Result<String> {
+    pub async fn add_new_task(&self, task: ScheduledTask) -> Result<String> {
         let validator = SchedulerValidator::new();
         if let Err(validation_error) = validator.validate_task(&task) {
             return Ok(format!("❌ {}", validation_error));
@@ -192,7 +199,7 @@ impl SchedulerManager {
             state_guard.add_task(task.clone());
         }
 
-        if let Err(err) = self.start_all_tasks(bot, ChatId(chat_id_raw).0).await {
+        if let Err(err) = self.start_all_tasks().await {
             let mut state_guard = self.state.lock().await;
             *state_guard = previous_state;
             return Err(err);
@@ -209,7 +216,7 @@ impl SchedulerManager {
         ))
     }
 
-    pub async fn remove_task_at(&self, bot: Bot, chat_id_raw: i64, index: usize) -> Result<String> {
+    pub async fn remove_task_at(&self, index: usize) -> Result<String> {
         let previous_state = {
             let state_guard = self.state.lock().await;
             state_guard.clone()
@@ -224,7 +231,7 @@ impl SchedulerManager {
             }
         }
 
-        if let Err(err) = self.start_all_tasks(bot, chat_id_raw).await {
+        if let Err(err) = self.start_all_tasks().await {
             let mut state_guard = self.state.lock().await;
             *state_guard = previous_state;
             return Err(err);
@@ -297,11 +304,11 @@ pub async fn get_manager() -> Option<Arc<SchedulerManager>> {
     guard.as_ref().cloned()
 }
 
-pub async fn start_scheduler(bot: Bot, chat_id: ChatId) -> Result<()> {
+pub async fn start_scheduler(adapter: Arc<dyn BotAdapter>, target: TargetId) -> Result<()> {
     log::info!("⏰ 开始初始化调度器...");
     let state_path = "/etc/wwps/aegis/scheduler_state.json".to_string();
 
-    let manager = SchedulerManager::new(bot, chat_id, state_path).await?;
+    let manager = SchedulerManager::new(adapter, target, state_path).await?;
     let mut manager_guard = SCHEDULER.lock().await;
     *manager_guard = Some(manager);
 
@@ -317,20 +324,27 @@ fn normalize_cron_expression(cron_expr: &str) -> String {
     }
 }
 
-fn build_job(task: &ScheduledTask, cron_expr: &str, bot: Bot, chat_id: ChatId) -> Result<Job> {
+fn build_job(
+    adapter: Arc<dyn BotAdapter>,
+    target: TargetId,
+    task: &ScheduledTask,
+    cron_expr: &str,
+) -> Result<Job> {
     let timezone_name = canonical_timezone_name(&task.timezone);
 
     match timezone_name.parse::<Tz>() {
         Ok(timezone) => {
-            let bot_clone = bot.clone();
+            let adapter_clone = adapter.clone();
+            let target_clone = target.clone();
             let task_type = task.task_type.clone();
             Job::new_async_tz(cron_expr, timezone, move |_uuid, _l| {
-                let bot = bot_clone.clone();
+                let adapter = adapter_clone.clone();
+                let target = target_clone.clone();
                 let task_type = task_type.clone();
 
                 Box::pin(async move {
                     log::info!("执行定时任务: {:?}", task_type);
-                    if let Err(e) = task_type.execute(&bot, chat_id).await {
+                    if let Err(e) = task_type.execute(&*adapter, &target).await {
                         log::error!("任务执行失败: {}", e);
                     }
                 })
@@ -338,15 +352,17 @@ fn build_job(task: &ScheduledTask, cron_expr: &str, bot: Bot, chat_id: ChatId) -
             .map_err(Into::into)
         }
         Err(_) => {
-            let bot_clone = bot.clone();
+            let adapter_clone = adapter.clone();
+            let target_clone = target.clone();
             let task_type = task.task_type.clone();
             Job::new_async(cron_expr, move |_uuid, _l| {
-                let bot = bot_clone.clone();
+                let adapter = adapter_clone.clone();
+                let target = target_clone.clone();
                 let task_type = task_type.clone();
 
                 Box::pin(async move {
                     log::info!("执行定时任务: {:?}", task_type);
-                    if let Err(e) = task_type.execute(&bot, chat_id).await {
+                    if let Err(e) = task_type.execute(&*adapter, &target).await {
                         log::error!("任务执行失败: {}", e);
                     }
                 })
@@ -400,16 +416,49 @@ mod tests {
     async fn add_new_task_rejects_invalid_task_without_persisting_state() {
         let tempdir = tempdir().unwrap();
         let state_path = tempdir.path().join("scheduler_state.json");
+        use crate::adapters::common::{MessageContent, Platform};
+        use async_trait::async_trait;
+
+        struct TestAdapter;
+        #[async_trait]
+        impl BotAdapter for TestAdapter {
+            fn platform(&self) -> Platform {
+                Platform::Telegram
+            }
+            async fn send_message(
+                &self,
+                _target: &TargetId,
+                _content: MessageContent,
+            ) -> Result<crate::adapters::common::MessageId> {
+                Ok(crate::adapters::common::MessageId("0".to_string()))
+            }
+            async fn edit_message(
+                &self,
+                _target: &TargetId,
+                _msg_id: &crate::adapters::common::MessageId,
+                _content: MessageContent,
+            ) -> Result<()> {
+                Ok(())
+            }
+            async fn delete_message(
+                &self,
+                _target: &TargetId,
+                _msg_id: &crate::adapters::common::MessageId,
+            ) -> Result<()> {
+                Ok(())
+            }
+        }
+
         let manager = SchedulerManager {
             scheduler: Arc::new(Mutex::new(None)),
             state: Arc::new(Mutex::new(SchedulerState { tasks: Vec::new() })),
             state_path: state_path.to_string_lossy().to_string(),
+            adapter: Arc::new(TestAdapter),
+            target: TargetId("0".to_string()),
         };
 
         let result = manager
             .add_new_task(
-                Bot::new("123456:validation_token"),
-                0,
                 ScheduledTask::new_with_timezone(TaskType::GeoUpdate, "* *", "UTC"),
             )
             .await

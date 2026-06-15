@@ -1,5 +1,6 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::utils;
+use aegis::adapters::common::{BotAdapter, TargetId};
 use aegis::core::system::SystemMonitor;
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::types::IpVersion;
@@ -9,6 +10,7 @@ use aegis::core::xray::{ConfigManager, Proto};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use teloxide::prelude::*;
 use teloxide::types::{
@@ -125,9 +127,16 @@ async fn show_reality_qty_prompt(
     Ok(())
 }
 
-fn trigger_reality_auto_init(bot: Bot, chat_id: ChatId, msg_id: MessageId) {
+fn trigger_reality_auto_init(
+    adapter: Arc<dyn BotAdapter>,
+    bot: Bot,
+    chat_id: ChatId,
+    msg_id: MessageId,
+) {
+    let target = TargetId(chat_id.0.to_string());
     tokio::spawn(async move {
-        match RealityInstaller::run(bot.clone(), chat_id, msg_id).await {
+        let aegis_msg_id = aegis::adapters::common::MessageId(msg_id.0.to_string());
+        match RealityInstaller::run(adapter.as_ref(), &target, Some(&aegis_msg_id)).await {
             Ok(RealityInstallOutcome::AlreadyReady) => {
                 let _ = show_reality_batch_prompt(&bot, chat_id, msg_id, Proto::Vision).await;
             }
@@ -699,7 +708,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )
                 .parse_mode(ParseMode::Html)
                 .await?;
-                trigger_reality_auto_init(ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
+                trigger_reality_auto_init(ctx.state.adapter.clone(), ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
             }
             Ok(HandlerAction::Done)
         }
@@ -719,7 +728,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )
                 .parse_mode(ParseMode::Html)
                 .await?;
-                trigger_reality_auto_init(ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
+                trigger_reality_auto_init(ctx.state.adapter.clone(), ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
             }
             Ok(HandlerAction::Done)
         }
@@ -739,7 +748,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )
                 .parse_mode(ParseMode::Html)
                 .await?;
-                trigger_reality_auto_init(ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
+                trigger_reality_auto_init(ctx.state.adapter.clone(), ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
             }
             Ok(HandlerAction::Done)
         }
@@ -786,7 +795,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     .answer_callback_query(ctx.q.id.clone())
                     .text("⚙️ 基础配置缺失，正在自动初始化...")
                     .await?;
-                trigger_reality_auto_init(ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
+                trigger_reality_auto_init(ctx.state.adapter.clone(), ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
                 return Ok(HandlerAction::Done);
             }
 
@@ -909,7 +918,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             )
                             .parse_mode(ParseMode::Html)
                             .await?;
-                        trigger_reality_auto_init(ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
+                        trigger_reality_auto_init(ctx.state.adapter.clone(), ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
                     } else {
                         ctx.bot
                             .send_message(ctx.chat_id, format!("❌ 生成失败: {}", err_msg))

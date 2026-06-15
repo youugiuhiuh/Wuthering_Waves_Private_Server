@@ -17,7 +17,7 @@ use crate::bootstrap::{
     harden_process, run_setup, run_setup_from_stdin, verify_integrity,
 };
 use crate::utils::format_duration_human;
-use aegis::adapters::common::{BotAdapter, TargetId};
+use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
 use aegis::adapters::telegram::TelegramAdapter;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::SecurityManager;
@@ -354,17 +354,20 @@ async fn main() -> Result<()> {
 
     // 先启动 Dispatcher，再在后台初始化调度器与通知，避免 /start 等命令因启动阻塞而无响应
     println!("🚀 Bot is starting...");
-    let bot_for_init = bot.clone();
+    let adapter_for_init = state.adapter.clone();
+    let target_for_init = TargetId(admin_id.to_string());
     tokio::spawn(async move {
-        if let Err(e) =
-            aegis::core::system::scheduler::start_scheduler(bot_for_init.clone(), ChatId(admin_id))
-                .await
+        if let Err(e) = aegis::core::system::scheduler::start_scheduler(
+            adapter_for_init.clone(),
+            target_for_init.clone(),
+        )
+        .await
         {
             log::error!("❌ 初始化调度器失败: {}", e);
         }
-        let _ = notify_upgrade_success(&bot_for_init, admin_id).await;
-        let _ = notify_bbr3_reboot_result(&bot_for_init, admin_id).await;
-        let _ = notify_online(&bot_for_init, admin_id).await;
+        let _ = notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
+        let _ = notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init).await;
+        let _ = notify_online(&*adapter_for_init, &target_for_init).await;
     });
 
     Dispatcher::builder(bot, handler)
@@ -377,7 +380,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn notify_online(bot: &Bot, admin_id: i64) -> Result<()> {
+async fn notify_online(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
     let ip = match SystemMonitor::get_public_ip().await {
         Ok(ip) => ip,
         Err(err) => {
@@ -400,18 +403,17 @@ async fn notify_online(bot: &Bot, admin_id: i64) -> Result<()> {
     let sys_info = "Linux";
 
     let msg = format!(
-        "🤖 **Bot 已上线**\n\n🌍 IP: `{}`\n💻 系统: {}",
+        "🤖 <b>Bot 已上线</b>\n\n🌍 IP: <code>{}</code>\n💻 系统: {}",
         masked_ip, sys_info
     );
 
-    let _ = bot
-        .send_message(ChatId(admin_id), msg)
-        .parse_mode(ParseMode::MarkdownV2)
+    let _ = adapter
+        .send_message(target, MessageContent { text: msg, markup: None })
         .await;
     Ok(())
 }
 
-async fn notify_upgrade_success(bot: &Bot, admin_id: i64) -> Result<()> {
+async fn notify_upgrade_success(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
     let flag_path = Path::new(UPGRADE_FLAG_FILE);
     if !flag_path.exists() {
         return Ok(());
@@ -429,11 +431,13 @@ async fn notify_upgrade_success(bot: &Bot, admin_id: i64) -> Result<()> {
         format!("✅ Bot 已成功更新至 {}。", version)
     };
 
-    bot.send_message(ChatId(admin_id), message).await?;
+    adapter
+        .send_message(target, MessageContent { text: message, markup: None })
+        .await?;
     Ok(())
 }
 
-async fn notify_bbr3_reboot_result(bot: &Bot, admin_id: i64) -> Result<()> {
+async fn notify_bbr3_reboot_result(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
     let flag_path = Path::new(BBR3_PENDING_FLAG_FILE);
     if !flag_path.exists() {
         return Ok(());
@@ -457,8 +461,8 @@ async fn notify_bbr3_reboot_result(bot: &Bot, admin_id: i64) -> Result<()> {
         info.uname_r, info.tcp_congestion_control, info.proc_version, kernel_hint, proc_hint
     );
 
-    bot.send_message(ChatId(admin_id), message)
-        .parse_mode(ParseMode::Html)
+    adapter
+        .send_message(target, MessageContent { text: message, markup: None })
         .await?;
     Ok(())
 }

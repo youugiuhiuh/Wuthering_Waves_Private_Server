@@ -554,9 +554,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     &cron_expression,
                     &timezone,
                 );
-                let result = manager
-                    .add_new_task(ctx.bot.clone(), ctx.state.admin_id(), task)
-                    .await;
+                let result = manager.add_new_task(task).await;
                 match result {
                     Ok(_) => {
                         ctx.bot
@@ -679,7 +677,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                 let task = aegis::core::system::scheduler::ScheduledTask::new(task_type, cron);
                 let _ = manager
-                    .add_new_task(ctx.bot.clone(), ctx.state.admin_id(), task)
+                    .add_new_task(task)
                     .await;
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
@@ -760,9 +758,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .parse()
                 .unwrap_or(0);
             if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
-                let _ = manager
-                    .remove_task_at(ctx.bot.clone(), ctx.state.admin_id(), idx)
-                    .await;
+                let _ = manager.remove_task_at(idx).await;
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
                     .text("✅ 任务删除成功")
@@ -839,9 +835,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 }
                 let _ = state_lock.save_to_file(&manager.state_path);
                 drop(state_lock);
-                let _ = manager
-                    .start_all_tasks(ctx.bot.clone(), ctx.state.admin_id())
-                    .await;
+                let _ = manager.start_all_tasks().await;
 
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())

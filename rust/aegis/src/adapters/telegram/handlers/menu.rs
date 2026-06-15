@@ -1,6 +1,7 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::bootstrap::{BOT_VERSION, BotSettings, DEFAULT_SESSION_TIMEOUT_SECS};
 use crate::utils::format_duration_human;
+use aegis::adapters::common::TargetId;
 use aegis::core::paths::{singbox, xray};
 use aegis::core::singbox::SingBoxInstaller;
 use aegis::core::system::SystemMonitor;
@@ -349,12 +350,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .answer_callback_query(ctx.q.id.clone())
                 .text("🛰️ 正在启动 wwps-core 升级 (最新版本)...")
                 .await?;
+            let adapter = ctx.state.adapter.clone();
+            let target = TargetId(ctx.chat_id.0.to_string());
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
             tokio::spawn(async move {
                 if let Err(err) =
-                    WwpsCoreUpgradeManager::run_upgrade(None, bot_clone.clone(), chat_id_clone)
-                        .await
+                    WwpsCoreUpgradeManager::run_upgrade(None, adapter.as_ref(), &target).await
                 {
                     let _ = bot_clone
                         .send_message(chat_id_clone, format!("❌ wwps-core 升级失败: {}", err))
@@ -447,12 +449,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .text(format!("🛰️ 正在升级到版本 {}...", tag))
                 .await?;
 
+            let adapter = ctx.state.adapter.clone();
+            let target = TargetId(ctx.chat_id.0.to_string());
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
             tokio::spawn(async move {
                 if let Err(err) =
-                    WwpsCoreUpgradeManager::run_upgrade(Some(tag), bot_clone.clone(), chat_id_clone)
-                        .await
+                    WwpsCoreUpgradeManager::run_upgrade(Some(tag), adapter.as_ref(), &target).await
                 {
                     let _ = bot_clone
                         .send_message(chat_id_clone, format!("❌ wwps-core 升级失败: {}", err))

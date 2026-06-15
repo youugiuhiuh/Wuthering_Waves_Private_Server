@@ -1,3 +1,4 @@
+use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::paths::{warp as warp_paths, xray};
 use crate::core::system::core_upgrade::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
 use crate::core::system::maintenance::MaintenanceManager;
@@ -5,8 +6,6 @@ use anyhow::{Context, Result, anyhow};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use teloxide::prelude::*;
-use teloxide::types::{ChatId, MessageId, ParseMode};
 use tokio::fs;
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -105,17 +104,15 @@ pub enum RealityInstallOutcome {
 
 #[allow(dead_code)]
 pub struct RealityInstaller {
-    bot: Bot,
-    chat_id: ChatId,
-    msg_id: MessageId,
+    msg_id: Option<AegisMsgId>,
     progress_state: Arc<Mutex<ProgressState>>,
 }
 
 impl RealityInstaller {
     pub async fn run(
-        bot: Bot,
-        chat_id: ChatId,
-        msg_id: MessageId,
+        adapter: &dyn BotAdapter,
+        target: &TargetId,
+        msg_id: Option<&AegisMsgId>,
     ) -> Result<RealityInstallOutcome> {
         if MaintenanceManager::is_reality_base_ready().await {
             return Ok(RealityInstallOutcome::AlreadyReady);
@@ -129,9 +126,9 @@ impl RealityInstaller {
         }
 
         let installer = RealityInstallerInternal {
-            bot: bot.clone(),
-            chat_id,
-            msg_id,
+            adapter,
+            target,
+            msg_id: msg_id.cloned(),
             progress_state: progress_state.clone(),
         };
 
@@ -158,14 +155,14 @@ impl RealityInstaller {
     }
 }
 
-pub struct RealityInstallerInternal {
-    bot: Bot,
-    chat_id: ChatId,
-    msg_id: MessageId,
+pub struct RealityInstallerInternal<'a> {
+    adapter: &'a dyn BotAdapter,
+    target: &'a TargetId,
+    msg_id: Option<AegisMsgId>,
     progress_state: Arc<Mutex<ProgressState>>,
 }
 
-impl RealityInstallerInternal {
+impl<'a> RealityInstallerInternal<'a> {
     /// This is a legacy static entry point. For progress updates, use the `run` method.
     pub async fn install_minimal_environment() -> Result<()> {
         let probe = SystemProbe::detect().await.context("系统检测失败")?;
@@ -315,11 +312,12 @@ impl RealityInstallerInternal {
             state.description = desc.to_string();
         }
         let text = build_progress_text(step.min(TOTAL_STEPS), TOTAL_STEPS, desc, false);
-        let _ = self
-            .bot
-            .edit_message_text(self.chat_id, self.msg_id, text)
-            .parse_mode(ParseMode::Html)
-            .await;
+        if let Some(msg_id) = &self.msg_id {
+            let _ = self
+                .adapter
+                .edit_message(self.target, msg_id, MessageContent { text, markup: None })
+                .await;
+        }
         Ok(())
     }
 
@@ -390,11 +388,12 @@ impl RealityInstallerInternal {
             "❌ <b>Reality 初始化失败</b>\n\n原因: {}\n\n请检查系统环境或尝试 install.sh 回退流程。",
             err
         );
-        let _ = self
-            .bot
-            .edit_message_text(self.chat_id, self.msg_id, text)
-            .parse_mode(ParseMode::Html)
-            .await;
+        if let Some(msg_id) = &self.msg_id {
+            let _ = self
+                .adapter
+                .edit_message(self.target, msg_id, MessageContent { text, markup: None })
+                .await;
+        }
     }
 }
 
