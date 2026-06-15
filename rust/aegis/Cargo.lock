@@ -19,6 +19,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "aegis"
+version = "2.7.9"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "chrono-tz",
+ "dashmap",
+ "env_logger",
+ "futures-util",
+ "goldberg",
+ "hex",
+ "libc",
+ "log",
+ "mockall",
+ "obfstr",
+ "once_cell",
+ "percent-encoding",
+ "prost",
+ "prost-build",
+ "rand 0.8.6",
+ "regex",
+ "reqwest",
+ "rmp-serde",
+ "rust-embed",
+ "rustls",
+ "secrecy",
+ "self-replace",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sysinfo",
+ "teloxide",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-cron-scheduler",
+ "tokio-rustls",
+ "totp-rs",
+ "x25519-dalek",
+ "x509-parser",
+ "zbus",
+ "zeroize",
+ "zip",
+]
+
+[[package]]
 name = "aes"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3110,54 +3159,6 @@ name = "termtree"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
-
-[[package]]
-name = "tgbot"
-version = "2.7.9"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "base64 0.22.1",
- "chrono",
- "chrono-tz",
- "dashmap",
- "env_logger",
- "futures-util",
- "goldberg",
- "hex",
- "libc",
- "log",
- "mockall",
- "obfstr",
- "once_cell",
- "percent-encoding",
- "prost",
- "prost-build",
- "rand 0.8.6",
- "regex",
- "reqwest",
- "rmp-serde",
- "rust-embed",
- "rustls",
- "secrecy",
- "self-replace",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "sysinfo",
- "teloxide",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-cron-scheduler",
- "tokio-rustls",
- "totp-rs",
- "x25519-dalek",
- "x509-parser",
- "zbus",
- "zeroize",
- "zip",
-]
 
 [[package]]
 name = "thiserror"
