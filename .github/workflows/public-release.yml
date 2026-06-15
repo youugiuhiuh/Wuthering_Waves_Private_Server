@@ -83,8 +83,8 @@ jobs:
                   RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" \
                   cargo build --release
 
-                  ls -lh target/release/tgbot
-                  upx --best --lzma target/release/tgbot
+                  ls -lh target/release/aegis
+                  upx --best --lzma target/release/aegis
 
             - name: Setup Go
               uses: actions/setup-go@v6
@@ -103,7 +103,7 @@ jobs:
             - name: Prepare Distribution Artifacts
               run: |
                   mkdir -p dist
-                  cp rust/aegis/target/release/tgbot dist/
+                  cp rust/aegis/target/release/aegis dist/
                   cp go/installer/installer dist/
 
             - name: Cleanup Old Releases (Keep Last 3)
@@ -129,7 +129,7 @@ jobs:
                   tag_name: v${{ env.NEW_VERSION }}
                   name: v${{ env.NEW_VERSION }}
                   files: |
-                      dist/tgbot
+                      dist/aegis
                       dist/installer
                   body: |
                       Release `v${{ env.NEW_VERSION }}`.

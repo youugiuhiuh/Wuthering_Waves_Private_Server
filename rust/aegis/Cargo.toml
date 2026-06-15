@@ -1,6 +1,6 @@
 [package]
 name = "aegis"
-version = "2.8.0"
+version = "2.8.1"
 edition = "2024"
 
 [dependencies]
@@ -60,6 +60,8 @@ serenity = { version = "0.12.5", default-features = false, features = [
 ] }
 matrix-sdk = { version = "0.13", default-features = false, features = [
     "rustls-tls",
+    "sqlite",
+    "e2e-encryption",
 ] }
 
 [dev-dependencies]
