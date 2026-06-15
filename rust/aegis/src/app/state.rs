@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use teloxide::types::ChatId;
 use tokio::sync::Mutex;
 
+use aegis::adapters::common::BotAdapter;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::system::scheduler::task_types::TaskType;
 use aegis::core::totp::TotpManager;
@@ -69,6 +70,8 @@ pub struct ScheduleInputState {
 }
 
 pub struct AppState {
+    #[allow(dead_code)]
+    pub adapter: Arc<dyn BotAdapter>,
     admin_id: i64,
     totp_manager: TotpManager,
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
@@ -88,8 +91,10 @@ impl AppState {
         self_destruct_executor: Arc<dyn SelfDestructExecutor>,
         self_destruct_key_hash: Option<String>,
         session_timeout_secs: u64,
+        adapter: Arc<dyn BotAdapter>,
     ) -> Self {
         Self {
+            adapter,
             admin_id,
             totp_manager,
             self_destruct_executor,
@@ -425,7 +430,9 @@ fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aegis::adapters::common::{MessageContent, MessageId, Platform, TargetId};
     use anyhow::Result;
+    use async_trait::async_trait;
     use futures_util::future::BoxFuture;
 
     struct NoopExecutor;
@@ -433,6 +440,33 @@ mod tests {
     impl SelfDestructExecutor for NoopExecutor {
         fn execute(&self) -> BoxFuture<'static, Result<()>> {
             Box::pin(async { Ok(()) })
+        }
+    }
+
+    struct MockAdapter;
+
+    #[async_trait]
+    impl BotAdapter for MockAdapter {
+        fn platform(&self) -> Platform {
+            Platform::Telegram
+        }
+        async fn send_message(
+            &self,
+            _target: &TargetId,
+            _content: MessageContent,
+        ) -> Result<MessageId> {
+            Ok(MessageId("0".to_string()))
+        }
+        async fn edit_message(
+            &self,
+            _target: &TargetId,
+            _msg_id: &MessageId,
+            _content: MessageContent,
+        ) -> Result<()> {
+            Ok(())
+        }
+        async fn delete_message(&self, _target: &TargetId, _msg_id: &MessageId) -> Result<()> {
+            Ok(())
         }
     }
 
@@ -446,6 +480,7 @@ mod tests {
             Arc::new(NoopExecutor),
             None,
             600,
+            Arc::new(MockAdapter),
         )
     }
 

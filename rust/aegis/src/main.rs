@@ -17,6 +17,8 @@ use crate::bootstrap::{
     harden_process, run_setup, run_setup_from_stdin, verify_integrity,
 };
 use crate::utils::format_duration_human;
+use aegis::adapters::common::{BotAdapter, TargetId};
+use aegis::adapters::telegram::TelegramAdapter;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::SecurityManager;
 use aegis::core::security::self_destruct::production_executor;
@@ -323,18 +325,24 @@ async fn main() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("初始化 TOTP 验证器失败: {}", e))?;
 
     let bot_settings = BotSettings::load();
+
+    let bot = Bot::new(&token);
+    if let Err(err) = register_bot_commands(&bot).await {
+        eprintln!("[WARN] 命令注册失败: {}", err);
+    }
+
+    let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
+    let _admin_target = TargetId(admin_id.to_string());
+
     let state = Arc::new(AppState::new(
         admin_id,
         totp_manager_instance,
         production_executor(),
         encrypted_config.self_destruct_key_hash.clone(),
         bot_settings.session_timeout_secs,
+        adapter,
     ));
 
-    let bot = Bot::new(&token);
-    if let Err(err) = register_bot_commands(&bot).await {
-        eprintln!("[WARN] 命令注册失败: {}", err);
-    }
     let handler = dptree::entry()
         .branch(
             Update::filter_message()
