@@ -1,10 +1,10 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use super::schedule::{build_custom_schedule_keyboard, build_custom_schedule_text};
 use crate::app::state::{ScheduleFrequency, ScheduleInputState};
+use aegis::adapters::common::TargetId;
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::operations::{Operations, REBOOT_FLAG};
 use aegis::core::system::scheduler::TaskType;
-use aegis::adapters::common::TargetId;
 use aegis::core::system::upgrade::UpgradeManager;
 use std::time::{Duration, Instant};
 use teloxide::prelude::*;
@@ -233,10 +233,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             });
         }
         "a_sys_maint" => {
-            ctx.state.remove_schedule_input(ctx.chat_id).await;
+            let chat_id_str = ctx.chat_id.0.to_string();
+            ctx.state.remove_schedule_input(&chat_id_str).await;
             ctx.state
                 .insert_schedule_input(
-                    ctx.chat_id,
+                    chat_id_str,
                     ScheduleInputState {
                         updated_at: Instant::now(),
                         task_type: TaskType::SecurityUpdate,
@@ -250,7 +251,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )
                 .await;
 
-            let Some(input_state) = ctx.state.schedule_input_snapshot(ctx.chat_id).await else {
+            let Some(input_state) = ctx.state.schedule_input_snapshot(&ctx.chat_id.0.to_string()).await else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
                     .text("⚠️ 初始化配置状态失败，请重试。")

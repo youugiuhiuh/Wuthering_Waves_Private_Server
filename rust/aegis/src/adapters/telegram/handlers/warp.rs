@@ -152,7 +152,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "a_warp_add_input" => {
             ctx.state
-                .start_warp_input(ctx.chat_id, Instant::now())
+                .start_warp_input(ctx.chat_id.0.to_string(), Instant::now())
                 .await;
             ctx.bot.send_message(
                 ctx.chat_id,

@@ -30,6 +30,16 @@ pub struct EncryptedConfig {
     pub totp_secret: Vec<u8>,
     #[serde(default)]
     pub self_destruct_key_hash: Option<String>,
+    #[serde(default)]
+    pub matrix_homeserver: Option<Vec<u8>>,
+    #[serde(default)]
+    pub matrix_username: Option<Vec<u8>>,
+    #[serde(default)]
+    pub matrix_password: Option<Vec<u8>>,
+    #[serde(default)]
+    pub matrix_admin_user: Option<Vec<u8>>,
+    #[serde(default)]
+    pub matrix_room_id: Option<Vec<u8>>,
 }
 
 #[derive(serde::Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -37,6 +47,16 @@ struct SetupInput {
     token: String,
     admin_id: String,
     totp_secret: String,
+    #[serde(default)]
+    matrix_homeserver: Option<String>,
+    #[serde(default)]
+    matrix_username: Option<String>,
+    #[serde(default)]
+    matrix_password: Option<String>,
+    #[serde(default)]
+    matrix_admin_user: Option<String>,
+    #[serde(default)]
+    matrix_room_id: Option<String>,
 }
 
 impl Drop for EncryptedConfig {
@@ -44,6 +64,11 @@ impl Drop for EncryptedConfig {
         self.token.zeroize();
         self.admin_id.zeroize();
         self.totp_secret.zeroize();
+        if let Some(v) = &mut self.matrix_homeserver { v.zeroize(); }
+        if let Some(v) = &mut self.matrix_username { v.zeroize(); }
+        if let Some(v) = &mut self.matrix_password { v.zeroize(); }
+        if let Some(v) = &mut self.matrix_admin_user { v.zeroize(); }
+        if let Some(v) = &mut self.matrix_room_id { v.zeroize(); }
     }
 }
 
@@ -125,18 +150,28 @@ fn sync_reality_pq_pub_on_setup() {
     }
 }
 
-pub async fn run_setup(token: &str, admin_id: &str, totp_secret: &str) -> Result<()> {
+pub async fn run_setup(
+    token: &str,
+    admin_id: &str,
+    totp_secret: &str,
+) -> Result<()> {
     let token = token.trim();
     let admin_id = admin_id.trim();
     let totp_secret = totp_secret.trim();
     let config_dir = config_dir();
     fs::create_dir_all(&config_dir)?;
     let security = SecurityManager::new(&config_dir.join(KEY_FILE))?;
+
     let encrypted_config = EncryptedConfig {
         token: security.encrypt(token.as_bytes())?,
         admin_id: security.encrypt(admin_id.as_bytes())?,
         totp_secret: security.encrypt(totp_secret.as_bytes())?,
         self_destruct_key_hash: None,
+        matrix_homeserver: None,
+        matrix_username: None,
+        matrix_password: None,
+        matrix_admin_user: None,
+        matrix_room_id: None,
     };
     fs::write(
         config_dir.join(CONFIG_FILE),

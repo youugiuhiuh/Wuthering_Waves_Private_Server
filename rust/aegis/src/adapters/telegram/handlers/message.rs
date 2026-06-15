@@ -2,6 +2,7 @@ use crate::MAX_INPUT_LENGTH;
 use crate::app::destruct_flow;
 use crate::app::destruct_flow::MessageFlowOutcome;
 use crate::app::state::{AppState, TimeoutStatus};
+use aegis::adapters::common::TargetId;
 use aegis::core::xray::config::ConfigManager;
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,12 +33,13 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
         return Ok(());
     }
 
+    let chat_id_str = chat_id.0.to_string();
     match state
-        .schedule_timeout_status(chat_id, Duration::from_secs(180))
+        .schedule_timeout_status(&chat_id_str, Duration::from_secs(180))
         .await
     {
         TimeoutStatus::Expired => {
-            state.remove_schedule_input(chat_id).await;
+            state.remove_schedule_input(&chat_id_str).await;
             bot.send_message(chat_id, "⏳ 定时任务选择超时 (180s)，已自动取消。")
                 .await?;
             return Ok(());
@@ -56,7 +58,7 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
     }
 
     match state
-        .take_warp_input_status(chat_id, Duration::from_secs(60))
+        .take_warp_input_status(&chat_id_str, Duration::from_secs(60))
         .await
     {
         TimeoutStatus::Expired => {
@@ -103,7 +105,8 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
     if let Some(text) = msg.text() {
         let code = text.trim();
         if crate::looks_like_totp_code(code) && !state.is_authorized(user_id).await {
-            let _ = crate::process_auth_code(&bot, chat_id, user_id, code, &state).await?;
+            let target = TargetId(chat_id.0.to_string());
+            let _ = crate::process_auth_code(&state, &target, user_id, code).await;
             return Ok(());
         }
     }

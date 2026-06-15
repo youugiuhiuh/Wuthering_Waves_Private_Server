@@ -546,12 +546,7 @@ SHA256: {}",
             .await;
 
         let archive_path = manager
-            .download_release(
-                &release,
-                Some(adapter),
-                Some(target),
-                Some(&status_msg_id),
-            )
+            .download_release(&release, Some(adapter), Some(target), Some(&status_msg_id))
             .await?;
 
         let _ = adapter

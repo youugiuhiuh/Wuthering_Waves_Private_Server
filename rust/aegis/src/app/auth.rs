@@ -1,50 +1,67 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use teloxide::prelude::*;
+use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
+use anyhow::Result;
 
 use crate::app::state::{AppState, AuthFailureOutcome};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn process_auth_code(
-    bot: &Bot,
-    chat_id: ChatId,
+    adapter: &dyn BotAdapter,
+    target: &TargetId,
     user_id: i64,
     code: &str,
     state: &Arc<AppState>,
     max_attempts: u32,
     failure_window: Duration,
     lockout_durations: &[Duration],
-) -> ResponseResult<bool> {
+) -> Result<bool> {
     if !state.is_admin_user(user_id) {
-        bot.send_message(chat_id, "❌ 无权操作").await?;
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: "❌ 无权操作".to_string(),
+                    markup: None,
+                },
+            )
+            .await?;
         return Ok(false);
     }
 
     let now = Instant::now();
     if let Some(remaining) = state.auth_cooldown_remaining(user_id, now).await {
-        bot.send_message(
-            chat_id,
-            format!(
-                "⚠️ 尝试过于频繁，请稍后再试。冷却剩余约 {} 分 {} 秒。",
-                remaining.as_secs() / 60,
-                remaining.as_secs() % 60
-            ),
-        )
-        .await?;
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: format!(
+                        "⚠️ 尝试过于频繁，请稍后再试。冷却剩余约 {} 分 {} 秒。",
+                        remaining.as_secs() / 60,
+                        remaining.as_secs() % 60
+                    ),
+                    markup: None,
+                },
+            )
+            .await?;
         return Ok(false);
     }
 
     if state.verify_totp(code) {
         let timeout = state.record_auth_success(user_id, now).await;
-        bot.send_message(
-            chat_id,
-            format!(
-                "✅ 认证成功！会话有效期 {}。请使用 /menu 开始管理。",
-                crate::format_duration_human(timeout)
-            ),
-        )
-        .await?;
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: format!(
+                        "✅ 认证成功！会话有效期 {}。",
+                        crate::utils::format_duration_human(timeout)
+                    ),
+                    markup: None,
+                },
+            )
+            .await?;
         return Ok(true);
     }
 
@@ -64,47 +81,37 @@ pub async fn process_auth_code(
             } else {
                 format!("{} 分钟", duration.as_secs() / 60)
             };
-            bot.send_message(
-                chat_id,
-                format!(
-                    "❌ 验证失败次数过多，已进入冷却。\n⏱️ 锁定时间: {}\n⚠️ 请稍后再试。",
-                    duration_str
-                ),
-            )
-            .await?;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: format!(
+                            "❌ 验证失败次数过多，已进入冷却。\n⏱️ 锁定时间: {}\n⚠️ 请稍后再试。",
+                            duration_str
+                        ),
+                        markup: None,
+                    },
+                )
+                .await?;
         }
         AuthFailureOutcome::Invalid {
             attempts,
             max_attempts,
         } => {
-            bot.send_message(
-                chat_id,
-                format!(
-                    "❌ TOTP 验证码无效，请检查后重试。（已失败 {} 次 / {} 次）",
-                    attempts, max_attempts
-                ),
-            )
-            .await?;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: format!(
+                            "❌ TOTP 验证码无效，请检查后重试。（已失败 {} 次 / {} 次）",
+                            attempts, max_attempts
+                        ),
+                        markup: None,
+                    },
+                )
+                .await?;
         }
     }
 
     Ok(false)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_process_auth_code_function_exists() {
-        let _ = process_auth_code;
-    }
-
-    #[test]
-    fn test_auth_code_response_result_type() {
-        fn check_response_result<T: Default>() -> bool {
-            std::mem::size_of::<ResponseResult<T>>() > 0
-        }
-        assert!(check_response_result::<bool>());
-    }
 }

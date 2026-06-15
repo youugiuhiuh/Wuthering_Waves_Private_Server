@@ -40,13 +40,14 @@ pub fn handle_callback(
                 || data.starts_with("s_custom_set:")
                 || data == "s_custom_confirm"
                 || data == "s_custom_cancel";
+            let chat_id_str = chat_id.0.to_string();
             if is_custom_followup
                 && state
-                    .schedule_timeout_status(chat_id, Duration::from_secs(180))
+                    .schedule_timeout_status(&chat_id_str, Duration::from_secs(180))
                     .await
                     == TimeoutStatus::Expired
             {
-                state.remove_schedule_input(chat_id).await;
+                state.remove_schedule_input(&chat_id_str).await;
                 let new_q = q.clone();
                 q = CallbackQuery {
                     data: Some("s_add_custom_menu".to_string()),

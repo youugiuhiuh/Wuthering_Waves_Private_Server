@@ -708,7 +708,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )
                 .parse_mode(ParseMode::Html)
                 .await?;
-                trigger_reality_auto_init(ctx.state.adapter.clone(), ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
+                trigger_reality_auto_init(
+                    ctx.state.adapter.clone(),
+                    ctx.bot.clone(),
+                    ctx.chat_id,
+                    ctx.msg_id,
+                );
             }
             Ok(HandlerAction::Done)
         }
@@ -728,7 +733,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )
                 .parse_mode(ParseMode::Html)
                 .await?;
-                trigger_reality_auto_init(ctx.state.adapter.clone(), ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
+                trigger_reality_auto_init(
+                    ctx.state.adapter.clone(),
+                    ctx.bot.clone(),
+                    ctx.chat_id,
+                    ctx.msg_id,
+                );
             }
             Ok(HandlerAction::Done)
         }
@@ -748,7 +758,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )
                 .parse_mode(ParseMode::Html)
                 .await?;
-                trigger_reality_auto_init(ctx.state.adapter.clone(), ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
+                trigger_reality_auto_init(
+                    ctx.state.adapter.clone(),
+                    ctx.bot.clone(),
+                    ctx.chat_id,
+                    ctx.msg_id,
+                );
             }
             Ok(HandlerAction::Done)
         }
@@ -795,7 +810,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     .answer_callback_query(ctx.q.id.clone())
                     .text("⚙️ 基础配置缺失，正在自动初始化...")
                     .await?;
-                trigger_reality_auto_init(ctx.state.adapter.clone(), ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
+                trigger_reality_auto_init(
+                    ctx.state.adapter.clone(),
+                    ctx.bot.clone(),
+                    ctx.chat_id,
+                    ctx.msg_id,
+                );
                 return Ok(HandlerAction::Done);
             }
 
@@ -918,7 +938,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             )
                             .parse_mode(ParseMode::Html)
                             .await?;
-                        trigger_reality_auto_init(ctx.state.adapter.clone(), ctx.bot.clone(), ctx.chat_id, ctx.msg_id);
+                        trigger_reality_auto_init(
+                            ctx.state.adapter.clone(),
+                            ctx.bot.clone(),
+                            ctx.chat_id,
+                            ctx.msg_id,
+                        );
                     } else {
                         ctx.bot
                             .send_message(ctx.chat_id, format!("❌ 生成失败: {}", err_msg))

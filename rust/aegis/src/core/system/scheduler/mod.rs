@@ -458,9 +458,11 @@ mod tests {
         };
 
         let result = manager
-            .add_new_task(
-                ScheduledTask::new_with_timezone(TaskType::GeoUpdate, "* *", "UTC"),
-            )
+            .add_new_task(ScheduledTask::new_with_timezone(
+                TaskType::GeoUpdate,
+                "* *",
+                "UTC",
+            ))
             .await
             .unwrap();
 

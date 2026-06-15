@@ -21,12 +21,13 @@ pub async fn handle_message_flow(
     state: &Arc<AppState>,
 ) -> ResponseResult<MessageFlowOutcome> {
     let chat_id = msg.chat.id;
+    let chat_id_str = chat_id.0.to_string();
     match state
-        .touch_destruct(chat_id, Instant::now(), Duration::from_secs(60))
+        .touch_destruct(&chat_id_str, Instant::now(), Duration::from_secs(60))
         .await
     {
         TimeoutStatus::Expired => {
-            state.cancel_destruct(chat_id).await;
+            state.cancel_destruct(&chat_id_str).await;
             bot.send_message(chat_id, "⏳ 自毁流程超时 (60s)，已自动取消。")
                 .await?;
             return Ok(MessageFlowOutcome::Handled);
@@ -41,7 +42,7 @@ pub async fn handle_message_flow(
         return Ok(MessageFlowOutcome::Handled);
     }
 
-    let Some(destruct_state) = state.destruct_snapshot(chat_id).await else {
+    let Some(destruct_state) = state.destruct_snapshot(&chat_id_str).await else {
         return Ok(MessageFlowOutcome::NotHandled);
     };
 
@@ -51,7 +52,7 @@ pub async fn handle_message_flow(
                 let text = text.trim();
                 if state.verify_totp(text) {
                     if state
-                        .confirm_first_destruct_totp(chat_id, text, Instant::now())
+                        .confirm_first_destruct_totp(&chat_id_str, text, Instant::now())
                         .await
                     {
                         let keyboard = InlineKeyboardMarkup::new(vec![
@@ -84,7 +85,7 @@ pub async fn handle_message_flow(
                 let text = text.trim();
                 if state.verify_totp(text) {
                     match state
-                        .confirm_second_destruct_totp(chat_id, text, Instant::now())
+                        .confirm_second_destruct_totp(&chat_id_str, text, Instant::now())
                         .await
                     {
                         Err(_) => {
@@ -144,7 +145,7 @@ pub async fn handle_message_flow(
                             .unwrap_or_else(|| hash_short.clone());
 
                         if state
-                            .mark_destruct_file_verified(chat_id, Instant::now())
+                            .mark_destruct_file_verified(&chat_id_str, Instant::now())
                             .await
                         {
                             let keyboard = InlineKeyboardMarkup::new(vec![
@@ -195,12 +196,13 @@ pub async fn handle_callback_timeout(
     msg_id: teloxide::types::MessageId,
     state: &Arc<AppState>,
 ) -> ResponseResult<MessageFlowOutcome> {
+    let chat_id_str = chat_id.0.to_string();
     match state
-        .touch_destruct(chat_id, Instant::now(), Duration::from_secs(60))
+        .touch_destruct(&chat_id_str, Instant::now(), Duration::from_secs(60))
         .await
     {
         TimeoutStatus::Expired => {
-            state.cancel_destruct(chat_id).await;
+            state.cancel_destruct(&chat_id_str).await;
             bot.answer_callback_query(q.id.clone())
                 .text("⏳ 流程已超时 (60s)")
                 .await?;
@@ -222,6 +224,7 @@ pub async fn handle_callback_action(
     msg_id: teloxide::types::MessageId,
     state: &Arc<AppState>,
 ) -> ResponseResult<MessageFlowOutcome> {
+    let chat_id_str = chat_id.0.to_string();
     match data {
         "a_destroy_ask" => {
             if !state.is_authorized(chat_id.0).await {
@@ -230,7 +233,7 @@ pub async fn handle_callback_action(
                     .await?;
                 return Ok(MessageFlowOutcome::Handled);
             }
-            state.begin_destruct(chat_id, Instant::now()).await;
+            state.begin_destruct(chat_id_str.clone(), Instant::now()).await;
             let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
                 "🔙 取消",
                 "a_destroy_cancel",
@@ -246,7 +249,7 @@ pub async fn handle_callback_action(
             Ok(MessageFlowOutcome::Handled)
         }
         "a_destroy_cancel" => {
-            if state.cancel_destruct(chat_id).await {
+            if state.cancel_destruct(&chat_id_str).await {
                 bot.send_message(chat_id, "操作已取消。").await?;
             }
             let keyboard = InlineKeyboardMarkup::new(vec![
@@ -275,7 +278,7 @@ pub async fn handle_callback_action(
             }
             if state
                 .advance_destruct_step(
-                    chat_id,
+                    &chat_id_str,
                     DestructStep::AwaitConfirm,
                     DestructStep::AwaitSecondTotp,
                     Instant::now(),
@@ -310,7 +313,7 @@ pub async fn handle_callback_action(
                 return Ok(MessageFlowOutcome::Handled);
             }
 
-            let snapshot = state.destruct_snapshot(chat_id).await;
+            let snapshot = state.destruct_snapshot(&chat_id_str).await;
             if snapshot.map(|s| s.step) == Some(DestructStep::AwaitFinalConfirm) {
                 bot.answer_callback_query(q.id.clone())
                     .text("正在执行销毁...")
@@ -324,7 +327,7 @@ pub async fn handle_callback_action(
                 .await?;
                 let executor = state.self_destruct_executor();
                 aegis::core::security::self_destruct::trigger(executor);
-                state.cancel_destruct(chat_id).await;
+                state.cancel_destruct(&chat_id_str).await;
             } else {
                 bot.answer_callback_query(q.id.clone())
                     .text("状态无效")

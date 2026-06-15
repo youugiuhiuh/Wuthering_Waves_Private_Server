@@ -207,7 +207,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
     match data {
         "m_sched" => {
-            ctx.state.remove_schedule_input(ctx.chat_id).await;
+            ctx.state.remove_schedule_input(&ctx.chat_id.0.to_string()).await;
             let summary = if let Some(manager) = aegis::core::system::scheduler::get_manager().await
             {
                 manager.get_summary().await
@@ -230,7 +230,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .await?;
         }
         "s_add_menu" => {
-            ctx.state.remove_schedule_input(ctx.chat_id).await;
+            ctx.state.remove_schedule_input(&ctx.chat_id.0.to_string()).await;
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
                     "每天 4点 重启核心",
@@ -318,7 +318,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             };
             ctx.state
                 .insert_schedule_input(
-                    ctx.chat_id,
+                    ctx.chat_id.0.to_string(),
                     ScheduleInputState {
                         updated_at: Instant::now(),
                         task_type: task_type.clone(),
@@ -332,7 +332,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )
                 .await;
 
-            let Some(input_state) = ctx.state.schedule_input_snapshot(ctx.chat_id).await else {
+            let Some(input_state) = ctx.state.schedule_input_snapshot(&ctx.chat_id.0.to_string()).await else {
                 return Ok(HandlerAction::Done);
             };
             let text = build_custom_schedule_text(&input_state);
@@ -347,7 +347,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "s_custom_ui:main" => {
             if let Some((text, ret)) = ctx
                 .state
-                .with_schedule_input(ctx.chat_id, |input| {
+                .with_schedule_input(&ctx.chat_id.0.to_string(), |input| {
                     input.updated_at = Instant::now();
                     (build_custom_schedule_text(input), input.return_to.clone())
                 })
@@ -368,7 +368,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "s_custom_ui:day" => {
             if let Some(is_daily) = ctx
                 .state
-                .with_schedule_input(ctx.chat_id, |input| {
+                .with_schedule_input(&ctx.chat_id.0.to_string(), |input| {
                     input.updated_at = Instant::now();
                     matches!(input.frequency, ScheduleFrequency::Daily)
                 })
@@ -397,7 +397,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "s_custom_ui:hour" => {
             if ctx
                 .state
-                .with_schedule_input(ctx.chat_id, |input| input.updated_at = Instant::now())
+                .with_schedule_input(&ctx.chat_id.0.to_string(), |input| input.updated_at = Instant::now())
                 .await
                 .is_some()
             {
@@ -416,7 +416,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "s_custom_ui:minute" => {
             if ctx
                 .state
-                .with_schedule_input(ctx.chat_id, |input| input.updated_at = Instant::now())
+                .with_schedule_input(&ctx.chat_id.0.to_string(), |input| input.updated_at = Instant::now())
                 .await
                 .is_some()
             {
@@ -435,7 +435,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "s_custom_ui:tz" => {
             if ctx
                 .state
-                .with_schedule_input(ctx.chat_id, |input| input.updated_at = Instant::now())
+                .with_schedule_input(&ctx.chat_id.0.to_string(), |input| input.updated_at = Instant::now())
                 .await
                 .is_some()
             {
@@ -459,7 +459,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             if let Some((text, ret)) = ctx
                 .state
-                .with_schedule_input(ctx.chat_id, |input| {
+                .with_schedule_input(&ctx.chat_id.0.to_string(), |input| {
                     input.updated_at = Instant::now();
                     match (field, value) {
                         (
@@ -518,7 +518,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "s_custom_confirm" => {
             let Some((cron, task_type, timezone, return_to, hour, minute)) = ctx
                 .state
-                .with_schedule_input(ctx.chat_id, |input| {
+                .with_schedule_input(&ctx.chat_id.0.to_string(), |input| {
                     input.updated_at = Instant::now();
                     (
                         build_cron_from_custom_state(input),
@@ -547,7 +547,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 return Ok(HandlerAction::Done);
             };
 
-            ctx.state.remove_schedule_input(ctx.chat_id).await;
+            ctx.state.remove_schedule_input(&ctx.chat_id.0.to_string()).await;
             if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                 let task = aegis::core::system::scheduler::ScheduledTask::new_with_timezone(
                     task_type.clone(),
@@ -646,11 +646,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "s_custom_cancel" => {
             let return_to = ctx
                 .state
-                .schedule_input_snapshot(ctx.chat_id)
+                .schedule_input_snapshot(&ctx.chat_id.0.to_string())
                 .await
                 .map(|s| s.return_to.clone())
                 .unwrap_or_else(|| "s_add_menu".to_string());
-            ctx.state.remove_schedule_input(ctx.chat_id).await;
+            ctx.state.remove_schedule_input(&ctx.chat_id.0.to_string()).await;
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
                 .text("✅ 已取消自定义定时任务")
@@ -676,9 +676,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                 let task = aegis::core::system::scheduler::ScheduledTask::new(task_type, cron);
-                let _ = manager
-                    .add_new_task(task)
-                    .await;
+                let _ = manager.add_new_task(task).await;
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
                     .text("✅ 任务添加成功")

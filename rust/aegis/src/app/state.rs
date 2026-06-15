@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use teloxide::types::ChatId;
 use tokio::sync::Mutex;
 
 use aegis::adapters::common::BotAdapter;
@@ -77,10 +76,10 @@ pub struct AppState {
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
     sessions: Mutex<HashMap<i64, Instant>>,
     failed_attempts: Mutex<HashMap<i64, FailedRecord>>,
-    pending_destructs: Mutex<HashMap<ChatId, DestructState>>,
+    pending_destructs: Mutex<HashMap<String, DestructState>>,
     self_destruct_key_hash: Mutex<Option<String>>,
-    pending_warp_inputs: Mutex<HashMap<ChatId, Instant>>,
-    pending_schedule_inputs: Mutex<HashMap<ChatId, ScheduleInputState>>,
+    pending_warp_inputs: Mutex<HashMap<String, Instant>>,
+    pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
     session_timeout_secs: Mutex<u64>,
 }
 
@@ -232,7 +231,7 @@ impl AppState {
         }
     }
 
-    pub async fn begin_destruct(&self, chat_id: ChatId, now: Instant) {
+    pub async fn begin_destruct(&self, chat_id: String, now: Instant) {
         self.pending_destructs.lock().await.insert(
             chat_id,
             DestructState {
@@ -244,26 +243,26 @@ impl AppState {
         );
     }
 
-    pub async fn cancel_destruct(&self, chat_id: ChatId) -> bool {
+    pub async fn cancel_destruct(&self, chat_id: &str) -> bool {
         self.pending_destructs
             .lock()
             .await
-            .remove(&chat_id)
+            .remove(chat_id)
             .is_some()
     }
 
-    pub async fn destruct_snapshot(&self, chat_id: ChatId) -> Option<DestructState> {
-        self.pending_destructs.lock().await.get(&chat_id).cloned()
+    pub async fn destruct_snapshot(&self, chat_id: &str) -> Option<DestructState> {
+        self.pending_destructs.lock().await.get(chat_id).cloned()
     }
 
     pub async fn touch_destruct(
         &self,
-        chat_id: ChatId,
+        chat_id: &str,
         now: Instant,
         timeout: Duration,
     ) -> TimeoutStatus {
         let mut destructs = self.pending_destructs.lock().await;
-        match destructs.get_mut(&chat_id) {
+        match destructs.get_mut(chat_id) {
             Some(state) if state.last_action_time.elapsed() > timeout => TimeoutStatus::Expired,
             Some(state) => {
                 state.last_action_time = now;
@@ -275,7 +274,7 @@ impl AppState {
 
     pub async fn advance_destruct_step(
         &self,
-        chat_id: ChatId,
+        chat_id: &str,
         expected: DestructStep,
         next: DestructStep,
         now: Instant,
@@ -295,7 +294,7 @@ impl AppState {
 
     pub async fn confirm_first_destruct_totp(
         &self,
-        chat_id: ChatId,
+        chat_id: &str,
         code: &str,
         now: Instant,
     ) -> bool {
@@ -315,7 +314,7 @@ impl AppState {
 
     pub async fn confirm_second_destruct_totp(
         &self,
-        chat_id: ChatId,
+        chat_id: &str,
         code: &str,
         now: Instant,
     ) -> Result<bool, String> {
@@ -345,7 +344,7 @@ impl AppState {
             .unwrap_or(false))
     }
 
-    pub async fn mark_destruct_file_verified(&self, chat_id: ChatId, now: Instant) -> bool {
+    pub async fn mark_destruct_file_verified(&self, chat_id: &str, now: Instant) -> bool {
         self.advance_destruct_step(
             chat_id,
             DestructStep::AwaitSecurityFile,
@@ -357,24 +356,24 @@ impl AppState {
 
     pub async fn with_destruct<R>(
         &self,
-        chat_id: ChatId,
+        chat_id: &str,
         f: impl FnOnce(&mut DestructState) -> R,
     ) -> Option<R> {
         let mut destructs = self.pending_destructs.lock().await;
-        destructs.get_mut(&chat_id).map(f)
+        destructs.get_mut(chat_id).map(f)
     }
 
-    pub async fn start_warp_input(&self, chat_id: ChatId, now: Instant) {
+    pub async fn start_warp_input(&self, chat_id: String, now: Instant) {
         self.pending_warp_inputs.lock().await.insert(chat_id, now);
     }
 
     pub async fn take_warp_input_status(
         &self,
-        chat_id: ChatId,
+        chat_id: &str,
         timeout: Duration,
     ) -> TimeoutStatus {
         let mut warp_inputs = self.pending_warp_inputs.lock().await;
-        match warp_inputs.remove(&chat_id) {
+        match warp_inputs.remove(chat_id) {
             Some(start_time) if start_time.elapsed() > timeout => TimeoutStatus::Expired,
             Some(_) => TimeoutStatus::Active,
             None => TimeoutStatus::NotTracked,
@@ -383,43 +382,43 @@ impl AppState {
 
     pub async fn schedule_timeout_status(
         &self,
-        chat_id: ChatId,
+        chat_id: &str,
         timeout: Duration,
     ) -> TimeoutStatus {
         let schedule_inputs = self.pending_schedule_inputs.lock().await;
-        match schedule_inputs.get(&chat_id) {
+        match schedule_inputs.get(chat_id) {
             Some(input) if input.updated_at.elapsed() > timeout => TimeoutStatus::Expired,
             Some(_) => TimeoutStatus::Active,
             None => TimeoutStatus::NotTracked,
         }
     }
 
-    pub async fn remove_schedule_input(&self, chat_id: ChatId) {
-        self.pending_schedule_inputs.lock().await.remove(&chat_id);
+    pub async fn remove_schedule_input(&self, chat_id: &str) {
+        self.pending_schedule_inputs.lock().await.remove(chat_id);
     }
 
-    pub async fn insert_schedule_input(&self, chat_id: ChatId, input: ScheduleInputState) {
+    pub async fn insert_schedule_input(&self, chat_id: String, input: ScheduleInputState) {
         self.pending_schedule_inputs
             .lock()
             .await
             .insert(chat_id, input);
     }
 
-    pub async fn schedule_input_snapshot(&self, chat_id: ChatId) -> Option<ScheduleInputState> {
+    pub async fn schedule_input_snapshot(&self, chat_id: &str) -> Option<ScheduleInputState> {
         self.pending_schedule_inputs
             .lock()
             .await
-            .get(&chat_id)
+            .get(chat_id)
             .cloned()
     }
 
     pub async fn with_schedule_input<R>(
         &self,
-        chat_id: ChatId,
+        chat_id: &str,
         f: impl FnOnce(&mut ScheduleInputState) -> R,
     ) -> Option<R> {
         let mut inputs = self.pending_schedule_inputs.lock().await;
-        inputs.get_mut(&chat_id).map(f)
+        inputs.get_mut(chat_id).map(f)
     }
 }
 
@@ -515,18 +514,18 @@ mod tests {
     #[tokio::test]
     async fn destruct_step_transitions_validate_expected_flow() {
         let state = make_state();
-        let chat_id = ChatId(1);
+        let chat_id = "1".to_string();
         let now = Instant::now();
-        state.begin_destruct(chat_id, now).await;
+        state.begin_destruct(chat_id.clone(), now).await;
         assert!(
             state
-                .confirm_first_destruct_totp(chat_id, "111111", now)
+                .confirm_first_destruct_totp(&chat_id, "111111", now)
                 .await
         );
         assert!(
             state
                 .advance_destruct_step(
-                    chat_id,
+                    &chat_id,
                     DestructStep::AwaitConfirm,
                     DestructStep::AwaitSecondTotp,
                     now,
@@ -535,23 +534,23 @@ mod tests {
         );
         assert!(
             state
-                .confirm_second_destruct_totp(chat_id, "222222", now)
+                .confirm_second_destruct_totp(&chat_id, "222222", now)
                 .await
                 .unwrap()
         );
-        assert!(state.mark_destruct_file_verified(chat_id, now).await);
+        assert!(state.mark_destruct_file_verified(&chat_id, now).await);
     }
 
     #[tokio::test]
     async fn destruct_timeout_is_detected() {
         let state = make_state();
-        let chat_id = ChatId(2);
+        let chat_id = "2".to_string();
         state
-            .begin_destruct(chat_id, Instant::now() - Duration::from_secs(61))
+            .begin_destruct(chat_id.clone(), Instant::now() - Duration::from_secs(61))
             .await;
         assert_eq!(
             state
-                .touch_destruct(chat_id, Instant::now(), Duration::from_secs(60))
+                .touch_destruct(&chat_id, Instant::now(), Duration::from_secs(60))
                 .await,
             TimeoutStatus::Expired
         );
@@ -597,7 +596,7 @@ mod tests {
     async fn schedule_timeout_returns_not_tracked_for_unknown_chat() {
         let state = make_state();
         let status = state
-            .schedule_timeout_status(ChatId(123), Duration::from_secs(60))
+            .schedule_timeout_status("123", Duration::from_secs(60))
             .await;
         assert_eq!(status, TimeoutStatus::NotTracked);
     }
@@ -605,7 +604,7 @@ mod tests {
     #[tokio::test]
     async fn schedule_input_insert_and_snapshot() {
         let state = make_state();
-        let chat_id = ChatId(100);
+        let chat_id = "100".to_string();
         let input = ScheduleInputState {
             updated_at: Instant::now(),
             task_type: TaskType::Reboot,
@@ -616,8 +615,8 @@ mod tests {
             minute: Some(0),
             return_to: "m_main".to_string(),
         };
-        state.insert_schedule_input(chat_id, input.clone()).await;
-        let snapshot = state.schedule_input_snapshot(chat_id).await;
+        state.insert_schedule_input(chat_id.clone(), input.clone()).await;
+        let snapshot = state.schedule_input_snapshot(&chat_id).await;
         assert!(snapshot.is_some());
         let snap = snapshot.unwrap();
         assert_eq!(snap.task_type, TaskType::Reboot);
@@ -627,24 +626,24 @@ mod tests {
     #[tokio::test]
     async fn cancel_destruct_returns_true_when_exists() {
         let state = make_state();
-        let chat_id = ChatId(5);
-        state.begin_destruct(chat_id, Instant::now()).await;
-        assert!(state.cancel_destruct(chat_id).await);
+        let chat_id = "5".to_string();
+        state.begin_destruct(chat_id.clone(), Instant::now()).await;
+        assert!(state.cancel_destruct(&chat_id).await);
     }
 
     #[tokio::test]
     async fn cancel_destruct_returns_false_when_not_exists() {
         let state = make_state();
-        assert!(!state.cancel_destruct(ChatId(999)).await);
+        assert!(!state.cancel_destruct("999").await);
     }
 
     #[tokio::test]
     async fn warp_input_timeout_tracking() {
         let state = make_state();
-        let chat_id = ChatId(200);
-        state.start_warp_input(chat_id, Instant::now()).await;
+        let chat_id = "200".to_string();
+        state.start_warp_input(chat_id.clone(), Instant::now()).await;
         let status = state
-            .take_warp_input_status(chat_id, Duration::from_secs(60))
+            .take_warp_input_status(&chat_id, Duration::from_secs(60))
             .await;
         assert_eq!(status, TimeoutStatus::Active);
     }

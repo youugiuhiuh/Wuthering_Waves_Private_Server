@@ -72,9 +72,7 @@ impl BotAdapter for DiscordAdapter {
     }
 }
 
-fn convert_markup_discord(
-    markup: &Markup,
-) -> Vec<serenity::all::CreateActionRow> {
+fn convert_markup_discord(markup: &Markup) -> Vec<serenity::all::CreateActionRow> {
     markup
         .buttons
         .iter()

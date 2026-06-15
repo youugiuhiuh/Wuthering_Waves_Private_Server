@@ -16,7 +16,6 @@ use crate::bootstrap::{
     BotSettings, CONFIG_FILE, ConfigValidator, EncryptedConfig, KEY_FILE, config_dir,
     harden_process, run_setup, run_setup_from_stdin, verify_integrity,
 };
-use crate::utils::format_duration_human;
 use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
 use aegis::adapters::telegram::TelegramAdapter;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
@@ -83,15 +82,14 @@ fn looks_like_totp_code(text: &str) -> bool {
 }
 
 async fn process_auth_code(
-    bot: &Bot,
-    chat_id: ChatId,
+    state: &Arc<AppState>,
+    target: &TargetId,
     user_id: i64,
     code: &str,
-    state: &Arc<AppState>,
-) -> ResponseResult<bool> {
+) -> anyhow::Result<bool> {
     auth::process_auth_code(
-        bot,
-        chat_id,
+        &*state.adapter,
+        target,
         user_id,
         code,
         state,
@@ -130,7 +128,8 @@ async fn handle_command(
             .await?;
         }
         Command::Auth(code) => {
-            let _ = process_auth_code(&bot, msg.chat.id, user_id, &code, &state).await?;
+            let target = TargetId(msg.chat.id.0.to_string());
+            let _ = process_auth_code(&state, &target, user_id, &code).await;
         }
         Command::SetSecurityFile => {
             if !state.is_recently_authenticated(user_id).await {
@@ -408,7 +407,13 @@ async fn notify_online(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()
     );
 
     let _ = adapter
-        .send_message(target, MessageContent { text: msg, markup: None })
+        .send_message(
+            target,
+            MessageContent {
+                text: msg,
+                markup: None,
+            },
+        )
         .await;
     Ok(())
 }
@@ -432,7 +437,13 @@ async fn notify_upgrade_success(adapter: &dyn BotAdapter, target: &TargetId) -> 
     };
 
     adapter
-        .send_message(target, MessageContent { text: message, markup: None })
+        .send_message(
+            target,
+            MessageContent {
+                text: message,
+                markup: None,
+            },
+        )
         .await?;
     Ok(())
 }
@@ -462,7 +473,13 @@ async fn notify_bbr3_reboot_result(adapter: &dyn BotAdapter, target: &TargetId) 
     );
 
     adapter
-        .send_message(target, MessageContent { text: message, markup: None })
+        .send_message(
+            target,
+            MessageContent {
+                text: message,
+                markup: None,
+            },
+        )
         .await?;
     Ok(())
 }
