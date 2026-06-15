@@ -11,7 +11,7 @@ on:
         branches:
             - main
         paths:
-            - "rust/tgbot/Cargo.toml"
+            - "rust/aegis/Cargo.toml"
 
 permissions:
     contents: write
@@ -33,7 +33,7 @@ jobs:
                   if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
                     VERSION="${{ github.event.inputs.version }}"
                   else
-                    VERSION=$(grep -m1 '^version' rust/tgbot/Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+                    VERSION=$(grep -m1 '^version' rust/aegis/Cargo.toml | sed 's/.*"\(.*\)"/\1/')
                   fi
                   VERSION=${VERSION#v}
                   echo "NEW_VERSION=$VERSION" >> $GITHUB_ENV
@@ -42,7 +42,7 @@ jobs:
             - name: Update Version in Cargo.toml (Manual Trigger Only)
               if: github.event_name == 'workflow_dispatch'
               run: |
-                  sed -i 's/^version = .*/version = "'${{ env.NEW_VERSION }}'"/' rust/tgbot/Cargo.toml
+                  sed -i 's/^version = .*/version = "'${{ env.NEW_VERSION }}'"/' rust/aegis/Cargo.toml
 
             - name: Sync Source Tags
               run: |
@@ -50,7 +50,7 @@ jobs:
                   git config --local user.name "GitHub Action"
 
                   if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-                    git add rust/tgbot/Cargo.toml
+                    git add rust/aegis/Cargo.toml
                     git commit -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]" || echo "No changes to commit"
                     git push origin main
                   fi
@@ -69,7 +69,7 @@ jobs:
             - name: Rust Cache
               uses: Swatinem/rust-cache@v2
               with:
-                  workspaces: "rust/tgbot -> target"
+                  workspaces: "rust/aegis -> target"
 
             - name: Compress with UPX
               uses: crazy-max/ghaction-upx@v4
@@ -79,7 +79,7 @@ jobs:
 
             - name: Build Runtime Binary
               run: |
-                  cd rust/tgbot
+                  cd rust/aegis
                   RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" \
                   cargo build --release
 
@@ -103,7 +103,7 @@ jobs:
             - name: Prepare Distribution Artifacts
               run: |
                   mkdir -p dist
-                  cp rust/tgbot/target/release/tgbot dist/
+                  cp rust/aegis/target/release/tgbot dist/
                   cp go/installer/installer dist/
 
             - name: Cleanup Old Releases (Keep Last 3)
