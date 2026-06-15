@@ -131,7 +131,7 @@ elif command -v ufw &>/dev/null && ufw status | grep -q "active" 2>/dev/null; th
     echo "  UFW detected. Listing current rules:"
     ufw status numbered | head -30
     echo ""
-    echo "  UFW port reconciliation is best handled by the tgbot service."
+    echo "  UFW port reconciliation is best handled by the aegis service."
     echo "  Run the bot and it will auto-sync on next reload."
 else
     echo "  No supported firewall backend detected (firewalld or ufw)."

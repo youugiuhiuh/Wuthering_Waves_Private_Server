@@ -6,6 +6,7 @@ fodder/.DS_Store
 GEMINI.md
 GEMINI.zh-CN.md
 rust/tgbot/target
+rust/aegis/target
 rust/version-sync/target
 References/
 sni_tester/*.txt

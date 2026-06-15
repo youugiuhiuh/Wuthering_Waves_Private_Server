@@ -11,7 +11,7 @@
 
 ## 工作原理
 
-1. 从 `rust/tgbot/Cargo.toml` 提取版本号
+1. 从 `rust/aegis/Cargo.toml` 提取版本号
 2. 更新 `install.sh` 中的版本字符串（两处位置）
 3. 运行 `cargo check` 同步 `Cargo.lock` 文件
 4. 检测文件变更并提示重新提交
@@ -30,7 +30,7 @@
       name: sync version to install.sh (Rust)
       entry: cargo run --manifest-path=rust/version-sync/Cargo.toml --bin sync-version
       language: system
-      files: ^(rust/tgbot/Cargo.toml|install.sh)$
+      files: ^(rust/aegis/Cargo.toml|install.sh)$
       pass_filenames: false
 ```
 

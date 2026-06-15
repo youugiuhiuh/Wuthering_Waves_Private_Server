@@ -14,7 +14,7 @@ func main() {
 		fmt.Println("Usage: bin2pb <input_dir> [output_dir]")
 		fmt.Println("  input_dir: directory containing reality/ and xhttp/ subdirectories with .bin files")
 		fmt.Println("  output_dir: output directory for .pb files (default: input_dir)")
-		fmt.Println("Example: bin2pb rust/tgbot/src/resources/sni")
+		fmt.Println("Example: bin2pb rust/aegis/src/resources/sni")
 		os.Exit(1)
 	}
 
