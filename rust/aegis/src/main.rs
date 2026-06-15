@@ -3,6 +3,9 @@
 #[path = "adapters/telegram/handlers/mod.rs"]
 mod handlers;
 
+#[path = "adapters/matrix/handlers.rs"]
+mod matrix_handlers;
+
 mod app;
 mod bootstrap;
 
