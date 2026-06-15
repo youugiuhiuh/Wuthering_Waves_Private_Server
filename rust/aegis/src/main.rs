@@ -19,7 +19,7 @@ use crate::bootstrap::{
     BotSettings, CONFIG_FILE, ConfigValidator, EncryptedConfig, KEY_FILE, config_dir,
     harden_process, run_setup, run_setup_from_stdin, verify_integrity,
 };
-use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
+use aegis::adapters::common::{BotAdapter, MessageContent, RoutingAdapter, TargetId};
 use aegis::adapters::matrix::MatrixAdapter;
 use aegis::adapters::telegram::TelegramAdapter;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
@@ -270,7 +270,7 @@ async fn main() -> Result<()> {
                 println!("Usage: aegis --setup <token> <admin_id> <totp_secret>");
                 return Ok(());
             }
-            return run_setup(&args[2], &args[3], &args[4]).await;
+            return run_setup(&args[2], &args[3], &args[4], None).await;
         }
         if args[1] == "--setup-stdin" {
             return run_setup_from_stdin().await;
@@ -280,10 +280,10 @@ async fn main() -> Result<()> {
     // 正常启动：校验完整性后再加载配置
     verify_integrity().await?;
 
-    // CLI 模式检测
+    // CLI 模式检测（初始; auto-detect 补充在 encrypted_config 加载后）
     let use_matrix = args.iter().any(|a| a == "--matrix");
     let use_all = args.iter().any(|a| a == "--all");
-    let enable_matrix = use_matrix || use_all;
+    let mut enable_matrix = use_matrix || use_all;
     let enable_telegram = !use_matrix || use_all;
 
     let config_dir = config_dir();
@@ -339,6 +339,17 @@ async fn main() -> Result<()> {
 
     let bot_settings = BotSettings::load();
 
+    // ── Auto-detect Matrix 配置 ──
+    let has_matrix = encrypted_config.matrix_homeserver.is_some()
+        && encrypted_config.matrix_username.is_some()
+        && encrypted_config.matrix_password.is_some()
+        && encrypted_config.matrix_room_id.is_some();
+    if !use_matrix && !use_all {
+        enable_matrix = has_matrix && !args.iter().any(|a| a == "--tg-only");
+        // TG remains enabled by default (initialized as true above);
+        // has_matrix only determines whether to add Matrix as secondary.
+    }
+
     // ── Matrix 登录 ──
     let matrix_handle: Option<(MatrixClient, Room, Arc<dyn BotAdapter>)> = if enable_matrix {
         let decrypt_matrix = |field: &Option<Vec<u8>>| -> Result<String> {
@@ -393,7 +404,18 @@ async fn main() -> Result<()> {
     };
 
     // ── 创建主适配器与 AppState ──
-    let adapter: Arc<dyn BotAdapter> = if enable_telegram {
+    let adapter: Arc<dyn BotAdapter> = if enable_telegram && enable_matrix {
+        // 双通道：RoutingAdapter
+        let tg_adapter = {
+            let bot = Bot::new(&token);
+            if let Err(err) = register_bot_commands(&bot).await {
+                eprintln!("[WARN] 命令注册失败: {}", err);
+            }
+            Arc::new(TelegramAdapter::new(bot)) as Arc<dyn BotAdapter>
+        };
+        let secondary = matrix_handle.as_ref().map(|(_, _, a)| a.clone());
+        Arc::new(RoutingAdapter::new(tg_adapter, secondary))
+    } else if enable_telegram {
         let bot = Bot::new(&token);
         if let Err(err) = register_bot_commands(&bot).await {
             eprintln!("[WARN] 命令注册失败: {}", err);

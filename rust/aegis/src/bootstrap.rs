@@ -37,8 +37,6 @@ pub struct EncryptedConfig {
     #[serde(default)]
     pub matrix_password: Option<Vec<u8>>,
     #[serde(default)]
-    pub matrix_admin_user: Option<Vec<u8>>,
-    #[serde(default)]
     pub matrix_room_id: Option<Vec<u8>>,
 }
 
@@ -53,8 +51,6 @@ struct SetupInput {
     matrix_username: Option<String>,
     #[serde(default)]
     matrix_password: Option<String>,
-    #[serde(default)]
-    matrix_admin_user: Option<String>,
     #[serde(default)]
     matrix_room_id: Option<String>,
 }
@@ -71,9 +67,6 @@ impl Drop for EncryptedConfig {
             v.zeroize();
         }
         if let Some(v) = &mut self.matrix_password {
-            v.zeroize();
-        }
-        if let Some(v) = &mut self.matrix_admin_user {
             v.zeroize();
         }
         if let Some(v) = &mut self.matrix_room_id {
@@ -160,7 +153,19 @@ fn sync_reality_pq_pub_on_setup() {
     }
 }
 
-pub async fn run_setup(token: &str, admin_id: &str, totp_secret: &str) -> Result<()> {
+pub(crate) struct MatrixSetupConfig {
+    homeserver: String,
+    username: String,
+    password: String,
+    room_id: String,
+}
+
+pub async fn run_setup(
+    token: &str,
+    admin_id: &str,
+    totp_secret: &str,
+    matrix: Option<MatrixSetupConfig>,
+) -> Result<()> {
     let token = token.trim();
     let admin_id = admin_id.trim();
     let totp_secret = totp_secret.trim();
@@ -168,16 +173,27 @@ pub async fn run_setup(token: &str, admin_id: &str, totp_secret: &str) -> Result
     fs::create_dir_all(&config_dir)?;
     let security = SecurityManager::new(&config_dir.join(KEY_FILE))?;
 
+    let (matrix_homeserver, matrix_username, matrix_password, matrix_room_id) =
+        if let Some(m) = matrix {
+            (
+                Some(security.encrypt(m.homeserver.as_bytes())?),
+                Some(security.encrypt(m.username.as_bytes())?),
+                Some(security.encrypt(m.password.as_bytes())?),
+                Some(security.encrypt(m.room_id.as_bytes())?),
+            )
+        } else {
+            (None, None, None, None)
+        };
+
     let encrypted_config = EncryptedConfig {
         token: security.encrypt(token.as_bytes())?,
         admin_id: security.encrypt(admin_id.as_bytes())?,
         totp_secret: security.encrypt(totp_secret.as_bytes())?,
         self_destruct_key_hash: None,
-        matrix_homeserver: None,
-        matrix_username: None,
-        matrix_password: None,
-        matrix_admin_user: None,
-        matrix_room_id: None,
+        matrix_homeserver,
+        matrix_username,
+        matrix_password,
+        matrix_room_id,
     };
     fs::write(
         config_dir.join(CONFIG_FILE),
@@ -204,7 +220,23 @@ pub async fn run_setup_from_stdin() -> Result<()> {
         .context("读取 stdin 配置失败")?;
 
     let input: SetupInput = serde_json::from_str(&payload).context("解析 stdin 配置失败")?;
-    run_setup(&input.token, &input.admin_id, &input.totp_secret).await
+
+    let matrix = if input.matrix_homeserver.is_some()
+        && input.matrix_username.is_some()
+        && input.matrix_password.is_some()
+        && input.matrix_room_id.is_some()
+    {
+        Some(MatrixSetupConfig {
+            homeserver: input.matrix_homeserver.clone().unwrap(),
+            username: input.matrix_username.clone().unwrap(),
+            password: input.matrix_password.clone().unwrap(),
+            room_id: input.matrix_room_id.clone().unwrap(),
+        })
+    } else {
+        None
+    };
+
+    run_setup(&input.token, &input.admin_id, &input.totp_secret, matrix).await
 }
 
 pub async fn verify_integrity() -> Result<()> {

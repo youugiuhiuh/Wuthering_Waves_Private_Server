@@ -243,7 +243,29 @@ func appendJSONEscaped(dst []byte, value []byte) []byte {
 	return dst
 }
 
-func buildSetupPayload(token, adminID, totpSecret []byte) []byte {
+func readLine() (string, error) {
+	buf := make([]byte, 512)
+	n, err := os.Stdin.Read(buf)
+	if err != nil {
+		return "", err
+	}
+	s := string(bytes.TrimRight(buf[:n], "\n\r"))
+	return s, nil
+}
+
+func readSecureInputStr(prompt string) string {
+	fmt.Print(prompt)
+	buf := make([]byte, 512)
+	n, err := os.Stdin.Read(buf)
+	if err != nil {
+		printRed("读取输入失败: " + err.Error())
+		os.Exit(1)
+	}
+	s := strings.TrimRight(string(buf[:n]), "\n\r")
+	return s
+}
+
+func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, matrixRoom string, matrixPass []byte) []byte {
 	payload := make([]byte, 0, len(token)+len(adminID)+len(totpSecret)+64)
 	payload = append(payload, '{')
 	payload = append(payload, []byte(`"token":`)...)
@@ -254,6 +276,28 @@ func buildSetupPayload(token, adminID, totpSecret []byte) []byte {
 	payload = append(payload, ',')
 	payload = append(payload, []byte(`"totp_secret":`)...)
 	payload = appendJSONEscaped(payload, totpSecret)
+
+	if matrixHS != "" {
+		payload = append(payload, ',')
+		payload = append(payload, []byte(`"matrix_homeserver":`)...)
+		payload = appendJSONEscaped(payload, []byte(matrixHS))
+	}
+	if matrixUser != "" {
+		payload = append(payload, ',')
+		payload = append(payload, []byte(`"matrix_username":`)...)
+		payload = appendJSONEscaped(payload, []byte(matrixUser))
+	}
+	if len(matrixPass) > 0 {
+		payload = append(payload, ',')
+		payload = append(payload, []byte(`"matrix_password":`)...)
+		payload = appendJSONEscaped(payload, matrixPass)
+	}
+	if matrixRoom != "" {
+		payload = append(payload, ',')
+		payload = append(payload, []byte(`"matrix_room_id":`)...)
+		payload = appendJSONEscaped(payload, []byte(matrixRoom))
+	}
+
 	payload = append(payload, '}')
 	return payload
 }
@@ -586,7 +630,23 @@ func installAegis() {
 func firstTimeSetup(binaryPath string) {
 	printSkyBlue("\n首次安装，开始配置 TG Bot...")
 
+	printSkyBlue("\n========== 配置 Telegram Bot ==========")
+	printYellow("🤖 如何获取 TG Bot Token:")
+	printYellow("  1. 打开 Telegram，搜索 @BotFather")
+	printYellow("  2. 发送 /newbot 创建一个新机器人")
+	printYellow("  3. 复制返回的 HTTP API Token")
+	printYellow("  格式如: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz")
+	fmt.Println()
+
 	botTokenEnclave := readSecureInput("请输入 TG Bot Token: ")
+
+	printYellow("\n👤 如何获取管理员 ID:")
+	printYellow("  1. 打开 Telegram，搜索 @userinfobot")
+	printYellow("  2. 发送任意消息（如 /start）")
+	printYellow("  3. 复制返回的 Id 数值")
+	printYellow("  格式如: 123456789")
+	fmt.Println()
+
 	adminIDEnclave := readSecureInput("请输入管理员 ID (TG User ID): ")
 
 	// 生成 TOTP 密钥
@@ -634,13 +694,66 @@ func firstTimeSetup(binaryPath string) {
 	// 销毁用于展示的明文 Buffer
 	totpSecretBuffer.Destroy()
 
+	// ── Matrix 配置询问 ──
+	printSkyBlue("\n========== Matrix 敏感通知通道（可选）==========")
+	printYellow("💡 Matrix 可用于接收 Xray/Sing-box 的协议配置和")
+	printYellow("   分享链接等敏感信息，避免中心化平台威胁。")
+	printYellow("   如不配置，敏感信息将仍然通过 TG 发送。")
+	fmt.Print("\n是否配置 Matrix 敏感信息通道？(y/n): ")
+	var setupMatrix string
+	fmt.Scanln(&setupMatrix)
+
+	var matrixHS, matrixUser, matrixRoom string
+	var matrixPassEnclave *memguard.Enclave
+
+	if setupMatrix == "y" || setupMatrix == "Y" {
+		printYellow("\n🏠 Matrix Homeserver URL")
+		printYellow("   默认公共服务器: https://matrix.org")
+		printYellow("   自建服务器:      https://your-domain.com")
+		fmt.Print("请输入 Homeserver (留空默认 https://matrix.org): ")
+		matrixHS, _ = readLine()
+		if matrixHS == "" {
+			matrixHS = "https://matrix.org"
+		}
+
+		printYellow("\n👤 Matrix 机器人用户名")
+		printYellow("   需要预先注册一个 Matrix 账号作为机器人。")
+		printYellow("   格式如: @botname:matrix.org")
+		matrixUser = readSecureInputStr("请输入 Matrix 用户名: ")
+
+		matrixPassEnclave = readSecureInput("请输入 Matrix 密码: ")
+
+		printYellow("\n📌 Matrix 房间 ID")
+		printYellow("   1. 在 Element 等客户端创建新房间")
+		printYellow("   2. 邀请机器人账号加入此房间")
+		printYellow("   3. 在房间设置 → 高级 → 内部房间 ID 获取")
+		printYellow("   格式如: !abc123:matrix.org")
+		printYellow("   注意: 包含开头的感叹号和域名")
+		matrixRoom = readSecureInputStr("请输入 Matrix 房间 ID: ")
+	}
+
 	// 执行 setup 时，短暂解密 Token 和 AdminID (这里仍有 /proc/cmdline 的极短暂暴露风险，后续优化可以在子进程 stdin 传递)
 	bTokenBuf, _ := botTokenEnclave.Open()
 	aIDBuf, _ := adminIDEnclave.Open()
 	tSecretBuf, _ := totpSecretEnclave.Open()
 
-	setupPayload := buildSetupPayload(bTokenBuf.Bytes(), aIDBuf.Bytes(), tSecretBuf.Bytes())
+	var mPassBuf *memguard.LockedBuffer
+	var mPassBytes []byte
+	if matrixPassEnclave != nil {
+		mPassBuf, _ = matrixPassEnclave.Open()
+		mPassBytes = mPassBuf.Bytes()
+	}
+
+	setupPayload := buildSetupPayload(
+		bTokenBuf.Bytes(), aIDBuf.Bytes(), tSecretBuf.Bytes(),
+		matrixHS, matrixUser, matrixRoom, mPassBytes,
+	)
 	defer zeroBytes(setupPayload)
+
+	if mPassBuf != nil {
+		zeroBytes(mPassBytes)
+		mPassBuf.Destroy()
+	}
 
 	cmd := exec.Command(binaryPath, "--setup-stdin")
 	cmd.Stdout = os.Stdout
