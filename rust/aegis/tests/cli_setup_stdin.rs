@@ -1,4 +1,4 @@
-//! 集成测试：`tgbot --setup-stdin` 从 stdin 读 JSON 并写入 .key + config.enc。
+//! 集成测试：`aegis --setup-stdin` 从 stdin 读 JSON 并写入 .key + config.enc。
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -20,7 +20,7 @@ fn cli_setup_stdin_creates_key_and_config_enc() {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn tgbot --setup-stdin");
+        .expect("spawn aegis --setup-stdin");
 
     child
         .stdin
@@ -30,7 +30,7 @@ fn cli_setup_stdin_creates_key_and_config_enc() {
         .expect("write stdin");
     drop(child.stdin.take());
 
-    let output = child.wait_with_output().expect("wait tgbot");
+    let output = child.wait_with_output().expect("wait aegis");
 
     assert!(
         output.status.success(),

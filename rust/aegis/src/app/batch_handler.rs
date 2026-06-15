@@ -6,7 +6,7 @@ use teloxide::types::{ChatId, InputFile, MessageId, ParseMode};
 use tempfile::NamedTempFile;
 use tokio::time::{Duration, sleep};
 
-use tgbot::core::types::BatchCreationResult;
+use aegis::core::types::BatchCreationResult;
 
 /// Send SingBox batch creation results to the user:
 /// header message, chunked link messages, document file, summary message,

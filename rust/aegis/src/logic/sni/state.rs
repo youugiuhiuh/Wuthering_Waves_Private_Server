@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-const SNI_STATE_DIR: &str = "/etc/wwps/tgbot/sni_state";
+const SNI_STATE_DIR: &str = "/etc/wwps/aegis/sni_state";
 const KEY_FILE: &str = ".key";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -12,7 +12,7 @@ fn cli_verify_integrity_fails_with_stderr_when_config_dir_missing() {
     let output = Command::new(bin)
         .env("TGBOT_CONFIG_DIR", &config_dir)
         .output()
-        .expect("执行 tgbot 失败");
+        .expect("执行 aegis 失败");
 
     assert!(
         !output.status.success(),

@@ -13,8 +13,8 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use tgbot::logic::maintenance::MaintenanceManager;
-use tgbot::logic::security::secure_wipe_path;
+use aegis::logic::maintenance::MaintenanceManager;
+use aegis::logic::security::secure_wipe_path;
 
 // ============================================================
 // 辅助函数: 构建仿真文件系统
@@ -37,10 +37,10 @@ impl FakeServerFs {
         let var_log = root.join("var/log");
         let acme_sh = root.join("root/.acme.sh");
         let service_dir = root.join("etc/systemd/system");
-        let service_file = service_dir.join("wwps-tgbot.service");
+        let service_file = service_dir.join("wwps-aegis.service");
 
         // 创建目录结构
-        fs::create_dir_all(etc_wwps.join("tgbot")).unwrap();
+        fs::create_dir_all(etc_wwps.join("aegis")).unwrap();
         fs::create_dir_all(etc_wwps.join("wwps-core/conf")).unwrap();
         fs::create_dir_all(var_log.join("journal")).unwrap();
         fs::create_dir_all(var_log.join("nginx")).unwrap();
@@ -62,17 +62,17 @@ impl FakeServerFs {
     fn populate_sensitive_data(&self) {
         // /etc/wwps/ - 配置和密钥
         fs::write(
-            self.etc_wwps.join("tgbot/config.json"),
+            self.etc_wwps.join("aegis/config.json"),
             r#"{"bot_token":"1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ","admin_id":12345678}"#,
         )
         .unwrap();
         fs::write(
-            self.etc_wwps.join("tgbot/totp_secret.enc"),
+            self.etc_wwps.join("aegis/totp_secret.enc"),
             vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE],
         )
         .unwrap();
         fs::write(
-            self.etc_wwps.join("tgbot/security.key"),
+            self.etc_wwps.join("aegis/security.key"),
             "SUPER_SECRET_KEY_DO_NOT_LEAK_THIS_12345",
         )
         .unwrap();
@@ -129,7 +129,7 @@ impl FakeServerFs {
         // systemd service file
         fs::write(
             &self.service_file,
-            "[Unit]\nDescription=WWPS TGBot\n[Service]\nExecStart=/usr/local/bin/wwps-tgbot\nRestart=always\n[Install]\nWantedBy=multi-user.target\n",
+            "[Unit]\nDescription=WWPS TGBot\n[Service]\nExecStart=/usr/local/bin/wwps-aegis\nRestart=always\n[Install]\nWantedBy=multi-user.target\n",
         )
         .unwrap();
     }
@@ -218,9 +218,9 @@ fn e2e_full_wipe_pipeline() {
     assert!(dir_count >= 5, "应至少包含 5 个目录, 实际: {}", dir_count);
 
     // 验证关键文件存在
-    assert!(fake_fs.etc_wwps.join("tgbot/config.json").exists());
-    assert!(fake_fs.etc_wwps.join("tgbot/security.key").exists());
-    assert!(fake_fs.etc_wwps.join("tgbot/totp_secret.enc").exists());
+    assert!(fake_fs.etc_wwps.join("aegis/config.json").exists());
+    assert!(fake_fs.etc_wwps.join("aegis/security.key").exists());
+    assert!(fake_fs.etc_wwps.join("aegis/totp_secret.enc").exists());
     assert!(fake_fs.var_log.join("syslog").exists());
     assert!(fake_fs.var_log.join("auth.log").exists());
     assert!(fake_fs.acme_sh.join("account.key").exists());
@@ -493,7 +493,7 @@ fn e2e_verify_destruct_targets_constant() {
     assert_eq!(targets[0], "/etc/wwps");
     assert_eq!(targets[1], "/var/log");
     assert_eq!(targets[2], "/root/.acme.sh");
-    assert_eq!(targets[3], "/etc/systemd/system/wwps-tgbot.service");
+    assert_eq!(targets[3], "/etc/systemd/system/wwps-aegis.service");
 }
 
 #[test]

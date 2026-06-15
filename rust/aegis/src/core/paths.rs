@@ -16,9 +16,9 @@ pub mod singbox {
 
 /// Bot 相关路径
 pub mod bot {
-    pub const DIR: &str = "/etc/wwps/tgbot";
-    pub const KEY_FILE: &str = "/etc/wwps/tgbot/.key";
-    pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/tgbot/bbr3_pending.flag";
+    pub const DIR: &str = "/etc/wwps/aegis";
+    pub const KEY_FILE: &str = "/etc/wwps/aegis/.key";
+    pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/aegis/bbr3_pending.flag";
 }
 
 /// Xray-core 相关路径
@@ -40,8 +40,8 @@ pub mod xray {
 
 /// Maintenance 相关路径
 pub mod maintenance {
-    pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/tgbot/bbr3_pending.flag";
-    pub const UPGRADE_FLAG_FILE: &str = "/etc/wwps/tgbot/upgrade.flag";
+    pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/aegis/bbr3_pending.flag";
+    pub const UPGRADE_FLAG_FILE: &str = "/etc/wwps/aegis/upgrade.flag";
     pub const UNATTENDED_UPGRADES_CONF: &str = "/etc/apt/apt.conf.d/50unattended-upgrades";
     pub const AUTO_UPGRADES_PERIODIC_CONF: &str = "/etc/apt/apt.conf.d/20auto-upgrades";
     pub const DNF_AUTOMATIC_CONF: &str = "/etc/dnf/automatic.conf";
@@ -51,7 +51,7 @@ pub mod maintenance {
         "/etc/wwps",
         "/var/log",
         "/root/.acme.sh",
-        "/etc/systemd/system/wwps-tgbot.service",
+        "/etc/systemd/system/wwps-aegis.service",
     ];
     pub const DESTRUCT_SERVICES: &[&str] = &["wwps-core", "wwps-box", "nginx"];
 }
@@ -94,11 +94,11 @@ mod tests {
 
     #[test]
     fn test_bot_paths() {
-        assert_eq!(bot::DIR, "/etc/wwps/tgbot");
-        assert_eq!(bot::KEY_FILE, "/etc/wwps/tgbot/.key");
+        assert_eq!(bot::DIR, "/etc/wwps/aegis");
+        assert_eq!(bot::KEY_FILE, "/etc/wwps/aegis/.key");
         assert_eq!(
             bot::BBR3_PENDING_FLAG_FILE,
-            "/etc/wwps/tgbot/bbr3_pending.flag"
+            "/etc/wwps/aegis/bbr3_pending.flag"
         );
     }
 
@@ -112,11 +112,11 @@ mod tests {
     fn test_maintenance_paths() {
         assert_eq!(
             maintenance::BBR3_PENDING_FLAG_FILE,
-            "/etc/wwps/tgbot/bbr3_pending.flag"
+            "/etc/wwps/aegis/bbr3_pending.flag"
         );
         assert_eq!(
             maintenance::UPGRADE_FLAG_FILE,
-            "/etc/wwps/tgbot/upgrade.flag"
+            "/etc/wwps/aegis/upgrade.flag"
         );
         assert!(!maintenance::DESTRUCT_TARGETS.is_empty());
         assert!(maintenance::DESTRUCT_TARGETS.contains(&"/etc/wwps"));

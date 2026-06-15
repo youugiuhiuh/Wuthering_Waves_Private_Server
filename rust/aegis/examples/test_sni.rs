@@ -1,5 +1,5 @@
-use tgbot::logic::geoip::GeoIPService;
-use tgbot::logic::sni_selector::SNISelector;
+use aegis::logic::geoip::GeoIPService;
+use aegis::logic::sni_selector::SNISelector;
 
 #[tokio::main]
 async fn main() {

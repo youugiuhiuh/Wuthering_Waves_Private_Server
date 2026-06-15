@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use teloxide::Bot;
 use teloxide::prelude::{Message, Requester, ResponseResult};
-use tgbot::logic::config::ConfigManager;
+use aegis::logic::config::ConfigManager;
 
 pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> ResponseResult<()> {
     let chat_id = msg.chat.id;

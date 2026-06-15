@@ -1,4 +1,4 @@
-//! 集成测试：`tgbot --generate-totp-secret` 的 stdout 必须仅有一行合法 Base32
+//! 集成测试：`aegis --generate-totp-secret` 的 stdout 必须仅有一行合法 Base32
 //!
 //! ## 为何之前的测试没捕获到“整段 stdout 被当 TOTP”的 bug？
 //!
@@ -15,14 +15,14 @@
 
 use std::process::Command;
 
-/// 运行 `tgbot --generate-totp-secret` 并检查 stdout 仅有一行、且为合法 base32，且不含 "Binary Integrity Hash"。
+/// 运行 `aegis --generate-totp-secret` 并检查 stdout 仅有一行、且为合法 base32，且不含 "Binary Integrity Hash"。
 #[test]
 fn cli_generate_totp_secret_stdout_is_single_base32_line() {
     let bin = env!("CARGO_BIN_EXE_tgbot");
     let output = Command::new(bin)
         .arg("--generate-totp-secret")
         .output()
-        .expect("执行 tgbot 失败");
+        .expect("执行 aegis 失败");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -57,19 +57,19 @@ fn cli_generate_totp_secret_stdout_is_single_base32_line() {
     );
 }
 
-/// 确保 `tgbot -v` 的 stdout 仅一行且包含版本号，避免其它输出混入。
+/// 确保 `aegis -v` 的 stdout 仅一行且包含版本号，避免其它输出混入。
 #[test]
 fn cli_version_stdout_is_single_line() {
     let bin = env!("CARGO_BIN_EXE_tgbot");
     let output = Command::new(bin)
         .arg("-v")
         .output()
-        .expect("执行 tgbot 失败");
+        .expect("执行 aegis 失败");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<&str> = stdout.trim().lines().collect();
     assert_eq!(lines.len(), 1, "stdout 应仅一行。stdout={:?}", stdout);
     assert!(
-        lines[0].contains("tgbot"),
+        lines[0].contains("aegis"),
         "应包含版本信息。got: {:?}",
         lines[0]
     );

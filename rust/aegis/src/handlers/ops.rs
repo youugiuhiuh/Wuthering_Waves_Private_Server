@@ -5,9 +5,9 @@ use crate::logic::scheduler::TaskType;
 use std::time::{Duration, Instant};
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
-use tgbot::logic::UpgradeManager;
-use tgbot::logic::maintenance::MaintenanceManager;
-use tgbot::logic::operations::{Operations, REBOOT_FLAG};
+use aegis::logic::UpgradeManager;
+use aegis::logic::maintenance::MaintenanceManager;
+use aegis::logic::operations::{Operations, REBOOT_FLAG};
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     let data = ctx.data.as_str();

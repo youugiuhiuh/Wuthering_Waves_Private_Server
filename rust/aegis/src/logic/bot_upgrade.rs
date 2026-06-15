@@ -23,7 +23,7 @@ const DEFAULT_RELEASE_REPOSITORIES: &[(&str, &str)] = &[
     ("NicholasDewar", "Wuthering_Waves_Private_Server"),
     ("youugiuhiuh", "Wuthering_Waves_Private_Server"),
 ];
-const DEFAULT_ASSET_NAME: &str = "tgbot";
+const DEFAULT_ASSET_NAME: &str = "aegis";
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
 
 /// Release API 根地址列表（支持 GitHub / Codeberg / Gitea 等兼容 API），按顺序尝试
@@ -436,7 +436,7 @@ impl UpgradeManager {
     }
 
     pub async fn write_upgrade_flag(&self, version: &str) -> Result<()> {
-        let flag_path = obfstr!("/etc/wwps/tgbot/upgrade.flag").to_string();
+        let flag_path = obfstr!("/etc/wwps/aegis/upgrade.flag").to_string();
         if let Some(parent) = Path::new(&flag_path).parent() {
             fs::create_dir_all(parent)
                 .await

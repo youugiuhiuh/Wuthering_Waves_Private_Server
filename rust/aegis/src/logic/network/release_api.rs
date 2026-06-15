@@ -136,13 +136,13 @@ mod tests {
 
     #[test]
     fn test_parse_sha256_manifest() {
-        let manifest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  tgbot\n";
-        let result = parse_sha256_manifest(manifest, "tgbot");
+        let manifest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  aegis\n";
+        let result = parse_sha256_manifest(manifest, "aegis");
         assert_eq!(
             result,
             Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string())
         );
-        assert!(parse_sha256_manifest("", "tgbot").is_none());
+        assert!(parse_sha256_manifest("", "aegis").is_none());
     }
 
     #[test]

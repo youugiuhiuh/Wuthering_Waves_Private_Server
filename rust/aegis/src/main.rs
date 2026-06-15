@@ -27,14 +27,14 @@ use teloxide::net::Download;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode;
 use teloxide::utils::command::BotCommands;
-use tgbot::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
-use tgbot::logic;
-use tgbot::logic::bot_upgrade::UPGRADE_FLAG_FILE;
-use tgbot::logic::maintenance::MaintenanceManager;
-use tgbot::logic::security::SecurityManager;
-use tgbot::logic::self_destruct::production_executor;
-use tgbot::logic::system::SystemMonitor;
-use tgbot::logic::totp::TotpManager;
+use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
+use aegis::logic;
+use aegis::logic::bot_upgrade::UPGRADE_FLAG_FILE;
+use aegis::logic::maintenance::MaintenanceManager;
+use aegis::logic::security::SecurityManager;
+use aegis::logic::self_destruct::production_executor;
+use aegis::logic::system::SystemMonitor;
+use aegis::logic::totp::TotpManager;
 
 // TOTP 防爆破参数
 // TOTP 防爆破参数
@@ -251,12 +251,12 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         if args[1] == "-v" || args[1] == "--version" {
-            println!("tgbot {}", env!("CARGO_PKG_VERSION"));
+            println!("aegis {}", env!("CARGO_PKG_VERSION"));
             return Ok(());
         }
         if args[1] == "--setup" {
             if args.len() < 5 {
-                println!("Usage: tgbot --setup <token> <admin_id> <totp_secret>");
+                println!("Usage: aegis --setup <token> <admin_id> <totp_secret>");
                 return Ok(());
             }
             return run_setup(&args[2], &args[3], &args[4]).await;
@@ -274,7 +274,7 @@ async fn main() -> Result<()> {
     let config_path = config_dir.join(CONFIG_FILE);
     if config_path.exists() && !key_path.exists() {
         anyhow::bail!(
-            "配置文件 {} 存在，但 {} 不存在。请将 setup 时生成的 .key 与 config.enc 一并部署到本机，或在本机重新执行 tgbot --setup 完成初始化。",
+            "配置文件 {} 存在，但 {} 不存在。请将 setup 时生成的 .key 与 config.enc 一并部署到本机，或在本机重新执行 aegis --setup 完成初始化。",
             config_path.display(),
             key_path.display()
         );
@@ -458,7 +458,7 @@ mod tests {
     use anyhow::Result;
     use futures_util::future::BoxFuture;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use tgbot::logic::self_destruct::SelfDestructExecutor;
+    use aegis::logic::self_destruct::SelfDestructExecutor;
 
     struct CountingExecutor {
         calls: Arc<AtomicUsize>,
@@ -481,7 +481,7 @@ mod tests {
             calls: calls.clone(),
         });
 
-        tgbot::logic::self_destruct::trigger(executor);
+        aegis::logic::self_destruct::trigger(executor);
         tokio::time::sleep(Duration::from_secs(3)).await;
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);

@@ -4,8 +4,8 @@ use sha2::{Digest, Sha256};
 use std::time::Instant;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
-use tgbot::logic::config::{ConfigManager, WarpMode};
-use tgbot::logic::installer::WarpInstaller;
+use aegis::logic::config::{ConfigManager, WarpMode};
+use aegis::logic::installer::WarpInstaller;
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     let data = ctx.data.as_str();

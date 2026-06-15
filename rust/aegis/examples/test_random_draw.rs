@@ -69,7 +69,7 @@ fn main() {
     }
 
     println!("\n=== 持久化状态 ===");
-    println!("保存状态到 /etc/wwps/tgbot/sni_state/reality_US.enc");
+    println!("保存状态到 /etc/wwps/aegis/sni_state/reality_US.enc");
     println!("  - domains: 10 个");
     println!("  - shuffled_indices: [剩余索引]");
     println!("  - used_count: 20");

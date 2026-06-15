@@ -7,7 +7,7 @@ use crate::utils::format_duration_human;
 use std::path::Path;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
-use tgbot::core::paths::{singbox, xray};
+use aegis::core::paths::{singbox, xray};
 
 pub async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
     let keyboard = InlineKeyboardMarkup::new(vec![

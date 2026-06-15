@@ -1,11 +1,11 @@
 //! 集成测试：setup 写入的 config 能被同一目录下的 SecurityManager 解密并成功建 TotpManager。
 //!
-//! 执行 `tgbot --setup` 后读取 config.enc，解密 totp_secret 并 trim，用 TotpManager::new 断言成功。
+//! 执行 `aegis --setup` 后读取 config.enc，解密 totp_secret 并 trim，用 TotpManager::new 断言成功。
 
 use secrecy::{ExposeSecret, SecretString};
 use std::fs;
-use tgbot::logic::security::SecurityManager;
-use tgbot::logic::totp::TotpManager;
+use aegis::logic::security::SecurityManager;
+use aegis::logic::totp::TotpManager;
 
 #[derive(serde::Deserialize)]
 struct EncryptedConfig {
@@ -25,12 +25,12 @@ fn setup_roundtrip_decrypt_and_totp_manager_succeeds() {
     let bin = env!("CARGO_BIN_EXE_tgbot");
     let totp_secret = TotpManager::generate_new_secret();
 
-    // 使用 tgbot --setup 写入 config.enc + .key
+    // 使用 aegis --setup 写入 config.enc + .key
     let out = std::process::Command::new(bin)
         .env("TGBOT_CONFIG_DIR", config_dir)
         .args(["--setup", "dummy_token", "123456", totp_secret.as_str()])
         .output()
-        .expect("执行 tgbot --setup 失败");
+        .expect("执行 aegis --setup 失败");
 
     assert!(
         out.status.success(),

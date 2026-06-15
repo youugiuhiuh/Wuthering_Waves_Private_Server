@@ -299,7 +299,7 @@ pub async fn get_manager() -> Option<Arc<SchedulerManager>> {
 
 pub async fn start_scheduler(bot: Bot, chat_id: ChatId) -> Result<()> {
     log::info!("⏰ 开始初始化调度器...");
-    let state_path = "/etc/wwps/tgbot/scheduler_state.json".to_string();
+    let state_path = "/etc/wwps/aegis/scheduler_state.json".to_string();
 
     let manager = SchedulerManager::new(bot, chat_id, state_path).await?;
     let mut manager_guard = SCHEDULER.lock().await;

@@ -9,11 +9,11 @@ use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MessageId, ParseMode,
 };
 use tempfile::NamedTempFile;
-use tgbot::core::types::IpVersion;
-use tgbot::logic::config::{ConfigManager, KcpMask, Proto};
-use tgbot::logic::installer::{RealityInstallOutcome, RealityInstaller};
-use tgbot::logic::maintenance::MaintenanceManager;
-use tgbot::logic::system::SystemMonitor;
+use aegis::core::types::IpVersion;
+use aegis::logic::config::{ConfigManager, KcpMask, Proto};
+use aegis::logic::installer::{RealityInstallOutcome, RealityInstaller};
+use aegis::logic::maintenance::MaintenanceManager;
+use aegis::logic::system::SystemMonitor;
 
 async fn show_reality_batch_prompt(
     bot: &Bot,

@@ -1,4 +1,4 @@
-//! 集成测试：`tgbot --setup` 成功时 stdout 仅一行且包含成功提示，避免混入其它输出。
+//! 集成测试：`aegis --setup` 成功时 stdout 仅一行且包含成功提示，避免混入其它输出。
 
 use std::process::Command;
 
@@ -13,7 +13,7 @@ fn cli_setup_success_stdout_is_single_line_with_success_message() {
         .env("TGBOT_CONFIG_DIR", config_dir)
         .args(["--setup", "dummy_token", "123456", totp_secret])
         .output()
-        .expect("执行 tgbot --setup 失败");
+        .expect("执行 aegis --setup 失败");
 
     assert!(
         output.status.success(),

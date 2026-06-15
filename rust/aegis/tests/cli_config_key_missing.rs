@@ -17,7 +17,7 @@ fn cli_fails_with_stderr_about_key_missing_when_config_enc_exists_without_key() 
     let output = Command::new(bin)
         .env("TGBOT_CONFIG_DIR", config_dir)
         .output()
-        .expect("执行 tgbot 失败");
+        .expect("执行 aegis 失败");
 
     assert!(
         !output.status.success(),

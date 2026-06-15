@@ -7,9 +7,9 @@ use std::process::Command;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::logic::security::SecurityManager;
-use tgbot::core::paths::xray::{BIN, PQ_PUB_PATH, PQ_SEED_PATH};
+use aegis::core::paths::xray::{BIN, PQ_PUB_PATH, PQ_SEED_PATH};
 
-pub const CONFIG_DIR: &str = "/etc/wwps/tgbot";
+pub const CONFIG_DIR: &str = "/etc/wwps/aegis";
 
 /// 配置目录；测试可通过环境变量 TGBOT_CONFIG_DIR 覆盖。
 pub fn config_dir() -> PathBuf {
@@ -115,7 +115,7 @@ pub fn generate_reality_pq_keys_sync() -> Result<()> {
     Ok(())
 }
 
-/// 在管理初始化（tgbot --setup）时如无现有 PQ 配置则调用 mldsa65 生成。
+/// 在管理初始化（aegis --setup）时如无现有 PQ 配置则调用 mldsa65 生成。
 fn sync_reality_pq_pub_on_setup() {
     if PathBuf::from(PQ_SEED_PATH).exists() || PathBuf::from(PQ_PUB_PATH).exists() {
         return;
@@ -170,7 +170,7 @@ pub async fn verify_integrity() -> Result<()> {
     let config_dir = config_dir();
     if !config_dir.exists() {
         eprintln!(
-            "❌ 配置文件目录不存在。请运行 `tgbot --setup <token> <admin_id> <totp_secret>` 进行初始化。"
+            "❌ 配置文件目录不存在。请运行 `aegis --setup <token> <admin_id> <totp_secret>` 进行初始化。"
         );
         std::process::exit(1);
     }
