@@ -742,7 +742,7 @@ func main() {
 
 	baseTargetDir := findTargetDir()
 	if baseTargetDir == "" {
-		fmt.Println("Error: Could not find rust/tgbot/src/resources/sni directory.")
+		fmt.Println("Error: Could not find rust/aegis/src/resources/sni directory.")
 		os.Exit(1)
 	}
 
@@ -1918,7 +1918,7 @@ func findTargetDir() string {
 	cwd, _ := os.Getwd()
 	dir := cwd
 	for {
-		target := filepath.Join(dir, "rust", "tgbot", "src", "resources", "sni")
+		target := filepath.Join(dir, "rust", "aegis", "src", "resources", "sni")
 		if info, err := os.Stat(target); err == nil && info.IsDir() {
 			return target
 		}

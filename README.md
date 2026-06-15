@@ -21,7 +21,7 @@ An experimental self-hosted server emulator project for Wuthering Waves, focused
 
 ## Components
 
-- `rust/tgbot`: Telegram-based management bot
+- `rust/aegis`: Telegram-based management bot
 - `go/installer`: bootstrap installer and update entrypoint
 - `rust/version-sync`: release/version synchronization helper
 - `sni_tester`: standalone SNI and connectivity testing utility
@@ -45,7 +45,7 @@ wget -O /root/installer "https://github.com/youugiuhiuh/Wuthering_Waves_Private_
 Releases include:
 
 - `installer`: bootstrap program
-- `tgbot`: management-side executable
+- `aegis`: management-side executable
 
 Use the installer first. It will prepare the runtime environment and deploy the required components automatically.
 
@@ -64,7 +64,7 @@ After installation, the management interface can be used for:
 ### Rust bot
 
 ```bash
-cd rust/tgbot
+cd rust/aegis
 cargo build --release
 ```
 
@@ -84,7 +84,7 @@ go build .
 
 ## Release Flow
 
-The CI/CD workflows build release artifacts from this repository and create releases with `tgbot` and `installer` binaries.
+The CI/CD workflows build release artifacts from this repository and create releases with `aegis` and `installer` binaries.
 
 Supported CI/CD platforms:
 
@@ -94,7 +94,7 @@ Supported CI/CD platforms:
 - Bitbucket Pipelines (`bitbucket-pipelines.yml`)
 - SourceHut Builds (`.build.yml`)
 
-Trigger by bumping version in `rust/tgbot/Cargo.toml` and pushing to default branch, or run manually with version input.
+Trigger by bumping version in `rust/aegis/Cargo.toml` and pushing to default branch, or run manually with version input.
 
 ## Scope
 

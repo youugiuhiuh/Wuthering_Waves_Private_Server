@@ -23,10 +23,10 @@ import (
 
 const (
 	version     = "v0.5.6"
-	installDir  = "/etc/wwps/tgbot"
-	binaryName  = "tgbot"
-	serviceName = "wwps-tgbot"
-	serviceFile = "/etc/systemd/system/wwps-tgbot.service"
+	installDir  = "/etc/wwps/aegis"
+	binaryName  = "aegis"
+	serviceName = "wwps-aegis"
+	serviceFile = "/etc/systemd/system/wwps-aegis.service"
 )
 
 type releaseRepo struct {
@@ -39,13 +39,13 @@ var defaultReleaseRepositories = []releaseRepo{
 	{Owner: "youugiuhiuh", Name: "Wuthering_Waves_Private_Server"},
 }
 
-// releaseAPIBases: 按顺序尝试的 Release API 根地址，可通过 TGBOT_RELEASE_MIRRORS 覆盖。
+// releaseAPIBases: 按顺序尝试的 Release API 根地址，可通过 AEGIS_RELEASE_MIRRORS 覆盖。
 var releaseAPIBases = []string{
 	"https://api.github.com",
 }
 
 func init() {
-	if s := os.Getenv("TGBOT_RELEASE_MIRRORS"); s != "" {
+	if s := os.Getenv("AEGIS_RELEASE_MIRRORS"); s != "" {
 		bases := strings.Split(s, ",")
 		for i := range bases {
 			bases[i] = strings.TrimSpace(bases[i])
@@ -71,7 +71,7 @@ func parseReleaseRepo(input string) (releaseRepo, bool) {
 }
 
 func configuredReleaseRepositories() []releaseRepo {
-	if value := strings.TrimSpace(os.Getenv("TGBOT_RELEASE_REPOSITORIES")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("AEGIS_RELEASE_REPOSITORIES")); value != "" {
 		items := strings.Split(value, ",")
 		repos := make([]releaseRepo, 0, len(items))
 		for _, item := range items {
@@ -84,14 +84,14 @@ func configuredReleaseRepositories() []releaseRepo {
 		}
 	}
 
-	if value := strings.TrimSpace(os.Getenv("TGBOT_RELEASE_REPOSITORY")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("AEGIS_RELEASE_REPOSITORY")); value != "" {
 		if repo, ok := parseReleaseRepo(value); ok {
 			return []releaseRepo{repo}
 		}
 	}
 
-	owner := strings.TrimSpace(os.Getenv("TGBOT_RELEASE_OWNER"))
-	repo := strings.TrimSpace(os.Getenv("TGBOT_RELEASE_REPO"))
+	owner := strings.TrimSpace(os.Getenv("AEGIS_RELEASE_OWNER"))
+	repo := strings.TrimSpace(os.Getenv("AEGIS_RELEASE_REPO"))
 	if owner != "" && repo != "" {
 		return []releaseRepo{{Owner: owner, Name: repo}}
 	}
@@ -135,7 +135,7 @@ func printBanner() {
 	printRed("\n==============================================================")
 	printGreen("WWPS TG Bot 管理工具")
 	printGreen("当前版本: " + version)
-	printGreen("Release 源: 默认 GitHub，可设 TGBOT_RELEASE_MIRRORS")
+	printGreen("Release 源: 默认 GitHub，可设 AEGIS_RELEASE_MIRRORS")
 	if repos := configuredReleaseRepositories(); len(repos) > 0 {
 		printGreen("Release 仓库: " + repos[0].Owner + "/" + repos[0].Name)
 	}
@@ -472,7 +472,7 @@ func verifySHA256(path, expected string) error {
 
 // ======================== 安装 ==============================
 
-func installTGBot() {
+func installAegis() {
 	printSkyBlue("\n开始安装/更新 TG Bot...")
 
 	release, err := getLatestReleaseInfo()
@@ -708,7 +708,7 @@ WantedBy=multi-user.target
 
 // ======================== 卸载 ==============================
 
-func uninstallTGBot() {
+func uninstallAegis() {
 	printYellow("\n确认卸载 TG Bot？所有配置将被删除。")
 	fmt.Print("输入 y 确认卸载: ")
 	var confirm string
@@ -793,9 +793,9 @@ func main() {
 
 	switch choice {
 	case "1":
-		installTGBot()
+		installAegis()
 	case "2":
-		uninstallTGBot()
+		uninstallAegis()
 	case "0":
 		os.Exit(0)
 	default:

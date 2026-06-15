@@ -11,7 +11,7 @@ pub struct VersionSyncer {
 impl VersionSyncer {
     pub fn new() -> Self {
         Self {
-            cargo_toml_path: "rust/tgbot/Cargo.toml".to_string(),
+            cargo_toml_path: "rust/aegis/Cargo.toml".to_string(),
             go_installer_path: "go/installer/main.go".to_string(),
         }
     }
@@ -53,9 +53,9 @@ impl VersionSyncer {
         let original_dir =
             std::env::current_dir().with_context(|| "Failed to get current directory")?;
 
-        // 切换到 rust/tgbot 目录
-        std::env::set_current_dir("rust/tgbot")
-            .with_context(|| "Failed to change to rust/tgbot directory")?;
+        // 切换到 rust/aegis 目录
+        std::env::set_current_dir("rust/aegis")
+            .with_context(|| "Failed to change to rust/aegis directory")?;
 
         let cargo_result = std::process::Command::new("cargo")
             .args(["check"])
@@ -91,11 +91,11 @@ impl VersionSyncer {
         }
 
         // 同步 Cargo.lock
-        let old_lock_content = fs::read_to_string("rust/tgbot/Cargo.lock").unwrap_or_default();
+        let old_lock_content = fs::read_to_string("rust/aegis/Cargo.lock").unwrap_or_default();
         self.sync_cargo_lock()?;
-        let new_lock_content = fs::read_to_string("rust/tgbot/Cargo.lock").unwrap_or_default();
+        let new_lock_content = fs::read_to_string("rust/aegis/Cargo.lock").unwrap_or_default();
         if old_lock_content != new_lock_content {
-            modified_files.push("rust/tgbot/Cargo.lock".to_string());
+            modified_files.push("rust/aegis/Cargo.lock".to_string());
         }
 
         Ok(SyncResult {
