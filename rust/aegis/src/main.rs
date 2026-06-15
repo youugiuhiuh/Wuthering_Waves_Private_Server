@@ -20,6 +20,7 @@ use crate::bootstrap::{
     harden_process, run_setup, run_setup_from_stdin, verify_integrity,
 };
 use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
+use aegis::adapters::matrix::MatrixAdapter;
 use aegis::adapters::telegram::TelegramAdapter;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::SecurityManager;
@@ -30,6 +31,11 @@ use aegis::core::system::upgrade::UPGRADE_FLAG_FILE;
 use aegis::core::totp::TotpManager;
 use anyhow::{Context, Result};
 use handlers::{callback, message};
+use matrix_sdk::{
+    Client as MatrixClient, Room, RoomState,
+    config::SyncSettings,
+    ruma::events::room::message::OriginalSyncRoomMessageEvent,
+};
 use obfstr::obfstr;
 use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
@@ -275,6 +281,12 @@ async fn main() -> Result<()> {
     // 正常启动：校验完整性后再加载配置
     verify_integrity().await?;
 
+    // CLI 模式检测
+    let use_matrix = args.iter().any(|a| a == "--matrix");
+    let use_all = args.iter().any(|a| a == "--all");
+    let enable_matrix = use_matrix || use_all;
+    let enable_telegram = !use_matrix || use_all;
+
     let config_dir = config_dir();
     let key_path = config_dir.join(KEY_FILE);
     let config_path = config_dir.join(CONFIG_FILE);
@@ -328,13 +340,76 @@ async fn main() -> Result<()> {
 
     let bot_settings = BotSettings::load();
 
-    let bot = Bot::new(&token);
-    if let Err(err) = register_bot_commands(&bot).await {
-        eprintln!("[WARN] 命令注册失败: {}", err);
-    }
+    // ── Matrix 登录 ──
+    let matrix_handle: Option<(MatrixClient, Room, Arc<dyn BotAdapter>)> = if enable_matrix {
+        let decrypt_matrix =
+            |field: &Option<Vec<u8>>| -> Result<String> {
+                let vec = security.decrypt(field.as_ref().with_context(|| "缺少 Matrix 配置项")?)?;
+                Ok(String::from_utf8(vec.expose_secret().to_vec())
+                    .map_err(|e| anyhow::anyhow!("Matrix 字段包含无效的 UTF-8: {}", e))?
+                    .trim()
+                    .to_string())
+            };
 
-    let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
-    let _admin_target = TargetId(admin_id.to_string());
+        let matrix_homeserver =
+            decrypt_matrix(&encrypted_config.matrix_homeserver)?;
+        let matrix_username =
+            decrypt_matrix(&encrypted_config.matrix_username)?;
+        let matrix_pwd =
+            decrypt_matrix(&encrypted_config.matrix_password)?;
+        let matrix_room_id_str =
+            decrypt_matrix(&encrypted_config.matrix_room_id)?;
+
+        let client = MatrixClient::builder()
+            .homeserver_url(&matrix_homeserver)
+            .build()
+            .await?;
+
+        client
+            .matrix_auth()
+            .login_username(&matrix_username, &matrix_pwd)
+            .initial_device_display_name("Aegis Matrix Bot")
+            .send()
+            .await?;
+        println!("✅ Matrix 登录成功: {}", matrix_username);
+
+        let room_id: matrix_sdk::ruma::OwnedRoomId = matrix_room_id_str.parse()?;
+
+        let client_inv = client.clone();
+        client.add_event_handler(
+            move |_: matrix_sdk::ruma::events::room::member::OriginalSyncRoomMemberEvent,
+                  room: Room| {
+                let c = client_inv.clone();
+                async move {
+                    if room.state() == RoomState::Invited {
+                        let _ = c.join_room_by_id(room.room_id()).await;
+                    }
+                }
+            },
+        );
+
+        let room = client
+            .get_room(&room_id)
+            .context("未找到 Matrix 房间，请先邀请机器人到房间")?;
+
+        let matrix_adapter: Arc<dyn BotAdapter> = Arc::new(MatrixAdapter::new(room.clone()));
+        Some((client, room, matrix_adapter))
+    } else {
+        None
+    };
+
+    // ── 创建主适配器与 AppState ──
+    let adapter: Arc<dyn BotAdapter> = if enable_telegram {
+        let bot = Bot::new(&token);
+        if let Err(err) = register_bot_commands(&bot).await {
+            eprintln!("[WARN] 命令注册失败: {}", err);
+        }
+        Arc::new(TelegramAdapter::new(bot))
+    } else if let Some((_, _, ref matrix_adapter)) = matrix_handle {
+        matrix_adapter.clone()
+    } else {
+        anyhow::bail!("没有启用任何平台，请使用 --matrix 或 --all 或省略参数使用 Telegram");
+    };
 
     let state = Arc::new(AppState::new(
         admin_id,
@@ -345,39 +420,112 @@ async fn main() -> Result<()> {
         adapter,
     ));
 
-    let handler = dptree::entry()
-        .branch(
-            Update::filter_message()
-                .filter_command::<Command>()
-                .endpoint(handle_command),
-        )
-        .branch(Update::filter_message().endpoint(message::handle_message))
-        .branch(Update::filter_callback_query().endpoint(callback::handle_callback));
+    // ── Matrix 同步循环 ──
+    if let Some((client, room, matrix_adapter)) = matrix_handle {
+        let target = TargetId(room.room_id().to_string());
 
-    // 先启动 Dispatcher，再在后台初始化调度器与通知，避免 /start 等命令因启动阻塞而无响应
-    println!("🚀 Bot is starting...");
-    let adapter_for_init = state.adapter.clone();
-    let target_for_init = TargetId(admin_id.to_string());
-    tokio::spawn(async move {
-        if let Err(e) = aegis::core::system::scheduler::start_scheduler(
-            adapter_for_init.clone(),
-            target_for_init.clone(),
-        )
-        .await
-        {
-            log::error!("❌ 初始化调度器失败: {}", e);
+        fn parse_user_id(s: &str) -> i64 {
+            s.trim_start_matches('@').split(':').next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0)
         }
-        let _ = notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
-        let _ = notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init).await;
-        let _ = notify_online(&*adapter_for_init, &target_for_init).await;
-    });
 
-    Dispatcher::builder(bot, handler)
-        .dependencies(dptree::deps![state])
-        .enable_ctrlc_handler()
-        .build()
-        .dispatch()
-        .await;
+        let matrix_state = state.clone();
+        let matrix_adapter_sync = matrix_adapter;
+        let matrix_target = target.clone();
+
+        client.add_event_handler(
+            move |event: OriginalSyncRoomMessageEvent, room: Room, _client: MatrixClient| {
+                let state = matrix_state.clone();
+                let adapter = matrix_adapter_sync.clone();
+                let target = matrix_target.clone();
+                async move {
+                    if room.room_id().as_str() != target.0.as_str() {
+                        return;
+                    }
+                    let user_id = parse_user_id(event.sender.as_str());
+                    if !state.is_admin_user(user_id) {
+                        return;
+                    }
+                    let text = event.content.body().trim().to_string();
+
+                    if crate::looks_like_totp_code(&text) && !state.is_authorized(user_id).await
+                    {
+                        let _ = crate::process_auth_code(&state, &target, user_id, &text).await;
+                        return;
+                    }
+
+                    let cmd = aegis::adapters::matrix::commands::parse(&text);
+                    if !matches!(cmd, aegis::adapters::matrix::commands::Command::Auth { .. }) {
+                        let _ = matrix_handlers::dispatch(&cmd, &*adapter, &target, &state).await;
+                    }
+                }
+            },
+        );
+
+        tokio::spawn(async move {
+            if let Err(e) = client.sync(SyncSettings::default()).await {
+                log::error!("Matrix sync error: {}", e);
+            }
+        });
+    }
+
+    // ── Telegram Dispatcher ──
+    if enable_telegram {
+        let handler = dptree::entry()
+            .branch(
+                Update::filter_message()
+                    .filter_command::<Command>()
+                    .endpoint(handle_command),
+            )
+            .branch(Update::filter_message().endpoint(message::handle_message))
+            .branch(Update::filter_callback_query().endpoint(callback::handle_callback));
+
+        let adapter_for_init = state.adapter.clone();
+        let target_for_init = TargetId(admin_id.to_string());
+        tokio::spawn(async move {
+            if let Err(e) = aegis::core::system::scheduler::start_scheduler(
+                adapter_for_init.clone(),
+                target_for_init.clone(),
+            )
+            .await
+            {
+                log::error!("❌ 初始化调度器失败: {}", e);
+            }
+            let _ = notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
+            let _ = notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init).await;
+            let _ = notify_online(&*adapter_for_init, &target_for_init).await;
+        });
+
+        Dispatcher::builder(Bot::new(&token), handler)
+            .dependencies(dptree::deps![state.clone()])
+            .enable_ctrlc_handler()
+            .build()
+            .dispatch()
+            .await;
+    }
+
+    // ── Matrix-only: 后台初始化 + 保活 ──
+    if enable_matrix && !enable_telegram {
+        let adapter_for_init = state.adapter.clone();
+        let target_for_init = TargetId(admin_id.to_string());
+        tokio::spawn(async move {
+            if let Err(e) = aegis::core::system::scheduler::start_scheduler(
+                adapter_for_init.clone(),
+                target_for_init.clone(),
+            )
+            .await
+            {
+                log::error!("❌ 初始化调度器失败: {}", e);
+            }
+            let _ = notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
+            let _ = notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init).await;
+            let _ = notify_online(&*adapter_for_init, &target_for_init).await;
+        });
+
+        // 保活 — matrix sync runs in background via spawn above
+        let () = std::future::pending().await;
+    }
 
     Ok(())
 }
