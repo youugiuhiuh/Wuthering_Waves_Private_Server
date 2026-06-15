@@ -6,11 +6,11 @@ use std::process::Command;
 fn cli_setup_success_stdout_is_single_line_with_success_message() {
     let dir = tempfile::tempdir().unwrap();
     let config_dir = dir.path();
-    let bin = env!("CARGO_BIN_EXE_tgbot");
+    let bin = env!("CARGO_BIN_EXE_aegis");
     let totp_secret = "JBSWY3DPEHPK3PXP"; // 合法 base32，至少 16 位
 
     let output = Command::new(bin)
-        .env("TGBOT_CONFIG_DIR", config_dir)
+        .env("AEGIS_CONFIG_DIR", config_dir)
         .args(["--setup", "dummy_token", "123456", totp_secret])
         .output()
         .expect("执行 aegis --setup 失败");

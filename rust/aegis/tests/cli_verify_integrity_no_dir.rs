@@ -8,9 +8,9 @@ fn cli_verify_integrity_fails_with_stderr_when_config_dir_missing() {
     let config_dir = dir.path().join("does_not_exist");
     assert!(!config_dir.exists(), "测试用路径应不存在");
 
-    let bin = env!("CARGO_BIN_EXE_tgbot");
+    let bin = env!("CARGO_BIN_EXE_aegis");
     let output = Command::new(bin)
-        .env("TGBOT_CONFIG_DIR", &config_dir)
+        .env("AEGIS_CONFIG_DIR", &config_dir)
         .output()
         .expect("执行 aegis 失败");
 

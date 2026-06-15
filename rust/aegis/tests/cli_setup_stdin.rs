@@ -11,10 +11,10 @@ fn cli_setup_stdin_creates_key_and_config_enc() {
     let config_path = config_dir.join("config.enc");
 
     let payload = r#"{"token":"x","admin_id":"1","totp_secret":"JBSWY3DPEHPK3PXP"}"#;
-    let bin = env!("CARGO_BIN_EXE_tgbot");
+    let bin = env!("CARGO_BIN_EXE_aegis");
 
     let mut child = Command::new(bin)
-        .env("TGBOT_CONFIG_DIR", config_dir)
+        .env("AEGIS_CONFIG_DIR", config_dir)
         .args(["--setup-stdin"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

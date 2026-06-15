@@ -1,6 +1,6 @@
 //! 集成测试：仅有 config.enc、无 .key 时进程应失败且 stderr 含「.key 不存在」类提示。
 //!
-//! 通过 TGBOT_CONFIG_DIR 指向临时目录，仅创建 config.enc，断言非零退出且 stderr 包含关键提示。
+//! 通过 AEGIS_CONFIG_DIR 指向临时目录，仅创建 config.enc，断言非零退出且 stderr 包含关键提示。
 
 use std::process::Command;
 
@@ -13,9 +13,9 @@ fn cli_fails_with_stderr_about_key_missing_when_config_enc_exists_without_key() 
     // 仅写入 config.enc，不创建 .key；内容可为任意合法 JSON（进程在读取前就会 bail）
     std::fs::write(&config_enc, b"{}").unwrap();
 
-    let bin = env!("CARGO_BIN_EXE_tgbot");
+    let bin = env!("CARGO_BIN_EXE_aegis");
     let output = Command::new(bin)
-        .env("TGBOT_CONFIG_DIR", config_dir)
+        .env("AEGIS_CONFIG_DIR", config_dir)
         .output()
         .expect("执行 aegis 失败");
 

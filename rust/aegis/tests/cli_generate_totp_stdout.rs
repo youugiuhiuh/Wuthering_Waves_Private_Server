@@ -18,7 +18,7 @@ use std::process::Command;
 /// 运行 `aegis --generate-totp-secret` 并检查 stdout 仅有一行、且为合法 base32，且不含 "Binary Integrity Hash"。
 #[test]
 fn cli_generate_totp_secret_stdout_is_single_base32_line() {
-    let bin = env!("CARGO_BIN_EXE_tgbot");
+    let bin = env!("CARGO_BIN_EXE_aegis");
     let output = Command::new(bin)
         .arg("--generate-totp-secret")
         .output()
@@ -60,7 +60,7 @@ fn cli_generate_totp_secret_stdout_is_single_base32_line() {
 /// 确保 `aegis -v` 的 stdout 仅一行且包含版本号，避免其它输出混入。
 #[test]
 fn cli_version_stdout_is_single_line() {
-    let bin = env!("CARGO_BIN_EXE_tgbot");
+    let bin = env!("CARGO_BIN_EXE_aegis");
     let output = Command::new(bin)
         .arg("-v")
         .output()
