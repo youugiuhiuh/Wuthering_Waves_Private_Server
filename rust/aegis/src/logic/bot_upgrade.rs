@@ -27,8 +27,8 @@ const DEFAULT_ASSET_NAME: &str = "aegis";
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
 
 /// Release API 根地址列表（支持 GitHub / Codeberg / Gitea 等兼容 API），按顺序尝试
-fn tgbot_release_api_bases() -> Vec<String> {
-    if let Ok(s) = env::var("TGBOT_RELEASE_MIRRORS") {
+fn aegis_release_api_bases() -> Vec<String> {
+    if let Ok(s) = env::var("AEGIS_RELEASE_MIRRORS") {
         let bases: Vec<String> = s
             .split(',')
             .map(|x| x.trim().to_string())
@@ -78,22 +78,22 @@ fn parse_release_repo(input: &str) -> Option<ReleaseRepo> {
 }
 
 fn configured_release_repositories() -> Vec<ReleaseRepo> {
-    if let Ok(value) = env::var("TGBOT_RELEASE_REPOSITORIES") {
+    if let Ok(value) = env::var("AEGIS_RELEASE_REPOSITORIES") {
         let repos: Vec<ReleaseRepo> = value.split(',').filter_map(parse_release_repo).collect();
         if !repos.is_empty() {
             return repos;
         }
     }
 
-    if let Ok(value) = env::var("TGBOT_RELEASE_REPOSITORY")
+    if let Ok(value) = env::var("AEGIS_RELEASE_REPOSITORY")
         && let Some(repo) = parse_release_repo(&value)
     {
         return vec![repo];
     }
 
     match (
-        env::var("TGBOT_RELEASE_OWNER"),
-        env::var("TGBOT_RELEASE_REPO"),
+        env::var("AEGIS_RELEASE_OWNER"),
+        env::var("AEGIS_RELEASE_REPO"),
     ) {
         (Ok(owner), Ok(repo)) if !owner.trim().is_empty() && !repo.trim().is_empty() => {
             return vec![ReleaseRepo::new(owner.trim(), repo.trim())];
@@ -128,7 +128,7 @@ impl UpgradeManager {
     pub fn new() -> Result<Self> {
         let repositories = configured_release_repositories();
         let asset_name =
-            env::var("TGBOT_RELEASE_ASSET").unwrap_or_else(|_| DEFAULT_ASSET_NAME.to_string());
+            env::var("AEGIS_RELEASE_ASSET").unwrap_or_else(|_| DEFAULT_ASSET_NAME.to_string());
         let token = env::var("GITHUB_TOKEN").ok().filter(|s| !s.is_empty());
 
         let client = reqwest::Client::builder()
@@ -211,7 +211,7 @@ impl UpgradeManager {
     }
 
     async fn fetch_latest_release(&self) -> Result<ReleaseArtifact> {
-        let bases = tgbot_release_api_bases();
+        let bases = aegis_release_api_bases();
         let mut errors = Vec::new();
 
         for repository in &self.repositories {

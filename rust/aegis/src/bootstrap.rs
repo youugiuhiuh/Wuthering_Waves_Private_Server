@@ -11,9 +11,9 @@ use aegis::core::paths::xray::{BIN, PQ_PUB_PATH, PQ_SEED_PATH};
 
 pub const CONFIG_DIR: &str = "/etc/wwps/aegis";
 
-/// 配置目录；测试可通过环境变量 TGBOT_CONFIG_DIR 覆盖。
+/// 配置目录；测试可通过环境变量 AEGIS_CONFIG_DIR 覆盖。
 pub fn config_dir() -> PathBuf {
-    std::env::var("TGBOT_CONFIG_DIR")
+    std::env::var("AEGIS_CONFIG_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(CONFIG_DIR))
 }

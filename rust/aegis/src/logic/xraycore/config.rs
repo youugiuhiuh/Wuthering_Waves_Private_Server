@@ -16,9 +16,9 @@ use crate::logic::cmd_async::run_cmd_output;
 pub use super::kcp_mask::KcpMask;
 
 /// 服务端 mldsa65Seed（32 字节 seed 的 base64url），来自 xray/wwps-core mldsa65 输出。
-/// 优先环境变量 `TGBOT_REALITY_PQ_SEED`，否则 `/etc/wwps/reality_pq.seed`。
+/// 优先环境变量 `AEGIS_REALITY_PQ_SEED`，否则 `/etc/wwps/reality_pq.seed`。
 static REALITY_PQ_SEED: Lazy<String> = Lazy::new(|| {
-    if let Ok(v) = std::env::var("TGBOT_REALITY_PQ_SEED") {
+    if let Ok(v) = std::env::var("AEGIS_REALITY_PQ_SEED") {
         let t = v.trim().to_string();
         if !t.is_empty() {
             return t;
@@ -34,15 +34,15 @@ static REALITY_PQ_SEED: Lazy<String> = Lazy::new(|| {
 });
 
 /// 客户端 mldsa65Verify / pqv（公钥 base64url），来自 xray/wwps-core mldsa65 输出。
-/// 优先环境变量 `TGBOT_REALITY_PQ_VERIFY` 或 `TGBOT_REALITY_PQ_PUB`，否则 `/etc/wwps/reality_pq.pub`。
+/// 优先环境变量 `AEGIS_REALITY_PQ_VERIFY` 或 `AEGIS_REALITY_PQ_PUB`，否则 `/etc/wwps/reality_pq.pub`。
 static REALITY_PQ_VERIFY: Lazy<String> = Lazy::new(|| {
-    if let Ok(v) = std::env::var("TGBOT_REALITY_PQ_VERIFY") {
+    if let Ok(v) = std::env::var("AEGIS_REALITY_PQ_VERIFY") {
         let t = v.trim().to_string();
         if !t.is_empty() {
             return t;
         }
     }
-    if let Ok(v) = std::env::var("TGBOT_REALITY_PQ_PUB") {
+    if let Ok(v) = std::env::var("AEGIS_REALITY_PQ_PUB") {
         let t = v.trim().to_string();
         if !t.is_empty() {
             return t;
@@ -166,19 +166,19 @@ impl ConfigManager {
 
     /// 是否已配置 ML-DSA-65（Reality PQ）：seed 或 verify 的环境变量/文件存在即视为已配置。
     pub fn is_reality_pq_configured() -> bool {
-        if std::env::var("TGBOT_REALITY_PQ_SEED")
+        if std::env::var("AEGIS_REALITY_PQ_SEED")
             .map(|v| !v.trim().is_empty())
             .unwrap_or(false)
         {
             return true;
         }
-        if std::env::var("TGBOT_REALITY_PQ_VERIFY")
+        if std::env::var("AEGIS_REALITY_PQ_VERIFY")
             .map(|v| !v.trim().is_empty())
             .unwrap_or(false)
         {
             return true;
         }
-        if std::env::var("TGBOT_REALITY_PQ_PUB")
+        if std::env::var("AEGIS_REALITY_PQ_PUB")
             .map(|v| !v.trim().is_empty())
             .unwrap_or(false)
         {
