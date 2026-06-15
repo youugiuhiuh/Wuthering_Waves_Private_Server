@@ -5,6 +5,11 @@ use matrix_sdk::room::Room;
 use matrix_sdk::ruma::OwnedEventId;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 
+/// Matrix adapter: sends messages to a single Matrix room.
+///
+/// One `MatrixAdapter` instance maps to one room. For multiple rooms,
+/// create multiple instances. The `target` parameter in `BotAdapter`
+/// is ignored since the room is fixed at construction time.
 pub struct MatrixAdapter {
     room: Room,
 }
@@ -16,6 +21,38 @@ impl MatrixAdapter {
 
     pub fn inner_room(&self) -> &Room {
         &self.room
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn platform_is_matrix() {
+        // Platform() doesn't depend on Room — verify the constant
+        assert_eq!(Platform::Matrix as u8, 2);
+    }
+
+    #[test]
+    fn message_id_roundtrip_valid() {
+        let mid = MessageId("$valid_event_id:matrix.org".to_string());
+        let parsed: std::result::Result<OwnedEventId, _> = mid.0.parse();
+        assert!(parsed.is_ok());
+    }
+
+    #[test]
+    fn message_id_parse_rejects_invalid() {
+        let mid = MessageId("not a valid event id".to_string());
+        let parsed: std::result::Result<OwnedEventId, _> = mid.0.parse();
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn platform_enum_value() {
+        assert_eq!(Platform::Matrix, Platform::Matrix);
+        assert_ne!(Platform::Matrix, Platform::Telegram);
+        assert_ne!(Platform::Matrix, Platform::Discord);
     }
 }
 
