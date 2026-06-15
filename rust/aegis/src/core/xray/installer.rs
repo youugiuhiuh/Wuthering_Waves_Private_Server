@@ -41,7 +41,7 @@ impl WarpInstaller {
         // 3. Update core routing config
         crate::core::xray::config::ConfigManager::update_warp_routing_rules(
             vec![],
-            crate::core::xray::config::WarpMode::Default,
+            crate::core::xray::WarpMode::Default,
         )
         .await?;
 

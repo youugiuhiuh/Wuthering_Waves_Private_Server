@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::time::Instant;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
-use aegis::core::xray::config::{ConfigManager, WarpMode};
+use aegis::core::xray::{ConfigManager, WarpMode};
 use aegis::core::xray::installer::WarpInstaller;
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {

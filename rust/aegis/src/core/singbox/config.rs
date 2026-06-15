@@ -1,18 +1,12 @@
-use crate::core::paths::{singbox, xray};
-use crate::core::types::BatchCreationResult;
-use crate::core::types::IpVersion;
+use crate::core::paths::singbox;
 use crate::core::system::maintenance::MaintenanceManager;
-use crate::core::xray::port_allocator::PortAllocator;
-use crate::core::sni::selector::SNISelector;
 use crate::core::system::SystemMonitor;
+use crate::core::xray::port_allocator::PortAllocator;
 use anyhow::{Context, Result};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
 use serde_json::{Value, json};
 use tokio::fs;
-
-use super::hysteria2::Hysteria2Config;
-use super::tuic::TUICConfig;
 
 pub struct SingBoxConfigManager;
 
@@ -286,7 +280,7 @@ impl SingBoxConfigManager {
         Ok(())
     }
 
-    async fn reload_service() -> Result<()> {
+    pub(crate) async fn reload_service() -> Result<()> {
         let output = tokio::process::Command::new("systemctl")
             .args(["restart", "wwps-box"])
             .output()
@@ -348,7 +342,7 @@ impl SingBoxConfigManager {
         Ok(())
     }
 
-    async fn ensure_tls_certificates() -> Result<()> {
+    pub(crate) async fn ensure_tls_certificates() -> Result<()> {
         let cert_exists = match tokio::fs::try_exists(singbox::TLS_CERT).await {
             Ok(true) => true,
             Ok(false) => false,
@@ -436,252 +430,7 @@ impl SingBoxConfigManager {
         Ok(())
     }
 
-    pub async fn batch_create_hysteria2(
-        count: usize,
-        ip_version: IpVersion,
-        enable_obfs: bool,
-    ) -> Result<BatchCreationResult> {
-        if !PortAllocator::check_hysteria2_limit().await? {
-            return Err(anyhow::anyhow!("已达到最大 Hysteria2 配置数量限制（50个）"));
-        }
-
-        let host = match ip_version {
-            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => {
-                SystemMonitor::get_public_ip().await?
-            }
-            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => {
-                SystemMonitor::get_public_ipv6().await?
-            }
-        };
-
-        let geoip = crate::core::network::geoip::GeoIPService::new();
-        let country_code = geoip.get_country_code().await;
-
-        let mut selector = SNISelector::get_for_country(&country_code);
-
-        let mut links = Vec::new();
-        let mut configs = Vec::new();
-
-        for i in 0..count {
-            let sni = selector.get_next();
-
-            let (main_port, hop_range) = PortAllocator::allocate_hysteria2().await?;
-
-            let port = main_port;
-
-            let password = Hysteria2Config::generate_password();
-            let tag = format!("HYSTERIA2-{}-{}", i + 1, &password[..8]);
-
-            let config = if enable_obfs {
-                let obfs_password = Hysteria2Config::generate_obfs_password();
-                Hysteria2Config::with_obfs(
-                    port,
-                    password.clone(),
-                    sni.clone(),
-                    "salamander".to_string(),
-                    obfs_password,
-                )
-            } else {
-                Hysteria2Config::new(port, password.clone(), sni.clone())
-            };
-
-            let link = if enable_obfs {
-                config.to_client_link_with_hopping_and_obfs(&host, &tag, hop_range)
-            } else {
-                config.to_client_link_with_hopping(&host, &tag, hop_range)
-            };
-
-            links.push(link);
-            configs.push(config.to_inbound_json(&tag));
-
-            let _ = MaintenanceManager::allow_port(main_port).await;
-            let _ = MaintenanceManager::allow_port_range(hop_range.0, hop_range.1).await;
-
-            let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
-            if has_ipv6 {
-                let _ = MaintenanceManager::allow_port_range_v6(hop_range.0, hop_range.1).await;
-            }
-
-            Self::add_port_hopping_firewall_rules_v4(main_port, hop_range).await?;
-            if has_ipv6 {
-                Self::add_port_hopping_firewall_rules_v6(main_port, hop_range).await?;
-            }
-        }
-
-        let (filename, _path) = Self::save_standalone_config(configs, "hysteria2").await?;
-        Self::ensure_tls_certificates().await?;
-        Self::reload_service().await?;
-
-        Ok(BatchCreationResult {
-            links,
-            config_file: Some(filename),
-            backup_file: None,
-            created_count: count,
-        })
-    }
-
-    async fn add_port_hopping_firewall_rules_v4(
-        main_port: u16,
-        hop_range: (u16, u16),
-    ) -> Result<()> {
-        use tokio::process::Command;
-
-        let range_str = format!("{}:{}", hop_range.0, hop_range.1);
-
-        let output = Command::new("iptables")
-            .args([
-                "-t",
-                "nat",
-                "-A",
-                "PREROUTING",
-                "-p",
-                "udp",
-                "--dport",
-                &range_str,
-                "-j",
-                "REDIRECT",
-                "--to-ports",
-                &main_port.to_string(),
-            ])
-            .output()
-            .await;
-
-        if let Err(e) = output {
-            log::warn!("添加 iptables 规则失败 (可能需要 root 权限): {}", e);
-        }
-
-        log::info!(
-            "已配置 Hysteria2 IPv4 端口跳跃: 主端口 {}, 跳跃范围 {}",
-            main_port,
-            range_str
-        );
-        Ok(())
-    }
-
-    async fn add_port_hopping_firewall_rules_v6(
-        main_port: u16,
-        hop_range: (u16, u16),
-    ) -> Result<()> {
-        use tokio::process::Command;
-
-        let range_str = format!("{}:{}", hop_range.0, hop_range.1);
-
-        let output = Command::new("ip6tables")
-            .args([
-                "-t",
-                "nat",
-                "-A",
-                "PREROUTING",
-                "-p",
-                "udp",
-                "--dport",
-                &range_str,
-                "-j",
-                "REDIRECT",
-                "--to-ports",
-                &main_port.to_string(),
-            ])
-            .output()
-            .await;
-
-        if let Err(e) = output {
-            log::warn!("添加 ip6tables 规则失败 (可能需要 root 权限): {}", e);
-        }
-
-        log::info!(
-            "已配置 Hysteria2 IPv6 端口跳跃: 主端口 {}, 跳跃范围 {}",
-            main_port,
-            range_str
-        );
-        Ok(())
-    }
-
-    pub async fn batch_create_tuic(
-        count: usize,
-        ip_version: IpVersion,
-    ) -> Result<BatchCreationResult> {
-        let host = match ip_version {
-            IpVersion::IPv4 | IpVersion::SplitStackV4Primary => {
-                SystemMonitor::get_public_ip().await?
-            }
-            IpVersion::IPv6 | IpVersion::SplitStackV6Primary => {
-                SystemMonitor::get_public_ipv6().await?
-            }
-        };
-
-        let geoip = crate::core::network::geoip::GeoIPService::new();
-        let country_code = geoip.get_country_code().await;
-
-        let mut selector = SNISelector::get_for_country(&country_code);
-
-        let mut links = Vec::new();
-        let mut configs = Vec::new();
-
-        let port_443_available = MaintenanceManager::is_port_available(443).await;
-
-        for i in 0..count {
-            let sni = selector.get_next();
-
-            let port = if i == 0 && port_443_available {
-                443u16
-            } else {
-                loop {
-                    let p = StdRng::from_entropy().gen_range(10000..60000);
-                    if MaintenanceManager::is_port_available(p).await {
-                        break p;
-                    }
-                }
-            };
-
-            let uuid = Self::generate_uuid().await?;
-            let password = TUICConfig::generate_password();
-            let tag = format!("TUIC-{}-{}", i + 1, &uuid[..8]);
-
-            let config = TUICConfig::new(port, uuid.clone(), password.clone(), sni.clone());
-            let link = config.to_client_link(&host, &tag);
-
-            links.push(link);
-            configs.push(config.to_inbound_json(&tag));
-
-            let _ = MaintenanceManager::allow_port(port).await;
-        }
-
-        let (filename, _path) = Self::save_standalone_config(configs, "tuic").await?;
-        Self::ensure_tls_certificates().await?;
-        Self::reload_service().await?;
-
-        Ok(BatchCreationResult {
-            links,
-            config_file: Some(filename),
-            backup_file: None,
-            created_count: count,
-        })
-    }
-
-    async fn generate_uuid() -> Result<String> {
-        let (status, stdout, _) = crate::core::cmd_async::run_cmd_output(
-            xray::BIN,
-            &["uuid"],
-            std::time::Duration::from_secs(5),
-        )
-        .await?;
-
-        if status.success() {
-            Ok(stdout.trim().to_string())
-        } else {
-            let mut rng = StdRng::from_entropy();
-            Ok(format!(
-                "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
-                rng.r#gen::<u32>(),
-                rng.r#gen::<u16>(),
-                rng.r#gen::<u16>(),
-                rng.r#gen::<u16>(),
-                rng.r#gen::<u64>() & 0xFFFFFFFFFFFF
-            ))
-        }
-    }
-
-    async fn save_standalone_config(configs: Vec<Value>, proto: &str) -> Result<(String, String)> {
+    pub(crate) async fn save_standalone_config(configs: Vec<Value>, proto: &str) -> Result<(String, String)> {
         use rand::Rng;
 
         fs::create_dir_all(singbox::CONF_DIR)

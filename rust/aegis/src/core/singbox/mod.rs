@@ -1,8 +1,10 @@
 pub mod config;
 pub mod error;
 pub mod hysteria2;
+pub mod hy2_batch;
 pub mod installer;
 pub mod tuic;
+pub mod tuic_batch;
 
 pub use config::SingBoxConfigManager;
 pub use error::SingBoxError;

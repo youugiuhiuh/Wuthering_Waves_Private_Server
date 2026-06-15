@@ -10,7 +10,8 @@ use teloxide::types::{
 };
 use tempfile::NamedTempFile;
 use aegis::core::types::IpVersion;
-use aegis::core::xray::config::{ConfigManager, KcpMask, Proto};
+use aegis::core::xray::{ConfigManager, Proto};
+use aegis::core::xray::KcpMask;
 use aegis::core::xray::installer::{RealityInstallOutcome, RealityInstaller};
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::SystemMonitor;
