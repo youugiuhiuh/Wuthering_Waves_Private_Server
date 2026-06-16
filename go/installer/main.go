@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -55,6 +56,16 @@ func init() {
 			releaseAPIBases = bases
 		}
 	}
+}
+
+func randomString(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	for i := range b {
+		b[i] = letters[int(b[i])%len(letters)]
+	}
+	return string(b)
 }
 
 func parseReleaseRepo(input string) (releaseRepo, bool) {
@@ -283,7 +294,7 @@ func readSecureInputStr(prompt string) string {
 	return s
 }
 
-func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, matrixRoom string, matrixPass []byte) []byte {
+func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, matrixRoom string, matrixPass, matrixStorePassphrase []byte) []byte {
 	payload := make([]byte, 0, len(token)+len(adminID)+len(totpSecret)+64)
 	payload = append(payload, '{')
 	payload = append(payload, []byte(`"token":`)...)
@@ -314,6 +325,11 @@ func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, 
 		payload = append(payload, ',')
 		payload = append(payload, []byte(`"matrix_room_id":`)...)
 		payload = appendJSONEscaped(payload, []byte(matrixRoom))
+	}
+	if len(matrixStorePassphrase) > 0 {
+		payload = append(payload, ',')
+		payload = append(payload, []byte(`"matrix_store_passphrase":`)...)
+		payload = appendJSONEscaped(payload, matrixStorePassphrase)
 	}
 
 	payload = append(payload, '}')
@@ -739,13 +755,14 @@ func installFromStdin() {
 }
 
 type setupConfig struct {
-	Token          string
-	AdminID        string
-	TOTPSecret     string
-	MatrixHS       string
-	MatrixUser     string
-	MatrixPassword string
-	MatrixRoom     string
+	Token                 string
+	AdminID               string
+	TOTPSecret            string
+	MatrixHS              string
+	MatrixUser            string
+	MatrixPassword        string
+	MatrixRoom            string
+	MatrixStorePassphrase string
 }
 
 func parseKeyVal(data []byte) (*setupConfig, error) {
@@ -778,6 +795,8 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 			cfg.MatrixPassword = val
 		case "matrix_room_id":
 			cfg.MatrixRoom = val
+		case "matrix_store_passphrase":
+			cfg.MatrixStorePassphrase = val
 		default:
 			printYellow("警告: 未知字段 \"" + key + "\" 已忽略")
 		}
@@ -812,7 +831,7 @@ func installFromKeyVal() {
 
 	payload := buildSetupPayload(
 		[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
-		cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword),
+		cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), []byte(cfg.MatrixStorePassphrase),
 	)
 
 	runAegisSetup(destPath, payload)
@@ -940,14 +959,16 @@ func firstTimeSetup(binaryPath string) {
 
 	var mPassBuf *memguard.LockedBuffer
 	var mPassBytes []byte
+	var matrixStorePassphrase string
 	if matrixPassEnclave != nil {
 		mPassBuf, _ = matrixPassEnclave.Open()
 		mPassBytes = mPassBuf.Bytes()
+		matrixStorePassphrase = randomString(32)
 	}
 
 	setupPayload := buildSetupPayload(
 		bTokenBuf.Bytes(), aIDBuf.Bytes(), tSecretBuf.Bytes(),
-		matrixHS, matrixUser, matrixRoom, mPassBytes,
+		matrixHS, matrixUser, matrixRoom, mPassBytes, []byte(matrixStorePassphrase),
 	)
 	defer zeroBytes(setupPayload)
 

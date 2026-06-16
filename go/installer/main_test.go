@@ -86,7 +86,7 @@ func TestBuildSetupPayload(t *testing.T) {
 	t.Run("without matrix", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
-			"", "", "", nil,
+			"", "", "", nil, nil,
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -103,7 +103,7 @@ func TestBuildSetupPayload(t *testing.T) {
 	t.Run("with matrix", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
-			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", []byte("pass123"),
+			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", []byte("pass123"), nil,
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -126,7 +126,7 @@ func TestBuildSetupPayload(t *testing.T) {
 	t.Run("partial matrix fields", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
-			"https://matrix.org", "", "", nil,
+			"https://matrix.org", "", "", nil, nil,
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -267,7 +267,7 @@ func TestParseKeyVal(t *testing.T) {
 		}
 		payload := buildSetupPayload(
 			[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
-			cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword),
+			cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), nil,
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {

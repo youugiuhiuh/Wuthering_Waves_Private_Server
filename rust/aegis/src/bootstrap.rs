@@ -38,6 +38,8 @@ pub struct EncryptedConfig {
     pub matrix_password: Option<Vec<u8>>,
     #[serde(default)]
     pub matrix_room_id: Option<Vec<u8>>,
+    #[serde(default)]
+    pub matrix_store_passphrase: Option<Vec<u8>>,
 }
 
 #[derive(serde::Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -53,6 +55,8 @@ struct SetupInput {
     matrix_password: Option<String>,
     #[serde(default)]
     matrix_room_id: Option<String>,
+    #[serde(default)]
+    matrix_store_passphrase: Option<String>,
 }
 
 impl Drop for EncryptedConfig {
@@ -70,6 +74,9 @@ impl Drop for EncryptedConfig {
             v.zeroize();
         }
         if let Some(v) = &mut self.matrix_room_id {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.matrix_store_passphrase {
             v.zeroize();
         }
     }
@@ -158,6 +165,7 @@ pub(crate) struct MatrixSetupConfig {
     username: String,
     password: String,
     room_id: String,
+    store_passphrase: String,
 }
 
 pub async fn run_setup(
@@ -173,17 +181,23 @@ pub async fn run_setup(
     fs::create_dir_all(&config_dir)?;
     let security = SecurityManager::new(&config_dir.join(KEY_FILE))?;
 
-    let (matrix_homeserver, matrix_username, matrix_password, matrix_room_id) =
-        if let Some(m) = matrix {
-            (
-                Some(security.encrypt(m.homeserver.as_bytes())?),
-                Some(security.encrypt(m.username.as_bytes())?),
-                Some(security.encrypt(m.password.as_bytes())?),
-                Some(security.encrypt(m.room_id.as_bytes())?),
-            )
-        } else {
-            (None, None, None, None)
-        };
+    let (
+        matrix_homeserver,
+        matrix_username,
+        matrix_password,
+        matrix_room_id,
+        matrix_store_passphrase,
+    ) = if let Some(m) = matrix {
+        (
+            Some(security.encrypt(m.homeserver.as_bytes())?),
+            Some(security.encrypt(m.username.as_bytes())?),
+            Some(security.encrypt(m.password.as_bytes())?),
+            Some(security.encrypt(m.room_id.as_bytes())?),
+            Some(security.encrypt(m.store_passphrase.as_bytes())?),
+        )
+    } else {
+        (None, None, None, None, None)
+    };
 
     let encrypted_config = EncryptedConfig {
         token: security.encrypt(token.as_bytes())?,
@@ -194,6 +208,7 @@ pub async fn run_setup(
         matrix_username,
         matrix_password,
         matrix_room_id,
+        matrix_store_passphrase,
     };
     fs::write(
         config_dir.join(CONFIG_FILE),
@@ -225,12 +240,14 @@ pub async fn run_setup_from_stdin() -> Result<()> {
         && input.matrix_username.is_some()
         && input.matrix_password.is_some()
         && input.matrix_room_id.is_some()
+        && input.matrix_store_passphrase.is_some()
     {
         Some(MatrixSetupConfig {
             homeserver: input.matrix_homeserver.clone().unwrap(),
             username: input.matrix_username.clone().unwrap(),
             password: input.matrix_password.clone().unwrap(),
             room_id: input.matrix_room_id.clone().unwrap(),
+            store_passphrase: input.matrix_store_passphrase.clone().unwrap(),
         })
     } else {
         None
