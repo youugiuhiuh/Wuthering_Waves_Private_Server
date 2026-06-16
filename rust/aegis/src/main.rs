@@ -378,6 +378,8 @@ async fn main() -> Result<()> {
             .await?;
         println!("✅ Matrix 登录成功: {}", matrix_username);
 
+        client.sync_once(SyncSettings::default()).await?;
+
         let room_id: matrix_sdk::ruma::OwnedRoomId = matrix_room_id_str.parse()?;
 
         let client_inv = client.clone();
