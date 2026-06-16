@@ -4,6 +4,7 @@ use aegis::adapters::common::{MessageContent, TargetId};
 use aegis::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use aegis::core::system::SystemMonitor;
 use aegis::core::types::IpVersion;
+use rust_i18n::t;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 
@@ -20,28 +21,25 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             if !is_installed {
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    "🚀 安装 Sing-box",
+                    t!("menu.singbox_install"),
                     "sb_install",
                 )]);
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "📦 <b>Sing-box 管理</b>\n\n⚠️ <b>未检测到 Sing-box</b>\n\n系统尚未安装 Sing-box，无法使用 Hysteria2/TUIC 协议。",
-                )
+                ctx.bot
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("menu.singbox_not_installed"))
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
                     .await?;
             } else if inbounds.is_empty() {
                 buttons.push(vec![
-                    InlineKeyboardButton::callback("🚀 Hysteria2 批量", "sb_h2_init"),
-                    InlineKeyboardButton::callback("🚀 TUIC 批量", "sb_tu_init"),
+                    InlineKeyboardButton::callback(t!("menu.singbox_h2_batch"), "sb_h2_init"),
+                    InlineKeyboardButton::callback(t!("menu.singbox_tu_batch"), "sb_tu_init"),
                 ]);
-                buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "📦 <b>Sing-box 管理</b>\n\n⚠️ <b>未找到配置文件</b>\n\n您可以创建 Hysteria2 或 TUIC 批量配置。",
-                )
+                buttons.push(vec![InlineKeyboardButton::callback(
+                    t!("menu.back_user"),
+                    "m_usr",
+                )]);
+                ctx.bot
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("menu.singbox_no_config"))
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
                     .await?;
@@ -54,20 +52,19 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     )]);
                 }
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    "🗑️ 删除管理",
+                    t!("menu.singbox_delete_mgmt"),
                     "sb_del_cfg",
                 )]);
                 buttons.push(vec![
-                    InlineKeyboardButton::callback("🚀 Hysteria2 批量", "sb_h2_init"),
-                    InlineKeyboardButton::callback("🚀 TUIC 批量", "sb_tu_init"),
+                    InlineKeyboardButton::callback(t!("menu.singbox_h2_batch"), "sb_h2_init"),
+                    InlineKeyboardButton::callback(t!("menu.singbox_tu_batch"), "sb_tu_init"),
                 ]);
-                buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
+                buttons.push(vec![InlineKeyboardButton::callback(
+                    t!("menu.back_user"),
+                    "m_usr",
+                )]);
                 ctx.bot
-                    .edit_message_text(
-                        ctx.chat_id,
-                        ctx.msg_id,
-                        "📦 <b>Sing-box 管理</b>\n选择配置文件:",
-                    )
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("menu.singbox_mgmt_select"))
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
                     .await?;
@@ -79,7 +76,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "sb_install" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⏳ 正在安装 Sing-box...")
+                .text(t!("menu.singbox_installing"))
                 .await?;
 
             let bot_clone = ctx.bot.clone();
@@ -87,11 +84,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             tokio::spawn(async move {
                 match SingBoxInstaller::install().await {
                     Ok(_) => {
-                        let _ = bot_clone.send_message(chat_id, "✅ <b>Sing-box 安装成功！</b>\n\n现在您可以创建 Hysteria2 或 TUIC 配置了。").parse_mode(ParseMode::Html).await;
+                        let _ = bot_clone
+                            .send_message(chat_id, t!("menu.singbox_install_success"))
+                            .parse_mode(ParseMode::Html)
+                            .await;
                     }
                     Err(e) => {
                         let _ = bot_clone
-                            .send_message(chat_id, format!("❌ <b>安装失败</b>\n原因: {}", e))
+                            .send_message(
+                                chat_id,
+                                t!("menu.singbox_install_fail", "0" => e.to_string()),
+                            )
                             .parse_mode(ParseMode::Html)
                             .await;
                     }
@@ -111,7 +114,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 buttons[0].push(InlineKeyboardButton::callback("🌐 IPv6", "sb_h2_ip:6"));
             }
             buttons.push(vec![InlineKeyboardButton::callback(
-                "⬅️ 返回",
+                t!("menu.back_user"),
                 "m_singbox_mgmt",
             )]);
 
@@ -119,7 +122,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    "🚀 <b>Hysteria2 批量创建</b>\n\n请选择网络协议版本:",
+                    format!(
+                        "{}\n\n{}",
+                        t!("menu.singbox_h2_batch_title"),
+                        t!("menu.singbox_h2_batch_ip")
+                    ),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -138,7 +145,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 buttons[0].push(InlineKeyboardButton::callback("🌐 IPv6", "sb_tu_ip:6"));
             }
             buttons.push(vec![InlineKeyboardButton::callback(
-                "⬅️ 返回",
+                t!("menu.back_user"),
                 "m_singbox_mgmt",
             )]);
 
@@ -146,7 +153,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    "🚀 <b>TUIC 批量创建</b>\n\n请选择网络协议版本:",
+                    format!(
+                        "{}\n\n{}",
+                        t!("menu.singbox_tu_batch_title"),
+                        t!("menu.singbox_tu_batch_ip")
+                    ),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -157,6 +168,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
         d if d.starts_with("sb_h2_ip:") => {
             let ip_ver = d.strip_prefix("sb_h2_ip:").unwrap_or("4");
+            let ip_display = if ip_ver == "4" { "IPv4" } else { "IPv6" };
             let buttons = vec![
                 vec![
                     InlineKeyboardButton::callback("1", format!("sb_h2_obfs:{}:1", ip_ver)),
@@ -168,17 +180,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     InlineKeyboardButton::callback("20", format!("sb_h2_obfs:{}:20", ip_ver)),
                     InlineKeyboardButton::callback("50", format!("sb_h2_obfs:{}:50", ip_ver)),
                 ],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "sb_h2_init")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_user"),
+                    "sb_h2_init",
+                )],
             ];
 
             ctx.bot
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!(
-                        "🚀 <b>Hysteria2 批量创建</b>\n\n🌐 网络协议版本: {}\n\n请选择生成数量:",
-                        if ip_ver == "4" { "IPv4" } else { "IPv6" }
-                    ),
+                    t!("menu.singbox_h2_qty_title", "0" => ip_display),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -196,7 +208,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if parts.len() != 2 {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("参数错误")
+                    .text(t!("menu.singbox_param_error"))
                     .await?;
                 return Ok(HandlerAction::Done);
             }
@@ -206,28 +218,25 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             let buttons = vec![
                 vec![InlineKeyboardButton::callback(
-                    "🟢 推荐：开启混淆",
+                    t!("menu.singbox_h2_obfs_enable"),
                     format!("sb_h2_exec:{}:{}:1", ip_ver, count),
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "🔴 不开启",
+                    t!("menu.singbox_h2_obfs_disable"),
                     format!("sb_h2_exec:{}:{}:0", ip_ver, count),
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "sb_h2_init")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_user"),
+                    "sb_h2_init",
+                )],
             ];
 
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!(
-                    "🚀 <b>Hysteria2 批量创建</b>\n\n\
-                    🌐 网络协议: {}\n\
-                    📊 生成数量: {}\n\n\
-                    ⚠️ <b>提示</b>：如果您的运营商针对 QUIC 流量进行限制或干扰，建议开启 Salamander 混淆\n\n\
-                    是否启用混淆?",
-                    ip_display, count
-                ),
-            )
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    t!("menu.singbox_h2_obfs_title", "0" => ip_display, "1" => count),
+                )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
                 .await?;
@@ -237,6 +246,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
         d if d.starts_with("sb_tu_ip:") => {
             let ip_ver = d.strip_prefix("sb_tu_ip:").unwrap_or("4");
+            let ip_display = if ip_ver == "4" { "IPv4" } else { "IPv6" };
             let buttons = vec![
                 vec![
                     InlineKeyboardButton::callback("1", format!("sb_tu_exec:{}:1", ip_ver)),
@@ -248,17 +258,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     InlineKeyboardButton::callback("20", format!("sb_tu_exec:{}:20", ip_ver)),
                     InlineKeyboardButton::callback("50", format!("sb_tu_exec:{}:50", ip_ver)),
                 ],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "sb_tu_init")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_user"),
+                    "sb_tu_init",
+                )],
             ];
 
             ctx.bot
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!(
-                        "🚀 <b>TUIC 批量创建</b>\n\n🌐 网络版本: {}\n\n请选择生成数量:",
-                        if ip_ver == "4" { "IPv4" } else { "IPv6" }
-                    ),
+                    t!("menu.singbox_tu_qty_title", "0" => ip_display),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -276,7 +286,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if parts.len() != 3 {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("参数错误")
+                    .text(t!("menu.singbox_param_error"))
                     .await?;
                 return Ok(HandlerAction::Done);
             }
@@ -291,7 +301,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⏳ 正在创建配置...")
+                .text(t!("menu.singbox_creating"))
                 .await?;
 
             let adapter = ctx.state.adapter.clone();
@@ -319,7 +329,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             .send_message(
                                 &target,
                                 MessageContent {
-                                    text: format!("❌ <b>创建失败</b>\n原因: {}", e),
+                                    text: t!("menu.singbox_create_fail", "0" => e.to_string())
+                                        .to_string(),
                                     markup: None,
                                 },
                             )
@@ -340,7 +351,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if parts.len() != 2 {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("参数错误")
+                    .text(t!("menu.singbox_param_error"))
                     .await?;
                 return Ok(HandlerAction::Done);
             }
@@ -354,7 +365,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⏳ 正在创建配置...")
+                .text(t!("menu.singbox_creating"))
                 .await?;
 
             let adapter = ctx.state.adapter.clone();
@@ -380,7 +391,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             .send_message(
                                 &target,
                                 MessageContent {
-                                    text: format!("❌ <b>创建失败</b>\n原因: {}", e),
+                                    text: t!("menu.singbox_create_fail", "0" => e.to_string())
+                                        .to_string(),
                                     markup: None,
                                 },
                             )
@@ -395,25 +407,24 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "sb_del_cfg" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "🧨 删除全部配置",
+                    t!("menu.singbox_del_all"),
                     "sb_del_all_confirm",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "➗ 按数量删除配置",
+                    t!("menu.singbox_del_count"),
                     "sb_del_count",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "🎯 指定配置删除",
+                    t!("menu.singbox_del_select"),
                     "sb_del_select",
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "m_singbox_mgmt")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_user"),
+                    "m_singbox_mgmt",
+                )],
             ]);
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "🗑️ <b>Sing-box 删除管理</b>\n请选择删除方式 (操作不可逆):",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("menu.singbox_del_title"))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -424,16 +435,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "sb_del_all_confirm" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "⚠️ 确认清空所有配置 (不可恢复) ⚠️",
+                    t!("menu.singbox_confirm_clear"),
                     "sb_del_all_exec",
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 取消", "sb_del_cfg")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.singbox_cancel"),
+                    "sb_del_cfg",
+                )],
             ]);
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                "🚨 <b>二次确认</b>\n您确定要删除 <b>所有</b> Sing-box 配置文件吗？\n此操作将清空所有配置文件、重启 Sing-box 并清理端口跳跃规则。",
-            )
+            ctx.bot
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("menu.singbox_confirm_del_all"))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -446,14 +457,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 Ok(count) => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text(format!("✅ 已彻底清空 {} 个 Sing-box 配置文件", count))
+                        .text(t!("menu.singbox_del_success_all", "0" => count.to_string()))
                         .show_alert(true)
                         .await?;
                 }
                 Err(e) => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text(format!("❌ 删除失败: {}", e))
+                        .text(t!("menu.singbox_del_fail", "0" => e.to_string()))
                         .show_alert(true)
                         .await?;
                 }
@@ -464,21 +475,32 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "sb_del_count" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("10 个", "sb_del_exec_count:10"),
-                    InlineKeyboardButton::callback("50 个", "sb_del_exec_count:50"),
+                    InlineKeyboardButton::callback(
+                        t!("menu.singbox_count_10"),
+                        "sb_del_exec_count:10",
+                    ),
+                    InlineKeyboardButton::callback(
+                        t!("menu.singbox_count_50"),
+                        "sb_del_exec_count:50",
+                    ),
                 ],
                 vec![
-                    InlineKeyboardButton::callback("100 个", "sb_del_exec_count:100"),
-                    InlineKeyboardButton::callback("500 个", "sb_del_exec_count:500"),
+                    InlineKeyboardButton::callback(
+                        t!("menu.singbox_count_100"),
+                        "sb_del_exec_count:100",
+                    ),
+                    InlineKeyboardButton::callback(
+                        t!("menu.singbox_count_500"),
+                        "sb_del_exec_count:500",
+                    ),
                 ],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "sb_del_cfg")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_user"),
+                    "sb_del_cfg",
+                )],
             ]);
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "➗ <b>Sing-box 按数量删除 (由旧到新)</b>\n请选择要删除的文件数量:",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("menu.singbox_del_count_title"))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -497,14 +519,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 Ok(deleted) => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text(format!("✅ 已删除 {} 个最旧的配置文件", deleted))
+                        .text(t!("menu.singbox_del_success_count", "0" => deleted.to_string()))
                         .show_alert(true)
                         .await?;
                 }
                 Err(e) => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text(format!("❌ 删除失败: {}", e))
+                        .text(t!("menu.singbox_del_fail", "0" => e.to_string()))
                         .show_alert(true)
                         .await?;
                 }
@@ -521,7 +543,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if inbounds.is_empty() {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚠️ 没有可删除的配置文件")
+                    .text(t!("menu.singbox_no_files"))
                     .show_alert(true)
                     .await?;
             } else {
@@ -534,17 +556,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     )]);
                 }
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    "⬅️ 返回",
+                    t!("menu.back_user"),
                     "sb_del_cfg",
                 )]);
                 ctx.bot
                     .edit_message_text(
                         ctx.chat_id,
                         ctx.msg_id,
-                        format!(
-                            "🎯 <b>Sing-box 指定配置删除</b>\n\n共 {} 个配置文件，请选择要删除的:",
-                            count
-                        ),
+                        t!("menu.singbox_del_select_title", "0" => count.to_string()),
                     )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -571,14 +590,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         let filename = path.split('/').next_back().unwrap_or("Unknown");
                         ctx.bot
                             .answer_callback_query(ctx.q.id.clone())
-                            .text(format!("✅ 已删除配置文件: {}", filename))
+                            .text(t!("menu.singbox_del_success_specific", "0" => filename))
                             .show_alert(true)
                             .await?;
                     }
                     Err(e) => {
                         ctx.bot
                             .answer_callback_query(ctx.q.id.clone())
-                            .text(format!("❌ 删除失败: {}", e))
+                            .text(t!("menu.singbox_del_fail", "0" => e.to_string()))
                             .show_alert(true)
                             .await?;
                     }
@@ -586,7 +605,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 文件索引无效")
+                    .text(t!("menu.singbox_invalid_index"))
                     .show_alert(true)
                     .await?;
             }

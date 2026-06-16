@@ -63,6 +63,7 @@ matrix-sdk = { version = "0.18", default-features = false, features = [
     "e2e-encryption",
 ] }
 mime = "0.3.17"
+rust-i18n = "4.1"
 
 [dev-dependencies]
 env_logger = "0.11.8"

@@ -2,6 +2,7 @@ use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::utils;
 use aegis::core::xray::installer::WarpInstaller;
 use aegis::core::xray::{ConfigManager, WarpMode};
+use rust_i18n::t;
 use sha2::{Digest, Sha256};
 use std::time::Instant;
 use teloxide::prelude::*;
@@ -16,22 +17,19 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if !is_installed {
                 let keyboard = InlineKeyboardMarkup::new(vec![
                     vec![InlineKeyboardButton::callback(
-                        "🚀 安装 Cloudflare WARP",
+                        t!("warp.install_warp"),
                         "a_inst_warp",
                     )],
                     vec![InlineKeyboardButton::callback(
-                        "⬅️ 返回网络优化",
+                        t!("menu.back_net_opt"),
                         "m_net_opt",
                     )],
                 ]);
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "⚠️ <b>未检测到 Cloudflare WARP</b>\n\n系统未安装 WARP 服务，无法配置分流规则。\n是否立即安装？",
-                )
-                .parse_mode(ParseMode::Html)
-                .reply_markup(keyboard)
-                .await?;
+                ctx.bot
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("warp.not_installed"))
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
                 return Ok(HandlerAction::Done);
             }
 
@@ -40,7 +38,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .unwrap_or((Vec::new(), WarpMode::Default));
 
             let rule_display = if current_rules.is_empty() {
-                "<i>(无规则)</i>".to_string()
+                t!("warp.no_rules").to_string()
             } else {
                 let escaped_rules: Vec<String> = current_rules
                     .iter()
@@ -48,13 +46,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     .collect();
                 if escaped_rules.len() > 5 {
                     format!(
-                        "{} (共 {} 条)",
+                        "{} ({} {})",
                         escaped_rules
                             .iter()
                             .take(5)
                             .cloned()
                             .collect::<Vec<_>>()
                             .join(", "),
+                        t!("warp.total_count_prefix"),
                         escaped_rules.len()
                     )
                 } else {
@@ -64,39 +63,43 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("➕ 添加规则", "a_warp_add_input"),
-                    InlineKeyboardButton::callback("➖ 删除规则", "a_warp_del_menu"),
+                    InlineKeyboardButton::callback(t!("warp.add_rule"), "a_warp_add_input"),
+                    InlineKeyboardButton::callback(t!("warp.del_rule"), "a_warp_del_menu"),
                 ],
                 vec![InlineKeyboardButton::callback(
-                    format!("⚙️ 模式: {}", current_mode.as_str()),
+                    t!("warp.mode_label", "0" => current_mode.as_str()),
                     "a_warp_switch_mode",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "📊 状态检测",
+                    t!("warp.status_check"),
                     "a_warp_status",
                 )],
                 vec![
-                    InlineKeyboardButton::callback("🔄 重启服务", "a_warp_restart"),
-                    InlineKeyboardButton::callback("🗑️ 卸载服务", "a_warp_uninstall"),
+                    InlineKeyboardButton::callback(t!("warp.restart_service"), "a_warp_restart"),
+                    InlineKeyboardButton::callback(
+                        t!("warp.uninstall_service"),
+                        "a_warp_uninstall",
+                    ),
                 ],
                 vec![InlineKeyboardButton::callback(
-                    "🗑️ 清空所有规则",
+                    t!("warp.clear_all"),
                     "a_warp_clear_confirm",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "⬅️ 返回网络优化",
+                    t!("menu.back_net_opt"),
                     "m_net_opt",
                 )],
             ]);
 
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!("🌩 <b>WARP 分流管理</b>\n\n当前模式: <b>{}</b>\n当前规则: {}\n\n您可以添加或删除特定的域名/GeoSite规则。", current_mode.as_str(), rule_display)
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(keyboard)
-            .await?;
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    t!("warp.title", "0" => current_mode.as_str(), "1" => rule_display),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
             Ok(HandlerAction::Done)
         }
         "a_warp_switch_mode" => {
@@ -110,7 +113,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 Err(e) => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text(format!("❌ 切换失败: {}", e))
+                        .text(t!("warp.mode_switch_fail", "0" => e.to_string()))
                         .await?;
                     Ok(HandlerAction::Done)
                 }
@@ -119,31 +122,24 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_inst_warp" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⏳ 正在安装 Cloudflare WARP...")
+                .text(t!("warp.installing"))
                 .await?;
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "⏳ <b>正在安装 Cloudflare WARP...</b>\n请稍候，这可能需要几分钟。",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("warp.installing"))
                 .parse_mode(ParseMode::Html)
                 .await?;
 
             match WarpInstaller::install().await {
                 Ok(_) => {
                     ctx.bot
-                        .send_message(
-                            ctx.chat_id,
-                            "✅ <b>Cloudflare WARP 安装成功！</b>\n现在您可以配置分流规则了。",
-                        )
+                        .send_message(ctx.chat_id, t!("warp.install_success"))
                         .parse_mode(ParseMode::Html)
                         .await?;
                     Ok(HandlerAction::Redirect("m_warp".to_string()))
                 }
                 Err(e) => {
                     ctx.bot
-                        .send_message(ctx.chat_id, format!("❌ <b>安装失败</b>\n原因: {}", e))
+                        .send_message(ctx.chat_id, t!("warp.install_fail", "0" => e.to_string()))
                         .parse_mode(ParseMode::Html)
                         .await?;
                     Ok(HandlerAction::Done)
@@ -154,12 +150,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             ctx.state
                 .start_warp_input(ctx.chat_id.0.to_string(), Instant::now())
                 .await;
-            ctx.bot.send_message(
-                ctx.chat_id,
-                "✏️ <b>请输入要添加的分流规则</b>\n\n支持格式: `geosite:google, domain:reddit.com`\n多个规则请用逗号或换行分隔。\n\n(输入将在 60 秒后超时)",
-            )
-            .parse_mode(ParseMode::Html)
-            .await?;
+            ctx.bot
+                .send_message(ctx.chat_id, t!("warp.add_input"))
+                .parse_mode(ParseMode::Html)
+                .await?;
             Ok(HandlerAction::Done)
         }
         "a_warp_del_menu" => {
@@ -170,7 +164,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if current_rules.is_empty() {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚠️ 暂无规则可删除")
+                    .text(t!("warp.no_rules_del"))
                     .await?;
                 return Ok(HandlerAction::Done);
             }
@@ -193,14 +187,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     format!("a_warp_del:{}", short_hash),
                 )]);
             }
-            buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_warp")]);
+            buttons.push(vec![InlineKeyboardButton::callback(
+                t!("menu.back"),
+                "m_warp",
+            )]);
 
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "➖ <b>删除规则</b>\n点击以删除对应规则:",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("warp.del_title"))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
                 .await?;
@@ -229,20 +222,20 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if let Some(rule) = rule_to_delete {
                 let keyboard = InlineKeyboardMarkup::new(vec![
                     vec![InlineKeyboardButton::callback(
-                        "⚠️ 确认删除",
+                        t!("warp.confirm_del"),
                         format!("a_warp_del_confirm:{}", hash_prefix),
                     )],
-                    vec![InlineKeyboardButton::callback("🔙 取消", "a_warp_del_menu")],
+                    vec![InlineKeyboardButton::callback(
+                        t!("warp.cancel_del"),
+                        "a_warp_del_menu",
+                    )],
                 ]);
 
                 ctx.bot
                     .edit_message_text(
                         ctx.chat_id,
                         ctx.msg_id,
-                        format!(
-                            "⚠️ <b>删除确认</b>\n\n您确定要删除分流规则 <code>{}</code> 吗？",
-                            utils::escape_html(rule)
-                        ),
+                        t!("warp.del_confirm", "0" => utils::escape_html(rule)),
                     )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(keyboard)
@@ -250,7 +243,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 规则未找到")
+                    .text(t!("warp.rule_not_found"))
                     .await?;
                 return Ok(HandlerAction::Redirect("a_warp_del_menu".to_string()));
             }
@@ -281,14 +274,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     Ok(_) => {
                         ctx.bot
                             .answer_callback_query(ctx.q.id.clone())
-                            .text("✅ 规则已删除")
+                            .text(t!("warp.rule_deleted"))
                             .show_alert(true)
                             .await?;
                     }
                     Err(e) => {
                         ctx.bot
                             .answer_callback_query(ctx.q.id.clone())
-                            .text(format!("❌ 删除失败: {}", e))
+                            .text(t!("warp.del_fail", "0" => e.to_string()))
                             .show_alert(true)
                             .await?;
                     }
@@ -296,7 +289,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 规则未找到")
+                    .text(t!("warp.rule_not_found"))
                     .show_alert(true)
                     .await?;
             }
@@ -305,17 +298,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_warp_clear_confirm" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "⚠️ 确认清空",
+                    t!("warp.confirm_clear"),
                     "a_warp_clear_exec",
                 )],
-                vec![InlineKeyboardButton::callback("🔙 取消", "m_warp")],
+                vec![InlineKeyboardButton::callback(
+                    t!("warp.cancel_del"),
+                    "m_warp",
+                )],
             ]);
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "⚠️ <b>清空确认</b>\n此操作将删除所有分流规则，且不可恢复。",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("warp.clear_confirm"))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -326,14 +318,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 Ok(_) => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text("✅ 所有规则已清空")
+                        .text(t!("warp.all_cleared"))
                         .await?;
                     Ok(HandlerAction::Redirect("m_warp".to_string()))
                 }
                 Err(e) => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text(format!("❌ 清空失败: {}", e))
+                        .text(t!("warp.clear_fail", "0" => e.to_string()))
                         .await?;
                     Ok(HandlerAction::Done)
                 }
@@ -345,11 +337,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     .edit_message_text(
                         ctx.chat_id,
                         ctx.msg_id,
-                        format!("📊 <b>WARP 状态检测</b>\n\n{}", status),
+                        format!("📊 <b>WARP {}</b>\n\n{}", t!("warp.status_label"), status),
                     )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(vec![vec![
-                        InlineKeyboardButton::callback("⬅️ 返回", "m_warp"),
+                        InlineKeyboardButton::callback(t!("menu.back"), "m_warp"),
                     ]]))
                     .await?;
                 Ok(HandlerAction::Done)
@@ -357,7 +349,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             Err(e) => {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text(format!("❌ 检测失败: {}", e))
+                    .text(t!("warp.status_fail", "0" => e.to_string()))
                     .await?;
                 Ok(HandlerAction::Done)
             }
@@ -365,18 +357,18 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_warp_restart" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⏳ 正在重启服务...")
+                .text(t!("warp.restarting"))
                 .await?;
             match WarpInstaller::restart_service().await {
                 Ok(_) => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text("✅ 服务重启成功且连接正常")
+                        .text(t!("warp.restart_success"))
                         .await?;
                 }
                 Err(e) => {
                     ctx.bot
-                        .send_message(ctx.chat_id, format!("❌ <b>重启失败</b>\n原因: {}", e))
+                        .send_message(ctx.chat_id, t!("warp.restart_fail", "0" => e.to_string()))
                         .parse_mode(ParseMode::Html)
                         .await?;
                 }
@@ -386,45 +378,42 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_warp_uninstall" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "⚠️ 确认卸载",
+                    t!("warp.confirm_uninstall"),
                     "a_warp_uninstall_confirm",
                 )],
-                vec![InlineKeyboardButton::callback("🔙 取消", "m_warp")],
+                vec![InlineKeyboardButton::callback(
+                    t!("warp.cancel_del"),
+                    "m_warp",
+                )],
             ]);
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                "⚠️ <b>卸载确认</b>\n\n确定要卸载 Cloudflare WARP 吗？\n这将移除所有相关组件和配置。",
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(keyboard)
-            .await?;
+            ctx.bot
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("warp.uninstall_confirm"))
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
             Ok(HandlerAction::Done)
         }
         "a_warp_uninstall_confirm" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("⏳ 正在卸载...")
+                .text(t!("warp.uninstalling"))
                 .await?;
             ctx.bot
-                .edit_message_text(ctx.chat_id, ctx.msg_id, "⏳ <b>正在卸载...</b>")
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("warp.uninstalling"))
                 .parse_mode(ParseMode::Html)
                 .await?;
 
             match WarpInstaller::uninstall().await {
                 Ok(_) => {
                     ctx.bot
-                        .send_message(
-                            ctx.chat_id,
-                            "✅ <b>卸载成功</b>\nCloudflare WARP 已从系统中移除。",
-                        )
+                        .send_message(ctx.chat_id, t!("warp.uninstall_success"))
                         .parse_mode(ParseMode::Html)
                         .await?;
                     Ok(HandlerAction::Redirect("m_warp".to_string()))
                 }
                 Err(e) => {
                     ctx.bot
-                        .send_message(ctx.chat_id, format!("❌ <b>卸载失败</b>\n原因: {}", e))
+                        .send_message(ctx.chat_id, t!("warp.uninstall_fail", "0" => e.to_string()))
                         .parse_mode(ParseMode::Html)
                         .await?;
                     Ok(HandlerAction::Done)

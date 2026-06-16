@@ -40,6 +40,8 @@ pub struct EncryptedConfig {
     pub matrix_room_id: Option<Vec<u8>>,
     #[serde(default)]
     pub matrix_store_passphrase: Option<Vec<u8>>,
+    #[serde(default)]
+    pub lang: Option<String>,
 }
 
 #[derive(serde::Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -209,6 +211,7 @@ pub async fn run_setup(
         matrix_password,
         matrix_room_id,
         matrix_store_passphrase,
+        lang: None,
     };
     fs::write(
         config_dir.join(CONFIG_FILE),

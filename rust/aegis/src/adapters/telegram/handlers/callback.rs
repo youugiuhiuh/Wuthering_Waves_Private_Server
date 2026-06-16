@@ -1,6 +1,8 @@
 use crate::app::destruct_flow;
 use crate::app::destruct_flow::MessageFlowOutcome;
 use crate::app::state::{AppState, TimeoutStatus};
+use crate::save_lang_to_config;
+use aegis::core::i18n;
 use futures_util::future::BoxFuture;
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,7 +20,7 @@ pub fn handle_callback(
             let user_id = q.from.id.0 as i64;
             if !state.is_authorized(user_id).await {
                 bot.answer_callback_query(q.id)
-                    .text("🚫 会话已过期，请发送 6 位 TOTP 验证码重新认证")
+                    .text(rust_i18n::t!("auth.expired"))
                     .await?;
                 break Ok(());
             }
@@ -29,6 +31,30 @@ pub fn handle_callback(
             };
             let chat_id = q.message.as_ref().map(|m| m.chat().id).unwrap_or(ChatId(0));
             let msg_id = q.message.as_ref().map(|m| m.id()).unwrap_or_default();
+
+            if data.starts_with("lang:") {
+                let lang = match data.as_str() {
+                    "lang:zh" => i18n::Lang::Zh,
+                    "lang:en" => i18n::Lang::En,
+                    "lang:ja" => i18n::Lang::Ja,
+                    _ => {
+                        bot.answer_callback_query(q.id).await?;
+                        break Ok(());
+                    }
+                };
+                i18n::set_lang(lang);
+                state.set_lang(lang).await;
+                let _ = save_lang_to_config(&state, lang).await;
+                bot.answer_callback_query(q.id.clone())
+                    .text(rust_i18n::t!("lang.switched", "0" => lang.as_str()))
+                    .await?;
+                let new_q = q.clone();
+                q = CallbackQuery {
+                    data: Some("m_main".to_string()),
+                    ..new_q
+                };
+                continue;
+            }
 
             if destruct_flow::handle_callback_timeout(&bot, &q, chat_id, msg_id, &state).await?
                 == MessageFlowOutcome::Handled
@@ -54,7 +80,7 @@ pub fn handle_callback(
                     ..new_q
                 };
                 bot.answer_callback_query(q.id.clone())
-                    .text("⏳ 自定义定时会话已超时，请重新进入。")
+                    .text(rust_i18n::t!("schedule.input_timeout"))
                     .show_alert(true)
                     .await?;
                 continue;
@@ -101,7 +127,7 @@ pub fn handle_callback(
                     eprintln!("[ERROR] Handler dispatch failed: {:?}", e);
                     let _ = bot
                         .answer_callback_query(q.id.clone())
-                        .text("❌ 内部运维业务错误，请查看后台日志")
+                        .text(rust_i18n::t!("callback.internal_error"))
                         .show_alert(true)
                         .await;
                     break Ok(());

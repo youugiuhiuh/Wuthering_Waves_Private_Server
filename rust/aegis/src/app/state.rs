@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 use aegis::adapters::common::BotAdapter;
+use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::system::scheduler::task_types::TaskType;
 use aegis::core::totp::TotpManager;
@@ -81,6 +82,7 @@ pub struct AppState {
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
     session_timeout_secs: Mutex<u64>,
+    lang: Mutex<Lang>,
 }
 
 impl AppState {
@@ -104,6 +106,7 @@ impl AppState {
             pending_warp_inputs: Mutex::new(HashMap::new()),
             pending_schedule_inputs: Mutex::new(HashMap::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
+            lang: Mutex::new(Lang::Zh),
         }
     }
 
@@ -151,6 +154,15 @@ impl AppState {
 
     pub async fn set_session_timeout_secs(&self, secs: u64) {
         *self.session_timeout_secs.lock().await = secs;
+    }
+
+    #[allow(dead_code)]
+    pub async fn lang(&self) -> Lang {
+        *self.lang.lock().await
+    }
+
+    pub async fn set_lang(&self, lang: Lang) {
+        *self.lang.lock().await = lang;
     }
 
     pub fn self_destruct_executor(&self) -> Arc<dyn SelfDestructExecutor> {

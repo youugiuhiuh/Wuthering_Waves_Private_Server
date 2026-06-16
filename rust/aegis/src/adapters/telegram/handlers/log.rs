@@ -1,6 +1,7 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::utils;
 use aegis::core::system::log_audit::{LogAudit, SERVICE_SING_BOX, SERVICE_WWPS_CORE};
+use rust_i18n::t;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 
@@ -14,18 +15,18 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_log" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("🅧 Xray-core 日志", "l_xray"),
-                    InlineKeyboardButton::callback("📦 Sing-box 日志", "l_box"),
+                    InlineKeyboardButton::callback(t!("log.xray_btn"), "l_xray"),
+                    InlineKeyboardButton::callback(t!("log.box_btn"), "l_box"),
                 ],
                 vec![InlineKeyboardButton::callback(
-                    "⬅️ 返回运维中心",
+                    t!("menu.back_ops"),
                     "m_ops_center",
                 )],
             ]);
             bot.edit_message_text(
                 chat_id,
                 msg_id,
-                "📄 日志审计\n通过 systemd journal 获取服务日志:",
+                format!("{}\n{}", t!("menu.log_audit"), t!("menu.log_audit_desc")),
             )
             .parse_mode(ParseMode::Html)
             .reply_markup(keyboard)
@@ -37,19 +38,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let status_icon = if status.active { "🟢" } else { "🔴" };
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "📝 查看最近日志",
+                    t!("log.view_tail"),
                     "l_xray_tail",
                 )],
-                vec![InlineKeyboardButton::callback("🔄 刷新", "l_xray")],
-                vec![InlineKeyboardButton::callback("⬅️ 返回日志审计", "m_log")],
+                vec![InlineKeyboardButton::callback(t!("menu.refresh"), "l_xray")],
+                vec![InlineKeyboardButton::callback(t!("log.back_log"), "m_log")],
             ]);
             bot.edit_message_text(
                 chat_id,
                 msg_id,
-                format!(
-                    "🅧 Xray-core 日志\n\n状态: {} {} | 日志来源: journalctl -u {}",
-                    status_icon, status.status_text, SERVICE_WWPS_CORE
-                ),
+                t!("log.xray_log_title", "0" => status_icon, "1" => status.status_text, "2" => SERVICE_WWPS_CORE),
             )
             .parse_mode(ParseMode::Html)
             .reply_markup(keyboard)
@@ -61,19 +59,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let status_icon = if status.active { "🟢" } else { "🔴" };
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "📝 查看最近日志",
+                    t!("log.view_tail"),
                     "l_box_tail",
                 )],
-                vec![InlineKeyboardButton::callback("🔄 刷新", "l_box")],
-                vec![InlineKeyboardButton::callback("⬅️ 返回日志审计", "m_log")],
+                vec![InlineKeyboardButton::callback(t!("menu.refresh"), "l_box")],
+                vec![InlineKeyboardButton::callback(t!("log.back_log"), "m_log")],
             ]);
             bot.edit_message_text(
                 chat_id,
                 msg_id,
-                format!(
-                    "📦 Sing-box 日志\n\n状态: {} {} | 日志来源: journalctl -u {}",
-                    status_icon, status.status_text, SERVICE_SING_BOX
-                ),
+                t!("log.box_log_title", "0" => status_icon, "1" => status.status_text, "2" => SERVICE_SING_BOX),
             )
             .parse_mode(ParseMode::Html)
             .reply_markup(keyboard)
@@ -82,7 +77,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "l_xray_tail" => {
             bot.answer_callback_query(q.id.clone())
-                .text("📝 正在获取 Xray-core 日志...")
+                .text(t!("log.fetching_xray"))
                 .await?;
             let bot_c = bot.clone();
             tokio::spawn(async move {
@@ -90,10 +85,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     let _ = bot_c
                         .send_message(
                             chat_id,
-                            format!(
-                                "🅧 Xray-core 最近日志:\n\n<pre>{}</pre>",
-                                utils::escape_html(&log)
-                            ),
+                            t!("log.xray_tail_title", "0" => utils::escape_html(&log)),
                         )
                         .parse_mode(ParseMode::Html)
                         .await;
@@ -103,7 +95,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "l_box_tail" => {
             bot.answer_callback_query(q.id.clone())
-                .text("📝 正在获取 Sing-box 日志...")
+                .text(t!("log.fetching_box"))
                 .await?;
             let bot_c = bot.clone();
             tokio::spawn(async move {
@@ -111,10 +103,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     let _ = bot_c
                         .send_message(
                             chat_id,
-                            format!(
-                                "📦 Sing-box 最近日志:\n\n<pre>{}</pre>",
-                                utils::escape_html(&log)
-                            ),
+                            t!("log.box_tail_title", "0" => utils::escape_html(&log)),
                         )
                         .parse_mode(ParseMode::Html)
                         .await;
