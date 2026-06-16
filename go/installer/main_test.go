@@ -163,19 +163,24 @@ func TestAppendJSONEscaped(t *testing.T) {
 			want:  "\"a\\nb\\tc\"",
 		},
 		{
-			name:  "non-ASCII bytes 0x80-0xFF",
+			name:  "valid UTF-8 multi-byte chars pass through",
+			input: []byte("+ì®"),
+			want:  "\"+ì®\"",
+		},
+		{
+			name:  "DEL char 0x7F passes through as valid UTF-8",
+			input: []byte{0x7F},
+			want:  "\"\x7f\"",
+		},
+		{
+			name:  "non-ASCII bytes 0x80-0xFF (invalid UTF-8) get escaped",
 			input: []byte{0x80, 0xFF, 0xE0},
 			want:  "\"\\u0080\\u00ff\\u00e0\"",
 		},
 		{
-			name:  "mixed with non-ASCII",
+			name:  "mixed with non-ASCII (invalid UTF-8) get escaped",
 			input: []byte("a\x80b\xFFc"),
 			want:  "\"a\\u0080b\\u00ffc\"",
-		},
-		{
-			name:  "DEL char 0x7F",
-			input: []byte{0x7F},
-			want:  "\"\\u007f\"",
 		},
 	}
 	for _, tt := range tests {

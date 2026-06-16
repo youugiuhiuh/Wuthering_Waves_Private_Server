@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/awnumar/memguard"
 	"golang.org/x/sys/unix"
@@ -233,6 +234,7 @@ func zeroBytes(data []byte) {
 
 func appendJSONEscaped(dst []byte, value []byte) []byte {
 	dst = append(dst, '"')
+	validUTF8 := utf8.Valid(value)
 	for _, b := range value {
 		switch b {
 		case '\\', '"':
@@ -248,7 +250,7 @@ func appendJSONEscaped(dst []byte, value []byte) []byte {
 		case '\t':
 			dst = append(dst, '\\', 't')
 		default:
-			if b < 0x20 || b > 0x7E {
+			if b < 0x20 || (!validUTF8 && b > 0x7E) {
 				dst = append(dst, '\\', 'u', '0', '0', "0123456789abcdef"[b>>4], "0123456789abcdef"[b&0x0f])
 			} else {
 				dst = append(dst, b)
