@@ -1,4 +1,5 @@
 // mod logic; // Moved to lib.rs
+#![recursion_limit = "256"]
 #![allow(clippy::vec_init_then_push)]
 #[path = "adapters/telegram/handlers/mod.rs"]
 mod handlers;
@@ -364,19 +365,67 @@ async fn main() -> Result<()> {
         let matrix_username = decrypt_matrix(&encrypted_config.matrix_username)?;
         let matrix_pwd = decrypt_matrix(&encrypted_config.matrix_password)?;
         let matrix_room_id_str = decrypt_matrix(&encrypted_config.matrix_room_id)?;
+        let matrix_store_passphrase = decrypt_matrix(&encrypted_config.matrix_store_passphrase)?;
 
+        let store_path = config_dir.join("matrix_store");
         let client = MatrixClient::builder()
             .homeserver_url(&matrix_homeserver)
+            .sqlite_store(&store_path, Some(&matrix_store_passphrase))
             .build()
             .await?;
 
+        // ── Session restore (P0) ──
+        let session_path = config_dir.join("matrix_session.json");
+        if session_path.exists() {
+            let session_json = fs::read_to_string(&session_path)?;
+            let session: matrix_sdk::authentication::matrix::MatrixSession =
+                serde_json::from_str(&session_json)?;
+            client
+                .matrix_auth()
+                .restore_session(session, matrix_sdk::store::RoomLoadSettings::default())
+                .await?;
+            println!("✅ Matrix 会话恢复成功: {}", matrix_username);
+        } else {
+            client
+                .matrix_auth()
+                .login_username(&matrix_username, &matrix_pwd)
+                .initial_device_display_name("Aegis Matrix Bot")
+                .send()
+                .await?;
+            println!("✅ Matrix 登录成功: {}", matrix_username);
+
+            // Save session for future restarts
+            if let Some(session) = client.matrix_auth().session() {
+                let session_json = serde_json::to_string(&session)?;
+                fs::write(&session_path, session_json)?;
+                println!("✅ Matrix 会话已保存");
+            }
+        }
+
+        // P2: Bootstrap cross-signing (best-effort)
+        use matrix_sdk::ruma::api::client::uiaa::{
+            AuthData, MatrixUserIdentifier, Password, UserIdentifier,
+        };
+        if client
+            .encryption()
+            .bootstrap_cross_signing_if_needed(None)
+            .await
+            .is_err()
+        {
+            let _ = client
+                .encryption()
+                .bootstrap_cross_signing_if_needed(Some(AuthData::Password(Password::new(
+                    UserIdentifier::Matrix(MatrixUserIdentifier::new(matrix_username.clone())),
+                    matrix_pwd.clone(),
+                ))))
+                .await;
+        }
+
+        // P1: Wait for E2EE initialization tasks
         client
-            .matrix_auth()
-            .login_username(&matrix_username, &matrix_pwd)
-            .initial_device_display_name("Aegis Matrix Bot")
-            .send()
-            .await?;
-        println!("✅ Matrix 登录成功: {}", matrix_username);
+            .encryption()
+            .wait_for_e2ee_initialization_tasks()
+            .await;
 
         client.sync_once(SyncSettings::default()).await?;
 

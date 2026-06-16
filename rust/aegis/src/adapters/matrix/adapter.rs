@@ -65,7 +65,7 @@ impl BotAdapter for MatrixAdapter {
     async fn send_message(&self, _target: &TargetId, content: MessageContent) -> Result<MessageId> {
         let body = RoomMessageEventContent::text_html(&content.text, &content.text);
         let response = self.room.send(body).await?;
-        Ok(MessageId(response.event_id.to_string()))
+        Ok(MessageId(response.response.event_id.to_string()))
     }
 
     async fn edit_message(
@@ -81,7 +81,6 @@ impl BotAdapter for MatrixAdapter {
         let new_content = RoomMessageEventContent::text_html(&content.text, &content.text)
             .make_replacement(
                 matrix_sdk::ruma::events::room::message::ReplacementMetadata::new(event_id, None),
-                None,
             );
         self.room.send(new_content).await?;
         Ok(())
