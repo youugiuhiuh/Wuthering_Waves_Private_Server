@@ -3,6 +3,7 @@
 //! 提供路径常量、类型定义、错误类型和工具函数
 
 pub mod events;
+pub mod i18n;
 
 pub mod cmd_async;
 pub mod error;
