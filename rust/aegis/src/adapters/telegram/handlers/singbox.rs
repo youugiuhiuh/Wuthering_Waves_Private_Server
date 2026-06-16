@@ -1,5 +1,6 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::app::batch_handler::send_singbox_batch_result;
+use aegis::adapters::common::{MessageContent, TargetId};
 use aegis::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use aegis::core::system::SystemMonitor;
 use aegis::core::types::IpVersion;
@@ -293,7 +294,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .text("⏳ 正在创建配置...")
                 .await?;
 
-            let bot_clone = ctx.bot.clone();
+            let adapter = ctx.state.adapter.clone();
             let chat_id_clone = ctx.chat_id;
 
             tokio::spawn(async move {
@@ -302,7 +303,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 {
                     Ok(result) => {
                         if let Err(e) = send_singbox_batch_result(
-                            &bot_clone,
+                            adapter.clone(),
                             chat_id_clone,
                             "Hysteria2",
                             &result,
@@ -313,9 +314,15 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         }
                     }
                     Err(e) => {
-                        let _ = bot_clone
-                            .send_message(chat_id_clone, format!("❌ <b>创建失败</b>\n原因: {}", e))
-                            .parse_mode(ParseMode::Html)
+                        let target = TargetId(chat_id_clone.0.to_string());
+                        let _ = adapter
+                            .send_message(
+                                &target,
+                                MessageContent {
+                                    text: format!("❌ <b>创建失败</b>\n原因: {}", e),
+                                    markup: None,
+                                },
+                            )
                             .await;
                     }
                 }
@@ -350,23 +357,29 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .text("⏳ 正在创建配置...")
                 .await?;
 
-            let bot_clone = ctx.bot.clone();
+            let adapter = ctx.state.adapter.clone();
             let chat_id_clone = ctx.chat_id;
 
             tokio::spawn(async move {
                 match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
                     Ok(result) => {
                         if let Err(e) =
-                            send_singbox_batch_result(&bot_clone, chat_id_clone, "TUIC", &result)
+                            send_singbox_batch_result(adapter.clone(), chat_id_clone, "TUIC", &result)
                                 .await
                         {
                             log::warn!("发送批量创建结果失败: {}", e);
                         }
                     }
                     Err(e) => {
-                        let _ = bot_clone
-                            .send_message(chat_id_clone, format!("❌ <b>创建失败</b>\n原因: {}", e))
-                            .parse_mode(ParseMode::Html)
+                        let target = TargetId(chat_id_clone.0.to_string());
+                        let _ = adapter
+                            .send_message(
+                                &target,
+                                MessageContent {
+                                    text: format!("❌ <b>创建失败</b>\n原因: {}", e),
+                                    markup: None,
+                                },
+                            )
                             .await;
                     }
                 }

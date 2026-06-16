@@ -934,7 +934,6 @@ func firstTimeSetup(binaryPath string) {
 		matrixRoom = readSecureInputStr("请输入 Matrix 房间 ID: ")
 	}
 
-	// 执行 setup 时，短暂解密 Token 和 AdminID (这里仍有 /proc/cmdline 的极短暂暴露风险，后续优化可以在子进程 stdin 传递)
 	bTokenBuf, _ := botTokenEnclave.Open()
 	aIDBuf, _ := adminIDEnclave.Open()
 	tSecretBuf, _ := totpSecretEnclave.Open()
@@ -953,10 +952,8 @@ func firstTimeSetup(binaryPath string) {
 	defer zeroBytes(setupPayload)
 
 	if mPassBuf != nil {
-		zeroBytes(mPassBytes)
 		mPassBuf.Destroy()
 	}
-
 	cmd := exec.Command(binaryPath, "--setup-stdin")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
