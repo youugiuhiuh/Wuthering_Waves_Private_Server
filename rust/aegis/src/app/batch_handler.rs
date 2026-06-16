@@ -39,23 +39,9 @@ pub async fn send_singbox_batch_result(
     }
 
     let mut combined_links = String::new();
-    for (i, link) in result.links.iter().enumerate() {
-        combined_links.push_str(&format!("<code>{}</code>\n\n", link));
-        if (i + 1) % 2 == 0 {
-            if let Ok(msg) = adapter
-                .send_message(
-                    &target,
-                    MessageContent {
-                        text: combined_links.clone(),
-                        markup: None,
-                    },
-                )
-                .await
-            {
-                message_ids.push(msg.0);
-            }
-            combined_links.clear();
-        }
+    for link in &result.links {
+        combined_links.push_str(link);
+        combined_links.push_str("\n\n");
     }
     if !combined_links.is_empty()
         && let Ok(msg) = adapter
