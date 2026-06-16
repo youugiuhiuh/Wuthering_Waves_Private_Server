@@ -1,6 +1,8 @@
+use crate::adapters::common::routing::is_sensitive;
 use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
 use anyhow::Result;
 use async_trait::async_trait;
+use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::room::Room;
 use matrix_sdk::ruma::OwnedEventId;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
@@ -63,9 +65,23 @@ impl BotAdapter for MatrixAdapter {
     }
 
     async fn send_message(&self, _target: &TargetId, content: MessageContent) -> Result<MessageId> {
-        let body = RoomMessageEventContent::text_html(&content.text, &content.text);
-        let response = self.room.send(body).await?;
-        Ok(MessageId(response.response.event_id.to_string()))
+        if is_sensitive(&content.text) {
+            let data = content.text.into_bytes();
+            let response = self
+                .room
+                .send_attachment(
+                    "batch_result.txt",
+                    &mime::TEXT_PLAIN,
+                    data,
+                    AttachmentConfig::new(),
+                )
+                .await?;
+            Ok(MessageId(response.event_id.to_string()))
+        } else {
+            let body = RoomMessageEventContent::text_plain(&content.text);
+            let response = self.room.send(body).await?;
+            Ok(MessageId(response.response.event_id.to_string()))
+        }
     }
 
     async fn edit_message(

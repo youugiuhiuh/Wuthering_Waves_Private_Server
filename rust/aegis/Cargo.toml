@@ -62,6 +62,7 @@ matrix-sdk = { version = "0.18", default-features = false, features = [
     "sqlite",
     "e2e-encryption",
 ] }
+mime = "0.3.17"
 
 [dev-dependencies]
 env_logger = "0.11.8"

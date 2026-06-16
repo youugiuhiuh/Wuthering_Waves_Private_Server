@@ -14,7 +14,7 @@ impl RoutingAdapter {
     }
 }
 
-fn is_sensitive(text: &str) -> bool {
+pub(crate) fn is_sensitive(text: &str) -> bool {
     const PROTOCOLS: &[&str] = &[
         "vmess://",
         "vless://",
