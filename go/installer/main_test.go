@@ -140,3 +140,133 @@ func TestBuildSetupPayload(t *testing.T) {
 		}
 	})
 }
+
+func TestAppendJSONEscaped(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []byte
+		want  string
+	}{
+		{
+			name:  "normal ASCII",
+			input: []byte("hello"),
+			want:  "\"hello\"",
+		},
+		{
+			name:  "special JSON chars",
+			input: []byte("a\"b\\c"),
+			want:  "\"a\\\"b\\\\c\"",
+		},
+		{
+			name:  "control chars",
+			input: []byte("a\nb\tc"),
+			want:  "\"a\\nb\\tc\"",
+		},
+		{
+			name:  "non-ASCII bytes 0x80-0xFF",
+			input: []byte{0x80, 0xFF, 0xE0},
+			want:  "\"\\u0080\\u00ff\\u00e0\"",
+		},
+		{
+			name:  "mixed with non-ASCII",
+			input: []byte("a\x80b\xFFc"),
+			want:  "\"a\\u0080b\\u00ffc\"",
+		},
+		{
+			name:  "DEL char 0x7F",
+			input: []byte{0x7F},
+			want:  "\"\\u007f\"",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := appendJSONEscaped(nil, tt.input)
+			if string(got) != tt.want {
+				t.Errorf("appendJSONEscaped() = %s, want %s", string(got), tt.want)
+			}
+			var parsed interface{}
+			if err := json.Unmarshal(got, &parsed); err != nil {
+				t.Errorf("输出不是合法 JSON: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseKeyVal(t *testing.T) {
+	t.Run("basic fields", func(t *testing.T) {
+		data := []byte("token=abc:123\nadmin_id=456\ntotp_secret=SECRET\n")
+		cfg, err := parseKeyVal(data)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Token != "abc:123" {
+			t.Errorf("Token = %q, want abc:123", cfg.Token)
+		}
+		if cfg.AdminID != "456" {
+			t.Errorf("AdminID = %q, want 456", cfg.AdminID)
+		}
+		if cfg.TOTPSecret != "SECRET" {
+			t.Errorf("TOTPSecret = %q, want SECRET", cfg.TOTPSecret)
+		}
+	})
+
+	t.Run("with matrix fields", func(t *testing.T) {
+		data := []byte("token=t\nadmin_id=1\nmatrix_homeserver=https://matrix.org\nmatrix_username=@bot:matrix.org\nmatrix_password=pass\nmatrix_room_id=!room:matrix.org\n")
+		cfg, err := parseKeyVal(data)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.MatrixHS != "https://matrix.org" {
+			t.Errorf("MatrixHS = %q, want https://matrix.org", cfg.MatrixHS)
+		}
+		if cfg.MatrixUser != "@bot:matrix.org" {
+			t.Errorf("MatrixUser = %q, want @bot:matrix.org", cfg.MatrixUser)
+		}
+		if cfg.MatrixPassword != "pass" {
+			t.Errorf("MatrixPassword = %q, want pass", cfg.MatrixPassword)
+		}
+		if cfg.MatrixRoom != "!room:matrix.org" {
+			t.Errorf("MatrixRoom = %q, want !room:matrix.org", cfg.MatrixRoom)
+		}
+	})
+
+	t.Run("skips empty lines and comments", func(t *testing.T) {
+		data := []byte("# this is a comment\n\ntoken=t\nadmin_id=1\n  # indented comment\n")
+		cfg, err := parseKeyVal(data)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Token != "t" {
+			t.Errorf("Token = %q, want t", cfg.Token)
+		}
+	})
+
+	t.Run("missing required fields", func(t *testing.T) {
+		data := []byte("totp_secret=SECRET\n")
+		_, err := parseKeyVal(data)
+		if err == nil {
+			t.Fatal("expected error for missing fields")
+		}
+	})
+
+	t.Run("non-ASCII password values pass through", func(t *testing.T) {
+		input := []byte{0x74, 0x6f, 0x6b, 0x65, 0x6e, 0x3d, 0x74, 0x0a, 0x61, 0x64, 0x6d, 0x69, 0x6e, 0x5f, 0x69, 0x64, 0x3d, 0x31, 0x0a, 0x6d, 0x61, 0x74, 0x72, 0x69, 0x78, 0x5f, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x3d}
+		input = append(input, []byte{0xEC, 0xAE, 0x27, 0x22, 0x75, 0x3D, 0x4F, 0x61, 0xCC, 0x22, 0xF9, 0xF8, 0x52, 0x50, 0xFA, 0x6A, 0xC7, 0x2C, 0xDA, 0xD2, 0xE2, 0x3F, 0xAC}...)
+		input = append(input, '\n')
+		cfg, err := parseKeyVal(input)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(cfg.MatrixPassword) == 0 {
+			t.Fatal("MatrixPassword should not be empty")
+		}
+		payload := buildSetupPayload(
+			[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
+			cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword),
+		)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			t.Fatalf("payload should be valid JSON: %v", err)
+		}
+	})
+}

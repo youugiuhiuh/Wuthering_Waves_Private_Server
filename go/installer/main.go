@@ -248,7 +248,7 @@ func appendJSONEscaped(dst []byte, value []byte) []byte {
 		case '\t':
 			dst = append(dst, '\\', 't')
 		default:
-			if b < 0x20 {
+			if b < 0x20 || b > 0x7E {
 				dst = append(dst, '\\', 'u', '0', '0', "0123456789abcdef"[b>>4], "0123456789abcdef"[b&0x0f])
 			} else {
 				dst = append(dst, b)
@@ -656,7 +656,47 @@ func installAegis() {
 	printSkyBlue("请前往 Telegram 与 Bot 对话进行管理。")
 }
 
-// ======================== 无交互安装 ==========================
+// ======================== 无交互安装 (JSON / Key=Value) ========
+
+func generateTOTPSecret(destPath string) string {
+	printYellow("正在生成 TOTP 密钥...")
+	output, err := runCmdOutputBytes(destPath, "--generate-totp-secret")
+	if err != nil {
+		printRed("生成 TOTP 密钥失败: " + err.Error())
+		os.Exit(1)
+	}
+	rawSecret, err := extractBase32Secret(output)
+	if err != nil {
+		printRed("解析 TOTP 密钥失败: " + err.Error())
+		os.Exit(1)
+	}
+	printYellow("TOTP 密钥已自动生成")
+	return string(rawSecret)
+}
+
+func runAegisSetup(destPath string, payload []byte) {
+	printYellow("\n正在配置...")
+	cmd := exec.Command(destPath, "--setup-stdin")
+	cmd.Stdin = bytes.NewReader(payload)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		printRed("配置失败: " + err.Error())
+		os.Exit(1)
+	}
+}
+
+func finishDeploy() {
+	writeSystemdService()
+	_ = runCmdSilent("systemctl", "daemon-reload")
+	_ = runCmdSilent("systemctl", "enable", serviceName)
+	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
+		printRed("启动服务失败: " + err.Error())
+		os.Exit(1)
+	}
+	printGreen("\n✅ TG Bot 已成功安装并启动！")
+	printSkyBlue("请前往 Telegram 与 Bot 对话进行管理。")
+}
 
 func installFromStdin() {
 	payload, err := io.ReadAll(os.Stdin)
@@ -675,7 +715,6 @@ func installFromStdin() {
 		os.Exit(1)
 	}
 
-	// 解析 JSON，若 totp_secret 为空则自动生成
 	var inputData map[string]interface{}
 	if err := json.Unmarshal(payload, &inputData); err != nil {
 		printRed("解析 JSON 失败: " + err.Error())
@@ -684,48 +723,98 @@ func installFromStdin() {
 
 	secret, hasSecret := inputData["totp_secret"].(string)
 	if !hasSecret || secret == "" {
-		printYellow("正在生成 TOTP 密钥...")
-		output, err := runCmdOutputBytes(destPath, "--generate-totp-secret")
-		if err != nil {
-			printRed("生成 TOTP 密钥失败: " + err.Error())
-			os.Exit(1)
-		}
-		rawSecret, err := extractBase32Secret(output)
-		if err != nil {
-			printRed("解析 TOTP 密钥失败: " + err.Error())
-			os.Exit(1)
-		}
-		inputData["totp_secret"] = string(rawSecret)
-		updatedPayload, err := json.Marshal(inputData)
+		secret = generateTOTPSecret(destPath)
+		inputData["totp_secret"] = secret
+		payload, err = json.Marshal(inputData)
 		if err != nil {
 			printRed("序列化 JSON 失败: " + err.Error())
 			os.Exit(1)
 		}
-		payload = updatedPayload
-		printYellow("TOTP 密钥已自动生成")
 	}
 
-	printYellow("\n正在配置...")
-	cmd := exec.Command(destPath, "--setup-stdin")
-	cmd.Stdin = bytes.NewReader(payload)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		printRed("配置失败: " + err.Error())
+	runAegisSetup(destPath, payload)
+	finishDeploy()
+}
+
+type setupConfig struct {
+	Token          string
+	AdminID        string
+	TOTPSecret     string
+	MatrixHS       string
+	MatrixUser     string
+	MatrixPassword string
+	MatrixRoom     string
+}
+
+func parseKeyVal(data []byte) (*setupConfig, error) {
+	s := strings.ReplaceAll(string(data), "\r\n", "\n")
+	lines := strings.Split(s, "\n")
+	cfg := &setupConfig{}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, val, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
+		switch key {
+		case "token":
+			cfg.Token = val
+		case "admin_id":
+			cfg.AdminID = val
+		case "totp_secret":
+			cfg.TOTPSecret = val
+		case "matrix_homeserver":
+			cfg.MatrixHS = val
+		case "matrix_username":
+			cfg.MatrixUser = val
+		case "matrix_password":
+			cfg.MatrixPassword = val
+		case "matrix_room_id":
+			cfg.MatrixRoom = val
+		default:
+			printYellow("警告: 未知字段 \"" + key + "\" 已忽略")
+		}
+	}
+	if cfg.Token == "" || cfg.AdminID == "" {
+		return nil, fmt.Errorf("缺少必填字段: token, admin_id")
+	}
+	return cfg, nil
+}
+
+func installFromKeyVal() {
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		printRed("读取 stdin 失败: " + err.Error())
 		os.Exit(1)
 	}
 
-	writeSystemdService()
-
-	_ = runCmdSilent("systemctl", "daemon-reload")
-	_ = runCmdSilent("systemctl", "enable", serviceName)
-	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
-		printRed("启动服务失败: " + err.Error())
+	cfg, err := parseKeyVal(data)
+	if err != nil {
+		printRed(err.Error())
 		os.Exit(1)
 	}
 
-	printGreen("\n✅ TG Bot 已成功安装并启动！")
-	printSkyBlue("请前往 Telegram 与 Bot 对话进行管理。")
+	destPath := downloadAndDeployAegis()
+	if destPath == "" {
+		os.Exit(1)
+	}
+
+	if cfg.TOTPSecret == "" {
+		cfg.TOTPSecret = generateTOTPSecret(destPath)
+	}
+
+	payload := buildSetupPayload(
+		[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
+		cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword),
+	)
+
+	runAegisSetup(destPath, payload)
+	finishDeploy()
 }
 
 func firstTimeSetup(binaryPath string) {
@@ -1005,6 +1094,10 @@ func main() {
 
 	if len(os.Args) > 1 && os.Args[1] == "--setup-stdin" {
 		installFromStdin()
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--setup-keyval" {
+		installFromKeyVal()
 		return
 	}
 
