@@ -36,18 +36,41 @@ Recommended environment:
 
 Install with:
 
-```bash
-# Use -t to force TTY allocation (required for interactive setup prompts)
-ssh -t root@YOUR_SERVER_IP "wget -O /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer && /root/installer"
-```
-
-Or download and run directly if you have console access:
+**Interactive (simplest):** SSH into your server and run:
 
 ```bash
 wget -O /root/installer "https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && ./installer
 ```
 
-> **Note:** When running over SSH, use `ssh -t` to force TTY allocation. Without `-t`, some interactive prompts may fail silently.
+Follow the prompts to enter your Telegram Bot Token and Admin ID. Optionally configure Matrix for sensitive notification routing.
+
+To update an existing installation, just run the same command again — the installer handles upgrades automatically.
+
+**Headless (automation via SSH pipe):** download once, then pipe config via heredoc.
+
+JSON format (best for simple ASCII values):
+```bash
+ssh root@YOUR_SERVER_IP "wget -qO /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer"
+ssh -T root@YOUR_SERVER_IP /root/installer --setup-stdin <<'JSONEOF'
+{"token":"YOUR_BOT_TOKEN","admin_id":"YOUR_ADMIN_ID","totp_secret":"","matrix_homeserver":"https://matrix.org","matrix_username":"@bot:matrix.org","matrix_password":"YOUR_PASSWORD","matrix_room_id":"!room:matrix.org"}
+JSONEOF
+```
+
+Key=value format (avoids JSON quoting, recommended for passwords with special/non-ASCII characters):
+```bash
+ssh root@YOUR_SERVER_IP "wget -qO /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer"
+ssh -T root@YOUR_SERVER_IP /root/installer --setup-keyval <<'KVEOF'
+token=YOUR_BOT_TOKEN
+admin_id=YOUR_ADMIN_ID
+totp_secret=
+matrix_homeserver=https://matrix.org
+matrix_username=@bot:matrix.org
+matrix_password=YOUR_PASSWORD
+matrix_room_id=!room:matrix.org
+KVEOF
+```
+
+> Fields `matrix_*` are optional. Set `totp_secret` to empty string to auto-generate. Using a heredoc (`<<'EOF'`) avoids shell injection — your password can contain any characters safely. The key=value format passes raw bytes without JSON escaping, making it the easier choice when passwords contain special or non-ASCII characters.
 
 ## Repository Contents
 
