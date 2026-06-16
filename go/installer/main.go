@@ -143,6 +143,22 @@ func printBanner() {
 	printRed("==============================================================")
 }
 
+// ======================== 依赖安装 ===========================
+
+func installDependencies() {
+	if _, err := exec.LookPath("apt-get"); err == nil {
+		printYellow("正在检查系统依赖...")
+		cmd := exec.Command("apt-get", "install", "-y", "qrencode", "libcap2-bin")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			printYellow("提示: 部分依赖安装失败，某些功能可能受限")
+		} else {
+			printGreen("✓ 系统依赖检查完成")
+		}
+	}
+}
+
 // ======================== 系统检测 ===========================
 
 func checkRoot() {
@@ -519,6 +535,8 @@ func verifySHA256(path, expected string) error {
 func installAegis() {
 	printSkyBlue("\n开始安装/更新 TG Bot...")
 
+	installDependencies()
+
 	release, err := getLatestReleaseInfo()
 	if err != nil {
 		printRed("获取最新版本信息失败: " + err.Error())
@@ -605,6 +623,13 @@ func installAegis() {
 
 	printGreen("✓ TG Bot 二进制文件部署完成")
 
+	// 允许 mlock 内存锁定（用于安全内存管理）
+	if err := runCmdSilent("setcap", "cap_ipc_lock+eip", destPath); err != nil {
+		printYellow("提示: 设置 cap_ipc_lock 失败，安全内存锁定不可用")
+	} else {
+		printGreen("✓ 内存安全保护已启用")
+	}
+
 	// 首次配置
 	configPath := filepath.Join(installDir, "config.enc")
 	if _, err := os.Stat(configPath); err == nil {
@@ -684,7 +709,18 @@ func firstTimeSetup(binaryPath string) {
 		cmd.Stdin = bytes.NewReader(otpauthURL)
 		_ = cmd.Run()
 	} else {
-		printYellow("提示: 安装 qrencode 可显示二维码")
+		// 尝试自动安装 qrencode
+		printYellow("正在安装 qrencode 用于显示二维码...")
+		if err := runCmdSilent("apt-get", "install", "-y", "qrencode"); err == nil {
+			printYellow("扫描二维码绑定 (请使用支持 SHA512 的 TOTP 客户端):")
+			cmd := exec.Command("qrencode", "-t", "ANSIUTF8")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Stdin = bytes.NewReader(otpauthURL)
+			_ = cmd.Run()
+		} else {
+			printYellow("提示: 安装 qrencode 可显示二维码")
+		}
 	}
 
 	writeLine("手动添加链接: ", otpauthURL)
