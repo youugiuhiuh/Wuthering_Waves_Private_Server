@@ -532,25 +532,22 @@ func verifySHA256(path, expected string) error {
 
 // ======================== 安装 ==============================
 
-func installAegis() {
-	printSkyBlue("\n开始安装/更新 TG Bot...")
-
+func downloadAndDeployAegis() string {
 	installDependencies()
 
 	release, err := getLatestReleaseInfo()
 	if err != nil {
 		printRed("获取最新版本信息失败: " + err.Error())
-		return
+		return ""
 	}
 
 	ver := release.TagName
 	printYellow("目标版本: " + ver)
 
-	// 下载
 	tmpDir, err := os.MkdirTemp("", "wwps-installer-*")
 	if err != nil {
 		printRed("创建临时目录失败: " + err.Error())
-		return
+		return ""
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -571,30 +568,28 @@ func installAegis() {
 
 	if err := downloadFile(newHTTPClient(10*time.Minute), downloadURL, binaryPath); err != nil {
 		printRed("下载失败: " + err.Error())
-		return
+		return ""
 	}
 
-	// 校验文件存在且非空
 	info, err := os.Stat(binaryPath)
 	if err != nil || info.Size() == 0 {
 		printRed("下载的文件无效")
-		return
+		return ""
 	}
 
 	expectedHash, err := findExpectedSHA256(release, binaryName)
 	if err != nil {
 		printRed("获取可信 SHA-256 失败: " + err.Error())
-		return
+		return ""
 	}
 	if err := verifySHA256(binaryPath, expectedHash); err != nil {
 		printRed("二进制校验失败: " + err.Error())
-		return
+		return ""
 	}
 
-	// 部署
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		printRed("创建安装目录失败: " + err.Error())
-		return
+		return ""
 	}
 
 	_ = runCmdSilent("systemctl", "stop", serviceName)
@@ -603,34 +598,43 @@ func installAegis() {
 	src, err := os.Open(binaryPath)
 	if err != nil {
 		printRed("读取二进制失败: " + err.Error())
-		return
+		return ""
 	}
 	defer src.Close()
 
 	dst, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
 		printRed("写入安装目录失败: " + err.Error())
-		return
+		return ""
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, src); err != nil {
 		printRed("复制二进制失败: " + err.Error())
-		return
+		return ""
 	}
 	dst.Close()
 	src.Close()
 
 	printGreen("✓ TG Bot 二进制文件部署完成")
 
-	// 允许 mlock 内存锁定（用于安全内存管理）
 	if err := runCmdSilent("setcap", "cap_ipc_lock+eip", destPath); err != nil {
 		printYellow("提示: 设置 cap_ipc_lock 失败，安全内存锁定不可用")
 	} else {
 		printGreen("✓ 内存安全保护已启用")
 	}
 
-	// 首次配置
+	return destPath
+}
+
+func installAegis() {
+	printSkyBlue("\n开始安装/更新 TG Bot...")
+
+	destPath := downloadAndDeployAegis()
+	if destPath == "" {
+		return
+	}
+
 	configPath := filepath.Join(installDir, "config.enc")
 	if _, err := os.Stat(configPath); err == nil {
 		printGreen("\n检测到已存在配置文件，跳过初始化设置。")
@@ -646,6 +650,78 @@ func installAegis() {
 	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
 		printRed("启动服务失败: " + err.Error())
 		return
+	}
+
+	printGreen("\n✅ TG Bot 已成功安装并启动！")
+	printSkyBlue("请前往 Telegram 与 Bot 对话进行管理。")
+}
+
+// ======================== 无交互安装 ==========================
+
+func installFromStdin() {
+	payload, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		printRed("读取 stdin 失败: " + err.Error())
+		os.Exit(1)
+	}
+
+	if !json.Valid(payload) {
+		printRed("无效的 JSON 格式")
+		os.Exit(1)
+	}
+
+	destPath := downloadAndDeployAegis()
+	if destPath == "" {
+		os.Exit(1)
+	}
+
+	// 解析 JSON，若 totp_secret 为空则自动生成
+	var inputData map[string]interface{}
+	if err := json.Unmarshal(payload, &inputData); err != nil {
+		printRed("解析 JSON 失败: " + err.Error())
+		os.Exit(1)
+	}
+
+	secret, hasSecret := inputData["totp_secret"].(string)
+	if !hasSecret || secret == "" {
+		printYellow("正在生成 TOTP 密钥...")
+		output, err := runCmdOutputBytes(destPath, "--generate-totp-secret")
+		if err != nil {
+			printRed("生成 TOTP 密钥失败: " + err.Error())
+			os.Exit(1)
+		}
+		rawSecret, err := extractBase32Secret(output)
+		if err != nil {
+			printRed("解析 TOTP 密钥失败: " + err.Error())
+			os.Exit(1)
+		}
+		inputData["totp_secret"] = string(rawSecret)
+		updatedPayload, err := json.Marshal(inputData)
+		if err != nil {
+			printRed("序列化 JSON 失败: " + err.Error())
+			os.Exit(1)
+		}
+		payload = updatedPayload
+		printYellow("TOTP 密钥已自动生成")
+	}
+
+	printYellow("\n正在配置...")
+	cmd := exec.Command(destPath, "--setup-stdin")
+	cmd.Stdin = bytes.NewReader(payload)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		printRed("配置失败: " + err.Error())
+		os.Exit(1)
+	}
+
+	writeSystemdService()
+
+	_ = runCmdSilent("systemctl", "daemon-reload")
+	_ = runCmdSilent("systemctl", "enable", serviceName)
+	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
+		printRed("启动服务失败: " + err.Error())
+		os.Exit(1)
 	}
 
 	printGreen("\n✅ TG Bot 已成功安装并启动！")
@@ -736,8 +812,7 @@ func firstTimeSetup(binaryPath string) {
 	printYellow("   分享链接等敏感信息，避免中心化平台威胁。")
 	printYellow("   如不配置，敏感信息将仍然通过 TG 发送。")
 	fmt.Print("\n是否配置 Matrix 敏感信息通道？(y/n): ")
-	var setupMatrix string
-	fmt.Scanln(&setupMatrix)
+	setupMatrix, _ := readLine()
 
 	var matrixHS, matrixUser, matrixRoom string
 	var matrixPassEnclave *memguard.Enclave
@@ -860,8 +935,7 @@ WantedBy=multi-user.target
 func uninstallAegis() {
 	printYellow("\n确认卸载 TG Bot？所有配置将被删除。")
 	fmt.Print("输入 y 确认卸载: ")
-	var confirm string
-	fmt.Scanln(&confirm)
+	confirm, _ := readLine()
 
 	if confirm != "y" {
 		printGreen("已取消卸载。")
@@ -929,6 +1003,11 @@ func main() {
 	checkRoot()
 	_ = checkArch()
 
+	if len(os.Args) > 1 && os.Args[1] == "--setup-stdin" {
+		installFromStdin()
+		return
+	}
+
 	printBanner()
 	showStatus()
 
@@ -937,8 +1016,7 @@ func main() {
 	printYellow("0. 退出")
 
 	fmt.Print("\n请选择: ")
-	var choice string
-	fmt.Scanln(&choice)
+	choice, _ := readLine()
 
 	switch choice {
 	case "1":

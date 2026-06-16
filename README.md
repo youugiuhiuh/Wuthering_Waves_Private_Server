@@ -36,18 +36,19 @@ Recommended environment:
 
 Install with:
 
+**SSH / headless (recommended):** fetch the binary, pipe JSON config, and install in one command:
+
 ```bash
-# Use -t to force TTY allocation (required for interactive setup prompts)
-ssh -t root@YOUR_SERVER_IP "wget -O /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer && /root/installer"
+ssh root@YOUR_SERVER_IP "wget -qO /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer" && echo '{"token":"YOUR_BOT_TOKEN","admin_id":"YOUR_ADMIN_ID","totp_secret":"","matrix_homeserver":"https://matrix.org","matrix_username":"@bot:matrix.org","matrix_password":"YOUR_PASSWORD","matrix_room_id":"!room:matrix.org"}' | ssh root@YOUR_SERVER_IP "/root/installer --setup-stdin"
 ```
 
-Or download and run directly if you have console access:
+> Fields `matrix_*` are optional. Set `totp_secret` to empty string to auto-generate.
+
+**Interactive:** download and run directly if you have console access:
 
 ```bash
 wget -O /root/installer "https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && ./installer
 ```
-
-> **Note:** When running over SSH, use `ssh -t` to force TTY allocation. Without `-t`, some interactive prompts may fail silently.
 
 ## Repository Contents
 
