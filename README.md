@@ -36,13 +36,16 @@ Recommended environment:
 
 Install with:
 
-**SSH / headless (recommended):** fetch the binary, pipe JSON config, and install in one command:
+**SSH / headless (recommended):** download the binary, then pipe JSON config via heredoc:
 
 ```bash
-ssh root@YOUR_SERVER_IP "wget -qO /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer" && echo '{"token":"YOUR_BOT_TOKEN","admin_id":"YOUR_ADMIN_ID","totp_secret":"","matrix_homeserver":"https://matrix.org","matrix_username":"@bot:matrix.org","matrix_password":"YOUR_PASSWORD","matrix_room_id":"!room:matrix.org"}' | ssh root@YOUR_SERVER_IP "/root/installer --setup-stdin"
+ssh root@YOUR_SERVER_IP "wget -qO /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer"
+ssh -T root@YOUR_SERVER_IP /root/installer --setup-stdin <<'JSONEOF'
+{"token":"YOUR_BOT_TOKEN","admin_id":"YOUR_ADMIN_ID","totp_secret":"","matrix_homeserver":"https://matrix.org","matrix_username":"@bot:matrix.org","matrix_password":"YOUR_PASSWORD","matrix_room_id":"!room:matrix.org"}
+JSONEOF
 ```
 
-> Fields `matrix_*` are optional. Set `totp_secret` to empty string to auto-generate.
+> Fields `matrix_*` are optional. Set `totp_secret` to empty string to auto-generate. Using a heredoc (`<<'JSONEOF'`) avoids shell injection — your password can contain any characters safely.
 
 **Interactive:** download and run directly if you have console access:
 
