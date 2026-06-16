@@ -363,9 +363,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             tokio::spawn(async move {
                 match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
                     Ok(result) => {
-                        if let Err(e) =
-                            send_singbox_batch_result(adapter.clone(), chat_id_clone, "TUIC", &result)
-                                .await
+                        if let Err(e) = send_singbox_batch_result(
+                            adapter.clone(),
+                            chat_id_clone,
+                            "TUIC",
+                            &result,
+                        )
+                        .await
                         {
                             log::warn!("发送批量创建结果失败: {}", e);
                         }

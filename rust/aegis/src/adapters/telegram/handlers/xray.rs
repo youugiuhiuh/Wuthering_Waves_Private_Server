@@ -1,6 +1,6 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use crate::utils;
-use aegis::adapters::common::{BotAdapter, TargetId};
+use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
 use aegis::core::system::SystemMonitor;
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::types::IpVersion;
@@ -852,48 +852,44 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 }
             };
 
+            let adapter = ctx.state.adapter.clone();
+            let target = TargetId(ctx.chat_id.0.to_string());
+
             match res {
                 Ok(result) => {
-                    let mut message_ids: Vec<MessageId> = Vec::new();
+                    let mut message_ids: Vec<String> = Vec::new();
 
                     let mut combined_links = String::new();
                     for (i, link) in result.links.iter().enumerate() {
                         combined_links.push_str(&format!("<code>{}</code>\n\n", link));
                         if (i + 1) % 2 == 0 {
-                            if let Ok(msg) = ctx
-                                .bot
-                                .send_message(ctx.chat_id, combined_links.clone())
-                                .parse_mode(ParseMode::Html)
+                            if let Ok(msg) = adapter
+                                .send_message(
+                                    &target,
+                                    MessageContent {
+                                        text: combined_links.clone(),
+                                        markup: None,
+                                    },
+                                )
                                 .await
                             {
-                                message_ids.push(msg.id);
+                                message_ids.push(msg.0);
                             }
                             combined_links.clear();
                         }
                     }
                     if !combined_links.is_empty()
-                        && let Ok(msg) = ctx
-                            .bot
-                            .send_message(ctx.chat_id, combined_links)
-                            .parse_mode(ParseMode::Html)
+                        && let Ok(msg) = adapter
+                            .send_message(
+                                &target,
+                                MessageContent {
+                                    text: combined_links,
+                                    markup: None,
+                                },
+                            )
                             .await
                     {
-                        message_ids.push(msg.id);
-                    }
-
-                    let links_text = result.links.join("\n");
-                    let mut temp_file = NamedTempFile::new()?;
-                    temp_file.write_all(links_text.as_bytes())?;
-                    temp_file.flush()?;
-                    let temp_path = temp_file.into_temp_path();
-                    let file_path = PathBuf::from(temp_path.as_os_str());
-                    if let Ok(msg) = ctx
-                        .bot
-                        .send_document(ctx.chat_id, InputFile::file(&file_path))
-                        .caption("完整链接列表，建议尽快复制/导入")
-                        .await
-                    {
-                        message_ids.push(msg.id);
+                        message_ids.push(msg.0);
                     }
 
                     let mut result_msg = format!(
@@ -909,21 +905,28 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         result_msg.push_str(&format!("\n💾 原配置备份: {}", backup_file));
                     }
 
-                    let summary_msg = ctx.bot.send_message(ctx.chat_id, result_msg).await?;
-                    message_ids.push(summary_msg.id);
+                    if let Ok(msg) = adapter
+                        .send_message(
+                            &target,
+                            MessageContent {
+                                text: result_msg,
+                                markup: None,
+                            },
+                        )
+                        .await
+                    {
+                        message_ids.push(msg.0);
+                    }
 
-                    let bot_clone = ctx.bot.clone();
-                    let chat_id_clone = ctx.chat_id;
+                    let adapter_clone = adapter.clone();
+                    let target_clone = target.clone();
                     tokio::spawn(async move {
                         tokio::time::sleep(Duration::from_secs(60)).await;
-                        for msg_id in message_ids {
-                            if let Err(e) = bot_clone.delete_message(chat_id_clone, msg_id).await {
-                                log::warn!(
-                                    "删除消息失败 (chat_id: {}, msg_id: {}): {}",
-                                    chat_id_clone,
-                                    msg_id,
-                                    e
-                                );
+                        for id_str in message_ids {
+                            let mid = aegis::adapters::common::MessageId(id_str);
+                            if let Err(e) = adapter_clone.delete_message(&target_clone, &mid).await
+                            {
+                                log::warn!("删除消息失败: {}", e);
                             }
                         }
                     });
@@ -931,13 +934,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 Err(e) => {
                     let err_msg = e.to_string();
                     if err_msg.contains("未找到 Reality 配置文件") {
-                        ctx.bot
+                        let _ = adapter
                             .send_message(
-                                ctx.chat_id,
-                                "⚠️ <b>检测到 Reality 母版缺失，正在自动初始化...</b>",
+                                &target,
+                                MessageContent {
+                                    text: "⚠️ <b>检测到 Reality 母版缺失，正在自动初始化...</b>"
+                                        .to_string(),
+                                    markup: None,
+                                },
                             )
-                            .parse_mode(ParseMode::Html)
-                            .await?;
+                            .await;
                         trigger_reality_auto_init(
                             ctx.state.adapter.clone(),
                             ctx.bot.clone(),
@@ -945,9 +951,15 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             ctx.msg_id,
                         );
                     } else {
-                        ctx.bot
-                            .send_message(ctx.chat_id, format!("❌ 生成失败: {}", err_msg))
-                            .await?;
+                        let _ = adapter
+                            .send_message(
+                                &target,
+                                MessageContent {
+                                    text: format!("❌ 生成失败: {}", err_msg),
+                                    markup: None,
+                                },
+                            )
+                            .await;
                     }
                 }
             }

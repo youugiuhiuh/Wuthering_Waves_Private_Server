@@ -57,8 +57,8 @@ pub async fn send_singbox_batch_result(
             combined_links.clear();
         }
     }
-    if !combined_links.is_empty() {
-        if let Ok(msg) = adapter
+    if !combined_links.is_empty()
+        && let Ok(msg) = adapter
             .send_message(
                 &target,
                 MessageContent {
@@ -67,9 +67,8 @@ pub async fn send_singbox_batch_result(
                 },
             )
             .await
-        {
-            message_ids.push(msg.0);
-        }
+    {
+        message_ids.push(msg.0);
     }
 
     let result_msg = format!("✅ 批量创建完成！\n\n📊 生成数量: {}", result.created_count);
