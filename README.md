@@ -36,7 +36,17 @@ Recommended environment:
 
 Install with:
 
-**SSH / headless (recommended):** download the binary, then pipe config via heredoc.
+**Interactive (simplest):** SSH into your server and run:
+
+```bash
+wget -O /root/installer "https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && ./installer
+```
+
+Follow the prompts to enter your Telegram Bot Token and Admin ID. Optionally configure Matrix for sensitive notification routing.
+
+To update an existing installation, just run the same command again — the installer handles upgrades automatically.
+
+**Headless (automation via SSH pipe):** download once, then pipe config via heredoc.
 
 JSON format (best for simple ASCII values):
 ```bash
@@ -61,12 +71,6 @@ KVEOF
 ```
 
 > Fields `matrix_*` are optional. Set `totp_secret` to empty string to auto-generate. Using a heredoc (`<<'EOF'`) avoids shell injection — your password can contain any characters safely. The key=value format passes raw bytes without JSON escaping, making it the easier choice when passwords contain special or non-ASCII characters.
-
-**Interactive:** download and run directly if you have console access:
-
-```bash
-wget -O /root/installer "https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && ./installer
-```
 
 ## Repository Contents
 
