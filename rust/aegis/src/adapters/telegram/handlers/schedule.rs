@@ -3,51 +3,52 @@ use crate::app::state::{ScheduleFrequency, ScheduleInputState};
 use crate::utils;
 use aegis::core::system::operations::Operations;
 use aegis::core::system::scheduler::TaskType;
+use rust_i18n::t;
 use std::time::Instant;
 use teloxide::prelude::*;
 use teloxide::types::*;
 
-pub(crate) fn schedule_task_name(task_type: &TaskType) -> &'static str {
+pub(crate) fn schedule_task_name(task_type: &TaskType) -> String {
     match task_type {
-        TaskType::Unknown => "未知任务",
-        TaskType::Reboot => "系统重启",
-        TaskType::GeoUpdate => "GeoData 更新",
-        TaskType::ReloadCore => "重载核心",
-        TaskType::SecurityUpdate => "安全更新",
+        TaskType::Unknown => t!("schedule.task_type_unknown").to_string(),
+        TaskType::Reboot => t!("schedule.task_type_reboot").to_string(),
+        TaskType::GeoUpdate => t!("schedule.task_type_geo").to_string(),
+        TaskType::ReloadCore => t!("schedule.task_type_reload").to_string(),
+        TaskType::SecurityUpdate => t!("schedule.task_type_security").to_string(),
     }
 }
 
-pub(crate) fn schedule_frequency_name(frequency: &ScheduleFrequency) -> &'static str {
+pub(crate) fn schedule_frequency_name(frequency: &ScheduleFrequency) -> String {
     match frequency {
-        ScheduleFrequency::Daily => "每天",
-        ScheduleFrequency::Weekly => "每周",
+        ScheduleFrequency::Daily => t!("schedule.freq_daily").to_string(),
+        ScheduleFrequency::Weekly => t!("schedule.freq_weekly").to_string(),
     }
 }
 
-pub(crate) fn weekday_label(day: &str) -> &'static str {
+pub(crate) fn weekday_label(day: &str) -> String {
     match day {
-        "Mon" => "周一",
-        "Tue" => "周二",
-        "Wed" => "周三",
-        "Thu" => "周四",
-        "Fri" => "周五",
-        "Sat" => "周六",
-        "Sun" => "周日",
-        _ => "未选择",
+        "Mon" => t!("schedule.monday").to_string(),
+        "Tue" => t!("schedule.tuesday").to_string(),
+        "Wed" => t!("schedule.wednesday").to_string(),
+        "Thu" => t!("schedule.thursday").to_string(),
+        "Fri" => t!("schedule.friday").to_string(),
+        "Sat" => t!("schedule.saturday").to_string(),
+        "Sun" => t!("schedule.sunday").to_string(),
+        _ => t!("schedule.not_selected").to_string(),
     }
 }
 
-pub(crate) fn timezone_label(timezone: &str) -> &'static str {
+pub(crate) fn timezone_label(timezone: &str) -> String {
     match timezone {
-        "UTC" => "UTC",
-        "Asia/Shanghai" => "中国标准时间 (UTC+8)",
-        "Asia/Tokyo" => "日本标准时间 (UTC+9)",
-        "Asia/Singapore" => "新加坡时间 (UTC+8)",
-        "Europe/London" => "英国时间",
-        "Europe/Berlin" => "中欧时间",
-        "America/New_York" => "美国东部时间",
-        "America/Los_Angeles" => "美国太平洋时间",
-        _ => "自定义时区",
+        "UTC" => t!("schedule.timezone_utc").to_string(),
+        "Asia/Shanghai" => t!("schedule.timezone_cn").to_string(),
+        "Asia/Tokyo" => t!("schedule.timezone_jp").to_string(),
+        "Asia/Singapore" => t!("schedule.timezone_sg").to_string(),
+        "Europe/London" => t!("schedule.timezone_uk").to_string(),
+        "Europe/Berlin" => t!("schedule.timezone_de").to_string(),
+        "America/New_York" => t!("schedule.timezone_ny").to_string(),
+        "America/Los_Angeles" => t!("schedule.timezone_la").to_string(),
+        _ => t!("schedule.timezone_custom").to_string(),
     }
 }
 
@@ -60,7 +61,7 @@ pub(crate) fn build_custom_schedule_text(input: &ScheduleInputState) -> String {
         .day_of_week
         .as_deref()
         .map(weekday_label)
-        .unwrap_or("未选择");
+        .unwrap_or_else(|| t!("schedule.not_selected").to_string());
     let hour = input
         .hour
         .map(|h| format!("{:02}", h))
@@ -71,52 +72,52 @@ pub(crate) fn build_custom_schedule_text(input: &ScheduleInputState) -> String {
         .unwrap_or_else(|| "--".to_string());
 
     let day_line = if matches!(input.frequency, ScheduleFrequency::Weekly) {
-        format!("\n📅 星期: <b>{}</b>", day)
+        format!("\n{}", t!("schedule.day_fmt", "0" => day))
     } else {
         String::new()
     };
 
-    format!(
-        "🧩 <b>自定义定时任务</b>\n\n📌 任务: <b>{}</b>\n🔁 周期: <b>{}</b>{}\n🌍 时区: <b>{}</b>\n   <code>{}</code>\n🕒 时间: <b>{}:{}</b>\n\n请继续点击按钮完成设置。",
-        task, freq, day_line, timezone_text, timezone, hour, minute
-    )
+    t!("schedule.custom_text", "0" => task, "1" => freq, "2" => day_line, "3" => timezone_text, "4" => timezone, "5" => hour, "6" => minute).to_string()
 }
 
 pub(crate) fn build_custom_schedule_keyboard(return_to: &str) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
-            InlineKeyboardButton::callback("📅 选择星期", "s_custom_ui:day"),
-            InlineKeyboardButton::callback("🕐 选择小时", "s_custom_ui:hour"),
-            InlineKeyboardButton::callback("🕑 选择分钟", "s_custom_ui:minute"),
+            InlineKeyboardButton::callback(t!("schedule.day_label"), "s_custom_ui:day"),
+            InlineKeyboardButton::callback(t!("schedule.hour_label"), "s_custom_ui:hour"),
+            InlineKeyboardButton::callback(t!("schedule.minute_label"), "s_custom_ui:minute"),
         ],
         vec![InlineKeyboardButton::callback(
-            "🌍 选择时区",
+            t!("schedule.tz_label"),
             "s_custom_ui:tz",
         )],
         vec![InlineKeyboardButton::callback(
-            "✅ 确认创建任务",
+            t!("schedule.custom_confirm"),
             "s_custom_confirm",
         )],
-        vec![InlineKeyboardButton::callback("❌ 取消", "s_custom_cancel")],
-        vec![InlineKeyboardButton::callback("⬅️ 返回", return_to)],
+        vec![InlineKeyboardButton::callback(
+            t!("schedule.custom_cancel"),
+            "s_custom_cancel",
+        )],
+        vec![InlineKeyboardButton::callback(t!("menu.back"), return_to)],
     ])
 }
 
 pub(crate) fn build_custom_day_keyboard() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
-            InlineKeyboardButton::callback("周一", "s_custom_set:day:Mon"),
-            InlineKeyboardButton::callback("周二", "s_custom_set:day:Tue"),
-            InlineKeyboardButton::callback("周三", "s_custom_set:day:Wed"),
-            InlineKeyboardButton::callback("周四", "s_custom_set:day:Thu"),
+            InlineKeyboardButton::callback(t!("schedule.monday"), "s_custom_set:day:Mon"),
+            InlineKeyboardButton::callback(t!("schedule.tuesday"), "s_custom_set:day:Tue"),
+            InlineKeyboardButton::callback(t!("schedule.wednesday"), "s_custom_set:day:Wed"),
+            InlineKeyboardButton::callback(t!("schedule.thursday"), "s_custom_set:day:Thu"),
         ],
         vec![
-            InlineKeyboardButton::callback("周五", "s_custom_set:day:Fri"),
-            InlineKeyboardButton::callback("周六", "s_custom_set:day:Sat"),
-            InlineKeyboardButton::callback("周日", "s_custom_set:day:Sun"),
+            InlineKeyboardButton::callback(t!("schedule.friday"), "s_custom_set:day:Fri"),
+            InlineKeyboardButton::callback(t!("schedule.saturday"), "s_custom_set:day:Sat"),
+            InlineKeyboardButton::callback(t!("schedule.sunday"), "s_custom_set:day:Sun"),
         ],
         vec![InlineKeyboardButton::callback(
-            "⬅️ 返回配置",
+            t!("menu.back"),
             "s_custom_ui:main",
         )],
     ])
@@ -137,7 +138,7 @@ pub(crate) fn build_custom_hour_keyboard() -> InlineKeyboardMarkup {
         rows.push(row);
     }
     rows.push(vec![InlineKeyboardButton::callback(
-        "⬅️ 返回配置",
+        t!("menu.back"),
         "s_custom_ui:main",
     )]);
     InlineKeyboardMarkup::new(rows)
@@ -159,7 +160,7 @@ pub(crate) fn build_custom_minute_keyboard() -> InlineKeyboardMarkup {
         rows.push(row);
     }
     rows.push(vec![InlineKeyboardButton::callback(
-        "⬅️ 返回配置",
+        t!("menu.back"),
         "s_custom_ui:main",
     )]);
     InlineKeyboardMarkup::new(rows)
@@ -168,23 +169,44 @@ pub(crate) fn build_custom_minute_keyboard() -> InlineKeyboardMarkup {
 pub(crate) fn build_custom_timezone_keyboard() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
-            InlineKeyboardButton::callback("UTC", "s_custom_set:tz:UTC"),
-            InlineKeyboardButton::callback("中国 (UTC+8)", "s_custom_set:tz:Asia/Shanghai"),
+            InlineKeyboardButton::callback(t!("schedule.timezone_utc"), "s_custom_set:tz:UTC"),
+            InlineKeyboardButton::callback(
+                t!("schedule.timezone_cn"),
+                "s_custom_set:tz:Asia/Shanghai",
+            ),
         ],
         vec![
-            InlineKeyboardButton::callback("东京 (UTC+9)", "s_custom_set:tz:Asia/Tokyo"),
-            InlineKeyboardButton::callback("新加坡 (UTC+8)", "s_custom_set:tz:Asia/Singapore"),
+            InlineKeyboardButton::callback(
+                t!("schedule.timezone_jp"),
+                "s_custom_set:tz:Asia/Tokyo",
+            ),
+            InlineKeyboardButton::callback(
+                t!("schedule.timezone_sg"),
+                "s_custom_set:tz:Asia/Singapore",
+            ),
         ],
         vec![
-            InlineKeyboardButton::callback("伦敦", "s_custom_set:tz:Europe/London"),
-            InlineKeyboardButton::callback("柏林", "s_custom_set:tz:Europe/Berlin"),
+            InlineKeyboardButton::callback(
+                t!("schedule.timezone_uk"),
+                "s_custom_set:tz:Europe/London",
+            ),
+            InlineKeyboardButton::callback(
+                t!("schedule.timezone_de"),
+                "s_custom_set:tz:Europe/Berlin",
+            ),
         ],
         vec![
-            InlineKeyboardButton::callback("纽约", "s_custom_set:tz:America/New_York"),
-            InlineKeyboardButton::callback("洛杉矶", "s_custom_set:tz:America/Los_Angeles"),
+            InlineKeyboardButton::callback(
+                t!("schedule.timezone_ny"),
+                "s_custom_set:tz:America/New_York",
+            ),
+            InlineKeyboardButton::callback(
+                t!("schedule.timezone_la"),
+                "s_custom_set:tz:America/Los_Angeles",
+            ),
         ],
         vec![InlineKeyboardButton::callback(
-            "⬅️ 返回配置",
+            t!("menu.back"),
             "s_custom_ui:main",
         )],
     ])
@@ -214,15 +236,18 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             {
                 manager.get_summary().await
             } else {
-                "❌ 调度器未初始化".to_string()
+                t!("schedule.scheduler_not_init").to_string()
             };
 
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("➕ 添加任务", "s_add_menu"),
-                    InlineKeyboardButton::callback("➖ 删除任务", "s_del_menu"),
+                    InlineKeyboardButton::callback(t!("schedule.add_task"), "s_add_menu"),
+                    InlineKeyboardButton::callback(t!("schedule.del_task"), "s_del_menu"),
                 ],
-                vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_settings"),
+                    "m_settings",
+                )],
             ]);
 
             ctx.bot
@@ -237,21 +262,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .await;
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "每天 4点 重启核心",
+                    t!("schedule.daily_4am"),
                     "s_add:reload_daily_4",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "🕒 自定义每天/每周时间",
+                    t!("schedule.custom_btn"),
                     "s_add_custom_menu",
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "m_sched")],
+                vec![InlineKeyboardButton::callback(t!("menu.back"), "m_sched")],
             ]);
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "➕ <b>添加快速任务</b>\n请选择预设模板:",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("schedule.add_menu_title"))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -259,29 +280,84 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "s_add_custom_menu" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("Geo更新 - 每天", "s_custom:geo:daily"),
-                    InlineKeyboardButton::callback("Geo更新 - 每周", "s_custom:geo:weekly"),
+                    InlineKeyboardButton::callback(
+                        format!(
+                            "{} - {}",
+                            t!("schedule.task_type_geo"),
+                            t!("schedule.freq_daily")
+                        ),
+                        "s_custom:geo:daily",
+                    ),
+                    InlineKeyboardButton::callback(
+                        format!(
+                            "{} - {}",
+                            t!("schedule.task_type_geo"),
+                            t!("schedule.freq_weekly")
+                        ),
+                        "s_custom:geo:weekly",
+                    ),
                 ],
                 vec![
-                    InlineKeyboardButton::callback("重载核心 - 每天", "s_custom:reload:daily"),
-                    InlineKeyboardButton::callback("重载核心 - 每周", "s_custom:reload:weekly"),
+                    InlineKeyboardButton::callback(
+                        format!(
+                            "{} - {}",
+                            t!("schedule.task_type_reload"),
+                            t!("schedule.freq_daily")
+                        ),
+                        "s_custom:reload:daily",
+                    ),
+                    InlineKeyboardButton::callback(
+                        format!(
+                            "{} - {}",
+                            t!("schedule.task_type_reload"),
+                            t!("schedule.freq_weekly")
+                        ),
+                        "s_custom:reload:weekly",
+                    ),
                 ],
                 vec![
-                    InlineKeyboardButton::callback("系统重启 - 每天", "s_custom:reboot:daily"),
-                    InlineKeyboardButton::callback("系统重启 - 每周", "s_custom:reboot:weekly"),
+                    InlineKeyboardButton::callback(
+                        format!(
+                            "{} - {}",
+                            t!("schedule.task_type_reboot"),
+                            t!("schedule.freq_daily")
+                        ),
+                        "s_custom:reboot:daily",
+                    ),
+                    InlineKeyboardButton::callback(
+                        format!(
+                            "{} - {}",
+                            t!("schedule.task_type_reboot"),
+                            t!("schedule.freq_weekly")
+                        ),
+                        "s_custom:reboot:weekly",
+                    ),
                 ],
                 vec![
-                    InlineKeyboardButton::callback("安全更新 - 每天", "s_custom:secupd:daily"),
-                    InlineKeyboardButton::callback("安全更新 - 每周", "s_custom:secupd:weekly"),
+                    InlineKeyboardButton::callback(
+                        format!(
+                            "{} - {}",
+                            t!("schedule.task_type_security"),
+                            t!("schedule.freq_daily")
+                        ),
+                        "s_custom:secupd:daily",
+                    ),
+                    InlineKeyboardButton::callback(
+                        format!(
+                            "{} - {}",
+                            t!("schedule.task_type_security"),
+                            t!("schedule.freq_weekly")
+                        ),
+                        "s_custom:secupd:weekly",
+                    ),
                 ],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "s_add_menu")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back"),
+                    "s_add_menu",
+                )],
             ]);
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "🧩 <b>自定义定时任务</b>\n先选择任务类型和周期:",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("schedule.custom_title"))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
@@ -310,7 +386,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 _ => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text("❌ 无效的自定义任务模板")
+                        .text(t!("schedule.invalid_template"))
                         .await?;
                     return Ok(HandlerAction::Done);
                 }
@@ -369,7 +445,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚠️ 自定义定时会话不存在，请重新进入。")
+                    .text(t!("schedule.session_not_found"))
                     .await?;
             }
         }
@@ -385,10 +461,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 if is_daily {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text("ℹ️ 每天任务无需选择星期")
+                        .text(t!("schedule.daily_no_day_needed"))
                         .await?;
                 } else {
-                    let text = "📅 <b>选择每周执行的星期</b>";
+                    let text = t!("schedule.custom_day");
                     ctx.bot
                         .edit_message_text(ctx.chat_id, ctx.msg_id, text)
                         .parse_mode(ParseMode::Html)
@@ -398,7 +474,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚠️ 自定义定时会话不存在，请重新进入。")
+                    .text(t!("schedule.session_not_found"))
                     .await?;
             }
         }
@@ -412,14 +488,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .is_some()
             {
                 ctx.bot
-                    .edit_message_text(ctx.chat_id, ctx.msg_id, "🕐 <b>选择执行小时</b>")
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("schedule.custom_hour"))
                     .parse_mode(ParseMode::Html)
                     .reply_markup(build_custom_hour_keyboard())
                     .await?;
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚠️ 自定义定时会话不存在，请重新进入。")
+                    .text(t!("schedule.session_not_found"))
                     .await?;
             }
         }
@@ -433,14 +509,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .is_some()
             {
                 ctx.bot
-                    .edit_message_text(ctx.chat_id, ctx.msg_id, "🕑 <b>选择执行分钟</b>")
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("schedule.custom_minute"))
                     .parse_mode(ParseMode::Html)
                     .reply_markup(build_custom_minute_keyboard())
                     .await?;
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚠️ 自定义定时会话不存在，请重新进入。")
+                    .text(t!("schedule.session_not_found"))
                     .await?;
             }
         }
@@ -454,14 +530,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .is_some()
             {
                 ctx.bot
-                    .edit_message_text(ctx.chat_id, ctx.msg_id, "🌍 <b>选择任务时区</b>")
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("schedule.custom_tz"))
                     .parse_mode(ParseMode::Html)
                     .reply_markup(build_custom_timezone_keyboard())
                     .await?;
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚠️ 自定义定时会话不存在，请重新进入。")
+                    .text(t!("schedule.session_not_found"))
                     .await?;
             }
         }
@@ -525,7 +601,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚠️ 自定义定时会话不存在，请重新进入。")
+                    .text(t!("schedule.session_not_found"))
                     .await?;
             }
         }
@@ -547,7 +623,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚠️ 自定义定时会话不存在，请重新进入。")
+                    .text(t!("schedule.session_not_found"))
                     .await?;
                 return Ok(HandlerAction::Done);
             };
@@ -555,7 +631,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let Some(cron_expression) = cron else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚠️ 配置不完整，请先选择必要时间项。")
+                    .text(t!("schedule.config_incomplete"))
                     .show_alert(true)
                     .await?;
                 return Ok(HandlerAction::Done);
@@ -575,7 +651,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     Ok(_) => {
                         ctx.bot
                             .answer_callback_query(ctx.q.id.clone())
-                            .text("✅ 任务添加成功")
+                            .text(t!("schedule.task_added"))
                             .await?;
                         if task_type == TaskType::SecurityUpdate {
                             let reboot_time =
@@ -596,7 +672,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                             .send_message(
                                                 chat_id_clone,
                                                 format!(
-                                                    "📋 <b>安全更新初始配置日志</b>\n\n<pre>{}</pre>",
+                                                    "📋 <b>{}<b>\n\n<pre>{}</pre>",
+                                                    t!("schedule.security_init_log_title"),
                                                     log_tail
                                                 ),
                                             )
@@ -607,7 +684,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                         let _ = bot_clone
                                             .send_message(
                                                 chat_id_clone,
-                                                format!("❌ <b>安全更新初始配置失败</b>\n\n{}", e),
+                                                format!(
+                                                    "❌ <b>{}</b>\n\n{}",
+                                                    t!("schedule.security_init_fail"),
+                                                    e
+                                                ),
                                             )
                                             .parse_mode(ParseMode::Html)
                                             .await;
@@ -616,20 +697,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             });
                         }
                         let back_label = if return_to == "a_geo_sched_menu" {
-                            "⬅️ 返回 Geo 调度"
+                            t!("schedule.back_geo_sched")
                         } else if return_to == "m_sys_cmd" {
-                            "⬅️ 返回系统指令"
+                            t!("schedule.back_sys_cmd")
                         } else {
-                            "⬅️ 返回定时任务"
+                            t!("schedule.back_sched")
                         };
                         ctx.bot
                             .edit_message_text(
                                 ctx.chat_id,
                                 ctx.msg_id,
-                                format!(
-                                    "✅ 任务已创建\nCron: <code>{}</code>\nTZ: <code>{}</code>",
-                                    cron_expression, timezone
-                                ),
+                                t!("schedule.task_created", "0" => cron_expression, "1" => timezone),
                             )
                             .parse_mode(ParseMode::Html)
                             .reply_markup(InlineKeyboardMarkup::new(vec![vec![
@@ -640,14 +718,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     Err(e) => {
                         ctx.bot
                             .answer_callback_query(ctx.q.id.clone())
-                            .text("❌ 添加任务失败")
+                            .text(t!("schedule.add_fail"))
                             .show_alert(true)
                             .await?;
                         ctx.bot
                             .edit_message_text(
                                 ctx.chat_id,
                                 ctx.msg_id,
-                                format!("❌ 添加任务失败: {}", e),
+                                format!("❌ {}: {}", t!("schedule.add_fail"), e),
                             )
                             .await?;
                     }
@@ -655,7 +733,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 调度器未初始化")
+                    .text(t!("schedule.scheduler_not_init"))
                     .await?;
             }
         }
@@ -671,7 +749,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .await;
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text("✅ 已取消自定义定时任务")
+                .text(t!("schedule.custom_cancelled"))
                 .await?;
             return Ok(HandlerAction::Redirect(return_to));
         }
@@ -697,7 +775,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let _ = manager.add_new_task(task).await;
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("✅ 任务添加成功")
+                    .text(t!("schedule.task_added"))
                     .await?;
 
                 return Ok(HandlerAction::Redirect("m_sched".to_string()));
@@ -713,9 +791,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         format!("s_del:{}", i),
                     )]);
                 }
-                buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_sched")]);
+                buttons.push(vec![InlineKeyboardButton::callback(
+                    t!("menu.back"),
+                    "m_sched",
+                )]);
                 ctx.bot
-                    .edit_message_text(ctx.chat_id, ctx.msg_id, "➖ <b>删除任务</b>\n点击移除:")
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("schedule.del_menu_title"))
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
                     .await?;
@@ -726,7 +807,9 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                 let state = manager.state.lock().await;
-                if let Err(e) = utils::validate_idx(idx, state.tasks.len(), "任务") {
+                if let Err(e) =
+                    utils::validate_idx(idx, state.tasks.len(), &t!("schedule.task_label"))
+                {
                     drop(state);
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
@@ -740,20 +823,20 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![InlineKeyboardButton::callback(
-                            "⚠️ 确认删除",
+                            t!("schedule.confirm_delete"),
                             format!("s_del_confirm:{}", idx),
                         )],
-                        vec![InlineKeyboardButton::callback("🔙 取消", "s_del_menu")],
+                        vec![InlineKeyboardButton::callback(
+                            t!("schedule.custom_cancel"),
+                            "s_del_menu",
+                        )],
                     ]);
 
                     ctx.bot
                         .edit_message_text(
                             ctx.chat_id,
                             ctx.msg_id,
-                            format!(
-                                "⚠️ <b>删除确认</b>\n\n您确定要删除定时任务 <code>{}</code> 吗？",
-                                utils::escape_html(&task_name)
-                            ),
+                            t!("schedule.del_confirm_title", "0" => utils::escape_html(&task_name)),
                         )
                         .parse_mode(ParseMode::Html)
                         .reply_markup(keyboard)
@@ -762,7 +845,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     drop(state);
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text("❌ 任务不存在")
+                        .text(t!("schedule.task_not_found"))
                         .await?;
                 }
             }
@@ -777,7 +860,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let _ = manager.remove_task_at(idx).await;
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("✅ 任务删除成功")
+                    .text(t!("schedule.task_deleted"))
                     .show_alert(true)
                     .await?;
 
@@ -794,13 +877,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .filter(|t| t.task_type == TaskType::GeoUpdate)
                         .collect();
                     if geo_tasks.is_empty() {
-                        "📝 当前无 Geo 自动更新任务".to_string()
+                        t!("schedule.geo_scheduled_empty").to_string()
                     } else {
-                        let mut info = "⏰ <b>当前 Geo 定时任务</b>:\n\n".to_string();
+                        let mut info = t!("schedule.geo_scheduled_title").to_string();
                         for (i, t) in geo_tasks.iter().enumerate() {
                             info.push_str(&format!(
-                                "{}. Cron: <code>{}</code> | TZ: <code>{}</code>\n",
+                                "{}. {}: <code>{}</code> | TZ: <code>{}</code>\n",
                                 i + 1,
+                                t!("schedule.cron_label"),
                                 t.cron_expression,
                                 t.timezone
                             ));
@@ -808,20 +892,26 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         info
                     }
                 } else {
-                    "❌ 调度器未初始化".to_string()
+                    t!("schedule.schedule_summary_init_fail").to_string()
                 };
 
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("🟢 每天", "s_custom:geo:daily"),
-                    InlineKeyboardButton::callback("🟢 每周", "s_custom:geo:weekly"),
+                    InlineKeyboardButton::callback(
+                        format!("🟢 {}", t!("schedule.freq_daily")),
+                        "s_custom:geo:daily",
+                    ),
+                    InlineKeyboardButton::callback(
+                        format!("🟢 {}", t!("schedule.freq_weekly")),
+                        "s_custom:geo:weekly",
+                    ),
                 ],
                 vec![InlineKeyboardButton::callback(
-                    "⛔️ 停止 Geo 自动更新",
+                    t!("schedule.geo_stop"),
                     "geo_sched_off",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "⬅️ 返回 Geo 数据",
+                    t!("schedule.back_geo"),
                     "a_geo_menu",
                 )],
             ]);
@@ -830,10 +920,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!(
-                        "🌍 <b>Geo 自动更新调度</b>\n\n{}\n\n选择周期来自定义调度时间:",
-                        geo_info
-                    ),
+                    t!("schedule.geo_sched_menu_title", "0" => geo_info),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
@@ -856,9 +943,9 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
                     .text(if removed {
-                        "✅ 已停止 Geo 自动更新"
+                        t!("schedule.geo_stopped")
                     } else {
-                        "ℹ️ 未找到 Geo 自动更新任务"
+                        t!("schedule.geo_stop_info")
                     })
                     .await?;
 
@@ -866,7 +953,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 调度器未初始化")
+                    .text(t!("schedule.scheduler_not_init"))
                     .await?;
             }
         }

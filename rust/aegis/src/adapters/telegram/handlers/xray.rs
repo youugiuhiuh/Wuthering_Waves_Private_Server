@@ -7,6 +7,7 @@ use aegis::core::types::IpVersion;
 use aegis::core::xray::KcpMask;
 use aegis::core::xray::installer::{RealityInstallOutcome, RealityInstaller};
 use aegis::core::xray::{ConfigManager, Proto};
+use rust_i18n::t;
 use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,25 +42,30 @@ async fn show_reality_batch_prompt(
         if proto == Proto::XHTTP {
             buttons.push(vec![
                 InlineKeyboardButton::callback(
-                    "🚀 双栈分离 (v6上v4下)",
+                    t!("xray.split_v6_up"),
                     format!("{}s6", ip_prefix),
                 ),
                 InlineKeyboardButton::callback(
-                    "🚀 双栈分离 (v4上v6下)",
+                    t!("xray.split_v4_up"),
                     format!("{}s4", ip_prefix),
                 ),
             ]);
         }
     }
 
-    buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
+    buttons.push(vec![InlineKeyboardButton::callback(
+        t!("menu.back_user"),
+        "m_usr",
+    )]);
 
     bot.edit_message_text(
         chat_id,
         msg_id,
-        format!(
-            "🚀 <b>{} 批量备份 (增强+独立)</b>\n\n✨ <b>自动启用的安全特性:</b>\n• 🎲 随机ShortId (每个配置唯一)\n• 🔄 去重SNI选择 (避免重复)\n• 🏷️ 唯一Tag标识 (基于协议+UUID)\n• 📄 独立配置文件 (不影响原配置)\n\n⬇️ <b>第一步: 请选择网络协议版本:</b>",
-            title
+        t!(
+            "xray.batch_title",
+            "0" => title,
+            "1" => t!("xray.batch_security"),
+            "2" => t!("xray.batch_step_ip")
         ),
     )
     .parse_mode(ParseMode::Html)
@@ -84,8 +90,8 @@ async fn show_reality_qty_prompt(
     let ip_display = match ip_version {
         IpVersion::IPv4 => "IPv4",
         IpVersion::IPv6 => "IPv6",
-        IpVersion::SplitStackV6Primary => "双栈分离 (v6上v4下)",
-        IpVersion::SplitStackV4Primary => "双栈分离 (v4上v6下)",
+        IpVersion::SplitStackV6Primary => &t!("xray.split_v6_up"),
+        IpVersion::SplitStackV4Primary => &t!("xray.split_v4_up"),
     };
 
     let (exec_prefix, title) = match proto {
@@ -105,15 +111,20 @@ async fn show_reality_qty_prompt(
             InlineKeyboardButton::callback("20", format!("{exec_prefix}{ip_ver_code}:20")),
             InlineKeyboardButton::callback("50", format!("{exec_prefix}{ip_ver_code}:50")),
         ],
-        vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")],
+        vec![InlineKeyboardButton::callback(
+            t!("menu.back_user"),
+            "m_usr",
+        )],
     ];
 
     bot.edit_message_text(
         chat_id,
         msg_id,
-        format!(
-            "🚀 <b>{} 批量备份 (增强+独立)</b>\n\n🌐 网络协议: <b>{}</b>\n\n⬇️ <b>第二步: 请选择生成数量:</b>",
-            title, ip_display
+        t!(
+            "xray.batch_title",
+            "0" => title,
+            "1" => "",
+            "2" => t!("xray.batch_step_qty", "0" => ip_display)
         ),
     )
     .parse_mode(ParseMode::Html)
@@ -138,23 +149,14 @@ fn trigger_reality_auto_init(
             Ok(RealityInstallOutcome::Completed) => {
                 let _ = show_reality_batch_prompt(&bot, chat_id, msg_id, Proto::Vision).await;
                 let _ = bot
-                    .send_message(
-                        chat_id,
-                        "✅ <b>Reality 母版已初始化完成，可继续批量生成。</b>",
-                    )
+                    .send_message(chat_id, t!("xray.reality_ready"))
                     .parse_mode(ParseMode::Html)
                     .await;
             }
             Ok(RealityInstallOutcome::InProgress) => {}
             Err(e) => {
                 let _ = bot
-                    .send_message(
-                        chat_id,
-                        format!(
-                            "❌ <b>Reality 环境初始化失败</b>\n原因: {}\n请尝试运维菜单中【初始化 Reality】或手动执行 install.sh 选项 3。",
-                            e
-                        ),
-                    )
+                    .send_message(chat_id, t!("xray.reality_init_fail", "0" => e))
                     .parse_mode(ParseMode::Html)
                     .await;
             }
@@ -174,48 +176,44 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             if inbounds.is_empty() {
                 buttons.push(vec![
-                    InlineKeyboardButton::callback("🚀 Reality 批量备份", "u_batch_init"),
-                    InlineKeyboardButton::callback("🚀 Xhttp 批量备份", "u_xhttp_batch_init"),
+                    InlineKeyboardButton::callback(t!("xray.batch_reality"), "u_batch_init"),
+                    InlineKeyboardButton::callback(t!("xray.batch_xhttp"), "u_xhttp_batch_init"),
                 ]);
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    "🔐 ML-DSA-65 管理",
+                    t!("xray.pq_mgmt"),
                     "m_pq_mgmt",
                 )]);
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "🅧 <b>Xray-core 管理</b>\n\n⚠️ <b>未找到用户配置文件</b>\n\n检测到 Xray-core 已安装，但没有找到用户配置文件(*_inbounds.json)。\n\n您可以：\n• 创建 Reality 批量备份\n• 创建 Xhttp 批量备份\n• 管理 ML-DSA-65 (Reality PQ)\n• 检查配置文件是否正确放置",
-                )
-                .parse_mode(ParseMode::Html)
-                .reply_markup(InlineKeyboardMarkup::new(buttons))
-                .await?;
+                ctx.bot
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("xray.mgmt_no_cfg"))
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(InlineKeyboardMarkup::new(buttons))
+                    .await?;
             } else {
                 for (i, path) in inbounds.iter().enumerate() {
                     let filename = path.split('/').next_back().unwrap_or("Unknown");
                     buttons.push(vec![InlineKeyboardButton::callback(
-                        format!("📁 {}", filename),
+                        t!("xray.file_btn", "0" => filename),
                         format!("u_l:{}", i),
                     )]);
                 }
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    "🗑️ 删除管理",
+                    t!("xray.del_mgmt_btn"),
                     "m_del_cfg",
                 )]);
                 buttons.push(vec![
-                    InlineKeyboardButton::callback("🚀 Reality 批量备份", "u_batch_init"),
-                    InlineKeyboardButton::callback("🚀 Xhttp 批量备份", "u_xhttp_batch_init"),
+                    InlineKeyboardButton::callback(t!("xray.batch_reality"), "u_batch_init"),
+                    InlineKeyboardButton::callback(t!("xray.batch_xhttp"), "u_xhttp_batch_init"),
                 ]);
                 buttons.push(vec![
-                    InlineKeyboardButton::callback("🚀 KCP (mKCP+FinalMask)", "u_kcp_init"),
-                    InlineKeyboardButton::callback("🔐 ML-DSA-65 管理", "m_pq_mgmt"),
+                    InlineKeyboardButton::callback(t!("xray.batch_kcp"), "u_kcp_init"),
+                    InlineKeyboardButton::callback(t!("xray.pq_mgmt"), "m_pq_mgmt"),
                 ]);
-                buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
+                buttons.push(vec![InlineKeyboardButton::callback(
+                    t!("menu.back_user"),
+                    "m_usr",
+                )]);
                 ctx.bot
-                    .edit_message_text(
-                        ctx.chat_id,
-                        ctx.msg_id,
-                        "🅧 <b>Xray-core 管理</b>\n选择配置文件 (支持批量删除):",
-                    )
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("xray.mgmt_title"))
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
                     .await?;
@@ -227,29 +225,29 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_pq_mgmt" => {
             let configured = ConfigManager::is_reality_pq_configured();
             let status = if configured {
-                "🟢 已启用（新生成的 Reality 链接将包含 pqv/mldsa65Verify）"
+                t!("xray.pq_status_enabled")
             } else {
-                "🔴 未配置（Reality 链接不含 PQ 后量子签名）"
+                t!("xray.pq_status_disabled")
             };
             let keyboard = InlineKeyboardMarkup::new(vec![
-                vec![InlineKeyboardButton::callback("🗑 删除并禁用", "m_pq_del")],
                 vec![InlineKeyboardButton::callback(
-                    "🔄 初始化 (生成新密钥对)",
+                    t!("xray.pq_delete"),
+                    "m_pq_del",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("xray.pq_init"),
                     "m_pq_init",
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back"),
+                    "m_xray_mgmt",
+                )],
             ]);
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!(
-                    "🔐 <b>ML-DSA-65 管理</b>\n\n当前状态: {}\n\n• <b>删除并禁用</b>: 删除 seed/verify 文件，之后新链接不再带 pqv。\n• <b>初始化</b>: 执行 <code>wwps-core mldsa65</code>（或 xray mldsa65）生成 seed/verify 并写入 /etc/wwps/，与 Xray 完全兼容。\n\n⚠️ 删除或初始化后需<b>重启 Bot</b> 或<b>重新生成批量配置</b>后生效。",
-                    status
-                ),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(keyboard)
-            .await?;
+            ctx.bot
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("xray.pq_title", "0" => status))
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -257,15 +255,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_pq_del" => {
             match ConfigManager::delete_reality_pq().await {
                 Ok(()) => {
-                    ctx.bot.answer_callback_query(ctx.q.id.clone())
-                        .text("✅ 已删除 ML-DSA-65 密钥文件，PQ 已禁用。请重启 Bot 或重新生成配置后生效。")
+                    ctx.bot
+                        .answer_callback_query(ctx.q.id.clone())
+                        .text(t!("xray.pq_del_success"))
                         .show_alert(true)
                         .await?;
                 }
                 Err(e) => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text(format!("❌ 删除失败: {}", e))
+                        .text(t!("xray.pq_del_fail", "0" => e))
                         .show_alert(true)
                         .await?;
                 }
@@ -276,15 +275,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_pq_init" => {
             match ConfigManager::generate_reality_pq_keys().await {
                 Ok(()) => {
-                    ctx.bot.answer_callback_query(ctx.q.id.clone())
-                        .text("✅ ML-DSA-65 seed/verify 已通过 wwps-core mldsa65 生成并写入 /etc/wwps/。请重启 Bot 或重新生成配置后生效。")
+                    ctx.bot
+                        .answer_callback_query(ctx.q.id.clone())
+                        .text(t!("xray.pq_init_success"))
                         .show_alert(true)
                         .await?;
                 }
                 Err(e) => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text(format!("❌ 初始化失败: {}", e))
+                        .text(t!("xray.pq_init_fail", "0" => e))
                         .show_alert(true)
                         .await?;
                 }
@@ -295,30 +295,33 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_del_cfg" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("📋 全部", "cfg_filter:all"),
-                    InlineKeyboardButton::callback("🌐 Reality", "cfg_filter:reality"),
-                    InlineKeyboardButton::callback("⚡ XHTTP", "cfg_filter:xhttp"),
-                    InlineKeyboardButton::callback("📡 KCP", "cfg_filter:kcp"),
+                    InlineKeyboardButton::callback(t!("xray.filter_all"), "cfg_filter:all"),
+                    InlineKeyboardButton::callback(t!("xray.filter_reality"), "cfg_filter:reality"),
+                    InlineKeyboardButton::callback(t!("xray.filter_xhttp"), "cfg_filter:xhttp"),
+                    InlineKeyboardButton::callback(t!("xray.filter_kcp"), "cfg_filter:kcp"),
                 ],
                 vec![InlineKeyboardButton::callback(
-                    "🧨 删除全部配置",
+                    t!("xray.del_all"),
                     "cfg_del_all_confirm:all",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "➗ 按数量删除配置",
+                    t!("xray.del_count"),
                     "cfg_del_count:all",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "🎯 指定配置删除",
+                    t!("xray.del_select"),
                     "cfg_del_select:all",
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back"),
+                    "m_xray_mgmt",
+                )],
             ]);
             ctx.bot
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    "🗑️ <b>删除管理</b> — 当前筛选：📋 全部\n\n请选择删除方式 (操作不可逆):",
+                    t!("xray.del_title", "0" => t!("xray.filter_all")),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
@@ -329,41 +332,41 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
         d if d.starts_with("cfg_filter:") => {
             let filter = d.strip_prefix("cfg_filter:").unwrap_or("all");
-            let filter_label = match filter {
-                "reality" => "🌐 Reality",
-                "xhttp" => "⚡ XHTTP",
-                "kcp" => "📡 KCP",
-                _ => "📋 全部",
+            let filter_label_val = match filter {
+                "reality" => t!("xray.filter_reality"),
+                "xhttp" => t!("xray.filter_xhttp"),
+                "kcp" => t!("xray.filter_kcp"),
+                _ => t!("xray.filter_all"),
             };
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback("📋 全部", "cfg_filter:all"),
-                    InlineKeyboardButton::callback("🌐 Reality", "cfg_filter:reality"),
-                    InlineKeyboardButton::callback("⚡ XHTTP", "cfg_filter:xhttp"),
-                    InlineKeyboardButton::callback("📡 KCP", "cfg_filter:kcp"),
+                    InlineKeyboardButton::callback(t!("xray.filter_all"), "cfg_filter:all"),
+                    InlineKeyboardButton::callback(t!("xray.filter_reality"), "cfg_filter:reality"),
+                    InlineKeyboardButton::callback(t!("xray.filter_xhttp"), "cfg_filter:xhttp"),
+                    InlineKeyboardButton::callback(t!("xray.filter_kcp"), "cfg_filter:kcp"),
                 ],
                 vec![InlineKeyboardButton::callback(
-                    "🧨 删除全部配置",
+                    t!("xray.del_all"),
                     format!("cfg_del_all_confirm:{}", filter),
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "➗ 按数量删除配置",
+                    t!("xray.del_count"),
                     format!("cfg_del_count:{}", filter),
                 )],
                 vec![InlineKeyboardButton::callback(
-                    "🎯 指定配置删除",
+                    t!("xray.del_select"),
                     format!("cfg_del_select:{}", filter),
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "m_xray_mgmt")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back"),
+                    "m_xray_mgmt",
+                )],
             ]);
             ctx.bot
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!(
-                        "🗑️ <b>删除管理</b> — 当前筛选：{}\n\n请选择删除方式 (操作不可逆):",
-                        filter_label
-                    ),
+                    t!("xray.del_title", "0" => filter_label_val),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
@@ -375,26 +378,27 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         d if d == "cfg_del_all_confirm" || d.starts_with("cfg_del_all_confirm:") => {
             let filter = d.strip_prefix("cfg_del_all_confirm:").unwrap_or("all");
             let filter_type_label = match filter {
-                "reality" => "Reality (batch_reality)",
-                "xhttp" => "XHTTP (batch_xhttp)",
-                "kcp" => "KCP (batch_kcp)",
-                _ => "所有",
+                "reality" => t!("xray.type_reality"),
+                "xhttp" => t!("xray.type_xhttp"),
+                "kcp" => t!("xray.type_kcp"),
+                _ => t!("xray.type_all"),
             };
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "⚠️ 确认清空所有配置 (不可恢复) ⚠️",
+                    t!("xray.confirm_clear_btn"),
                     format!("cfg_del_all_exec:{}", filter),
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 取消", "m_del_cfg")],
+                vec![InlineKeyboardButton::callback(t!("menu.back"), "m_del_cfg")],
             ]);
-            ctx.bot.edit_message_text(
-                ctx.chat_id,
-                ctx.msg_id,
-                format!("🚨 <b>二次确认</b>\n您确定要删除 <b>{}</b> 类型的所有配置文件吗？\n此操作将清空相关 batch_* 文件并重启核心。", filter_type_label),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(keyboard)
-            .await?;
+            ctx.bot
+                .edit_message_text(
+                    ctx.chat_id,
+                    ctx.msg_id,
+                    t!("xray.confirm_del_all", "0" => filter_type_label),
+                )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
 
             Ok(HandlerAction::Done)
         }
@@ -413,7 +417,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     _ => {
                         ctx.bot
                             .answer_callback_query(ctx.q.id.clone())
-                            .text("❌ 未知筛选类型")
+                            .text(t!("xray.del_unknown_filter"))
                             .await?;
                         return Ok(HandlerAction::Redirect("m_del_cfg".to_string()));
                     }
@@ -432,7 +436,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             };
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text(format!("✅ 已彻底清空 {} 个配置文件", count))
+                .text(t!("xray.del_success_all", "0" => count))
                 .show_alert(true)
                 .await?;
 
@@ -442,42 +446,42 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         d if d == "cfg_del_count" || d.starts_with("cfg_del_count:") => {
             let filter = d.strip_prefix("cfg_del_count:").unwrap_or("all");
             let filter_label = match filter {
-                "reality" => "🌐 Reality",
-                "xhttp" => "⚡ XHTTP",
-                "kcp" => "📡 KCP",
-                _ => "📋 全部",
+                "reality" => t!("xray.filter_reality"),
+                "xhttp" => t!("xray.filter_xhttp"),
+                "kcp" => t!("xray.filter_kcp"),
+                _ => t!("xray.filter_all"),
             };
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
                     InlineKeyboardButton::callback(
-                        "10 个",
+                        "10",
                         format!("cfg_del_exec_count:{}:10", filter),
                     ),
                     InlineKeyboardButton::callback(
-                        "50 个",
+                        "50",
                         format!("cfg_del_exec_count:{}:50", filter),
                     ),
                 ],
                 vec![
                     InlineKeyboardButton::callback(
-                        "100 个",
+                        "100",
                         format!("cfg_del_exec_count:{}:100", filter),
                     ),
                     InlineKeyboardButton::callback(
-                        "500 个",
+                        "500",
                         format!("cfg_del_exec_count:{}:500", filter),
                     ),
                 ],
-                vec![InlineKeyboardButton::callback("⬅️ 返回", "cfg_filter:all")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back"),
+                    "cfg_filter:all",
+                )],
             ]);
             ctx.bot
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!(
-                        "➗ <b>按数量删除 ({})</b>\n请选择要删除的文件数量:",
-                        filter_label
-                    ),
+                    t!("xray.del_count_title", "0" => filter_label),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
@@ -529,7 +533,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             }
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text(format!("✅ 已成功清理 {} 个旧配置", deleted_count))
+                .text(t!("xray.del_success_count", "0" => deleted_count))
                 .show_alert(true)
                 .await?;
 
@@ -554,10 +558,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     .unwrap_or_default()
             };
             let filter_label = match filter {
-                "reality" => "🌐 Reality",
-                "xhttp" => "⚡ XHTTP",
-                "kcp" => "📡 KCP",
-                _ => "📋 全部",
+                "reality" => t!("xray.filter_reality"),
+                "xhttp" => t!("xray.filter_xhttp"),
+                "kcp" => t!("xray.filter_kcp"),
+                _ => t!("xray.filter_all"),
             };
             let mut buttons = Vec::new();
             for (i, path) in files.iter().enumerate().take(50) {
@@ -568,17 +572,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )]);
             }
             buttons.push(vec![InlineKeyboardButton::callback(
-                "🔙 返回筛选",
+                t!("menu.back"),
                 "cfg_filter:all",
             )]);
             ctx.bot
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!(
-                        "🎯 <b>指定配置删除 ({})</b>\n点击以永久删除对应文件:",
-                        filter_label
-                    ),
+                    t!("xray.del_select_title", "0" => filter_label),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -612,26 +613,27 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let filename = path.split('/').next_back().unwrap_or("Unknown");
                 let keyboard = InlineKeyboardMarkup::new(vec![
                     vec![InlineKeyboardButton::callback(
-                        "⚠️ 确认删除",
+                        "⚠️ Confirm Delete",
                         format!("cfg_del_confirm:{}:{}", filter, idx),
                     )],
                     vec![InlineKeyboardButton::callback(
-                        "🔙 取消",
+                        t!("menu.back"),
                         format!("cfg_del_select:{}", filter),
                     )],
                 ]);
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    format!("⚠️ <b>删除确认</b>\n\n您确定要删除配置文件 <code>{}</code> 吗？\n此操作不可恢复！", utils::escape_html(filename)),
-                )
-                .parse_mode(ParseMode::Html)
-                .reply_markup(keyboard)
-                .await?;
+                ctx.bot
+                    .edit_message_text(
+                        ctx.chat_id,
+                        ctx.msg_id,
+                        t!("xray.del_confirm_msg", "0" => utils::escape_html(filename)),
+                    )
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 文件不存在或已被删除")
+                    .text(t!("xray.del_not_found"))
                     .await?;
             }
 
@@ -659,7 +661,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     .unwrap_or_default()
             };
 
-            if let Err(e) = utils::validate_idx(idx, files.len(), "配置文件") {
+            if let Err(e) = utils::validate_idx(idx, files.len(), &t!("xray.del_label")) {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
                     .text(format!("❌ {}", e))
@@ -671,13 +673,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let _ = ConfigManager::delete_specific_configuration(path).await;
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("✅ 文件已永久删除")
+                    .text(t!("xray.del_success"))
                     .show_alert(true)
                     .await?;
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 文件不存在")
+                    .text(t!("xray.del_nonexist"))
                     .show_alert(true)
                     .await?;
             }
@@ -694,15 +696,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⏳ 正在准备 Reality 母版，请稍候...")
+                    .text(t!("xray.preparing_reality"))
                     .await?;
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "⏳ <b>正在自动初始化 Reality 基础环境...</b>\n请稍候，完成后会自动进入批量生产界面。",
-                )
-                .parse_mode(ParseMode::Html)
-                .await?;
+                ctx.bot
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("xray.init_reality"))
+                    .parse_mode(ParseMode::Html)
+                    .await?;
                 trigger_reality_auto_init(
                     ctx.state.adapter.clone(),
                     ctx.bot.clone(),
@@ -719,15 +718,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⏳ 正在准备 Reality 母版，请稍候...")
+                    .text(t!("xray.preparing_reality"))
                     .await?;
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "⏳ <b>正在自动初始化 Reality 基础环境...</b>\n请稍候，完成后会自动进入批量生产界面。",
-                )
-                .parse_mode(ParseMode::Html)
-                .await?;
+                ctx.bot
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("xray.init_reality"))
+                    .parse_mode(ParseMode::Html)
+                    .await?;
                 trigger_reality_auto_init(
                     ctx.state.adapter.clone(),
                     ctx.bot.clone(),
@@ -744,15 +740,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⏳ 正在准备 Reality 母版，请稍候...")
+                    .text(t!("xray.preparing_reality"))
                     .await?;
-                ctx.bot.edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "⏳ <b>正在自动初始化 Reality 基础环境...</b>\n请稍候，完成后会自动进入批量生产界面。",
-                )
-                .parse_mode(ParseMode::Html)
-                .await?;
+                ctx.bot
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("xray.init_reality"))
+                    .parse_mode(ParseMode::Html)
+                    .await?;
                 trigger_reality_auto_init(
                     ctx.state.adapter.clone(),
                     ctx.bot.clone(),
@@ -803,7 +796,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if !MaintenanceManager::is_reality_base_ready().await {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("⚙️ 基础配置缺失，正在自动初始化...")
+                    .text(t!("xray.base_missing"))
                     .await?;
                 trigger_reality_auto_init(
                     ctx.state.adapter.clone(),
@@ -814,11 +807,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 return Ok(HandlerAction::Done);
             }
 
-            let ip_str = match ip_version {
-                IpVersion::IPv4 => "IPv4",
-                IpVersion::IPv6 => "IPv6",
-                IpVersion::SplitStackV6Primary => "双栈分离 (v6上v4下)",
-                IpVersion::SplitStackV4Primary => "双栈分离 (v4上v6下)",
+            let ip_str: std::borrow::Cow<'_, str> = match ip_version {
+                IpVersion::IPv4 => "IPv4".into(),
+                IpVersion::IPv6 => "IPv6".into(),
+                IpVersion::SplitStackV6Primary => t!("xray.split_v6_up"),
+                IpVersion::SplitStackV4Primary => t!("xray.split_v4_up"),
             };
 
             let proto_str = match proto {
@@ -829,10 +822,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text(format!(
-                    "⏳ 正在生成 {} 个 {} 增强配置 ({}, 独立文件)...",
-                    n, proto_str, ip_str
-                ))
+                .text(t!("xray.gen_progress", "0" => n, "1" => proto_str, "2" => ip_str))
                 .await?;
 
             let res = match proto {
@@ -873,17 +863,25 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         message_ids.push(msg.0);
                     }
 
-                    let mut result_msg = format!(
-                        "✅ 增强批量生成完成！\n\n📊 生成数量: {}\n🌐 网络协议: {}\n🔒 安全特性: 随机ShortId、去重SNI、唯一Tag",
-                        result.created_count, ip_str
-                    );
+                    let mut result_msg = t!(
+                        "xray.batch_done",
+                        "0" => result.created_count,
+                        "1" => ip_str
+                    )
+                    .into_owned();
 
                     if let Some(filename) = result.config_file {
-                        result_msg.push_str(&format!("\n\n📁 独立配置文件: {}", filename));
+                        result_msg.push_str(&format!(
+                            "\n\n{}",
+                            t!("xray.batch_config_file", "0" => filename)
+                        ));
                     }
 
                     if let Some(backup_file) = result.backup_file {
-                        result_msg.push_str(&format!("\n💾 原配置备份: {}", backup_file));
+                        result_msg.push_str(&format!(
+                            "\n\n{}",
+                            t!("xray.batch_backup_file", "0" => backup_file)
+                        ));
                     }
 
                     if let Ok(msg) = adapter
@@ -919,8 +917,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             .send_message(
                                 &target,
                                 MessageContent {
-                                    text: "⚠️ <b>检测到 Reality 母版缺失，正在自动初始化...</b>"
-                                        .to_string(),
+                                    text: t!("xray.master_missing").to_string(),
                                     markup: None,
                                 },
                             )
@@ -936,7 +933,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             .send_message(
                                 &target,
                                 MessageContent {
-                                    text: format!("❌ 生成失败: {}", err_msg),
+                                    text: t!("xray.gen_fail", "0" => err_msg).to_string(),
                                     markup: None,
                                 },
                             )
@@ -952,30 +949,20 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
 
             buttons.push(vec![
-                InlineKeyboardButton::callback("🔐 加密层 (2)", "u_kcp_cat:enc"),
-                InlineKeyboardButton::callback("🌀 混淆层 (3)", "u_kcp_cat:obf"),
+                InlineKeyboardButton::callback(t!("xray.kcp_cat_enc"), "u_kcp_cat:enc"),
+                InlineKeyboardButton::callback(t!("xray.kcp_cat_obf"), "u_kcp_cat:obf"),
             ]);
             buttons.push(vec![
-                InlineKeyboardButton::callback("🎭 伪装层 (6)", "u_kcp_cat:dis"),
-                InlineKeyboardButton::callback("⚡ 扩展层 (3)", "u_kcp_cat:ext"),
+                InlineKeyboardButton::callback(t!("xray.kcp_cat_dis"), "u_kcp_cat:dis"),
+                InlineKeyboardButton::callback(t!("xray.kcp_cat_ext"), "u_kcp_cat:ext"),
             ]);
             buttons.push(vec![InlineKeyboardButton::callback(
-                "⬅️ 返回",
+                t!("menu.back"),
                 "m_xray_mgmt",
             )]);
 
             ctx.bot
-                .edit_message_text(
-                    ctx.chat_id,
-                    ctx.msg_id,
-                    "🚀 <b>KCP (mKCP+FinalMask) 配置</b>\n\n\
-                 ✨ <b>特点:</b>\n\
-                 • 基于 mKCP 协议的可靠传输\n\
-                 • FinalMask 多层遮罩任意叠加(1-5层)\n\
-                 • 支持加密、混淆、伪装、扩展四大类遮罩\n\n\
-                 📋 <b>步骤 1: 选择遮罩类别</b>\n\
-                 ⚠️ 至少选择1层，建议加密层+伪装层组合",
-                )
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("xray.kcp_title"))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
                 .await?;
@@ -985,7 +972,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
         d if d.starts_with("u_kcp_cat:") => {
             let cat_code = d.strip_prefix("u_kcp_cat:").unwrap_or("enc");
-            let cat_name = KcpMask::category_from_code(cat_code).unwrap_or("未知");
+            let cat_name = KcpMask::category_from_code(cat_code).unwrap_or("unknown");
 
             let variants = KcpMask::variants_by_category(cat_code);
             let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
@@ -998,7 +985,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             }
 
             buttons.push(vec![InlineKeyboardButton::callback(
-                "⬅️ 返回分类",
+                t!("xray.kcp_back_cat"),
                 "u_kcp_init",
             )]);
 
@@ -1012,7 +999,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!("<b>{}</b> — 选择要添加的遮罩\n\n{}", cat_name, mask_list),
+                    format!(
+                        "{}\n\n{}",
+                        t!("xray.kcp_select_mask", "0" => cat_name),
+                        mask_list
+                    ),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -1026,30 +1017,32 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if code == "rl" {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("🕳️ Realm 需要额外配置。请在选择完成后，手动编辑生成的配置文件中的 realm.url 和 realm.stunServers 字段")
+                    .text(t!("xray.kcp_realm_note"))
                     .await?;
                 let m = KcpMask::from_code(code).unwrap();
                 let stack_display = format!("1️⃣ {}", m.display_name());
                 let buttons = vec![
                     vec![InlineKeyboardButton::callback(
-                        "➕ 继续添加遮罩层",
+                        t!("xray.kcp_add_more"),
                         format!("u_kcp_more:{}", code),
                     )],
                     vec![InlineKeyboardButton::callback(
-                        "✅ 完成配置",
+                        t!("xray.kcp_done_btn"),
                         format!("u_kcp_done:{}", code),
                     )],
-                    vec![InlineKeyboardButton::callback("🗑️ 清空重选", "u_kcp_init")],
+                    vec![InlineKeyboardButton::callback(
+                        t!("xray.kcp_clear_btn"),
+                        "u_kcp_init",
+                    )],
                 ];
                 ctx.bot
                     .edit_message_text(
                         ctx.chat_id,
                         ctx.msg_id,
                         format!(
-                            "📋 <b>当前遮罩栈:</b>\n{}\n\n\
-                             ⚠️ <b>注意:</b> Realm 需要手动配置 url 和 stunServers\n\n\
-                             ➕ 可以继续添加，或完成配置",
-                            stack_display
+                            "{}\n\n{}",
+                            t!("xray.kcp_stack_more", "0" => stack_display),
+                            t!("xray.kcp_realm_note")
                         ),
                     )
                     .parse_mode(ParseMode::Html)
@@ -1068,24 +1061,23 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let stack_display = format!("1️⃣ {}", m.display_name());
                 let buttons = vec![
                     vec![InlineKeyboardButton::callback(
-                        "➕ 继续添加遮罩层",
+                        t!("xray.kcp_add_more"),
                         format!("u_kcp_more:{}", code),
                     )],
                     vec![InlineKeyboardButton::callback(
-                        "✅ 完成配置",
+                        t!("xray.kcp_done_btn"),
                         format!("u_kcp_done:{}", code),
                     )],
-                    vec![InlineKeyboardButton::callback("🗑️ 清空重选", "u_kcp_init")],
+                    vec![InlineKeyboardButton::callback(
+                        t!("xray.kcp_clear_btn"),
+                        "u_kcp_init",
+                    )],
                 ];
                 ctx.bot
                     .edit_message_text(
                         ctx.chat_id,
                         ctx.msg_id,
-                        format!(
-                            "📋 <b>当前遮罩栈:</b>\n{}\n\n\
-                             ➕ 可以继续添加，或完成配置",
-                            stack_display
-                        ),
+                        t!("xray.kcp_stack_more", "0" => stack_display),
                     )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -1122,17 +1114,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let cat_counts = [
                 (
                     "enc",
-                    "🔐 加密层",
+                    "🔐 Encryption",
                     KcpMask::variants_by_category("enc").len(),
                 ),
                 (
                     "obf",
-                    "🌀 混淆层",
+                    "🌀 Obfuscation",
                     KcpMask::variants_by_category("obf").len(),
                 ),
                 (
                     "ext",
-                    "⚡ 扩展层",
+                    "⚡ Extension",
                     KcpMask::variants_by_category("ext").len(),
                 ),
             ];
@@ -1149,8 +1141,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let remaining = total - added_count;
 
                 let disabled_reason = match *code {
-                    "enc" if has_encryption => Some("已添加"),
-                    "obf" if has_sudoku => Some("数独已添加"),
+                    "enc" if has_encryption => Some("added"),
+                    "obf" if has_sudoku => Some("sudoku added"),
                     _ => None,
                 };
 
@@ -1172,18 +1164,18 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         ));
                 } else {
                     buttons.push(vec![InlineKeyboardButton::callback(
-                        format!("⛔ {} (已达上限)", name),
+                        format!("⛔ {} (max reached)", name),
                         "noop",
                     )]);
                 }
             }
 
             buttons.push(vec![InlineKeyboardButton::callback(
-                "✅ 完成配置",
+                t!("xray.kcp_done_btn"),
                 format!("u_kcp_done:{}", existing),
             )]);
             buttons.push(vec![InlineKeyboardButton::callback(
-                "🗑️ 清空重选",
+                t!("xray.kcp_clear_btn"),
                 "u_kcp_init",
             )]);
 
@@ -1191,12 +1183,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!(
-                        "📋 <b>当前遮罩栈:</b>\n{}\n\n\
-                     ➕ <b>选择要添加的遮罩类别</b> (已达{}层)",
-                        stack_display.join("\n"),
-                        existing_codes.len()
-                    ),
+                    t!("xray.kcp_select_cat_stack", "0" => stack_display.join("\n"), "1" => existing_codes.len()),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -1214,7 +1201,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let existing = parts[0];
             let cat_code = parts[1];
             let existing_codes: Vec<&str> = existing.split(',').collect();
-            let cat_name = KcpMask::category_from_code(cat_code).unwrap_or("未知");
+            let cat_name = KcpMask::category_from_code(cat_code).unwrap_or("unknown");
 
             let variants = KcpMask::variants_by_category(cat_code);
 
@@ -1261,15 +1248,15 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             }
 
             buttons.push(vec![InlineKeyboardButton::callback(
-                "⬅️ 返回分类",
+                t!("xray.kcp_back_cat"),
                 format!("u_kcp_more:{}", existing),
             )]);
             buttons.push(vec![InlineKeyboardButton::callback(
-                "✅ 完成配置",
+                t!("xray.kcp_done_btn"),
                 format!("u_kcp_done:{}", existing),
             )]);
             buttons.push(vec![InlineKeyboardButton::callback(
-                "🗑️ 清空重选",
+                t!("xray.kcp_clear_btn"),
                 "u_kcp_init",
             )]);
 
@@ -1284,10 +1271,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     ctx.chat_id,
                     ctx.msg_id,
                     format!(
-                        "📋 <b>当前遮罩栈:</b>\n{}\n\n\
-                     <b>{}</b> — 选择要添加的遮罩\n\n{}",
+                        "{}\n{}\n\n{}\n\n{}",
+                        t!("xray.kcp_current_stack"),
                         stack_display.join("\n"),
-                        cat_name,
+                        t!("xray.kcp_select_mask", "0" => cat_name),
                         mask_list
                     ),
                 )
@@ -1324,7 +1311,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 None => {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text("❌ 未知遮罩类型")
+                        .text(t!("xray.kcp_unknown_type"))
                         .await?;
                     return Ok(HandlerAction::Done);
                 }
@@ -1357,16 +1344,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let mut buttons = Vec::new();
 
             buttons.push(vec![InlineKeyboardButton::callback(
-                "➕ 继续添加遮罩层",
+                t!("xray.kcp_add_more"),
                 format!("u_kcp_more:{}", new_stack),
             )]);
 
             buttons.push(vec![InlineKeyboardButton::callback(
-                "✅ 完成配置",
+                t!("xray.kcp_done_btn"),
                 format!("u_kcp_done:{}", new_stack),
             )]);
             buttons.push(vec![InlineKeyboardButton::callback(
-                "🗑️ 清空重选",
+                t!("xray.kcp_clear_btn"),
                 "u_kcp_init",
             )]);
 
@@ -1374,11 +1361,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!(
-                        "📋 <b>当前遮罩栈:</b>\n{}\n\n\
-                     ➕ 可以继续添加，或完成配置",
-                        stack_display.join("\n"),
-                    ),
+                    t!("xray.kcp_stack_more", "0" => stack_display.join("\n")),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -1394,7 +1377,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if codes.is_empty() {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text("❌ 请至少选择1层遮罩")
+                    .text(t!("xray.kcp_min_one"))
                     .await?;
                 return Ok(HandlerAction::Done);
             }
@@ -1432,15 +1415,15 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 ));
             }
             buttons.push(vec![InlineKeyboardButton::callback(
-                "🔄 双栈 IPv4优先",
+                t!("xray.dual_v4"),
                 format!("u_kcp_ip:{}:s4", ordered_str),
             )]);
             buttons.push(vec![InlineKeyboardButton::callback(
-                "🔄 双栈 IPv6优先",
+                t!("xray.dual_v6"),
                 format!("u_kcp_ip:{}:s6", ordered_str),
             )]);
             buttons.push(vec![InlineKeyboardButton::callback(
-                "⬅️ 返回",
+                t!("menu.back"),
                 format!("u_kcp_more:{}", mask_codes_str),
             )]);
 
@@ -1454,13 +1437,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!(
-                        "🚀 <b>KCP 配置</b>\n\n\
-                     📋 <b>遮罩栈 (外层→内层):</b>\n{}{}\n\n\
-                     ⬇️ <b>请选择网络协议版本:</b>",
-                        stack_display.join(" → "),
-                        warning_text
-                    ),
+                    t!("xray.kcp_stack_config", "0" => stack_display.join(" → "), "1" => warning_text, "2" => t!("xray.batch_step_ip")),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -1482,11 +1459,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 "s6" => IpVersion::SplitStackV6Primary,
                 _ => IpVersion::IPv4,
             };
-            let ip_display = match ip_version {
-                IpVersion::IPv4 => "IPv4",
-                IpVersion::IPv6 => "IPv6",
-                IpVersion::SplitStackV4Primary => "双栈 IPv4优先",
-                IpVersion::SplitStackV6Primary => "双栈 IPv6优先",
+            let ip_display: std::borrow::Cow<'_, str> = match ip_version {
+                IpVersion::IPv4 => "IPv4".into(),
+                IpVersion::IPv6 => "IPv6".into(),
+                IpVersion::SplitStackV4Primary => t!("xray.dual_v4"),
+                IpVersion::SplitStackV6Primary => t!("xray.dual_v6"),
             };
 
             let stack_display: Vec<String> = codes
@@ -1528,7 +1505,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     ),
                 ],
                 vec![InlineKeyboardButton::callback(
-                    "⬅️ 返回",
+                    t!("menu.back"),
                     format!("u_kcp_done:{}", mask_codes_str),
                 )],
             ];
@@ -1537,14 +1514,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .edit_message_text(
                     ctx.chat_id,
                     ctx.msg_id,
-                    format!(
-                        "🚀 <b>KCP 配置 - 批量生成</b>\n\n\
-                     📋 <b>遮罩栈:</b>\n{}\n\n\
-                     🌐 网络协议: <b>{}</b>\n\n\
-                     ⬇️ <b>请选择生成数量:</b>",
-                        stack_display.join("\n"),
-                        ip_display
-                    ),
+                    t!("xray.kcp_batch_title", "0" => stack_display.join("\n"), "1" => ip_display, "2" => "⬇️ <b>Please select quantity:</b>"),
                 )
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -1571,11 +1541,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 "s6" => IpVersion::SplitStackV6Primary,
                 _ => IpVersion::IPv4,
             };
-            let ip_str = match ip_version {
-                IpVersion::IPv4 => "IPv4",
-                IpVersion::IPv6 => "IPv6",
-                IpVersion::SplitStackV4Primary => "双栈 IPv4优先",
-                IpVersion::SplitStackV6Primary => "双栈 IPv6优先",
+            let ip_str: std::borrow::Cow<'_, str> = match ip_version {
+                IpVersion::IPv4 => "IPv4".into(),
+                IpVersion::IPv6 => "IPv6".into(),
+                IpVersion::SplitStackV4Primary => t!("xray.dual_v4"),
+                IpVersion::SplitStackV6Primary => t!("xray.dual_v6"),
             };
 
             let mask_codes: Vec<&str> = mask_codes_str.split(',').collect();
@@ -1588,7 +1558,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text(format!("⏳ 正在生成 {} 个 KCP 配置...", n))
+                .text(t!("xray.gen_kcp_progress", "0" => n))
                 .await?;
 
             let res = ConfigManager::batch_create_kcp(n, ip_version, &mask_codes).await;
@@ -1619,16 +1589,19 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         message_ids.push(msg.0);
                     }
 
-                    let mut result_msg = format!(
-                        "✅ KCP 批量生成完成！\n\n\
-                         📊 生成数量: {}\n\
-                         🌐 网络协议: {}\n\
-                         🎭 遮罩层: {}",
-                        result.created_count, ip_str, mask_label
-                    );
+                    let mut result_msg = t!(
+                        "xray.kcp_batch_done",
+                        "0" => result.created_count,
+                        "1" => ip_str,
+                        "2" => mask_label
+                    )
+                    .into_owned();
 
                     if let Some(filename) = result.config_file {
-                        result_msg.push_str(&format!("\n\n📁 配置文件: {}", filename));
+                        result_msg.push_str(&format!(
+                            "\n\n{}",
+                            t!("xray.kcp_config_file", "0" => filename)
+                        ));
                     }
 
                     if let Ok(msg) = adapter
@@ -1662,7 +1635,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .send_message(
                             &target,
                             MessageContent {
-                                text: format!("❌ 生成失败: {}", e),
+                                text: t!("xray.gen_fail", "0" => e).to_string(),
                                 markup: None,
                             },
                         )
@@ -1678,7 +1651,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let inbounds = ConfigManager::list_all_inbound_files()
                 .await
                 .unwrap_or_default();
-            if let Err(e) = utils::validate_idx(idx, inbounds.len(), "用户配置") {
+            if let Err(e) = utils::validate_idx(idx, inbounds.len(), &t!("xray.user_label")) {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
                     .text(format!("❌ {}", e))
@@ -1700,15 +1673,15 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         format!("u_d:{}:{}", idx, email),
                     )]);
                 }
-                buttons.push(vec![InlineKeyboardButton::callback("⬅️ 返回", "m_usr")]);
+                buttons.push(vec![InlineKeyboardButton::callback(
+                    t!("menu.back_user"),
+                    "m_usr",
+                )]);
                 ctx.bot
                     .edit_message_text(
                         ctx.chat_id,
                         ctx.msg_id,
-                        format!(
-                            "👥 <b>用户列表</b>\n文件: <code>{}</code>",
-                            path.split('/').next_back().unwrap_or("Unknown")
-                        ),
+                        t!("xray.user_list_title", "0" => path.split('/').next_back().unwrap_or("Unknown")),
                     )
                     .parse_mode(ParseMode::Html)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
@@ -1730,27 +1703,28 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 if let Some(_path) = inbounds.get(idx) {
                     let keyboard = InlineKeyboardMarkup::new(vec![
                         vec![InlineKeyboardButton::callback(
-                            "⚠️ 确认删除",
+                            "⚠️ Confirm Delete",
                             format!("u_d_confirm:{}:{}", idx, email),
                         )],
                         vec![InlineKeyboardButton::callback(
-                            "🔙 取消",
+                            t!("menu.back"),
                             format!("u_l:{}", idx),
                         )],
                     ]);
 
-                    ctx.bot.edit_message_text(
-                        ctx.chat_id,
-                        ctx.msg_id,
-                        format!("⚠️ <b>删除确认</b>\n\n您确定要删除用户 <code>{}</code> 吗？\n(注意：当前版本暂未实现单个用户删除逻辑，此操作可能仅用于演示 UI)", utils::escape_html(email))
-                    )
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(keyboard)
-                    .await?;
+                    ctx.bot
+                        .edit_message_text(
+                            ctx.chat_id,
+                            ctx.msg_id,
+                            t!("xray.user_del_confirm", "0" => utils::escape_html(email)),
+                        )
+                        .parse_mode(ParseMode::Html)
+                        .reply_markup(keyboard)
+                        .await?;
                 } else {
                     ctx.bot
                         .answer_callback_query(ctx.q.id.clone())
-                        .text("❌ 配置文件不存在")
+                        .text(t!("xray.user_cfg_not_found"))
                         .await?;
                 }
             }
@@ -1768,7 +1742,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let email = parts[1];
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text(format!("🗑 暂不支持删除单个用户: {}", email))
+                    .text(t!("xray.user_del_not_supported", "0" => email))
                     .show_alert(true)
                     .await?;
             }

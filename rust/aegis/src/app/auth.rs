@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
 use anyhow::Result;
+use rust_i18n::t;
 
 use crate::app::state::{AppState, AuthFailureOutcome};
 
@@ -22,7 +23,7 @@ pub async fn process_auth_code(
             .send_message(
                 target,
                 MessageContent {
-                    text: "❌ 无权操作".to_string(),
+                    text: t!("auth.no_permission").to_string(),
                     markup: None,
                 },
             )
@@ -36,11 +37,7 @@ pub async fn process_auth_code(
             .send_message(
                 target,
                 MessageContent {
-                    text: format!(
-                        "⚠️ 尝试过于频繁，请稍后再试。冷却剩余约 {} 分 {} 秒。",
-                        remaining.as_secs() / 60,
-                        remaining.as_secs() % 60
-                    ),
+                    text: t!("auth.rate_limit", "0" => (remaining.as_secs() / 60).to_string(), "1" => (remaining.as_secs() % 60).to_string()).to_string(),
                     markup: None,
                 },
             )
@@ -54,10 +51,8 @@ pub async fn process_auth_code(
             .send_message(
                 target,
                 MessageContent {
-                    text: format!(
-                        "✅ 认证成功！会话有效期 {}。",
-                        crate::utils::format_duration_human(timeout)
-                    ),
+                    text: t!("auth.success", "0" => crate::utils::format_duration_human(timeout))
+                        .to_string(),
                     markup: None,
                 },
             )
@@ -77,18 +72,15 @@ pub async fn process_auth_code(
     {
         AuthFailureOutcome::Locked { duration } => {
             let duration_str = if duration.as_secs() >= 3600 {
-                format!("{} 小时", duration.as_secs() / 3600)
+                format!("{} {}", duration.as_secs() / 3600, t!("auth.hours"))
             } else {
-                format!("{} 分钟", duration.as_secs() / 60)
+                format!("{} {}", duration.as_secs() / 60, t!("auth.minutes"))
             };
             adapter
                 .send_message(
                     target,
                     MessageContent {
-                        text: format!(
-                            "❌ 验证失败次数过多，已进入冷却。\n⏱️ 锁定时间: {}\n⚠️ 请稍后再试。",
-                            duration_str
-                        ),
+                        text: t!("auth.locked", "0" => duration_str).to_string(),
                         markup: None,
                     },
                 )
@@ -102,10 +94,7 @@ pub async fn process_auth_code(
                 .send_message(
                     target,
                     MessageContent {
-                        text: format!(
-                            "❌ TOTP 验证码无效，请检查后重试。（已失败 {} 次 / {} 次）",
-                            attempts, max_attempts
-                        ),
+                        text: t!("auth.invalid_code", "0" => attempts.to_string(), "1" => max_attempts.to_string()).to_string(),
                         markup: None,
                     },
                 )

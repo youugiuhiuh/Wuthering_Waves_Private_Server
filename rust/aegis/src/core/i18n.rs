@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,12 +17,17 @@ impl Lang {
             Lang::Ja => "ja",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
+impl FromStr for Lang {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "en" => Lang::En,
-            "ja" => Lang::Ja,
-            _ => Lang::Zh,
+            "en" => Ok(Lang::En),
+            "ja" => Ok(Lang::Ja),
+            "zh" => Ok(Lang::Zh),
+            _ => Err(()),
         }
     }
 }
@@ -30,7 +37,7 @@ pub fn set_lang(lang: Lang) {
 }
 
 pub fn current_lang() -> Lang {
-    Lang::from_str(&rust_i18n::locale())
+    rust_i18n::locale().parse().unwrap_or(Lang::Zh)
 }
 
 #[cfg(test)]
@@ -54,10 +61,10 @@ mod tests {
 
     #[test]
     fn lang_from_str() {
-        assert_eq!(Lang::from_str("zh"), Lang::Zh);
-        assert_eq!(Lang::from_str("en"), Lang::En);
-        assert_eq!(Lang::from_str("ja"), Lang::Ja);
-        assert_eq!(Lang::from_str("unknown"), Lang::Zh);
+        assert_eq!("zh".parse::<Lang>().unwrap(), Lang::Zh);
+        assert_eq!("en".parse::<Lang>().unwrap(), Lang::En);
+        assert_eq!("ja".parse::<Lang>().unwrap(), Lang::Ja);
+        assert!("unknown".parse::<Lang>().is_err());
     }
 
     #[test]

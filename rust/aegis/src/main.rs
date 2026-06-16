@@ -1,6 +1,8 @@
 // mod logic; // Moved to lib.rs
 #![recursion_limit = "256"]
 #![allow(clippy::vec_init_then_push)]
+rust_i18n::i18n!("src/resources/i18n");
+
 #[path = "adapters/telegram/handlers/mod.rs"]
 mod handlers;
 
@@ -23,6 +25,7 @@ use crate::bootstrap::{
 use aegis::adapters::common::{BotAdapter, MessageContent, RoutingAdapter, TargetId};
 use aegis::adapters::matrix::MatrixAdapter;
 use aegis::adapters::telegram::TelegramAdapter;
+use aegis::core::i18n;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::SecurityManager;
 use aegis::core::security::self_destruct::production_executor;
@@ -72,17 +75,17 @@ async fn register_bot_commands(bot: &Bot) -> Result<()> {
 }
 
 #[derive(BotCommands, Clone)]
-#[command(rename_rule = "lowercase", description = "支持以下命令:")]
+#[command(rename_rule = "lowercase", description = "Available commands:")]
 enum Command {
-    #[command(description = "显示帮助信息")]
+    #[command(description = "Show help")]
     Help,
-    #[command(description = "启动机器人")]
+    #[command(description = "Start bot")]
     Start,
-    #[command(description = "显示管理菜单")]
+    #[command(description = "Show admin menu")]
     Menu,
-    #[command(description = "验证 TOTP 认证码")]
+    #[command(description = "Verify TOTP code")]
     Auth(String),
-    #[command(description = "设置自毁验证文件 (需附带文件)")]
+    #[command(description = "Set destruct verification file")]
     SetSecurityFile,
 }
 
@@ -116,7 +119,7 @@ async fn handle_command(
     state: Arc<AppState>,
 ) -> ResponseResult<()> {
     let Some(from) = msg.from.as_ref() else {
-        bot.send_message(msg.chat.id, "⚠️ 无法识别用户身份，请访问管理员检查权限")
+        bot.send_message(msg.chat.id, rust_i18n::t!("auth.invalid_user"))
             .await?;
         return Ok(());
     };
@@ -130,9 +133,11 @@ async fn handle_command(
         Command::Start => {
             bot.send_message(
                 msg.chat.id,
-                "👋 欢迎使用 wwps 管理机器人！
-
-请发送 6 位 TOTP 验证码（或使用 /auth <验证码>）解锁 24 小时管理权限。",
+                format!(
+                    "{}\n\n{}",
+                    rust_i18n::t!("welcome.title"),
+                    rust_i18n::t!("welcome.prompt")
+                ),
             )
             .await?;
         }
@@ -142,11 +147,8 @@ async fn handle_command(
         }
         Command::SetSecurityFile => {
             if !state.is_recently_authenticated(user_id).await {
-                bot.send_message(
-                    msg.chat.id,
-                    "⚠️ 此操作需要重新认证。请先发送 TOTP 验证码（或 /auth <验证码>）进行认证，5 分钟内再试。",
-                )
-                .await?;
+                bot.send_message(msg.chat.id, rust_i18n::t!("auth.recent_auth_required"))
+                    .await?;
                 return Ok(());
             }
 
@@ -174,10 +176,7 @@ async fn handle_command(
                 if file.size as u64 > MAX_FILE_DOWNLOAD_SIZE {
                     bot.send_message(
                         msg.chat.id,
-                        format!(
-                            "❌ 文件过大 ({} bytes)，最大允许 {} bytes",
-                            file.size, MAX_FILE_DOWNLOAD_SIZE
-                        ),
+                        rust_i18n::t!("bot_commands.file_too_big", "0" => file.size, "1" => MAX_FILE_DOWNLOAD_SIZE),
                     )
                     .await?;
                     return Ok(());
@@ -204,24 +203,22 @@ async fn handle_command(
 
                 bot.send_message(
                     msg.chat.id,
-                    format!("✅ 安全验证文件已设置。\nHash: `{}`", hash_hex),
+                    rust_i18n::t!("bot_commands.security_file_set", "0" => hash_hex),
                 )
                 .parse_mode(ParseMode::MarkdownV2)
                 .await?;
             } else {
                 bot.send_message(
                     msg.chat.id,
-                    "⚠️ 请发送一个文件或图片，并附带 caption `/setsecurityfile`，或者回复该命令到文件消息。",
-                ).await?;
+                    rust_i18n::t!("bot_commands.security_file_prompt"),
+                )
+                .await?;
             }
         }
         Command::Menu => {
             if !state.is_authorized(user_id).await {
-                bot.send_message(
-                    msg.chat.id,
-                    "🔐 请先发送 6 位 TOTP 验证码进行认证（或 /auth <验证码>）。",
-                )
-                .await?;
+                bot.send_message(msg.chat.id, rust_i18n::t!("auth.required"))
+                    .await?;
                 return Ok(());
             }
             menu::send_main_menu(bot, msg.chat.id).await?;
@@ -244,6 +241,17 @@ async fn save_config(state: &Arc<AppState>) -> Result<()> {
     let hash = state.self_destruct_key_hash().await;
     encrypted_config.self_destruct_key_hash = hash;
 
+    fs::write(path, serde_json::to_vec(&encrypted_config)?)?;
+    Ok(())
+}
+
+pub(crate) async fn save_lang_to_config(_state: &Arc<AppState>, lang: i18n::Lang) -> Result<()> {
+    let config_dir = config_dir();
+    let _ = SecurityManager::new(&config_dir.join(KEY_FILE))?;
+    let path = config_dir.join(CONFIG_FILE);
+    let config_data = fs::read(&path)?;
+    let mut encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
+    encrypted_config.lang = Some(lang.as_str().to_string());
     fs::write(path, serde_json::to_vec(&encrypted_config)?)?;
     Ok(())
 }
@@ -487,6 +495,13 @@ async fn main() -> Result<()> {
         adapter,
     ));
 
+    // Initialize i18n language from config
+    if let Some(ref lang_str) = encrypted_config.lang {
+        let lang = lang_str.parse().unwrap_or(i18n::Lang::Zh);
+        i18n::set_lang(lang);
+        state.set_lang(lang).await;
+    }
+
     // ── Matrix 同步循环 ──
     if let Some((client, room, matrix_adapter)) = matrix_handle {
         let target = TargetId(room.room_id().to_string());
@@ -620,16 +635,13 @@ async fn notify_online(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()
 
     let sys_info = "Linux";
 
-    let msg = format!(
-        "🤖 <b>Bot 已上线</b>\n\n🌍 IP: <code>{}</code>\n💻 系统: {}",
-        masked_ip, sys_info
-    );
+    let msg = rust_i18n::t!("system.online", "0" => masked_ip, "1" => sys_info);
 
     let _ = adapter
         .send_message(
             target,
             MessageContent {
-                text: msg,
+                text: msg.into_owned(),
                 markup: None,
             },
         )
@@ -650,16 +662,16 @@ async fn notify_upgrade_success(adapter: &dyn BotAdapter, target: &TargetId) -> 
     }
 
     let message = if version.is_empty() {
-        "✅ Bot 已完成自更新。".to_string()
+        rust_i18n::t!("system.upgrade_done_no_version")
     } else {
-        format!("✅ Bot 已成功更新至 {}。", version)
+        rust_i18n::t!("system.upgrade_success", "0" => version)
     };
 
     adapter
         .send_message(
             target,
             MessageContent {
-                text: message,
+                text: message.into_owned(),
                 markup: None,
             },
         )
@@ -679,23 +691,28 @@ async fn notify_bbr3_reboot_result(adapter: &dyn BotAdapter, target: &TargetId) 
         eprintln!("[WARN] 无法删除 BBR3 标记文件: {}", e);
     }
 
-    let kernel_hint = if info.has_xanmod_kernel { "是" } else { "否" };
-    let proc_hint = if info.has_xanmod_proc_version {
-        "是"
+    let kernel_hint = if info.has_xanmod_kernel {
+        rust_i18n::t!("system.yes")
     } else {
-        "否"
+        rust_i18n::t!("system.no")
+    };
+    let proc_hint = if info.has_xanmod_proc_version {
+        rust_i18n::t!("system.yes")
+    } else {
+        rust_i18n::t!("system.no")
     };
 
-    let message = format!(
-        "✅ <b>BBR3 重启后校验结果</b>\n\n<code>uname -r</code>\n<code>{}</code>\n\n<code>sysctl net.ipv4.tcp_congestion_control</code>\n<code>net.ipv4.tcp_congestion_control = {}</code>\n\n<code>cat /proc/version</code>\n<code>{}</code>\n\n内核名包含 XanMod: <b>{}</b>\n/proc/version 包含 XanMod: <b>{}</b>",
-        info.uname_r, info.tcp_congestion_control, info.proc_version, kernel_hint, proc_hint
+    let message = rust_i18n::t!(
+        "system.bbr3_check_result",
+        "0" => info.uname_r, "1" => info.tcp_congestion_control, "2" => info.proc_version,
+        "3" => kernel_hint, "4" => proc_hint
     );
 
     adapter
         .send_message(
             target,
             MessageContent {
-                text: message,
+                text: message.into_owned(),
                 markup: None,
             },
         )

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use rust_i18n::t;
 use sha2::{Digest, Sha256};
 use teloxide::net::Download;
 use teloxide::prelude::*;
@@ -28,8 +29,7 @@ pub async fn handle_message_flow(
     {
         TimeoutStatus::Expired => {
             state.cancel_destruct(&chat_id_str).await;
-            bot.send_message(chat_id, "⏳ 自毁流程超时 (60s)，已自动取消。")
-                .await?;
+            bot.send_message(chat_id, t!("destruct.timeout")).await?;
             return Ok(MessageFlowOutcome::Handled);
         }
         TimeoutStatus::NotTracked => return Ok(MessageFlowOutcome::NotHandled),
@@ -37,8 +37,7 @@ pub async fn handle_message_flow(
     }
 
     if !state.is_authorized(user_id).await {
-        bot.send_message(chat_id, "⚠️ 会话已过期，请重新认证")
-            .await?;
+        bot.send_message(chat_id, t!("auth.expired")).await?;
         return Ok(MessageFlowOutcome::Handled);
     }
 
@@ -57,24 +56,21 @@ pub async fn handle_message_flow(
                     {
                         let keyboard = InlineKeyboardMarkup::new(vec![
                             vec![InlineKeyboardButton::callback(
-                                "⚠️ 确认执行销毁",
+                                t!("destruct.confirm_btn"),
                                 "a_destroy_confirm",
                             )],
                             vec![InlineKeyboardButton::callback(
-                                "🔙 取消",
+                                t!("destruct.cancelled"),
                                 "a_destroy_cancel",
                             )],
                         ]);
-                        bot.send_message(
-                            chat_id,
-                            "⚠️ <b>危险操作确认 (2/4)</b>\n\n验证通过。\n请点击下方按钮确认执行销毁。\n此操作<b>不可逆</b>！",
-                        )
-                        .parse_mode(ParseMode::Html)
-                        .reply_markup(keyboard)
-                        .await?;
+                        bot.send_message(chat_id, t!("destruct.title_2"))
+                            .parse_mode(ParseMode::Html)
+                            .reply_markup(keyboard)
+                            .await?;
                     }
                 } else {
-                    bot.send_message(chat_id, "❌ 验证码错误，请重新输入。")
+                    bot.send_message(chat_id, t!("destruct.verify_fail"))
                         .await?;
                 }
             }
@@ -89,22 +85,22 @@ pub async fn handle_message_flow(
                         .await
                     {
                         Err(_) => {
-                            bot.send_message(chat_id, "❌ <b>安全警告 (防重放)</b>\n\n为了防止重放攻击，请等待下一个 TOTP 验证码（30秒刷新）。\n不能使用与第一次相同的验证码。").parse_mode(ParseMode::Html).await?;
+                            bot.send_message(chat_id, t!("destruct.security_warn"))
+                                .parse_mode(ParseMode::Html)
+                                .await?;
                         }
                         Ok(true) => {
-                            bot.send_message(
-                                chat_id,
-                                "🚨 <b>最终验证 (4/4)</b>\n\n请输入<b>安全验证文件</b> (图片或文档)。\n系统将比对文件指纹 (SHA-256) 以授权最终销毁。\n\n(如果没有设置安全文件，请使用 /set_security_file 先设置)",
-                            )
-                            .parse_mode(ParseMode::Html)
-                            .await?;
+                            bot.send_message(chat_id, t!("destruct.title_4"))
+                                .parse_mode(ParseMode::Html)
+                                .await?;
                         }
                         Ok(false) => {
-                            bot.send_message(chat_id, "状态无效，请重新开始").await?;
+                            bot.send_message(chat_id, t!("destruct.state_invalid"))
+                                .await?;
                         }
                     }
                 } else {
-                    bot.send_message(chat_id, "❌ 验证码错误，请重新输入。")
+                    bot.send_message(chat_id, t!("destruct.verify_fail"))
                         .await?;
                 }
             }
@@ -116,7 +112,7 @@ pub async fn handle_message_flow(
             } else if let Some(photos) = msg.photo() {
                 (
                     photos.last().map(|p| p.file.id.clone()),
-                    Some("图片".to_string()),
+                    Some(t!("destruct.image_label").to_string()),
                 )
             } else {
                 (None, None)
@@ -150,35 +146,33 @@ pub async fn handle_message_flow(
                         {
                             let keyboard = InlineKeyboardMarkup::new(vec![
                                 vec![InlineKeyboardButton::callback(
-                                    "💀 最终确认销毁 (BOOM)",
+                                    t!("destruct.final_btn"),
                                     "a_destroy_final",
                                 )],
                                 vec![InlineKeyboardButton::callback(
-                                    "🔙 取消",
+                                    t!("destruct.cancelled"),
                                     "a_destroy_cancel",
                                 )],
                             ]);
 
                             bot.send_message(
                                 chat_id,
-                                format!(
-                                    "☠️ <b>授权通过</b>\n\n指纹匹配成功 ({})。\n这是最后的确认，点击后服务器将<b>永久变砖</b>。",
-                                    file_display
-                                ),
+                                t!("destruct.file_verify_ok", "0" => file_display),
                             )
                             .parse_mode(ParseMode::Html)
                             .reply_markup(keyboard)
                             .await?;
                         }
                     } else {
-                        bot.send_message(chat_id, "❌ 文件验证失败。\nHash 不匹配。")
+                        bot.send_message(chat_id, t!("destruct.file_verify_fail"))
                             .await?;
                     }
                 } else {
-                    bot.send_message(chat_id, "❌ 系统未设置安全验证文件，无法执行销毁。\n请先取消流程并使用 /set_security_file 设置文件。").await?;
+                    bot.send_message(chat_id, t!("destruct.no_security_file"))
+                        .await?;
                 }
             } else {
-                bot.send_message(chat_id, "⚠️ 请发送安全验证文件 (图片或文档)。")
+                bot.send_message(chat_id, t!("destruct.file_send_prompt"))
                     .await?;
             }
             Ok(MessageFlowOutcome::Handled)
@@ -204,9 +198,9 @@ pub async fn handle_callback_timeout(
         TimeoutStatus::Expired => {
             state.cancel_destruct(&chat_id_str).await;
             bot.answer_callback_query(q.id.clone())
-                .text("⏳ 流程已超时 (60s)")
+                .text(t!("destruct.callback_timeout"))
                 .await?;
-            bot.edit_message_text(chat_id, msg_id, "⏳ 自毁流程超时 (60s)，已自动取消。")
+            bot.edit_message_text(chat_id, msg_id, t!("destruct.timeout"))
                 .parse_mode(ParseMode::Html)
                 .await?;
             Ok(MessageFlowOutcome::Handled)
@@ -229,7 +223,7 @@ pub async fn handle_callback_action(
         "a_destroy_ask" => {
             if !state.is_authorized(chat_id.0).await {
                 bot.answer_callback_query(q.id.clone())
-                    .text("⚠️ 会话已过期，请重新认证")
+                    .text(t!("auth.expired"))
                     .await?;
                 return Ok(MessageFlowOutcome::Handled);
             }
@@ -237,34 +231,37 @@ pub async fn handle_callback_action(
                 .begin_destruct(chat_id_str.clone(), Instant::now())
                 .await;
             let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-                "🔙 取消",
+                t!("destruct.cancelled"),
                 "a_destroy_cancel",
             )]]);
-            bot.edit_message_text(
-                chat_id,
-                msg_id,
-                "⚠️ <b>危险操作确认 (1/3)</b>\n\n您正在请求执行<b>自毁程序 (焦土模式)</b>。\n此操作将<b>递归删除服务器根目录下所有文件 (rm -rf /)</b>，且<b>不可恢复</b>。\n\n请输入 TOTP 验证码以继续:",
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(keyboard)
-            .await?;
+            bot.edit_message_text(chat_id, msg_id, t!("destruct.title_1"))
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
             Ok(MessageFlowOutcome::Handled)
         }
         "a_destroy_cancel" => {
             if state.cancel_destruct(&chat_id_str).await {
-                bot.send_message(chat_id, "操作已取消。").await?;
+                bot.send_message(chat_id, t!("destruct.cancelled")).await?;
             }
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    "💥 立即自毁",
+                    t!("destruct.destroy_btn"),
                     "a_destroy_ask",
                 )],
-                vec![InlineKeyboardButton::callback("⬅️ 返回设置", "m_settings")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_settings"),
+                    "m_settings",
+                )],
             ]);
             bot.edit_message_text(
                 chat_id,
                 msg_id,
-                "⚠️ <b>危险区域</b>\n\n此处包含不可逆的破坏性操作。\n请谨慎操作！",
+                format!(
+                    "{}\n\n{}",
+                    t!("menu.danger_zone"),
+                    t!("menu.danger_zone_desc")
+                ),
             )
             .parse_mode(ParseMode::Html)
             .reply_markup(keyboard)
@@ -274,7 +271,7 @@ pub async fn handle_callback_action(
         "a_destroy_confirm" => {
             if !state.is_authorized(chat_id.0).await {
                 bot.answer_callback_query(q.id.clone())
-                    .text("⚠️ 会话已过期，请重新认证")
+                    .text(t!("auth.expired"))
                     .await?;
                 return Ok(MessageFlowOutcome::Handled);
             }
@@ -289,20 +286,16 @@ pub async fn handle_callback_action(
             {
                 let keyboard =
                     InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-                        "🔙 取消",
+                        t!("destruct.cancelled"),
                         "a_destroy_cancel",
                     )]]);
-                bot.edit_message_text(
-                    chat_id,
-                    msg_id,
-                    "⚠️ <b>最终警告 (3/4)</b>\n\n请<b>再次输入新的 TOTP 验证码</b>以确认执行。\n(注意：必须与上一次验证码不同)",
-                )
-                .parse_mode(ParseMode::Html)
-                .reply_markup(keyboard)
-                .await?;
+                bot.edit_message_text(chat_id, msg_id, t!("destruct.title_3"))
+                    .parse_mode(ParseMode::Html)
+                    .reply_markup(keyboard)
+                    .await?;
             } else {
                 bot.answer_callback_query(q.id.clone())
-                    .text("状态无效，请重新开始")
+                    .text(t!("destruct.state_invalid"))
                     .await?;
             }
             Ok(MessageFlowOutcome::Handled)
@@ -310,7 +303,7 @@ pub async fn handle_callback_action(
         "a_destroy_final" => {
             if !state.is_authorized(chat_id.0).await {
                 bot.answer_callback_query(q.id.clone())
-                    .text("⚠️ 会话已过期，请重新认证")
+                    .text(t!("auth.expired"))
                     .await?;
                 return Ok(MessageFlowOutcome::Handled);
             }
@@ -318,21 +311,17 @@ pub async fn handle_callback_action(
             let snapshot = state.destruct_snapshot(&chat_id_str).await;
             if snapshot.map(|s| s.step) == Some(DestructStep::AwaitFinalConfirm) {
                 bot.answer_callback_query(q.id.clone())
-                    .text("正在执行销毁...")
+                    .text(t!("destruct.executing"))
                     .await?;
-                bot.edit_message_text(
-                    chat_id,
-                    msg_id,
-                    "🚀 <b>最终验证通过。正在执行自毁程序...</b>\n\n所有数据将被擦除，Bot 将停止运行。\n再见。",
-                )
-                .parse_mode(ParseMode::Html)
-                .await?;
+                bot.edit_message_text(chat_id, msg_id, t!("destruct.final_exec"))
+                    .parse_mode(ParseMode::Html)
+                    .await?;
                 let executor = state.self_destruct_executor();
                 aegis::core::security::self_destruct::trigger(executor);
                 state.cancel_destruct(&chat_id_str).await;
             } else {
                 bot.answer_callback_query(q.id.clone())
-                    .text("状态无效")
+                    .text(t!("destruct.state_invalid"))
                     .await?;
             }
             Ok(MessageFlowOutcome::Handled)
