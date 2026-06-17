@@ -86,6 +86,7 @@ auth:
 welcome:
   title: "👋 欢迎使用 wwps 管理机器人！"
   prompt: "请发送 6 位 TOTP 验证码（或使用 /auth <验证码>）解锁 24 小时管理权限。"
+  select_language: "🌐 请选择语言 / Please select your language / 言語を選択"
 
 lang:
   switch: "🌐 Language"
@@ -449,3 +450,61 @@ bot_commands:
   file_too_big: "❌ 文件过大 (%{0} bytes)，最大允许 %{1} bytes"
   security_file_set: "✅ 安全验证文件已设置。\nHash: `%{0}`"
   security_file_prompt: "⚠️ 请发送一个文件或图片，并附带 caption `/setsecurityfile`，或者回复该命令到文件消息。"
+
+upgrade:
+  core_checking: "🛰️ 正在检查 wwps-core 环境..."
+  core_fetching: "📦 正在获取 wwps-core 版本信息..."
+  core_extracting: "🗜️ 正在解压核心..."
+  core_backing_up: "💾 正在备份当前核心..."
+  core_replacing: "♻️ 正在替换核心..."
+  core_restarting: "🔁 正在重启 wwps-core 服务..."
+  core_updated: "✅ wwps-core 已更新至 %{0}！\n备份目录: %{1}"
+  core_download_info: "📦 准备下载 wwps-core %{0}\n文件大小: %{1}\nSHA256: %{2}"
+  core_unknown_size: "未知"
+  bot_querying: "🔍 正在查询最新 Release..."
+  bot_fetch_fail: "❌ 获取 Release 失败: %{0}"
+  bot_summary: "📦 仓库: %{0}\n最新版本: %{1}\n文件: %{2}\n大小: %{3}\nSHA256: %{4}"
+  bot_preparing: "%{0}\n\n准备开始下载..."
+  bot_download_fail: "❌ 下载失败: %{0}"
+  bot_install_fail: "❌ 安装失败: %{0}"
+  bot_download_done: "✅ 下载完成，校验通过。"
+  bot_replacing: "🔁 正在替换运行中的实例..."
+  bot_updated: "✅ Bot 已更新到 %{0}，即将重启..."
+  bot_unknown_size: "未知"
+  bot_sha256_mismatch: "SHA256 校验失败，期望: %{0}, 实际: %{1}"
+
+help:
+  matrix_text: |
+    可用命令（无前缀，直接发送）:
+
+      auth <code>         - TOTP 认证
+      help                - 显示本帮助
+      status              - 系统状态
+      menu                - 显示功能菜单
+
+      xray status         - Xray 核心状态
+      xray add <proto> [count] - 批量创建 inbound
+      xray del [proto]    - 删除配置
+      xray pq status      - PQ 密钥状态
+      xray pq gen         - 生成 PQ 密钥
+
+      singbox status      - SingBox 状态
+      singbox add <proto> [count] - 批量创建
+      singbox del         - 删除所有配置
+
+      ops reload          - 重载核心
+      ops upgrade         - 自更新
+      ops maintenance     - 系统维护 (含重启)
+      ops bbr3            - 安装 BBR3
+      ops geo             - 更新 GeoData
+      ops fw              - 防火墙加固
+
+      schedule list       - 列出计划任务
+      schedule add        - 添加计划 (逐步引导)
+      schedule del <idx>  - 删除指定计划
+
+      warp status         - WARP 状态
+      warp install        - 安装 WARP
+      warp uninstall      - 卸载 WARP
+
+      destruct            - 自毁流程

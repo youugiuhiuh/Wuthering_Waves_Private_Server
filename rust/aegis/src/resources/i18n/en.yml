@@ -76,6 +76,7 @@ auth:
 welcome:
   title: "👋 Welcome to wwps Management Bot!"
   prompt: "Send a 6-digit TOTP code (or /auth <code>) to unlock 24-hour admin access."
+  select_language: "🌐 Please select your language / 请选择语言 / 言語を選択"
 
 lang:
   switch: "🌐 Language"
@@ -423,3 +424,61 @@ bot_commands:
   file_too_big: "❌ File too large (%{0} bytes). Max %{1} bytes."
   security_file_set: "✅ Security verification file set.\nHash: `%{0}`"
   security_file_prompt: "⚠️ Send a file or image with caption `/setsecurityfile`, or reply to a file message with this command."
+
+upgrade:
+  core_checking: "🛰️ Checking wwps-core environment..."
+  core_fetching: "📦 Fetching wwps-core version info..."
+  core_extracting: "🗜️ Extracting core..."
+  core_backing_up: "💾 Backing up current core..."
+  core_replacing: "♻️ Replacing core..."
+  core_restarting: "🔁 Restarting wwps-core service..."
+  core_updated: "✅ wwps-core updated to %{0}!\nBackup: %{1}"
+  core_download_info: "📦 Ready to download wwps-core %{0}\nSize: %{1}\nSHA256: %{2}"
+  core_unknown_size: "Unknown"
+  bot_querying: "🔍 Querying latest Release..."
+  bot_fetch_fail: "❌ Failed to fetch Release: %{0}"
+  bot_summary: "📦 Repo: %{0}\nVersion: %{1}\nFile: %{2}\nSize: %{3}\nSHA256: %{4}"
+  bot_preparing: "%{0}\n\nPreparing download..."
+  bot_download_fail: "❌ Download failed: %{0}"
+  bot_install_fail: "❌ Install failed: %{0}"
+  bot_download_done: "✅ Download complete, verified."
+  bot_replacing: "🔁 Replacing running instance..."
+  bot_updated: "✅ Bot updated to %{0}, restarting..."
+  bot_unknown_size: "Unknown"
+  bot_sha256_mismatch: "SHA256 mismatch, expected: %{0}, actual: %{1}"
+
+help:
+  matrix_text: |
+    Available commands (no prefix, send directly):
+
+      auth <code>         - TOTP authentication
+      help                - Show this help
+      status              - System status
+      menu                - Show menu
+
+      xray status         - Xray core status
+      xray add <proto> [count] - Batch create inbound
+      xray del [proto]    - Delete config
+      xray pq status      - PQ key status
+      xray pq gen         - Generate PQ key
+
+      singbox status      - SingBox status
+      singbox add <proto> [count] - Batch create
+      singbox del         - Delete all configs
+
+      ops reload          - Reload core
+      ops upgrade         - Self-update
+      ops maintenance     - System maintenance (incl. reboot)
+      ops bbr3            - Install BBR3
+      ops geo             - Update GeoData
+      ops fw              - Firewall hardening
+
+      schedule list       - List scheduled tasks
+      schedule add        - Add schedule (step by step)
+      schedule del <idx>  - Delete specific schedule
+
+      warp status         - WARP status
+      warp install        - Install WARP
+      warp uninstall      - Uninstall WARP
+
+      destruct            - Self-destruct
