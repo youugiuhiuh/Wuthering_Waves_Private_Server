@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
+use aegis::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
 use anyhow::Result;
 use rust_i18n::t;
 
@@ -47,16 +47,51 @@ pub async fn process_auth_code(
 
     if state.verify_totp(code) {
         let timeout = state.record_auth_success(user_id, now).await;
-        adapter
-            .send_message(
-                target,
-                MessageContent {
-                    text: t!("auth.success", "0" => crate::utils::format_duration_human(timeout))
-                        .to_string(),
-                    markup: None,
-                },
-            )
-            .await?;
+        if !state.is_lang_configured().await {
+            let lang_text = t!("welcome.select_language").to_string();
+            let lang_markup = Markup {
+                buttons: vec![
+                    vec![
+                        InlineButton {
+                            text: t!("lang.zh").to_string(),
+                            data: "lang:zh".to_string(),
+                        },
+                        InlineButton {
+                            text: t!("lang.en").to_string(),
+                            data: "lang:en".to_string(),
+                        },
+                        InlineButton {
+                            text: t!("lang.ja").to_string(),
+                            data: "lang:ja".to_string(),
+                        },
+                    ],
+                ],
+            };
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: format!(
+                            "{}\n\n{}",
+                            t!("auth.success", "0" => crate::utils::format_duration_human(timeout)),
+                            lang_text,
+                        ),
+                        markup: Some(lang_markup),
+                    },
+                )
+                .await?;
+        } else {
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!("auth.success", "0" => crate::utils::format_duration_human(timeout))
+                            .to_string(),
+                        markup: None,
+                    },
+                )
+                .await?;
+        }
         return Ok(true);
     }
 
