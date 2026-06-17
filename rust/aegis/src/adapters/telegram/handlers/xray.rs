@@ -41,14 +41,8 @@ async fn show_reality_batch_prompt(
 
         if proto == Proto::XHTTP {
             buttons.push(vec![
-                InlineKeyboardButton::callback(
-                    t!("xray.split_v6_up"),
-                    format!("{}s6", ip_prefix),
-                ),
-                InlineKeyboardButton::callback(
-                    t!("xray.split_v4_up"),
-                    format!("{}s4", ip_prefix),
-                ),
+                InlineKeyboardButton::callback(t!("xray.split_v6_up"), format!("{}s6", ip_prefix)),
+                InlineKeyboardButton::callback(t!("xray.split_v4_up"), format!("{}s4", ip_prefix)),
             ]);
         }
     }
