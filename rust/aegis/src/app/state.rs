@@ -83,6 +83,7 @@ pub struct AppState {
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
+    lang_configured: Mutex<bool>,
 }
 
 impl AppState {
@@ -107,6 +108,7 @@ impl AppState {
             pending_schedule_inputs: Mutex::new(HashMap::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
             lang: Mutex::new(Lang::Zh),
+            lang_configured: Mutex::new(false),
         }
     }
 
@@ -163,6 +165,14 @@ impl AppState {
 
     pub async fn set_lang(&self, lang: Lang) {
         *self.lang.lock().await = lang;
+    }
+
+    pub async fn is_lang_configured(&self) -> bool {
+        *self.lang_configured.lock().await
+    }
+
+    pub async fn mark_lang_configured(&self) {
+        *self.lang_configured.lock().await = true;
     }
 
     pub fn self_destruct_executor(&self) -> Arc<dyn SelfDestructExecutor> {

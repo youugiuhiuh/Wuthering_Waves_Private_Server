@@ -76,6 +76,7 @@ auth:
 welcome:
   title: "👋 wwps管理ボットへようこそ！"
   prompt: "6桁のTOTPコードを送信して（または /auth <コード>）、24時間の管理者アクセスを解除してください。"
+  select_language: "🌐 言語を選択してください / Please select your language / 请选择语言"
 
 lang:
   switch: "🌐 Language"
@@ -423,3 +424,61 @@ bot_commands:
   file_too_big: "❌ ファイルが大きすぎます (%{0}バイト)。最大%{1}バイトです。"
   security_file_set: "✅ セキュリティ検証ファイルを設定しました。\nHash: `%{0}`"
   security_file_prompt: "⚠️ ファイルまたは画像にキャプション `/setsecurityfile` を付けて送信するか、ファイルメッセージに返信してください。"
+
+upgrade:
+  core_checking: "🛰️ wwps-core 環境を確認中..."
+  core_fetching: "📦 wwps-core バージョン情報を取得中..."
+  core_extracting: "🗜️ コアを展開中..."
+  core_backing_up: "💾 現在のコアをバックアップ中..."
+  core_replacing: "♻️ コアを置き換え中..."
+  core_restarting: "🔁 wwps-core サービスを再起動中..."
+  core_updated: "✅ wwps-core が %{0} に更新されました！\nバックアップ: %{1}"
+  core_download_info: "📦 wwps-core %{0} のダウンロード準備\nサイズ: %{1}\nSHA256: %{2}"
+  core_unknown_size: "不明"
+  bot_querying: "🔍 最新リリースを照会中..."
+  bot_fetch_fail: "❌ リリースの取得に失敗: %{0}"
+  bot_summary: "📦 リポジトリ: %{0}\nバージョン: %{1}\nファイル: %{2}\nサイズ: %{3}\nSHA256: %{4}"
+  bot_preparing: "%{0}\n\nダウンロード準備中..."
+  bot_download_fail: "❌ ダウンロードに失敗: %{0}"
+  bot_install_fail: "❌ インストールに失敗: %{0}"
+  bot_download_done: "✅ ダウンロード完了、検証済み。"
+  bot_replacing: "🔁 実行中のインスタンスを置き換え中..."
+  bot_updated: "✅ Bot が %{0} に更新されました、再起動します..."
+  bot_unknown_size: "不明"
+  bot_sha256_mismatch: "SHA256 不一致、期待値: %{0}, 実際: %{1}"
+
+help:
+  matrix_text: |
+    利用可能なコマンド（プレフィックスなし、直接送信）:
+
+      auth <code>         - TOTP 認証
+      help                - ヘルプ表示
+      status              - システム状態
+      menu                - メニュー表示
+
+      xray status         - Xray コア状態
+      xray add <proto> [count] - インバウンド一括作成
+      xray del [proto]    - 設定削除
+      xray pq status      - PQ キー状態
+      xray pq gen         - PQ キー生成
+
+      singbox status      - SingBox 状態
+      singbox add <proto> [count] - 一括作成
+      singbox del         - 全設定削除
+
+      ops reload          - コア再読み込み
+      ops upgrade         - 自己更新
+      ops maintenance     - システムメンテナンス (再起動含む)
+      ops bbr3            - BBR3 インストール
+      ops geo             - GeoData 更新
+      ops fw              - ファイアウォール強化
+
+      schedule list       - スケジュール一覧
+      schedule add        - スケジュール追加 (ステップ形式)
+      schedule del <idx>  - 指定スケジュール削除
+
+      warp status         - WARP 状態
+      warp install        - WARP インストール
+      warp uninstall      - WARP アンインストール
+
+      destruct            - 自己破壊

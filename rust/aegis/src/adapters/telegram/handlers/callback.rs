@@ -45,6 +45,7 @@ pub fn handle_callback(
                 i18n::set_lang(lang);
                 state.set_lang(lang).await;
                 let _ = save_lang_to_config(&state, lang).await;
+                state.mark_lang_configured().await;
                 bot.answer_callback_query(q.id.clone())
                     .text(rust_i18n::t!("lang.switched", "0" => lang.as_str()))
                     .await?;

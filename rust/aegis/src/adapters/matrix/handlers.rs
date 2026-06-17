@@ -7,42 +7,8 @@ use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::xray::ConfigManager;
 use aegis::core::xray::installer::WarpInstaller;
 use anyhow::Result;
+use rust_i18n::t;
 use std::sync::Arc;
-
-const HELP_TEXT: &str = "\
-可用命令（无前缀，直接发送）:
-
-  auth <code>         - TOTP 认证
-  help                - 显示本帮助
-  status              - 系统状态
-  menu                - 显示功能菜单
-
-  xray status         - Xray 核心状态
-  xray add <proto> [count] - 批量创建 inbound
-  xray del [proto]    - 删除配置
-  xray pq status      - PQ 密钥状态
-  xray pq gen         - 生成 PQ 密钥
-
-  singbox status      - SingBox 状态
-  singbox add <proto> [count] - 批量创建
-  singbox del         - 删除所有配置
-
-  ops reload          - 重载核心
-  ops upgrade         - 自更新
-  ops maintenance     - 系统维护 (含重启)
-  ops bbr3            - 安装 BBR3
-  ops geo             - 更新 GeoData
-  ops fw              - 防火墙加固
-
-  schedule list       - 列出计划任务
-  schedule add        - 添加计划 (逐步引导)
-  schedule del <idx>  - 删除指定计划
-
-  warp status         - WARP 状态
-  warp install        - 安装 WARP
-  warp uninstall      - 卸载 WARP
-
-  destruct            - 自毁流程";
 
 pub async fn dispatch(
     cmd: &Command,
@@ -56,7 +22,7 @@ pub async fn dispatch(
                 .send_message(
                     target,
                     MessageContent {
-                        text: HELP_TEXT.to_string(),
+                        text: t!("help.matrix_text").to_string(),
                         markup: None,
                     },
                 )

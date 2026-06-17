@@ -3,6 +3,7 @@ use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use obfstr::obfstr;
 use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, USER_AGENT};
+use rust_i18n::t;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -148,7 +149,7 @@ impl UpgradeManager {
             .send_message(
                 target,
                 MessageContent {
-                    text: obfstr!("🔍 正在查询最新 Release...").to_string(),
+                    text: t!("upgrade.bot_querying").to_string(),
                     markup: None,
                 },
             )
@@ -162,7 +163,8 @@ impl UpgradeManager {
                         target,
                         &progress_msg_id,
                         MessageContent {
-                            text: format!("❌ 获取 Release 失败: {}", e),
+                            text: t!("upgrade.bot_fetch_fail", "0" => e.to_string().as_str())
+                                .to_string(),
                             markup: None,
                         },
                     )
@@ -171,24 +173,26 @@ impl UpgradeManager {
             }
         };
 
-        let summary = format!(
-            "📦 仓库: {repo}\n最新版本: {tag}\n文件: {name}\n大小: {size}\nSHA256: {hash}",
-            repo = artifact.repository,
-            tag = artifact.tag_name,
-            name = artifact.asset_name,
-            size = artifact
-                .size
-                .map(human_readable_size)
-                .unwrap_or_else(|| "未知".to_string()),
-            hash = &artifact.sha256
-        );
+        let size_str = artifact
+            .size
+            .map(human_readable_size)
+            .unwrap_or_else(|| t!("upgrade.bot_unknown_size").to_string());
+        let summary = t!(
+            "upgrade.bot_summary",
+            "0" => artifact.repository.as_str(),
+            "1" => artifact.tag_name.as_str(),
+            "2" => artifact.asset_name.as_str(),
+            "3" => size_str.as_str(),
+            "4" => artifact.sha256.as_str(),
+        )
+        .to_string();
 
         let _ = adapter
             .edit_message(
                 target,
                 &progress_msg_id,
                 MessageContent {
-                    text: format!("{}\n\n准备开始下载...", summary),
+                    text: t!("upgrade.bot_preparing", "0" => summary.as_str()).to_string(),
                     markup: None,
                 },
             )
@@ -205,7 +209,8 @@ impl UpgradeManager {
                         target,
                         &progress_msg_id,
                         MessageContent {
-                            text: format!("❌ 下载失败: {}", e),
+                            text: t!("upgrade.bot_download_fail", "0" => e.to_string().as_str())
+                                .to_string(),
                             markup: None,
                         },
                     )
@@ -223,7 +228,8 @@ impl UpgradeManager {
                     target,
                     &progress_msg_id,
                     MessageContent {
-                        text: format!("❌ 安装失败: {}", e),
+                        text: t!("upgrade.bot_install_fail", "0" => e.to_string().as_str())
+                            .to_string(),
                         markup: None,
                     },
                 )
@@ -420,9 +426,8 @@ impl UpgradeManager {
         if actual_sha256 != artifact.sha256 {
             fs::remove_file(&update_path).await.ok();
             anyhow::bail!(
-                "SHA256 校验失败，期望: {}, 实际: {}",
-                artifact.sha256,
-                actual_sha256
+                "{}",
+                t!("upgrade.bot_sha256_mismatch", "0" => artifact.sha256.as_str(), "1" => actual_sha256.as_str())
             );
         }
 
@@ -431,7 +436,7 @@ impl UpgradeManager {
                 target,
                 progress_msg_id,
                 MessageContent {
-                    text: "✅ 下载完成，校验通过。".to_string(),
+                    text: t!("upgrade.bot_download_done").to_string(),
                     markup: None,
                 },
             )
@@ -453,7 +458,7 @@ impl UpgradeManager {
                 target,
                 progress_msg_id,
                 MessageContent {
-                    text: "🔁 正在替换运行中的实例...".to_string(),
+                    text: t!("upgrade.bot_replacing").to_string(),
                     markup: None,
                 },
             )
@@ -475,7 +480,7 @@ impl UpgradeManager {
             .send_message(
                 target,
                 MessageContent {
-                    text: format!("✅ Bot 已更新到 {}，即将重启...", artifact.tag_name),
+                    text: t!("upgrade.bot_updated", "0" => artifact.tag_name.as_str()).to_string(),
                     markup: None,
                 },
             )
