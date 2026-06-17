@@ -246,74 +246,99 @@ impl KcpMask {
         }
     }
 
+    fn header_id(name: &str) -> i32 {
+        match name {
+            "dns" => 0,
+            "dtls" => 1,
+            "srtp" => 2,
+            "utp" => 3,
+            "wechat" => 4,
+            "wireguard" => 5,
+            _ => 0,
+        }
+    }
+
     pub fn as_json(&self) -> Value {
+        let type_path =
+            |name: &str| -> String { format!("xray.transport.internet.finalmask.{}.Config", name) };
         match self {
-            KcpMask::MkcpLegacy { header, value } => {
-                if header.is_none() && value.is_none() {
-                    json!({"type": "mkcp-legacy"})
-                } else {
-                    let mut settings = serde_json::Map::new();
-                    if let Some(h) = header {
-                        settings.insert("header".to_string(), serde_json::Value::String(h.clone()));
-                    }
-                    if let Some(v) = value {
-                        settings.insert("value".to_string(), serde_json::Value::String(v.clone()));
-                    }
-                    json!({
-                        "type": "mkcp-legacy",
-                        "settings": serde_json::Value::Object(settings)
-                    })
+            KcpMask::MkcpLegacy { header, value } => match (header, value) {
+                (None, None) => {
+                    let mut m = serde_json::Map::new();
+                    m.insert(
+                        "type".to_string(),
+                        Value::String(type_path("mkcp.original")),
+                    );
+                    Value::Object(m)
                 }
-            }
-            KcpMask::Noise => json!({"type": "noise"}),
+                (None, Some(v)) => {
+                    let mut m = serde_json::Map::new();
+                    m.insert(
+                        "type".to_string(),
+                        Value::String(type_path("mkcp.aes128gcm")),
+                    );
+                    m.insert("password".to_string(), Value::String(v.clone()));
+                    Value::Object(m)
+                }
+                (Some(h), Some(v)) => {
+                    let mut m = serde_json::Map::new();
+                    m.insert("type".to_string(), Value::String(type_path("mkcp.header")));
+                    m.insert("ID".to_string(), json!(Self::header_id(h)));
+                    m.insert("domain".to_string(), Value::String(v.clone()));
+                    Value::Object(m)
+                }
+                (Some(h), None) => {
+                    let mut m = serde_json::Map::new();
+                    m.insert("type".to_string(), Value::String(type_path("mkcp.header")));
+                    m.insert("ID".to_string(), json!(Self::header_id(h)));
+                    m.insert("domain".to_string(), Value::String(String::new()));
+                    Value::Object(m)
+                }
+            },
+            KcpMask::Noise => json!({"type": type_path("noise")}),
             KcpMask::Salamander {
                 password,
                 packet_size,
             } => {
-                let mut settings = serde_json::Map::new();
-                settings.insert(
-                    "password".to_string(),
-                    serde_json::Value::String(password.clone()),
-                );
+                let mut map = serde_json::Map::new();
+                map.insert("type".to_string(), Value::String(type_path("salamander")));
+                map.insert("password".to_string(), Value::String(password.clone()));
                 if let Some(ps) = packet_size {
-                    settings.insert(
-                        "packetSize".to_string(),
-                        serde_json::Value::String(ps.clone()),
-                    );
+                    map.insert("packetSize".to_string(), Value::String(ps.clone()));
                 }
-                json!({
-                    "type": "salamander",
-                    "settings": serde_json::Value::Object(settings)
-                })
+                Value::Object(map)
             }
-            KcpMask::Sudoku { password } => json!({
-                "type": "sudoku",
-                "settings": { "password": password }
-            }),
-            KcpMask::Xdns { domains, resolvers } => json!({
-                "type": "xdns",
-                "settings": { "domains": domains, "resolvers": resolvers }
-            }),
+            KcpMask::Sudoku { password } => {
+                let mut map = serde_json::Map::new();
+                map.insert("type".to_string(), Value::String(type_path("sudoku")));
+                map.insert("password".to_string(), Value::String(password.clone()));
+                Value::Object(map)
+            }
+            KcpMask::Xdns { domains, resolvers } => {
+                let mut map = serde_json::Map::new();
+                map.insert("type".to_string(), Value::String(type_path("xdns")));
+                map.insert("domains".to_string(), json!(domains));
+                map.insert("resolvers".to_string(), json!(resolvers));
+                Value::Object(map)
+            }
             KcpMask::Xicmp { dgram, ips } => {
-                if *dgram || !ips.is_empty() {
-                    json!({
-                        "type": "xicmp",
-                        "settings": {
-                            "dgram": dgram,
-                            "ips": ips
-                        }
-                    })
-                } else {
-                    json!({"type": "xicmp"})
+                let mut map = serde_json::Map::new();
+                map.insert("type".to_string(), Value::String(type_path("xicmp")));
+                if *dgram {
+                    map.insert("DGRAM".to_string(), Value::Bool(*dgram));
                 }
+                if !ips.is_empty() {
+                    map.insert("IPs".to_string(), json!(ips));
+                }
+                Value::Object(map)
             }
-            KcpMask::Realm { url, stun_servers } => json!({
-                "type": "realm",
-                "settings": {
-                    "url": url,
-                    "stunServers": stun_servers
-                }
-            }),
+            KcpMask::Realm { url, stun_servers } => {
+                let mut map = serde_json::Map::new();
+                map.insert("type".to_string(), Value::String(type_path("realm")));
+                map.insert("url".to_string(), Value::String(url.clone()));
+                map.insert("stunServers".to_string(), json!(stun_servers));
+                Value::Object(map)
+            }
         }
     }
 
@@ -593,34 +618,45 @@ mod tests {
             value: None,
         }
         .as_json();
-        assert_eq!(json["type"], "mkcp-legacy");
-        assert!(json["settings"].is_null());
+        assert_eq!(
+            json["type"],
+            "xray.transport.internet.finalmask.mkcp.original.Config"
+        );
 
         let json = KcpMask::MkcpLegacy {
             header: None,
             value: Some("pwd".into()),
         }
         .as_json();
-        assert_eq!(json["type"], "mkcp-legacy");
-        assert_eq!(json["settings"]["value"], "pwd");
+        assert_eq!(
+            json["type"],
+            "xray.transport.internet.finalmask.mkcp.aes128gcm.Config"
+        );
+        assert_eq!(json["password"], "pwd");
 
         let json = KcpMask::MkcpLegacy {
             header: Some("dns".into()),
             value: Some("example.com".into()),
         }
         .as_json();
-        assert_eq!(json["type"], "mkcp-legacy");
-        assert_eq!(json["settings"]["header"], "dns");
-        assert_eq!(json["settings"]["value"], "example.com");
+        assert_eq!(
+            json["type"],
+            "xray.transport.internet.finalmask.mkcp.header.Config"
+        );
+        assert_eq!(json["ID"], 0);
+        assert_eq!(json["domain"], "example.com");
 
         let json = KcpMask::MkcpLegacy {
             header: Some("wechat".into()),
             value: None,
         }
         .as_json();
-        assert_eq!(json["type"], "mkcp-legacy");
-        assert_eq!(json["settings"]["header"], "wechat");
-        assert!(json["settings"]["value"].is_null());
+        assert_eq!(
+            json["type"],
+            "xray.transport.internet.finalmask.mkcp.header.Config"
+        );
+        assert_eq!(json["ID"], 4);
+        assert_eq!(json["domain"], "");
     }
 
     #[test]
@@ -630,16 +666,24 @@ mod tests {
             packet_size: Some("512-1200".into()),
         }
         .as_json();
-        assert_eq!(json["type"], "salamander");
-        assert_eq!(json["settings"]["password"], "obfs");
-        assert_eq!(json["settings"]["packetSize"], "512-1200");
+        assert_eq!(
+            json["type"],
+            "xray.transport.internet.finalmask.salamander.Config"
+        );
+        assert_eq!(json["password"], "obfs");
+        assert_eq!(json["packetSize"], "512-1200");
 
         let json_no_ps = KcpMask::Salamander {
             password: "obfs".into(),
             packet_size: None,
         }
         .as_json();
-        assert!(json_no_ps["settings"]["packetSize"].is_null());
+        assert_eq!(
+            json_no_ps["type"],
+            "xray.transport.internet.finalmask.salamander.Config"
+        );
+        assert_eq!(json_no_ps["password"], "obfs");
+        assert!(json_no_ps.get("packetSize").is_none());
     }
 
     #[test]
@@ -649,12 +693,12 @@ mod tests {
             resolvers: vec!["example.com:aaaa+udp://1.1.1.1:53".into()],
         }
         .as_json();
-        assert_eq!(json["type"], "xdns");
-        assert_eq!(json["settings"]["domains"][0], "example.com:aaaa");
         assert_eq!(
-            json["settings"]["resolvers"][0],
-            "example.com:aaaa+udp://1.1.1.1:53"
+            json["type"],
+            "xray.transport.internet.finalmask.xdns.Config"
         );
+        assert_eq!(json["domains"][0], "example.com:aaaa");
+        assert_eq!(json["resolvers"][0], "example.com:aaaa+udp://1.1.1.1:53");
     }
 
     #[test]
@@ -664,17 +708,24 @@ mod tests {
             ips: vec![],
         }
         .as_json();
-        assert_eq!(json["type"], "xicmp");
-        assert!(json["settings"].is_null());
+        assert_eq!(
+            json["type"],
+            "xray.transport.internet.finalmask.xicmp.Config"
+        );
+        assert!(json.get("DGRAM").is_none());
+        assert!(json.get("IPs").is_none());
 
         let json = KcpMask::Xicmp {
             dgram: true,
             ips: vec!["1.2.3.4".into(), "5.6.7.8".into()],
         }
         .as_json();
-        assert_eq!(json["type"], "xicmp");
-        assert_eq!(json["settings"]["dgram"], true);
-        assert_eq!(json["settings"]["ips"][0], "1.2.3.4");
+        assert_eq!(
+            json["type"],
+            "xray.transport.internet.finalmask.xicmp.Config"
+        );
+        assert_eq!(json["DGRAM"], true);
+        assert_eq!(json["IPs"][0], "1.2.3.4");
     }
 
     #[test]
@@ -684,12 +735,12 @@ mod tests {
             stun_servers: vec!["stun:stun.l.google.com:19302".into()],
         }
         .as_json();
-        assert_eq!(json["type"], "realm");
-        assert_eq!(json["settings"]["url"], "realm://example.com:1234");
         assert_eq!(
-            json["settings"]["stunServers"][0],
-            "stun:stun.l.google.com:19302"
+            json["type"],
+            "xray.transport.internet.finalmask.realm.Config"
         );
+        assert_eq!(json["url"], "realm://example.com:1234");
+        assert_eq!(json["stunServers"][0], "stun:stun.l.google.com:19302");
     }
 
     #[test]
