@@ -246,18 +246,6 @@ impl KcpMask {
         }
     }
 
-    fn header_id(name: &str) -> i32 {
-        match name {
-            "dns" => 0,
-            "dtls" => 1,
-            "srtp" => 2,
-            "utp" => 3,
-            "wechat" => 4,
-            "wireguard" => 5,
-            _ => 0,
-        }
-    }
-
     pub fn as_json(&self) -> Value {
         match self {
             KcpMask::MkcpLegacy { header, value } => {
@@ -284,10 +272,7 @@ impl KcpMask {
                 let mut settings = serde_json::Map::new();
                 settings.insert("password".to_string(), Value::String(password.clone()));
                 if let Some((from, to)) = packet_size {
-                    settings.insert(
-                        "packetSize".to_string(),
-                        json!({"from": from, "to": to}),
-                    );
+                    settings.insert("packetSize".to_string(), json!({"from": from, "to": to}));
                 }
                 map.insert("settings".to_string(), Value::Object(settings));
                 Value::Object(map)
@@ -649,7 +634,10 @@ mod tests {
         .as_json();
         assert_eq!(json["type"], "xdns");
         assert_eq!(json["settings"]["domains"][0], "example.com:aaaa");
-        assert_eq!(json["settings"]["resolvers"][0], "example.com:aaaa+udp://1.1.1.1:53");
+        assert_eq!(
+            json["settings"]["resolvers"][0],
+            "example.com:aaaa+udp://1.1.1.1:53"
+        );
     }
 
     #[test]
@@ -681,7 +669,10 @@ mod tests {
         .as_json();
         assert_eq!(json["type"], "realm");
         assert_eq!(json["settings"]["url"], "realm://example.com:1234");
-        assert_eq!(json["settings"]["stunServers"][0], "stun:stun.l.google.com:19302");
+        assert_eq!(
+            json["settings"]["stunServers"][0],
+            "stun:stun.l.google.com:19302"
+        );
     }
 
     #[test]
