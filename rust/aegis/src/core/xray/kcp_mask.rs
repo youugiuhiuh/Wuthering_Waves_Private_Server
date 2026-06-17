@@ -272,7 +272,7 @@ impl KcpMask {
                 let mut settings = serde_json::Map::new();
                 settings.insert("password".to_string(), Value::String(password.clone()));
                 if let Some((from, to)) = packet_size {
-                    settings.insert("packetSize".to_string(), json!({"from": from, "to": to}));
+                    settings.insert("packetSize".to_string(), json!(format!("{}-{}", from, to)));
                 }
                 map.insert("settings".to_string(), Value::Object(settings));
                 Value::Object(map)
@@ -612,8 +612,7 @@ mod tests {
         .as_json();
         assert_eq!(json["type"], "salamander");
         assert_eq!(json["settings"]["password"], "obfs");
-        assert_eq!(json["settings"]["packetSize"]["from"], 512);
-        assert_eq!(json["settings"]["packetSize"]["to"], 1200);
+        assert_eq!(json["settings"]["packetSize"], "512-1200");
 
         let json_no_ps = KcpMask::Salamander {
             password: "obfs".into(),
