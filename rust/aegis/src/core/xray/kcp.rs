@@ -9,7 +9,7 @@ use super::kcp_mask::KcpMask;
 use crate::core::types::BatchCreationResult;
 
 impl ConfigManager {
-    pub(crate) fn build_kcp_inbound(
+    pub fn build_kcp_inbound(
         tag: &str,
         port: i32,
         uuid: &str,
