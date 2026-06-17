@@ -43,9 +43,7 @@ impl ConfigManager {
             "streamSettings": {
                 "network": "kcp",
                 "security": "none",
-                "finalmask": {
-                    "udp": udp_array
-                },
+                "udpmasks": udp_array,
                 "kcpSettings": {
                     "mtu": 1350,
                     "tti": 50,
@@ -72,10 +70,7 @@ impl ConfigManager {
         masks: &[KcpMask],
     ) -> String {
         let udp_array: Vec<Value> = masks.iter().map(|m| m.as_json()).collect();
-        let finalmask_json = json!({
-            "udp": udp_array
-        });
-        let fm_str = serde_json::to_string(&finalmask_json).unwrap();
+        let fm_str = serde_json::to_string(&udp_array).unwrap();
         let fm_encoded = utf8_percent_encode(&fm_str, NON_ALPHANUMERIC).to_string();
 
         let fmt_host = match ip_version {
