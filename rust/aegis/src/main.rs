@@ -500,6 +500,7 @@ async fn main() -> Result<()> {
         let lang = lang_str.parse().unwrap_or(i18n::Lang::Zh);
         i18n::set_lang(lang);
         state.set_lang(lang).await;
+        state.mark_lang_configured().await;
     }
 
     // ── Matrix 同步循环 ──
