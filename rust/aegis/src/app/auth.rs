@@ -47,35 +47,31 @@ pub async fn process_auth_code(
 
     if state.verify_totp(code) {
         let timeout = state.record_auth_success(user_id, now).await;
+        let success_text =
+            t!("auth.success", "0" => crate::utils::format_duration_human(timeout)).to_string();
         if !state.is_lang_configured().await {
             let lang_text = t!("welcome.select_language").to_string();
             let lang_markup = Markup {
-                buttons: vec![
-                    vec![
-                        InlineButton {
-                            text: t!("lang.zh").to_string(),
-                            data: "lang:zh".to_string(),
-                        },
-                        InlineButton {
-                            text: t!("lang.en").to_string(),
-                            data: "lang:en".to_string(),
-                        },
-                        InlineButton {
-                            text: t!("lang.ja").to_string(),
-                            data: "lang:ja".to_string(),
-                        },
-                    ],
-                ],
+                buttons: vec![vec![
+                    InlineButton {
+                        text: t!("lang.zh").to_string(),
+                        data: "lang:zh".to_string(),
+                    },
+                    InlineButton {
+                        text: t!("lang.en").to_string(),
+                        data: "lang:en".to_string(),
+                    },
+                    InlineButton {
+                        text: t!("lang.ja").to_string(),
+                        data: "lang:ja".to_string(),
+                    },
+                ]],
             };
             adapter
                 .send_message(
                     target,
                     MessageContent {
-                        text: format!(
-                            "{}\n\n{}",
-                            t!("auth.success", "0" => crate::utils::format_duration_human(timeout)),
-                            lang_text,
-                        ),
+                        text: format!("{}\n\n{}", success_text, lang_text),
                         markup: Some(lang_markup),
                     },
                 )
@@ -85,8 +81,7 @@ pub async fn process_auth_code(
                 .send_message(
                     target,
                     MessageContent {
-                        text: t!("auth.success", "0" => crate::utils::format_duration_human(timeout))
-                            .to_string(),
+                        text: success_text,
                         markup: None,
                     },
                 )
