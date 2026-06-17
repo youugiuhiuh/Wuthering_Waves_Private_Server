@@ -1,4 +1,5 @@
 use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
+use rust_i18n::t;
 use crate::core::cmd_async::run_cmd_status;
 use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors, parse_digest,
@@ -500,7 +501,7 @@ impl WwpsCoreUpgradeManager {
             .send_message(
                 target,
                 MessageContent {
-                    text: "🛰️ 正在检查 wwps-core 环境...".to_string(),
+                    text: t!("upgrade.core_checking").to_string(),
                     markup: None,
                 },
             )
@@ -515,7 +516,7 @@ impl WwpsCoreUpgradeManager {
                 target,
                 &status_msg_id,
                 MessageContent {
-                    text: "📦 正在获取 wwps-core 版本信息...".to_string(),
+                    text: t!("upgrade.core_fetching").to_string(),
                     markup: None,
                 },
             )
@@ -523,17 +524,16 @@ impl WwpsCoreUpgradeManager {
 
         let release = manager.fetch_release(tag.as_deref()).await?;
 
-        let info_text = format!(
-            "📦 准备下载 wwps-core {}
-文件大小: {}
-SHA256: {}",
-            release.tag_name,
-            release
-                .size
-                .map(human_readable_size)
-                .unwrap_or_else(|| "未知".to_string()),
-            release.sha256
-        );
+        let size_str = release
+            .size
+            .map(human_readable_size)
+            .unwrap_or_else(|| t!("upgrade.core_unknown_size").to_string());
+        let info_text = t!(
+            "upgrade.core_download_info",
+            "0" => release.tag_name.as_str(),
+            "1" => size_str.as_str(),
+            "2" => release.sha256.as_str()
+        ).to_string();
         let _ = adapter
             .edit_message(
                 target,
@@ -554,7 +554,7 @@ SHA256: {}",
                 target,
                 &status_msg_id,
                 MessageContent {
-                    text: "🗜️ 正在解压核心...".to_string(),
+                    text: t!("upgrade.core_extracting").to_string(),
                     markup: None,
                 },
             )
@@ -566,7 +566,7 @@ SHA256: {}",
                 target,
                 &status_msg_id,
                 MessageContent {
-                    text: "💾 正在备份当前核心...".to_string(),
+                    text: t!("upgrade.core_backing_up").to_string(),
                     markup: None,
                 },
             )
@@ -578,7 +578,7 @@ SHA256: {}",
                 target,
                 &status_msg_id,
                 MessageContent {
-                    text: "♻️ 正在替换核心...".to_string(),
+                    text: t!("upgrade.core_replacing").to_string(),
                     markup: None,
                 },
             )
@@ -590,7 +590,7 @@ SHA256: {}",
                 target,
                 &status_msg_id,
                 MessageContent {
-                    text: "🔁 正在重启 wwps-core 服务...".to_string(),
+                    text: t!("upgrade.core_restarting").to_string(),
                     markup: None,
                 },
             )
@@ -607,11 +607,11 @@ SHA256: {}",
             .send_message(
                 target,
                 MessageContent {
-                    text: format!(
-                        "✅ wwps-core 已更新至 {}！\n备份目录: {}",
-                        release.tag_name,
-                        backup_path.display()
-                    ),
+                    text: t!(
+                        "upgrade.core_updated",
+                        "0" => release.tag_name.as_str(),
+                        "1" => backup_path.display().to_string().as_str()
+                    ).to_string(),
                     markup: None,
                 },
             )
