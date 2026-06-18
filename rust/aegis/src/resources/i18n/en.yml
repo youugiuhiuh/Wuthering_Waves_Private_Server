@@ -13,7 +13,7 @@ menu:
   back_user: "⬅️ Back"
   refresh: "🔄 Refresh"
   network_opt: "🌩 Network Optimization"
-  network_opt_desc: "Select optimization:\n\n<code>BBR3 + General Tuning</code> handles both kernel installation and sysctl tuning."
+  network_opt_desc: "Manage WARP routing and network optimization rules."
   security: "🛡 Security Hardening"
   security_desc: "System security configuration:"
   sys_cmd: "💻 System Commands"
@@ -59,6 +59,8 @@ menu:
   singbox_tu_batch_title: "🚀 <b>TUIC Batch Create</b>"
   singbox_tu_batch_ip: "Select network protocol version:"
   singbox_tu_qty_title: "🚀 <b>TUIC Batch Create</b>\n\n🌐 IP Version: %{0}\n\nSelect quantity:"
+  bbr3_install: "🚀 BBR3 Install"
+  generic_tune: "⚙️ Network Optimization"
 
 auth:
   expired: "🚫 Session expired. Please send a 6-digit TOTP code to re-authenticate."
@@ -125,6 +127,9 @@ ops:
   sys_restart: "🔄 Reboot System"
   sys_reload_core: "♻️ Reload Core"
   sys_auto_update: "⚙️ Configure Auto-Update"
+  tune_start: "⚙️ Applying network optimization parameters..."
+  tune_success: "✅ Network optimization parameters applied"
+  tune_fail: "❌ Network optimization failed: %{0}"
 
 log:
   xray_tail_title: "🅧 Xray-core Recent Logs:\n\n<pre>%{0}</pre>"
