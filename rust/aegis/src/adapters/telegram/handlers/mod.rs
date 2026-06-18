@@ -37,6 +37,7 @@ pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
 
     if data.starts_with("a_bbr3")
         || data == "a_fw"
+        || data == "a_one_click"
         || data == "a_reload"
         || data == "a_sys_maint"
         || data == "a_sys_reboot"
