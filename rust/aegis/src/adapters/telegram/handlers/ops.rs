@@ -1,5 +1,6 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use super::schedule::{build_custom_schedule_keyboard, build_custom_schedule_text};
+use crate::app::batch_handler::send_singbox_batch_result;
 use crate::app::state::{ScheduleFrequency, ScheduleInputState};
 use aegis::adapters::common::TargetId;
 use aegis::core::system::maintenance::MaintenanceManager;
@@ -436,6 +437,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let bot_clone = ctx.bot.clone();
             let chat_id_clone = ctx.chat_id;
             let msg_id_clone = ctx.msg_id;
+            let adapter = ctx.state.adapter.clone();
 
             tokio::spawn(async move {
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -500,21 +502,35 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
                 if !failed {
                     send_progress(&tx, 4, 7, format!("{} ({})", t!("ops.deploy_step_xhttp"), ip_version.label()));
-                    if let Err(e) = aegis::core::xray::config::ConfigManager::batch_create_xhttp_reality_enhanced(
+                    match aegis::core::xray::config::ConfigManager::batch_create_xhttp_reality_enhanced(
                         20, ip_version,
                     ).await {
-                        let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_xhttp"), e)).to_string());
-                        failed = true;
+                        Ok(result) => {
+                            let _ = send_singbox_batch_result(
+                                adapter.clone(), chat_id_clone, "XHTTP Reality", &result,
+                            ).await;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_xhttp"), e)).to_string());
+                            failed = true;
+                        }
                     }
                 }
 
                 if !failed {
                     send_progress(&tx, 5, 7, format!("{} ({})", t!("ops.deploy_step_vision"), ip_version.label()));
-                    if let Err(e) = aegis::core::xray::config::ConfigManager::batch_create_reality_vision_enhanced(
+                    match aegis::core::xray::config::ConfigManager::batch_create_reality_vision_enhanced(
                         20, ip_version,
                     ).await {
-                        let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_vision"), e)).to_string());
-                        failed = true;
+                        Ok(result) => {
+                            let _ = send_singbox_batch_result(
+                                adapter.clone(), chat_id_clone, "Reality Vision", &result,
+                            ).await;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_vision"), e)).to_string());
+                            failed = true;
+                        }
                     }
                 }
 
@@ -528,15 +544,21 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
                 if !failed {
                     send_progress(&tx, 7, 7, format!("{} ({})", t!("ops.deploy_step_tuic"), ip_version.label()));
-                    if let Err(e) =
-                        aegis::core::singbox::config::SingBoxConfigManager::batch_create_tuic(
-                            3,
-                            ip_version,
-                        )
-                        .await
+                    match aegis::core::singbox::config::SingBoxConfigManager::batch_create_tuic(
+                        3,
+                        ip_version,
+                    )
+                    .await
                     {
-                        let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_tuic"), e)).to_string());
-                        failed = true;
+                        Ok(result) => {
+                            let _ = send_singbox_batch_result(
+                                adapter.clone(), chat_id_clone, "TUIC", &result,
+                            ).await;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_tuic"), e)).to_string());
+                            failed = true;
+                        }
                     }
                 }
 
