@@ -253,6 +253,24 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             });
         }
         "a_bbr3" => {
+            let keyboard = InlineKeyboardMarkup::new(vec![
+                vec![InlineKeyboardButton::callback(
+                    t!("ops.bbr3_confirm_btn"),
+                    "a_bbr3_confirm",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("ops.bbr3_cancel"),
+                    "a_bbr3_cancel",
+                )],
+            ]);
+            ctx.bot.answer_callback_query(ctx.q.id.clone()).await?;
+            ctx.bot
+                .edit_message_text(ctx.chat_id, ctx.msg_id, t!("ops.bbr3_confirm_warn"))
+                .parse_mode(ParseMode::Html)
+                .reply_markup(keyboard)
+                .await?;
+        }
+        "a_bbr3_confirm" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
                 .text(t!("ops.bbr3_start"))
@@ -334,6 +352,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .await;
                 }
             });
+        }
+        "a_bbr3_cancel" => {
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
+                .text(t!("ops.bbr3_cancelled"))
+                .await?;
+            return Ok(HandlerAction::Redirect("m_ops_center".to_string()));
         }
         "a_sys_maint" => {
             let chat_id_str = ctx.chat_id.0.to_string();
