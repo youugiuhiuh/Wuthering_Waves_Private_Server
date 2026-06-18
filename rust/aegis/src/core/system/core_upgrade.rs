@@ -1,5 +1,4 @@
 use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
-use rust_i18n::t;
 use crate::core::cmd_async::run_cmd_status;
 use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors, parse_digest,
@@ -11,6 +10,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use futures_util::StreamExt;
 use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, USER_AGENT};
+use rust_i18n::t;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs::{File as StdFile, OpenOptions};
@@ -533,7 +533,8 @@ impl WwpsCoreUpgradeManager {
             "0" => release.tag_name.as_str(),
             "1" => size_str.as_str(),
             "2" => release.sha256.as_str()
-        ).to_string();
+        )
+        .to_string();
         let _ = adapter
             .edit_message(
                 target,
@@ -611,7 +612,8 @@ impl WwpsCoreUpgradeManager {
                         "upgrade.core_updated",
                         "0" => release.tag_name.as_str(),
                         "1" => backup_path.display().to_string().as_str()
-                    ).to_string(),
+                    )
+                    .to_string(),
                     markup: None,
                 },
             )
