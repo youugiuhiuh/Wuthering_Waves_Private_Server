@@ -78,10 +78,6 @@ menu:
   singbox_tu_batch_ip: "请选择网络协议版本:"
   singbox_tu_qty_title: "🚀 <b>TUIC 批量创建</b>\n\n🌐 网络版本: %{0}\n\n请选择生成数量:"
   bbr3_install: "🚀 BBR3 安装"
-  bbr3_confirm_warn: "⚠️ <b>警告：第三方内核风险极高</b>\n\nBBR3 使用未经大规模验证的第三方内核 (XanMod)，可能导致：\n- 系统无法启动\n- 数据丢失\n- 服务器完全不可用\n\n<b>风险远高于收益，请谨慎操作！</b>"
-  bbr3_confirm_btn: "⚠️ 我了解风险，继续安装"
-  bbr3_cancel: "取消"
-  bbr3_cancelled: "已取消 BBR3 安装"
   generic_tune: "⚙️ 通用网络优化"
   wwps_core_btn: "🛰️ wwps-core 管理"
   singbox_mgmt_btn: "📦 Sing-box 管理"
@@ -183,6 +179,10 @@ ops:
   deploy_fail_vision: "Vision Reality 创建步骤失败"
   deploy_fail_singbox_init: "Sing-Box 初始化步骤失败"
   deploy_fail_tuic: "TUIC 创建步骤失败"
+  bbr3_confirm_warn: "⚠️ <b>警告：第三方内核风险极高</b>\n\nBBR3 使用未经大规模验证的第三方内核 (XanMod)，可能导致：\n- 系统无法启动\n- 数据丢失\n- 服务器完全不可用\n\n<b>风险远高于收益，请谨慎操作！</b>"
+  bbr3_confirm_btn: "⚠️ 我了解风险，继续安装"
+  bbr3_cancel: "取消"
+  bbr3_cancelled: "已取消 BBR3 安装"
 
 log:
   xray_btn: "🅧 Xray-core 日志"

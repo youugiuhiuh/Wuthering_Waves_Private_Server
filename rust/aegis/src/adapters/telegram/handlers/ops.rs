@@ -6,7 +6,7 @@ use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::operations::{Operations, REBOOT_FLAG};
 use aegis::core::system::scheduler::TaskType;
 use aegis::core::system::upgrade::UpgradeManager;
-use anyhow::Context;
+
 use rust_i18n::t;
 use std::time::{Duration, Instant};
 use teloxide::prelude::*;
@@ -460,51 +460,77 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     }
                 });
 
-                let result = async {
-                    send_progress(&tx, 1, 7, t!("ops.deploy_step_tune"));
-                    MaintenanceManager::tune_vps_generic().await
-                        .context(t!("ops.deploy_fail_tune"))?;
+                let mut failed = false;
 
+                send_progress(&tx, 1, 7, t!("ops.deploy_step_tune"));
+                if MaintenanceManager::tune_vps_generic().await.is_err() {
+                    let _ = tx
+                        .send(t!("ops.deploy_fail", "0" => t!("ops.deploy_fail_tune")).to_string());
+                    failed = true;
+                }
+
+                if !failed {
                     send_progress(&tx, 2, 7, t!("ops.deploy_step_xray_init"));
-                    aegis::core::xray::installer::RealityInstallerInternal::install_minimal_environment().await
-                        .context(t!("ops.deploy_fail_xray_init"))?;
+                    if let Err(e) = aegis::core::xray::installer::RealityInstallerInternal::install_minimal_environment().await {
+                        let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_xray_init"), e)).to_string());
+                        failed = true;
+                    }
+                }
 
+                if !failed {
                     send_progress(&tx, 3, 7, t!("ops.deploy_step_pq"));
-                    aegis::core::xray::config::ConfigManager::generate_reality_pq_keys().await
-                        .context(t!("ops.deploy_fail_pq"))?;
+                    if let Err(e) =
+                        aegis::core::xray::config::ConfigManager::generate_reality_pq_keys().await
+                    {
+                        let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_pq"), e)).to_string());
+                        failed = true;
+                    }
+                }
 
+                if !failed {
                     send_progress(&tx, 4, 7, t!("ops.deploy_step_xhttp"));
-                    aegis::core::xray::config::ConfigManager::batch_create_xhttp_reality_enhanced(
+                    if let Err(e) = aegis::core::xray::config::ConfigManager::batch_create_xhttp_reality_enhanced(
                         20, aegis::core::types::IpVersion::SplitStackV4Primary,
-                    ).await
-                        .context(t!("ops.deploy_fail_xhttp"))?;
+                    ).await {
+                        let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_xhttp"), e)).to_string());
+                        failed = true;
+                    }
+                }
 
+                if !failed {
                     send_progress(&tx, 5, 7, t!("ops.deploy_step_vision"));
-                    aegis::core::xray::config::ConfigManager::batch_create_reality_vision_enhanced(
+                    if let Err(e) = aegis::core::xray::config::ConfigManager::batch_create_reality_vision_enhanced(
                         20, aegis::core::types::IpVersion::SplitStackV4Primary,
-                    ).await
-                        .context(t!("ops.deploy_fail_vision"))?;
+                    ).await {
+                        let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_vision"), e)).to_string());
+                        failed = true;
+                    }
+                }
 
+                if !failed {
                     send_progress(&tx, 6, 7, t!("ops.deploy_step_singbox_init"));
-                    aegis::core::singbox::SingBoxInstaller::install().await
-                        .context(t!("ops.deploy_fail_singbox_init"))?;
+                    if let Err(e) = aegis::core::singbox::SingBoxInstaller::install().await {
+                        let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_singbox_init"), e)).to_string());
+                        failed = true;
+                    }
+                }
 
+                if !failed {
                     send_progress(&tx, 7, 7, t!("ops.deploy_step_tuic"));
-                    aegis::core::singbox::config::SingBoxConfigManager::batch_create_tuic(
-                        3, aegis::core::types::IpVersion::SplitStackV4Primary,
-                    ).await
-                        .context(t!("ops.deploy_fail_tuic"))?;
-
-                    Ok::<_, anyhow::Error>(())
-                }.await;
-
-                match result {
-                    Ok(()) => {
-                        let _ = tx.send(t!("ops.deploy_success").to_string());
+                    if let Err(e) =
+                        aegis::core::singbox::config::SingBoxConfigManager::batch_create_tuic(
+                            3,
+                            aegis::core::types::IpVersion::SplitStackV4Primary,
+                        )
+                        .await
+                    {
+                        let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_tuic"), e)).to_string());
+                        failed = true;
                     }
-                    Err(e) => {
-                        let _ = tx.send(t!("ops.deploy_fail", "0" => e.to_string()).to_string());
-                    }
+                }
+
+                if !failed {
+                    let _ = tx.send(t!("ops.deploy_success").to_string());
                 }
 
                 drop(tx);

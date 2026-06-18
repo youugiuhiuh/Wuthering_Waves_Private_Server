@@ -68,10 +68,6 @@ menu:
   singbox_tu_batch_ip: "Select network protocol version:"
   singbox_tu_qty_title: "🚀 <b>TUIC Batch Create</b>\n\n🌐 IP Version: %{0}\n\nSelect quantity:"
   bbr3_install: "🚀 BBR3 Install"
-  bbr3_confirm_warn: "⚠️ <b>WARNING: Third-Party Kernel Risk</b>\n\nBBR3 uses an untested third-party kernel (XanMod) which may cause:\n- System failure to boot\n- Data loss\n- Complete server unavailability\n\n<b>Risk far outweighs any benefits. Proceed with extreme caution!</b>"
-  bbr3_confirm_btn: "⚠️ I Understand, Install Anyway"
-  bbr3_cancel: "Cancel"
-  bbr3_cancelled: "BBR3 installation cancelled"
   generic_tune: "⚙️ Network Optimization"
   wwps_core_btn: "🛰️ wwps-core Management"
   singbox_mgmt_btn: "📦 Sing-box Management"
@@ -173,6 +169,10 @@ ops:
   deploy_fail_vision: "Vision Reality creation step failed"
   deploy_fail_singbox_init: "Sing-Box initialization step failed"
   deploy_fail_tuic: "TUIC creation step failed"
+  bbr3_confirm_warn: "⚠️ <b>WARNING: Third-Party Kernel Risk</b>\n\nBBR3 uses an untested third-party kernel (XanMod) which may cause:\n- System failure to boot\n- Data loss\n- Complete server unavailability\n\n<b>Risk far outweighs any benefits. Proceed with extreme caution!</b>"
+  bbr3_confirm_btn: "⚠️ I Understand, Install Anyway"
+  bbr3_cancel: "Cancel"
+  bbr3_cancelled: "BBR3 installation cancelled"
 
 log:
   xray_tail_title: "🅧 Xray-core Recent Logs:\n\n<pre>%{0}</pre>"
