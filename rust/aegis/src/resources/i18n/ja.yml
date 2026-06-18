@@ -68,6 +68,9 @@ menu:
   singbox_tu_qty_title: "🚀 <b>TUIC バッチ作成</b>\n\n🌐 IPバージョン: %{0}\n\n数量を選択:"
   bbr3_install: "🚀 BBR3 インストール"
   generic_tune: "⚙️ ネットワーク最適化"
+  wwps_core_btn: "🛰️ wwps-core 管理"
+  singbox_mgmt_btn: "📦 Sing-box 管理"
+  warp_btn: "🌩 WARP ルーティング"
 
 auth:
   expired: "🚫 セッションの有効期限が切れました。6桁のTOTPコードを送信して再認証してください。"
@@ -143,6 +146,9 @@ ops:
   tune_start: "⚙️ ネットワーク最適化パラメータを適用中..."
   tune_success: "✅ ネットワーク最適化パラメータを適用しました"
   tune_fail: "❌ ネットワーク最適化の適用に失敗: %{0}"
+  sys_update_start: "⚙️ システムパッケージ更新中..."
+  sys_update_success: "✅ システムパッケージ更新完了"
+  sys_update_fail: "❌ システム更新失敗: %{0}"
 
 log:
   xray_tail_title: "🅧 Xray-core 最近のログ:\n\n<pre>%{0}</pre>"

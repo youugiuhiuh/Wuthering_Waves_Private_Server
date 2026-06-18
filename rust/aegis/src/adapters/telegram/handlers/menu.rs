@@ -98,11 +98,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             );
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback(t!("menu.wwps_core_mgmt"), "a_wwps_core_menu"),
-                    InlineKeyboardButton::callback(
-                        t!("menu.singbox_mgmt_title"),
-                        "a_wwps_box_menu",
-                    ),
+                    InlineKeyboardButton::callback(t!("menu.wwps_core_btn"), "a_wwps_core_menu"),
+                    InlineKeyboardButton::callback(t!("menu.singbox_mgmt_btn"), "a_wwps_box_menu"),
                 ],
                 vec![InlineKeyboardButton::callback(
                     t!("schedule.add_task"),
@@ -133,7 +130,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "m_net_opt" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
-                vec![InlineKeyboardButton::callback(t!("warp.title"), "m_warp")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.warp_btn"),
+                    "m_warp",
+                )],
                 vec![InlineKeyboardButton::callback(
                     t!("menu.back_ops"),
                     "m_ops_center",
@@ -173,8 +173,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_sys_cmd" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback(t!("ops.sys_restart"), "a_sys_reboot"),
-                    InlineKeyboardButton::callback(t!("ops.sys_reload_core"), "a_reload"),
+                    InlineKeyboardButton::callback(t!("ops.sys_auto_update"), "a_sys_maint"),
+                    InlineKeyboardButton::callback(t!("ops.sys_update_start"), "a_sys_update"),
                 ],
                 vec![InlineKeyboardButton::callback(
                     t!("ops.sys_auto_update"),
@@ -264,11 +264,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     .await?;
             } else {
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    t!("menu.wwps_core_mgmt"),
+                    t!("menu.wwps_core_btn"),
                     "m_xray_mgmt",
                 )]);
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    t!("menu.singbox_mgmt_title"),
+                    t!("menu.singbox_mgmt_btn"),
                     "m_singbox_mgmt",
                 )]);
                 buttons.push(vec![InlineKeyboardButton::callback(

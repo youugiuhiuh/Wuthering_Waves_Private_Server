@@ -78,6 +78,9 @@ menu:
   singbox_tu_qty_title: "🚀 <b>TUIC 批量创建</b>\n\n🌐 网络版本: %{0}\n\n请选择生成数量:"
   bbr3_install: "🚀 BBR3 安装"
   generic_tune: "⚙️ 通用网络优化"
+  wwps_core_btn: "🛰️ wwps-core 管理"
+  singbox_mgmt_btn: "📦 Sing-box 管理"
+  warp_btn: "🌩 WARP 分流管理"
 
 auth:
   expired: "🚫 会话已过期，请发送 6 位 TOTP 验证码重新认证"
@@ -153,6 +156,9 @@ ops:
   tune_start: "⚙️ 正在应用网络优化参数..."
   tune_success: "✅ 网络优化参数已应用"
   tune_fail: "❌ 网络优化应用失败: %{0}"
+  sys_update_start: "⚙️ 正在更新系统软件包..."
+  sys_update_success: "✅ 系统软件包更新完成"
+  sys_update_fail: "❌ 系统更新失败: %{0}"
 
 log:
   xray_btn: "🅧 Xray-core 日志"
