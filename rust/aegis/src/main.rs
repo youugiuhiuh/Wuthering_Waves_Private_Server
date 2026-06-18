@@ -501,6 +501,7 @@ async fn main() -> Result<()> {
         i18n::set_lang(lang);
         state.set_lang(lang).await;
         state.mark_lang_configured().await;
+        i18n::mark_lang_configured();
     }
 
     // ── Matrix 同步循环 ──
