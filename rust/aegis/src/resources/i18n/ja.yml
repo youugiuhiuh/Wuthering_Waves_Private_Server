@@ -147,6 +147,8 @@ ops:
   sys_reload_core: "♻️ コア再読み込み"
   bot_self_update: "⚙️ Bot 自己更新"
   sys_auto_update: "⚙️ 定期セキュリティ保守"
+  sys_update_btn: "⬆️ システムパッケージを更新"
+  sys_reboot_btn: "🔁 システムを再起動"
   tune_start: "⚙️ ネットワーク最適化パラメータを適用中..."
   tune_success: "✅ ネットワーク最適化パラメータを適用しました"
   tune_fail: "❌ ネットワーク最適化の適用に失敗: %{0}"
