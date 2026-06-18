@@ -68,6 +68,7 @@ rust-i18n = "4.1"
 [dev-dependencies]
 env_logger = "0.11.8"
 mockall = "0.14"
+serial_test = "3.5.0"
 
 [build-dependencies]
 prost-build = "0.14"

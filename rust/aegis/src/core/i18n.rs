@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +33,21 @@ impl FromStr for Lang {
     }
 }
 
+static LANG_CONFIGURED: AtomicBool = AtomicBool::new(false);
+
+pub fn is_lang_configured() -> bool {
+    LANG_CONFIGURED.load(Ordering::Relaxed)
+}
+
+pub fn mark_lang_configured() {
+    LANG_CONFIGURED.store(true, Ordering::Relaxed);
+}
+
+#[cfg(test)]
+pub(crate) fn reset_lang_configured() {
+    LANG_CONFIGURED.store(false, Ordering::Relaxed);
+}
+
 pub fn set_lang(lang: Lang) {
     rust_i18n::set_locale(lang.as_str());
 }
@@ -43,6 +59,7 @@ pub fn current_lang() -> Lang {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn default_lang_is_zh() {
@@ -72,5 +89,20 @@ mod tests {
         assert_eq!(Lang::Zh.as_str(), "zh");
         assert_eq!(Lang::En.as_str(), "en");
         assert_eq!(Lang::Ja.as_str(), "ja");
+    }
+
+    #[serial]
+    #[test]
+    fn is_lang_configured_returns_false_initially() {
+        crate::core::i18n::reset_lang_configured();
+        assert!(!crate::core::i18n::is_lang_configured());
+    }
+
+    #[serial]
+    #[test]
+    fn is_lang_configured_returns_true_after_mark() {
+        crate::core::i18n::reset_lang_configured();
+        crate::core::i18n::mark_lang_configured();
+        assert!(crate::core::i18n::is_lang_configured());
     }
 }
