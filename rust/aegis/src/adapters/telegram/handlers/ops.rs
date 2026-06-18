@@ -471,7 +471,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     failed = true;
                 }
 
-                if !failed {
+                let xray_installed = tokio::fs::try_exists(aegis::core::paths::xray::BIN)
+                    .await
+                    .unwrap_or(false);
+                if xray_installed {
+                    send_progress(
+                        &tx,
+                        2,
+                        7,
+                        format!("{} - ⏩ 已安装，跳过", t!("ops.deploy_step_xray_init")),
+                    );
+                } else if !failed {
                     send_progress(&tx, 2, 7, t!("ops.deploy_step_xray_init"));
                     if let Err(e) = aegis::core::xray::installer::RealityInstallerInternal::install_minimal_environment().await {
                         let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_xray_init"), e)).to_string());
@@ -501,7 +511,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 };
 
                 if !failed {
-                    send_progress(&tx, 4, 7, format!("{} ({})", t!("ops.deploy_step_xhttp"), ip_version.label()));
+                    send_progress(
+                        &tx,
+                        4,
+                        7,
+                        format!("{} ({})", t!("ops.deploy_step_xhttp"), ip_version.label()),
+                    );
                     match aegis::core::xray::config::ConfigManager::batch_create_xhttp_reality_enhanced(
                         20, ip_version,
                     ).await {
@@ -518,7 +533,12 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 }
 
                 if !failed {
-                    send_progress(&tx, 5, 7, format!("{} ({})", t!("ops.deploy_step_vision"), ip_version.label()));
+                    send_progress(
+                        &tx,
+                        5,
+                        7,
+                        format!("{} ({})", t!("ops.deploy_step_vision"), ip_version.label()),
+                    );
                     match aegis::core::xray::config::ConfigManager::batch_create_reality_vision_enhanced(
                         20, ip_version,
                     ).await {
@@ -534,7 +554,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     }
                 }
 
-                if !failed {
+                if aegis::core::singbox::SingBoxInstaller::is_installed().await {
+                    send_progress(
+                        &tx,
+                        6,
+                        7,
+                        format!("{} - ⏩ 已安装，跳过", t!("ops.deploy_step_singbox_init")),
+                    );
+                } else if !failed {
                     send_progress(&tx, 6, 7, t!("ops.deploy_step_singbox_init"));
                     if let Err(e) = aegis::core::singbox::SingBoxInstaller::install().await {
                         let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_singbox_init"), e)).to_string());
@@ -543,17 +570,25 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 }
 
                 if !failed {
-                    send_progress(&tx, 7, 7, format!("{} ({})", t!("ops.deploy_step_tuic"), ip_version.label()));
+                    send_progress(
+                        &tx,
+                        7,
+                        7,
+                        format!("{} ({})", t!("ops.deploy_step_tuic"), ip_version.label()),
+                    );
                     match aegis::core::singbox::config::SingBoxConfigManager::batch_create_tuic(
-                        3,
-                        ip_version,
+                        3, ip_version,
                     )
                     .await
                     {
                         Ok(result) => {
                             let _ = send_singbox_batch_result(
-                                adapter.clone(), chat_id_clone, "TUIC", &result,
-                            ).await;
+                                adapter.clone(),
+                                chat_id_clone,
+                                "TUIC",
+                                &result,
+                            )
+                            .await;
                         }
                         Err(e) => {
                             let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_tuic"), e)).to_string());
