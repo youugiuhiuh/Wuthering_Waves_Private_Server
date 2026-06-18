@@ -487,10 +487,21 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     }
                 }
 
+                let ip_version = {
+                    let v4 = aegis::core::system::SystemMonitor::get_public_ip().await;
+                    let v6 = aegis::core::system::SystemMonitor::get_public_ipv6().await;
+                    match (&v4, &v6) {
+                        (Ok(_), Ok(_)) => aegis::core::types::IpVersion::SplitStackV4Primary,
+                        (Ok(_), Err(_)) => aegis::core::types::IpVersion::IPv4,
+                        (Err(_), Ok(_)) => aegis::core::types::IpVersion::IPv6,
+                        _ => aegis::core::types::IpVersion::IPv4,
+                    }
+                };
+
                 if !failed {
-                    send_progress(&tx, 4, 7, t!("ops.deploy_step_xhttp"));
+                    send_progress(&tx, 4, 7, format!("{} ({})", t!("ops.deploy_step_xhttp"), ip_version.label()));
                     if let Err(e) = aegis::core::xray::config::ConfigManager::batch_create_xhttp_reality_enhanced(
-                        20, aegis::core::types::IpVersion::SplitStackV4Primary,
+                        20, ip_version,
                     ).await {
                         let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_xhttp"), e)).to_string());
                         failed = true;
@@ -498,9 +509,9 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 }
 
                 if !failed {
-                    send_progress(&tx, 5, 7, t!("ops.deploy_step_vision"));
+                    send_progress(&tx, 5, 7, format!("{} ({})", t!("ops.deploy_step_vision"), ip_version.label()));
                     if let Err(e) = aegis::core::xray::config::ConfigManager::batch_create_reality_vision_enhanced(
-                        20, aegis::core::types::IpVersion::SplitStackV4Primary,
+                        20, ip_version,
                     ).await {
                         let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_vision"), e)).to_string());
                         failed = true;
@@ -516,11 +527,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 }
 
                 if !failed {
-                    send_progress(&tx, 7, 7, t!("ops.deploy_step_tuic"));
+                    send_progress(&tx, 7, 7, format!("{} ({})", t!("ops.deploy_step_tuic"), ip_version.label()));
                     if let Err(e) =
                         aegis::core::singbox::config::SingBoxConfigManager::batch_create_tuic(
                             3,
-                            aegis::core::types::IpVersion::SplitStackV4Primary,
+                            ip_version,
                         )
                         .await
                     {
