@@ -727,6 +727,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                 ctx.msg_id,
                                 format!("❌ {}: {}", t!("schedule.add_fail"), e),
                             )
+                            .parse_mode(ParseMode::Html)
                             .await?;
                     }
                 }

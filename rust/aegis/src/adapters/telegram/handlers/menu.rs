@@ -414,6 +414,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             chat_id_clone,
                             t!("ops.upgrade_fail", "0" => err.to_string()),
                         )
+                        .parse_mode(ParseMode::Html)
                         .await;
                 }
             });
@@ -442,12 +443,14 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         )]);
                         ctx.bot
                             .edit_message_text(ctx.chat_id, ctx.msg_id, t!("menu.wwps_core_mgmt"))
+                            .parse_mode(ParseMode::Html)
                             .reply_markup(InlineKeyboardMarkup::new(buttons))
                             .await
                     }
                     Ok(_) => {
                         ctx.bot
                             .edit_message_text(ctx.chat_id, ctx.msg_id, t!("schedule.geo_stopped"))
+                            .parse_mode(ParseMode::Html)
                             .await
                     }
                     Err(err) => {
@@ -457,6 +460,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                 ctx.msg_id,
                                 t!("ops.upgrade_fail", "0" => err.to_string()),
                             )
+                            .parse_mode(ParseMode::Html)
                             .await
                     }
                 },
@@ -467,6 +471,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             ctx.msg_id,
                             t!("ops.upgrade_fail", "0" => err.to_string()),
                         )
+                        .parse_mode(ParseMode::Html)
                         .await
                 }
             };
@@ -475,6 +480,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let _ = ctx
                     .bot
                     .send_message(ctx.chat_id, t!("ops.geo_fail", "0" => ""))
+                    .parse_mode(ParseMode::Html)
                     .await;
             }
         }
@@ -506,6 +512,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             chat_id_clone,
                             t!("ops.upgrade_fail", "0" => err.to_string()),
                         )
+                        .parse_mode(ParseMode::Html)
                         .await;
                 }
             });
@@ -552,6 +559,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             ctx.msg_id,
                             t!("ops.bbr3_fail", "0" => err.to_string()),
                         )
+                        .parse_mode(ParseMode::Html)
                         .await?;
                 }
             }
@@ -580,6 +588,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             ctx.msg_id,
                             t!("ops.bbr3_fail", "0" => err.to_string()),
                         )
+                        .parse_mode(ParseMode::Html)
                         .await?;
                 }
             }
