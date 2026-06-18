@@ -51,7 +51,7 @@ const TIMEOUT_LONG: Duration = Duration::from_secs(60);
 const TIMEOUT_PACKAGE_INSTALL: Duration = Duration::from_secs(30 * 60);
 const OUTPUT_MAX: usize = 3000;
 const BBR3_OPTIMIZE_CONF_PATH: &str = "/etc/sysctl.d/90-wwps-bbr3-optimize.conf";
-const COMBINED_NETWORK_OPTIMIZE_CONF: &str = r#"fs.file-max = 1000000
+const NETWORK_OPTIMIZE_CONF: &str = r#"fs.file-max = 1000000
 fs.inotify.max_user_instances = 8192
 vm.swappiness = 60
 vm.vfs_cache_pressure = 50
@@ -192,6 +192,9 @@ impl MaintenanceManager {
         progress_callback(8, "🔄 更新 GRUB 引导配置...");
         update_grub().await?;
 
+        progress_callback(9, "⚙️ 写入网络优化配置...");
+        let _ = apply_network_optimization().await;
+
         let kernel_version = current_kernel_version().await;
         let congestion_control = current_congestion_control().await;
         write_bbr3_pending_flag().await?;
@@ -225,7 +228,7 @@ impl MaintenanceManager {
 
     /// 通用型 VPS 内核调优配置，适用于大多数小中型实例
     pub async fn tune_vps_generic() -> Result<()> {
-        apply_combined_network_optimization().await
+        apply_network_optimization().await
     }
 
     pub async fn upgrade_system_packages<F>(progress_callback: F) -> Result<()>
@@ -1003,15 +1006,15 @@ async fn current_architecture() -> Result<String> {
     Ok(stdout.trim().to_string())
 }
 
-async fn apply_combined_network_optimization() -> Result<()> {
-    fs::write(BBR3_OPTIMIZE_CONF_PATH, COMBINED_NETWORK_OPTIMIZE_CONF)
+async fn apply_network_optimization() -> Result<()> {
+    fs::write(BBR3_OPTIMIZE_CONF_PATH, NETWORK_OPTIMIZE_CONF)
         .await
-        .context("写入 BBR3/通用优化配置失败")?;
-    let status = run_cmd_status("sysctl", &["-p", BBR3_OPTIMIZE_CONF_PATH], TIMEOUT_SHORT)
+        .context("写入网络优化配置失败")?;
+    let status = run_cmd_status("sysctl", &["-e", "-p", BBR3_OPTIMIZE_CONF_PATH], TIMEOUT_SHORT)
         .await
-        .context("应用 BBR3/通用优化配置失败")?;
+        .context("执行 sysctl 失败")?;
     if !status.success() {
-        anyhow::bail!("应用 BBR3/通用优化配置失败");
+        log::warn!("部分 sysctl 参数未生效（可能不兼容当前内核），重启后将由 systemd-sysctl 自动加载");
     }
     Ok(())
 }
