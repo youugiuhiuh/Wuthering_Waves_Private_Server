@@ -15,11 +15,41 @@ use crate::core::paths::xray;
 use crate::core::utils::{format_download_progress, should_report};
 use crate::core::xray::installer::PackageManager;
 
+fn truncate_output(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        let start = s.len() - max_len;
+        format!("…\n{}", &s[start..])
+    }
+}
+
+async fn run_apt_stage<F>(
+    progress_callback: &F,
+    desc: &'static str,
+    fail_context: &'static str,
+    args: &[&str],
+) -> Result<()>
+where
+    F: Fn(&str) + Send + Sync,
+{
+    progress_callback(desc);
+    let (stdout, stderr) = run_cmd_checked("apt-get", args, TIMEOUT_PACKAGE_INSTALL)
+        .await
+        .context(fail_context)?;
+    let output = format!("{}{}", stdout.trim(), stderr.trim());
+    if !output.is_empty() {
+        progress_callback(&truncate_output(&output, OUTPUT_MAX));
+    }
+    Ok(())
+}
+
 pub struct MaintenanceManager;
 
 const TIMEOUT_SHORT: Duration = Duration::from_secs(30);
 const TIMEOUT_LONG: Duration = Duration::from_secs(60);
 const TIMEOUT_PACKAGE_INSTALL: Duration = Duration::from_secs(30 * 60);
+const OUTPUT_MAX: usize = 3000;
 const BBR3_OPTIMIZE_CONF_PATH: &str = "/etc/sysctl.d/90-wwps-bbr3-optimize.conf";
 const COMBINED_NETWORK_OPTIMIZE_CONF: &str = r#"fs.file-max = 1000000
 fs.inotify.max_user_instances = 8192
@@ -203,10 +233,35 @@ impl MaintenanceManager {
         F: Fn(&str) + Send + Sync + 'static,
     {
         let pm = PackageManager::detect().await?;
-        progress_callback("🔄 正在刷新软件包索引...");
-        pm.update().await?;
-        progress_callback("⬆️ 正在升级系统软件包...");
-        pm.upgrade_all().await?;
+        if !matches!(pm, PackageManager::Apt) {
+            anyhow::bail!("系统更新功能目前仅支持 Debian/Ubuntu");
+        }
+
+        let cb = &progress_callback;
+
+        run_apt_stage(
+            cb,
+            "🔄 正在刷新软件包索引...",
+            "更新软件包索引失败",
+            &["update"],
+        )
+        .await?;
+        run_apt_stage(
+            cb,
+            "⬆️ 正在执行系统全面升级...",
+            "系统升级失败",
+            &["full-upgrade", "-y"],
+        )
+        .await?;
+        run_apt_stage(
+            cb,
+            "🧹 正在清理无用依赖...",
+            "自动移除无用依赖失败",
+            &["autoremove", "-y"],
+        )
+        .await?;
+        run_apt_stage(cb, "🧹 正在清理包缓存...", "清理包缓存失败", &["autoclean"]).await?;
+
         progress_callback("✅ 系统软件包更新完成");
         Ok(())
     }
