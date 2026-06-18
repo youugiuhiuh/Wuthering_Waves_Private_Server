@@ -68,6 +68,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_ops_center" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
+                    InlineKeyboardButton::callback(t!("menu.bbr3_install"), "a_bbr3"),
+                    InlineKeyboardButton::callback(t!("menu.generic_tune"), "a_tune"),
+                ],
+                vec![
                     InlineKeyboardButton::callback(t!("menu.network_opt"), "m_net_opt"),
                     InlineKeyboardButton::callback(t!("menu.security"), "m_security"),
                 ],
@@ -129,10 +133,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "m_net_opt" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
-                vec![
-                    InlineKeyboardButton::callback(t!("menu.network_opt"), "m_warp"),
-                    InlineKeyboardButton::callback(t!("ops.bbr3_title"), "a_bbr3"),
-                ],
+                vec![InlineKeyboardButton::callback(t!("warp.title"), "m_warp")],
                 vec![InlineKeyboardButton::callback(
                     t!("menu.back_ops"),
                     "m_ops_center",
