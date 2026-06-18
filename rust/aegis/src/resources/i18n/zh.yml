@@ -19,6 +19,7 @@ menu:
   security_button: "🛡️ 防火墙加固"
   sys_cmd: "💻 系统指令"
   sys_cmd_desc: "执行系统级操作:"
+  one_click_deploy: "🚀 一键部署"
   log_audit: "📄 日志审计"
   log_audit_desc: "通过 systemd journal 获取服务日志:"
   ops_center: "🛠 <b>运维中心</b>\n集成网络、安全及系统管理工具:"

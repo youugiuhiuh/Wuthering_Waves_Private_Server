@@ -19,6 +19,7 @@ menu:
   security_button: "🛡️ ファイアウォール強化"
   sys_cmd: "💻 システムコマンド"
   sys_cmd_desc: "システムレベルの操作を実行:"
+  one_click_deploy: "🚀 ワンクリックデプロイ"
   log_audit: "📄 ログ監査"
   log_audit_desc: "systemd journalからサービスログを取得:"
   ops_center: "🛠 <b>運用センター</b>\nネットワーク、セキュリティ、システム管理ツール:"

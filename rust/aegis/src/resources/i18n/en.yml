@@ -19,6 +19,7 @@ menu:
   security_button: "🛡️ Firewall Hardening"
   sys_cmd: "💻 System Commands"
   sys_cmd_desc: "Execute system-level operations:"
+  one_click_deploy: "🚀 One-Click Deploy"
   log_audit: "📄 Log Audit"
   log_audit_desc: "Fetch service logs via systemd journal:"
   ops_center: "🛠 <b>Operations Center</b>\nNetwork, security, and system management tools:"
