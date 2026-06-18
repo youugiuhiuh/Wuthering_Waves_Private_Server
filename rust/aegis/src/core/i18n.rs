@@ -116,12 +116,18 @@ mod tests {
 
     #[test]
     fn lang_to_timezone_zh() {
-        assert_eq!(crate::core::i18n::lang_to_timezone(Lang::Zh), "Asia/Shanghai");
+        assert_eq!(
+            crate::core::i18n::lang_to_timezone(Lang::Zh),
+            "Asia/Shanghai"
+        );
     }
 
     #[test]
     fn lang_to_timezone_en() {
-        assert_eq!(crate::core::i18n::lang_to_timezone(Lang::En), "America/New_York");
+        assert_eq!(
+            crate::core::i18n::lang_to_timezone(Lang::En),
+            "America/New_York"
+        );
     }
 
     #[test]

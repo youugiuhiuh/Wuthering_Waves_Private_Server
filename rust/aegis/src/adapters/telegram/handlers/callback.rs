@@ -48,9 +48,7 @@ pub fn handle_callback(
                 state.mark_lang_configured().await;
                 i18n::mark_lang_configured();
                 let tz = i18n::lang_to_timezone(lang);
-                if let Some(manager) =
-                    aegis::core::system::scheduler::get_manager().await
-                {
+                if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                     let geo_task = aegis::core::system::scheduler::ScheduledTask::new_with_timezone(
                         aegis::core::system::scheduler::TaskType::GeoUpdate,
                         "0 1 * * 1",

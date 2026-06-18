@@ -1,4 +1,3 @@
-use anyhow::Context;
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use super::schedule::{build_custom_schedule_keyboard, build_custom_schedule_text};
 use crate::app::state::{ScheduleFrequency, ScheduleInputState};
@@ -7,6 +6,7 @@ use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::operations::{Operations, REBOOT_FLAG};
 use aegis::core::system::scheduler::TaskType;
 use aegis::core::system::upgrade::UpgradeManager;
+use anyhow::Context;
 use rust_i18n::t;
 use std::time::{Duration, Instant};
 use teloxide::prelude::*;
@@ -545,6 +545,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     Ok(HandlerAction::Done)
 }
 
-fn send_progress(tx: &tokio::sync::mpsc::UnboundedSender<String>, step: u8, total: u8, msg: impl Into<String>) {
+fn send_progress(
+    tx: &tokio::sync::mpsc::UnboundedSender<String>,
+    step: u8,
+    total: u8,
+    msg: impl Into<String>,
+) {
     let _ = tx.send(format!("[{}/{}] {}", step, total, msg.into()));
 }
