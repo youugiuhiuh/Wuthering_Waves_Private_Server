@@ -110,7 +110,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 )],
                 vec![
                     InlineKeyboardButton::callback(t!("schedule.geo_update_now"), "a_geo_menu"),
-                    InlineKeyboardButton::callback(t!("ops.sys_auto_update"), "a_upgrade"),
+                    InlineKeyboardButton::callback(t!("ops.bot_self_update"), "a_upgrade"),
                 ],
                 vec![InlineKeyboardButton::callback(
                     &timeout_label,
@@ -155,7 +155,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
         "m_security" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
-                vec![InlineKeyboardButton::callback(t!("ops.fw_title"), "a_fw")],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.security_button"),
+                    "a_fw",
+                )],
                 vec![InlineKeyboardButton::callback(
                     t!("menu.back_ops"),
                     "m_ops_center",
@@ -212,7 +215,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_mon" => {
             let report = SystemMonitor::get_status_report()
                 .await
-                .unwrap_or_else(|e| t!("ops.bbr3_fail", "0" => e).into_owned());
+                .unwrap_or_else(|e| t!("ops.monitor_fail", "0" => e).into_owned());
             let (wwps_core, wwps_box) = SystemMonitor::get_core_status().await;
 
             let status_text = format!(
@@ -242,7 +245,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
             if !wwps_core_config_exists && !singbox_config_exists {
                 buttons.push(vec![InlineKeyboardButton::callback(
-                    t!("warp.install_warp"),
+                    t!("menu.init_reality_base"),
                     "a_inst_base",
                 )]);
                 ctx.bot
@@ -252,7 +255,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         format!(
                             "{}\n\n❌ <b>{}</b>\n\n{}",
                             t!("menu.users"),
-                            t!("warp.not_installed"),
+                            t!("menu.no_proxy_core"),
                             t!("menu.settings_desc")
                         ),
                     )
@@ -381,7 +384,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     "a_wwps_core_latest",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    t!("menu.log_audit"),
+                    t!("menu.version_tags"),
                     "a_wwps_core_tags",
                 )],
                 vec![InlineKeyboardButton::callback(
@@ -422,7 +425,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_wwps_core_tags" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text(t!("menu.log_audit"))
+                .text(t!("menu.version_tags"))
                 .await?;
 
             let reply = match WwpsCoreUpgradeConfig::from_env()
@@ -449,7 +452,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     }
                     Ok(_) => {
                         ctx.bot
-                            .edit_message_text(ctx.chat_id, ctx.msg_id, t!("schedule.geo_stopped"))
+                            .edit_message_text(ctx.chat_id, ctx.msg_id, t!("menu.no_version_found"))
                             .parse_mode(ParseMode::Html)
                             .await
                     }
@@ -479,7 +482,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if reply.is_err() {
                 let _ = ctx
                     .bot
-                    .send_message(ctx.chat_id, t!("ops.geo_fail", "0" => ""))
+                    .send_message(ctx.chat_id, t!("ops.upgrade_fail", "0" => ""))
                     .parse_mode(ParseMode::Html)
                     .await;
             }
@@ -489,7 +492,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             if tag.is_empty() {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
-                    .text(t!("ops.bbr3_fail", "0" => "").into_owned())
+                    .text(t!("menu.version_tag_empty"))
                     .await?;
                 return Ok(HandlerAction::Done);
             }
@@ -520,11 +523,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_wwps_box_menu" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![InlineKeyboardButton::callback(
-                    t!("ops.sys_restart"),
+                    t!("ops.singbox_restart"),
                     "a_wwps_box_restart",
                 )],
                 vec![InlineKeyboardButton::callback(
-                    t!("menu.monitor"),
+                    t!("menu.singbox_status"),
                     "a_wwps_box_status",
                 )],
                 vec![InlineKeyboardButton::callback(
@@ -542,13 +545,17 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_wwps_box_restart" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text(t!("ops.sys_restart"))
+                .text(t!("ops.singbox_restart"))
                 .await?;
 
             match SingBoxInstaller::restart_service().await {
                 Ok(_) => {
                     ctx.bot
-                        .edit_message_text(ctx.chat_id, ctx.msg_id, t!("ops.reload_success"))
+                        .edit_message_text(
+                            ctx.chat_id,
+                            ctx.msg_id,
+                            t!("ops.singbox_restart_success"),
+                        )
                         .parse_mode(ParseMode::Html)
                         .await?;
                 }
@@ -557,7 +564,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .edit_message_text(
                             ctx.chat_id,
                             ctx.msg_id,
-                            t!("ops.bbr3_fail", "0" => err.to_string()),
+                            t!("ops.singbox_restart_fail", "0" => err.to_string()),
                         )
                         .parse_mode(ParseMode::Html)
                         .await?;
@@ -567,7 +574,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_wwps_box_status" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
-                .text(t!("menu.monitor"))
+                .text(t!("menu.singbox_status"))
                 .await?;
 
             match SingBoxInstaller::status().await {
@@ -586,7 +593,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         .edit_message_text(
                             ctx.chat_id,
                             ctx.msg_id,
-                            t!("ops.bbr3_fail", "0" => err.to_string()),
+                            t!("ops.singbox_status_fail", "0" => err.to_string()),
                         )
                         .parse_mode(ParseMode::Html)
                         .await?;
