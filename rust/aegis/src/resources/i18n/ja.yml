@@ -68,10 +68,6 @@ menu:
   singbox_tu_batch_ip: "ネットワークプロトコルバージョンを選択:"
   singbox_tu_qty_title: "🚀 <b>TUIC バッチ作成</b>\n\n🌐 IPバージョン: %{0}\n\n数量を選択:"
   bbr3_install: "🚀 BBR3 インストール"
-  bbr3_confirm_warn: "⚠️ <b>警告：サードパーティカーネルのリスク</b>\n\nBBR3 は未検証のサードパーティカーネル (XanMod) を使用しており、以下の原因となる可能性があります：\n- システム起動不能\n- データ損失\n- サーバー完全停止\n\n<b>リスクが利点を大幅に上回ります。十分注意して進めてください！</b>"
-  bbr3_confirm_btn: "⚠️ リスクを理解し、インストール"
-  bbr3_cancel: "キャンセル"
-  bbr3_cancelled: "BBR3 インストールをキャンセルしました"
   generic_tune: "⚙️ ネットワーク最適化"
   wwps_core_btn: "🛰️ wwps-core 管理"
   singbox_mgmt_btn: "📦 Sing-box 管理"
@@ -173,6 +169,10 @@ ops:
   deploy_fail_vision: "Vision Reality 作成ステップが失敗しました"
   deploy_fail_singbox_init: "Sing-Box 初期化ステップが失敗しました"
   deploy_fail_tuic: "TUIC 作成ステップが失敗しました"
+  bbr3_confirm_warn: "⚠️ <b>警告：サードパーティカーネルのリスク</b>\n\nBBR3 は未検証のサードパーティカーネル (XanMod) を使用しており、以下の原因となる可能性があります：\n- システム起動不能\n- データ損失\n- サーバー完全停止\n\n<b>リスクが利点を大幅に上回ります。十分注意して進めてください！</b>"
+  bbr3_confirm_btn: "⚠️ リスクを理解し、インストール"
+  bbr3_cancel: "キャンセル"
+  bbr3_cancelled: "BBR3 インストールをキャンセルしました"
 
 log:
   xray_tail_title: "🅧 Xray-core 最近のログ:\n\n<pre>%{0}</pre>"
