@@ -47,6 +47,21 @@ pub fn handle_callback(
                 let _ = save_lang_to_config(&state, lang).await;
                 state.mark_lang_configured().await;
                 i18n::mark_lang_configured();
+                let tz = i18n::lang_to_timezone(lang);
+                if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
+                    let geo_task = aegis::core::system::scheduler::ScheduledTask::new_with_timezone(
+                        aegis::core::system::scheduler::TaskType::GeoUpdate,
+                        "0 1 * * 1",
+                        tz,
+                    );
+                    let sec_task = aegis::core::system::scheduler::ScheduledTask::new_with_timezone(
+                        aegis::core::system::scheduler::TaskType::SecurityUpdate,
+                        "0 2 * * *",
+                        tz,
+                    );
+                    let _ = manager.add_new_task(geo_task).await;
+                    let _ = manager.add_new_task(sec_task).await;
+                }
                 bot.answer_callback_query(q.id.clone())
                     .text(rust_i18n::t!("lang.switched", "0" => lang.as_str()))
                     .await?;

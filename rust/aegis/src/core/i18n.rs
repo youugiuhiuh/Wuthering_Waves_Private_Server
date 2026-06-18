@@ -56,6 +56,14 @@ pub fn current_lang() -> Lang {
     rust_i18n::locale().parse().unwrap_or(Lang::Zh)
 }
 
+pub fn lang_to_timezone(lang: Lang) -> &'static str {
+    match lang {
+        Lang::Zh => "Asia/Shanghai",
+        Lang::En => "America/New_York",
+        Lang::Ja => "Asia/Tokyo",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,5 +112,26 @@ mod tests {
         crate::core::i18n::reset_lang_configured();
         crate::core::i18n::mark_lang_configured();
         assert!(crate::core::i18n::is_lang_configured());
+    }
+
+    #[test]
+    fn lang_to_timezone_zh() {
+        assert_eq!(
+            crate::core::i18n::lang_to_timezone(Lang::Zh),
+            "Asia/Shanghai"
+        );
+    }
+
+    #[test]
+    fn lang_to_timezone_en() {
+        assert_eq!(
+            crate::core::i18n::lang_to_timezone(Lang::En),
+            "America/New_York"
+        );
+    }
+
+    #[test]
+    fn lang_to_timezone_ja() {
+        assert_eq!(crate::core::i18n::lang_to_timezone(Lang::Ja), "Asia/Tokyo");
     }
 }
