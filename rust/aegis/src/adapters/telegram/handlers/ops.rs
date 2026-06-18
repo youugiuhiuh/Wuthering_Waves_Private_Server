@@ -1,3 +1,4 @@
+use anyhow::Context;
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use super::schedule::{build_custom_schedule_keyboard, build_custom_schedule_text};
 use crate::app::state::{ScheduleFrequency, ScheduleInputState};
@@ -427,6 +428,89 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let _ = Operations::reboot_system().await;
             });
         }
+        "a_one_click" => {
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
+                .text(t!("ops.deploy_start"))
+                .await?;
+            let bot_clone = ctx.bot.clone();
+            let chat_id_clone = ctx.chat_id;
+            let msg_id_clone = ctx.msg_id;
+
+            tokio::spawn(async move {
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+                let bot_for_updates = bot_clone.clone();
+                let update_task = tokio::spawn(async move {
+                    let mut last_text = String::new();
+                    while let Some(text) = rx.recv().await {
+                        if text == last_text {
+                            continue;
+                        }
+                        last_text = text.clone();
+                        let _ = bot_for_updates
+                            .edit_message_text(
+                                chat_id_clone,
+                                msg_id_clone,
+                                format!("🚀 <b>{}</b>\n{}", t!("menu.one_click_deploy"), text),
+                            )
+                            .parse_mode(ParseMode::Html)
+                            .await;
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                });
+
+                let result = async {
+                    send_progress(&tx, 1, 7, t!("ops.deploy_step_tune"));
+                    MaintenanceManager::tune_vps_generic().await
+                        .context(t!("ops.deploy_fail_tune"))?;
+
+                    send_progress(&tx, 2, 7, t!("ops.deploy_step_xray_init"));
+                    aegis::core::xray::installer::RealityInstallerInternal::install_minimal_environment().await
+                        .context(t!("ops.deploy_fail_xray_init"))?;
+
+                    send_progress(&tx, 3, 7, t!("ops.deploy_step_pq"));
+                    aegis::core::xray::config::ConfigManager::generate_reality_pq_keys().await
+                        .context(t!("ops.deploy_fail_pq"))?;
+
+                    send_progress(&tx, 4, 7, t!("ops.deploy_step_xhttp"));
+                    aegis::core::xray::config::ConfigManager::batch_create_xhttp_reality_enhanced(
+                        20, aegis::core::types::IpVersion::SplitStackV4Primary,
+                    ).await
+                        .context(t!("ops.deploy_fail_xhttp"))?;
+
+                    send_progress(&tx, 5, 7, t!("ops.deploy_step_vision"));
+                    aegis::core::xray::config::ConfigManager::batch_create_reality_vision_enhanced(
+                        20, aegis::core::types::IpVersion::SplitStackV4Primary,
+                    ).await
+                        .context(t!("ops.deploy_fail_vision"))?;
+
+                    send_progress(&tx, 6, 7, t!("ops.deploy_step_singbox_init"));
+                    aegis::core::singbox::SingBoxInstaller::install().await
+                        .context(t!("ops.deploy_fail_singbox_init"))?;
+
+                    send_progress(&tx, 7, 7, t!("ops.deploy_step_tuic"));
+                    aegis::core::singbox::config::SingBoxConfigManager::batch_create_tuic(
+                        3, aegis::core::types::IpVersion::SplitStackV4Primary,
+                    ).await
+                        .context(t!("ops.deploy_fail_tuic"))?;
+
+                    Ok::<_, anyhow::Error>(())
+                }.await;
+
+                match result {
+                    Ok(()) => {
+                        let _ = tx.send(t!("ops.deploy_success").to_string());
+                    }
+                    Err(e) => {
+                        let _ = tx.send(t!("ops.deploy_fail", "0" => e.to_string()).to_string());
+                    }
+                }
+
+                drop(tx);
+                let _ = update_task.await;
+            });
+        }
         "a_bbr3_reboot_now" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())
@@ -459,4 +543,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
     }
     Ok(HandlerAction::Done)
+}
+
+fn send_progress(tx: &tokio::sync::mpsc::UnboundedSender<String>, step: u8, total: u8, msg: impl Into<String>) {
+    let _ = tx.send(format!("[{}/{}] {}", step, total, msg.into()));
 }
