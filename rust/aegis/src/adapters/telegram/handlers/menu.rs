@@ -12,7 +12,7 @@ use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 
 pub async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
-    let keyboard = InlineKeyboardMarkup::new(vec![
+    let mut rows = vec![
         vec![
             InlineKeyboardButton::callback(t!("menu.monitor"), "m_mon"),
             InlineKeyboardButton::callback(t!("menu.users"), "m_usr"),
@@ -25,12 +25,15 @@ pub async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
             t!("menu.settings"),
             "m_settings",
         )],
-        vec![
+    ];
+    if !aegis::core::i18n::is_lang_configured() {
+        rows.push(vec![
             InlineKeyboardButton::callback(t!("lang.zh"), "lang:zh"),
             InlineKeyboardButton::callback(t!("lang.en"), "lang:en"),
             InlineKeyboardButton::callback(t!("lang.ja"), "lang:ja"),
-        ],
-    ]);
+        ]);
+    }
+    let keyboard = InlineKeyboardMarkup::new(rows);
     bot.send_message(
         chat_id,
         format!("{}\n{}", t!("menu.title"), t!("menu.prompt")),
