@@ -13,7 +13,7 @@ menu:
   back_user: "⬅️ 返回"
   refresh: "🔄 刷新"
   network_opt: "🌩 网络优化"
-  network_opt_desc: "选择优化方案:\n\n<code>BBR3 + 通用优化</code> 会同时处理内核安装与 sysctl 调优。"
+  network_opt_desc: "管理 WARP 分流与路由规则。"
   security: "🛡 安全防护"
   security_desc: "系统安全配置:"
   sys_cmd: "💻 系统指令"
@@ -69,6 +69,8 @@ menu:
   singbox_tu_batch_title: "🚀 <b>TUIC 批量创建</b>"
   singbox_tu_batch_ip: "请选择网络协议版本:"
   singbox_tu_qty_title: "🚀 <b>TUIC 批量创建</b>\n\n🌐 网络版本: %{0}\n\n请选择生成数量:"
+  bbr3_install: "🚀 BBR3 安装"
+  generic_tune: "⚙️ 通用网络优化"
 
 auth:
   expired: "🚫 会话已过期，请发送 6 位 TOTP 验证码重新认证"
@@ -135,6 +137,9 @@ ops:
   sys_restart: "🔄 重启系统"
   sys_reload_core: "♻️ 重启核心"
   sys_auto_update: "⚙️ 配置自动更新"
+  tune_start: "⚙️ 正在应用网络优化参数..."
+  tune_success: "✅ 网络优化参数已应用"
+  tune_fail: "❌ 网络优化应用失败: %{0}"
 
 log:
   xray_btn: "🅧 Xray-core 日志"

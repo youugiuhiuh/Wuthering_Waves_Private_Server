@@ -151,7 +151,50 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .await?;
         }
         "a_tune" => {
-            return Ok(HandlerAction::Redirect("a_bbr3".to_string()));
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
+                .text(t!("ops.tune_start"))
+                .await?;
+            let bot_clone = ctx.bot.clone();
+            let chat_id_clone = ctx.chat_id;
+            let msg_id_clone = ctx.msg_id;
+
+            tokio::spawn(async move {
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+                let bot_for_updates = bot_clone.clone();
+                let update_task = tokio::spawn(async move {
+                    let mut last_text = String::new();
+                    while let Some(text) = rx.recv().await {
+                        if text == last_text {
+                            continue;
+                        }
+                        last_text = text.clone();
+                        let _ = bot_for_updates
+                            .edit_message_text(
+                                chat_id_clone,
+                                msg_id_clone,
+                                format!("⚙️ <b>{}</b>\n{}", t!("menu.generic_tune"), text),
+                            )
+                            .parse_mode(ParseMode::Html)
+                            .await;
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                });
+
+                let result = MaintenanceManager::tune_vps_generic().await;
+                match result {
+                    Ok(()) => {
+                        let _ = tx.send(t!("ops.tune_success").to_string());
+                    }
+                    Err(e) => {
+                        let _ = tx.send(t!("ops.tune_fail", "0" => e.to_string()).to_string());
+                    }
+                }
+
+                drop(tx);
+                let _ = update_task.await;
+            });
         }
         "a_bbr3" => {
             ctx.bot

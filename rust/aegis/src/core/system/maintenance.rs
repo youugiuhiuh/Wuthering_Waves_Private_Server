@@ -161,9 +161,6 @@ impl MaintenanceManager {
         progress_callback(8, "🔄 更新 GRUB 引导配置...");
         update_grub().await?;
 
-        progress_callback(8, "⚙️ 应用网络优化参数...");
-        apply_combined_network_optimization().await?;
-
         let kernel_version = current_kernel_version().await;
         let congestion_control = current_congestion_control().await;
         write_bbr3_pending_flag().await?;
