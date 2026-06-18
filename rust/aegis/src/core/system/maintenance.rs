@@ -13,6 +13,7 @@ use crate::core::paths::maintenance::{
 };
 use crate::core::paths::xray;
 use crate::core::utils::{format_download_progress, should_report};
+use crate::core::xray::installer::PackageManager;
 
 pub struct MaintenanceManager;
 
@@ -195,6 +196,19 @@ impl MaintenanceManager {
     /// 通用型 VPS 内核调优配置，适用于大多数小中型实例
     pub async fn tune_vps_generic() -> Result<()> {
         apply_combined_network_optimization().await
+    }
+
+    pub async fn upgrade_system_packages<F>(progress_callback: F) -> Result<()>
+    where
+        F: Fn(&str) + Send + Sync + 'static,
+    {
+        let pm = PackageManager::detect().await?;
+        progress_callback("🔄 正在刷新软件包索引...");
+        pm.update().await?;
+        progress_callback("⬆️ 正在升级系统软件包...");
+        pm.upgrade_all().await?;
+        progress_callback("✅ 系统软件包更新完成");
+        Ok(())
     }
 
     pub async fn harden_firewall<F>(progress_callback: F) -> Result<()>

@@ -421,7 +421,7 @@ pub enum PackageManager {
 }
 
 impl PackageManager {
-    async fn detect() -> Result<Self> {
+    pub(crate) async fn detect() -> Result<Self> {
         if fs::try_exists("/etc/debian_version").await.unwrap_or(false) {
             Ok(Self::Apt)
         } else if fs::try_exists("/etc/alpine-release").await.unwrap_or(false) {
@@ -435,11 +435,19 @@ impl PackageManager {
         }
     }
 
-    async fn update(&self) -> Result<()> {
+    pub(crate) async fn update(&self) -> Result<()> {
         match self {
             PackageManager::Apt => run_command("apt-get", &["update"]).await,
             PackageManager::Yum => run_command("yum", &["makecache"]).await,
             PackageManager::Apk => run_command("apk", &["update"]).await,
+        }
+    }
+
+    pub(crate) async fn upgrade_all(&self) -> Result<()> {
+        match self {
+            PackageManager::Apt => run_command("apt-get", &["upgrade", "-y"]).await,
+            PackageManager::Yum => run_command("yum", &["update", "-y"]).await,
+            PackageManager::Apk => run_command("apk", &["upgrade", "--no-progress"]).await,
         }
     }
 

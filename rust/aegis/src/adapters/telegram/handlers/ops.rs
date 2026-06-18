@@ -200,6 +200,58 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 let _ = update_task.await;
             });
         }
+        "a_sys_update" => {
+            ctx.bot
+                .answer_callback_query(ctx.q.id.clone())
+                .text(t!("ops.sys_update_start"))
+                .await?;
+            let bot_clone = ctx.bot.clone();
+            let chat_id_clone = ctx.chat_id;
+            let msg_id_clone = ctx.msg_id;
+
+            tokio::spawn(async move {
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+                let bot_for_updates = bot_clone.clone();
+                let update_task = tokio::spawn(async move {
+                    let mut last_text = String::new();
+                    while let Some(text) = rx.recv().await {
+                        if text == last_text {
+                            continue;
+                        }
+                        last_text = text.clone();
+                        let _ = bot_for_updates
+                            .edit_message_text(
+                                chat_id_clone,
+                                msg_id_clone,
+                                format!("⬆️ <b>{}</b>\n{}", t!("menu.sys_cmd"), text),
+                            )
+                            .parse_mode(ParseMode::Html)
+                            .await;
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                });
+
+                let tx_clone = tx.clone();
+                let result = MaintenanceManager::upgrade_system_packages(move |text| {
+                    let _ = tx_clone.send(text.to_string());
+                })
+                .await;
+
+                match result {
+                    Ok(()) => {
+                        let _ = tx.send(t!("ops.sys_update_success").to_string());
+                    }
+                    Err(e) => {
+                        let _ =
+                            tx.send(t!("ops.sys_update_fail", "0" => e.to_string()).to_string());
+                    }
+                }
+
+                drop(tx);
+                let _ = update_task.await;
+            });
+        }
         "a_bbr3" => {
             ctx.bot
                 .answer_callback_query(ctx.q.id.clone())

@@ -68,6 +68,9 @@ menu:
   singbox_tu_qty_title: "🚀 <b>TUIC Batch Create</b>\n\n🌐 IP Version: %{0}\n\nSelect quantity:"
   bbr3_install: "🚀 BBR3 Install"
   generic_tune: "⚙️ Network Optimization"
+  wwps_core_btn: "🛰️ wwps-core Management"
+  singbox_mgmt_btn: "📦 Sing-box Management"
+  warp_btn: "🌩 WARP Routing"
 
 auth:
   expired: "🚫 Session expired. Please send a 6-digit TOTP code to re-authenticate."
@@ -143,6 +146,9 @@ ops:
   tune_start: "⚙️ Applying network optimization parameters..."
   tune_success: "✅ Network optimization parameters applied"
   tune_fail: "❌ Network optimization failed: %{0}"
+  sys_update_start: "⚙️ Updating system packages..."
+  sys_update_success: "✅ System packages updated"
+  sys_update_fail: "❌ System update failed: %{0}"
 
 log:
   xray_tail_title: "🅧 Xray-core Recent Logs:\n\n<pre>%{0}</pre>"
