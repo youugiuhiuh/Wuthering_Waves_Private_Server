@@ -157,6 +157,8 @@ ops:
   sys_reload_core: "♻️ 重启核心"
   bot_self_update: "⚙️ Bot 自更新"
   sys_auto_update: "⏰ 定时安全维护"
+  sys_update_btn: "⬆️ 更新系统软件包"
+  sys_reboot_btn: "🔁 重启系统"
   tune_start: "⚙️ 正在应用网络优化参数..."
   tune_success: "✅ 网络优化参数已应用"
   tune_fail: "❌ 网络优化应用失败: %{0}"

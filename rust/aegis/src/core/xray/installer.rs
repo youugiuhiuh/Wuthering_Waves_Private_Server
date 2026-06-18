@@ -443,6 +443,7 @@ impl PackageManager {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn upgrade_all(&self) -> Result<()> {
         match self {
             PackageManager::Apt => run_command("apt-get", &["upgrade", "-y"]).await,

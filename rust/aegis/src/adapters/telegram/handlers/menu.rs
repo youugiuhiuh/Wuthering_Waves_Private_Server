@@ -176,13 +176,9 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "m_sys_cmd" => {
             let keyboard = InlineKeyboardMarkup::new(vec![
                 vec![
-                    InlineKeyboardButton::callback(t!("ops.sys_auto_update"), "a_sys_maint"),
-                    InlineKeyboardButton::callback(t!("ops.sys_update_start"), "a_sys_update"),
+                    InlineKeyboardButton::callback(t!("ops.sys_update_btn"), "a_sys_update"),
+                    InlineKeyboardButton::callback(t!("ops.sys_reboot_btn"), "a_sys_reboot"),
                 ],
-                vec![InlineKeyboardButton::callback(
-                    t!("ops.sys_auto_update"),
-                    "a_sys_maint",
-                )],
                 vec![InlineKeyboardButton::callback(
                     t!("menu.back_ops"),
                     "m_ops_center",

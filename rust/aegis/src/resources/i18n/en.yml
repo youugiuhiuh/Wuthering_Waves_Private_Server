@@ -147,6 +147,8 @@ ops:
   sys_reload_core: "♻️ Reload Core"
   bot_self_update: "⚙️ Bot Self-Update"
   sys_auto_update: "⏰ Scheduled Security Maintenance"
+  sys_update_btn: "⬆️ Update System Packages"
+  sys_reboot_btn: "🔁 Reboot System"
   tune_start: "⚙️ Applying network optimization parameters..."
   tune_success: "✅ Network optimization parameters applied"
   tune_fail: "❌ Network optimization failed: %{0}"
