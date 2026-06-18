@@ -95,6 +95,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                     chat_id_clone,
                                     t!("ops.upgrade_fail", "0" => err.to_string()),
                                 )
+                                .parse_mode(ParseMode::Html)
                                 .await;
                         }
                     }
@@ -104,6 +105,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                 chat_id_clone,
                                 t!("ops.upgrade_init_fail", "0" => err.to_string()),
                             )
+                            .parse_mode(ParseMode::Html)
                             .await;
                     }
                 }
@@ -135,11 +137,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     Ok(_) => {
                         let _ = bot_clone
                             .send_message(chat_id_clone, t!("ops.geo_success"))
+                            .parse_mode(ParseMode::Html)
                             .await;
                     }
                     Err(e) => {
                         let _ = bot_clone
                             .send_message(chat_id_clone, t!("ops.geo_fail", "0" => e.to_string()))
+                            .parse_mode(ParseMode::Html)
                             .await;
                     }
                 }
@@ -273,6 +277,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     ]);
                     let _ = bot_clone
                         .send_message(chat_id_clone, t!("ops.bbr3_reboot_prompt"))
+                        .parse_mode(ParseMode::Html)
                         .reply_markup(keyboard)
                         .await;
                 }
