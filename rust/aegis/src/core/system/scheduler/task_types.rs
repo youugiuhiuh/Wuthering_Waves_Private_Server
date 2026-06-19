@@ -145,7 +145,7 @@ async fn report_result(
                 .send_message(
                     target,
                     MessageContent {
-                        text: format!("❌ [定时任务] {} 失败: {}", task_name, e),
+                        text: format!("❌ [定时任务] {} 失败: {:#}", task_name, e),
                         markup: None,
                     },
                 )

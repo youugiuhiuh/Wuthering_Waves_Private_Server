@@ -367,8 +367,16 @@ impl Operations {
         Ok(log)
     }
 
+    const DEFAULT_REBOOT_TIME: &str = "02:00";
+
     pub async fn perform_security_update_task() -> Result<()> {
         let distro = DistroFamily::detect().await?;
+        if !tokio::fs::try_exists(distro.auto_update_config_path())
+            .await
+            .unwrap_or(false)
+        {
+            Self::perform_maintenance_with_reboot_time(Self::DEFAULT_REBOOT_TIME).await?;
+        }
         match distro {
             DistroFamily::Debian => {
                 run_cmd_checked("sh", &["-c", "unattended-upgrade -v"], TIMEOUT_APT)
