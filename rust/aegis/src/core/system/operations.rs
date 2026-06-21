@@ -94,6 +94,7 @@ impl AutoUpdateConfigurator {
         format!(
             r#"Unattended-Upgrade::Allowed-Origins {{
     "${{distro_id}}:${{distro_codename}}-security";
+    "${{distro_id}}:stable-security";
 }};
 Unattended-Upgrade::AutoFixInterruptedDpkg "true";
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
