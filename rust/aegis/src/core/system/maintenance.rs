@@ -1010,11 +1010,17 @@ async fn apply_network_optimization() -> Result<()> {
     fs::write(BBR3_OPTIMIZE_CONF_PATH, NETWORK_OPTIMIZE_CONF)
         .await
         .context("写入网络优化配置失败")?;
-    let status = run_cmd_status("sysctl", &["-e", "-p", BBR3_OPTIMIZE_CONF_PATH], TIMEOUT_SHORT)
-        .await
-        .context("执行 sysctl 失败")?;
+    let status = run_cmd_status(
+        "sysctl",
+        &["-e", "-p", BBR3_OPTIMIZE_CONF_PATH],
+        TIMEOUT_SHORT,
+    )
+    .await
+    .context("执行 sysctl 失败")?;
     if !status.success() {
-        log::warn!("部分 sysctl 参数未生效（可能不兼容当前内核），重启后将由 systemd-sysctl 自动加载");
+        log::warn!(
+            "部分 sysctl 参数未生效（可能不兼容当前内核），重启后将由 systemd-sysctl 自动加载"
+        );
     }
     Ok(())
 }
