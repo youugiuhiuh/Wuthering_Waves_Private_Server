@@ -27,15 +27,13 @@ class HomeViewModel extends ChangeNotifier {
   List<ProgressEvent> get results => _results;
   String? get error => _error;
 
-  Future<void> init({String? binaryPath}) async {
-    if (binaryPath != null) {
-      try {
-        await api.startBackend(binaryPath);
-      } catch (e) {
-        _error = 'Backend start failed: $e';
-        notifyListeners();
-        return;
-      }
+  Future<void> init() async {
+    try {
+      await api.startBackend();
+    } catch (e) {
+      _error = 'Backend start failed: $e';
+      notifyListeners();
+      return;
     }
     _initialized = true;
     await refreshStatus();

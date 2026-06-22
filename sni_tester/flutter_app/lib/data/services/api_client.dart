@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 import '../models/models.dart';
 
@@ -20,22 +22,31 @@ class ApiClient {
 
   ApiClient({this.baseUrl = 'http://localhost:18080'});
 
-  Future<void> startBackend(String binaryPath) async {
+  Future<void> startBackend() async {
     if (await _isRunning()) return;
+    final dir = await getApplicationDocumentsDirectory();
+    final binaryPath = '${dir.path}/sni_web';
+    final file = File(binaryPath);
+    if (!file.existsSync()) {
+      final data = await rootBundle.load('assets/sni_web');
+      await file.writeAsBytes(data.buffer.asUint8List());
+      await Process.run('chmod', ['+x', binaryPath]);
+    }
     _backendProcess = await Process.start(binaryPath, [],
-        environment: {EnvKeys.outputDir: '/data/local/tmp/sni_output'});
-    _backendProcess.stderr
+        environment: {EnvKeys.outputDir: '${dir.path}/sni_output'});
+    _backendProcess!.stderr
         .transform(utf8.decoder)
         .listen((line) => stderr.writeln('[sni_web] $line'));
     for (var i = 0; i < 50; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
       if (await _isRunning()) return;
     }
-    throw ApiException('Backend failed to start');
+    throw const ApiException('Backend failed to start');
   }
 
   Future<void> stopBackend() async {
     _backendProcess?.kill();
+    await _backendProcess?.exitCode;
     _backendProcess = null;
   }
 

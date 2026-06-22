@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../../lib/data/models/models.dart';
+import 'package:sni_tester/data/models/models.dart';
 
 void main() {
   group('Stats', () {

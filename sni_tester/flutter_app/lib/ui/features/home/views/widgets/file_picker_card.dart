@@ -64,11 +64,11 @@ class FilePickerCard extends StatelessWidget {
           child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
         ),
         Expanded(
-          child: Text(
+          child:         Text(
             value ?? 'Not selected',
             style: TextStyle(
-              color: value != null ? null : Theme.of(context).colorScheme.outline,
-              fontStyle: value != null ? FontStyle.normal : FontStyle.italic,
+              color: value == null ? Theme.of(context).colorScheme.outline : null,
+              fontStyle: value == null ? FontStyle.italic : FontStyle.normal,
             ),
             overflow: TextOverflow.ellipsis,
           ),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../data/models/models.dart';
+import '../../../../../data/models/models.dart';
 
 class ResultTable extends StatelessWidget {
   final List<ProgressEvent> results;
