@@ -48,6 +48,21 @@ pub fn handle_callback(
                 state.mark_lang_configured().await;
                 i18n::mark_lang_configured();
                 let tz = i18n::lang_to_timezone(lang);
+
+                if let Err(e) = tokio::process::Command::new("timedatectl")
+                    .args(["set-timezone", tz])
+                    .output()
+                    .await
+                {
+                    log::warn!("设置系统时区 {} 失败: {}", tz, e);
+                }
+
+                if let Err(e) =
+                    aegis::core::system::operations::Operations::set_apt_daily_timer().await
+                {
+                    log::warn!("覆盖 apt-daily timer 失败: {}", e);
+                }
+
                 if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                     let geo_task = aegis::core::system::scheduler::ScheduledTask::new_with_timezone(
                         aegis::core::system::scheduler::TaskType::GeoUpdate,
