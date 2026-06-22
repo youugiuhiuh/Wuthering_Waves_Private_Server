@@ -109,4 +109,59 @@ void main() {
       expect(j['max_concurrent'], 50);
     });
   });
+
+  group('FileEntry', () {
+    test('fromJson parses all fields', () {
+      final j = {
+        'name': 'domains.txt',
+        'size': 12400,
+        'mod_time': '2026-06-22T10:00:00Z',
+      };
+      final f = FileEntry.fromJson(j);
+      expect(f.name, 'domains.txt');
+      expect(f.size, 12400);
+      expect(f.modTime, '2026-06-22T10:00:00Z');
+    });
+
+    test('sizeFormatted shows KB', () {
+      final f = FileEntry(name: 'test.txt', size: 2048, modTime: '');
+      expect(f.sizeFormatted, '2.0 KB');
+    });
+
+    test('sizeFormatted shows B', () {
+      final f = FileEntry(name: 'test.txt', size: 500, modTime: '');
+      expect(f.sizeFormatted, '500 B');
+    });
+  });
+
+  group('StartParams with extras', () {
+    test('toJson includes optional fields when set', () {
+      final p = StartParams(
+        serversFile: '/s.txt',
+        domainsFile: '/d.txt',
+        dns: 'doh',
+        ttlDays: 14,
+        forceRetest: true,
+        debugMode: true,
+        maxLines: 100,
+        autoShutdown: true,
+      );
+      final j = p.toJson();
+      expect(j['dns'], 'doh');
+      expect(j['ttl_days'], 14);
+      expect(j['force_retest'], true);
+      expect(j['debug_mode'], true);
+      expect(j['max_lines'], 100);
+      expect(j['auto_shutdown'], true);
+    });
+
+    test('toJson excludes null optional fields', () {
+      final p = StartParams(
+        serversFile: '/s.txt',
+        domainsFile: '/d.txt',
+      );
+      final j = p.toJson();
+      expect(j.containsKey('dns'), false);
+    });
+  });
 }
