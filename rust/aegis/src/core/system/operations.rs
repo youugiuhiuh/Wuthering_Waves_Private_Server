@@ -398,18 +398,6 @@ impl Operations {
         {
             Self::perform_maintenance_with_reboot_time(Self::DEFAULT_REBOOT_TIME).await?;
         }
-        match distro {
-            DistroFamily::Debian => {
-                run_cmd_checked("sh", &["-c", "unattended-upgrade -v"], TIMEOUT_APT)
-                    .await
-                    .context("执行 unattended-upgrade 失败")?;
-            }
-            DistroFamily::Rhel => {
-                run_cmd_checked("sh", &["-c", "dnf automatic --installupdates"], TIMEOUT_APT)
-                    .await
-                    .context("执行 dnf automatic 失败")?;
-            }
-        }
         Ok(())
     }
 
