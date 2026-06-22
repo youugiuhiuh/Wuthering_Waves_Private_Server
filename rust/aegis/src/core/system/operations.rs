@@ -118,6 +118,25 @@ emit_via = motd
         .to_string()
     }
 
+    pub fn apt_daily_timer_override() -> String {
+        r#"[Timer]
+OnCalendar=daily
+RandomizedDelaySec=4h
+"#
+        .to_string()
+    }
+
+    pub fn apt_daily_upgrade_timer_override() -> String {
+        r#"[Timer]
+OnCalendar=daily
+RandomizedDelaySec=4h
+
+[Unit]
+After=apt-daily.service
+"#
+        .to_string()
+    }
+
     pub(crate) fn debian_periodic_config() -> String {
         r#"APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
@@ -227,6 +246,7 @@ APT::Periodic::AutocleanInterval "7";
 
 const TIMEOUT_APT: Duration = Duration::from_secs(120);
 const TIMEOUT_REBOOT: Duration = Duration::from_secs(15);
+const TIMEOUT_SHORT: Duration = Duration::from_secs(10);
 
 pub static MAINTENANCE_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 pub static REBOOT_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
@@ -368,7 +388,7 @@ impl Operations {
         Ok(log)
     }
 
-    const DEFAULT_REBOOT_TIME: &str = "02:00";
+    const DEFAULT_REBOOT_TIME: &str = "05:00";
 
     pub async fn perform_security_update_task() -> Result<()> {
         let distro = DistroFamily::detect().await?;
@@ -390,6 +410,40 @@ impl Operations {
                     .context("执行 dnf automatic 失败")?;
             }
         }
+        Ok(())
+    }
+
+    pub async fn set_apt_daily_timer() -> Result<()> {
+        let upgrade_override_dir = "/etc/systemd/system/apt-daily-upgrade.timer.d";
+        tokio::fs::create_dir_all(upgrade_override_dir)
+            .await
+            .context("创建 apt-daily-upgrade.timer.d 目录失败")?;
+
+        let upgrade_content = AutoUpdateConfigurator::apt_daily_upgrade_timer_override();
+        tokio::fs::write(
+            format!("{}/aegis-timezone.conf", upgrade_override_dir),
+            upgrade_content,
+        )
+        .await
+        .context("写入 apt-daily-upgrade.timer override 失败")?;
+
+        let daily_override_dir = "/etc/systemd/system/apt-daily.timer.d";
+        tokio::fs::create_dir_all(daily_override_dir)
+            .await
+            .context("创建 apt-daily.timer.d 目录失败")?;
+
+        let daily_content = AutoUpdateConfigurator::apt_daily_timer_override();
+        tokio::fs::write(
+            format!("{}/aegis-timezone.conf", daily_override_dir),
+            daily_content,
+        )
+        .await
+        .context("写入 apt-daily.timer override 失败")?;
+
+        run_cmd_checked("systemctl", &["daemon-reload"], TIMEOUT_SHORT)
+            .await
+            .context("systemctl daemon-reload 失败")?;
+
         Ok(())
     }
 
@@ -571,5 +625,30 @@ mod tests {
             DistroFamily::Rhel.needrestart_conf_path(),
             "/etc/needrestart/needrestart.conf"
         );
+    }
+
+    #[test]
+    fn test_apt_daily_timer_override_content() {
+        let content = AutoUpdateConfigurator::apt_daily_timer_override();
+        assert!(content.contains("OnCalendar=daily"));
+        assert!(content.contains("RandomizedDelaySec=4h"));
+    }
+
+    #[test]
+    fn test_apt_daily_upgrade_timer_override_content() {
+        let content = AutoUpdateConfigurator::apt_daily_upgrade_timer_override();
+        assert!(content.contains("OnCalendar=daily"));
+        assert!(content.contains("RandomizedDelaySec=4h"));
+        assert!(content.contains("After=apt-daily.service"));
+    }
+
+    #[test]
+    fn test_default_reboot_time_is_0500() {
+        assert_eq!(Operations::DEFAULT_REBOOT_TIME, "05:00");
+    }
+
+    #[test]
+    fn test_timeout_short_is_reasonable() {
+        assert_eq!(TIMEOUT_SHORT.as_secs(), 10);
     }
 }
