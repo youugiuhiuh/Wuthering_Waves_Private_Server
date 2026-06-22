@@ -246,6 +246,7 @@ APT::Periodic::AutocleanInterval "7";
 
 const TIMEOUT_APT: Duration = Duration::from_secs(120);
 const TIMEOUT_REBOOT: Duration = Duration::from_secs(15);
+const TIMEOUT_SHORT: Duration = Duration::from_secs(10);
 
 pub static MAINTENANCE_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 pub static REBOOT_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
@@ -439,7 +440,7 @@ impl Operations {
         .await
         .context("写入 apt-daily.timer override 失败")?;
 
-        run_cmd_checked("systemctl", &["daemon-reload"], Duration::from_secs(10))
+        run_cmd_checked("systemctl", &["daemon-reload"], TIMEOUT_SHORT)
             .await
             .context("systemctl daemon-reload 失败")?;
 
@@ -639,5 +640,15 @@ mod tests {
         assert!(content.contains("OnCalendar=daily"));
         assert!(content.contains("RandomizedDelaySec=4h"));
         assert!(content.contains("After=apt-daily.service"));
+    }
+
+    #[test]
+    fn test_default_reboot_time_is_0500() {
+        assert_eq!(Operations::DEFAULT_REBOOT_TIME, "05:00");
+    }
+
+    #[test]
+    fn test_timeout_short_is_reasonable() {
+        assert_eq!(TIMEOUT_SHORT.as_secs(), 10);
     }
 }
