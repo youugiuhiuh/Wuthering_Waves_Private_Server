@@ -390,17 +390,6 @@ impl Operations {
 
     pub const DEFAULT_REBOOT_TIME: &str = "05:00";
 
-    pub async fn perform_security_update_task() -> Result<()> {
-        let distro = DistroFamily::detect().await?;
-        if !tokio::fs::try_exists(distro.auto_update_config_path())
-            .await
-            .unwrap_or(false)
-        {
-            Self::perform_maintenance_with_reboot_time(Self::DEFAULT_REBOOT_TIME).await?;
-        }
-        Ok(())
-    }
-
     pub async fn set_apt_daily_timer() -> Result<()> {
         let upgrade_override_dir = "/etc/systemd/system/apt-daily-upgrade.timer.d";
         tokio::fs::create_dir_all(upgrade_override_dir)
