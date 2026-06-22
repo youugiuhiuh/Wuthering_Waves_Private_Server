@@ -1,0 +1,22 @@
+*.iml
+.idea/
+.gradle/
+local.properties
+build/
+flutter_app.iml
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Android
+android/.gradle/
+android/app/.cxx/
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+
+# macOS
+macos/Pods/
+macos/.symlinks/
