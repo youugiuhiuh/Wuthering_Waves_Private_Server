@@ -504,12 +504,16 @@ async fn main() -> Result<()> {
         i18n::mark_lang_configured();
 
         let tz = i18n::lang_to_timezone(lang);
-        if let Err(e) = tokio::process::Command::new("timedatectl")
+        match tokio::process::Command::new("timedatectl")
             .args(["set-timezone", tz])
             .output()
             .await
         {
-            log::warn!("设置系统时区 {} 失败: {}", tz, e);
+            Ok(o) if !o.status.success() => {
+                log::warn!("设置系统时区 {} 失败: exit {:?}", tz, o.status.code());
+            }
+            Err(e) => log::warn!("设置系统时区 {} 失败: {}", tz, e),
+            _ => {}
         }
 
         if let Err(e) = aegis::core::system::operations::Operations::set_apt_daily_timer().await {
