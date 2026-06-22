@@ -81,27 +81,16 @@ impl TaskType {
                 Ok(())
             }
             TaskType::SecurityUpdate => {
-                log::info!("执行安全更新定时任务...");
                 let _ = adapter
                     .send_message(
                         target,
                         MessageContent {
-                            text: "⏳ [定时任务] 开始执行安全更新...".to_string(),
+                            text: "ℹ️ 自动安全更新已由系统定时器管理，无需手动执行。".to_string(),
                             markup: None,
                         },
                     )
                     .await;
-
-                let result = Operations::perform_security_update_task().await;
-
-                report_result(
-                    adapter,
-                    target,
-                    "安全更新",
-                    "✅ [定时任务] 安全更新执行完成。",
-                    result,
-                )
-                .await
+                Ok(())
             }
             TaskType::Unknown => {
                 let _ = adapter
@@ -240,21 +229,6 @@ mod tests {
         assert_eq!(task.timezone, "Asia/Shanghai");
         assert!(task.enabled);
         assert_eq!(task.task_type, TaskType::GeoUpdate);
-    }
-
-    #[test]
-    fn test_security_update_display_name() {
-        assert_eq!(
-            TaskType::SecurityUpdate.get_display_name(),
-            "安全更新 (Security Update)"
-        );
-    }
-
-    #[test]
-    fn test_security_update_serialization() {
-        let json = r#""SecurityUpdate""#;
-        let task_type: TaskType = serde_json::from_str(json).unwrap();
-        assert_eq!(task_type, TaskType::SecurityUpdate);
     }
 
     #[test]
