@@ -388,7 +388,7 @@ impl Operations {
         Ok(log)
     }
 
-    const DEFAULT_REBOOT_TIME: &str = "05:00";
+    pub const DEFAULT_REBOOT_TIME: &str = "05:00";
 
     pub async fn perform_security_update_task() -> Result<()> {
         let distro = DistroFamily::detect().await?;

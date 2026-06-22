@@ -67,6 +67,14 @@ pub fn handle_callback(
                     log::warn!("覆盖 apt-daily timer 失败: {}", e);
                 }
 
+                if let Err(e) =
+                    aegis::core::system::operations::Operations::perform_maintenance_with_reboot_time(
+                        aegis::core::system::operations::Operations::DEFAULT_REBOOT_TIME
+                    ).await
+                {
+                    log::warn!("安全更新初始化失败: {}", e);
+                }
+
                 if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
                     let geo_task = aegis::core::system::scheduler::ScheduledTask::new_with_timezone(
                         aegis::core::system::scheduler::TaskType::GeoUpdate,
@@ -75,7 +83,7 @@ pub fn handle_callback(
                     );
                     let sec_task = aegis::core::system::scheduler::ScheduledTask::new_with_timezone(
                         aegis::core::system::scheduler::TaskType::SecurityUpdate,
-                        "0 2 * * *",
+                        "0 23 * * *",
                         tz,
                     );
                     let _ = manager.add_new_task(geo_task).await;
