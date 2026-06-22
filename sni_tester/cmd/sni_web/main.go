@@ -1,16 +1,29 @@
 package main
 
 import (
-	"embed"
-	"io/fs"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
+	"time"
+
 	"sni_tester/pkg"
 )
 
-//go:embed static/*
-var staticFiles embed.FS
+var startTime = time.Now()
+
+func cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(204)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func main() {
 	outputDir := "/data/local/tmp/sni_output"
@@ -20,7 +33,11 @@ func main() {
 
 	cfg := pkg.DefaultConfig()
 	cfg.OutputDir = outputDir
-	cfg.Debug = true // skip network isolation on phone
+	cfg.Debug = true
+
+	if err := pkg.PrepareGeoDBs(cfg.GeoDBFile, cfg.GeoASNFile, ""); err != nil {
+		log.Printf("Warning: GeoDB download failed (will still try): %v", err)
+	}
 
 	engine, err := pkg.NewEngine(cfg)
 	if err != nil {
@@ -35,9 +52,12 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		sub, _ := fs.Sub(staticFiles, "static")
-		http.FileServer(http.FS(sub)).ServeHTTP(w, r)
+	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "ok",
+			"uptime":  time.Since(startTime).String(),
+			"version": "1.0",
+		})
 	})
 	mux.HandleFunc("GET /api/progress", srv.handleSSE)
 	mux.HandleFunc("POST /api/start", srv.handleStart)
@@ -46,6 +66,6 @@ func main() {
 	mux.HandleFunc("GET /api/download", srv.handleDownload)
 	mux.HandleFunc("POST /api/upload", srv.handleUpload)
 
-	log.Println("SNI Web UI: http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Println("SNI API: http://0.0.0.0:18080")
+	log.Fatal(http.ListenAndServe("0.0.0.0:18080", cors(mux)))
 }

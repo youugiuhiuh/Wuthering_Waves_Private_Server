@@ -1,269 +1,136 @@
-# SNI 测试工具使用说明
+# SNI 测试工具
 
-这是一个高性能的并发 SNI 测试工具，使用 Go 编写，专门为 Wuthering Waves Private Server Emulator 的 SNI 资源管理设计。
+高性能并发 SNI 测试工具，为 Wuthering Waves Private Server 设计。
 
-## 位置
+支持三种运行模式：
+- **CLI** — PC 命令行直接运行
+- **Web API** — 纯 API 服务 (端口 18080)，供 Flutter 客户端或 `curl` 调用
+- **Flutter** — 跨平台桌面/移动端 GUI (内嵌 Go 后端)
 
-项目目录下的 `sni_tester/`
+## 快速开始
 
-## 编译
-
-在当前目录下运行：
-
-```bash
-go build -o sni_tester .
-```
-
-## 使用方法
-
-### 直接测试模式
+### CLI 模式
 
 ```bash
-./sni_tester -f <输入文件路径> [-dns <DNS服务器>] [-w <固定并发数>] [-shutdown] [其他参数]
-```
-
-### ADB 远程测试模式
-
-使用手机作为测试出口，适合国内网络环境：
-
-```bash
-# USB ADB 模式
-./sni_tester -adb -f <输入文件路径>
-
-# WiFi ADB 模式 (显示 QR Code)
-./sni_tester -adb-wifi -f <输入文件路径>
-```
-
-### 参数说明
-
-- **`-f` (必填)**: 包含待测试域名的 TXT/CSV 文件路径 (支持 `#` 或 `//` 注释)。
-- **`-dns` (可选)**: 指定用于解析的 DNS 服务器。**若不填，工具将自动启用内置 DNS 池（DoH → DoT → UDP），并使用 miekg/dns 进行高性能解析。**
-- **`-w` (可选)**: 指定固定的并发 Worker 数量（例如 `-w 2000`）。如果提供此参数，将**禁用 AIMD 自动并发调节功能**，并强制以固定并发执行测试。
-- **`-debug`**: 开启调试模式，跳过网络隔离检查、跳过 BadgerDB 持久化、跳过 sni/ 输出。
-- **`-p`**: 下载 GeoIP 数据库时使用的代理 (支持 http/socks5)。
-- **`-ttl`**: 失败记录的记忆天数 (默认 7 天)，在此期间内的重复失败域名将被跳过。
-- **`-max`**: 仅处理输入文件的前 N 行。
-- **`-force`**: 强制重新测试之前跳过/失败的域名（忽略历史记录）。
-- **`-reset`**: 清除所有历史记录（成功+失败），从零开始测试。同时删除已存在的 .pb 输出文件。
-- **`-shutdown`**: 任务完成后自动执行系统关机命令（Windows: `shutdown.exe /s /t 0`，Linux/macOS: `shutdown -h now`，需要具备相应权限）。
-
-### ADB 模式参数
-
-- **`-adb`**: 使用 ADB 连接的 Android 设备进行测试 (USB 模式)
-- **`-adb-wifi`**: 开启 WiFi ADB 并显示 QR Code，方便无线连接
-
-## DNS 解析特性
-
-### DNS 优先级: DoH → DoT → UDP
-
-工具内置智能 DNS 解析引擎，按优先级自动切换：
-
-1. **DoH (DNS-over-HTTPS)** - RFC 8484 Wire Format
-   - 使用 `application/dns-message` Content-Type
-   - HTTP POST 传输二进制 DNS 消息
-   - 最优先使用
-
-2. **DoT (DNS-over-TLS)**
-   - 直接 TLS 连接端口 853
-   - 次优先使用
-
-3. **UDP DNS**
-   - 传统 DNS 解析
-   - 最终 fallback
-
-### 内置 DNS 服务器池 (仅 IPv4)
-
-**DoH 服务器 (9个)**:
-- 国内: `doh.pub` (腾讯), `dns.alidns.com` (阿里), `dns.360.cn` (360)
-- 国外: `1.1.1.1` (Cloudflare), `dns.google`, `dns.quad9.net`, `doh.opendns.com`, `dns.adguard.com`
-
-**DoT 服务器 (7个)**:
-- 国内: `dot.pub:853` (腾讯), `dns.alidns.com:853` (阿里), `dns.360.cn:853` (360)
-- 国外: `1.1.1.1:853` (Cloudflare), `dns.google:853`, `dns.quad9.net:853`, `dns.adguard.com:853`
-
-**UDP DNS 服务器 (~35个)**:
-- 1级: Cloudflare, Google, Quad9, OpenDNS
-- 2级: Comodo, AdGuard, Verisign
-- 3级: Level3, Yandex, Freenom, DNS.SB
-- 4级国内: DNSPod, AliDNS, 114DNS, 百度, ByteDance, 360, CNNIC, OneDNS, 腾讯Edge
-
-### DNS 健康权重系统
-
-- 动态权重：基于历史成功率动态调整服务器权重
-- 故障衰减：连续失败后降低权重
-- 恢复提升：成功后逐步恢复权重
-- 加权选择：优先使用高权重服务器
-
-### DNS 智能限流系统
-
-工具内置了针对不同 DNS 服务商的智能限流系统，防止触发公共 DNS 的速率限制：
-
-#### 限流策略
-
-| 服务商 | 协议 | QPS 限制 | 说明 |
-|--------|------|---------|------|
-| 阿里云 DNS | DoH/DoT | 15 QPS | 官方限制 20 QPS/IP |
-| 阿里云 DNS | UDP/TCP | 80 QPS | 官方约 100 QPS/IP |
-| 腾讯 DNSPod | 所有 | 50 QPS | 官方限制 20 QPS/域名 |
-| 其他国内 | 所有 | 50 QPS | 114DNS, 字节, CNNIC 等 |
-| 国外 DNS | 所有 | 500 QPS | Cloudflare, Google, Quad9 等 |
-| **全局上限** | - | **300 QPS** | 所有 DNS 请求总和 |
-
-#### 限流机制
-
-1. **全局限流**: 所有 DNS 请求共享 300 QPS 上限
-2. **服务商分组限流**: 根据IP 自动识别服务商，应用对应限流策略
-3. **协议区分**: 阿里云 DNS 区分 DoH/DoT (15 QPS) 和 UDP/TCP (80 QPS)
-4. **并发控制**: 最大 100 个并发 DNS 查询
-5. **突发允许**: 每个限流器允许 20 个突发请求
-
-#### 限流优势
-
-- 防止被公共 DNS 封禁 IP
-- 避免触发云服务商的 API 限制
-- 保持稳定的 DNS 解析速率
-- 自动适配国内外不同服务商的限流策略
-
-## ADB 远程测试
-
-### 工作流程
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Mode 1: WiFi ADB                       │
-├─────────────────────────────────────────────────────────────┤
-│  1. 检测 USB 连接的手机                                     │
-│  2. 执行: adb tcpip 5555  (开启无线调试端口)               │
-│  3. 获取电脑局域网 IP                                      │
-│  4. 显示 ASCII QR Code                                     │
-│  5. 用户手机扫码 → 自动执行 adb connect                    │
-│  6. 验证连接: adb devices                                 │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                     Mode 2: USB ADB                       │
-├─────────────────────────────────────────────────────────────┤
-│  1. 用户手机开启 USB 调试                                 │
-│  2. 执行: adb devices                                    │
-│  3. 验证连接成功                                          │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                     测试执行                                │
-├─────────────────────────────────────────────────────────────┤
-│  1. 交叉编译 Android ARM64 二进制                          │
-│  2. Push: sni_tester + GeoIP + domains.txt                │
-│  3. 运行测试，JSON 流输出                                 │
-│  4. 实时解析 → 显示进度                                   │
-│  5. 测试完成 → 自动导入 sni 目录                          │
-│  6. 清理手机端临时文件                                    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### QR Code 示例
-
-```
- ╔═══════════════════════════════════════════════════════════╗
- ║           WiFi ADB 连接 - 请使用手机扫码                   ║
- ╠═══════════════════════════════════════════════════════════╣
- ║  ┌─────────────────────────────────────────────────┐   ║
- ║  │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │   ║
- ║  │ ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▓ │   ║
- ║  │ ▓░▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▓░▓ │   ║
- ║  │ ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▓ │   ║
- ║  │ ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▓ │   ║
- ║  │ ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▓ │   ║
- ║  │ ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▓ │   ║
- ║  │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │   ║
- ║  └─────────────────────────────────────────────────┘   ║
- ╠═══════════════════════════════════════════════════════════╣
- ║  连接地址: 192.168.1.100:5555                            ║
- ║                                                            ║
- ║  或者在手机上执行:                                         ║
- ║    adb connect 192.168.1.100:5555                       ║
- ╚═══════════════════════════════════════════════════════════╝
-```
-
-### 前置要求
-
-- 安装 Android SDK Platform Tools
-- 手机开启开发者选项和 USB/无线调试
-- 手机和电脑在同一网络
-
-## 增强特性
-
-1. **智能环境检查**:
-   - 程序默认要求 `google.com` **无法访问**。这确保了测试是在需要 SNI 分流的环境（如国内直连）下进行的（除非开启 `-debug`）。
-2. **自动下载 GeoIP 数据库**:
-   - 如果不存在 `GeoLite2-Country.mmdb`，将自动从公共镜像下载。程序结束后会自动删除临时数据库。
-3. **本地极速查询**:
-   - 使用 MaxMind GeoLite2 本地数据库进行 IP 归属地查询，秒级处理万级数据。
-4. **智能分流 & 黑名单**:
-   - 自动过滤 `CN`, `HK`, `MO`, `IR`, `RU`, `KP` 等地区的域名。
-   - 自动跳过最近失败或已成功的域名。
-5. **多级进度显示**:
-   - 包含流式读取、测试进度以及批量写入的实时状态。
-6. **自动发现目标目录**:
-   - 自动寻找并将结果写入 `rust/aegis/src/resources/sni` 目录。
-7. **极致性能与智能伸缩 (AIMD)**:
-   - 采用 **uTLS** 模拟 Chrome 指纹。
-   - **全自动动态并发**: 工具内置了基于 AIMD（加性增/乘性减）算法的并发控制器。它会从 100 并发平稳起步，在网络良好时自动加速最高至 2000 并发；一旦遇到网络封锁或 DNS 限流，会瞬间降低并发保护网络，全程**无需用户干预**。
-8. **ADB 远程测试**:
-   - 支持通过 ADB 连接 Android 设备进行测试
-   - WiFi ADB 模式支持 QR Code 扫码连接
-   - 自动处理文件传输、结果收集和清理
-9. **DNS 健康权重系统**:
-   - 基于 miekg/dns 的高性能 DNS 解析
-   - 动态权重调整，优先使用表现好的服务器
-   - 支持 DoH (RFC 8484)、DoT、UDP 三种协议自动切换
-
-## 示例
-
-```bash
-# 直接测试 (使用内置 DNS 池)
+go build -o sni_tester ./cmd/sni_tester/
 ./sni_tester -f domains.txt
-
-# 指定 DNS 服务器
-./sni_tester -f domains.txt -dns 119.29.29.29
-
-# 固定并发数
-./sni_tester -f domains.txt -w 2000
-
-# 强制重新测试之前跳过的域名
-./sni_tester -f domains.txt -force
-
-# 重置历史
-./sni_tester -f domains.txt -reset
-
-# USB ADB 测试
-./sni_tester -adb -f domains.txt
-
-# WiFi ADB 测试 (显示 QR Code)
-./sni_tester -adb-wifi -f domains.txt
 ```
+
+### Flutter Linux 桌面
+
+```bash
+make linux-run
+```
+
+### Flutter Android
+
+```bash
+make flutter-deploy     # 构建 + 安装到手机
+```
+
+### Web API 模式 (调试用)
+
+```bash
+GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -o sni_web ./cmd/sni_web/
+adb push sni_web /data/local/tmp/
+adb shell "cd /data/local/tmp && ./sni_web" &
+adb forward tcp:18080 tcp:18080
+curl http://localhost:18080/api/health
+```
+
+## API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/health` | 健康检查 (status/uptime/version) |
+| GET | `/api/status` | 当前状态与统计 |
+| POST | `/api/start` | 开始测试 (body: servers_file, domains_file, timeout_sec, max_concurrent) |
+| POST | `/api/stop` | 停止测试 |
+| GET | `/api/progress` | SSE 实时进度推送 |
+| GET | `/api/download` | 下载结果 (.pb 文件) |
+| POST | `/api/upload` | 上传域名文件 |
+
+## 构建
+
+```bash
+# 原生 Android arm64 二进制
+make sni_web
+
+# Flutter Android APK (自动打包 Go 二进制)
+make flutter-build
+
+# Flutter Linux 桌面版
+make linux-build
+
+# 推送到手机运行 (纯 Web API，无 Flutter)
+make phone-deploy
+```
+
+## 参数说明 (CLI 模式)
+
+| 参数 | 说明 |
+|------|------|
+| `-f` | (必填) 待测试域名文件路径 |
+| `-dns` | DNS 服务器 (不填则自动 DoH→DoT→UDP) |
+| `-w` | 固定并发 Worker 数 |
+| `-debug` | 调试模式 |
+| `-p` | GeoIP 下载代理 |
+| `-ttl` | 失败记录记忆天数 (默认 7) |
+| `-max` | 仅处理前 N 行 |
+| `-force` | 强制重测跳过记录 |
+| `-reset` | 清除历史 |
+| `-shutdown` | 测试后自动关机 |
+
+## Flutter 架构
+
+```
+flutter_app/
+├── lib/
+│   ├── data/
+│   │   ├── models/         # Stats, ProgressEvent, StatusResponse, StartParams
+│   │   └── services/       # ApiClient (HTTP + SSE + 自动解压 Go 二进制)
+│   ├── ui/
+│   │   ├── core/           # AppTheme (Material 3, 系统主题)
+│   │   └── features/home/
+│   │       ├── view_models/  # HomeViewModel (ChangeNotifier)
+│   │       └── views/        # HomeScreen + 4 个 Widget
+│   └── main.dart
+├── assets/
+│   └── sni_web             # Go 后端二进制 (自动打包)
+└── test/
+    └── models_test.dart
+```
+
+Flutter 启动时自动从 asset 提取 `sni_web` 到应用目录并执行，通过 `http://localhost:18080` 通信。
+
+## 项目结构
+
+```
+sni_tester/
+├── cmd/
+│   ├── sni_tester/main.go    # CLI 入口
+│   └── sni_web/              # API 服务器
+│       ├── main.go           # CORS, /api/health, 端口 18080
+│       └── handlers.go       # SSE, start, stop, status, download, upload
+├── pkg/                      # 核心库
+│   ├── types.go / config.go / dns.go / tls.go
+│   ├── geo.go / storage.go / protobuf.go / engine.go
+├── flutter_app/              # Flutter 跨平台 GUI
+├── proto/sni.proto
+├── Makefile                  # build/deploy/run 一键命令
+└── go.mod
+```
+
+## DNS 引擎
+
+内置智能 DNS 优先级：**DoH → DoT → UDP**，支持 ~35 个国内外 DNS 服务器，动态健康权重 + 智能限流。
 
 ## 验证标准
 
-所有域名均通过统一验证:
-- **TLS 1.3** 必需
-- **X25519 系列密钥交换** 必需 (X25519, X25519MLKEM768, X25519Kyber768Draft00)
-- **H2 或 H3** 至少支持一种 (通过 ALPN 协商 H2, 或通过 Alt-Svc 头检测 H3)
+- TLS 1.3 必需
+- X25519 系列密钥交换必需
+- H2 或 H3 至少支持一种
 
 ## 输出格式
 
-- 输出文件: `sni/CC.pb` (Protobuf 格式)
-- CC 为国家代码 (US, JP 等)
-
-## 导入模式
-
-导入从其他设备生成的 JSON 结果文件：
-
-```bash
-./sni_tester -import result.json
-```
-
-## 注意
-
-- 该工具会自动去除域名后的端口号。
-- 解析失败或归属地为黑名单/未知的域名将被记录在 BadgerDB 中以供后续调优。
-- ADB 模式需要手机端有可用的 Go 环境或通过 Termux 运行。
+`sni/CC.pb` (Protobuf)，CC 为国家代码 (US, JP 等)。
