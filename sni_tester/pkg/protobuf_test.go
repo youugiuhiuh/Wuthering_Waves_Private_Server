@@ -1,4 +1,4 @@
-package main
+package pkg
 
 import (
 	"os"
@@ -23,9 +23,9 @@ func TestWriteProtobufDomainFile_Deduplication(t *testing.T) {
 		"zzz.com",
 	}
 
-	err := writeProtobufDomainFile(domains, tmpFile)
+	err := WriteProtobufDomainFile(domains, tmpFile)
 	if err != nil {
-		t.Fatalf("writeProtobufDomainFile failed: %v", err)
+		t.Fatalf("WriteProtobufDomainFile failed: %v", err)
 	}
 
 	data, err := os.ReadFile(tmpFile)
@@ -54,7 +54,7 @@ func TestWriteProtobufDomainFile_EmptyInput(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "empty.pb")
 
-	err := writeProtobufDomainFile([]string{}, tmpFile)
+	err := WriteProtobufDomainFile([]string{}, tmpFile)
 	if err != nil {
 		t.Errorf("expected nil for empty input, got error: %v", err)
 	}
@@ -75,9 +75,9 @@ func TestWriteProtobufDomainFile_Sorting(t *testing.T) {
 		"bbb.com",
 	}
 
-	err := writeProtobufDomainFile(domains, tmpFile)
+	err := WriteProtobufDomainFile(domains, tmpFile)
 	if err != nil {
-		t.Fatalf("writeProtobufDomainFile failed: %v", err)
+		t.Fatalf("WriteProtobufDomainFile failed: %v", err)
 	}
 
 	data, err := os.ReadFile(tmpFile)
@@ -104,9 +104,9 @@ func TestParseProtobufDomains_ValidData(t *testing.T) {
 		t.Fatalf("failed to marshal: %v", err)
 	}
 
-	parsed, err := parseProtobufDomains(data)
+	parsed, err := ParseProtobufDomains(data)
 	if err != nil {
-		t.Fatalf("parseProtobufDomains failed: %v", err)
+		t.Fatalf("ParseProtobufDomains failed: %v", err)
 	}
 
 	if len(parsed) != len(domains) {
@@ -129,9 +129,9 @@ func TestParseProtobufDomains_InvalidDomain(t *testing.T) {
 		t.Fatalf("failed to marshal: %v", err)
 	}
 
-	parsed, err := parseProtobufDomains(data)
+	parsed, err := ParseProtobufDomains(data)
 	if err != nil {
-		t.Fatalf("parseProtobufDomains failed: %v", err)
+		t.Fatalf("ParseProtobufDomains failed: %v", err)
 	}
 
 	for _, d := range parsed {
@@ -153,9 +153,9 @@ func TestProtobufRoundTrip(t *testing.T) {
 		"alpha.com",
 	}
 
-	err := writeProtobufDomainFile(original, tmpFile)
+	err := WriteProtobufDomainFile(original, tmpFile)
 	if err != nil {
-		t.Fatalf("writeProtobufDomainFile failed: %v", err)
+		t.Fatalf("WriteProtobufDomainFile failed: %v", err)
 	}
 
 	data, err := os.ReadFile(tmpFile)
@@ -163,9 +163,9 @@ func TestProtobufRoundTrip(t *testing.T) {
 		t.Fatalf("failed to read file: %v", err)
 	}
 
-	parsed, err := parseProtobufDomains(data)
+	parsed, err := ParseProtobufDomains(data)
 	if err != nil {
-		t.Fatalf("parseProtobufDomains failed: %v", err)
+		t.Fatalf("ParseProtobufDomains failed: %v", err)
 	}
 
 	expected := []string{"alpha.com", "beta.com", "delta.com", "gamma.com"}

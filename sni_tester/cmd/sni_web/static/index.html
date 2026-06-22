@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>SNI Tester</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;padding:12px;min-height:100vh}
+.container{max-width:640px;margin:0 auto}
+h1{font-size:20px;margin-bottom:12px;color:#58a6ff}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px;margin-bottom:10px}
+.card h2{font-size:14px;margin-bottom:8px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px}
+label{display:block;font-size:13px;margin-bottom:4px;color:#8b949e}
+input,select{width:100%;padding:8px;border:1px solid #30363d;border-radius:6px;background:#0d1117;color:#c9d1d9;font-size:14px}
+input:focus{outline:none;border-color:#58a6ff}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.form-row-thirds{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.checkbox-row{display:flex;gap:12px;margin-bottom:8px}
+.checkbox-row label{display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer}
+.checkbox-row input[type=checkbox]{width:auto}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 16px;border-radius:6px;border:none;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s;text-decoration:none}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:#238636;color:#fff}
+.btn-primary:hover:not(:disabled){background:#2ea043}
+.btn-danger{background:#da3633;color:#fff}
+.btn-danger:hover:not(:disabled){background:#f85149}
+.btn-secondary{background:#21262d;color:#c9d1d9;border:1px solid #30363d}
+.btn-secondary:hover:not(:disabled){background:#30363d}
+.btn-group{display:flex;gap:8px;margin-bottom:10px}
+#upload-area{border:2px dashed #30363d;border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:border-color .2s;margin-bottom:10px}
+#upload-area:hover,#upload-area.dragover{border-color:#58a6ff}
+#upload-area p{font-size:14px;color:#8b949e}
+#upload-area .hint{font-size:12px;color:#484f58;margin-top:4px}
+#file-name{font-size:13px;color:#58a6ff;margin-top:6px;display:none}
+.progress-bar-wrap{background:#21262d;border-radius:6px;height:16px;overflow:hidden;margin-bottom:8px}
+.progress-bar{height:100%;width:0%;background:linear-gradient(90deg,#238636,#2ea043);transition:width .3s;border-radius:6px}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px}
+.stat-item{text-align:center;padding:6px;background:#0d1117;border-radius:6px}
+.stat-item .val{font-size:18px;font-weight:600;color:#c9d1d9}
+.stat-item .lbl{font-size:11px;color:#8b949e}
+.stat-item.success .val{color:#3fb950}
+.stat-item.fail .val{color:#f85149}
+.stat-item.skip .val{color:#d29922}
+#speed{font-size:13px;color:#8b949e;text-align:center;margin-bottom:8px}
+.table-wrap{max-height:320px;overflow-y:auto;border:1px solid #30363d;border-radius:6px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{position:sticky;top:0;background:#161b22;color:#8b949e;padding:6px 8px;text-align:left;border-bottom:1px solid #30363d;font-weight:500}
+td{padding:4px 8px;border-bottom:1px solid #21262d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+tr.success td{color:#3fb950}
+tr.fail td{color:#f85149}
+#download-area{text-align:center;margin-top:8px;display:none}
+@media(max-width:480px){.stats-grid{grid-template-columns:1fr 1fr}.form-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>SNI Tester</h1>
+
+<div id="upload-area">
+<p>Drop TXT/CSV file here or click to select</p>
+<p class="hint">One domain per line</p>
+<p id="file-name"></p>
+</div>
+<input type="file" id="file-input" accept=".txt,.csv" style="display:none">
+
+<div class="card">
+<h2>Parameters</h2>
+<div class="form-row-thirds">
+<div><label for="workers">Workers</label><input type="number" id="workers" value="100" min="1" max="2000"></div>
+<div><label for="dns">DNS</label><input type="text" id="dns" placeholder="Default"></div>
+<div><label for="ttl">TTL (days)</label><input type="number" id="ttl" value="7" min="1"></div>
+</div>
+<div class="checkbox-row">
+<label><input type="checkbox" id="force"> Force retry</label>
+<label><input type="checkbox" id="reset"> Reset all</label>
+</div>
+</div>
+
+<div class="btn-group">
+<button class="btn btn-primary" id="start-btn" disabled>Start</button>
+<button class="btn btn-danger" id="stop-btn" disabled>Stop</button>
+</div>
+
+<div class="card" id="progress-card" style="display:none">
+<h2>Progress</h2>
+<div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+<div class="stats-grid">
+<div class="stat-item"><div class="val" id="stat-total">0</div><div class="lbl">Total</div></div>
+<div class="stat-item success"><div class="val" id="stat-done">0</div><div class="lbl">Done</div></div>
+<div class="stat-item success"><div class="val" id="stat-success">0</div><div class="lbl">Success</div></div>
+<div class="stat-item fail"><div class="val" id="stat-fail">0</div><div class="lbl">Failed</div></div>
+</div>
+<div id="speed">Speed: 0 domains/sec</div>
+</div>
+
+<div class="card" id="results-card" style="display:none">
+<h2>Results <span id="result-count" style="color:#8b949e;font-weight:400"></span></h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Domain</th><th>Status</th><th>IP</th><th>Country</th><th>Info</th></tr></thead>
+<tbody id="results-body"></tbody>
+</table>
+</div>
+</div>
+
+<div id="download-area">
+<a class="btn btn-secondary" id="download-link" href="/api/download" download>Download Results (.zip)</a>
+</div>
+</div>
+
+<script>
+const evtSource = new EventSource('/api/progress');
+let totalDomains = 0;
+let doneDomains = 0;
+
+const uploadArea = document.getElementById('upload-area');
+const fileInput = document.getElementById('file-input');
+const fileName = document.getElementById('file-name');
+const startBtn = document.getElementById('start-btn');
+const stopBtn = document.getElementById('stop-btn');
+const progressCard = document.getElementById('progress-card');
+const progressBar = document.getElementById('progress-bar');
+const resultsCard = document.getElementById('results-card');
+const resultsBody = document.getElementById('results-body');
+const resultCount = document.getElementById('result-count');
+const statTotal = document.getElementById('stat-total');
+const statDone = document.getElementById('stat-done');
+const statSuccess = document.getElementById('stat-success');
+const statFail = document.getElementById('stat-fail');
+const speedEl = document.getElementById('speed');
+const downloadArea = document.getElementById('download-area');
+
+let uploaded = false;
+let running = false;
+
+uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => {
+e.preventDefault();
+uploadArea.classList.remove('dragover');
+if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if(e.target.files.length) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+const form = new FormData();
+form.append('file', file);
+fetch('/api/upload', {method:'POST',body:form})
+.then(r=>r.json())
+.then(d=>{if(d.status==='ok'){uploaded=true;fileName.textContent=file.name;fileName.style.display='block';startBtn.disabled=false;}})
+.catch(e=>console.error(e));
+}
+
+startBtn.addEventListener('click', () => {
+running = true;
+startBtn.disabled = true;
+stopBtn.disabled = false;
+progressCard.style.display = 'block';
+resultsCard.style.display = 'block';
+resultsBody.innerHTML = '';
+downloadArea.style.display = 'none';
+doneDomains = 0;
+
+fetch('/api/start', {
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+workers: parseInt(document.getElementById('workers').value) || 100,
+dns: document.getElementById('dns').value,
+ttl: parseInt(document.getElementById('ttl').value) || 7,
+force: document.getElementById('force').checked,
+reset: document.getElementById('reset').checked
+})
+}).catch(e=>console.error(e));
+});
+
+stopBtn.addEventListener('click', () => {
+fetch('/api/stop',{method:'POST'}).then(()=>{running=false;stopBtn.disabled=true;}).catch(e=>console.error(e));
+});
+
+evtSource.onmessage = (e) => {
+try {
+const data = JSON.parse(e.data);
+if(data.Type === 'done') {
+running = false;
+stopBtn.disabled = true;
+startBtn.disabled = false;
+progressBar.style.width = '100%';
+downloadArea.style.display = 'block';
+return;
+}
+if(data.Type === 'result') {
+doneDomains = (data.Stats ? data.Stats.Success + data.Stats.Failed + data.Stats.Skipped : 0);
+const pct = data.Progress * 100;
+progressBar.style.width = Math.min(pct, 100) + '%';
+
+if(data.Stats) {
+statTotal.textContent = data.Stats.Total || 0;
+statDone.textContent = (data.Stats.Success + data.Stats.Failed + data.Stats.Skipped) || 0;
+statSuccess.textContent = data.Stats.Success || 0;
+statFail.textContent = data.Stats.Failed || 0;
+if(data.Stats.RatePerSec) speedEl.textContent = 'Speed: ' + data.Stats.RatePerSec.toFixed(1) + ' domains/sec';
+}
+
+const tr = document.createElement('tr');
+tr.className = data.Success ? 'success' : 'fail';
+tr.innerHTML = '<td>'+(data.Domain||'')+'</td><td>'+(data.Success?'OK':'FAIL')+'</td><td>'+(data.IP||'')+'</td><td>'+(data.Country||'')+'</td><td>'+(data.Info||'')+'</td>';
+resultsBody.insertBefore(tr, resultsBody.firstChild);
+const rows = resultsBody.children;
+if(rows.length > 50) rows[50].remove();
+resultCount.textContent = '(' + Math.min(rows.length, 50) + '/' + (data.Stats ? data.Stats.Total : 0) + ')';
+}
+} catch(err) { /* ignore parse errors */ }
+};
+
+setInterval(() => {
+if(running) {
+fetch('/api/status').then(r=>r.json()).then(d=>{
+if(!d.running) { running=false; stopBtn.disabled=true; startBtn.disabled=false; }
+}).catch(()=>{});
+}
+}, 2000);
+</script>
+</body>
+</html>
