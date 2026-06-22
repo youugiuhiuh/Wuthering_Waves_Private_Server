@@ -65,6 +65,8 @@ func main() {
 	mux.HandleFunc("GET /api/status", srv.handleStatus)
 	mux.HandleFunc("GET /api/download", srv.handleDownload)
 	mux.HandleFunc("POST /api/upload", srv.handleUpload)
+	mux.HandleFunc("GET /api/files", srv.HandleListFiles)
+	mux.HandleFunc("DELETE /api/files", srv.HandleDeleteFile)
 
 	log.Println("SNI API: http://0.0.0.0:18080")
 	log.Fatal(http.ListenAndServe("0.0.0.0:18080", cors(mux)))
