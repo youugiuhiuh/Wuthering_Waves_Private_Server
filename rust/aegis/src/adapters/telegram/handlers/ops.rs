@@ -464,7 +464,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
                 let mut failed = false;
 
-                send_progress(&tx, 1, 7, t!("ops.deploy_step_tune"));
+                send_progress(&tx, 1, 8, t!("ops.deploy_step_tune"));
                 if MaintenanceManager::tune_vps_generic().await.is_err() {
                     let _ = tx
                         .send(t!("ops.deploy_fail", "0" => t!("ops.deploy_fail_tune")).to_string());
@@ -478,11 +478,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     send_progress(
                         &tx,
                         2,
-                        7,
+                        8,
                         format!("{} - ⏩ 已安装，跳过", t!("ops.deploy_step_xray_init")),
                     );
                 } else if !failed {
-                    send_progress(&tx, 2, 7, t!("ops.deploy_step_xray_init"));
+                    send_progress(&tx, 2, 8, t!("ops.deploy_step_xray_init"));
                     if let Err(e) = aegis::core::xray::installer::RealityInstallerInternal::install_minimal_environment().await {
                         let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_xray_init"), e)).to_string());
                         failed = true;
@@ -490,7 +490,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 }
 
                 if !failed {
-                    send_progress(&tx, 3, 7, t!("ops.deploy_step_pq"));
+                    send_progress(&tx, 3, 8, t!("ops.deploy_step_pq"));
                     if let Err(e) =
                         aegis::core::xray::config::ConfigManager::generate_reality_pq_keys().await
                     {
@@ -514,7 +514,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     send_progress(
                         &tx,
                         4,
-                        7,
+                        8,
                         format!("{} ({})", t!("ops.deploy_step_xhttp"), ip_version.label()),
                     );
                     match aegis::core::xray::config::ConfigManager::batch_create_xhttp_reality_enhanced(
@@ -536,7 +536,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     send_progress(
                         &tx,
                         5,
-                        7,
+                        8,
                         format!("{} ({})", t!("ops.deploy_step_vision"), ip_version.label()),
                     );
                     match aegis::core::xray::config::ConfigManager::batch_create_reality_vision_enhanced(
@@ -558,11 +558,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     send_progress(
                         &tx,
                         6,
-                        7,
+                        8,
                         format!("{} - ⏩ 已安装，跳过", t!("ops.deploy_step_singbox_init")),
                     );
                 } else if !failed {
-                    send_progress(&tx, 6, 7, t!("ops.deploy_step_singbox_init"));
+                    send_progress(&tx, 6, 8, t!("ops.deploy_step_singbox_init"));
                     if let Err(e) = aegis::core::singbox::SingBoxInstaller::install().await {
                         let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_singbox_init"), e)).to_string());
                         failed = true;
@@ -573,7 +573,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     send_progress(
                         &tx,
                         7,
-                        7,
+                        8,
                         format!("{} ({})", t!("ops.deploy_step_tuic"), ip_version.label()),
                     );
                     match aegis::core::singbox::config::SingBoxConfigManager::batch_create_tuic(
@@ -594,6 +594,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                             let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_tuic"), e)).to_string());
                             failed = true;
                         }
+                    }
+                }
+
+                if !failed {
+                    send_progress(&tx, 8, 8, t!("ops.deploy_step_security"));
+                    if let Err(e) = aegis::core::system::operations::Operations::perform_maintenance_with_reboot_time(
+                        aegis::core::system::operations::Operations::DEFAULT_REBOOT_TIME
+                    ).await {
+                        let _ = tx.send(format!("{}: {}", t!("ops.deploy_fail_security"), e));
+                        failed = true;
                     }
                 }
 
