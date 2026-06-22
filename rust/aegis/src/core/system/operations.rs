@@ -118,6 +118,25 @@ emit_via = motd
         .to_string()
     }
 
+    pub fn apt_daily_timer_override() -> String {
+        r#"[Timer]
+OnCalendar=daily
+RandomizedDelaySec=4h
+"#
+        .to_string()
+    }
+
+    pub fn apt_daily_upgrade_timer_override() -> String {
+        r#"[Timer]
+OnCalendar=daily
+RandomizedDelaySec=4h
+
+[Unit]
+After=apt-daily.service
+"#
+        .to_string()
+    }
+
     pub(crate) fn debian_periodic_config() -> String {
         r#"APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
@@ -571,5 +590,20 @@ mod tests {
             DistroFamily::Rhel.needrestart_conf_path(),
             "/etc/needrestart/needrestart.conf"
         );
+    }
+
+    #[test]
+    fn test_apt_daily_timer_override_content() {
+        let content = AutoUpdateConfigurator::apt_daily_timer_override();
+        assert!(content.contains("OnCalendar=daily"));
+        assert!(content.contains("RandomizedDelaySec=4h"));
+    }
+
+    #[test]
+    fn test_apt_daily_upgrade_timer_override_content() {
+        let content = AutoUpdateConfigurator::apt_daily_upgrade_timer_override();
+        assert!(content.contains("OnCalendar=daily"));
+        assert!(content.contains("RandomizedDelaySec=4h"));
+        assert!(content.contains("After=apt-daily.service"));
     }
 }
