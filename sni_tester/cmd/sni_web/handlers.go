@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
 	"sni_tester/pkg"
 )
 
@@ -128,20 +129,37 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
+	if _, err := os.Stat(s.cfg.OutputDir); os.IsNotExist(err) {
+		http.Error(w, "no results available", 404)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", "attachment; filename=sni_results.zip")
 
 	zw := zip.NewWriter(w)
-	filepath.Walk(s.cfg.OutputDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".pb") {
+	err := filepath.Walk(s.cfg.OutputDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(info.Name(), ".pb") {
 			return nil
 		}
-		f, _ := os.ReadFile(path)
+		f, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
 		fh := &zip.FileHeader{Name: info.Name(), Method: zip.Deflate}
-		out, _ := zw.CreateHeader(fh)
-		out.Write(f)
-		return nil
+		out, err := zw.CreateHeader(fh)
+		if err != nil {
+			return err
+		}
+		_, err = out.Write(f)
+		return err
 	})
+	if err != nil {
+		log.Printf("download error: %v", err)
+	}
 	zw.Close()
 }
 

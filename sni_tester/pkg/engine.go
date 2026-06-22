@@ -81,6 +81,12 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 	e.cancel = cancel
 	defer cancel()
 
+	if e.cfg.ResetAll {
+		if err := e.storage.ClearAll(); err != nil {
+			return nil, fmt.Errorf("failed to clear history: %w", err)
+		}
+	}
+
 	skipMap := make(map[string]struct{})
 	if !e.cfg.ForceRetry {
 		for d := range e.storage.LoadSuccessHistory() {
@@ -189,6 +195,15 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 				failedDomains = append(failedDomains, r.domain)
 				stats.Failed++
 			}
+			resultList = append(resultList, DomainResult{
+				Domain:  r.domain,
+				Success: r.success,
+				IP:      r.ip,
+				Country: r.country,
+				ASN:     r.asn,
+				Org:     r.org,
+				Info:    r.info,
+			})
 
 			if cb != nil {
 				cb(ProgressEvent{

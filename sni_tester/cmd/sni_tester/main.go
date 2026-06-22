@@ -49,7 +49,9 @@ func main() {
 	cfg.DNSAddr = *dnsAddr
 	cfg.OutputDir = targetDir
 
-	pkg.PrepareGeoDBs(cfg.GeoDBFile, cfg.GeoASNFile, *proxyString)
+	if err := pkg.PrepareGeoDBs(cfg.GeoDBFile, cfg.GeoASNFile, *proxyString); err != nil {
+		fmt.Printf("Warning: GeoDB download failed: %v\n", err)
+	}
 
 	engine, err := pkg.NewEngine(cfg)
 	if err != nil {
