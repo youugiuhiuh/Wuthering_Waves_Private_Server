@@ -39,6 +39,11 @@ linux-build:
 linux-run:
 	cd flutter_app && flutter run -d linux
 
+# Run Flutter desktop with Go backend auto-built
+flutter-linux-run:
+	go build -o flutter_app/assets/sni_web ./cmd/sni_web/
+	cd flutter_app && flutter run -d linux
+
 clean:
 	rm -f $(BINARY)
 	rm -f flutter_app/assets/sni_web

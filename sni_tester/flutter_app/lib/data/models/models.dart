@@ -96,12 +96,28 @@ class StartParams {
   final String domainsFile;
   final int timeoutSec;
   final int maxConcurrent;
+  final String? dns;
+  final int? ttlDays;
+  final bool? forceRetest;
+  final bool? debugMode;
+  final bool? resetHistory;
+  final String? geoProxy;
+  final int? maxLines;
+  final bool? autoShutdown;
 
   const StartParams({
     required this.serversFile,
     required this.domainsFile,
     this.timeoutSec = 5,
     this.maxConcurrent = 20,
+    this.dns,
+    this.ttlDays,
+    this.forceRetest,
+    this.debugMode,
+    this.resetHistory,
+    this.geoProxy,
+    this.maxLines,
+    this.autoShutdown,
   });
 
   Map<String, dynamic> toJson() => {
@@ -109,5 +125,57 @@ class StartParams {
         'domains_file': domainsFile,
         'timeout_sec': timeoutSec,
         'max_concurrent': maxConcurrent,
+        if (dns != null) 'dns': dns,
+        if (ttlDays != null) 'ttl_days': ttlDays,
+        if (forceRetest != null) 'force_retest': forceRetest,
+        if (debugMode != null) 'debug_mode': debugMode,
+        if (resetHistory != null) 'reset_history': resetHistory,
+        if (geoProxy != null) 'geo_proxy': geoProxy,
+        if (maxLines != null) 'max_lines': maxLines,
+        if (autoShutdown != null) 'auto_shutdown': autoShutdown,
       };
+}
+
+enum ConnMode { local, usb, wifi }
+
+enum ConnectionState { disconnected, connecting, connected, error }
+
+class FileEntry {
+  final String name;
+  final int size;
+  final String modTime;
+
+  const FileEntry({
+    required this.name,
+    required this.size,
+    required this.modTime,
+  });
+
+  factory FileEntry.fromJson(Map<String, dynamic> json) {
+    return FileEntry(
+      name: json['name'] as String? ?? '',
+      size: json['size'] as int? ?? 0,
+      modTime: json['mod_time'] as String? ?? '',
+    );
+  }
+
+  String get sizeFormatted {
+    if (size < 1024) return '$size B';
+    if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
+    return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+}
+
+class RemoteConfig {
+  final ConnMode mode;
+  final String host;
+  final int port;
+
+  const RemoteConfig({
+    this.mode = ConnMode.usb,
+    this.host = 'localhost',
+    this.port = 18080,
+  });
+
+  String get baseUrl => 'http://$host:$port';
 }

@@ -16,14 +16,26 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  final String baseUrl;
+  String baseUrl;
   final http.Client _http = http.Client();
   Process? _backendProcess;
+  bool _hasStartedLocal = false;
 
   ApiClient({this.baseUrl = 'http://localhost:18080'});
 
+  bool get isRemote => !baseUrl.contains('localhost') && !baseUrl.contains('127.0.0.1');
+
+  void updateUrl(String url) {
+    baseUrl = url;
+  }
+
   Future<void> startBackend() async {
     if (await _isRunning()) return;
+    if (isRemote) return;
+    await _startLocalBinary();
+  }
+
+  Future<void> _startLocalBinary() async {
     final dir = await getApplicationDocumentsDirectory();
     final binaryPath = '${dir.path}/sni_web';
     final file = File(binaryPath);
@@ -37,6 +49,7 @@ class ApiClient {
     _backendProcess!.stderr
         .transform(utf8.decoder)
         .listen((line) => stderr.writeln('[sni_web] $line'));
+    _hasStartedLocal = true;
     for (var i = 0; i < 50; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
       if (await _isRunning()) return;
@@ -45,9 +58,12 @@ class ApiClient {
   }
 
   Future<void> stopBackend() async {
-    _backendProcess?.kill();
-    await _backendProcess?.exitCode;
-    _backendProcess = null;
+    if (_hasStartedLocal) {
+      _backendProcess?.kill();
+      await _backendProcess?.exitCode;
+      _backendProcess = null;
+      _hasStartedLocal = false;
+    }
   }
 
   Future<bool> _isRunning() async {
@@ -136,6 +152,64 @@ class ApiClient {
       controller.addError(ApiException('SSE connection: $e'));
       client.close();
     }
+  }
+
+  Future<void> connectToRemote(String url) async {
+    final healthUrl = Uri.parse('$url/api/health');
+    final res = await _http.get(healthUrl).timeout(const Duration(seconds: 5));
+    if (res.statusCode != 200) {
+      throw ApiException('Health check failed: ${res.statusCode}');
+    }
+  }
+
+  Future<List<FileEntry>> listFiles() async {
+    final res = await _http
+        .get(Uri.parse('$baseUrl/api/files'))
+        .timeout(const Duration(seconds: 5));
+    if (res.statusCode != 200) {
+      throw ApiException('List files failed: ${res.statusCode}');
+    }
+    final list = jsonDecode(res.body) as List<dynamic>;
+    return list
+        .map((e) => FileEntry.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> deleteFile(String name) async {
+    final uri = Uri.parse('$baseUrl/api/files?name=${Uri.encodeComponent(name)}');
+    final res = await _http.delete(uri).timeout(const Duration(seconds: 5));
+    if (res.statusCode != 200) {
+      throw ApiException('Delete failed: ${res.statusCode}');
+    }
+  }
+
+  Future<void> uploadFile(String localPath, String remoteName) async {
+    final file = File(localPath);
+    if (!file.existsSync()) {
+      throw ApiException('File not found: $localPath');
+    }
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/api/upload'),
+    );
+    request.files.add(
+      await http.MultipartFile.fromPath('file', localPath, filename: remoteName),
+    );
+    final streamed = await request.send().timeout(const Duration(seconds: 30));
+    if (streamed.statusCode != 200) {
+      final body = await streamed.stream.bytesToString();
+      throw ApiException('Upload failed: ${streamed.statusCode} $body');
+    }
+  }
+
+  Future<List<int>> downloadResult() async {
+    final res = await _http
+        .get(Uri.parse('$baseUrl/api/download'))
+        .timeout(const Duration(seconds: 30));
+    if (res.statusCode != 200) {
+      throw ApiException('Download failed: ${res.statusCode}');
+    }
+    return res.bodyBytes.toList();
   }
 
   void dispose() {
