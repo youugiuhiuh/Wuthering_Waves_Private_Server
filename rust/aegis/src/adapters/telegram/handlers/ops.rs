@@ -602,7 +602,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     if let Err(e) = aegis::core::system::operations::Operations::perform_maintenance_with_reboot_time(
                         aegis::core::system::operations::Operations::DEFAULT_REBOOT_TIME
                     ).await {
-                        let _ = tx.send(format!("{}: {}", t!("ops.deploy_fail_security"), e));
+                        let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_security"), e)).to_string());
                         failed = true;
                     }
                 }
