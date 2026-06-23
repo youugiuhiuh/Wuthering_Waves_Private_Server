@@ -289,7 +289,7 @@ func readSecureInputStr(prompt string) string {
 	buf := make([]byte, 512)
 	n, err := os.Stdin.Read(buf)
 	if err != nil {
-		printRed("读取输入失败: " + err.Error())
+		printRed(i18n.T("input.read_failed", err.Error()))
 		os.Exit(1)
 	}
 	s := strings.TrimRight(string(buf[:n]), "\n\r")
@@ -840,118 +840,111 @@ func installFromKeyVal() {
 }
 
 func firstTimeSetup(binaryPath string) {
-	printSkyBlue("\n首次安装，开始配置 TG Bot...")
+	printSkyBlue(i18n.T("firsttime.title"))
 
-	printSkyBlue("\n========== 配置 Telegram Bot ==========")
-	printYellow("🤖 如何获取 TG Bot Token:")
-	printYellow("  1. 打开 Telegram，搜索 @BotFather")
-	printYellow("  2. 发送 /newbot 创建一个新机器人")
-	printYellow("  3. 复制返回的 HTTP API Token")
-	printYellow("  格式如: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz")
+	printSkyBlue(i18n.T("firsttime.section_tg"))
+	printYellow(i18n.T("firsttime.tg_help_howto"))
+	printYellow(i18n.T("firsttime.tg_help_step1"))
+	printYellow(i18n.T("firsttime.tg_help_step2"))
+	printYellow(i18n.T("firsttime.tg_help_step3"))
+	printYellow(i18n.T("firsttime.tg_help_format"))
 	fmt.Println()
 
-	botTokenEnclave := readSecureInput("请输入 TG Bot Token: ")
+	botTokenEnclave := readSecureInput(i18n.T("firsttime.tg_prompt"))
 
-	printYellow("\n👤 如何获取管理员 ID:")
-	printYellow("  1. 打开 Telegram，搜索 @userinfobot")
-	printYellow("  2. 发送任意消息（如 /start）")
-	printYellow("  3. 复制返回的 Id 数值")
-	printYellow("  格式如: 123456789")
+	printYellow(i18n.T("firsttime.admin_help_howto"))
+	printYellow(i18n.T("firsttime.admin_help_step1"))
+	printYellow(i18n.T("firsttime.admin_help_step2"))
+	printYellow(i18n.T("firsttime.admin_help_step3"))
+	printYellow(i18n.T("firsttime.admin_help_format"))
 	fmt.Println()
 
-	adminIDEnclave := readSecureInput("请输入管理员 ID (TG User ID): ")
+	adminIDEnclave := readSecureInput(i18n.T("firsttime.admin_prompt"))
 
-	// 生成 TOTP 密钥
 	totpSecretOutput, err := runCmdOutputBytes(binaryPath, "--generate-totp-secret")
 	if err != nil {
-		printRed("生成 TOTP 密钥失败: " + err.Error())
+		printRed(i18n.T("totp.generate_failed", err.Error()))
 		return
 	}
 	defer zeroBytes(totpSecretOutput)
 
 	totpSecretRaw, err := extractBase32Secret(totpSecretOutput)
 	if err != nil {
-		printRed("解析 TOTP 密钥失败: " + err.Error())
+		printRed(i18n.T("totp.parse_failed", err.Error()))
 		return
 	}
 	defer zeroBytes(totpSecretRaw)
 
-	// 立即将 TOTP 秘密放入 Enclave 加密
 	totpSecretEnclave := memguard.NewEnclave(totpSecretRaw)
 
-	// 在内存中短暂解密用于展示和生成二维码
 	totpSecretBuffer, _ := totpSecretEnclave.Open()
 	otpauthURL := buildOtpAuthURL(totpSecretBuffer.Bytes())
 	defer zeroBytes(otpauthURL)
 
-	printYellow("\n========== 重要: TOTP 绑定 ==========")
-	writeLine("您的 TOTP 密钥: ", totpSecretBuffer.Bytes())
+	printYellow(i18n.T("firsttime.totp_section"))
+	writeLine(i18n.T("firsttime.totp_key_label"), totpSecretBuffer.Bytes())
 
-	// 尝试显示二维码
 	if _, err := exec.LookPath("qrencode"); err == nil {
-		printYellow("扫描二维码绑定 (请使用支持 SHA512 的 TOTP 客户端):")
+		printYellow(i18n.T("firsttime.totp_qr_scan"))
 		cmd := exec.Command("qrencode", "-t", "ANSIUTF8")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Stdin = bytes.NewReader(otpauthURL)
 		_ = cmd.Run()
 	} else {
-		// 尝试自动安装 qrencode
-		printYellow("正在安装 qrencode 用于显示二维码...")
+		printYellow(i18n.T("firsttime.totp_installing_qr"))
 		if err := runCmdSilent("apt-get", "install", "-y", "qrencode"); err == nil {
-			printYellow("扫描二维码绑定 (请使用支持 SHA512 的 TOTP 客户端):")
+			printYellow(i18n.T("firsttime.totp_qr_scan"))
 			cmd := exec.Command("qrencode", "-t", "ANSIUTF8")
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Stdin = bytes.NewReader(otpauthURL)
 			_ = cmd.Run()
 		} else {
-			printYellow("提示: 安装 qrencode 可显示二维码")
+			printYellow(i18n.T("firsttime.totp_no_qr"))
 		}
 	}
 
-	writeLine("手动添加链接: ", otpauthURL)
-	printYellow("⚠ 绑定完成后请尽快清屏/关闭终端")
-	printYellow("====================================\n")
+	writeLine(i18n.T("firsttime.totp_manual_url"), otpauthURL)
+	printYellow(i18n.T("firsttime.totp_clear_hint"))
+	printYellow(i18n.T("firsttime.totp_separator"))
 
-	// 销毁用于展示的明文 Buffer
 	totpSecretBuffer.Destroy()
 
-	// ── Matrix 配置询问 ──
-	printSkyBlue("\n========== Matrix 敏感通知通道（可选）==========")
-	printYellow("💡 Matrix 可用于接收 Xray/Sing-box 的协议配置和")
-	printYellow("   分享链接等敏感信息，避免中心化平台威胁。")
-	printYellow("   如不配置，敏感信息将仍然通过 TG 发送。")
-	fmt.Print("\n是否配置 Matrix 敏感信息通道？(y/n): ")
+	printSkyBlue(i18n.T("firsttime.matrix_section"))
+	printYellow(i18n.T("firsttime.matrix_desc1"))
+	printYellow(i18n.T("firsttime.matrix_desc2"))
+	printYellow(i18n.T("firsttime.matrix_desc3"))
+	fmt.Print(i18n.T("firsttime.matrix_prompt_yn"))
 	setupMatrix, _ := readLine()
 
 	var matrixHS, matrixUser, matrixRoom string
 	var matrixPassEnclave *memguard.Enclave
 
 	if setupMatrix == "y" || setupMatrix == "Y" {
-		printYellow("\n🏠 Matrix Homeserver URL")
-		printYellow("   默认公共服务器: https://matrix.org")
-		printYellow("   自建服务器:      https://your-domain.com")
-		fmt.Print("请输入 Homeserver (留空默认 https://matrix.org): ")
+		printYellow(i18n.T("firsttime.matrix_hs_title"))
+		printYellow(i18n.T("firsttime.matrix_hs_default"))
+		printYellow(i18n.T("firsttime.matrix_hs_custom"))
+		fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
 		matrixHS, _ = readLine()
 		if matrixHS == "" {
 			matrixHS = "https://matrix.org"
 		}
 
-		printYellow("\n👤 Matrix 机器人用户名")
-		printYellow("   需要预先注册一个 Matrix 账号作为机器人。")
-		printYellow("   格式如: @botname:matrix.org")
-		matrixUser = readSecureInputStr("请输入 Matrix 用户名: ")
+		printYellow(i18n.T("firsttime.matrix_user_title"))
+		printYellow(i18n.T("firsttime.matrix_user_desc"))
+		printYellow(i18n.T("firsttime.matrix_user_format"))
+		matrixUser = readSecureInputStr(i18n.T("firsttime.matrix_user_prompt"))
 
-		matrixPassEnclave = readSecureInput("请输入 Matrix 密码: ")
+		matrixPassEnclave = readSecureInput(i18n.T("firsttime.matrix_pass_prompt"))
 
-		printYellow("\n📌 Matrix 房间 ID")
-		printYellow("   1. 在 Element 等客户端创建新房间")
-		printYellow("   2. 邀请机器人账号加入此房间")
-		printYellow("   3. 在房间设置 → 高级 → 内部房间 ID 获取")
-		printYellow("   格式如: !abc123:matrix.org")
-		printYellow("   注意: 包含开头的感叹号和域名")
-		matrixRoom = readSecureInputStr("请输入 Matrix 房间 ID: ")
+		printYellow(i18n.T("firsttime.matrix_room_title"))
+		printYellow(i18n.T("firsttime.matrix_room_step1"))
+		printYellow(i18n.T("firsttime.matrix_room_step2"))
+		printYellow(i18n.T("firsttime.matrix_room_step3"))
+		printYellow(i18n.T("firsttime.matrix_room_format"))
+		printYellow(i18n.T("firsttime.matrix_room_warn"))
+		matrixRoom = readSecureInputStr(i18n.T("firsttime.matrix_room_prompt"))
 	}
 
 	bTokenBuf, _ := botTokenEnclave.Open()
@@ -982,10 +975,9 @@ func firstTimeSetup(binaryPath string) {
 	cmd.Stdin = bytes.NewReader(setupPayload)
 
 	if err := cmd.Run(); err != nil {
-		printRed("配置失败: " + err.Error())
+		printRed(i18n.T("setup.failed", err.Error()))
 	}
 
-	// 立即显式销毁所有明文参数
 	bTokenBuf.Destroy()
 	aIDBuf.Destroy()
 	tSecretBuf.Destroy()
@@ -1001,7 +993,7 @@ func readSecureInput(prompt string) *memguard.Enclave {
 
 	n, err := os.Stdin.Read(b.Bytes())
 	if err != nil {
-		printRed("\n读取输入失败: " + err.Error())
+		printRed(i18n.T("input.read_failed", err.Error()))
 		memguard.Purge()
 		os.Exit(1)
 	}
@@ -1101,7 +1093,7 @@ func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			memguard.Purge()
-			fmt.Println("异常崩溃，内存已清理:", r)
+			fmt.Println(i18n.T("crash.cleaned", r))
 			os.Exit(1)
 		}
 	}()
@@ -1140,7 +1132,7 @@ func main() {
 	case "0":
 		os.Exit(0)
 	default:
-		printRed("无效选项")
+		printRed(i18n.T("menu.invalid"))
 		os.Exit(1)
 	}
 }
