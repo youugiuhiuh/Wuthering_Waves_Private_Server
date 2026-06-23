@@ -600,16 +600,20 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     {
                         Ok(result) => {
                             all_links.extend(result.links);
-                            let _ = adapter.send_message(
-                                &target,
-                                MessageContent {
-                                    text: format!("✅ TUIC ({}) 已创建 {} 个配置\n📁 {}",
-                                        ip_version.label(),
-                                        result.created_count,
-                                        result.config_file.as_deref().unwrap_or("?")),
-                                    markup: None,
-                                },
-                            ).await;
+                            let _ = adapter
+                                .send_message(
+                                    &target,
+                                    MessageContent {
+                                        text: format!(
+                                            "✅ TUIC ({}) 已创建 {} 个配置\n📁 {}",
+                                            ip_version.label(),
+                                            result.created_count,
+                                            result.config_file.as_deref().unwrap_or("?")
+                                        ),
+                                        markup: None,
+                                    },
+                                )
+                                .await;
                         }
                         Err(e) => {
                             let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_tuic"), e)).to_string());
@@ -620,18 +624,22 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 
                 if !failed && !all_links.is_empty() {
                     let combined = all_links.join("\n\n");
-                    if let Ok(msg) = adapter.send_message(
-                        &target,
-                        MessageContent {
-                            text: combined,
-                            markup: None,
-                        },
-                    ).await {
+                    if let Ok(msg) = adapter
+                        .send_message(
+                            &target,
+                            MessageContent {
+                                text: combined,
+                                markup: None,
+                            },
+                        )
+                        .await
+                    {
                         let adapter_clone = adapter.clone();
                         let target_clone = target.clone();
                         tokio::spawn(async move {
                             tokio::time::sleep(Duration::from_secs(60)).await;
-                            if let Err(e) = adapter_clone.delete_message(&target_clone, &msg).await {
+                            if let Err(e) = adapter_clone.delete_message(&target_clone, &msg).await
+                            {
                                 log::warn!("删除一键部署链接消息失败: {}", e);
                             }
                         });
