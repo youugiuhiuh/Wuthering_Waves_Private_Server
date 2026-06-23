@@ -19,6 +19,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/go/installer/i18n"
+
 	"github.com/awnumar/memguard"
 	"golang.org/x/sys/unix"
 )
@@ -1042,12 +1044,12 @@ WantedBy=multi-user.target
 // ======================== 卸载 ==============================
 
 func uninstallAegis() {
-	printYellow("\n确认卸载 TG Bot？所有配置将被删除。")
-	fmt.Print("输入 y 确认卸载: ")
+	printYellow(i18n.T("uninstall.confirm"))
+	fmt.Print(i18n.T("uninstall.confirm_prompt"))
 	confirm, _ := readLine()
 
 	if confirm != "y" {
-		printGreen("已取消卸载。")
+		printGreen(i18n.T("uninstall.cancelled"))
 		return
 	}
 
@@ -1057,37 +1059,34 @@ func uninstallAegis() {
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = os.RemoveAll(installDir)
 
-	printGreen("\n✅ TG Bot 已完全卸载。")
+	printGreen(i18n.T("uninstall.done"))
 }
 
 // ======================== 状态 ==============================
 
 func showStatus() {
-	printSkyBlue("\n--- TG Bot 状态 ---")
+	printSkyBlue(i18n.T("status.title"))
 
-	// 二进制
 	binPath := filepath.Join(installDir, binaryName)
 	if _, err := os.Stat(binPath); err == nil {
-		printGreen("二进制: 已安装")
+		printGreen(i18n.T("status.binary_installed"))
 	} else {
-		printYellow("二进制: 未安装")
+		printYellow(i18n.T("status.binary_missing"))
 	}
 
-	// 服务状态
 	if err := runCmdSilent("systemctl", "is-active", "--quiet", serviceName); err == nil {
-		printGreen("服务状态: 运行中 ✓")
+		printGreen(i18n.T("status.service_running"))
 	} else if runCmdSilent("systemctl", "is-enabled", "--quiet", serviceName) == nil {
-		printYellow("服务状态: 已停止")
+		printYellow(i18n.T("status.service_stopped"))
 	} else {
-		printYellow("服务状态: 未安装")
+		printYellow(i18n.T("status.service_not_installed"))
 	}
 
-	// 配置
 	configPath := filepath.Join(installDir, "config.enc")
 	if _, err := os.Stat(configPath); err == nil {
-		printGreen("配置文件: 已初始化")
+		printGreen(i18n.T("status.config_ready"))
 	} else {
-		printYellow("配置文件: 未配置")
+		printYellow(i18n.T("status.config_missing"))
 	}
 
 	fmt.Println()
@@ -1113,22 +1112,25 @@ func main() {
 	_ = checkArch()
 
 	if len(os.Args) > 1 && os.Args[1] == "--setup-stdin" {
+		i18n.InitLang(false)
 		installFromStdin()
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--setup-keyval" {
+		i18n.InitLang(false)
 		installFromKeyVal()
 		return
 	}
 
+	i18n.InitLang(true)
 	printBanner()
 	showStatus()
 
-	printYellow("1. 安装/更新 TG Bot")
-	printYellow("2. 卸载 TG Bot")
-	printYellow("0. 退出")
+	printYellow(i18n.T("menu.install"))
+	printYellow(i18n.T("menu.uninstall"))
+	printYellow(i18n.T("menu.exit"))
 
-	fmt.Print("\n请选择: ")
+	fmt.Print(i18n.T("menu.prompt"))
 	choice, _ := readLine()
 
 	switch choice {
