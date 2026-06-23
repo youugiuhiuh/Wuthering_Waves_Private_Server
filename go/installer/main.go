@@ -147,13 +147,13 @@ func printSkyBlue(msg string) { printColor(colorSkyBlue, msg) }
 
 func printBanner() {
 	printRed("\n==============================================================")
-	printGreen("WWPS TG Bot 管理工具")
-	printGreen("当前版本: " + version)
-	printGreen("Release 源: 默认 GitHub，可设 AEGIS_RELEASE_MIRRORS")
+	printGreen(i18n.T("banner.title"))
+	printGreen(i18n.T("banner.version", version))
+	printGreen(i18n.T("banner.release_mirrors"))
 	if repos := configuredReleaseRepositories(); len(repos) > 0 {
-		printGreen("Release 仓库: " + repos[0].Owner + "/" + repos[0].Name)
+		printGreen(i18n.T("banner.release_repo", repos[0].Owner+"/"+repos[0].Name))
 	}
-	printSkyBlue("所有管理功能请通过 Telegram Bot 完成")
+	printSkyBlue(i18n.T("banner.manage_hint"))
 	printRed("==============================================================")
 }
 
@@ -161,14 +161,14 @@ func printBanner() {
 
 func installDependencies() {
 	if _, err := exec.LookPath("apt-get"); err == nil {
-		printYellow("正在检查系统依赖...")
+		printYellow(i18n.T("dep.checking"))
 		cmd := exec.Command("apt-get", "install", "-y", "qrencode", "libcap2-bin")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			printYellow("提示: 部分依赖安装失败，某些功能可能受限")
+			printYellow(i18n.T("dep.partial_fail"))
 		} else {
-			printGreen("✓ 系统依赖检查完成")
+			printGreen(i18n.T("dep.done"))
 		}
 	}
 }
@@ -177,7 +177,7 @@ func installDependencies() {
 
 func checkRoot() {
 	if os.Getuid() != 0 {
-		printRed("请使用 root 用户运行此程序")
+		printRed(i18n.T("root.required"))
 		os.Exit(1)
 	}
 }
@@ -190,7 +190,7 @@ func checkArch() string {
 	case "arm64":
 		return "arm64"
 	default:
-		printRed("不支持的 CPU 架构: " + arch)
+		printRed(i18n.T("arch.unsupported", arch))
 		os.Exit(1)
 		return ""
 	}
@@ -359,10 +359,10 @@ func disableCoreDumps() {
 
 	limit := &unix.Rlimit{Cur: 0, Max: 0}
 	if err := unix.Setrlimit(unix.RLIMIT_CORE, limit); err != nil {
-		printYellow("警告: 禁用 core dump 失败: " + err.Error())
+		printYellow(i18n.T("warning.core_dump", err.Error()))
 	}
 	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
-		printYellow("警告: 设置进程不可转储失败: " + err.Error())
+		printYellow(i18n.T("warning.dumpable", err.Error()))
 	}
 }
 
@@ -373,7 +373,7 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 }
 
 func downloadFile(client *http.Client, url, dest string) error {
-	printYellow("正在下载: " + url)
+	printYellow(i18n.T("download.start", url))
 
 	resp, err := client.Get(url)
 	if err != nil {
@@ -396,7 +396,7 @@ func downloadFile(client *http.Client, url, dest string) error {
 		return fmt.Errorf("写入失败: %w", err)
 	}
 
-	printGreen(fmt.Sprintf("✓ 下载完成 (%d bytes)", written))
+	printGreen(i18n.T("download.complete", written))
 	return nil
 }
 
@@ -543,7 +543,7 @@ func verifySHA256(path, expected string) error {
 		return err
 	}
 
-	printYellow("SHA-256: " + actual)
+	printYellow(i18n.T("sha256.label", actual))
 	if subtle.ConstantTimeCompare([]byte(strings.ToLower(actual)), []byte(strings.ToLower(expected))) != 1 {
 		return fmt.Errorf("SHA-256 不匹配: expected %s, got %s", expected, actual)
 	}
@@ -557,16 +557,16 @@ func downloadAndDeployAegis() string {
 
 	release, err := getLatestReleaseInfo()
 	if err != nil {
-		printRed("获取最新版本信息失败: " + err.Error())
+		printRed(i18n.T("release.fetch_failed", err.Error()))
 		return ""
 	}
 
 	ver := release.TagName
-	printYellow("目标版本: " + ver)
+	printYellow(i18n.T("release.target_version", ver))
 
 	tmpDir, err := os.MkdirTemp("", "wwps-installer-*")
 	if err != nil {
-		printRed("创建临时目录失败: " + err.Error())
+		printRed(i18n.T("release.tmpdir_failed", err.Error()))
 		return ""
 	}
 	defer os.RemoveAll(tmpDir)
@@ -587,28 +587,28 @@ func downloadAndDeployAegis() string {
 	}
 
 	if err := downloadFile(newHTTPClient(10*time.Minute), downloadURL, binaryPath); err != nil {
-		printRed("下载失败: " + err.Error())
+		printRed(i18n.T("download.failed", err.Error()))
 		return ""
 	}
 
 	info, err := os.Stat(binaryPath)
 	if err != nil || info.Size() == 0 {
-		printRed("下载的文件无效")
+		printRed(i18n.T("download.invalid_file"))
 		return ""
 	}
 
 	expectedHash, err := findExpectedSHA256(release, binaryName)
 	if err != nil {
-		printRed("获取可信 SHA-256 失败: " + err.Error())
+		printRed(i18n.T("sha256.fetch_failed", err.Error()))
 		return ""
 	}
 	if err := verifySHA256(binaryPath, expectedHash); err != nil {
-		printRed("二进制校验失败: " + err.Error())
+		printRed(i18n.T("sha256.verify_failed", err.Error()))
 		return ""
 	}
 
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
-		printRed("创建安装目录失败: " + err.Error())
+		printRed(i18n.T("install.mkdir_failed", err.Error()))
 		return ""
 	}
 
@@ -617,31 +617,31 @@ func downloadAndDeployAegis() string {
 	destPath := filepath.Join(installDir, binaryName)
 	src, err := os.Open(binaryPath)
 	if err != nil {
-		printRed("读取二进制失败: " + err.Error())
+		printRed(i18n.T("install.read_bin_failed", err.Error()))
 		return ""
 	}
 	defer src.Close()
 
 	dst, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
-		printRed("写入安装目录失败: " + err.Error())
+		printRed(i18n.T("install.write_bin_failed", err.Error()))
 		return ""
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, src); err != nil {
-		printRed("复制二进制失败: " + err.Error())
+		printRed(i18n.T("install.copy_failed", err.Error()))
 		return ""
 	}
 	dst.Close()
 	src.Close()
 
-	printGreen("✓ TG Bot 二进制文件部署完成")
+	printGreen(i18n.T("install.bin_deployed"))
 
 	if err := runCmdSilent("setcap", "cap_ipc_lock+eip", destPath); err != nil {
-		printYellow("提示: 设置 cap_ipc_lock 失败，安全内存锁定不可用")
+		printYellow(i18n.T("install.cap_ipc_failed"))
 	} else {
-		printGreen("✓ 内存安全保护已启用")
+		printGreen(i18n.T("install.mem_protect_ok"))
 	}
 
 	return destPath
