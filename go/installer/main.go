@@ -19,6 +19,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/go/installer/i18n"
+
 	"github.com/awnumar/memguard"
 	"golang.org/x/sys/unix"
 )
@@ -145,13 +147,13 @@ func printSkyBlue(msg string) { printColor(colorSkyBlue, msg) }
 
 func printBanner() {
 	printRed("\n==============================================================")
-	printGreen("WWPS TG Bot 管理工具")
-	printGreen("当前版本: " + version)
-	printGreen("Release 源: 默认 GitHub，可设 AEGIS_RELEASE_MIRRORS")
+	printGreen(i18n.T("banner.title"))
+	printGreen(i18n.T("banner.version", version))
+	printGreen(i18n.T("banner.release_mirrors"))
 	if repos := configuredReleaseRepositories(); len(repos) > 0 {
-		printGreen("Release 仓库: " + repos[0].Owner + "/" + repos[0].Name)
+		printGreen(i18n.T("banner.release_repo", repos[0].Owner+"/"+repos[0].Name))
 	}
-	printSkyBlue("所有管理功能请通过 Telegram Bot 完成")
+	printSkyBlue(i18n.T("banner.manage_hint"))
 	printRed("==============================================================")
 }
 
@@ -159,14 +161,14 @@ func printBanner() {
 
 func installDependencies() {
 	if _, err := exec.LookPath("apt-get"); err == nil {
-		printYellow("正在检查系统依赖...")
+		printYellow(i18n.T("dep.checking"))
 		cmd := exec.Command("apt-get", "install", "-y", "qrencode", "libcap2-bin")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			printYellow("提示: 部分依赖安装失败，某些功能可能受限")
+			printYellow(i18n.T("dep.partial_fail"))
 		} else {
-			printGreen("✓ 系统依赖检查完成")
+			printGreen(i18n.T("dep.done"))
 		}
 	}
 }
@@ -175,7 +177,7 @@ func installDependencies() {
 
 func checkRoot() {
 	if os.Getuid() != 0 {
-		printRed("请使用 root 用户运行此程序")
+		printRed(i18n.T("root.required"))
 		os.Exit(1)
 	}
 }
@@ -188,7 +190,7 @@ func checkArch() string {
 	case "arm64":
 		return "arm64"
 	default:
-		printRed("不支持的 CPU 架构: " + arch)
+		printRed(i18n.T("arch.unsupported", arch))
 		os.Exit(1)
 		return ""
 	}
@@ -287,7 +289,7 @@ func readSecureInputStr(prompt string) string {
 	buf := make([]byte, 512)
 	n, err := os.Stdin.Read(buf)
 	if err != nil {
-		printRed("读取输入失败: " + err.Error())
+		printRed(i18n.T("input.read_failed", err.Error()))
 		os.Exit(1)
 	}
 	s := strings.TrimRight(string(buf[:n]), "\n\r")
@@ -357,10 +359,10 @@ func disableCoreDumps() {
 
 	limit := &unix.Rlimit{Cur: 0, Max: 0}
 	if err := unix.Setrlimit(unix.RLIMIT_CORE, limit); err != nil {
-		printYellow("警告: 禁用 core dump 失败: " + err.Error())
+		printYellow(i18n.T("warning.core_dump", err.Error()))
 	}
 	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
-		printYellow("警告: 设置进程不可转储失败: " + err.Error())
+		printYellow(i18n.T("warning.dumpable", err.Error()))
 	}
 }
 
@@ -371,7 +373,7 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 }
 
 func downloadFile(client *http.Client, url, dest string) error {
-	printYellow("正在下载: " + url)
+	printYellow(i18n.T("download.start", url))
 
 	resp, err := client.Get(url)
 	if err != nil {
@@ -394,7 +396,7 @@ func downloadFile(client *http.Client, url, dest string) error {
 		return fmt.Errorf("写入失败: %w", err)
 	}
 
-	printGreen(fmt.Sprintf("✓ 下载完成 (%d bytes)", written))
+	printGreen(i18n.T("download.complete", written))
 	return nil
 }
 
@@ -541,7 +543,7 @@ func verifySHA256(path, expected string) error {
 		return err
 	}
 
-	printYellow("SHA-256: " + actual)
+	printYellow(i18n.T("sha256.label", actual))
 	if subtle.ConstantTimeCompare([]byte(strings.ToLower(actual)), []byte(strings.ToLower(expected))) != 1 {
 		return fmt.Errorf("SHA-256 不匹配: expected %s, got %s", expected, actual)
 	}
@@ -555,16 +557,16 @@ func downloadAndDeployAegis() string {
 
 	release, err := getLatestReleaseInfo()
 	if err != nil {
-		printRed("获取最新版本信息失败: " + err.Error())
+		printRed(i18n.T("release.fetch_failed", err.Error()))
 		return ""
 	}
 
 	ver := release.TagName
-	printYellow("目标版本: " + ver)
+	printYellow(i18n.T("release.target_version", ver))
 
 	tmpDir, err := os.MkdirTemp("", "wwps-installer-*")
 	if err != nil {
-		printRed("创建临时目录失败: " + err.Error())
+		printRed(i18n.T("release.tmpdir_failed", err.Error()))
 		return ""
 	}
 	defer os.RemoveAll(tmpDir)
@@ -585,28 +587,28 @@ func downloadAndDeployAegis() string {
 	}
 
 	if err := downloadFile(newHTTPClient(10*time.Minute), downloadURL, binaryPath); err != nil {
-		printRed("下载失败: " + err.Error())
+		printRed(i18n.T("download.failed", err.Error()))
 		return ""
 	}
 
 	info, err := os.Stat(binaryPath)
 	if err != nil || info.Size() == 0 {
-		printRed("下载的文件无效")
+		printRed(i18n.T("download.invalid_file"))
 		return ""
 	}
 
 	expectedHash, err := findExpectedSHA256(release, binaryName)
 	if err != nil {
-		printRed("获取可信 SHA-256 失败: " + err.Error())
+		printRed(i18n.T("sha256.fetch_failed", err.Error()))
 		return ""
 	}
 	if err := verifySHA256(binaryPath, expectedHash); err != nil {
-		printRed("二进制校验失败: " + err.Error())
+		printRed(i18n.T("sha256.verify_failed", err.Error()))
 		return ""
 	}
 
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
-		printRed("创建安装目录失败: " + err.Error())
+		printRed(i18n.T("install.mkdir_failed", err.Error()))
 		return ""
 	}
 
@@ -615,38 +617,38 @@ func downloadAndDeployAegis() string {
 	destPath := filepath.Join(installDir, binaryName)
 	src, err := os.Open(binaryPath)
 	if err != nil {
-		printRed("读取二进制失败: " + err.Error())
+		printRed(i18n.T("install.read_bin_failed", err.Error()))
 		return ""
 	}
 	defer src.Close()
 
 	dst, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
-		printRed("写入安装目录失败: " + err.Error())
+		printRed(i18n.T("install.write_bin_failed", err.Error()))
 		return ""
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, src); err != nil {
-		printRed("复制二进制失败: " + err.Error())
+		printRed(i18n.T("install.copy_failed", err.Error()))
 		return ""
 	}
 	dst.Close()
 	src.Close()
 
-	printGreen("✓ TG Bot 二进制文件部署完成")
+	printGreen(i18n.T("install.bin_deployed"))
 
 	if err := runCmdSilent("setcap", "cap_ipc_lock+eip", destPath); err != nil {
-		printYellow("提示: 设置 cap_ipc_lock 失败，安全内存锁定不可用")
+		printYellow(i18n.T("install.cap_ipc_failed"))
 	} else {
-		printGreen("✓ 内存安全保护已启用")
+		printGreen(i18n.T("install.mem_protect_ok"))
 	}
 
 	return destPath
 }
 
 func installAegis() {
-	printSkyBlue("\n开始安装/更新 TG Bot...")
+	printSkyBlue(i18n.T("install.start"))
 
 	destPath := downloadAndDeployAegis()
 	if destPath == "" {
@@ -655,51 +657,50 @@ func installAegis() {
 
 	configPath := filepath.Join(installDir, "config.enc")
 	if _, err := os.Stat(configPath); err == nil {
-		printGreen("\n检测到已存在配置文件，跳过初始化设置。")
+		printGreen(i18n.T("install.config_exists"))
 	} else {
 		firstTimeSetup(destPath)
 	}
 
-	// systemd 服务
 	writeSystemdService()
 
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = runCmdSilent("systemctl", "enable", serviceName)
 	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
-		printRed("启动服务失败: " + err.Error())
+		printRed(i18n.T("install.service_failed", err.Error()))
 		return
 	}
 
-	printGreen("\n✅ TG Bot 已成功安装并启动！")
-	printSkyBlue("请前往 Telegram 与 Bot 对话进行管理。")
+	printGreen(i18n.T("install.success"))
+	printSkyBlue(i18n.T("install.manage_hint"))
 }
 
 // ======================== 无交互安装 (JSON / Key=Value) ========
 
 func generateTOTPSecret(destPath string) string {
-	printYellow("正在生成 TOTP 密钥...")
+	printYellow(i18n.T("totp.generating"))
 	output, err := runCmdOutputBytes(destPath, "--generate-totp-secret")
 	if err != nil {
-		printRed("生成 TOTP 密钥失败: " + err.Error())
+		printRed(i18n.T("totp.generate_failed", err.Error()))
 		os.Exit(1)
 	}
 	rawSecret, err := extractBase32Secret(output)
 	if err != nil {
-		printRed("解析 TOTP 密钥失败: " + err.Error())
+		printRed(i18n.T("totp.parse_failed", err.Error()))
 		os.Exit(1)
 	}
-	printYellow("TOTP 密钥已自动生成")
+	printYellow(i18n.T("totp.generated"))
 	return string(rawSecret)
 }
 
 func runAegisSetup(destPath string, payload []byte) {
-	printYellow("\n正在配置...")
+	printYellow(i18n.T("setup.configuring"))
 	cmd := exec.Command(destPath, "--setup-stdin")
 	cmd.Stdin = bytes.NewReader(payload)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		printRed("配置失败: " + err.Error())
+		printRed(i18n.T("setup.failed", err.Error()))
 		os.Exit(1)
 	}
 }
@@ -709,22 +710,22 @@ func finishDeploy() {
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = runCmdSilent("systemctl", "enable", serviceName)
 	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
-		printRed("启动服务失败: " + err.Error())
+		printRed(i18n.T("install.service_failed", err.Error()))
 		os.Exit(1)
 	}
-	printGreen("\n✅ TG Bot 已成功安装并启动！")
-	printSkyBlue("请前往 Telegram 与 Bot 对话进行管理。")
+	printGreen(i18n.T("install.success"))
+	printSkyBlue(i18n.T("install.manage_hint"))
 }
 
 func installFromStdin() {
 	payload, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		printRed("读取 stdin 失败: " + err.Error())
+		printRed(i18n.T("stdin.read_failed", err.Error()))
 		os.Exit(1)
 	}
 
 	if !json.Valid(payload) {
-		printRed("无效的 JSON 格式")
+		printRed(i18n.T("stdin.invalid_json"))
 		os.Exit(1)
 	}
 
@@ -735,7 +736,7 @@ func installFromStdin() {
 
 	var inputData map[string]interface{}
 	if err := json.Unmarshal(payload, &inputData); err != nil {
-		printRed("解析 JSON 失败: " + err.Error())
+		printRed(i18n.T("stdin.parse_failed", err.Error()))
 		os.Exit(1)
 	}
 
@@ -745,7 +746,7 @@ func installFromStdin() {
 		inputData["totp_secret"] = secret
 		payload, err = json.Marshal(inputData)
 		if err != nil {
-			printRed("序列化 JSON 失败: " + err.Error())
+			printRed(i18n.T("stdin.serialize_failed", err.Error()))
 			os.Exit(1)
 		}
 	}
@@ -798,7 +799,7 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 		case "matrix_store_passphrase":
 			cfg.MatrixStorePassphrase = val
 		default:
-			printYellow("警告: 未知字段 \"" + key + "\" 已忽略")
+			printYellow(i18n.T("keyval.unknown_field", key))
 		}
 	}
 	if cfg.Token == "" || cfg.AdminID == "" {
@@ -810,7 +811,7 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 func installFromKeyVal() {
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		printRed("读取 stdin 失败: " + err.Error())
+		printRed(i18n.T("stdin.read_failed", err.Error()))
 		os.Exit(1)
 	}
 
@@ -839,118 +840,111 @@ func installFromKeyVal() {
 }
 
 func firstTimeSetup(binaryPath string) {
-	printSkyBlue("\n首次安装，开始配置 TG Bot...")
+	printSkyBlue(i18n.T("firsttime.title"))
 
-	printSkyBlue("\n========== 配置 Telegram Bot ==========")
-	printYellow("🤖 如何获取 TG Bot Token:")
-	printYellow("  1. 打开 Telegram，搜索 @BotFather")
-	printYellow("  2. 发送 /newbot 创建一个新机器人")
-	printYellow("  3. 复制返回的 HTTP API Token")
-	printYellow("  格式如: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz")
+	printSkyBlue(i18n.T("firsttime.section_tg"))
+	printYellow(i18n.T("firsttime.tg_help_howto"))
+	printYellow(i18n.T("firsttime.tg_help_step1"))
+	printYellow(i18n.T("firsttime.tg_help_step2"))
+	printYellow(i18n.T("firsttime.tg_help_step3"))
+	printYellow(i18n.T("firsttime.tg_help_format"))
 	fmt.Println()
 
-	botTokenEnclave := readSecureInput("请输入 TG Bot Token: ")
+	botTokenEnclave := readSecureInput(i18n.T("firsttime.tg_prompt"))
 
-	printYellow("\n👤 如何获取管理员 ID:")
-	printYellow("  1. 打开 Telegram，搜索 @userinfobot")
-	printYellow("  2. 发送任意消息（如 /start）")
-	printYellow("  3. 复制返回的 Id 数值")
-	printYellow("  格式如: 123456789")
+	printYellow(i18n.T("firsttime.admin_help_howto"))
+	printYellow(i18n.T("firsttime.admin_help_step1"))
+	printYellow(i18n.T("firsttime.admin_help_step2"))
+	printYellow(i18n.T("firsttime.admin_help_step3"))
+	printYellow(i18n.T("firsttime.admin_help_format"))
 	fmt.Println()
 
-	adminIDEnclave := readSecureInput("请输入管理员 ID (TG User ID): ")
+	adminIDEnclave := readSecureInput(i18n.T("firsttime.admin_prompt"))
 
-	// 生成 TOTP 密钥
 	totpSecretOutput, err := runCmdOutputBytes(binaryPath, "--generate-totp-secret")
 	if err != nil {
-		printRed("生成 TOTP 密钥失败: " + err.Error())
+		printRed(i18n.T("totp.generate_failed", err.Error()))
 		return
 	}
 	defer zeroBytes(totpSecretOutput)
 
 	totpSecretRaw, err := extractBase32Secret(totpSecretOutput)
 	if err != nil {
-		printRed("解析 TOTP 密钥失败: " + err.Error())
+		printRed(i18n.T("totp.parse_failed", err.Error()))
 		return
 	}
 	defer zeroBytes(totpSecretRaw)
 
-	// 立即将 TOTP 秘密放入 Enclave 加密
 	totpSecretEnclave := memguard.NewEnclave(totpSecretRaw)
 
-	// 在内存中短暂解密用于展示和生成二维码
 	totpSecretBuffer, _ := totpSecretEnclave.Open()
 	otpauthURL := buildOtpAuthURL(totpSecretBuffer.Bytes())
 	defer zeroBytes(otpauthURL)
 
-	printYellow("\n========== 重要: TOTP 绑定 ==========")
-	writeLine("您的 TOTP 密钥: ", totpSecretBuffer.Bytes())
+	printYellow(i18n.T("firsttime.totp_section"))
+	writeLine(i18n.T("firsttime.totp_key_label"), totpSecretBuffer.Bytes())
 
-	// 尝试显示二维码
 	if _, err := exec.LookPath("qrencode"); err == nil {
-		printYellow("扫描二维码绑定 (请使用支持 SHA512 的 TOTP 客户端):")
+		printYellow(i18n.T("firsttime.totp_qr_scan"))
 		cmd := exec.Command("qrencode", "-t", "ANSIUTF8")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Stdin = bytes.NewReader(otpauthURL)
 		_ = cmd.Run()
 	} else {
-		// 尝试自动安装 qrencode
-		printYellow("正在安装 qrencode 用于显示二维码...")
+		printYellow(i18n.T("firsttime.totp_installing_qr"))
 		if err := runCmdSilent("apt-get", "install", "-y", "qrencode"); err == nil {
-			printYellow("扫描二维码绑定 (请使用支持 SHA512 的 TOTP 客户端):")
+			printYellow(i18n.T("firsttime.totp_qr_scan"))
 			cmd := exec.Command("qrencode", "-t", "ANSIUTF8")
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Stdin = bytes.NewReader(otpauthURL)
 			_ = cmd.Run()
 		} else {
-			printYellow("提示: 安装 qrencode 可显示二维码")
+			printYellow(i18n.T("firsttime.totp_no_qr"))
 		}
 	}
 
-	writeLine("手动添加链接: ", otpauthURL)
-	printYellow("⚠ 绑定完成后请尽快清屏/关闭终端")
-	printYellow("====================================\n")
+	writeLine(i18n.T("firsttime.totp_manual_url"), otpauthURL)
+	printYellow(i18n.T("firsttime.totp_clear_hint"))
+	printYellow(i18n.T("firsttime.totp_separator"))
 
-	// 销毁用于展示的明文 Buffer
 	totpSecretBuffer.Destroy()
 
-	// ── Matrix 配置询问 ──
-	printSkyBlue("\n========== Matrix 敏感通知通道（可选）==========")
-	printYellow("💡 Matrix 可用于接收 Xray/Sing-box 的协议配置和")
-	printYellow("   分享链接等敏感信息，避免中心化平台威胁。")
-	printYellow("   如不配置，敏感信息将仍然通过 TG 发送。")
-	fmt.Print("\n是否配置 Matrix 敏感信息通道？(y/n): ")
+	printSkyBlue(i18n.T("firsttime.matrix_section"))
+	printYellow(i18n.T("firsttime.matrix_desc1"))
+	printYellow(i18n.T("firsttime.matrix_desc2"))
+	printYellow(i18n.T("firsttime.matrix_desc3"))
+	fmt.Print(i18n.T("firsttime.matrix_prompt_yn"))
 	setupMatrix, _ := readLine()
 
 	var matrixHS, matrixUser, matrixRoom string
 	var matrixPassEnclave *memguard.Enclave
 
 	if setupMatrix == "y" || setupMatrix == "Y" {
-		printYellow("\n🏠 Matrix Homeserver URL")
-		printYellow("   默认公共服务器: https://matrix.org")
-		printYellow("   自建服务器:      https://your-domain.com")
-		fmt.Print("请输入 Homeserver (留空默认 https://matrix.org): ")
+		printYellow(i18n.T("firsttime.matrix_hs_title"))
+		printYellow(i18n.T("firsttime.matrix_hs_default"))
+		printYellow(i18n.T("firsttime.matrix_hs_custom"))
+		fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
 		matrixHS, _ = readLine()
 		if matrixHS == "" {
 			matrixHS = "https://matrix.org"
 		}
 
-		printYellow("\n👤 Matrix 机器人用户名")
-		printYellow("   需要预先注册一个 Matrix 账号作为机器人。")
-		printYellow("   格式如: @botname:matrix.org")
-		matrixUser = readSecureInputStr("请输入 Matrix 用户名: ")
+		printYellow(i18n.T("firsttime.matrix_user_title"))
+		printYellow(i18n.T("firsttime.matrix_user_desc"))
+		printYellow(i18n.T("firsttime.matrix_user_format"))
+		matrixUser = readSecureInputStr(i18n.T("firsttime.matrix_user_prompt"))
 
-		matrixPassEnclave = readSecureInput("请输入 Matrix 密码: ")
+		matrixPassEnclave = readSecureInput(i18n.T("firsttime.matrix_pass_prompt"))
 
-		printYellow("\n📌 Matrix 房间 ID")
-		printYellow("   1. 在 Element 等客户端创建新房间")
-		printYellow("   2. 邀请机器人账号加入此房间")
-		printYellow("   3. 在房间设置 → 高级 → 内部房间 ID 获取")
-		printYellow("   格式如: !abc123:matrix.org")
-		printYellow("   注意: 包含开头的感叹号和域名")
-		matrixRoom = readSecureInputStr("请输入 Matrix 房间 ID: ")
+		printYellow(i18n.T("firsttime.matrix_room_title"))
+		printYellow(i18n.T("firsttime.matrix_room_step1"))
+		printYellow(i18n.T("firsttime.matrix_room_step2"))
+		printYellow(i18n.T("firsttime.matrix_room_step3"))
+		printYellow(i18n.T("firsttime.matrix_room_format"))
+		printYellow(i18n.T("firsttime.matrix_room_warn"))
+		matrixRoom = readSecureInputStr(i18n.T("firsttime.matrix_room_prompt"))
 	}
 
 	bTokenBuf, _ := botTokenEnclave.Open()
@@ -981,10 +975,9 @@ func firstTimeSetup(binaryPath string) {
 	cmd.Stdin = bytes.NewReader(setupPayload)
 
 	if err := cmd.Run(); err != nil {
-		printRed("配置失败: " + err.Error())
+		printRed(i18n.T("setup.failed", err.Error()))
 	}
 
-	// 立即显式销毁所有明文参数
 	bTokenBuf.Destroy()
 	aIDBuf.Destroy()
 	tSecretBuf.Destroy()
@@ -1000,7 +993,7 @@ func readSecureInput(prompt string) *memguard.Enclave {
 
 	n, err := os.Stdin.Read(b.Bytes())
 	if err != nil {
-		printRed("\n读取输入失败: " + err.Error())
+		printRed(i18n.T("input.read_failed", err.Error()))
 		memguard.Purge()
 		os.Exit(1)
 	}
@@ -1042,12 +1035,12 @@ WantedBy=multi-user.target
 // ======================== 卸载 ==============================
 
 func uninstallAegis() {
-	printYellow("\n确认卸载 TG Bot？所有配置将被删除。")
-	fmt.Print("输入 y 确认卸载: ")
+	printYellow(i18n.T("uninstall.confirm"))
+	fmt.Print(i18n.T("uninstall.confirm_prompt"))
 	confirm, _ := readLine()
 
 	if confirm != "y" {
-		printGreen("已取消卸载。")
+		printGreen(i18n.T("uninstall.cancelled"))
 		return
 	}
 
@@ -1057,37 +1050,34 @@ func uninstallAegis() {
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = os.RemoveAll(installDir)
 
-	printGreen("\n✅ TG Bot 已完全卸载。")
+	printGreen(i18n.T("uninstall.done"))
 }
 
 // ======================== 状态 ==============================
 
 func showStatus() {
-	printSkyBlue("\n--- TG Bot 状态 ---")
+	printSkyBlue(i18n.T("status.title"))
 
-	// 二进制
 	binPath := filepath.Join(installDir, binaryName)
 	if _, err := os.Stat(binPath); err == nil {
-		printGreen("二进制: 已安装")
+		printGreen(i18n.T("status.binary_installed"))
 	} else {
-		printYellow("二进制: 未安装")
+		printYellow(i18n.T("status.binary_missing"))
 	}
 
-	// 服务状态
 	if err := runCmdSilent("systemctl", "is-active", "--quiet", serviceName); err == nil {
-		printGreen("服务状态: 运行中 ✓")
+		printGreen(i18n.T("status.service_running"))
 	} else if runCmdSilent("systemctl", "is-enabled", "--quiet", serviceName) == nil {
-		printYellow("服务状态: 已停止")
+		printYellow(i18n.T("status.service_stopped"))
 	} else {
-		printYellow("服务状态: 未安装")
+		printYellow(i18n.T("status.service_not_installed"))
 	}
 
-	// 配置
 	configPath := filepath.Join(installDir, "config.enc")
 	if _, err := os.Stat(configPath); err == nil {
-		printGreen("配置文件: 已初始化")
+		printGreen(i18n.T("status.config_ready"))
 	} else {
-		printYellow("配置文件: 未配置")
+		printYellow(i18n.T("status.config_missing"))
 	}
 
 	fmt.Println()
@@ -1103,7 +1093,7 @@ func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			memguard.Purge()
-			fmt.Println("异常崩溃，内存已清理:", r)
+			fmt.Println(i18n.T("crash.cleaned", r))
 			os.Exit(1)
 		}
 	}()
@@ -1113,22 +1103,25 @@ func main() {
 	_ = checkArch()
 
 	if len(os.Args) > 1 && os.Args[1] == "--setup-stdin" {
+		i18n.InitLang(false)
 		installFromStdin()
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--setup-keyval" {
+		i18n.InitLang(false)
 		installFromKeyVal()
 		return
 	}
 
+	i18n.InitLang(true)
 	printBanner()
 	showStatus()
 
-	printYellow("1. 安装/更新 TG Bot")
-	printYellow("2. 卸载 TG Bot")
-	printYellow("0. 退出")
+	printYellow(i18n.T("menu.install"))
+	printYellow(i18n.T("menu.uninstall"))
+	printYellow(i18n.T("menu.exit"))
 
-	fmt.Print("\n请选择: ")
+	fmt.Print(i18n.T("menu.prompt"))
 	choice, _ := readLine()
 
 	switch choice {
@@ -1139,7 +1132,7 @@ func main() {
 	case "0":
 		os.Exit(0)
 	default:
-		printRed("无效选项")
+		printRed(i18n.T("menu.invalid"))
 		os.Exit(1)
 	}
 }
