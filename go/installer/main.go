@@ -648,7 +648,7 @@ func downloadAndDeployAegis() string {
 }
 
 func installAegis() {
-	printSkyBlue("\n开始安装/更新 TG Bot...")
+	printSkyBlue(i18n.T("install.start"))
 
 	destPath := downloadAndDeployAegis()
 	if destPath == "" {
@@ -657,51 +657,50 @@ func installAegis() {
 
 	configPath := filepath.Join(installDir, "config.enc")
 	if _, err := os.Stat(configPath); err == nil {
-		printGreen("\n检测到已存在配置文件，跳过初始化设置。")
+		printGreen(i18n.T("install.config_exists"))
 	} else {
 		firstTimeSetup(destPath)
 	}
 
-	// systemd 服务
 	writeSystemdService()
 
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = runCmdSilent("systemctl", "enable", serviceName)
 	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
-		printRed("启动服务失败: " + err.Error())
+		printRed(i18n.T("install.service_failed", err.Error()))
 		return
 	}
 
-	printGreen("\n✅ TG Bot 已成功安装并启动！")
-	printSkyBlue("请前往 Telegram 与 Bot 对话进行管理。")
+	printGreen(i18n.T("install.success"))
+	printSkyBlue(i18n.T("install.manage_hint"))
 }
 
 // ======================== 无交互安装 (JSON / Key=Value) ========
 
 func generateTOTPSecret(destPath string) string {
-	printYellow("正在生成 TOTP 密钥...")
+	printYellow(i18n.T("totp.generating"))
 	output, err := runCmdOutputBytes(destPath, "--generate-totp-secret")
 	if err != nil {
-		printRed("生成 TOTP 密钥失败: " + err.Error())
+		printRed(i18n.T("totp.generate_failed", err.Error()))
 		os.Exit(1)
 	}
 	rawSecret, err := extractBase32Secret(output)
 	if err != nil {
-		printRed("解析 TOTP 密钥失败: " + err.Error())
+		printRed(i18n.T("totp.parse_failed", err.Error()))
 		os.Exit(1)
 	}
-	printYellow("TOTP 密钥已自动生成")
+	printYellow(i18n.T("totp.generated"))
 	return string(rawSecret)
 }
 
 func runAegisSetup(destPath string, payload []byte) {
-	printYellow("\n正在配置...")
+	printYellow(i18n.T("setup.configuring"))
 	cmd := exec.Command(destPath, "--setup-stdin")
 	cmd.Stdin = bytes.NewReader(payload)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		printRed("配置失败: " + err.Error())
+		printRed(i18n.T("setup.failed", err.Error()))
 		os.Exit(1)
 	}
 }
@@ -711,22 +710,22 @@ func finishDeploy() {
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = runCmdSilent("systemctl", "enable", serviceName)
 	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
-		printRed("启动服务失败: " + err.Error())
+		printRed(i18n.T("install.service_failed", err.Error()))
 		os.Exit(1)
 	}
-	printGreen("\n✅ TG Bot 已成功安装并启动！")
-	printSkyBlue("请前往 Telegram 与 Bot 对话进行管理。")
+	printGreen(i18n.T("install.success"))
+	printSkyBlue(i18n.T("install.manage_hint"))
 }
 
 func installFromStdin() {
 	payload, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		printRed("读取 stdin 失败: " + err.Error())
+		printRed(i18n.T("stdin.read_failed", err.Error()))
 		os.Exit(1)
 	}
 
 	if !json.Valid(payload) {
-		printRed("无效的 JSON 格式")
+		printRed(i18n.T("stdin.invalid_json"))
 		os.Exit(1)
 	}
 
@@ -737,7 +736,7 @@ func installFromStdin() {
 
 	var inputData map[string]interface{}
 	if err := json.Unmarshal(payload, &inputData); err != nil {
-		printRed("解析 JSON 失败: " + err.Error())
+		printRed(i18n.T("stdin.parse_failed", err.Error()))
 		os.Exit(1)
 	}
 
@@ -747,7 +746,7 @@ func installFromStdin() {
 		inputData["totp_secret"] = secret
 		payload, err = json.Marshal(inputData)
 		if err != nil {
-			printRed("序列化 JSON 失败: " + err.Error())
+			printRed(i18n.T("stdin.serialize_failed", err.Error()))
 			os.Exit(1)
 		}
 	}
@@ -800,7 +799,7 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 		case "matrix_store_passphrase":
 			cfg.MatrixStorePassphrase = val
 		default:
-			printYellow("警告: 未知字段 \"" + key + "\" 已忽略")
+			printYellow(i18n.T("keyval.unknown_field", key))
 		}
 	}
 	if cfg.Token == "" || cfg.AdminID == "" {
@@ -812,7 +811,7 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 func installFromKeyVal() {
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		printRed("读取 stdin 失败: " + err.Error())
+		printRed(i18n.T("stdin.read_failed", err.Error()))
 		os.Exit(1)
 	}
 
