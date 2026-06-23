@@ -1,8 +1,7 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
 use super::schedule::{build_custom_schedule_keyboard, build_custom_schedule_text};
-use crate::app::batch_handler::send_singbox_batch_result;
 use crate::app::state::{ScheduleFrequency, ScheduleInputState};
-use aegis::adapters::common::TargetId;
+use aegis::adapters::common::{MessageContent, TargetId};
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::operations::{Operations, REBOOT_FLAG};
 use aegis::core::system::scheduler::TaskType;
@@ -463,6 +462,8 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 });
 
                 let mut failed = false;
+                let mut all_links: Vec<String> = Vec::new();
+                let target = TargetId(chat_id_clone.0.to_string());
 
                 send_progress(&tx, 1, 8, t!("ops.deploy_step_tune"));
                 if MaintenanceManager::tune_vps_generic().await.is_err() {
@@ -521,8 +522,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         20, ip_version,
                     ).await {
                         Ok(result) => {
-                            let _ = send_singbox_batch_result(
-                                adapter.clone(), chat_id_clone, "XHTTP Reality", &result,
+                            all_links.extend(result.links);
+                            let _ = adapter.send_message(
+                                &target,
+                                MessageContent {
+                                    text: format!("✅ XHTTP Reality ({}) 已创建 {} 个配置\n📁 {}",
+                                        ip_version.label(),
+                                        result.created_count,
+                                        result.config_file.as_deref().unwrap_or("?")),
+                                    markup: None,
+                                },
                             ).await;
                         }
                         Err(e) => {
@@ -543,8 +552,16 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         20, ip_version,
                     ).await {
                         Ok(result) => {
-                            let _ = send_singbox_batch_result(
-                                adapter.clone(), chat_id_clone, "Reality Vision", &result,
+                            all_links.extend(result.links);
+                            let _ = adapter.send_message(
+                                &target,
+                                MessageContent {
+                                    text: format!("✅ Reality Vision ({}) 已创建 {} 个配置\n📁 {}",
+                                        ip_version.label(),
+                                        result.created_count,
+                                        result.config_file.as_deref().unwrap_or("?")),
+                                    markup: None,
+                                },
                             ).await;
                         }
                         Err(e) => {
@@ -582,18 +599,42 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     .await
                     {
                         Ok(result) => {
-                            let _ = send_singbox_batch_result(
-                                adapter.clone(),
-                                chat_id_clone,
-                                "TUIC",
-                                &result,
-                            )
-                            .await;
+                            all_links.extend(result.links);
+                            let _ = adapter.send_message(
+                                &target,
+                                MessageContent {
+                                    text: format!("✅ TUIC ({}) 已创建 {} 个配置\n📁 {}",
+                                        ip_version.label(),
+                                        result.created_count,
+                                        result.config_file.as_deref().unwrap_or("?")),
+                                    markup: None,
+                                },
+                            ).await;
                         }
                         Err(e) => {
                             let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_tuic"), e)).to_string());
                             failed = true;
                         }
+                    }
+                }
+
+                if !failed && !all_links.is_empty() {
+                    let combined = all_links.join("\n\n");
+                    if let Ok(msg) = adapter.send_message(
+                        &target,
+                        MessageContent {
+                            text: combined,
+                            markup: None,
+                        },
+                    ).await {
+                        let adapter_clone = adapter.clone();
+                        let target_clone = target.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(Duration::from_secs(60)).await;
+                            if let Err(e) = adapter_clone.delete_message(&target_clone, &msg).await {
+                                log::warn!("删除一键部署链接消息失败: {}", e);
+                            }
+                        });
                     }
                 }
 
