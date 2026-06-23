@@ -125,5 +125,10 @@
   "lang.zh": "1. 中文",
   "lang.en": "2. English",
   "lang.ja": "3. 日本語",
-  "lang.saved": "语言已保存: %s / Language saved: %s / 言語を保存しました: %s"
+  "lang.saved": "语言已保存: %s / Language saved: %s / 言語を保存しました: %s",
+
+  "release.fetch_failed": "获取最新版本信息失败: %s",
+  "release.target_version": "目标版本: %s",
+  "release.tmpdir_failed": "创建临时目录失败: %s",
+  "input.read_failed": "\n读取输入失败: %s"
 }

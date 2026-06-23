@@ -109,5 +109,10 @@
   "lang.zh": "1. \u4e2d\u6587",
   "lang.en": "2. English",
   "lang.ja": "3. \u65e5\u672c\u8a9e",
-  "lang.saved": "\u8bed\u8a00\u5df2\u4fdd\u5b58: %s / Language saved: %s / \u8a00\u8a9e\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f: %s"
+  "lang.saved": "\u8bed\u8a00\u5df2\u4fdd\u5b58: %s / Language saved: %s / \u8a00\u8a9e\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f: %s",
+
+  "release.fetch_failed": "Failed to fetch latest release info: %s",
+  "release.target_version": "Target version: %s",
+  "release.tmpdir_failed": "Failed to create temp directory: %s",
+  "input.read_failed": "\nFailed to read input: %s"
 }
