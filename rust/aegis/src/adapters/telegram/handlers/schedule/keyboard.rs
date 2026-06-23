@@ -4,7 +4,7 @@ use rust_i18n::t;
 use teloxide::types::InlineKeyboardButton;
 use teloxide::types::InlineKeyboardMarkup;
 
-pub(super) fn build_custom_schedule_text(input: &ScheduleInputState) -> String {
+pub(crate) fn build_custom_schedule_text(input: &ScheduleInputState) -> String {
     let task = schedule_task_name(&input.task_type);
     let freq = schedule_frequency_name(&input.frequency);
     let timezone = input.timezone.as_str();
@@ -32,7 +32,7 @@ pub(super) fn build_custom_schedule_text(input: &ScheduleInputState) -> String {
     t!("schedule.custom_text", "0" => task, "1" => freq, "2" => day_line, "3" => timezone_text, "4" => timezone, "5" => hour, "6" => minute).to_string()
 }
 
-pub(super) fn build_custom_schedule_keyboard(return_to: &str) -> InlineKeyboardMarkup {
+pub(crate) fn build_custom_schedule_keyboard(return_to: &str) -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
             InlineKeyboardButton::callback(t!("schedule.day_label"), "s_custom_ui:day"),
@@ -55,7 +55,7 @@ pub(super) fn build_custom_schedule_keyboard(return_to: &str) -> InlineKeyboardM
     ])
 }
 
-pub(super) fn build_custom_day_keyboard() -> InlineKeyboardMarkup {
+pub(crate) fn build_custom_day_keyboard() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
             InlineKeyboardButton::callback(t!("schedule.monday"), "s_custom_set:day:Mon"),
@@ -75,7 +75,7 @@ pub(super) fn build_custom_day_keyboard() -> InlineKeyboardMarkup {
     ])
 }
 
-pub(super) fn build_custom_hour_keyboard() -> InlineKeyboardMarkup {
+pub(crate) fn build_custom_hour_keyboard() -> InlineKeyboardMarkup {
     let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
     for chunk in (0u8..24).collect::<Vec<_>>().chunks(6) {
         let row = chunk
@@ -96,7 +96,7 @@ pub(super) fn build_custom_hour_keyboard() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(rows)
 }
 
-pub(super) fn build_custom_minute_keyboard() -> InlineKeyboardMarkup {
+pub(crate) fn build_custom_minute_keyboard() -> InlineKeyboardMarkup {
     let minute_points = [0u8, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
     let mut rows: Vec<Vec<InlineKeyboardButton>> = Vec::new();
     for chunk in minute_points.chunks(4) {
@@ -118,7 +118,7 @@ pub(super) fn build_custom_minute_keyboard() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(rows)
 }
 
-pub(super) fn build_custom_timezone_keyboard() -> InlineKeyboardMarkup {
+pub(crate) fn build_custom_timezone_keyboard() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::new(vec![
         vec![
             InlineKeyboardButton::callback(t!("schedule.timezone_utc"), "s_custom_set:tz:UTC"),
@@ -164,7 +164,7 @@ pub(super) fn build_custom_timezone_keyboard() -> InlineKeyboardMarkup {
     ])
 }
 
-pub(super) fn build_cron_from_custom_state(input: &ScheduleInputState) -> Option<String> {
+pub(crate) fn build_cron_from_custom_state(input: &ScheduleInputState) -> Option<String> {
     let hour = input.hour?;
     let minute = input.minute?;
     match input.frequency {

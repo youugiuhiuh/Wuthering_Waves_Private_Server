@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use aegis::adapters::common::{BotAdapter, TargetId};
+use aegis::adapters::common::TargetId;
 use aegis::core::i18n;
 use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::Room as MatrixRoom;
 use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::prelude::*;
-use teloxide::utils::command::BotCommands;
 
 use crate::app::state::AppState;
 use crate::bootstrap::config_dir;
@@ -22,36 +21,32 @@ pub async fn run(
     admin_id: i64,
 ) -> Result<(), anyhow::Error> {
     // Initialize i18n language from config
-    if let Ok(config_data) = std::fs::read(config_dir().join(crate::bootstrap::CONFIG_FILE)) {
-        if let Ok(encrypted_config) =
+    if let Ok(config_data) = std::fs::read(config_dir().join(crate::bootstrap::CONFIG_FILE))
+        && let Ok(encrypted_config) =
             serde_json::from_slice::<crate::bootstrap::EncryptedConfig>(&config_data)
+        && let Some(ref lang_str) = encrypted_config.lang
+    {
+        let lang = lang_str.parse().unwrap_or(i18n::Lang::Zh);
+        i18n::set_lang(lang);
+        state.set_lang(lang).await;
+        state.mark_lang_configured().await;
+        i18n::mark_lang_configured();
+
+        let tz = i18n::lang_to_timezone(lang);
+        match tokio::process::Command::new("timedatectl")
+            .args(["set-timezone", tz])
+            .output()
+            .await
         {
-            if let Some(ref lang_str) = encrypted_config.lang {
-                let lang = lang_str.parse().unwrap_or(i18n::Lang::Zh);
-                i18n::set_lang(lang);
-                state.set_lang(lang).await;
-                state.mark_lang_configured().await;
-                i18n::mark_lang_configured();
-
-                let tz = i18n::lang_to_timezone(lang);
-                match tokio::process::Command::new("timedatectl")
-                    .args(["set-timezone", tz])
-                    .output()
-                    .await
-                {
-                    Ok(o) if !o.status.success() => {
-                        log::warn!("设置系统时区 {} 失败: exit {:?}", tz, o.status.code());
-                    }
-                    Err(e) => log::warn!("设置系统时区 {} 失败: {}", tz, e),
-                    _ => {}
-                }
-
-                if let Err(e) =
-                    aegis::core::system::operations::Operations::set_apt_daily_timer().await
-                {
-                    log::warn!("覆盖 apt-daily timer 失败: {}", e);
-                }
+            Ok(o) if !o.status.success() => {
+                log::warn!("设置系统时区 {} 失败: exit {:?}", tz, o.status.code());
             }
+            Err(e) => log::warn!("设置系统时区 {} 失败: {}", tz, e),
+            _ => {}
+        }
+
+        if let Err(e) = aegis::core::system::operations::Operations::set_apt_daily_timer().await {
+            log::warn!("覆盖 apt-daily timer 失败: {}", e);
         }
     }
 

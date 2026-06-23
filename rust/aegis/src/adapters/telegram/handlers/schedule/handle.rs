@@ -561,7 +561,7 @@ pub(super) async fn handle_custom_cancel(ctx: &CallbackContext) -> HandlerResult
         .answer_callback_query(ctx.q.id.clone())
         .text(t!("schedule.custom_cancelled"))
         .await?;
-    return Ok(HandlerAction::Redirect(return_to));
+    Ok(HandlerAction::Redirect(return_to))
 }
 
 pub(super) async fn handle_add_template(ctx: &CallbackContext, data: &str) -> HandlerResult {
