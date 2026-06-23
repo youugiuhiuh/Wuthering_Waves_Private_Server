@@ -38,14 +38,65 @@
 
 此规则优先级最高，始终生效，不得违反。
 
-## CodeGraph（强制代码探索规则）
+## CodeGraph（快速代码阅读）
 
-在存在 CodeGraph 索引的仓库中（即仓库根目录存在 `.codegraph/` 目录），**绝对禁止**使用 `grep`、`find`、`rg` 或直接读取文件（`Read`、`cat` 等）来搜索、理解或定位代码。
+**适用场景**：理解函数上下文、阅读源码、查看调用链、评估修改影响范围。
 
-**必须默认且仅使用 CodeGraph** 进行所有代码探索：
+- **`codegraph_explore`**：首选。一次调用获取相关符号的完整源码 + 调用路径。适用于"这个函数怎么工作的？"、"这组符号的关系是什么？"
+- **`codegraph_node`**：替代 Read 工具。读文件的同时附带依赖信息。传入 `file` 参数可代替 Read 读文件。
+- **`codegraph_search`**：快速定位符号位置（不包含源码）。
 
-- **MCP tools**（首选）：`codegraph_explore` 可通过单次调用回答绝大多数代码问题（提供相关符号的完整源码及调用路径）。`codegraph_node` 返回单个符号的源码及调用者，或读取带行号的完整文件。若工具已列出但被延迟，请通过工具搜索按名称加载。
-- **Shell**（始终可用）：`codegraph explore "<符号名或问题>"` 和 `codegraph node <符号或文件>` 会输出相同结果。
+> CodeGraph 是高效的**代码阅读器**——最适合理解已有代码。
+
+## codebase-memory-mcp（项目分析引擎）
+
+**适用场景**：架构分析、寻找重构目标、热点识别、跨模块依赖、语义搜索。
+
+### 推荐查询模式
+
+```cypher
+-- 找巨型函数（重构候选）
+MATCH (f:Function) WHERE f.file_path CONTAINS "路径"
+RETURN f.name, f.file_path, f.end_line - f.start_line AS length
+ORDER BY length DESC LIMIT 10
+
+-- 找热点（高 fan-in 瓶颈）
+MATCH (f:Function)-[r:CALLS]-( )
+WITH f, count(r) AS fan_in ORDER BY fan_in DESC LIMIT 10
+RETURN f.name, f.file_path, f.start_line, fan_in
+
+-- 查看模块结构
+MATCH (m:Module) WHERE m.file_path CONTAINS "路径"
+RETURN m.name, m.file_path ORDER BY m.file_path
+
+-- 查看所有类/结构体
+MATCH (c:Class) WHERE c.file_path CONTAINS "路径"
+RETURN c.name, c.file_path, c.start_line ORDER BY c.file_path
+```
+
+- **`search_graph`**：自然语言语义搜索（BM25 + 向量），适合模糊查询。
+- **`trace_path`**：跨服务追踪（HTTP_CALLS/ASYNC_CALLS）。
+- **`get_code_snippet`**：读取特定函数/类的源码（需先用 search_graph 找到 qualified_name）。
+- **`get_architecture`**：获取项目架构总览（聚类/分层/热点/边界）。
+
+> codebase-memory-mcp 是强大的**项目分析器**——最适合做架构评估和重构规划。
+
+## 选择策略
+
+| 目标 | 推荐工具 | 原因 |
+|------|---------|------|
+| 理解某函数怎么工作的 | `codegraph_explore` | 一次调用 = 源码 + 调用链 |
+| 读文件 + 看依赖 | `codegraph_node` | 替代 Read，附带 blast radius |
+| 架构总览 / 模块清单 | `codebase-memory-mcp` Cypher | 完整的节点和关系查询 |
+| 找巨型函数 / 重构目标 | `codebase-memory-mcp` Cypher | `ORDER BY length DESC` |
+| 热点 / 瓶颈识别 | `codebase-memory-mcp` fan-in 分析 | 内置热点推荐 |
+| 语义搜索（记不住符号名） | `codebase-memory-mcp` `search_graph` | BM25 + 向量搜索 |
+| 跨服务 / 跨语言追踪 | `codebase-memory-mcp` `trace_path` | HTTP_CALLS 边 |
+| 快速定位符号位置 | `codegraph_search` | 轻量快速 |
+
+**黄金法则**：日常开发读代码用 CodeGraph（快、省 token）；做架构分析、重构评估、找瓶颈时用 codebase-memory-mcp。
 
 **回退规则**：
-仅当仓库根目录**不存在** `.codegraph/` 目录时，才允许跳过 CodeGraph 并回退到常规的搜索/读取工具。若存在 `.codegraph/` 但查询失败，必须报错并尝试调整查询词，**严禁私自降级使用 grep/Read**。
+仅当两个系统都不可用时，才回退到 `grep`/`Read` 等常规工具。
+
+注意：存在 `.codegraph/` 但 `codegraph_*` 工具未加载时，优先探索 MCP tools 列表加载，而非直接回退。
