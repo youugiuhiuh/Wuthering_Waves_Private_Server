@@ -11,20 +11,16 @@ mod matrix_handlers;
 
 mod app;
 mod bootstrap;
-
+#[path = "main/mod.rs"]
+mod main;
 mod utils;
-
-use crate::handlers::menu;
 
 use crate::app::auth;
 use crate::app::state::AppState;
 use crate::bootstrap::{
-    BotSettings, CONFIG_FILE, ConfigValidator, EncryptedConfig, KEY_FILE, config_dir,
-    harden_process, run_setup, run_setup_from_stdin, verify_integrity,
+    CONFIG_FILE, EncryptedConfig, KEY_FILE, config_dir, harden_process, verify_integrity,
 };
-use aegis::adapters::common::{BotAdapter, MessageContent, RoutingAdapter, TargetId};
-use aegis::adapters::matrix::MatrixAdapter;
-use aegis::adapters::telegram::TelegramAdapter;
+use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
 use aegis::core::i18n;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::SecurityManager;
@@ -32,15 +28,9 @@ use aegis::core::security::self_destruct::production_executor;
 use aegis::core::system::SystemMonitor;
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::upgrade::UPGRADE_FLAG_FILE;
-use aegis::core::totp::TotpManager;
 use anyhow::{Context, Result};
-use handlers::{callback, message};
-use matrix_sdk::{
-    Client as MatrixClient, Room, RoomState, config::SyncSettings,
-    ruma::events::room::message::OriginalSyncRoomMessageEvent,
-};
+use handlers::menu;
 use obfstr::obfstr;
-use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
@@ -51,7 +41,6 @@ use teloxide::prelude::*;
 use teloxide::types::ParseMode;
 use teloxide::utils::command::BotCommands;
 
-// TOTP 防爆破参数
 // TOTP 防爆破参数
 const TOTP_FAIL_MAX: u32 = 5; // 窗口内最大失败次数
 const TOTP_FAIL_WINDOW: Duration = Duration::from_secs(10 * 60); // 10 分钟
@@ -176,7 +165,11 @@ async fn handle_command(
                 if file.size as u64 > MAX_FILE_DOWNLOAD_SIZE {
                     bot.send_message(
                         msg.chat.id,
-                        rust_i18n::t!("bot_commands.file_too_big", "0" => file.size, "1" => MAX_FILE_DOWNLOAD_SIZE),
+                        rust_i18n::t!(
+                            "bot_commands.file_too_big",
+                            "0" => file.size,
+                            "1" => MAX_FILE_DOWNLOAD_SIZE
+                        ),
                     )
                     .await?;
                     return Ok(());
@@ -265,25 +258,8 @@ async fn main() -> Result<()> {
 
     // CLI 仅输出模式：先处理，避免 verify_integrity 向 stdout 打印导致安装器把整段输出当成 TOTP 密钥
     let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 {
-        if args[1] == "--generate-totp-secret" {
-            println!("{}", TotpManager::generate_new_secret());
-            return Ok(());
-        }
-        if args[1] == "-v" || args[1] == "--version" {
-            println!("aegis {}", env!("CARGO_PKG_VERSION"));
-            return Ok(());
-        }
-        if args[1] == "--setup" {
-            if args.len() < 5 {
-                println!("Usage: aegis --setup <token> <admin_id> <totp_secret>");
-                return Ok(());
-            }
-            return run_setup(&args[2], &args[3], &args[4], None).await;
-        }
-        if args[1] == "--setup-stdin" {
-            return run_setup_from_stdin().await;
-        }
+    if let Some(mode) = main::cli::try_cli_mode(&args) {
+        return main::cli::execute_cli_mode(mode).await;
     }
 
     // 正常启动：校验完整性后再加载配置
@@ -295,341 +271,57 @@ async fn main() -> Result<()> {
     let mut enable_matrix = use_matrix || use_all;
     let enable_telegram = !use_matrix || use_all;
 
-    let config_dir = config_dir();
-    let key_path = config_dir.join(KEY_FILE);
-    let config_path = config_dir.join(CONFIG_FILE);
-    if config_path.exists() && !key_path.exists() {
-        anyhow::bail!(
-            "配置文件 {} 存在，但 {} 不存在。请将 setup 时生成的 .key 与 config.enc 一并部署到本机，或在本机重新执行 aegis --setup 完成初始化。",
-            config_path.display(),
-            key_path.display()
-        );
-    }
-    let security = SecurityManager::new(&key_path).context("Security manager failed")?;
-    let config_data = fs::read(&config_path).context("Config file miss")?;
-    let encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
+    let (app_config, security) = main::config::load_and_validate()?;
 
-    let token_vec = security
-        .decrypt(&encrypted_config.token)
-        .context("解密 token 失败")?;
-    let admin_id_vec = security
-        .decrypt(&encrypted_config.admin_id)
-        .context("解密 admin_id 失败")?;
-    let totp_sec_vec = security
-        .decrypt(&encrypted_config.totp_secret)
-        .context("解密 totp_secret 失败")?;
-
-    let token: String = String::from_utf8(token_vec.expose_secret().to_vec())
-        .context("token 包含无效的 UTF-8 字符")?;
-    let admin_id_str: String = String::from_utf8(admin_id_vec.expose_secret().to_vec())
-        .context("admin_id 包含无效的 UTF-8 字符")?;
-    let totp_secret: String = String::from_utf8(totp_sec_vec.expose_secret().to_vec())
-        .context("totp_secret 包含无效的 UTF-8 字符")?
-        .trim()
-        .to_string();
-
-    let admin_id: i64 = admin_id_str
-        .trim()
-        .parse()
-        .context("无效的 admin_id 格式 (应为 i64)")?;
-
-    let validator = ConfigValidator::new();
-    if let Err(e) = validator.validate_decrypted_config(
-        &token,
-        admin_id,
-        &totp_secret,
-        &encrypted_config.self_destruct_key_hash,
-    ) {
-        anyhow::bail!("❌ 配置校验失败: {}", e);
-    }
-
-    let totp_manager_instance = TotpManager::new(&secrecy::SecretString::from(totp_secret.clone()))
-        .map_err(|e| anyhow::anyhow!("初始化 TOTP 验证器失败: {}", e))?;
-
-    let bot_settings = BotSettings::load();
-
-    // ── Auto-detect Matrix 配置 ──
-    let has_matrix = encrypted_config.matrix_homeserver.is_some()
-        && encrypted_config.matrix_username.is_some()
-        && encrypted_config.matrix_password.is_some()
-        && encrypted_config.matrix_room_id.is_some();
+    // Auto-detect Matrix 配置
+    let has_matrix = main::matrix::has_matrix_config(&app_config.decrypted.encrypted_config, &args);
     if !use_matrix && !use_all {
         enable_matrix = has_matrix && !args.iter().any(|a| a == "--tg-only");
-        // TG remains enabled by default (initialized as true above);
-        // has_matrix only determines whether to add Matrix as secondary.
     }
 
-    // ── Matrix 登录 ──
-    let matrix_handle: Option<(MatrixClient, Room, Arc<dyn BotAdapter>)> = if enable_matrix {
-        let decrypt_matrix = |field: &Option<Vec<u8>>| -> Result<String> {
-            let vec = security.decrypt(field.as_ref().with_context(|| "缺少 Matrix 配置项")?)?;
-            Ok(String::from_utf8(vec.expose_secret().to_vec())
-                .map_err(|e| anyhow::anyhow!("Matrix 字段包含无效的 UTF-8: {}", e))?
-                .trim()
-                .to_string())
-        };
-
-        let matrix_homeserver = decrypt_matrix(&encrypted_config.matrix_homeserver)?;
-        let matrix_username = decrypt_matrix(&encrypted_config.matrix_username)?;
-        let matrix_pwd = decrypt_matrix(&encrypted_config.matrix_password)?;
-        let matrix_room_id_str = decrypt_matrix(&encrypted_config.matrix_room_id)?;
-        let matrix_store_passphrase = decrypt_matrix(&encrypted_config.matrix_store_passphrase)?;
-
-        let store_path = config_dir.join("matrix_store");
-        let client = MatrixClient::builder()
-            .homeserver_url(&matrix_homeserver)
-            .sqlite_store(&store_path, Some(&matrix_store_passphrase))
-            .build()
-            .await?;
-
-        // ── Session restore (P0) ──
-        let session_path = config_dir.join("matrix_session.json");
-        if session_path.exists() {
-            let session_json = fs::read_to_string(&session_path)?;
-            let session: matrix_sdk::authentication::matrix::MatrixSession =
-                serde_json::from_str(&session_json)?;
-            client
-                .matrix_auth()
-                .restore_session(session, matrix_sdk::store::RoomLoadSettings::default())
-                .await?;
-            println!("✅ Matrix 会话恢复成功: {}", matrix_username);
-        } else {
-            client
-                .matrix_auth()
-                .login_username(&matrix_username, &matrix_pwd)
-                .initial_device_display_name("Aegis Matrix Bot")
-                .send()
-                .await?;
-            println!("✅ Matrix 登录成功: {}", matrix_username);
-
-            // Save session for future restarts
-            if let Some(session) = client.matrix_auth().session() {
-                let session_json = serde_json::to_string(&session)?;
-                fs::write(&session_path, session_json)?;
-                println!("✅ Matrix 会话已保存");
-            }
-        }
-
-        // P2: Bootstrap cross-signing (best-effort)
-        use matrix_sdk::ruma::api::client::uiaa::{
-            AuthData, MatrixUserIdentifier, Password, UserIdentifier,
-        };
-        if client
-            .encryption()
-            .bootstrap_cross_signing_if_needed(None)
-            .await
-            .is_err()
-        {
-            let _ = client
-                .encryption()
-                .bootstrap_cross_signing_if_needed(Some(AuthData::Password(Password::new(
-                    UserIdentifier::Matrix(MatrixUserIdentifier::new(matrix_username.clone())),
-                    matrix_pwd.clone(),
-                ))))
-                .await;
-        }
-
-        // P1: Wait for E2EE initialization tasks
-        client
-            .encryption()
-            .wait_for_e2ee_initialization_tasks()
-            .await;
-
-        client.sync_once(SyncSettings::default()).await?;
-
-        let room_id: matrix_sdk::ruma::OwnedRoomId = matrix_room_id_str.parse()?;
-
-        let client_inv = client.clone();
-        client.add_event_handler(
-            move |_: matrix_sdk::ruma::events::room::member::OriginalSyncRoomMemberEvent,
-                  room: Room| {
-                let c = client_inv.clone();
-                async move {
-                    if room.state() == RoomState::Invited {
-                        let _ = c.join_room_by_id(room.room_id()).await;
-                    }
-                }
-            },
-        );
-
-        let room = client
-            .get_room(&room_id)
-            .context("未找到 Matrix 房间，请先邀请机器人到房间")?;
-
-        let matrix_adapter: Arc<dyn BotAdapter> = Arc::new(MatrixAdapter::new(room.clone()));
-        Some((client, room, matrix_adapter))
+    let matrix_handle = if enable_matrix {
+        Some(
+            main::matrix::connect_matrix(
+                &security,
+                &app_config.decrypted.encrypted_config,
+                &config_dir(),
+            )
+            .await?,
+        )
     } else {
         None
     };
 
-    // ── 创建主适配器与 AppState ──
-    let adapter: Arc<dyn BotAdapter> = if enable_telegram && enable_matrix {
-        // 双通道：RoutingAdapter
-        let tg_adapter = {
-            let bot = Bot::new(&token);
-            if let Err(err) = register_bot_commands(&bot).await {
-                eprintln!("[WARN] 命令注册失败: {}", err);
-            }
-            Arc::new(TelegramAdapter::new(bot)) as Arc<dyn BotAdapter>
-        };
-        let secondary = matrix_handle.as_ref().map(|(_, _, a)| a.clone());
-        Arc::new(RoutingAdapter::new(tg_adapter, secondary))
-    } else if enable_telegram {
-        let bot = Bot::new(&token);
-        if let Err(err) = register_bot_commands(&bot).await {
-            eprintln!("[WARN] 命令注册失败: {}", err);
-        }
-        Arc::new(TelegramAdapter::new(bot))
-    } else if let Some((_, _, ref matrix_adapter)) = matrix_handle {
-        matrix_adapter.clone()
-    } else {
-        anyhow::bail!("没有启用任何平台，请使用 --matrix 或 --all 或省略参数使用 Telegram");
-    };
+    let adapter = main::adapter::build_adapter(
+        &app_config.decrypted.token,
+        enable_telegram,
+        enable_matrix,
+        &matrix_handle,
+    )
+    .await?;
 
     let state = Arc::new(AppState::new(
-        admin_id,
-        totp_manager_instance,
+        app_config.decrypted.admin_id,
+        app_config.totp_manager,
         production_executor(),
-        encrypted_config.self_destruct_key_hash.clone(),
-        bot_settings.session_timeout_secs,
+        app_config
+            .decrypted
+            .encrypted_config
+            .self_destruct_key_hash
+            .clone(),
+        app_config.bot_settings.session_timeout_secs,
         adapter,
     ));
 
-    // Initialize i18n language from config
-    if let Some(ref lang_str) = encrypted_config.lang {
-        let lang = lang_str.parse().unwrap_or(i18n::Lang::Zh);
-        i18n::set_lang(lang);
-        state.set_lang(lang).await;
-        state.mark_lang_configured().await;
-        i18n::mark_lang_configured();
-
-        let tz = i18n::lang_to_timezone(lang);
-        match tokio::process::Command::new("timedatectl")
-            .args(["set-timezone", tz])
-            .output()
-            .await
-        {
-            Ok(o) if !o.status.success() => {
-                log::warn!("设置系统时区 {} 失败: exit {:?}", tz, o.status.code());
-            }
-            Err(e) => log::warn!("设置系统时区 {} 失败: {}", tz, e),
-            _ => {}
-        }
-
-        if let Err(e) = aegis::core::system::operations::Operations::set_apt_daily_timer().await {
-            log::warn!("覆盖 apt-daily timer 失败: {}", e);
-        }
-    }
-
-    // ── Matrix 同步循环 ──
-    if let Some((client, room, matrix_adapter)) = matrix_handle {
-        let target = TargetId(room.room_id().to_string());
-
-        fn parse_user_id(s: &str) -> i64 {
-            s.trim_start_matches('@')
-                .split(':')
-                .next()
-                .and_then(|n| n.parse().ok())
-                .unwrap_or(0)
-        }
-
-        let matrix_state = state.clone();
-        let matrix_adapter_sync = matrix_adapter;
-        let matrix_target = target.clone();
-
-        client.add_event_handler(
-            move |event: OriginalSyncRoomMessageEvent, room: Room, _client: MatrixClient| {
-                let state = matrix_state.clone();
-                let adapter = matrix_adapter_sync.clone();
-                let target = matrix_target.clone();
-                async move {
-                    if room.room_id().as_str() != target.0.as_str() {
-                        return;
-                    }
-                    let user_id = parse_user_id(event.sender.as_str());
-                    if !state.is_admin_user(user_id) {
-                        return;
-                    }
-                    let text = event.content.body().trim().to_string();
-
-                    if crate::looks_like_totp_code(&text) && !state.is_authorized(user_id).await {
-                        let _ = crate::process_auth_code(&state, &target, user_id, &text).await;
-                        return;
-                    }
-
-                    let cmd = aegis::adapters::matrix::commands::parse(&text);
-                    if !matches!(cmd, aegis::adapters::matrix::commands::Command::Auth { .. }) {
-                        let _ = matrix_handlers::dispatch(&cmd, &*adapter, &target, &state).await;
-                    }
-                }
-            },
-        );
-
-        tokio::spawn(async move {
-            if let Err(e) = client.sync(SyncSettings::default()).await {
-                log::error!("Matrix sync error: {}", e);
-            }
-        });
-    }
-
-    // ── Telegram Dispatcher ──
-    if enable_telegram {
-        let handler = dptree::entry()
-            .branch(
-                Update::filter_message()
-                    .filter_command::<Command>()
-                    .endpoint(handle_command),
-            )
-            .branch(Update::filter_message().endpoint(message::handle_message))
-            .branch(Update::filter_callback_query().endpoint(callback::handle_callback));
-
-        let adapter_for_init = state.adapter.clone();
-        let target_for_init = TargetId(admin_id.to_string());
-        tokio::spawn(async move {
-            if let Err(e) = aegis::core::system::scheduler::start_scheduler(
-                adapter_for_init.clone(),
-                target_for_init.clone(),
-            )
-            .await
-            {
-                log::error!("❌ 初始化调度器失败: {}", e);
-            }
-            let _ = notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
-            let _ = notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init).await;
-            let _ = notify_online(&*adapter_for_init, &target_for_init).await;
-        });
-
-        Dispatcher::builder(Bot::new(&token), handler)
-            .dependencies(dptree::deps![state.clone()])
-            .enable_ctrlc_handler()
-            .build()
-            .dispatch()
-            .await;
-    }
-
-    // ── Matrix-only: 后台初始化 + 保活 ──
-    if enable_matrix && !enable_telegram {
-        let adapter_for_init = state.adapter.clone();
-        let target_for_init = TargetId(admin_id.to_string());
-        tokio::spawn(async move {
-            if let Err(e) = aegis::core::system::scheduler::start_scheduler(
-                adapter_for_init.clone(),
-                target_for_init.clone(),
-            )
-            .await
-            {
-                log::error!("❌ 初始化调度器失败: {}", e);
-            }
-            let _ = notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
-            let _ = notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init).await;
-            let _ = notify_online(&*adapter_for_init, &target_for_init).await;
-        });
-
-        // 保活 — matrix sync runs in background via spawn above
-        let () = std::future::pending().await;
-    }
-
-    Ok(())
+    main::runtime::run(
+        state,
+        matrix_handle,
+        enable_telegram,
+        enable_matrix,
+        app_config.decrypted.token,
+        app_config.decrypted.admin_id,
+    )
+    .await
 }
 
 async fn notify_online(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {

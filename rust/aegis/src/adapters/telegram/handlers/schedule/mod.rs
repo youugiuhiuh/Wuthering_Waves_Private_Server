@@ -34,9 +34,9 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "a_geo_sched_menu" => handle::handle_geo_sched_menu(ctx).await,
         "geo_sched_off" => handle::handle_geo_sched_off(ctx).await,
         _ => {
-        ctx.bot.answer_callback_query(ctx.q.id.clone()).await?;
-        Ok(HandlerAction::Done)
-    }
+            ctx.bot.answer_callback_query(ctx.q.id.clone()).await?;
+            Ok(HandlerAction::Done)
+        }
     }
 }
 
