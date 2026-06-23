@@ -1,62 +1,73 @@
 package i18n
 
 import (
-	"embed"
-	"encoding/json"
 	"testing"
 )
 
-//go:embed zh.json en.json ja.json
-var testFS embed.FS
+func TestT_Basic(t *testing.T) {
+	SetLang("zh")
+	got := T("banner.title")
+	if got != "WWPS TG Bot 管理工具" {
+		t.Errorf(`T("banner.title") with zh = %q, want "WWPS TG Bot 管理工具"`, got)
+	}
 
-func TestZhJSONIsValid(t *testing.T) {
-	data, err := testFS.ReadFile("zh.json")
-	if err != nil {
-		t.Fatalf("zh.json not found: %v", err)
+	SetLang("en")
+	got = T("banner.title")
+	if got != "WWPS TG Bot Management Tool" {
+		t.Errorf(`T("banner.title") with en = %q, want "WWPS TG Bot Management Tool"`, got)
 	}
-	var m map[string]string
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("zh.json is invalid JSON: %v", err)
-	}
-	if len(m) == 0 {
-		t.Fatal("zh.json is empty")
+
+	SetLang("ja")
+	got = T("banner.title")
+	if got != "WWPS TG Bot 管理ツール" {
+		t.Errorf(`T("banner.title") with ja = %q, want "WWPS TG Bot 管理ツール"`, got)
 	}
 }
 
-func TestEnJSONIsValid(t *testing.T) {
-	data, err := testFS.ReadFile("en.json")
-	if err != nil {
-		t.Fatalf("en.json not found: %v", err)
-	}
-	var m map[string]string
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("en.json is invalid JSON: %v", err)
-	}
-	if len(m) == 0 {
-		t.Fatal("en.json is empty")
+func TestT_FormatArgs(t *testing.T) {
+	SetLang("zh")
+	got := T("banner.version", "v3.0.5")
+	want := "当前版本: v3.0.5"
+	if got != want {
+		t.Errorf(`T("banner.version", "v3.0.5") = %q, want %q`, got, want)
 	}
 }
 
-func TestJaJSONIsValid(t *testing.T) {
-	data, err := testFS.ReadFile("ja.json")
-	if err != nil {
-		t.Fatalf("ja.json not found: %v", err)
-	}
-	var m map[string]string
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("ja.json is invalid JSON: %v", err)
-	}
-	if len(m) == 0 {
-		t.Fatal("ja.json is empty")
+func TestT_Fallback(t *testing.T) {
+	SetLang("en")
+	got := T("nonexistent.key")
+	if got != "nonexistent.key" {
+		t.Errorf("missing key should return the key itself, got %q", got)
 	}
 }
 
-func TestAllJSONHaveSameKeys(t *testing.T) {
-	zh := loadJSONMap(testFS, "zh.json")
-	en := loadJSONMap(testFS, "en.json")
-	ja := loadJSONMap(testFS, "ja.json")
+func TestT_FallbackToChinese(t *testing.T) {
+	SetLang("zh")
+	got := T("menu.exit")
+	if got != "0. 退出" {
+		t.Errorf(`T("menu.exit") = %q, want "0. 退出"`, got)
+	}
+}
 
-	for k := range zh {
+func TestSetLang(t *testing.T) {
+	SetLang("")
+	SetLang("en")
+	if Lang() != "en" {
+		t.Errorf(`after SetLang("en"), Lang() = %q, want "en"`, Lang())
+	}
+}
+
+func TestAllKeysExist(t *testing.T) {
+	en := loadJSON(enFS, "en.json")
+	ja := loadJSON(jaFS, "ja.json")
+
+	if len(en) == 0 {
+		t.Fatal("en.json has zero keys")
+	}
+	if len(ja) == 0 {
+		t.Fatal("ja.json has zero keys")
+	}
+	for k := range zhTable {
 		if _, ok := en[k]; !ok {
 			t.Errorf("en.json missing key: %s", k)
 		}
@@ -64,16 +75,4 @@ func TestAllJSONHaveSameKeys(t *testing.T) {
 			t.Errorf("ja.json missing key: %s", k)
 		}
 	}
-}
-
-func loadJSONMap(fs embed.FS, name string) map[string]string {
-	data, err := fs.ReadFile(name)
-	if err != nil {
-		panic(err)
-	}
-	var m map[string]string
-	if err := json.Unmarshal(data, &m); err != nil {
-		panic(err)
-	}
-	return m
 }
