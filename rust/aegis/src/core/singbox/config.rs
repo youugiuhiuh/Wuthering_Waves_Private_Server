@@ -524,6 +524,7 @@ mod tests {
         assert_eq!(config.port, 8443);
         assert_eq!(config.password, "test_password");
         assert_eq!(config.sni, "sni.example.com");
+        assert!(config.pin_sha256.is_none());
     }
 
     #[test]
@@ -537,6 +538,7 @@ mod tests {
         assert_eq!(config.port, 9443);
         assert_eq!(config.uuid, "test-uuid");
         assert_eq!(config.congestion_control, "bbr");
+        assert!(config.certificate_pubkey_hash.is_none());
     }
 
     #[tokio::test]
