@@ -10,7 +10,7 @@ pub struct TUICConfig {
     pub sni: String,
     pub alpn: String,
     pub congestion_control: String,
-    pub certificate_pubkey_hash: Option<String>,
+    pub cert_sha256: Option<String>,
 }
 
 impl TUICConfig {
@@ -22,12 +22,12 @@ impl TUICConfig {
             sni,
             alpn: "h3".to_string(),
             congestion_control: "bbr".to_string(),
-            certificate_pubkey_hash: None,
+            cert_sha256: None,
         }
     }
 
-    pub fn with_certificate_pubkey_hash(mut self, hash: String) -> Self {
-        self.certificate_pubkey_hash = Some(hash);
+    pub fn with_cert_sha256(mut self, sha256: String) -> Self {
+        self.cert_sha256 = Some(sha256);
         self
     }
 
@@ -58,10 +58,10 @@ impl TUICConfig {
         let encoded_password = utf8_percent_encode(&self.password, NON_ALPHANUMERIC).to_string();
         let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
         let encoded_name = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
-        let hash_param = self
-            .certificate_pubkey_hash
+        let sha256_param = self
+            .cert_sha256
             .as_ref()
-            .map(|h| format!("&certificate_hash={}", h))
+            .map(|h| format!("&pcs={}", h))
             .unwrap_or_default();
 
         format!(
@@ -73,7 +73,7 @@ impl TUICConfig {
             encoded_sni,
             self.alpn,
             self.congestion_control,
-            hash_param,
+            sha256_param,
             encoded_name
         )
     }
@@ -107,7 +107,7 @@ mod tests {
         assert_eq!(config.uuid, "uuid-1234");
         assert_eq!(config.alpn, "h3");
         assert_eq!(config.congestion_control, "bbr");
-        assert!(config.certificate_pubkey_hash.is_none());
+        assert!(config.cert_sha256.is_none());
     }
 
     #[test]
@@ -168,14 +168,14 @@ mod tests {
             "password".to_string(),
             "sni.example.com".to_string(),
         )
-        .with_certificate_pubkey_hash("base64hash".to_string());
+        .with_cert_sha256("AA:BB:CC".to_string());
         let link = config.to_client_link("1.2.3.4", "MyNode");
         assert!(link.starts_with("tuic://"));
         assert!(link.contains("uuid-1234:password@"));
         assert!(link.contains("@1.2.3.4:9443"));
         assert!(link.contains("sni="));
         assert!(link.contains("congestion_control=bbr"));
-        assert!(link.contains("certificate_hash=base64hash"));
+        assert!(link.contains("pcs=AA:BB:CC"));
         assert!(link.contains("#MyNode"));
         assert!(!link.contains("allow_insecure=1"));
     }
@@ -188,7 +188,7 @@ mod tests {
             "p@ss!word".to_string(),
             "sni.example.com".to_string(),
         )
-        .with_certificate_pubkey_hash("hash".to_string());
+        .with_cert_sha256("AA:BB".to_string());
         let link = config.to_client_link("1.2.3.4", "MyNode");
         assert!(link.contains("p%40ss%21word"));
         assert!(!link.contains("allow_insecure=1"));

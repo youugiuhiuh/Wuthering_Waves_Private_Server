@@ -35,8 +35,7 @@ impl SingBoxConfigManager {
 
         let port_443_available = MaintenanceManager::is_port_available(443).await;
 
-        let certificate_pin =
-            SingBoxConfigManager::compute_pubkey_sha256_base64(singbox::TLS_CERT).await?;
+        let cert_sha256 = SingBoxConfigManager::compute_cert_sha256_pin(singbox::TLS_CERT).await?;
 
         for i in 0..count {
             let sni = selector.get_next();
@@ -57,7 +56,7 @@ impl SingBoxConfigManager {
             let tag = format!("TUIC-{}-{}", i + 1, &uuid[..8]);
 
             let config = TUICConfig::new(port, uuid.clone(), password.clone(), sni.clone())
-                .with_certificate_pubkey_hash(certificate_pin.clone());
+                .with_cert_sha256(cert_sha256.clone());
             let link = config.to_client_link(&host, &tag);
 
             links.push(link);
