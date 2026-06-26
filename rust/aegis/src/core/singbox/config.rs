@@ -470,7 +470,6 @@ impl SingBoxConfigManager {
         Ok((filename, config_path))
     }
 
-    #[allow(dead_code)]
     pub(crate) async fn compute_cert_sha256_pin(cert_path: &str) -> Result<String> {
         let pem_data = tokio::fs::read(cert_path).await?;
         let (pem, _) = x509_parser::pem::Pem::read(std::io::Cursor::new(&pem_data))
@@ -746,5 +745,12 @@ mod cert_pinning_tests {
             .unwrap();
 
         assert_eq!(h1, h2);
+    }
+
+    #[tokio::test]
+    async fn test_compute_pubkey_sha256_base64_invalid_path() {
+        let result =
+            SingBoxConfigManager::compute_pubkey_sha256_base64("/nonexistent/cert.pem").await;
+        assert!(result.is_err());
     }
 }
