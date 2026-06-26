@@ -3,6 +3,7 @@ use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::xray::port_allocator::PortAllocator;
 use anyhow::{Context, Result};
+use base64::Engine;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use serde_json::{Value, json};
@@ -469,6 +470,7 @@ impl SingBoxConfigManager {
         Ok((filename, config_path))
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn compute_cert_sha256_pin(cert_path: &str) -> Result<String> {
         let pem_data = tokio::fs::read(cert_path).await?;
         let (pem, _) = x509_parser::pem::Pem::read(std::io::Cursor::new(&pem_data))
@@ -479,6 +481,19 @@ impl SingBoxConfigManager {
             .map(|b| format!("{:02X}", b))
             .collect::<Vec<_>>()
             .join(":"))
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn compute_pubkey_sha256_base64(cert_path: &str) -> Result<String> {
+        use x509_parser::prelude::*;
+        let pem_data = tokio::fs::read(cert_path).await?;
+        let (pem, _) = x509_parser::pem::Pem::read(std::io::Cursor::new(&pem_data))
+            .map_err(|e| anyhow::anyhow!("PEM 解析失败: {}", e))?;
+        let (_, x509) = X509Certificate::from_der(&pem.contents)
+            .map_err(|e| anyhow::anyhow!("证书解析失败: {}", e))?;
+        let pubkey_der = x509.public_key().subject_public_key.as_ref();
+        let hash = sha2::Sha256::digest(pubkey_der);
+        Ok(base64::engine::general_purpose::STANDARD.encode(hash))
     }
 }
 
@@ -695,5 +710,40 @@ mod cert_pinning_tests {
     async fn test_compute_cert_sha256_pin_invalid_path() {
         let result = SingBoxConfigManager::compute_cert_sha256_pin("/nonexistent/cert.pem").await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_compute_pubkey_sha256_base64_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert_path = dir.path().join("test.pem");
+        create_test_cert(&cert_path);
+
+        let hash = SingBoxConfigManager::compute_pubkey_sha256_base64(cert_path.to_str().unwrap())
+            .await
+            .unwrap();
+
+        // Base64 SHA256 = 44 chars
+        assert_eq!(hash.len(), 44);
+        // Valid base64 chars only
+        assert!(
+            hash.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
+        );
+    }
+
+    #[tokio::test]
+    async fn test_compute_pubkey_sha256_base64_deterministic() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert_path = dir.path().join("test.pem");
+        create_test_cert(&cert_path);
+
+        let h1 = SingBoxConfigManager::compute_pubkey_sha256_base64(cert_path.to_str().unwrap())
+            .await
+            .unwrap();
+        let h2 = SingBoxConfigManager::compute_pubkey_sha256_base64(cert_path.to_str().unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(h1, h2);
     }
 }
