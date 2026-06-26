@@ -9,6 +9,7 @@ pub struct Hysteria2Config {
     pub sni: String,
     pub obfs_type: Option<String>,
     pub obfs_password: Option<String>,
+    pub pin_sha256: Option<String>,
 }
 
 impl Hysteria2Config {
@@ -19,6 +20,7 @@ impl Hysteria2Config {
             sni,
             obfs_type: None,
             obfs_password: None,
+            pin_sha256: None,
         }
     }
 
@@ -35,7 +37,13 @@ impl Hysteria2Config {
             sni,
             obfs_type: Some(obfs_type),
             obfs_password: Some(obfs_password),
+            pin_sha256: None,
         }
+    }
+
+    pub fn with_pin_sha256(mut self, pin: String) -> Self {
+        self.pin_sha256 = Some(pin);
+        self
     }
 
     pub fn to_inbound_json(&self, tag: &str) -> Value {
@@ -83,10 +91,15 @@ impl Hysteria2Config {
         let encoded_password = utf8_percent_encode(&self.password, NON_ALPHANUMERIC).to_string();
         let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
         let encoded_name = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
+        let pin_param = self
+            .pin_sha256
+            .as_ref()
+            .map(|p| format!("&pinSHA256={}", p))
+            .unwrap_or_default();
 
         format!(
-            "hysteria2://{}@{}:{}?sni={}&alpn=h3&insecure=1#{}",
-            encoded_password, host, self.port, encoded_sni, encoded_name
+            "hysteria2://{}@{}:{}?sni={}&alpn=h3{}#{}",
+            encoded_password, host, self.port, encoded_sni, pin_param, encoded_name
         )
     }
 
@@ -99,10 +112,22 @@ impl Hysteria2Config {
         let encoded_password = utf8_percent_encode(&self.password, NON_ALPHANUMERIC).to_string();
         let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
         let encoded_name = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
+        let pin_param = self
+            .pin_sha256
+            .as_ref()
+            .map(|p| format!("&pinSHA256={}", p))
+            .unwrap_or_default();
 
         format!(
-            "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3&insecure=1&hop_interval=30s#{}",
-            encoded_password, host, self.port, hop_range.0, hop_range.1, encoded_sni, encoded_name
+            "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3{}&hop_interval=30s#{}",
+            encoded_password,
+            host,
+            self.port,
+            hop_range.0,
+            hop_range.1,
+            encoded_sni,
+            pin_param,
+            encoded_name
         )
     }
 
@@ -144,15 +169,21 @@ impl Hysteria2Config {
             NON_ALPHANUMERIC,
         )
         .to_string();
+        let pin_param = self
+            .pin_sha256
+            .as_ref()
+            .map(|p| format!("&pinSHA256={}", p))
+            .unwrap_or_default();
 
         format!(
-            "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3&insecure=1&hop_interval=30s&obfs=salamander&obfs-password={}#{}",
+            "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3{}&hop_interval=30s&obfs=salamander&obfs-password={}#{}",
             encoded_password,
             host,
             self.port,
             hop_range.0,
             hop_range.1,
             encoded_sni,
+            pin_param,
             encoded_obfs_password,
             encoded_name
         )
@@ -179,6 +210,7 @@ mod tests {
         assert_eq!(config.sni, "sni.example.com");
         assert!(config.obfs_type.is_none());
         assert!(config.obfs_password.is_none());
+        assert!(config.pin_sha256.is_none());
     }
 
     #[test]
@@ -193,6 +225,7 @@ mod tests {
         assert_eq!(config.port, 8443);
         assert_eq!(config.obfs_type, Some("salamander".to_string()));
         assert_eq!(config.obfs_password, Some("obfs_secret".to_string()));
+        assert!(config.pin_sha256.is_none());
     }
 
     #[test]
@@ -241,20 +274,25 @@ mod tests {
             8443,
             "mypassword".to_string(),
             "sni.example.com".to_string(),
-        );
+        )
+        .with_pin_sha256("AA:BB:CC".to_string());
         let link = config.to_client_link("1.2.3.4", "MyNode");
         assert!(link.starts_with("hysteria2://"));
         assert!(link.contains("@1.2.3.4:8443"));
         assert!(link.contains("sni="));
+        assert!(link.contains("pinSHA256=AA:BB:CC"));
         assert!(link.contains("#MyNode"));
+        assert!(!link.contains("insecure=1"));
     }
 
     #[test]
     fn test_hysteria2_to_client_link_encoding() {
         let config =
-            Hysteria2Config::new(8443, "p@ss!word".to_string(), "sni.example.com".to_string());
+            Hysteria2Config::new(8443, "p@ss!word".to_string(), "sni.example.com".to_string())
+                .with_pin_sha256("AA:BB".to_string());
         let link = config.to_client_link("1.2.3.4", "MyNode");
         assert!(link.contains("p%40ss%21word"));
+        assert!(!link.contains("insecure=1"));
     }
 
     #[test]
@@ -263,10 +301,13 @@ mod tests {
             8443,
             "mypassword".to_string(),
             "sni.example.com".to_string(),
-        );
+        )
+        .with_pin_sha256("AA:BB:CC".to_string());
         let link = config.to_client_link_with_hopping("1.2.3.4", "MyNode", (8444, 8543));
+        assert!(link.contains("pinSHA256=AA:BB:CC"));
         assert!(link.contains("8444-8543"));
         assert!(link.contains("hop_interval=30s"));
+        assert!(!link.contains("insecure=1"));
     }
 
     #[test]
@@ -277,11 +318,14 @@ mod tests {
             "sni.example.com".to_string(),
             "salamander".to_string(),
             "obfs123".to_string(),
-        );
+        )
+        .with_pin_sha256("AA:BB:CC".to_string());
         let link = config.to_client_link_with_hopping_and_obfs("1.2.3.4", "MyNode", (8444, 8543));
+        assert!(link.contains("pinSHA256=AA:BB:CC"));
         assert!(link.contains("obfs=salamander"));
         assert!(link.contains("obfs-password=obfs123"));
         assert!(link.contains("hop_interval=30s"));
+        assert!(!link.contains("insecure=1"));
     }
 
     #[test]
