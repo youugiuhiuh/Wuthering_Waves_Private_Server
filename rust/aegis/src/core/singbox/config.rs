@@ -483,7 +483,6 @@ impl SingBoxConfigManager {
             .join(":"))
     }
 
-    #[allow(dead_code)]
     pub(crate) async fn compute_pubkey_sha256_base64(cert_path: &str) -> Result<String> {
         use x509_parser::prelude::*;
         let pem_data = tokio::fs::read(cert_path).await?;
@@ -491,8 +490,8 @@ impl SingBoxConfigManager {
             .map_err(|e| anyhow::anyhow!("PEM 解析失败: {}", e))?;
         let (_, x509) = X509Certificate::from_der(&pem.contents)
             .map_err(|e| anyhow::anyhow!("证书解析失败: {}", e))?;
-        let pubkey_der = x509.public_key().subject_public_key.as_ref();
-        let hash = sha2::Sha256::digest(pubkey_der);
+        let spki_bytes = x509.public_key().raw;
+        let hash = sha2::Sha256::digest(spki_bytes);
         Ok(base64::engine::general_purpose::STANDARD.encode(hash))
     }
 }
