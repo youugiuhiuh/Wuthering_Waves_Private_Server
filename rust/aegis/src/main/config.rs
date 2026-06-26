@@ -12,6 +12,7 @@ use crate::bootstrap::{
 pub struct DecryptedConfig {
     pub token: String,
     pub admin_id: i64,
+    #[expect(dead_code)]
     pub totp_secret: String,
     pub encrypted_config: EncryptedConfig,
 }
