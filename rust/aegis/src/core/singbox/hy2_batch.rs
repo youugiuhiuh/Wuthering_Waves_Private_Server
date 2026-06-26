@@ -7,6 +7,7 @@ use anyhow::Result;
 
 use super::config::SingBoxConfigManager;
 use super::hysteria2::Hysteria2Config;
+use crate::core::paths::singbox;
 
 impl SingBoxConfigManager {
     pub async fn batch_create_hysteria2(
@@ -35,6 +36,8 @@ impl SingBoxConfigManager {
         let mut links = Vec::new();
         let mut configs = Vec::new();
 
+        let pin_sha256 = SingBoxConfigManager::compute_cert_sha256_pin(singbox::TLS_CERT).await?;
+
         for i in 0..count {
             let sni = selector.get_next();
 
@@ -54,8 +57,10 @@ impl SingBoxConfigManager {
                     "salamander".to_string(),
                     obfs_password,
                 )
+                .with_pin_sha256(pin_sha256.clone())
             } else {
                 Hysteria2Config::new(port, password.clone(), sni.clone())
+                    .with_pin_sha256(pin_sha256.clone())
             };
 
             let link = if enable_obfs {

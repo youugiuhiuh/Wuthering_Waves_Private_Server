@@ -58,7 +58,8 @@ impl TUICConfig {
         let encoded_password = utf8_percent_encode(&self.password, NON_ALPHANUMERIC).to_string();
         let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
         let encoded_name = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
-        let hash_param = self.certificate_pubkey_hash
+        let hash_param = self
+            .certificate_pubkey_hash
             .as_ref()
             .map(|h| format!("&certificate_hash={}", h))
             .unwrap_or_default();
@@ -166,7 +167,8 @@ mod tests {
             "uuid-1234".to_string(),
             "password".to_string(),
             "sni.example.com".to_string(),
-        ).with_certificate_pubkey_hash("base64hash".to_string());
+        )
+        .with_certificate_pubkey_hash("base64hash".to_string());
         let link = config.to_client_link("1.2.3.4", "MyNode");
         assert!(link.starts_with("tuic://"));
         assert!(link.contains("uuid-1234:password@"));
@@ -185,7 +187,8 @@ mod tests {
             "uuid-1234".to_string(),
             "p@ss!word".to_string(),
             "sni.example.com".to_string(),
-        ).with_certificate_pubkey_hash("hash".to_string());
+        )
+        .with_certificate_pubkey_hash("hash".to_string());
         let link = config.to_client_link("1.2.3.4", "MyNode");
         assert!(link.contains("p%40ss%21word"));
         assert!(!link.contains("allow_insecure=1"));
