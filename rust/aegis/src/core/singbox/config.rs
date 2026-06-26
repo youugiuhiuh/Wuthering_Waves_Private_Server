@@ -482,6 +482,7 @@ impl SingBoxConfigManager {
             .join(":"))
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn compute_pubkey_sha256_base64(cert_path: &str) -> Result<String> {
         use x509_parser::prelude::*;
         let pem_data = tokio::fs::read(cert_path).await?;
@@ -536,7 +537,7 @@ mod tests {
         assert_eq!(config.port, 9443);
         assert_eq!(config.uuid, "test-uuid");
         assert_eq!(config.congestion_control, "bbr");
-        assert!(config.certificate_pubkey_hash.is_none());
+        assert!(config.cert_sha256.is_none());
     }
 
     #[tokio::test]
