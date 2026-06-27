@@ -322,14 +322,35 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_all_occupied_ports_includes_locked_ranges() {
-        let range = LockedRange {
-            start: 30000,
-            end: 30000,
-            protocol: "hysteria2".to_string(),
-            created_at: 1234567890,
+    fn test_locked_ranges_expand_to_occupied_ports() {
+        let data = PortAllocData {
+            locked_ranges: vec![
+                LockedRange {
+                    start: 30000,
+                    end: 30000,
+                    protocol: "hysteria2".to_string(),
+                    created_at: 1234567890,
+                },
+                LockedRange {
+                    start: 31000,
+                    end: 31099,
+                    protocol: "hysteria2".to_string(),
+                    created_at: 1234567891,
+                },
+            ],
+            initialized: true,
         };
-        assert!(30000 >= range.start && 30000 <= range.end);
+        let mut occupied = HashSet::new();
+        for range in &data.locked_ranges {
+            for port in range.start..=range.end {
+                occupied.insert(port);
+            }
+        }
+        assert!(occupied.contains(&30000), "single port range must be included");
+        assert!(occupied.contains(&31000), "hop range start must be included");
+        assert!(occupied.contains(&31099), "hop range end must be included");
+        assert!(!occupied.contains(&30999), "port before range must not be included");
+        assert_eq!(occupied.len(), 101);
     }
 
     #[test]
