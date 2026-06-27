@@ -4,6 +4,8 @@ use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::types::{BatchCreationResult, IpVersion};
 use crate::core::xray::port_allocator::PortAllocator;
 use anyhow::Result;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
 use super::config::SingBoxConfigManager;
 use super::hysteria2::Hysteria2Config;
@@ -46,7 +48,15 @@ impl SingBoxConfigManager {
             let (main_port, hop_range) = if enable_hopping {
                 PortAllocator::allocate_hysteria2().await?
             } else {
-                let port = PortAllocator::allocate_port().await?;
+                let port = loop {
+                    let p = StdRng::from_entropy().gen_range(10000..60000);
+                    if PortAllocator::is_port_in_locked_range(p).await {
+                        continue;
+                    }
+                    if MaintenanceManager::is_port_available(p).await {
+                        break p;
+                    }
+                };
                 (port, (port, port))
             };
 
