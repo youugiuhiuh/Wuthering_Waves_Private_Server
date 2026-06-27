@@ -21,6 +21,7 @@ pub(crate) fn is_sensitive(text: &str) -> bool {
         "trojan://",
         "ss://",
         "hysteria://",
+        "hysteria2://",
         "tuic://",
     ];
     const KEY_FIELDS: &[&str] = &["\"privateKey\"", "\"secretKey\"", "\"password\":"];
@@ -116,5 +117,10 @@ mod tests {
     #[test]
     fn is_sensitive_rejects_partial_prefix() {
         assert!(!is_sensitive("vmess is a protocol"));
+    }
+
+    #[test]
+    fn is_sensitive_detects_hysteria2() {
+        assert!(is_sensitive("hysteria2://abc123"));
     }
 }
