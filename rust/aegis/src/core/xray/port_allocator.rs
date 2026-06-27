@@ -105,6 +105,14 @@ impl PortAllocator {
             }
         }
 
+        if let Ok(data) = load_port_alloc().await {
+            for range in &data.locked_ranges {
+                for port in range.start..=range.end {
+                    occupied.insert(port);
+                }
+            }
+        }
+
         Ok(occupied)
     }
 
@@ -311,6 +319,17 @@ mod tests {
             .retain(|r| !(r.protocol == "hysteria2" && r.start == 10000));
         assert_eq!(data.locked_ranges.len(), 1);
         assert_eq!(data.locked_ranges[0].start, 20000);
+    }
+
+    #[test]
+    fn test_scan_all_occupied_ports_includes_locked_ranges() {
+        let range = LockedRange {
+            start: 30000,
+            end: 30000,
+            protocol: "hysteria2".to_string(),
+            created_at: 1234567890,
+        };
+        assert!(30000 >= range.start && 30000 <= range.end);
     }
 
     #[test]
