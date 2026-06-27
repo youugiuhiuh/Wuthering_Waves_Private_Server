@@ -265,7 +265,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 "⚡ {} | {} {}\n\n{}",
                 ip_display,
                 t!("menu.singbox_h2_qty", "0" => count),
-                if obfs_enabled == "1" { t!("menu.singbox_h2_obfs_enabled") } else { t!("menu.singbox_h2_obfs_disabled") },
+                if obfs_enabled == "1" {
+                    t!("menu.singbox_h2_obfs_enabled")
+                } else {
+                    t!("menu.singbox_h2_obfs_disabled")
+                },
                 t!("menu.singbox_h2_hop_title"),
             );
 

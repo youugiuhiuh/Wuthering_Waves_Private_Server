@@ -591,10 +591,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                         &tx,
                         7,
                         8,
-                        format!("{} ({})", t!("ops.deploy_step_tuic"), ip_version.label()),
+                        format!("{} ({})", t!("ops.deploy_step_h2"), ip_version.label()),
                     );
-                    match aegis::core::singbox::config::SingBoxConfigManager::batch_create_tuic(
-                        3, ip_version,
+                    match aegis::core::singbox::config::SingBoxConfigManager::batch_create_hysteria2(
+                        3, ip_version, false, false,
                     )
                     .await
                     {
@@ -605,7 +605,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                     &target,
                                     MessageContent {
                                         text: format!(
-                                            "✅ TUIC ({}) 已创建 {} 个配置\n📁 {}",
+                                            "✅ Hysteria2 ({}) 已创建 {} 个配置\n📁 {}",
                                             ip_version.label(),
                                             result.created_count,
                                             result.config_file.as_deref().unwrap_or("?")
@@ -616,7 +616,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                                 .await;
                         }
                         Err(e) => {
-                            let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_tuic"), e)).to_string());
+                            let _ = tx.send(t!("ops.deploy_fail", "0" => format!("{}: {}", t!("ops.deploy_fail_h2"), e)).to_string());
                             failed = true;
                         }
                     }
