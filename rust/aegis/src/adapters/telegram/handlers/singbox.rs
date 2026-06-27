@@ -219,11 +219,11 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let buttons = vec![
                 vec![InlineKeyboardButton::callback(
                     t!("menu.singbox_h2_obfs_enable"),
-                    format!("sb_h2_exec:{}:{}:1", ip_ver, count),
+                    format!("sb_h2_hop:{}:{}:1", ip_ver, count),
                 )],
                 vec![InlineKeyboardButton::callback(
                     t!("menu.singbox_h2_obfs_disable"),
-                    format!("sb_h2_exec:{}:{}:0", ip_ver, count),
+                    format!("sb_h2_hop:{}:{}:0", ip_ver, count),
                 )],
                 vec![InlineKeyboardButton::callback(
                     t!("menu.back_user"),
@@ -237,6 +237,55 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     ctx.msg_id,
                     t!("menu.singbox_h2_obfs_title", "0" => ip_display, "1" => count),
                 )
+                .parse_mode(ParseMode::Html)
+                .reply_markup(InlineKeyboardMarkup::new(buttons))
+                .await?;
+
+            Ok(HandlerAction::Done)
+        }
+
+        d if d.starts_with("sb_h2_hop:") => {
+            let parts: Vec<&str> = d
+                .strip_prefix("sb_h2_hop:")
+                .unwrap_or("")
+                .split(':')
+                .collect();
+            if parts.len() != 3 {
+                ctx.bot
+                    .answer_callback_query(ctx.q.id.clone())
+                    .text(t!("menu.singbox_param_error"))
+                    .await?;
+                return Ok(HandlerAction::Done);
+            }
+            let ip_ver = parts[0];
+            let count = parts[1];
+            let obfs_enabled = parts[2];
+            let ip_display = if ip_ver == "4" { "IPv4" } else { "IPv6" };
+            let title = format!(
+                "⚡ {} | {} {}\n\n{}",
+                ip_display,
+                t!("menu.singbox_h2_qty", "0" => count),
+                if obfs_enabled == "1" { t!("menu.singbox_h2_obfs_enabled") } else { t!("menu.singbox_h2_obfs_disabled") },
+                t!("menu.singbox_h2_hop_title"),
+            );
+
+            let buttons = vec![
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.singbox_h2_hop_enable"),
+                    format!("sb_h2_exec:{}:{}:{}:1", ip_ver, count, obfs_enabled),
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.singbox_h2_hop_disable"),
+                    format!("sb_h2_exec:{}:{}:{}:0", ip_ver, count, obfs_enabled),
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("menu.back_user"),
+                    format!("sb_h2_obfs:{}:{}", ip_ver, count),
+                )],
+            ];
+
+            ctx.bot
+                .edit_message_text(ctx.chat_id, ctx.msg_id, title)
                 .parse_mode(ParseMode::Html)
                 .reply_markup(InlineKeyboardMarkup::new(buttons))
                 .await?;
@@ -283,7 +332,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .unwrap_or("")
                 .split(':')
                 .collect();
-            if parts.len() != 3 {
+            if parts.len() != 4 {
                 ctx.bot
                     .answer_callback_query(ctx.q.id.clone())
                     .text(t!("menu.singbox_param_error"))
@@ -293,6 +342,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let ip_ver = parts[0];
             let count: usize = parts[1].parse().unwrap_or(1);
             let obfs_enabled: bool = parts[2] == "1";
+            let hopping_enabled: bool = parts[3] == "1";
             let ip_version = if ip_ver == "6" {
                 IpVersion::IPv6
             } else {
@@ -312,7 +362,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     count,
                     ip_version,
                     obfs_enabled,
-                    true,
+                    hopping_enabled,
                 )
                 .await
                 {
