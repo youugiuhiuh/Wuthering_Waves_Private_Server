@@ -346,10 +346,19 @@ mod tests {
                 occupied.insert(port);
             }
         }
-        assert!(occupied.contains(&30000), "single port range must be included");
-        assert!(occupied.contains(&31000), "hop range start must be included");
+        assert!(
+            occupied.contains(&30000),
+            "single port range must be included"
+        );
+        assert!(
+            occupied.contains(&31000),
+            "hop range start must be included"
+        );
         assert!(occupied.contains(&31099), "hop range end must be included");
-        assert!(!occupied.contains(&30999), "port before range must not be included");
+        assert!(
+            !occupied.contains(&30999),
+            "port before range must not be included"
+        );
         assert_eq!(occupied.len(), 101);
     }
 
