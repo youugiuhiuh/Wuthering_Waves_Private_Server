@@ -103,6 +103,33 @@ impl Hysteria2Config {
         )
     }
 
+    pub fn to_client_link_with_obfs(&self, host: &str, name: &str) -> String {
+        let encoded_password = utf8_percent_encode(&self.password, NON_ALPHANUMERIC).to_string();
+        let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
+        let encoded_name = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
+        let encoded_obfs_password = utf8_percent_encode(
+            self.obfs_password.as_deref().unwrap_or(""),
+            NON_ALPHANUMERIC,
+        )
+        .to_string();
+        let pin_param = self
+            .pin_sha256
+            .as_ref()
+            .map(|p| format!("&pinSHA256={}", p))
+            .unwrap_or_default();
+
+        format!(
+            "hysteria2://{}@{}:{}?sni={}&alpn=h3{}&obfs=salamander&obfs-password={}#{}",
+            encoded_password,
+            host,
+            self.port,
+            encoded_sni,
+            pin_param,
+            encoded_obfs_password,
+            encoded_name
+        )
+    }
+
     pub fn to_client_link_with_hopping(
         &self,
         host: &str,
@@ -308,6 +335,25 @@ mod tests {
         assert!(link.contains("8444-8543"));
         assert!(link.contains("hop_interval=30s"));
         assert!(!link.contains("insecure=1"));
+    }
+
+    #[test]
+    fn test_hysteria2_to_client_link_with_obfs_no_hopping() {
+        let config = Hysteria2Config::with_obfs(
+            8443,
+            "mypassword".to_string(),
+            "sni.example.com".to_string(),
+            "salamander".to_string(),
+            "obfs123".to_string(),
+        )
+        .with_pin_sha256("AA:BB:CC".to_string());
+        let link = config.to_client_link_with_obfs("1.2.3.4", "MyNode");
+        assert!(link.starts_with("hysteria2://"));
+        assert!(link.contains("obfs=salamander"));
+        assert!(link.contains("obfs-password=obfs123"));
+        assert!(link.contains("pinSHA256=AA:BB:CC"));
+        assert!(!link.contains("insecure=1"));
+        assert!(!link.contains("hop_interval=30s"));
     }
 
     #[test]
