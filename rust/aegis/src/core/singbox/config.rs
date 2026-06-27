@@ -369,66 +369,55 @@ impl SingBoxConfigManager {
             .await
             .context("创建证书目录失败")?;
 
-        let output = tokio::process::Command::new(singbox::BIN)
-            .args(["generate", "tls-keypair", "tls", "-m", "456"])
+        let key_output = tokio::process::Command::new("openssl")
+            .args([
+                "genpkey",
+                "-algorithm",
+                "EC",
+                "-pkeyopt",
+                "ec_paramgen_curve:P-256",
+                "-out",
+                singbox::TLS_KEY,
+            ])
             .output()
             .await
-            .context("生成 TLS 证书失败")?;
+            .context("生成 ECDSA 私钥失败")?;
 
-        if !output.status.success() {
+        if !key_output.status.success() {
             return Err(anyhow::anyhow!(
-                "生成证书失败: {}",
-                String::from_utf8_lossy(&output.stderr)
+                "生成 ECDSA 私钥失败: {}",
+                String::from_utf8_lossy(&key_output.stderr)
             ));
         }
 
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        let lines: Vec<&str> = output_str.lines().collect();
+        let cert_output = tokio::process::Command::new("openssl")
+            .args([
+                "req",
+                "-new",
+                "-x509",
+                "-key",
+                singbox::TLS_KEY,
+                "-out",
+                singbox::TLS_CERT,
+                "-days",
+                "3650",
+                "-subj",
+                "/CN=wwps",
+                "-addext",
+                "subjectAltName=DNS:wwps",
+            ])
+            .output()
+            .await
+            .context("生成自签名证书失败")?;
 
-        let mut key_content = String::new();
-        let mut cert_content = String::new();
-        let mut in_key = false;
-        let mut in_cert = false;
-
-        for line in lines {
-            if line.contains("BEGIN PRIVATE KEY") {
-                in_key = true;
-                key_content.push_str(line);
-                key_content.push('\n');
-                continue;
-            }
-            if line.contains("END PRIVATE KEY") {
-                key_content.push_str(line);
-                key_content.push('\n');
-                in_key = false;
-                continue;
-            }
-            if line.contains("BEGIN CERTIFICATE") {
-                in_cert = true;
-                cert_content.push_str(line);
-                cert_content.push('\n');
-                continue;
-            }
-            if line.contains("END CERTIFICATE") {
-                cert_content.push_str(line);
-                cert_content.push('\n');
-                in_cert = false;
-                continue;
-            }
-
-            if in_key {
-                key_content.push_str(line);
-                key_content.push('\n');
-            }
-            if in_cert {
-                cert_content.push_str(line);
-                cert_content.push('\n');
-            }
+        if !cert_output.status.success() {
+            return Err(anyhow::anyhow!(
+                "生成自签名证书失败: {}",
+                String::from_utf8_lossy(&cert_output.stderr)
+            ));
         }
 
-        tokio::fs::write(singbox::TLS_KEY, key_content).await?;
-        tokio::fs::write(singbox::TLS_CERT, cert_content).await?;
-
+        log::info!("已使用 OpenSSL ECDSA P-256 生成自签名证书");
         Ok(())
     }
 
