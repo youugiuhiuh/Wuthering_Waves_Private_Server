@@ -1,0 +1,6 @@
+[tools]
+rust = "stable"
+go = "stable"
+protoc = "latest"
+upx = "latest"
+"go:mvdan.cc/garble" = "latest"

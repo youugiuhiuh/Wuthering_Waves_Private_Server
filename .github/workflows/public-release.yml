@@ -58,24 +58,8 @@ jobs:
           git tag -f "v${{ env.NEW_VERSION }}"
           git push origin "v${{ env.NEW_VERSION }}" --force
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "rust/aegis -> target"
-
-      - name: Compress with UPX
-        uses: crazy-max/ghaction-upx@v4
-        with:
-          version: latest
-          install-only: true
+      - name: Setup mise
+        uses: jdx/mise-action@v3
 
       - name: Build Runtime Binary
         run: |
@@ -86,19 +70,10 @@ jobs:
           ls -lh target/release/aegis
           upx --best --lzma target/release/aegis
 
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "stable"
-          cache-dependency-path: go/installer/go.sum
-
-      - name: Install Garble
-        run: go install mvdan.cc/garble@latest
-
       - name: Build Bootstrap Binary
         run: |
           cd go/installer
-          CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 $(go env GOPATH)/bin/garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+          CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
 
       - name: Prepare Distribution Artifacts
         run: |
