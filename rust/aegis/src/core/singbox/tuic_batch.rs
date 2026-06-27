@@ -35,6 +35,7 @@ impl SingBoxConfigManager {
 
         let port_443_available = MaintenanceManager::is_port_available(443).await;
 
+        Self::ensure_tls_certificates().await?;
         let cert_sha256 = SingBoxConfigManager::compute_cert_sha256_pin(singbox::TLS_CERT).await?;
 
         for i in 0..count {
@@ -66,7 +67,6 @@ impl SingBoxConfigManager {
         }
 
         let (filename, _path) = Self::save_standalone_config(configs, "tuic").await?;
-        Self::ensure_tls_certificates().await?;
         Self::reload_service().await?;
 
         Ok(BatchCreationResult {

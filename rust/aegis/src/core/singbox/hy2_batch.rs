@@ -37,6 +37,7 @@ impl SingBoxConfigManager {
         let mut links = Vec::new();
         let mut configs = Vec::new();
 
+        Self::ensure_tls_certificates().await?;
         let pin_sha256 = SingBoxConfigManager::compute_cert_sha256_pin(singbox::TLS_CERT).await?;
 
         for i in 0..count {
@@ -98,7 +99,6 @@ impl SingBoxConfigManager {
         }
 
         let (filename, _path) = Self::save_standalone_config(configs, "hysteria2").await?;
-        Self::ensure_tls_certificates().await?;
         Self::reload_service().await?;
 
         Ok(BatchCreationResult {

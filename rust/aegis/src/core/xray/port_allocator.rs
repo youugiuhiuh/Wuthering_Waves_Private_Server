@@ -105,6 +105,14 @@ impl PortAllocator {
             }
         }
 
+        if let Ok(data) = load_port_alloc().await {
+            for range in &data.locked_ranges {
+                for port in range.start..=range.end {
+                    occupied.insert(port);
+                }
+            }
+        }
+
         Ok(occupied)
     }
 
@@ -311,6 +319,47 @@ mod tests {
             .retain(|r| !(r.protocol == "hysteria2" && r.start == 10000));
         assert_eq!(data.locked_ranges.len(), 1);
         assert_eq!(data.locked_ranges[0].start, 20000);
+    }
+
+    #[test]
+    fn test_locked_ranges_expand_to_occupied_ports() {
+        let data = PortAllocData {
+            locked_ranges: vec![
+                LockedRange {
+                    start: 30000,
+                    end: 30000,
+                    protocol: "hysteria2".to_string(),
+                    created_at: 1234567890,
+                },
+                LockedRange {
+                    start: 31000,
+                    end: 31099,
+                    protocol: "hysteria2".to_string(),
+                    created_at: 1234567891,
+                },
+            ],
+            initialized: true,
+        };
+        let mut occupied = HashSet::new();
+        for range in &data.locked_ranges {
+            for port in range.start..=range.end {
+                occupied.insert(port);
+            }
+        }
+        assert!(
+            occupied.contains(&30000),
+            "single port range must be included"
+        );
+        assert!(
+            occupied.contains(&31000),
+            "hop range start must be included"
+        );
+        assert!(occupied.contains(&31099), "hop range end must be included");
+        assert!(
+            !occupied.contains(&30999),
+            "port before range must not be included"
+        );
+        assert_eq!(occupied.len(), 101);
     }
 
     #[test]
