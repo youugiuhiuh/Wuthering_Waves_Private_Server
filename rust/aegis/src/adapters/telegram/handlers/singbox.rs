@@ -308,8 +308,13 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             let chat_id_clone = ctx.chat_id;
 
             tokio::spawn(async move {
-                match SingBoxConfigManager::batch_create_hysteria2(count, ip_version, obfs_enabled)
-                    .await
+                match SingBoxConfigManager::batch_create_hysteria2(
+                    count,
+                    ip_version,
+                    obfs_enabled,
+                    true,
+                )
+                .await
                 {
                     Ok(result) => {
                         if let Err(e) = send_singbox_batch_result(
