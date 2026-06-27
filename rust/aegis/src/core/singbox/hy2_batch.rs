@@ -14,6 +14,7 @@ impl SingBoxConfigManager {
         count: usize,
         ip_version: IpVersion,
         enable_obfs: bool,
+        enable_hopping: bool,
     ) -> Result<BatchCreationResult> {
         if !PortAllocator::check_hysteria2_limit().await? {
             return Err(anyhow::anyhow!("已达到最大 Hysteria2 配置数量限制（50个）"));
@@ -41,9 +42,12 @@ impl SingBoxConfigManager {
         for i in 0..count {
             let sni = selector.get_next();
 
-            let (main_port, hop_range) = PortAllocator::allocate_hysteria2().await?;
-
-            let port = main_port;
+            let (main_port, hop_range) = if enable_hopping {
+                PortAllocator::allocate_hysteria2().await?
+            } else {
+                let port = PortAllocator::allocate_port().await?;
+                (port, (port, port))
+            };
 
             let password = Hysteria2Config::generate_password();
             let tag = format!("HYSTERIA2-{}-{}", i + 1, &password[..8]);
@@ -51,7 +55,7 @@ impl SingBoxConfigManager {
             let config = if enable_obfs {
                 let obfs_password = Hysteria2Config::generate_obfs_password();
                 Hysteria2Config::with_obfs(
-                    port,
+                    main_port,
                     password.clone(),
                     sni.clone(),
                     "salamander".to_string(),
@@ -59,30 +63,37 @@ impl SingBoxConfigManager {
                 )
                 .with_pin_sha256(pin_sha256.clone())
             } else {
-                Hysteria2Config::new(port, password.clone(), sni.clone())
+                Hysteria2Config::new(main_port, password.clone(), sni.clone())
                     .with_pin_sha256(pin_sha256.clone())
             };
 
-            let link = if enable_obfs {
+            let link = if enable_obfs && enable_hopping {
                 config.to_client_link_with_hopping_and_obfs(&host, &tag, hop_range)
-            } else {
+            } else if enable_obfs {
+                config.to_client_link_with_obfs(&host, &tag)
+            } else if enable_hopping {
                 config.to_client_link_with_hopping(&host, &tag, hop_range)
+            } else {
+                config.to_client_link(&host, &tag)
             };
 
             links.push(link);
             configs.push(config.to_inbound_json(&tag));
 
             let _ = MaintenanceManager::allow_port(main_port).await;
-            let _ = MaintenanceManager::allow_port_range(hop_range.0, hop_range.1).await;
 
-            let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
-            if has_ipv6 {
-                let _ = MaintenanceManager::allow_port_range_v6(hop_range.0, hop_range.1).await;
-            }
+            if enable_hopping {
+                let _ = MaintenanceManager::allow_port_range(hop_range.0, hop_range.1).await;
 
-            Self::add_port_hopping_firewall_rules_v4(main_port, hop_range).await?;
-            if has_ipv6 {
-                Self::add_port_hopping_firewall_rules_v6(main_port, hop_range).await?;
+                let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+                if has_ipv6 {
+                    let _ = MaintenanceManager::allow_port_range_v6(hop_range.0, hop_range.1).await;
+                }
+
+                Self::add_port_hopping_firewall_rules_v4(main_port, hop_range).await?;
+                if has_ipv6 {
+                    Self::add_port_hopping_firewall_rules_v6(main_port, hop_range).await?;
+                }
             }
         }
 

@@ -158,6 +158,31 @@ impl PortAllocator {
             .any(|(start, end)| port >= *start && port <= *end)
     }
 
+    pub async fn allocate_port() -> Result<u16> {
+        let occupied = Self::scan_all_occupied_ports().await?;
+        for port in XRAY_PORT_MIN..=XRAY_PORT_MAX {
+            if !occupied.contains(&port) {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                let mut data = load_port_alloc().await.unwrap_or_default();
+                data.locked_ranges.push(LockedRange {
+                    start: port,
+                    end: port,
+                    protocol: "hysteria2".to_string(),
+                    created_at: now,
+                });
+                save_port_alloc(&data).await?;
+
+                log::info!("端口分配: 端口 {}", port);
+
+                return Ok(port);
+            }
+        }
+        anyhow::bail!("在 {} 范围内找不到空闲端口", XRAY_PORT_MIN)
+    }
+
     pub async fn allocate_hysteria2() -> Result<(u16, (u16, u16))> {
         let occupied = Self::scan_all_occupied_ports().await?;
         let main_port = Self::find_consecutive_range(&occupied, HOP_SIZE)?;
