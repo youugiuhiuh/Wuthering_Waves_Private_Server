@@ -239,21 +239,27 @@ pub async fn run_setup_from_stdin() -> Result<()> {
 
     let input: SetupInput = serde_json::from_str(&payload).context("解析 stdin 配置失败")?;
 
-    let matrix = if input.matrix_homeserver.is_some()
-        && input.matrix_username.is_some()
-        && input.matrix_password.is_some()
-        && input.matrix_room_id.is_some()
-        && input.matrix_store_passphrase.is_some()
-    {
-        Some(MatrixSetupConfig {
-            homeserver: input.matrix_homeserver.clone().unwrap(),
-            username: input.matrix_username.clone().unwrap(),
-            password: input.matrix_password.clone().unwrap(),
-            room_id: input.matrix_room_id.clone().unwrap(),
-            store_passphrase: input.matrix_store_passphrase.clone().unwrap(),
-        })
-    } else {
-        None
+    let matrix = match (
+        &input.matrix_homeserver,
+        &input.matrix_username,
+        &input.matrix_password,
+        &input.matrix_room_id,
+        &input.matrix_store_passphrase,
+    ) {
+        (
+            Some(homeserver),
+            Some(username),
+            Some(password),
+            Some(room_id),
+            Some(store_passphrase),
+        ) => Some(MatrixSetupConfig {
+            homeserver: homeserver.clone(),
+            username: username.clone(),
+            password: password.clone(),
+            room_id: room_id.clone(),
+            store_passphrase: store_passphrase.clone(),
+        }),
+        _ => None,
     };
 
     run_setup(&input.token, &input.admin_id, &input.totp_secret, matrix).await
@@ -287,11 +293,15 @@ pub fn harden_process() {
             rlim_max: 0,
         };
 
+        // SAFETY: setrlimit is a safe FFI call — the rlimit struct is valid and
+        // core dump disabling is a standard hardening operation.
         let setrlimit_ret = unsafe { libc::setrlimit(libc::RLIMIT_CORE, &limit) };
         if setrlimit_ret != 0 {
             log::warn!("failed to disable core dumps via setrlimit");
         }
 
+        // SAFETY: prctl is a safe FFI call — argument values are correct for
+        // PR_SET_DUMPABLE = 0 and the call is idempotent.
         let prctl_ret = unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) };
         if prctl_ret != 0 {
             log::warn!("failed to mark process as non-dumpable");

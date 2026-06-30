@@ -139,12 +139,14 @@ async fn show_reality_qty_prompt(
         IpVersion::IPv6 => "6",
         IpVersion::SplitStackV6Primary => "s6",
         IpVersion::SplitStackV4Primary => "s4",
+        _ => unreachable!(),
     };
     let ip_display = match ip_version {
         IpVersion::IPv4 => "IPv4",
         IpVersion::IPv6 => "IPv6",
         IpVersion::SplitStackV6Primary => &t!("xray.split_v6_up"),
         IpVersion::SplitStackV4Primary => &t!("xray.split_v4_up"),
+        _ => unreachable!(),
     };
 
     let (exec_prefix, title) = match proto {

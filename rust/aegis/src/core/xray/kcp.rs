@@ -73,7 +73,8 @@ impl ConfigManager {
     ) -> String {
         let udp_array: Vec<Value> = masks.iter().map(|m| m.as_json()).collect();
         let finalmask_json = json!({"udp": udp_array});
-        let fm_str = serde_json::to_string(&finalmask_json).unwrap();
+        let fm_str =
+            serde_json::to_string(&finalmask_json).expect("finalmask JSON should always serialize");
         let fm_encoded = utf8_percent_encode(&fm_str, NON_ALPHANUMERIC).to_string();
 
         let fmt_host = match ip_version {

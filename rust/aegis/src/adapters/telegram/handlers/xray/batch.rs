@@ -123,6 +123,7 @@ pub(super) async fn handle_batch_exec(ctx: &CallbackContext, data: &str) -> Hand
         IpVersion::IPv6 => "IPv6".into(),
         IpVersion::SplitStackV6Primary => t!("xray.split_v6_up"),
         IpVersion::SplitStackV4Primary => t!("xray.split_v4_up"),
+        _ => unreachable!(),
     };
 
     let proto_str = match proto {
@@ -291,6 +292,7 @@ pub(super) async fn handle_xhttp_batch_exec(ctx: &CallbackContext, data: &str) -
         IpVersion::IPv6 => "IPv6".into(),
         IpVersion::SplitStackV6Primary => t!("xray.split_v6_up"),
         IpVersion::SplitStackV4Primary => t!("xray.split_v4_up"),
+        _ => unreachable!(),
     };
 
     let proto_str = match proto {
@@ -493,7 +495,7 @@ pub(super) async fn handle_kcp_add(ctx: &CallbackContext, data: &str) -> Handler
             .answer_callback_query(ctx.q.id.clone())
             .text(t!("xray.kcp_realm_note"))
             .await?;
-        let m = KcpMask::from_code(code).unwrap();
+        let m = KcpMask::from_code(code).expect("kcp code from validated callback data");
         let stack_display = format!("1️⃣ {}", m.display_name());
         let buttons = vec![
             vec![InlineKeyboardButton::callback(
@@ -626,12 +628,18 @@ pub(super) async fn handle_kcp_more(ctx: &CallbackContext, data: &str) -> Handle
                 "noop",
             )]);
         } else if remaining > 0 {
-            if buttons.is_empty() || buttons.last().unwrap().len() >= 2 {
+            if buttons.is_empty()
+                || buttons
+                    .last()
+                    .expect("buttons non-empty after is_empty check")
+                    .len()
+                    >= 2
+            {
                 buttons.push(Vec::new());
             }
             buttons
                 .last_mut()
-                .unwrap()
+                .expect("buttons has at least one row after emptiness guard")
                 .push(InlineKeyboardButton::callback(
                     format!("{} ({})", name, remaining),
                     format!("u_kcp_mcat:{}:{}", existing, code),
@@ -938,6 +946,7 @@ pub(super) async fn handle_kcp_ip(ctx: &CallbackContext, data: &str) -> HandlerR
         IpVersion::IPv6 => "IPv6".into(),
         IpVersion::SplitStackV4Primary => t!("xray.dual_v4"),
         IpVersion::SplitStackV6Primary => t!("xray.dual_v6"),
+        _ => unreachable!(),
     };
 
     let stack_display: Vec<String> = codes
@@ -1020,6 +1029,7 @@ pub(super) async fn handle_kcp_ok(ctx: &CallbackContext, data: &str) -> HandlerR
         IpVersion::IPv6 => "IPv6".into(),
         IpVersion::SplitStackV4Primary => t!("xray.dual_v4"),
         IpVersion::SplitStackV6Primary => t!("xray.dual_v6"),
+        _ => unreachable!(),
     };
 
     let mask_codes: Vec<&str> = mask_codes_str.split(',').collect();
