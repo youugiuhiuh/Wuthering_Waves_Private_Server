@@ -86,6 +86,10 @@ pub struct ScheduleInputState {
 ///
 /// Each mutable field is behind its own [`Mutex`] to minimize lock contention.
 /// Methods follow the convention: lock, mutate, release — never await while holding a lock.
+///
+/// Owns the [`TotpManager`] for two-factor authentication, tracks
+/// [`DestructStep`] flows for self-destruct, and holds [`ScheduleInputState`]
+/// for in-progress scheduled task creation.
 pub struct AppState {
     #[allow(dead_code)]
     pub adapter: Arc<dyn BotAdapter>,

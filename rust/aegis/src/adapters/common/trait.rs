@@ -45,8 +45,9 @@ pub enum Platform {
 
 /// Platform-agnostic bot adapter trait.
 ///
-/// Implementations provide a uniform interface over Telegram, Discord,
-/// and Matrix bots. All handler code targets this trait.
+/// Implementations provide a uniform interface over [`Platform`]
+/// (Telegram, Discord, and Matrix) bots. Messages target [`TargetId`]s
+/// and return [`MessageId`]s. All handler code targets this trait.
 #[async_trait]
 pub trait BotAdapter: Send + Sync {
     /// Returns the platform this adapter is connected to.

@@ -7,7 +7,7 @@ use std::sync::Arc;
 ///
 /// Sensitive content (proxy configs containing private keys, passwords, etc.)
 /// is sent via the secondary channel while all other messages go through the
-/// primary adapter.
+/// primary adapter. Targets are identified by [`TargetId`] and messages by [`MessageId`].
 pub struct RoutingAdapter {
     primary: Arc<dyn BotAdapter>,
     secondary: Option<Arc<dyn BotAdapter>>,

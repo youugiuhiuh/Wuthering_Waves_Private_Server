@@ -22,7 +22,15 @@ impl BatchCreationResult {
     }
 }
 
-/// IP 版本选择
+/// Internet Protocol version selection.
+///
+/// # Examples
+///
+/// ```
+/// use aegis::core::types::IpVersion;
+/// let v4 = IpVersion::IPv4;
+/// assert_eq!(v4.label(), "IPv4");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub enum IpVersion {
@@ -42,6 +50,7 @@ impl IpVersion {
         matches!(self, IpVersion::IPv4 | IpVersion::SplitStackV4Primary)
     }
 
+    /// Returns the human-readable label for this [`IpVersion`].
     pub fn label(&self) -> &'static str {
         match self {
             IpVersion::IPv4 => "IPv4",

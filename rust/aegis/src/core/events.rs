@@ -47,10 +47,7 @@ pub enum CoreEvent {
         status: Status,
     },
     /// A scheduled task trigger.
-    Scheduled {
-        task_name: String,
-        payload: String,
-    },
+    Scheduled { task_name: String, payload: String },
 }
 
 /// In-process event bus using a broadcast channel.
