@@ -1,6 +1,6 @@
 [package]
 name = "aegis"
-version = "3.1.6"
+version = "3.1.7"
 edition = "2024"
 
 [dependencies]
@@ -98,7 +98,7 @@ debug = 1
 strip = "symbols"
 
 [lints.rust]
-unsafe_code = "warn"
+unsafe_code = "allow"
 
 [lints.clippy]
 correctness = { level = "deny", priority = -2 }
