@@ -675,7 +675,7 @@ pub(super) async fn handle_del_select(ctx: &CallbackContext, data: &str) -> Hand
 pub(super) async fn handle_del_confirm(ctx: &CallbackContext, data: &str) -> HandlerResult {
     let idx: usize = data
         .strip_prefix("s_del_confirm:")
-        .unwrap()
+        .expect("Callback data 应由路由器预校验为 s_del_confirm: 前缀")
         .parse()
         .unwrap_or(0);
     if let Some(manager) = aegis::core::system::scheduler::get_manager().await {
