@@ -88,6 +88,11 @@ impl SecurityManager {
         let mut zeroizing_decrypted = Zeroizing::new(decrypted);
         let decrypted_vec = std::mem::take(&mut *zeroizing_decrypted);
         if !decrypted_vec.is_empty() {
+            // SAFETY:
+            // - decrypted_vec was just allocated in the previous step; the pointer is valid and non-null
+            // - len comes from Vec::len(), matching the allocation size
+            // - mlock does not modify memory contents, satisfying Rust's memory safety requirements
+            // - Failure only reduces security (key may be swapped), does not affect memory safety
             let ret = unsafe {
                 mlock(
                     decrypted_vec.as_ptr() as *const libc::c_void,
@@ -110,6 +115,10 @@ pub fn lock_memory(data: &mut [u8]) {
         return;
     }
 
+    // SAFETY:
+    // - data.as_ptr() returns a pointer to a valid [u8] slice
+    // - data.len() bounds the range within the allocation
+    // - mlock does not affect memory content or layout
     let ret = unsafe { mlock(data.as_ptr() as *const libc::c_void, data.len()) };
     if ret != 0 {
         log::warn!("mlock failed");
@@ -121,6 +130,9 @@ pub fn unlock_memory(data: &mut [u8]) {
         return;
     }
 
+    // SAFETY:
+    // - Symmetric with lock_memory: data still points to the same valid memory
+    // - munlock does not affect read/write safety of memory contents
     let ret = unsafe { munlock(data.as_ptr() as *const libc::c_void, data.len()) };
     if ret != 0 {
         log::warn!("munlock failed");

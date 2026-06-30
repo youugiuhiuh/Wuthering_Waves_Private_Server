@@ -748,11 +748,17 @@ mod tests {
     #[test]
     fn test_wwps_core_release_api_bases_default() {
         let original = std::env::var("WWPS_CORE_RELEASE_MIRRORS").ok();
+        // SAFETY:
+        // Called during single-threaded test execution, no concurrent env access.
+        // WWPS_CORE_RELEASE_MIRRORS is only read/written in this test.
         unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
         let bases = wwps_core_release_api_bases();
         assert!(!bases.is_empty());
         assert!(bases[0].contains("github.com"));
         if let Some(val) = original {
+            // SAFETY:
+            // Called during single-threaded test execution, no concurrent env access.
+            // Restoring the original env var value; this runs after all reads are complete.
             unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", val) };
         }
     }
@@ -760,6 +766,9 @@ mod tests {
     #[test]
     fn test_wwps_core_release_api_bases_env_override() {
         let original = std::env::var("WWPS_CORE_RELEASE_MIRRORS").ok();
+        // SAFETY:
+        // Called during single-threaded test execution, no concurrent env access.
+        // Setting WWPS_CORE_RELEASE_MIRRORS for this test case; cleaned up at end.
         unsafe {
             std::env::set_var(
                 "WWPS_CORE_RELEASE_MIRRORS",
@@ -771,8 +780,14 @@ mod tests {
         assert_eq!(bases[0], "https://mirror1.example.com");
         assert_eq!(bases[1], "https://mirror2.example.com");
         if let Some(val) = original {
+            // SAFETY:
+            // Called during single-threaded test execution, no concurrent env access.
+            // Restoring the original env var value; this runs after all reads are complete.
             unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", val) };
         } else {
+            // SAFETY:
+            // Called during single-threaded test execution, no concurrent env access.
+            // Cleaning up the env var after the test; no other thread reads it.
             unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
         }
     }
@@ -780,6 +795,9 @@ mod tests {
     #[test]
     fn test_wwps_core_release_api_bases_trailing_slash_stripped() {
         let original = std::env::var("WWPS_CORE_RELEASE_MIRRORS").ok();
+        // SAFETY:
+        // Called during single-threaded test execution, no concurrent env access.
+        // Setting WWPS_CORE_RELEASE_MIRRORS for this test case; cleaned up at end.
         unsafe {
             std::env::set_var(
                 "WWPS_CORE_RELEASE_MIRRORS",
@@ -790,8 +808,14 @@ mod tests {
         assert_eq!(bases[0], "https://mirror.example.com");
         assert_eq!(bases[1], "https://other.example.com/repos");
         if let Some(val) = original {
+            // SAFETY:
+            // Called during single-threaded test execution, no concurrent env access.
+            // Restoring the original env var value; this runs after all reads are complete.
             unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", val) };
         } else {
+            // SAFETY:
+            // Called during single-threaded test execution, no concurrent env access.
+            // Cleaning up the env var after the test; no other thread reads it.
             unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
         }
     }

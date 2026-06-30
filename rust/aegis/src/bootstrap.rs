@@ -284,11 +284,17 @@ pub fn harden_process() {
             rlim_max: 0,
         };
 
+        // SAFETY:
+        // - limit is a stack-initialized rlimit struct; the pointer is guaranteed aligned by the compiler
+        // - setrlimit does not modify the memory that limit points to
         let setrlimit_ret = unsafe { libc::setrlimit(libc::RLIMIT_CORE, &limit) };
         if setrlimit_ret != 0 {
             log::warn!("failed to disable core dumps via setrlimit");
         }
 
+        // SAFETY:
+        // - prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) uses only integer arguments, no pointer dereference
+        // - Only modifies a kernel-side process flag; accesses no userspace memory beyond the provided integer args
         let prctl_ret = unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) };
         if prctl_ret != 0 {
             log::warn!("failed to mark process as non-dumpable");
