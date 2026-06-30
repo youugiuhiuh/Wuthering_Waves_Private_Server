@@ -91,8 +91,7 @@ impl FirewalldClient {
         let config_path = match proxy.config().await {
             Ok(path) => path,
             Err(_) => {
-                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
-                    .unwrap()
+                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")?
             }
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
@@ -134,8 +133,7 @@ impl FirewalldClient {
         let config_path = match proxy.config().await {
             Ok(path) => path,
             Err(_) => {
-                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
-                    .unwrap()
+                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")?
             }
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
@@ -206,8 +204,7 @@ impl FirewalldClient {
         let config_path = match proxy.config().await {
             Ok(path) => path,
             Err(_) => {
-                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
-                    .unwrap()
+                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")?
             }
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
@@ -254,8 +251,7 @@ impl FirewalldClient {
         let config_path = match proxy.config().await {
             Ok(path) => path,
             Err(_) => {
-                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
-                    .unwrap()
+                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")?
             }
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
@@ -308,8 +304,7 @@ impl FirewalldClient {
         let config_path = match proxy.config().await {
             Ok(path) => path,
             Err(_) => {
-                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
-                    .unwrap()
+                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")?
             }
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)

@@ -239,21 +239,23 @@ pub async fn run_setup_from_stdin() -> Result<()> {
 
     let input: SetupInput = serde_json::from_str(&payload).context("解析 stdin 配置失败")?;
 
-    let matrix = if input.matrix_homeserver.is_some()
-        && input.matrix_username.is_some()
-        && input.matrix_password.is_some()
-        && input.matrix_room_id.is_some()
-        && input.matrix_store_passphrase.is_some()
-    {
-        Some(MatrixSetupConfig {
-            homeserver: input.matrix_homeserver.clone().unwrap(),
-            username: input.matrix_username.clone().unwrap(),
-            password: input.matrix_password.clone().unwrap(),
-            room_id: input.matrix_room_id.clone().unwrap(),
-            store_passphrase: input.matrix_store_passphrase.clone().unwrap(),
-        })
-    } else {
-        None
+    let matrix = match (
+        &input.matrix_homeserver,
+        &input.matrix_username,
+        &input.matrix_password,
+        &input.matrix_room_id,
+        &input.matrix_store_passphrase,
+    ) {
+        (Some(homeserver), Some(username), Some(password), Some(room_id), Some(store_passphrase)) => {
+            Some(MatrixSetupConfig {
+                homeserver: homeserver.clone(),
+                username: username.clone(),
+                password: password.clone(),
+                room_id: room_id.clone(),
+                store_passphrase: store_passphrase.clone(),
+            })
+        }
+        _ => None,
     };
 
     run_setup(&input.token, &input.admin_id, &input.totp_secret, matrix).await
