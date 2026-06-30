@@ -5,33 +5,55 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum AppError {
+    /// Configuration error wrapping a user-facing message.
+    /// No source error is preserved — the inner String is a display message.
     #[error("配置错误: {0}")]
     Config(String),
 
+    /// Service error wrapping a user-facing message.
+    /// No source error is preserved.
     #[error("服务错误: {0}")]
     Service(String),
 
+    /// Network error wrapping a user-facing message.
+    /// No source error is preserved.
     #[error("网络错误: {0}")]
     Network(String),
 
+    /// I/O error with source chain preserved via [`std::io::Error`].
     #[error("IO 错误: {0}")]
-    Io(#[from] std::io::Error),
+    Io(
+        #[source]
+        #[from]
+        std::io::Error,
+    ),
 
+    /// JSON parsing error with source chain preserved via [`serde_json::Error`].
     #[error("JSON 解析错误: {0}")]
-    Json(#[from] serde_json::Error),
+    Json(
+        #[source]
+        #[from]
+        serde_json::Error,
+    ),
 
+    /// A required component is not installed.
     #[error("{0} 未安装")]
     NotInstalled(String),
 
+    /// The specified port is unavailable.
     #[error("端口 {0} 不可用")]
     PortUnavailable(u16),
 
+    /// Invalid parameter value.
     #[error("无效参数: {0}")]
     InvalidParameter(String),
 
+    /// Operation timed out.
     #[error("操作超时")]
     Timeout,
 
+    /// Catch-all error wrapping an unexpected message.
+    /// No source error is preserved.
     #[error("未知错误: {0}")]
     Unknown(String),
 }
