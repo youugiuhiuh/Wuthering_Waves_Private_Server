@@ -88,3 +88,10 @@ lto = "thin"
 [profile.release.build-override]
 opt-level = 0
 codegen-units = 256
+
+[profile.release-perf]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+debug = 1
+strip = "symbols"
