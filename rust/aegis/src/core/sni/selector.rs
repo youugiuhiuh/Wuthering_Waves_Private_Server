@@ -143,7 +143,9 @@ impl SNISelector {
             self.save_state();
         }
 
-        let idx = self.shuffled_indices.pop()
+        let idx = self
+            .shuffled_indices
+            .pop()
             .expect("shuffled_indices should not be empty after reset");
         self.used_count += 1;
         self.save_state();

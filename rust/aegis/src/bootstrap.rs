@@ -246,9 +246,19 @@ pub async fn run_setup_from_stdin() -> Result<()> {
         let rid = input.matrix_room_id.take();
         let sp = input.matrix_store_passphrase.take();
         match (hs, un, pw, rid, sp) {
-            (Some(homeserver), Some(username), Some(password), Some(room_id), Some(store_passphrase)) => {
-                Some(MatrixSetupConfig { homeserver, username, password, room_id, store_passphrase })
-            }
+            (
+                Some(homeserver),
+                Some(username),
+                Some(password),
+                Some(room_id),
+                Some(store_passphrase),
+            ) => Some(MatrixSetupConfig {
+                homeserver,
+                username,
+                password,
+                room_id,
+                store_passphrase,
+            }),
             _ => None,
         }
     };

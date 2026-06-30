@@ -77,6 +77,7 @@ dependencies = [
  "tokio",
  "tokio-cron-scheduler",
  "tokio-rustls 0.24.1",
+ "tokio-util",
  "totp-rs",
  "x25519-dalek",
  "x509-parser",
