@@ -64,6 +64,11 @@ trait FirewallD1ConfigZone {
     fn set_target(&self, target: &str) -> zbus::Result<()>;
 }
 
+fn default_config_path() -> Result<zbus::zvariant::OwnedObjectPath> {
+    zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
+        .map_err(|e| anyhow::anyhow!("Invalid default firewalld config path: {}", e))
+}
+
 pub struct FirewalldClient;
 
 impl FirewalldClient {
@@ -90,10 +95,7 @@ impl FirewalldClient {
         // Get config object path (With fallback if Property 'Config' doesn't exist)
         let config_path = match proxy.config().await {
             Ok(path) => path,
-            Err(_) => {
-                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
-                    .unwrap()
-            }
+            Err(_) => default_config_path()?,
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
             .path(config_path)?
@@ -133,10 +135,7 @@ impl FirewalldClient {
         // 2. Permanent: Remove port from config
         let config_path = match proxy.config().await {
             Ok(path) => path,
-            Err(_) => {
-                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
-                    .unwrap()
-            }
+            Err(_) => default_config_path()?,
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
             .path(config_path)?
@@ -205,10 +204,7 @@ impl FirewalldClient {
         // 2. Permanent: Add port range to config
         let config_path = match proxy.config().await {
             Ok(path) => path,
-            Err(_) => {
-                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
-                    .unwrap()
-            }
+            Err(_) => default_config_path()?,
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
             .path(config_path)?
@@ -253,10 +249,7 @@ impl FirewalldClient {
         // 2. Permanent: Remove port range from config
         let config_path = match proxy.config().await {
             Ok(path) => path,
-            Err(_) => {
-                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
-                    .unwrap()
-            }
+            Err(_) => default_config_path()?,
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
             .path(config_path)?
@@ -307,10 +300,7 @@ impl FirewalldClient {
         // Get config object path (Permanent) (With fallback if Property 'Config' doesn't exist)
         let config_path = match proxy.config().await {
             Ok(path) => path,
-            Err(_) => {
-                zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
-                    .unwrap()
-            }
+            Err(_) => default_config_path()?,
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
             .path(config_path)?
