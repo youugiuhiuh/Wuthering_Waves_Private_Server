@@ -6,6 +6,7 @@ use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::Room as MatrixRoom;
 use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::prelude::*;
+use tokio_util::sync::CancellationToken;
 
 use crate::app::state::AppState;
 use crate::bootstrap::config_dir;
@@ -181,7 +182,17 @@ pub async fn run(
         });
 
         // 保活 — matrix sync runs in background via spawn above
-        let () = std::future::pending().await;
+        let token = CancellationToken::new();
+        let token_clone = token.clone();
+
+        // 处理 SIGTERM/SIGINT 触发优雅关闭
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.ok();
+            log::info!("收到关闭信号，正在优雅关闭...");
+            token.cancel();
+        });
+
+        token_clone.cancelled().await;
     }
 
     Ok(())

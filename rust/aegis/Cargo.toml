@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 teloxide = { version = "0.13", features = ["macros"], optional = true }
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
 aes-gcm = "0.10"
 secrecy = { version = "0.8", features = ["serde"] }
 zeroize = { version = "1.7", features = ["derive"] }
