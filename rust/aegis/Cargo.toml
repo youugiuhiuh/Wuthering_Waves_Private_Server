@@ -95,3 +95,14 @@ opt-level = 3
 lto = "fat"
 debug = 1
 strip = "symbols"
+
+[lints.rust]
+unsafe_code = "warn"
+
+[lints.clippy]
+correctness = { level = "deny", priority = -2 }
+suspicious = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = { level = "warn", priority = -1 }
