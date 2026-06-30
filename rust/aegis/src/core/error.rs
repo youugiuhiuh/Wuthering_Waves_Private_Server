@@ -3,6 +3,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum AppError {
     #[error("配置错误: {0}")]
     Config(String),

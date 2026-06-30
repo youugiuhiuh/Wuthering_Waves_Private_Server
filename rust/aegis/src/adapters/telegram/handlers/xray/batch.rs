@@ -123,6 +123,7 @@ pub(super) async fn handle_batch_exec(ctx: &CallbackContext, data: &str) -> Hand
         IpVersion::IPv6 => "IPv6".into(),
         IpVersion::SplitStackV6Primary => t!("xray.split_v6_up"),
         IpVersion::SplitStackV4Primary => t!("xray.split_v4_up"),
+        _ => unreachable!(),
     };
 
     let proto_str = match proto {
@@ -291,6 +292,7 @@ pub(super) async fn handle_xhttp_batch_exec(ctx: &CallbackContext, data: &str) -
         IpVersion::IPv6 => "IPv6".into(),
         IpVersion::SplitStackV6Primary => t!("xray.split_v6_up"),
         IpVersion::SplitStackV4Primary => t!("xray.split_v4_up"),
+        _ => unreachable!(),
     };
 
     let proto_str = match proto {
@@ -939,6 +941,7 @@ pub(super) async fn handle_kcp_ip(ctx: &CallbackContext, data: &str) -> HandlerR
         IpVersion::IPv6 => "IPv6".into(),
         IpVersion::SplitStackV4Primary => t!("xray.dual_v4"),
         IpVersion::SplitStackV6Primary => t!("xray.dual_v6"),
+        _ => unreachable!(),
     };
 
     let stack_display: Vec<String> = codes
@@ -1021,6 +1024,7 @@ pub(super) async fn handle_kcp_ok(ctx: &CallbackContext, data: &str) -> HandlerR
         IpVersion::IPv6 => "IPv6".into(),
         IpVersion::SplitStackV4Primary => t!("xray.dual_v4"),
         IpVersion::SplitStackV6Primary => t!("xray.dual_v6"),
+        _ => unreachable!(),
     };
 
     let mask_codes: Vec<&str> = mask_codes_str.split(',').collect();

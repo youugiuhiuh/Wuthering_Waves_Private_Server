@@ -24,6 +24,7 @@ impl BatchCreationResult {
 
 /// IP 版本选择
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[non_exhaustive]
 pub enum IpVersion {
     #[default]
     IPv4,

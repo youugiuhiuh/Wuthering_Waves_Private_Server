@@ -1,6 +1,7 @@
 use tokio::sync::broadcast;
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Severity {
     Info,
     Warning,
@@ -9,6 +10,7 @@ pub enum Severity {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Component {
     System,
     Scheduler,
@@ -17,6 +19,7 @@ pub enum Component {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Status {
     Started,
     Stopped,
@@ -26,6 +29,7 @@ pub enum Status {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum CoreEvent {
     Alert {
         severity: Severity,

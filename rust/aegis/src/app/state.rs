@@ -14,6 +14,7 @@ const RECENT_AUTH_WINDOW_SECS: u64 = 5 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::enum_variant_names)]
+#[non_exhaustive]
 pub enum DestructStep {
     AwaitFirstTotp,
     AwaitConfirm,
@@ -23,6 +24,7 @@ pub enum DestructStep {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ScheduleFrequency {
     Daily,
     Weekly,
