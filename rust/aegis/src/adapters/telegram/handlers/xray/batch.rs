@@ -495,8 +495,7 @@ pub(super) async fn handle_kcp_add(ctx: &CallbackContext, data: &str) -> Handler
             .answer_callback_query(ctx.q.id.clone())
             .text(t!("xray.kcp_realm_note"))
             .await?;
-        let m = KcpMask::from_code(code)
-            .expect("kcp code from validated callback data");
+        let m = KcpMask::from_code(code).expect("kcp code from validated callback data");
         let stack_display = format!("1️⃣ {}", m.display_name());
         let buttons = vec![
             vec![InlineKeyboardButton::callback(
@@ -629,7 +628,13 @@ pub(super) async fn handle_kcp_more(ctx: &CallbackContext, data: &str) -> Handle
                 "noop",
             )]);
         } else if remaining > 0 {
-            if buttons.is_empty() || buttons.last().expect("buttons non-empty after is_empty check").len() >= 2 {
+            if buttons.is_empty()
+                || buttons
+                    .last()
+                    .expect("buttons non-empty after is_empty check")
+                    .len()
+                    >= 2
+            {
                 buttons.push(Vec::new());
             }
             buttons

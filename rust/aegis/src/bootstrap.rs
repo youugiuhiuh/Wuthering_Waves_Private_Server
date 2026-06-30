@@ -246,15 +246,19 @@ pub async fn run_setup_from_stdin() -> Result<()> {
         &input.matrix_room_id,
         &input.matrix_store_passphrase,
     ) {
-        (Some(homeserver), Some(username), Some(password), Some(room_id), Some(store_passphrase)) => {
-            Some(MatrixSetupConfig {
-                homeserver: homeserver.clone(),
-                username: username.clone(),
-                password: password.clone(),
-                room_id: room_id.clone(),
-                store_passphrase: store_passphrase.clone(),
-            })
-        }
+        (
+            Some(homeserver),
+            Some(username),
+            Some(password),
+            Some(room_id),
+            Some(store_passphrase),
+        ) => Some(MatrixSetupConfig {
+            homeserver: homeserver.clone(),
+            username: username.clone(),
+            password: password.clone(),
+            room_id: room_id.clone(),
+            store_passphrase: store_passphrase.clone(),
+        }),
         _ => None,
     };
 
