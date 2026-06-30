@@ -88,6 +88,8 @@ impl SecurityManager {
         let mut zeroizing_decrypted = Zeroizing::new(decrypted);
         let decrypted_vec = std::mem::take(&mut *zeroizing_decrypted);
         if !decrypted_vec.is_empty() {
+            // SAFETY: mlock operates on a valid pointer to a contiguous byte slice.
+            // The pointer is derived from a Vec<u8> and the length is correct.
             let ret = unsafe {
                 mlock(
                     decrypted_vec.as_ptr() as *const libc::c_void,
@@ -110,6 +112,8 @@ pub fn lock_memory(data: &mut [u8]) {
         return;
     }
 
+    // SAFETY: mlock operates on a valid pointer derived from a mutable byte slice.
+    // The pointer is valid and the length is correct.
     let ret = unsafe { mlock(data.as_ptr() as *const libc::c_void, data.len()) };
     if ret != 0 {
         log::warn!("mlock failed");
@@ -121,6 +125,8 @@ pub fn unlock_memory(data: &mut [u8]) {
         return;
     }
 
+    // SAFETY: munlock operates on a valid pointer derived from a mutable byte slice.
+    // The pointer is valid and the length is correct.
     let ret = unsafe { munlock(data.as_ptr() as *const libc::c_void, data.len()) };
     if ret != 0 {
         log::warn!("munlock failed");

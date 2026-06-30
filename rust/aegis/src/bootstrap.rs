@@ -287,11 +287,15 @@ pub fn harden_process() {
             rlim_max: 0,
         };
 
+        // SAFETY: setrlimit is a safe FFI call — the rlimit struct is valid and
+        // core dump disabling is a standard hardening operation.
         let setrlimit_ret = unsafe { libc::setrlimit(libc::RLIMIT_CORE, &limit) };
         if setrlimit_ret != 0 {
             log::warn!("failed to disable core dumps via setrlimit");
         }
 
+        // SAFETY: prctl is a safe FFI call — argument values are correct for
+        // PR_SET_DUMPABLE = 0 and the call is idempotent.
         let prctl_ret = unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) };
         if prctl_ret != 0 {
             log::warn!("failed to mark process as non-dumpable");

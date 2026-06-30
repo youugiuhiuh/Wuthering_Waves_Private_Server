@@ -1,6 +1,5 @@
 // mod logic; // Moved to lib.rs
 #![recursion_limit = "256"]
-#![allow(clippy::vec_init_then_push)]
 rust_i18n::i18n!("src/resources/i18n");
 
 #[path = "adapters/telegram/handlers/mod.rs"]
