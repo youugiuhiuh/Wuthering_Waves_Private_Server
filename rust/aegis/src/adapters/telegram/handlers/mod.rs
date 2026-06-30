@@ -12,6 +12,12 @@ pub mod xray;
 use anyhow::Result;
 use context::{CallbackContext, HandlerAction};
 
+/// Route a callback query to the appropriate handler module based on the
+/// callback data prefix.
+///
+/// # Errors
+///
+/// Returns an error if any of the dispatched handler functions fail.
 pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
     let data = ctx.data.as_str();
 

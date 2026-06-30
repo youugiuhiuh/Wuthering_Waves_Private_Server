@@ -304,6 +304,12 @@ pub async fn get_manager() -> Option<Arc<SchedulerManager>> {
     guard.as_ref().cloned()
 }
 
+/// Initialise the global scheduler, replacing any existing instance.
+///
+/// # Errors
+///
+/// Returns an error if the [`SchedulerManager`] cannot be created (e.g.,
+/// I/O errors loading persisted state or spawning background jobs).
 pub async fn start_scheduler(adapter: Arc<dyn BotAdapter>, target: TargetId) -> Result<()> {
     log::info!("⏰ 开始初始化调度器...");
     let state_path = "/etc/wwps/aegis/scheduler_state.json".to_string();

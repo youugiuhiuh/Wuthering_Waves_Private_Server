@@ -12,6 +12,12 @@ use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Message, Requester, ResponseResult};
 use teloxide::types::ParseMode;
 
+/// Handle an incoming Telegram text message, checking admin auth and input
+/// length before dispatching to the application layer.
+///
+/// # Errors
+///
+/// Returns an error if sending a Telegram reply message fails.
 pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> ResponseResult<()> {
     let chat_id = msg.chat.id;
     let Some(from) = msg.from.as_ref() else {

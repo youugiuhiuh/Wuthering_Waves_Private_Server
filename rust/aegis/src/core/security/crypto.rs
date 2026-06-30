@@ -159,6 +159,13 @@ pub fn unlock_memory(data: &mut [u8]) {
     }
 }
 
+/// Securely wipe a file or directory at the given path by overwriting its
+/// contents before removal. Symlinks are removed without overwriting.
+///
+/// # Errors
+///
+/// Returns an error if filesystem metadata cannot be read, if file
+/// overwriting fails, or if directory traversal encounters an I/O error.
 pub fn secure_wipe_path(path: &Path) -> Result<()> {
     if !path.exists() {
         return Ok(());

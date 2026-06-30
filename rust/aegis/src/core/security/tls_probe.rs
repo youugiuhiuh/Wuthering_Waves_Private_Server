@@ -81,6 +81,12 @@ async fn rustls_handshake(
     Ok((tls_stream, certs))
 }
 
+/// Probe a TLS endpoint once (no caching), returning certificate metadata.
+///
+/// # Errors
+///
+/// Returns an error if the TCP/TLS handshake fails, if no peer
+/// certificates are presented, or if the connection times out.
 pub async fn probe_tls_once(domain: &str, port: u16) -> Result<TlsProbeResult> {
     let (_, certs) = rustls_handshake(domain, port).await?;
 
@@ -107,6 +113,12 @@ pub async fn probe_tls_once(domain: &str, port: u16) -> Result<TlsProbeResult> {
     })
 }
 
+/// Probe a TLS endpoint with in-memory caching keyed by SNI.
+///
+/// # Errors
+///
+/// Delegates to [`probe_tls_once`]; returns an error if the initial probe
+/// fails (TCP/TLS handshake, no peer certificates, timeout).
 pub async fn probe_tls_cached(sni: &str, port: u16) -> Result<TlsProbeResult> {
     if let Some(res) = TLS_PROBE_CACHE.get(sni) {
         return Ok(res.clone());

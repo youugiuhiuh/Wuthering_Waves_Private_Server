@@ -20,6 +20,12 @@ pub struct WarpAccountConfig {
     pub client_id: String,
 }
 
+/// Register a new WARP account with the Cloudflare API.
+///
+/// # Errors
+///
+/// Returns an error if the HTTP request to the Cloudflare API fails or
+/// returns a non-success status, or if the response JSON is malformed.
 pub async fn register_account() -> Result<WarpAccountConfig> {
     // Generate keys
     let private_key = StaticSecret::random_from_rng(OsRng);
