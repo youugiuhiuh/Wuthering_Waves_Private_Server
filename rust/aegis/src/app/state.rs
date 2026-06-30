@@ -12,14 +12,20 @@ use aegis::core::totp::TotpManager;
 
 const RECENT_AUTH_WINDOW_SECS: u64 = 5 * 60;
 
+/// Steps in the self-destruct confirmation flow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::enum_variant_names)]
 #[non_exhaustive]
 pub enum DestructStep {
+    /// Waiting for the first TOTP code.
     AwaitFirstTotp,
+    /// Waiting for the user to confirm their intent.
     AwaitConfirm,
+    /// Waiting for the second TOTP code (from a different device).
     AwaitSecondTotp,
+    /// Waiting for the security file upload.
     AwaitSecurityFile,
+    /// Waiting for the final yes/no confirmation.
     AwaitFinalConfirm,
 }
 
@@ -43,11 +49,16 @@ pub enum TimeoutStatus {
     Expired,
 }
 
+/// Tracks the state of an active self-destruct session.
 #[derive(Debug, Clone)]
 pub struct DestructState {
+    /// Current step in the flow.
     pub step: DestructStep,
+    /// First TOTP code entered by the user.
     pub first_totp: String,
+    /// Second TOTP code entered by the user.
     pub second_totp: String,
+    /// Timestamp of the last user action.
     pub last_action_time: Instant,
 }
 
@@ -71,6 +82,10 @@ pub struct ScheduleInputState {
     pub return_to: String,
 }
 
+/// Global application state shared across all handlers.
+///
+/// Each mutable field is behind its own [`Mutex`] to minimize lock contention.
+/// Methods follow the convention: lock, mutate, release — never await while holding a lock.
 pub struct AppState {
     #[allow(dead_code)]
     pub adapter: Arc<dyn BotAdapter>,
