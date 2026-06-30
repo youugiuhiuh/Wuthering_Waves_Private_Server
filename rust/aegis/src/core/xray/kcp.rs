@@ -100,11 +100,11 @@ impl ConfigManager {
         let mask_types: Vec<&str> = masks.iter().map(|m| m.type_str()).collect();
         let mask_label = mask_types.join("+");
 
-        let (host, _) = ConfigManager::resolve_public_hosts(
-            ip_version,
-            crate::core::system::SystemMonitor::get_public_ip().await,
-            crate::core::system::SystemMonitor::get_public_ipv6().await,
-        )?;
+        let (ip, ipv6) = tokio::join!(
+            crate::core::system::SystemMonitor::get_public_ip(),
+            crate::core::system::SystemMonitor::get_public_ipv6(),
+        );
+        let (host, _) = ConfigManager::resolve_public_hosts(ip_version, ip, ipv6)?;
 
         let mut rng = StdRng::from_entropy();
 

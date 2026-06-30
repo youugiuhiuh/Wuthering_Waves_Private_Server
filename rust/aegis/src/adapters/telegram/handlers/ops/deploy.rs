@@ -69,8 +69,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         }
 
         let ip_version = {
-            let v4 = aegis::core::system::SystemMonitor::get_public_ip().await;
-            let v6 = aegis::core::system::SystemMonitor::get_public_ipv6().await;
+            let (v4, v6) = tokio::join!(
+                aegis::core::system::SystemMonitor::get_public_ip(),
+                aegis::core::system::SystemMonitor::get_public_ipv6(),
+            );
             match (&v4, &v6) {
                 (Ok(_), Ok(_)) => IpVersion::SplitStackV4Primary,
                 (Ok(_), Err(_)) => IpVersion::IPv4,

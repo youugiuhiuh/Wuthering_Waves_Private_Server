@@ -129,9 +129,19 @@ pub async fn run(
             {
                 log::error!("❌ 初始化调度器失败: {}", e);
             }
-            let _ = crate::notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
-            let _ = crate::notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init).await;
-            let _ = crate::notify_online(&*adapter_for_init, &target_for_init).await;
+            tokio::join!(
+                async {
+                    let _ =
+                        crate::notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
+                },
+                async {
+                    let _ = crate::notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init)
+                        .await;
+                },
+                async {
+                    let _ = crate::notify_online(&*adapter_for_init, &target_for_init).await;
+                },
+            );
         });
 
         Dispatcher::builder(Bot::new(&token), handler)
@@ -155,9 +165,19 @@ pub async fn run(
             {
                 log::error!("❌ 初始化调度器失败: {}", e);
             }
-            let _ = crate::notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
-            let _ = crate::notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init).await;
-            let _ = crate::notify_online(&*adapter_for_init, &target_for_init).await;
+            tokio::join!(
+                async {
+                    let _ =
+                        crate::notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
+                },
+                async {
+                    let _ = crate::notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init)
+                        .await;
+                },
+                async {
+                    let _ = crate::notify_online(&*adapter_for_init, &target_for_init).await;
+                },
+            );
         });
 
         // 保活 — matrix sync runs in background via spawn above

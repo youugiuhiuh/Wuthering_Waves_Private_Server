@@ -345,22 +345,28 @@ impl SingBoxConfigManager {
     }
 
     pub(crate) async fn ensure_tls_certificates() -> Result<()> {
-        let cert_exists = match tokio::fs::try_exists(singbox::TLS_CERT).await {
-            Ok(true) => true,
-            Ok(false) => false,
-            Err(e) => {
-                log::warn!("检查 TLS 证书存在性失败: {}", e);
-                false
-            }
-        };
-        let key_exists = match tokio::fs::try_exists(singbox::TLS_KEY).await {
-            Ok(true) => true,
-            Ok(false) => false,
-            Err(e) => {
-                log::warn!("检查 TLS 密钥存在性失败: {}", e);
-                false
-            }
-        };
+        let (cert_exists, key_exists) = tokio::join!(
+            async {
+                match tokio::fs::try_exists(singbox::TLS_CERT).await {
+                    Ok(true) => true,
+                    Ok(false) => false,
+                    Err(e) => {
+                        log::warn!("检查 TLS 证书存在性失败: {}", e);
+                        false
+                    }
+                }
+            },
+            async {
+                match tokio::fs::try_exists(singbox::TLS_KEY).await {
+                    Ok(true) => true,
+                    Ok(false) => false,
+                    Err(e) => {
+                        log::warn!("检查 TLS 密钥存在性失败: {}", e);
+                        false
+                    }
+                }
+            },
+        );
         if cert_exists && key_exists {
             return Ok(());
         }

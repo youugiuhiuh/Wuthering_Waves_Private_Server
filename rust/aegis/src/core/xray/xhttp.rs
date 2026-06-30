@@ -10,23 +10,24 @@ impl ConfigManager {
         count: usize,
         ip_version: IpVersion,
     ) -> Result<BatchCreationResult> {
-        let (host, host_secondary) = ConfigManager::resolve_public_hosts(
-            ip_version,
-            crate::core::system::SystemMonitor::get_public_ip().await,
-            crate::core::system::SystemMonitor::get_public_ipv6().await,
-        )?;
+        let (ip, ipv6) = tokio::join!(
+            crate::core::system::SystemMonitor::get_public_ip(),
+            crate::core::system::SystemMonitor::get_public_ipv6(),
+        );
+        let (host, host_secondary) = ConfigManager::resolve_public_hosts(ip_version, ip, ipv6)?;
 
         let mut rng = StdRng::from_entropy();
         let geoip = crate::core::network::geoip::GeoIPService::new();
-        let country_code = geoip.get_country_code().await;
+
+        let (country_code, port_443_available) = tokio::join!(
+            geoip.get_country_code(),
+            crate::core::system::maintenance::MaintenanceManager::is_port_available(443),
+        );
 
         let mut selector = crate::core::sni::selector::SNISelector::get_for_country(&country_code);
 
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
-
-        let port_443_available =
-            crate::core::system::maintenance::MaintenanceManager::is_port_available(443).await;
 
         for i in 0..count {
             let sni = selector.get_next();
