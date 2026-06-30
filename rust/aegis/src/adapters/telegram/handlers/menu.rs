@@ -11,6 +11,11 @@ use std::path::Path;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 
+/// Send the main inline-keyboard menu to the given chat.
+///
+/// # Errors
+///
+/// Returns an error if the Telegram API call to send the message fails.
 pub async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
     let mut rows = vec![
         vec![

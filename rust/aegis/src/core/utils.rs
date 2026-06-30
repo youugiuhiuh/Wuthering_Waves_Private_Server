@@ -8,6 +8,11 @@ pub const PROGRESS_PERCENT_STEP: f64 = 5.0;
 pub const PROGRESS_SIZE_STEP: u64 = 5 * 1024 * 1024;
 
 /// 通用端口选择
+///
+/// # Errors
+///
+/// Returns [`AppError::PortUnavailable`] if no port can be allocated after
+/// 1000 random attempts.
 pub async fn select_available_port(preferred: Option<u16>) -> Result<u16> {
     if let Some(port) = preferred
         && crate::core::system::maintenance::MaintenanceManager::is_port_available(port).await

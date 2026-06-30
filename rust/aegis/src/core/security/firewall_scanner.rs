@@ -6,10 +6,13 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-static PORT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#""(?:port|listen_port)"\s*:\s*(\d+)"#).unwrap());
-static LISTEN_ADDR_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#""listen"\s*:\s*"(?:127\.0\.0\.1|localhost)""#).unwrap());
+static PORT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#""(?:port|listen_port)"\s*:\s*(\d+)"#).expect("port regex 应为有效正则表达式")
+});
+static LISTEN_ADDR_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#""listen"\s*:\s*"(?:127\.0\.0\.1|localhost)""#)
+        .expect("listen addr regex 应为有效正则表达式")
+});
 
 pub struct FirewallScanner;
 

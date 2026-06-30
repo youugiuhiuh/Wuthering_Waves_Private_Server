@@ -139,7 +139,8 @@ impl PortAllocator {
     fn extract_ports_from_json(content: &str) -> Result<Vec<u16>> {
         let mut ports = Vec::new();
 
-        let re = regex::Regex::new(r#""listen_port"\s*:\s*(\d+)"#).unwrap();
+        let re = regex::Regex::new(r#""listen_port"\s*:\s*(\d+)"#)
+            .expect("listen_port 正则表达式应为有效");
         for cap in re.captures_iter(content) {
             if let Some(m) = cap.get(1)
                 && let Ok(p) = m.as_str().parse::<u16>()

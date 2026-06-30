@@ -511,6 +511,14 @@ impl PackageManager {
     }
 }
 
+/// Download, extract, and install the wwps-core binary for the given CPU
+/// architecture, replacing any existing installation.
+///
+/// # Errors
+///
+/// Returns an error if directory creation fails, if the upgrade manager
+/// cannot be initialised, if fetching/downloading the release fails, if
+/// archive extraction fails, or if the core binary replacement fails.
 pub async fn install_wwps_core(arch: CpuArch) -> Result<()> {
     let install_dir = PathBuf::from(xray::DIR);
     let backup_dir = PathBuf::from(xray::BACKUP_DIR);
@@ -546,6 +554,12 @@ pub async fn install_wwps_core(arch: CpuArch) -> Result<()> {
     Ok(())
 }
 
+/// Install the wwps-core systemd or OpenRC service unit.
+///
+/// # Errors
+///
+/// Returns an error if neither systemd nor OpenRC is detected, or if the
+/// service installation (systemd unit / OpenRC init script) fails.
 pub async fn install_wwps_core_service() -> Result<()> {
     if is_systemd().await {
         install_systemd_service().await
@@ -556,6 +570,12 @@ pub async fn install_wwps_core_service() -> Result<()> {
     }
 }
 
+/// Ensure all required wwps-core directories exist, creating them if
+/// necessary.
+///
+/// # Errors
+///
+/// Returns an error if any directory cannot be created.
 pub async fn ensure_directories() -> Result<()> {
     const DIRS: &[&str] = &[
         "/etc/wwps",

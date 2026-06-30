@@ -213,7 +213,9 @@ APT::Periodic::AutocleanInterval "7";
     pub async fn write_periodic_config(distro: DistroFamily) -> Result<()> {
         match distro {
             DistroFamily::Debian => {
-                let path = distro.periodic_config_path().unwrap();
+                let path = distro
+                    .periodic_config_path()
+                    .expect("Debian 应始终包含 periodic_config_path");
                 if let Some(parent) = std::path::Path::new(path).parent() {
                     tokio::fs::create_dir_all(parent)
                         .await

@@ -120,6 +120,12 @@ impl BotSettings {
 }
 
 /// 同步执行 wwps-core/xray，解析 Seed/Verify 并写入文件。供 setup 时调用（无 tokio）。
+///
+/// # Errors
+///
+/// Returns an error if the `wwps-core` or `xray` binary is not found, if the
+/// `mldsa65` subprocess fails, or if I/O operations (creating directories,
+/// writing seed/pub files) fail.
 pub fn generate_reality_pq_keys_sync() -> Result<()> {
     let output = Command::new(BIN)
         .arg("mldsa65")
@@ -231,6 +237,12 @@ pub async fn run_setup(
     Ok(())
 }
 
+/// Read setup configuration from stdin and run the setup process.
+///
+/// # Errors
+///
+/// Returns an error if reading from stdin fails, if the input JSON is
+/// malformed, or if the underlying `run_setup` call fails (crypto, I/O).
 pub async fn run_setup_from_stdin() -> Result<()> {
     let mut payload = Zeroizing::new(String::new());
     std::io::stdin()
@@ -265,6 +277,13 @@ pub async fn run_setup_from_stdin() -> Result<()> {
     run_setup(&input.token, &input.admin_id, &input.totp_secret, matrix).await
 }
 
+/// Verify binary integrity by computing a SHA-256 hash of the running
+/// executable and printing it to stderr.
+///
+/// # Errors
+///
+/// Returns an error if the current executable path cannot be determined
+/// or if reading the executable file fails.
 pub async fn verify_integrity() -> Result<()> {
     let config_dir = config_dir();
     if !config_dir.exists() {

@@ -30,6 +30,13 @@ pub fn escape_html(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+/// Validate that a commit-hash prefix is non-empty, at most 8 characters,
+/// and contains only ASCII hex digits.
+///
+/// # Errors
+///
+/// Returns an error if the prefix is empty, too long, or contains
+/// non-hexadecimal characters.
 pub fn validate_hash_prefix(prefix: &str) -> anyhow::Result<&str> {
     if prefix.is_empty() {
         anyhow::bail!("hash 前缀不能为空");
@@ -43,6 +50,12 @@ pub fn validate_hash_prefix(prefix: &str) -> anyhow::Result<&str> {
     Ok(prefix)
 }
 
+/// Validate that an index is within bounds `[0, max)`.
+///
+/// # Errors
+///
+/// Returns an error if `idx >= max`, with a message including the field
+/// name and the maximum valid value.
 pub fn validate_idx(idx: usize, max: usize, field_name: &str) -> anyhow::Result<()> {
     if idx >= max {
         anyhow::bail!(

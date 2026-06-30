@@ -41,6 +41,13 @@ pub fn try_cli_mode(args: &[String]) -> Option<CliMode> {
     }
 }
 
+/// Execute a CLI mode (stdout message, setup with args, or setup from
+/// stdin).
+///
+/// # Errors
+///
+/// Returns an error if the underlying setup operation (`run_setup` or
+/// `run_setup_from_stdin`) fails.
 pub async fn execute_cli_mode(mode: CliMode) -> Result<()> {
     match mode {
         CliMode::Stdout(msg) => {

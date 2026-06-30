@@ -143,7 +143,10 @@ impl SNISelector {
             self.save_state();
         }
 
-        let idx = self.shuffled_indices.pop().unwrap();
+        let idx = self
+            .shuffled_indices
+            .pop()
+            .expect("shuffled_indices 应在 pop 前已重置");
         self.used_count += 1;
         self.save_state();
 

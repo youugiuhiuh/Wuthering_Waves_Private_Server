@@ -23,6 +23,15 @@ pub struct AppConfig {
     pub bot_settings: BotSettings,
 }
 
+/// Load the encrypted configuration from disk, decrypt it using the
+/// security manager, and validate the resulting fields.
+///
+/// # Errors
+///
+/// Returns an error if the key file is missing when the config file exists,
+/// if the security manager cannot be initialised, if config file I/O fails,
+/// if JSON deserialisation fails, if decryption fails, or if the decrypted
+/// values fail validation (empty token, invalid admin ID, etc.).
 pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
     let config_dir = config_dir();
     let key_path = config_dir.join(KEY_FILE);
