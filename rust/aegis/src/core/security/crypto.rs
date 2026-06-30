@@ -12,6 +12,11 @@ use std::io::Write;
 use std::path::Path;
 use zeroize::Zeroizing;
 
+/// Manages AES-256-GCM encryption/decryption using a key file.
+///
+/// The key is stored in a [`Zeroizing`] buffer and locked in memory
+/// via `mlock` while in use. If no key file exists at `key_path`,
+/// a random 256-bit key is generated and saved with 0o600 permissions.
 pub struct SecurityManager {
     key: Zeroizing<[u8; 32]>,
 }
@@ -19,6 +24,13 @@ pub struct SecurityManager {
 const WIPE_CHUNK_SIZE: usize = 1024 * 1024;
 
 impl SecurityManager {
+    /// Initializes the manager, reading or creating the key file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The key file exists but is not exactly 32 bytes.
+    /// - Filesystem I/O (read, write, create_dir_all, set_permissions) fails.
     pub fn new(key_path: &Path) -> Result<Self> {
         if !key_path.exists() {
             let mut key = [0u8; 32];
@@ -48,6 +60,14 @@ impl SecurityManager {
         })
     }
 
+    /// Encrypts plaintext with AES-256-GCM.
+    ///
+    /// The returned ciphertext includes a 12-byte random nonce
+    /// prepended to the authenticated ciphertext.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if encryption fails (AAD or nonce issues).
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
         let cipher = Aes256Gcm::new_from_slice(self.key.as_slice())
             .map_err(|e| anyhow::anyhow!("Cipher init error: {}", e))?;
@@ -66,6 +86,12 @@ impl SecurityManager {
         Ok(result)
     }
 
+    /// Decrypts ciphertext previously produced by [`encrypt`](Self::encrypt).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the nonce is invalid, the ciphertext is
+    /// truncated, or the authentication tag does not match.
     pub fn decrypt(&self, encrypted_data: &[u8]) -> Result<SecretVec<u8>> {
         if encrypted_data.len() < 12 {
             return Err(anyhow::anyhow!(

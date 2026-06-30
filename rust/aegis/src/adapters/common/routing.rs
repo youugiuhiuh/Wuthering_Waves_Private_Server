@@ -3,12 +3,22 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
 
+/// A [`BotAdapter`] wrapper that routes sensitive messages to a secondary adapter.
+///
+/// Sensitive content (proxy configs containing private keys, passwords, etc.)
+/// is sent via the secondary channel while all other messages go through the
+/// primary adapter. Targets are identified by [`TargetId`] and messages by [`MessageId`].
 pub struct RoutingAdapter {
     primary: Arc<dyn BotAdapter>,
     secondary: Option<Arc<dyn BotAdapter>>,
 }
 
 impl RoutingAdapter {
+    /// Creates a new [`RoutingAdapter`].
+    ///
+    /// * `primary` — the default adapter for non-sensitive messages.
+    /// * `secondary` — optional adapter for sensitive content.
+    ///   When `None`, all messages go through `primary`.
     pub fn new(primary: Arc<dyn BotAdapter>, secondary: Option<Arc<dyn BotAdapter>>) -> Self {
         Self { primary, secondary }
     }

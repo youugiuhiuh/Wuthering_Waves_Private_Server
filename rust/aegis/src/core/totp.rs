@@ -2,11 +2,20 @@ use anyhow::Result;
 use secrecy::{ExposeSecret, SecretString};
 use totp_rs::{Algorithm, Secret, TOTP};
 
+/// TOTP-based authentication manager.
+///
+/// Uses SHA-512, 6-digit codes, 30-second step, and a single
+/// issuer ("wwps") for the admin user.
 pub struct TotpManager {
     totp: TOTP,
 }
 
 impl TotpManager {
+    /// Creates a manager from a base32-encoded secret.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the secret is not valid base32.
     pub fn new(secret: &SecretString) -> Result<Self> {
         let secret_bytes = Secret::Encoded(secret.expose_secret().clone())
             .to_bytes()
@@ -26,10 +35,12 @@ impl TotpManager {
         Ok(Self { totp })
     }
 
+    /// Verifies a TOTP token against the current time step.
     pub fn verify(&self, token: &str) -> bool {
         self.totp.check_current(token).unwrap_or(false)
     }
 
+    /// Generates a new random base32-encoded secret.
     pub fn generate_new_secret() -> String {
         Secret::generate_secret().to_encoded().to_string()
     }
