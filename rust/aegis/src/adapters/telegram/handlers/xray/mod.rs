@@ -15,6 +15,12 @@ mod delete_count;
 mod delete_select;
 mod mgmt;
 
+/// Entry point for the Xray configuration management flow.
+///
+/// Routes callback data to the appropriate handler:
+/// - `m_xray_mgmt` / `m_pq_*` -> [`mgmt`] module
+/// - `m_del_cfg` / `cfg_filter:*` / `cfg_del_*` -> [`delete`] module
+/// - `c_*` -> [`batch`] module
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     let data = ctx.data.as_str();
     match data {
