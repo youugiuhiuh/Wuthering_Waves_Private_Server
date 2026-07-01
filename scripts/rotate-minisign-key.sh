@@ -18,30 +18,62 @@ minisign -G -W -p "$TEMP_DIR/minisign.pub" -s "$TEMP_DIR/minisign.key"
 NEW_KEY=$(grep -v '^untrusted comment' "$TEMP_DIR/minisign.pub" | tr -d '\n')
 echo ">>> 新公钥: $NEW_KEY"
 
-# ---------- Go ----------
-# 读取现有密钥
-mapfile -t GO_KEYS < <(sed -n '/^var minisignPublicKeys/,/^}/p' "$GO_FILE" | grep '"' | sed 's/.*"\(.*\)".*/\1/')
-GO_KEYS+=("$NEW_KEY")
+# 计算过期时间（当前日期 + 90 天）
+EXPIRES=$(date -d "+90 days" +%Y-%m-%d)
+echo ">>> 过期日期: $EXPIRES"
 
-# 生成新代码块
-printf 'var minisignPublicKeys = []string{\n' > "$TEMP_DIR/go_block"
-for k in "${GO_KEYS[@]}"; do printf '\t"%s",\n' "$k" >> "$TEMP_DIR/go_block"; done
+# ---------- Go ----------
+mapfile -t GO_KEYS < <(awk '
+    /^var minisignPublicKeys/ { printing=1; next }
+    printing && /^}/ { exit }
+    printing && /PublicKey:/ {
+        gsub(/.*"([^"]+)".*/, "\\1"); print
+    }
+    printing && /ExpiresAt:/ {
+        gsub(/.*"([^"]+)".*/, "\\1"); print
+    }
+' "$GO_FILE")
+
+# Rebuild Go entries in pairs (key, expires)
+printf 'var minisignPublicKeys = []minisignKeyEntry{\n' > "$TEMP_DIR/go_block"
+i=0
+while [ $i -lt ${#GO_KEYS[@]} ]; do
+    key="${GO_KEYS[$i]}"
+    exp="${GO_KEYS[$((i+1))]}"
+    printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$key" "$exp" >> "$TEMP_DIR/go_block"
+    i=$((i+2))
+done
+printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$NEW_KEY" "$EXPIRES" >> "$TEMP_DIR/go_block"
 printf '}\n' >> "$TEMP_DIR/go_block"
 
-# 替换
 awk -v block="$TEMP_DIR/go_block" '
     /^var minisignPublicKeys/ { printing=1; next }
     printing && /^}/ { printing=0; system("cat " block); next }
     !printing { print }
 ' "$GO_FILE" > "$TEMP_DIR/go_new.go" && cp "$TEMP_DIR/go_new.go" "$GO_FILE"
-gofmt -w "$GO_FILE" > /dev/null
+gofmt -w "$GO_FILE"
 
 # ---------- Rust ----------
-mapfile -t RS_KEYS < <(sed -n '/^pub const MINISIGN_PUBLIC_KEYS/,/^];/p' "$RS_FILE" | grep '"' | sed 's/.*"\(.*\)".*/\1/')
-RS_KEYS+=("$NEW_KEY")
+mapfile -t RS_KEYS < <(awk '
+    /^pub const MINISIGN_PUBLIC_KEYS/ { printing=1; next }
+    printing && /^];/ { exit }
+    printing && /public_key:/ {
+        gsub(/.*"([^"]+)".*/, "\\1"); print
+    }
+    printing && /expires_at:/ {
+        gsub(/.*"([^"]+)".*/, "\\1"); print
+    }
+' "$RS_FILE")
 
-printf 'pub const MINISIGN_PUBLIC_KEYS: &[&str] = &[\n' > "$TEMP_DIR/rs_block"
-for k in "${RS_KEYS[@]}"; do printf '    "%s",\n' "$k" >> "$TEMP_DIR/rs_block"; done
+printf 'pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[\n' > "$TEMP_DIR/rs_block"
+i=0
+while [ $i -lt ${#RS_KEYS[@]} ]; do
+    key="${RS_KEYS[$i]}"
+    exp="${RS_KEYS[$((i+1))]}"
+    printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$key" "$exp" >> "$TEMP_DIR/rs_block"
+    i=$((i+2))
+done
+printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$NEW_KEY" "$EXPIRES" >> "$TEMP_DIR/rs_block"
 printf '];\n' >> "$TEMP_DIR/rs_block"
 
 awk -v block="$TEMP_DIR/rs_block" '
@@ -53,8 +85,8 @@ rustfmt "$RS_FILE"
 
 echo ""
 echo "============================================"
-echo "✅ 新公钥已追加，共有 ${#GO_KEYS[@]} 个密钥在轮换中"
-echo "   新旧签名均可通过验证"
+echo "✅ 新公钥已追加，过期日期: $EXPIRES"
+echo "   过期后自动失效，无需手动删除"
 echo ""
 echo "将以下私钥添加到 GitHub Secrets（production Environment → MINISIGN_SECRET_KEY）："
 echo "============================================"
@@ -62,4 +94,3 @@ cat "$TEMP_DIR/minisign.key"
 echo "============================================"
 echo ""
 echo "!!! 请勿泄露私钥！建议运行: history -c !!!"
-echo "待所有客户端升级后，手动移除旧公钥即可完成轮换。"
