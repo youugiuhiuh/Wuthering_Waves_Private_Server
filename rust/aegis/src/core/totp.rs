@@ -116,8 +116,30 @@ mod tests {
 
     #[test]
     fn verify_returns_false_for_expired_window_token() {
-        let secret = TotpManager::generate_new_secret();
-        let manager = TotpManager::new(&secrecy::SecretString::from(secret)).unwrap();
-        assert!(!manager.verify("123456"));
+        let encoded = TotpManager::generate_new_secret();
+        let _manager = TotpManager::new(&secrecy::SecretString::from(encoded.clone())).unwrap();
+        let bytes = Secret::Encoded(encoded).to_bytes().unwrap();
+
+        let raw = TOTP::new(
+            Algorithm::SHA512,
+            6,
+            1,
+            30,
+            bytes,
+            Some("wwps".to_string()),
+            "admin".to_string(),
+        )
+        .unwrap();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let token = raw.generate(now);
+
+        assert!(raw.check(&token, now));
+        assert!(!raw.check(&token, now + 90));
+        assert!(!raw.check(&token, now.saturating_sub(90)));
     }
 }
