@@ -20,6 +20,7 @@ echo ">>> 新公钥: $NEW_KEY"
 
 # 计算过期时间（当前日期 + 90 天）
 EXPIRES=$(date -d "+90 days" +%Y-%m-%d)
+EXPIRES=$(date -d "+1 year" +%Y-%m-%d)
 echo ">>> 过期日期: $EXPIRES"
 
 # ---------- Go ----------
