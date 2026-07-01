@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
+use crate::core::cmd_action::ServiceAction;
 use crate::core::cmd_async::{run_cmd_checked, run_cmd_output, run_cmd_status};
 use crate::core::paths::maintenance::{
     BBR3_PENDING_FLAG_FILE, DESTRUCT_SERVICES, DESTRUCT_TARGETS,
@@ -106,10 +107,10 @@ impl MaintenanceManager {
         fs::try_exists(xray::BIN).await.unwrap_or(false)
     }
 
-    pub async fn control_service(service: &str, action: &str) -> Result<()> {
+    pub async fn control_service(service: &str, action: ServiceAction) -> Result<()> {
         run_cmd_checked(
             "systemctl",
-            &[action, &format!("{}.service", service)],
+            &[action.as_str(), &format!("{}.service", service)],
             TIMEOUT_SHORT,
         )
         .await
@@ -123,12 +124,12 @@ impl MaintenanceManager {
 
         if wwps_core_running {
             crate::core::xray::config::ConfigManager::ensure_base_config().await?;
-            Self::control_service("wwps-core", "restart").await?;
+            Self::control_service("wwps-core", ServiceAction::Restart).await?;
         }
 
         if wwps_box_running {
             crate::core::singbox::SingBoxConfigManager::ensure_base_config().await?;
-            Self::control_service("wwps-box", "restart").await?;
+            Self::control_service("wwps-box", ServiceAction::Restart).await?;
         }
 
         // Sync firewall rules after restart: remove stale ports
@@ -619,7 +620,7 @@ impl MaintenanceManager {
     pub async fn perform_self_destruct() -> Result<()> {
         // 1. 停止服务
         for svc in Self::DESTRUCT_SERVICES {
-            let _ = Self::control_service(svc, "stop").await;
+            let _ = Self::control_service(svc, ServiceAction::Stop).await;
         }
 
         // 2. 安全擦除关键目录和文件

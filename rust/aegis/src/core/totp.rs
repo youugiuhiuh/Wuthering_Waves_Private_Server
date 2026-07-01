@@ -85,4 +85,60 @@ mod tests {
         let result = TotpManager::new(&secrecy::SecretString::from(trimmed.to_string()));
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn verify_returns_true_for_valid_token() {
+        let secret = TotpManager::generate_new_secret();
+        let manager = TotpManager::new(&secrecy::SecretString::from(secret.clone())).unwrap();
+
+        let secret_bytes = totp_rs::Secret::Encoded(secret).to_bytes().unwrap();
+        let totp = totp_rs::TOTP::new(
+            totp_rs::Algorithm::SHA512,
+            6,
+            1,
+            30,
+            secret_bytes,
+            Some("wwps".to_string()),
+            "admin".to_string(),
+        )
+        .unwrap();
+        let token = totp.generate_current().unwrap();
+
+        assert!(manager.verify(&token));
+    }
+
+    #[test]
+    fn verify_returns_false_for_invalid_token() {
+        let secret = TotpManager::generate_new_secret();
+        let manager = TotpManager::new(&secrecy::SecretString::from(secret)).unwrap();
+        assert!(!manager.verify("000000"));
+    }
+
+    #[test]
+    fn raw_check_rejects_token_outside_skew_window() {
+        let encoded = TotpManager::generate_new_secret();
+        let bytes = Secret::Encoded(encoded).to_bytes().unwrap();
+
+        let raw = TOTP::new(
+            Algorithm::SHA512,
+            6,
+            1,
+            30,
+            bytes,
+            Some("wwps".to_string()),
+            "admin".to_string(),
+        )
+        .unwrap();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let token = raw.generate(now);
+
+        assert!(raw.check(&token, now));
+        assert!(!raw.check(&token, now + 90));
+        assert!(!raw.check(&token, now.saturating_sub(90)));
+    }
 }

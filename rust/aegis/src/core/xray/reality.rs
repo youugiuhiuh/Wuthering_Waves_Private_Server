@@ -168,7 +168,8 @@ impl ConfigManager {
             crate::core::system::maintenance::MaintenanceManager::is_port_available(443),
         );
 
-        let mut selector = crate::core::sni::selector::SNISelector::get_for_country(&country_code);
+        let mut selector =
+            crate::core::sni::selector::SNISelector::get_for_country(&country_code).await;
 
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();

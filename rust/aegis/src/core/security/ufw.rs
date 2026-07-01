@@ -140,8 +140,10 @@ impl UfwClient {
     }
 
     pub async fn harden_with_ports(ports: HashSet<u16>) -> Result<()> {
-        // 1. 重置 UFW
-        let _ = Self::run_ufw(&["--force", "reset"]).await;
+        // 1. 重置 UFW (Safe to fail — reset before hardening is best-effort)
+        if let Err(e) = Self::run_ufw(&["--force", "reset"]).await {
+            log::warn!("UFW reset before hardening failed: {}", e);
+        }
 
         // 2. 设置默认策略
         Self::run_ufw(&["default", "deny", "incoming"]).await?;

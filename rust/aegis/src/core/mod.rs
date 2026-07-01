@@ -5,6 +5,7 @@
 pub mod events;
 pub mod i18n;
 
+pub mod cmd_action;
 pub mod cmd_async;
 pub mod error;
 pub mod network;
