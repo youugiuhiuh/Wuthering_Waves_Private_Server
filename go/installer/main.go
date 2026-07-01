@@ -615,7 +615,7 @@ func downloadAndDeployAegis() string {
 				printRed(i18n.T("minisign.verify_failed", err.Error()))
 				return ""
 			}
-			expectedVersion := strings.TrimPrefix(ver, "v")
+			expectedVersion := ver
 			gotVersion, gotAsset, err := parseTrustedComment(info.TrustedComment)
 			if err != nil {
 				printRed(i18n.T("minisign.verify_failed", err.Error()))

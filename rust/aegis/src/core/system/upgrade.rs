@@ -395,11 +395,10 @@ impl UpgradeManager {
         let info = minisign::verify_minisign(data, sig_str, MINISIGN_PUBLIC_KEYS)?;
 
         let (got_version, got_asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
-        let expected_version = artifact.tag_name.trim_start_matches('v');
-        if !got_version.contains(expected_version) {
+        if !got_version.contains(&artifact.tag_name) {
             anyhow::bail!(
                 "Minisign 版本不匹配: 期望包含 {}, 实际 {}",
-                expected_version,
+                artifact.tag_name,
                 got_version
             );
         }
