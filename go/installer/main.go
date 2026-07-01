@@ -597,6 +597,48 @@ func downloadAndDeployAegis() string {
 		return ""
 	}
 
+	// --- Minisign verification ---
+	printYellow(i18n.T("minisign.download_start"))
+	assetMinisig := findMinisigAsset(release, binaryName)
+	var minisigPassed bool
+	if assetMinisig != nil {
+		sigURL := assetDownloadURL(assetMinisig, fallbackDownload+".minisig")
+		if sigURL != "" {
+			sigPath := filepath.Join(tmpDir, binaryName+".minisig")
+			if err := downloadFile(newHTTPClient(30*time.Second), sigURL, sigPath); err != nil {
+				printRed(i18n.T("minisign.verify_failed", err.Error()))
+				return ""
+			}
+			printYellow(i18n.T("minisign.verify_start"))
+			info, err := verifyMinisign(binaryPath, sigPath, minisignPublicKeys)
+			if err != nil {
+				printRed(i18n.T("minisign.verify_failed", err.Error()))
+				return ""
+			}
+			expectedVersion := strings.TrimPrefix(ver, "v")
+			gotVersion, gotAsset, err := parseTrustedComment(info.TrustedComment)
+			if err != nil {
+				printRed(i18n.T("minisign.verify_failed", err.Error()))
+				return ""
+			}
+			if !strings.HasPrefix(gotVersion, expectedVersion) {
+				printRed(i18n.T("minisign.version_mismatch", expectedVersion, gotVersion))
+				return ""
+			}
+			if gotAsset != binaryName {
+				printRed(i18n.T("minisign.asset_mismatch", binaryName, gotAsset))
+				return ""
+			}
+			printGreen(i18n.T("minisign.verify_ok"))
+			printYellow(i18n.T("minisign.trusted_comment", info.TrustedComment))
+			minisigPassed = true
+		}
+	}
+	if !minisigPassed {
+		printYellow(i18n.T("minisign.skipped"))
+	}
+
+	// --- SHA256 verification ---
 	expectedHash, err := findExpectedSHA256(release, binaryName)
 	if err != nil {
 		printRed(i18n.T("sha256.fetch_failed", err.Error()))

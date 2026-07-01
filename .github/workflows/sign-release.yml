@@ -1,0 +1,57 @@
+name: Minisign Sign Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    name: Sign Release Assets with Minisign
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Minisign
+        run: |
+          curl -fsSL "https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz" \
+            | tar xz
+          sudo install minisign-linux/x86_64/minisign /usr/local/bin/minisign
+          minisign -v
+
+      - name: Prepare Secret Key
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          mkdir -p ~/.minisign
+          echo "$MINISIGN_SECRET_KEY" > ~/.minisign/minisign.key
+          chmod 600 ~/.minisign/minisign.key
+
+      - name: Sign and Upload Release Assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: ${{ runner.temp }}
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          ASSETS=$(gh release view "$TAG" --json assets -q '.assets[].name')
+
+          if [ -z "$ASSETS" ]; then
+            echo "No assets found for release $TAG"
+            exit 0
+          fi
+
+          echo "Signing release $TAG..."
+          for asset in $ASSETS; do
+            case "$asset" in
+              *.minisig) echo "Skipping $asset (already a signature)"; continue ;;
+            esac
+
+            echo "::group::Signing $asset"
+            gh release download "$TAG" --pattern "$asset" --clobber
+            minisign -S -m "$asset" -t "${TAG}:${asset}" -W
+            gh release upload "$TAG" "${asset}.minisig" --clobber
+            echo "::endgroup::"
+          done
+
+          echo "✅ Signing complete for $TAG"

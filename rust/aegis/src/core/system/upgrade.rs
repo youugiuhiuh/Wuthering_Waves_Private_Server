@@ -13,9 +13,10 @@ use tokio::io::AsyncWriteExt;
 use tokio::task;
 use tokio::time::sleep;
 
+use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
 use crate::core::network::release_api::{
-    ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors, parse_digest,
-    parse_sha256_manifest,
+    ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors,
+    find_minisig_asset, parse_digest, parse_sha256_manifest,
 };
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
 
@@ -122,6 +123,7 @@ pub struct ReleaseArtifact {
     pub download_url: String,
     pub sha256: String,
     pub size: Option<u64>,
+    pub minisig: Option<Vec<u8>>,
 }
 
 impl UpgradeManager {
@@ -298,6 +300,12 @@ impl UpgradeManager {
             anyhow::bail!("Release 中缺少 SHA256 信息");
         };
 
+        let minisig = self
+            .download_minisig(&release.assets, &asset.name)
+            .await
+            .ok()
+            .flatten();
+
         Ok(ReleaseArtifact {
             repository: repository.display_name(),
             tag_name: release.tag_name,
@@ -305,6 +313,7 @@ impl UpgradeManager {
             download_url,
             sha256,
             size: asset.size,
+            minisig,
         })
     }
 
@@ -348,6 +357,60 @@ impl UpgradeManager {
             .context("读取 SHA256 校验文件失败")?;
 
         Ok(parse_sha256_manifest(&text, target_asset))
+    }
+
+    async fn download_minisig(
+        &self,
+        assets: &[ReleaseAsset],
+        target_asset: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        let sig_asset = find_minisig_asset(assets, target_asset);
+        let Some(sig_asset) = sig_asset else {
+            return Ok(None);
+        };
+        let sig_url = sig_asset.download_url();
+        if sig_url.is_empty() {
+            return Ok(None);
+        }
+        let bytes = self
+            .build_request(sig_url)
+            .send()
+            .await
+            .context("下载 Minisign 签名文件失败")?
+            .error_for_status()
+            .context("Minisign 签名文件返回错误状态")?
+            .bytes()
+            .await
+            .context("读取 Minisign 签名文件失败")?;
+        Ok(Some(bytes.to_vec()))
+    }
+
+    async fn verify_downloaded_minisign(
+        &self,
+        data: &[u8],
+        sig_bytes: &[u8],
+        artifact: &ReleaseArtifact,
+    ) -> Result<()> {
+        let sig_str = std::str::from_utf8(sig_bytes).context("Minisign 签名不是有效的 UTF-8")?;
+        let info = minisign::verify_minisign(data, sig_str, MINISIGN_PUBLIC_KEYS)?;
+
+        let (got_version, got_asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
+        let expected_version = artifact.tag_name.trim_start_matches('v');
+        if !got_version.contains(expected_version) {
+            anyhow::bail!(
+                "Minisign 版本不匹配: 期望包含 {}, 实际 {}",
+                expected_version,
+                got_version
+            );
+        }
+        if got_asset != artifact.asset_name {
+            anyhow::bail!(
+                "Minisign 文件名不匹配: 期望 {}, 实际 {}",
+                artifact.asset_name,
+                got_asset
+            );
+        }
+        Ok(())
     }
 
     async fn download_with_progress(
@@ -429,6 +492,41 @@ impl UpgradeManager {
                 "{}",
                 t!("upgrade.bot_sha256_mismatch", "0" => artifact.sha256.as_str(), "1" => actual_sha256.as_str())
             );
+        }
+
+        // Minisign verification
+        if let Some(sig_bytes) = &artifact.minisig {
+            let _ = adapter
+                .edit_message(
+                    target,
+                    progress_msg_id,
+                    MessageContent {
+                        text: t!("upgrade.bot_minisign_verifying").to_string(),
+                        markup: None,
+                    },
+                )
+                .await;
+
+            let download_data =
+                std::fs::read(&update_path).context("读取下载文件用于 Minisign 验证失败")?;
+            if let Err(e) = self
+                .verify_downloaded_minisign(&download_data, sig_bytes, artifact)
+                .await
+            {
+                fs::remove_file(&update_path).await.ok();
+                anyhow::bail!("Minisign 验证失败: {}", e);
+            }
+
+            let _ = adapter
+                .edit_message(
+                    target,
+                    progress_msg_id,
+                    MessageContent {
+                        text: t!("upgrade.bot_minisign_ok").to_string(),
+                        markup: None,
+                    },
+                )
+                .await;
         }
 
         let _ = adapter

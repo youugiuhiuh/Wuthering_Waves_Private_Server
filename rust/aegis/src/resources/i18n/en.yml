@@ -514,6 +514,8 @@ upgrade:
   bot_updated: "✅ Bot updated to %{0}, restarting..."
   bot_unknown_size: "Unknown"
   bot_sha256_mismatch: "SHA256 mismatch, expected: %{0}, actual: %{1}"
+  bot_minisign_verifying: "🔐 Verifying Minisign signature..."
+  bot_minisign_ok: "✅ Minisign signature verified"
 
 help:
   matrix_text: |
