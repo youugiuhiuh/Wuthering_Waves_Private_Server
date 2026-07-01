@@ -420,7 +420,7 @@ pub(super) async fn handle_xhttp_batch_exec(ctx: &CallbackContext, data: &str) -
 }
 
 pub(super) async fn handle_kcp_init(ctx: &CallbackContext) -> HandlerResult {
-    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::with_capacity(5);
+    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::with_capacity(3);
 
     buttons.push(vec![
         InlineKeyboardButton::callback(t!("xray.kcp_cat_enc"), "u_kcp_cat:enc"),

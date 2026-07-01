@@ -115,9 +115,8 @@ mod tests {
     }
 
     #[test]
-    fn verify_returns_false_for_expired_window_token() {
+    fn raw_check_rejects_token_outside_skew_window() {
         let encoded = TotpManager::generate_new_secret();
-        let _manager = TotpManager::new(&secrecy::SecretString::from(encoded.clone())).unwrap();
         let bytes = Secret::Encoded(encoded).to_bytes().unwrap();
 
         let raw = TOTP::new(

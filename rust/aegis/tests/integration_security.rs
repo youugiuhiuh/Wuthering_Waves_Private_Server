@@ -48,7 +48,6 @@ fn encrypt_decrypt_roundtrip_varied_sizes() {
         b"".to_vec(),
         b"a".to_vec(),
         b"hello".to_vec(),
-        b"x".repeat(1),
         b"x".repeat(16),
         b"x".repeat(255),
         b"x".repeat(4096),

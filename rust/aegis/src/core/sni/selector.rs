@@ -187,13 +187,11 @@ impl SNISelector {
 
     async fn load_embedded_async(filename: &str) -> Option<Vec<String>> {
         let file = SniAssets::get(filename)?;
-        let data = file.data.to_vec();
+        let data = file.data.into_owned();
         tokio::task::spawn_blocking(move || load_protobuf(&data))
             .await
             .ok()?
     }
-
-
 }
 
 #[cfg(test)]
