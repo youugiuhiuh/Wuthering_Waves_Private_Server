@@ -59,14 +59,14 @@ pub struct SNISelector {
 }
 
 impl SNISelector {
-    pub fn get_for_country(country_code: &str) -> Self {
+    pub async fn get_for_country(country_code: &str) -> Self {
         let upper = country_code.to_uppercase();
         let code = match upper.as_str() {
             "UK" => "GB",
             c => c,
         };
 
-        let domains = Self::load_domains(code);
+        let domains = Self::load_domains(code).await;
         let state = SNIState::new(domains.clone());
 
         let cache_key = format!("sni_{}", code);
@@ -103,13 +103,13 @@ impl SNISelector {
         }
     }
 
-    fn load_domains(code: &str) -> Vec<String> {
+    async fn load_domains(code: &str) -> Vec<String> {
         const MIN_DOMAINS: usize = 3;
 
         let code_upper = code.to_uppercase();
         let pb_file = format!("{}.pb", code_upper);
 
-        let country_domains = Self::load_embedded(&pb_file);
+        let country_domains = Self::load_embedded_async(&pb_file).await;
 
         if let Some(domains) = country_domains {
             if domains.len() >= MIN_DOMAINS {
@@ -125,7 +125,7 @@ impl SNISelector {
 
         if let Some((filename, count)) = LARGEST_PB.as_ref() {
             log::info!("Using fallback file: {} ({} domains)", filename, count);
-            if let Some(domains) = Self::load_embedded(filename) {
+            if let Some(domains) = Self::load_embedded_async(filename).await {
                 return domains;
             }
         }
@@ -185,29 +185,33 @@ impl SNISelector {
         self.used_count
     }
 
-    fn load_embedded(filename: &str) -> Option<Vec<String>> {
+    async fn load_embedded_async(filename: &str) -> Option<Vec<String>> {
         let file = SniAssets::get(filename)?;
-        let data = file.data.as_ref();
-        load_protobuf(data)
+        let data = file.data.to_vec();
+        tokio::task::spawn_blocking(move || load_protobuf(&data))
+            .await
+            .ok()?
     }
+
+
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn get_for_country_returns_selector_with_domains() {
-        let selector = SNISelector::get_for_country("US");
+    #[tokio::test]
+    async fn get_for_country_returns_selector_with_domains() {
+        let selector = SNISelector::get_for_country("US").await;
         let mut s = selector;
         let first = s.get_next();
         assert!(!first.is_empty());
         assert!(first.contains('.'));
     }
 
-    #[test]
-    fn get_for_country_unknown_falls_back_to_default() {
-        let selector = SNISelector::get_for_country("XX");
+    #[tokio::test]
+    async fn get_for_country_unknown_falls_back_to_default() {
+        let selector = SNISelector::get_for_country("XX").await;
         let mut s = selector;
         let d = s.get_next();
         assert!(!d.is_empty());
@@ -255,10 +259,10 @@ mod tests {
         assert_eq!(selector.remaining(), 1);
     }
 
-    #[test]
-    fn get_for_country_uk_normalizes_to_gb() {
-        let selector_uk = SNISelector::get_for_country("UK");
-        let selector_gb = SNISelector::get_for_country("GB");
+    #[tokio::test]
+    async fn get_for_country_uk_normalizes_to_gb() {
+        let selector_uk = SNISelector::get_for_country("UK").await;
+        let selector_gb = SNISelector::get_for_country("GB").await;
         let mut s1 = selector_uk;
         let mut s2 = selector_gb;
         assert!(!s1.get_next().is_empty());

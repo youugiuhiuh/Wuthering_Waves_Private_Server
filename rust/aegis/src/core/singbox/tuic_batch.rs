@@ -28,7 +28,7 @@ impl SingBoxConfigManager {
         let geoip = crate::core::network::geoip::GeoIPService::new();
         let country_code = geoip.get_country_code().await;
 
-        let mut selector = SNISelector::get_for_country(&country_code);
+        let mut selector = SNISelector::get_for_country(&country_code).await;
 
         let mut links = Vec::new();
         let mut configs = Vec::new();
