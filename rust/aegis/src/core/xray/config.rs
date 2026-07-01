@@ -317,8 +317,10 @@ impl ConfigManager {
         };
 
         // 生成唯一参数
-        let uuid = Self::generate_wwps_uuid().await?;
-        let (priv_key, pub_key) = Self::generate_wwps_x25519().await?;
+        let (uuid, (priv_key, pub_key)) = tokio::try_join!(
+            Self::generate_wwps_uuid(),
+            Self::generate_wwps_x25519(),
+        )?;
         let short_id = Self::generate_random_short_id();
         let uuid_short = Self::uuid_short_prefix(&uuid);
 
