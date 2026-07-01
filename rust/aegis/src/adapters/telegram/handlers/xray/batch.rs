@@ -149,7 +149,7 @@ pub(super) async fn handle_batch_exec(ctx: &CallbackContext, data: &str) -> Hand
 
     match res {
         Ok(result) => {
-            let mut message_ids: Vec<String> = Vec::new();
+            let mut message_ids: Vec<String> = Vec::with_capacity(result.links.len());
 
             let mut combined_links = String::new();
             for link in &result.links {
@@ -317,7 +317,7 @@ pub(super) async fn handle_xhttp_batch_exec(ctx: &CallbackContext, data: &str) -
 
     match res {
         Ok(result) => {
-            let mut message_ids: Vec<String> = Vec::new();
+            let mut message_ids: Vec<String> = Vec::with_capacity(result.links.len());
 
             let mut combined_links = String::new();
             for link in &result.links {
@@ -420,7 +420,7 @@ pub(super) async fn handle_xhttp_batch_exec(ctx: &CallbackContext, data: &str) -
 }
 
 pub(super) async fn handle_kcp_init(ctx: &CallbackContext) -> HandlerResult {
-    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::with_capacity(5);
 
     buttons.push(vec![
         InlineKeyboardButton::callback(t!("xray.kcp_cat_enc"), "u_kcp_cat:enc"),
@@ -449,7 +449,7 @@ pub(super) async fn handle_kcp_cat(ctx: &CallbackContext, data: &str) -> Handler
     let cat_name = KcpMask::category_from_code(cat_code).unwrap_or("unknown");
 
     let variants = KcpMask::variants_by_category(cat_code);
-    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::with_capacity(variants.len());
 
     for mask in &variants {
         buttons.push(vec![InlineKeyboardButton::callback(
@@ -694,7 +694,7 @@ pub(super) async fn handle_kcp_mcat(ctx: &CallbackContext, data: &str) -> Handle
         })
         .collect();
 
-    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+    let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::with_capacity(variants.len());
 
     for mask in &variants {
         let code = mask.code();
@@ -1042,7 +1042,7 @@ pub(super) async fn handle_kcp_ok(ctx: &CallbackContext, data: &str) -> HandlerR
 
     match res {
         Ok(result) => {
-            let mut message_ids: Vec<String> = Vec::new();
+            let mut message_ids: Vec<String> = Vec::with_capacity(result.links.len());
 
             let mut combined_links = String::new();
             for link in &result.links {
