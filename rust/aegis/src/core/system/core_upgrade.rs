@@ -1,8 +1,9 @@
 use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::cmd_async::run_cmd_status;
+use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
 use crate::core::network::release_api::{
-    ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors, parse_digest,
-    parse_sha256_manifest,
+    ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors,
+    find_minisig_asset, parse_digest, parse_sha256_manifest,
 };
 use crate::core::paths::xray;
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
@@ -92,6 +93,7 @@ pub struct WwpsCoreReleaseInfo {
     pub download_url: String,
     pub sha256: String,
     pub size: Option<u64>,
+    pub minisig_url: Option<String>,
 }
 
 pub struct WwpsCoreUpgradeManager {
@@ -268,11 +270,15 @@ impl WwpsCoreUpgradeManager {
             anyhow::bail!("Release 中缺少 SHA256 信息");
         };
 
+        let minisig_url =
+            find_minisig_asset(&release.assets, &asset.name).map(|a| a.download_url().to_string());
+
         Ok(WwpsCoreReleaseInfo {
             tag_name: release.tag_name,
             download_url,
             sha256,
             size: asset.size,
+            minisig_url,
         })
     }
 
@@ -360,6 +366,47 @@ impl WwpsCoreUpgradeManager {
                 release.sha256,
                 actual_hash
             );
+        }
+
+        // Minisign verification
+        if let Some(sig_url) = &release.minisig_url {
+            let sig_bytes = self
+                .build_request(sig_url)
+                .send()
+                .await
+                .context("下载 Minisign 签名文件失败")?
+                .error_for_status()
+                .context("Minisign 签名文件下载失败")?
+                .bytes()
+                .await
+                .context("读取 Minisign 签名文件失败")?;
+
+            let sig_str =
+                std::str::from_utf8(&sig_bytes).context("Minisign 签名不是有效的 UTF-8")?;
+            let download_data =
+                std::fs::read(&temp_file).context("读取下载文件用于 Minisign 验证失败")?;
+            let info = minisign::verify_minisign(&download_data, sig_str, MINISIGN_PUBLIC_KEYS)
+                .map_err(|e| anyhow!("Minisign 验证失败: {}", e))?;
+
+            let (got_version, got_asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
+            let expected_version = release.tag_name.trim_start_matches('v');
+            if !got_version.contains(expected_version) {
+                fs::remove_file(&temp_file).await.ok();
+                anyhow::bail!(
+                    "Minisign 版本不匹配: 期望包含 {}, 实际 {}",
+                    expected_version,
+                    got_version
+                );
+            }
+            let expected_asset_name = format!("{}.zip", self.config.arch.asset_basename());
+            if got_asset != expected_asset_name {
+                fs::remove_file(&temp_file).await.ok();
+                anyhow::bail!(
+                    "Minisign 文件名不匹配: 期望 {}, 实际 {}",
+                    expected_asset_name,
+                    got_asset
+                );
+            }
         }
 
         Ok(temp_file)
@@ -638,7 +685,7 @@ impl WwpsCoreUpgradeManager {
         };
 
         let text = self
-            .build_request(&manifest_asset.browser_download_url)
+            .build_request(manifest_asset.download_url())
             .send()
             .await
             .context("下载 SHA256 清单失败")?

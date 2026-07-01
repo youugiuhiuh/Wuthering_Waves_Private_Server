@@ -25,6 +25,17 @@
   "sha256.fetch_failed": "获取可信 SHA-256 失败: %s",
   "sha256.verify_failed": "二进制校验失败: %s",
 
+  "minisign.verify_start": "正在验证 Minisign 签名...",
+  "minisign.verify_ok": "✅ Minisign 签名验证通过",
+  "minisign.verify_failed": "❌ Minisign 签名验证失败: %s",
+  "minisign.download_start": "正在下载 Minisign 签名文件...",
+  "minisign.pubkey_not_found": "Minisign 公钥未配置",
+  "minisign.skipped": "⚠ Minisign 签名不可用，仅使用 SHA256 验证",
+  "minisign.trusted_comment": "可信注释: %s",
+  "minisign.expected_version": "期望版本: %s",
+  "minisign.version_mismatch": "Minisign 版本不匹配: 期望 %s, 实际 %s",
+  "minisign.asset_mismatch": "Minisign 文件名不匹配: 期望 %s, 实际 %s",
+
   "install.mkdir_failed": "创建安装目录失败: %s",
   "install.read_bin_failed": "读取二进制失败: %s",
   "install.write_bin_failed": "写入安装目录失败: %s",

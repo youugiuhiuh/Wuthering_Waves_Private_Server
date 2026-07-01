@@ -514,6 +514,8 @@ upgrade:
   bot_updated: "✅ Bot が %{0} に更新されました、再起動します..."
   bot_unknown_size: "不明"
   bot_sha256_mismatch: "SHA256 不一致、期待値: %{0}, 実際: %{1}"
+  bot_minisign_verifying: "🔐 Minisign 署名を検証中..."
+  bot_minisign_ok: "✅ Minisign 署名が確認されました"
 
 help:
   matrix_text: |

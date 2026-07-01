@@ -120,6 +120,14 @@ pub fn extract_sha256_from_body(body: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
+pub fn find_minisig_asset<'a>(
+    assets: &'a [ReleaseAsset],
+    binary_name: &str,
+) -> Option<&'a ReleaseAsset> {
+    let sig_name = format!("{}.minisig", binary_name);
+    assets.iter().find(|a| a.name == sig_name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,5 +195,40 @@ mod tests {
             digest: None,
         };
         assert_eq!(asset.download_url(), "");
+    }
+
+    #[test]
+    fn test_find_minisig_asset_found() {
+        let assets = vec![
+            ReleaseAsset {
+                name: "aegis".to_string(),
+                browser_download_url: "https://example.com/aegis".to_string(),
+                url: String::new(),
+                size: None,
+                digest: None,
+            },
+            ReleaseAsset {
+                name: "aegis.minisig".to_string(),
+                browser_download_url: "https://example.com/aegis.minisig".to_string(),
+                url: String::new(),
+                size: None,
+                digest: None,
+            },
+        ];
+        let result = find_minisig_asset(&assets, "aegis");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().name, "aegis.minisig");
+    }
+
+    #[test]
+    fn test_find_minisig_asset_not_found() {
+        let assets = vec![ReleaseAsset {
+            name: "aegis".to_string(),
+            browser_download_url: "https://example.com/aegis".to_string(),
+            url: String::new(),
+            size: None,
+            digest: None,
+        }];
+        assert!(find_minisig_asset(&assets, "aegis").is_none());
     }
 }

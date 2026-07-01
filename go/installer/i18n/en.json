@@ -19,6 +19,18 @@
   "sha256.mismatch": "SHA-256 mismatch: expected %s, got %s",
   "sha256.fetch_failed": "Failed to fetch trusted SHA-256: %s",
   "sha256.verify_failed": "Binary verification failed: %s",
+
+  "minisign.verify_start": "Verifying Minisign signature...",
+  "minisign.verify_ok": "✅ Minisign signature verified",
+  "minisign.verify_failed": "❌ Minisign verification failed: %s",
+  "minisign.download_start": "Downloading Minisign signature file...",
+  "minisign.pubkey_not_found": "Minisign public key not configured",
+  "minisign.skipped": "⚠ Minisign signature unavailable, falling back to SHA256-only verification",
+  "minisign.trusted_comment": "Trusted comment: %s",
+  "minisign.expected_version": "Expected version: %s",
+  "minisign.version_mismatch": "Minisign version mismatch: expected %s, got %s",
+  "minisign.asset_mismatch": "Minisign asset mismatch: expected %s, got %s",
+
   "install.mkdir_failed": "Failed to create install directory: %s",
   "install.read_bin_failed": "Failed to read binary: %s",
   "install.write_bin_failed": "Failed to write to install directory: %s",

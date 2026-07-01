@@ -275,3 +275,60 @@ func TestParseKeyVal(t *testing.T) {
 		}
 	})
 }
+
+func TestParseTrustedComment(t *testing.T) {
+	tests := []struct {
+		input    string
+		wantVer  string
+		wantName string
+		wantErr  bool
+	}{
+		{"v3.1.8:aegis", "v3.1.8", "aegis", false},
+		{"v2.0.0:installer", "v2.0.0", "installer", false},
+		{"nocolon", "", "", true},
+		{"too:many:colons", "too", "many:colons", false},
+		{"", "", "", true},
+	}
+	for _, tc := range tests {
+		ver, name, err := parseTrustedComment(tc.input)
+		if tc.wantErr && err == nil {
+			t.Errorf("parseTrustedComment(%q) expected error", tc.input)
+		}
+		if !tc.wantErr {
+			if err != nil {
+				t.Errorf("parseTrustedComment(%q) unexpected error: %v", tc.input, err)
+			}
+			if ver != tc.wantVer {
+				t.Errorf("parseTrustedComment(%q) ver = %q, want %q", tc.input, ver, tc.wantVer)
+			}
+			if name != tc.wantName {
+				t.Errorf("parseTrustedComment(%q) name = %q, want %q", tc.input, name, tc.wantName)
+			}
+		}
+	}
+}
+
+func TestFindMinisigAsset(t *testing.T) {
+	release := &latestRelease{
+		Assets: []releaseAsset{
+			{Name: "aegis", BrowserDownloadURL: "https://example.com/aegis"},
+			{Name: "aegis.minisig", BrowserDownloadURL: "https://example.com/aegis.minisig"},
+			{Name: "installer", BrowserDownloadURL: "https://example.com/installer"},
+			{Name: "installer.minisig", BrowserDownloadURL: "https://example.com/installer.minisig"},
+		},
+	}
+	asset := findMinisigAsset(release, "aegis")
+	if asset == nil {
+		t.Fatal("findMinisigAsset(aegis) returned nil")
+	}
+	if asset.Name != "aegis.minisig" {
+		t.Errorf("findMinisigAsset(aegis).Name = %q, want %q", asset.Name, "aegis.minisig")
+	}
+	if asset.BrowserDownloadURL != "https://example.com/aegis.minisig" {
+		t.Errorf("findMinisigAsset(aegis).BrowserDownloadURL = %q, want %q", asset.BrowserDownloadURL, "https://example.com/aegis.minisig")
+	}
+	asset2 := findMinisigAsset(release, "nonexistent")
+	if asset2 != nil {
+		t.Errorf("findMinisigAsset(nonexistent) = %v, want nil", asset2)
+	}
+}
