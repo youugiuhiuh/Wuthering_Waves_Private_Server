@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::HashSet;
 use zbus::proxy;
 
@@ -83,12 +83,25 @@ impl FirewalldClient {
         let port_str = port.to_string();
 
         // 1. Runtime: Add port immediately (Safe to fail)
-        if !zone_proxy
-            .query_port(&zone, &port_str, protocol)
-            .await
-            .unwrap_or(false)
-        {
-            let _ = zone_proxy.add_port(&zone, &port_str, protocol, 0).await;
+        match zone_proxy.query_port(&zone, &port_str, protocol).await {
+            Ok(false) => {
+                if let Err(e) = zone_proxy.add_port(&zone, &port_str, protocol, 0).await {
+                    log::warn!(
+                        "Failed to add port {} to runtime firewalld zone {}: {}",
+                        port_str,
+                        zone,
+                        e
+                    );
+                }
+            }
+            Ok(true) => {}
+            Err(e) => {
+                log::warn!(
+                    "Failed to query port {} in firewalld runtime: {}",
+                    port_str,
+                    e
+                );
+            }
         }
 
         // 2. Permanent: Add port to config
@@ -110,12 +123,18 @@ impl FirewalldClient {
                 .await?;
 
             // Check if port exists in permanent config
-            if !config_zone_proxy
-                .query_port(&port_str, protocol)
-                .await
-                .unwrap_or(false)
-            {
-                config_zone_proxy.add_port(&port_str, protocol).await?;
+            match config_zone_proxy.query_port(&port_str, protocol).await {
+                Ok(false) => {
+                    config_zone_proxy.add_port(&port_str, protocol).await?;
+                }
+                Ok(true) => {}
+                Err(e) => {
+                    log::warn!(
+                        "Failed to query port {} in firewalld persistent config: {}",
+                        port_str,
+                        e
+                    );
+                }
             }
         }
 
@@ -130,7 +149,14 @@ impl FirewalldClient {
         let port_str = port.to_string();
 
         // 1. Runtime: Remove port (Safe to fail if not present)
-        let _ = zone_proxy.remove_port(&zone, &port_str, protocol).await;
+        if let Err(e) = zone_proxy.remove_port(&zone, &port_str, protocol).await {
+            log::warn!(
+                "Failed to remove port {} from firewalld zone {}: {}",
+                port_str,
+                zone,
+                e
+            );
+        }
 
         // 2. Permanent: Remove port from config
         let config_path = match proxy.config().await {
@@ -148,12 +174,18 @@ impl FirewalldClient {
                 .build()
                 .await?;
 
-            if config_zone_proxy
-                .query_port(&port_str, protocol)
-                .await
-                .unwrap_or(false)
-            {
-                config_zone_proxy.remove_port(&port_str, protocol).await?;
+            match config_zone_proxy.query_port(&port_str, protocol).await {
+                Ok(true) => {
+                    config_zone_proxy.remove_port(&port_str, protocol).await?;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    log::warn!(
+                        "Failed to query port {} in firewalld persistent config: {}",
+                        port_str,
+                        e
+                    );
+                }
             }
         }
 
@@ -191,14 +223,31 @@ impl FirewalldClient {
         let port_range_str = format!("{}-{}", start, end);
 
         // 1. Runtime: Add port range immediately (Safe to fail)
-        if !zone_proxy
+        match zone_proxy
             .query_port(&zone, &port_range_str, protocol)
             .await
-            .unwrap_or(false)
         {
-            let _ = zone_proxy
-                .add_port(&zone, &port_range_str, protocol, 0)
-                .await;
+            Ok(false) => {
+                if let Err(e) = zone_proxy
+                    .add_port(&zone, &port_range_str, protocol, 0)
+                    .await
+                {
+                    log::warn!(
+                        "Failed to add port range {} to runtime firewalld zone {}: {}",
+                        port_range_str,
+                        zone,
+                        e
+                    );
+                }
+            }
+            Ok(true) => {}
+            Err(e) => {
+                log::warn!(
+                    "Failed to query port range {} in firewalld runtime: {}",
+                    port_range_str,
+                    e
+                );
+            }
         }
 
         // 2. Permanent: Add port range to config
@@ -217,14 +266,23 @@ impl FirewalldClient {
                 .build()
                 .await?;
 
-            if !config_zone_proxy
+            match config_zone_proxy
                 .query_port(&port_range_str, protocol)
                 .await
-                .unwrap_or(false)
             {
-                config_zone_proxy
-                    .add_port(&port_range_str, protocol)
-                    .await?;
+                Ok(false) => {
+                    config_zone_proxy
+                        .add_port(&port_range_str, protocol)
+                        .await?;
+                }
+                Ok(true) => {}
+                Err(e) => {
+                    log::warn!(
+                        "Failed to query port range {} in firewalld persistent config: {}",
+                        port_range_str,
+                        e
+                    );
+                }
             }
         }
 
@@ -242,9 +300,17 @@ impl FirewalldClient {
         let port_range_str = format!("{}-{}", start, end);
 
         // 1. Runtime: Remove port range (Safe to fail)
-        let _ = zone_proxy
+        if let Err(e) = zone_proxy
             .remove_port(&zone, &port_range_str, protocol)
-            .await;
+            .await
+        {
+            log::warn!(
+                "Failed to remove port range {} from firewalld zone {}: {}",
+                port_range_str,
+                zone,
+                e
+            );
+        }
 
         // 2. Permanent: Remove port range from config
         let config_path = match proxy.config().await {
@@ -262,14 +328,23 @@ impl FirewalldClient {
                 .build()
                 .await?;
 
-            if config_zone_proxy
+            match config_zone_proxy
                 .query_port(&port_range_str, protocol)
                 .await
-                .unwrap_or(false)
             {
-                config_zone_proxy
-                    .remove_port(&port_range_str, protocol)
-                    .await?;
+                Ok(true) => {
+                    config_zone_proxy
+                        .remove_port(&port_range_str, protocol)
+                        .await?;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    log::warn!(
+                        "Failed to query port range {} in firewalld persistent config: {}",
+                        port_range_str,
+                        e
+                    );
+                }
             }
         }
 
@@ -321,12 +396,19 @@ impl FirewalldClient {
         for port in ports {
             let port_str = port.to_string();
             for proto in &["tcp", "udp"] {
-                if !config_zone_proxy
+                let exists = config_zone_proxy
                     .query_port(&port_str, proto)
                     .await
-                    .unwrap_or(false)
-                {
-                    config_zone_proxy.add_port(&port_str, proto).await?;
+                    .with_context(|| {
+                        format!("Failed to query port {} ({}) in firewalld", port_str, proto)
+                    })?;
+                if !exists {
+                    config_zone_proxy
+                        .add_port(&port_str, proto)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to add port {} ({}) to firewalld", port_str, proto)
+                        })?;
                 }
             }
         }
