@@ -1,6 +1,7 @@
 name: Minisign Sign Release
 
 on:
+  workflow_dispatch:
   release:
     types: [published]
 
