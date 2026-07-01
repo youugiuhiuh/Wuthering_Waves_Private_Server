@@ -18,38 +18,35 @@ minisign -G -W -p "$TEMP_DIR/minisign.pub" -s "$TEMP_DIR/minisign.key"
 NEW_KEY=$(grep -v '^untrusted comment' "$TEMP_DIR/minisign.pub" | tr -d '\n')
 echo ">>> 新公钥: $NEW_KEY"
 
-# 计算过期时间（当前日期 + 90 天）
-EXPIRES=$(date -d "+90 days" +%Y-%m-%d)
 EXPIRES=$(date -d "+1 year" +%Y-%m-%d)
 echo ">>> 过期日期: $EXPIRES"
 
 # ---------- Go ----------
 mapfile -t GO_KEYS < <(awk '
     /^var minisignPublicKeys/ { printing=1; next }
-    printing && /^}/ { exit }
+    printing && /^\s*}\s*$/ { exit }
     printing && /PublicKey:/ {
-        gsub(/.*"([^"]+)".*/, "\\1"); print
-    }
-    printing && /ExpiresAt:/ {
-        gsub(/.*"([^"]+)".*/, "\\1"); print
+        line = $0
+        match(line, /PublicKey: "([^"]+)"/, a)
+        print a[1]
+        if (match(line, /ExpiresAt: "([^"]*)"/, b)) {
+            print b[1]
+        } else {
+            print ""
+        }
     }
 ' "$GO_FILE")
 
-# Rebuild Go entries in pairs (key, expires)
 printf 'var minisignPublicKeys = []minisignKeyEntry{\n' > "$TEMP_DIR/go_block"
-i=0
-while [ $i -lt ${#GO_KEYS[@]} ]; do
-    key="${GO_KEYS[$i]}"
-    exp="${GO_KEYS[$((i+1))]}"
-    printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$key" "$exp" >> "$TEMP_DIR/go_block"
-    i=$((i+2))
+for ((i = 0; i < ${#GO_KEYS[@]}; i += 2)); do
+    printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "${GO_KEYS[$i]}" "${GO_KEYS[$((i+1))]}" >> "$TEMP_DIR/go_block"
 done
 printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$NEW_KEY" "$EXPIRES" >> "$TEMP_DIR/go_block"
 printf '}\n' >> "$TEMP_DIR/go_block"
 
 awk -v block="$TEMP_DIR/go_block" '
     /^var minisignPublicKeys/ { printing=1; next }
-    printing && /^}/ { printing=0; system("cat " block); next }
+    printing && /^\s*}\s*$/ { printing=0; system("cat " block); next }
     !printing { print }
 ' "$GO_FILE" > "$TEMP_DIR/go_new.go" && cp "$TEMP_DIR/go_new.go" "$GO_FILE"
 gofmt -w "$GO_FILE"
@@ -57,29 +54,29 @@ gofmt -w "$GO_FILE"
 # ---------- Rust ----------
 mapfile -t RS_KEYS < <(awk '
     /^pub const MINISIGN_PUBLIC_KEYS/ { printing=1; next }
-    printing && /^];/ { exit }
+    printing && /];\s*$/ { exit }
     printing && /public_key:/ {
-        gsub(/.*"([^"]+)".*/, "\\1"); print
-    }
-    printing && /expires_at:/ {
-        gsub(/.*"([^"]+)".*/, "\\1"); print
+        line = $0
+        match(line, /public_key: "([^"]+)"/, a)
+        print a[1]
+        if (match(line, /expires_at: "([^"]*)"/, b)) {
+            print b[1]
+        } else {
+            print ""
+        }
     }
 ' "$RS_FILE")
 
 printf 'pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[\n' > "$TEMP_DIR/rs_block"
-i=0
-while [ $i -lt ${#RS_KEYS[@]} ]; do
-    key="${RS_KEYS[$i]}"
-    exp="${RS_KEYS[$((i+1))]}"
-    printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$key" "$exp" >> "$TEMP_DIR/rs_block"
-    i=$((i+2))
+for ((i = 0; i < ${#RS_KEYS[@]}; i += 2)); do
+    printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "${RS_KEYS[$i]}" "${RS_KEYS[$((i+1))]}" >> "$TEMP_DIR/rs_block"
 done
 printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$NEW_KEY" "$EXPIRES" >> "$TEMP_DIR/rs_block"
 printf '];\n' >> "$TEMP_DIR/rs_block"
 
 awk -v block="$TEMP_DIR/rs_block" '
     /^pub const MINISIGN_PUBLIC_KEYS/ { printing=1; next }
-    printing && /^];/ { printing=0; system("cat " block); next }
+    printing && /];\s*$/ { printing=0; system("cat " block); next }
     !printing { print }
 ' "$RS_FILE" > "$TEMP_DIR/rs_new.rs" && cp "$TEMP_DIR/rs_new.rs" "$RS_FILE"
 rustfmt "$RS_FILE"
