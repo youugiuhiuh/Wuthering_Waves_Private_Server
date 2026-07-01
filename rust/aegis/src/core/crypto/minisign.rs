@@ -1,14 +1,20 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 pub struct MinisignKeyEntry {
     pub public_key: &'static str,
     pub expires_at: &'static str, // "YYYY-MM-DD" or "" = never expires
 }
 
-pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[MinisignKeyEntry {
-    public_key: "RWS6qEwIdsvM7UppXGmoZ+nksGYr+sc6POwW2Tdby1mZhpfiipMAu7ts",
-    expires_at: "",
-}];
+pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[
+    MinisignKeyEntry {
+        public_key: "RWS6qEwIdsvM7UppXGmoZ+nksGYr+sc6POwW2Tdby1mZhpfiipMAu7ts",
+        expires_at: "",
+    },
+    MinisignKeyEntry {
+        public_key: "RWRChe8t6JZe3aLPZ2FOomQ6wcUVU66eNGlK38LAYIp7e/zNTs8nioFj",
+        expires_at: "2027-07-01",
+    },
+];
 
 pub struct MinisigInfo {
     pub trusted_comment: String,
