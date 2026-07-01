@@ -2,8 +2,11 @@ name: Minisign Sign Release
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+    inputs:
+      tag_name:
+        description: "Release tag to sign (e.g., v3.1.9)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -34,7 +37,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         working-directory: ${{ runner.temp }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ github.event.inputs.tag_name || github.event.release.tag_name }}"
           ASSETS=$(gh release view "$TAG" --json assets -q '.assets[].name')
 
           if [ -z "$ASSETS" ]; then
