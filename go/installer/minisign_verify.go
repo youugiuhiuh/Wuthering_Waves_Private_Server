@@ -30,7 +30,6 @@ func (e *minisignKeyEntry) expired() bool {
 }
 
 var minisignPublicKeys = []minisignKeyEntry{
-	{PublicKey: "RWS6qEwIdsvM7UppXGmoZ+nksGYr+sc6POwW2Tdby1mZhpfiipMAu7ts", ExpiresAt: ""},
 	{PublicKey: "RWRChe8t6JZe3aLPZ2FOomQ6wcUVU66eNGlK38LAYIp7e/zNTs8nioFj", ExpiresAt: "2027-07-01"},
 }
 

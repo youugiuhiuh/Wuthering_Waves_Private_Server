@@ -7,10 +7,6 @@ pub struct MinisignKeyEntry {
 
 pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[
     MinisignKeyEntry {
-        public_key: "RWS6qEwIdsvM7UppXGmoZ+nksGYr+sc6POwW2Tdby1mZhpfiipMAu7ts",
-        expires_at: "",
-    },
-    MinisignKeyEntry {
         public_key: "RWRChe8t6JZe3aLPZ2FOomQ6wcUVU66eNGlK38LAYIp7e/zNTs8nioFj",
         expires_at: "2027-07-01",
     },
