@@ -85,4 +85,39 @@ mod tests {
         let result = TotpManager::new(&secrecy::SecretString::from(trimmed.to_string()));
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn verify_returns_true_for_valid_token() {
+        let secret = TotpManager::generate_new_secret();
+        let manager = TotpManager::new(&secrecy::SecretString::from(secret.clone())).unwrap();
+
+        let secret_bytes = totp_rs::Secret::Encoded(secret).to_bytes().unwrap();
+        let totp = totp_rs::TOTP::new(
+            totp_rs::Algorithm::SHA512,
+            6,
+            1,
+            30,
+            secret_bytes,
+            Some("wwps".to_string()),
+            "admin".to_string(),
+        )
+        .unwrap();
+        let token = totp.generate_current().unwrap();
+
+        assert!(manager.verify(&token));
+    }
+
+    #[test]
+    fn verify_returns_false_for_invalid_token() {
+        let secret = TotpManager::generate_new_secret();
+        let manager = TotpManager::new(&secrecy::SecretString::from(secret)).unwrap();
+        assert!(!manager.verify("000000"));
+    }
+
+    #[test]
+    fn verify_returns_false_for_expired_window_token() {
+        let secret = TotpManager::generate_new_secret();
+        let manager = TotpManager::new(&secrecy::SecretString::from(secret)).unwrap();
+        assert!(!manager.verify("123456"));
+    }
 }
