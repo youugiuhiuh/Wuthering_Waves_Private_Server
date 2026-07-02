@@ -1,6 +1,6 @@
 [package]
 name = "aegis"
-version = "3.2.5"
+version = "3.2.6"
 edition = "2024"
 
 [dependencies]
@@ -85,7 +85,7 @@ opt-level = "z"   # 优化大小，减少特征
 codegen-units = 1
 panic = "abort"   # 减少标准库符号残留
 strip = true      # 移除符号信息
-lto = "thin"
+lto = "fat"       # 启用链接时优化，减少二进制大小
 
 [profile.release.build-override]
 opt-level = 0
