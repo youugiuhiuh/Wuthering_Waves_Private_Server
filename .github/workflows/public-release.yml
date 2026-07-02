@@ -61,6 +61,30 @@ jobs:
       - name: Setup mise
         uses: jdx/mise-action@v4
 
+      - name: Cache Rust build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            rust/aegis/target/release/.fingerprint
+            rust/aegis/target/release/build
+            rust/aegis/target/release/deps
+          key: ${{ runner.os }}-rust-aegis-${{ hashFiles('rust/aegis/Cargo.lock', 'rust/aegis/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-aegis-
+
+      - name: Cache Go build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/garble
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-installer-${{ hashFiles('go/installer/go.sum', 'go/installer/go.mod') }}
+          restore-keys: |
+            ${{ runner.os }}-go-installer-
+
       - name: Build Runtime Binary
         run: |
           cd rust/aegis
