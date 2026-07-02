@@ -7,15 +7,11 @@ pub struct MinisignKeyEntry {
 
 pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[
     MinisignKeyEntry {
-        public_key: "RWRChe8t6JZe3aLPZ2FOomQ6wcUVU66eNGlK38LAYIp7e/zNTs8nioFj",
+        public_key: "RWS6qEwIdsvM7UppXGmoZ+nksGYr+sc6POwW2Tdby1mZhpfiipMAu7ts",
         expires_at: "",
     },
     MinisignKeyEntry {
-        public_key: "RWQwbp8KdkKsEeJXMgx1bxKgvvC/NL4KjxwnEgWretsB1kFtr+TltP10",
-        expires_at: "",
-    },
-    MinisignKeyEntry {
-        public_key: "RWSj3wO8eYxHQ2uFZBa4eiFOUJ6CRoWkmeEs/jnMQ4pkd0a7a5PdtGdZ",
+        public_key: "RWRtqaFpUXIpMym7ZGrOAO/4VuP6vV08QZKODsB/I4Mav/WOgi5VTwPS",
         expires_at: "2027-07-02",
     },
 ];

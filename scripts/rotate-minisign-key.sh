@@ -21,13 +21,15 @@ echo ">>> 新公钥: $NEW_KEY"
 EXPIRES=$(date -d "+1 year" +%Y-%m-%d)
 echo ">>> 过期日期: $EXPIRES"
 
-# 判断密钥是否过期（空=永不过期）
-not_expired() {
+# 判断密钥是否仍应保留（空=永不过期）
+# 运行脚本 = 正在主动轮换，到期或即将到期（≤90天）的密钥都将移除
+keep_key() {
     local expires="$1"
     if [ -z "$expires" ]; then return 0; fi
     local now_epoch=$(date +%s)
     local exp_epoch=$(date -d "$expires" +%s 2>/dev/null || return 0)
-    [ "$exp_epoch" -ge "$now_epoch" ]
+    local keep_before=$((now_epoch + 90 * 86400))
+    [ "$exp_epoch" -ge "$keep_before" ]
 }
 
 # ---------- Go ----------
@@ -51,11 +53,11 @@ printf 'var minisignPublicKeys = []minisignKeyEntry{\n' > "$TEMP_DIR/go_block"
 for ((i = 0; i < ${#GO_KEYS[@]}; i += 2)); do
     KEY="${GO_KEYS[$i]}"
     EXP="${GO_KEYS[$((i+1))]}"
-    if not_expired "$EXP"; then
+    if keep_key "$EXP"; then
         printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$KEY" "$EXP" >> "$TEMP_DIR/go_block"
         GO_KEPT=$((GO_KEPT + 1))
     else
-        echo ">>> 移除过期公钥 (Go): $KEY ($EXP)"
+        echo ">>> 移除旧公钥 (Go): $KEY ($EXP)"
         GO_REMOVED=$((GO_REMOVED + 1))
     fi
 done
@@ -91,11 +93,11 @@ printf 'pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[\n' > "$TEMP_DIR
 for ((i = 0; i < ${#RS_KEYS[@]}; i += 2)); do
     KEY="${RS_KEYS[$i]}"
     EXP="${RS_KEYS[$((i+1))]}"
-    if not_expired "$EXP"; then
+    if keep_key "$EXP"; then
         printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$KEY" "$EXP" >> "$TEMP_DIR/rs_block"
         RS_KEPT=$((RS_KEPT + 1))
     else
-        echo ">>> 移除过期公钥 (Rust): $KEY ($EXP)"
+        echo ">>> 移除旧公钥 (Rust): $KEY ($EXP)"
         RS_REMOVED=$((RS_REMOVED + 1))
     fi
 done

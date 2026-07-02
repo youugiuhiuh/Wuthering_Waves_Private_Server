@@ -30,9 +30,8 @@ func (e *minisignKeyEntry) expired() bool {
 }
 
 var minisignPublicKeys = []minisignKeyEntry{
-	{PublicKey: "RWRChe8t6JZe3aLPZ2FOomQ6wcUVU66eNGlK38LAYIp7e/zNTs8nioFj", ExpiresAt: "2027-07-01"},
-	{PublicKey: "RWQwbp8KdkKsEeJXMgx1bxKgvvC/NL4KjxwnEgWretsB1kFtr+TltP10", ExpiresAt: "2027-07-02"},
-	{PublicKey: "RWSj3wO8eYxHQ2uFZBa4eiFOUJ6CRoWkmeEs/jnMQ4pkd0a7a5PdtGdZ", ExpiresAt: "2027-07-02"},
+	{PublicKey: "RWS6qEwIdsvM7UppXGmoZ+nksGYr+sc6POwW2Tdby1mZhpfiipMAu7ts", ExpiresAt: ""},
+	{PublicKey: "RWRtqaFpUXIpMym7ZGrOAO/4VuP6vV08QZKODsB/I4Mav/WOgi5VTwPS", ExpiresAt: "2027-07-02"},
 }
 
 func verifyMinisign(binaryPath, sigPath string, pubKeys []minisignKeyEntry) (*MinisigInfo, error) {
