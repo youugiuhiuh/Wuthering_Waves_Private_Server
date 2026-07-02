@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 pub struct MinisignKeyEntry {
     pub public_key: &'static str,
@@ -12,6 +12,10 @@ pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[
     },
     MinisignKeyEntry {
         public_key: "RWQwbp8KdkKsEeJXMgx1bxKgvvC/NL4KjxwnEgWretsB1kFtr+TltP10",
+        expires_at: "",
+    },
+    MinisignKeyEntry {
+        public_key: "RWSj3wO8eYxHQ2uFZBa4eiFOUJ6CRoWkmeEs/jnMQ4pkd0a7a5PdtGdZ",
         expires_at: "2027-07-02",
     },
 ];
