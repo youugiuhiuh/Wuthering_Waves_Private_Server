@@ -21,6 +21,15 @@ echo ">>> 新公钥: $NEW_KEY"
 EXPIRES=$(date -d "+1 year" +%Y-%m-%d)
 echo ">>> 过期日期: $EXPIRES"
 
+# 判断密钥是否过期（空=永不过期）
+not_expired() {
+    local expires="$1"
+    if [ -z "$expires" ]; then return 0; fi
+    local now_epoch=$(date +%s)
+    local exp_epoch=$(date -d "$expires" +%s 2>/dev/null || return 0)
+    [ "$exp_epoch" -ge "$now_epoch" ]
+}
+
 # ---------- Go ----------
 mapfile -t GO_KEYS < <(awk '
     /^var minisignPublicKeys/ { printing=1; next }
@@ -37,11 +46,21 @@ mapfile -t GO_KEYS < <(awk '
     }
 ' "$GO_FILE")
 
+GO_KEPT=0 GO_REMOVED=0
 printf 'var minisignPublicKeys = []minisignKeyEntry{\n' > "$TEMP_DIR/go_block"
 for ((i = 0; i < ${#GO_KEYS[@]}; i += 2)); do
-    printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "${GO_KEYS[$i]}" "${GO_KEYS[$((i+1))]}" >> "$TEMP_DIR/go_block"
+    KEY="${GO_KEYS[$i]}"
+    EXP="${GO_KEYS[$((i+1))]}"
+    if not_expired "$EXP"; then
+        printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$KEY" "$EXP" >> "$TEMP_DIR/go_block"
+        GO_KEPT=$((GO_KEPT + 1))
+    else
+        echo ">>> 移除过期公钥 (Go): $KEY ($EXP)"
+        GO_REMOVED=$((GO_REMOVED + 1))
+    fi
 done
 printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$NEW_KEY" "$EXPIRES" >> "$TEMP_DIR/go_block"
+GO_KEPT=$((GO_KEPT + 1))
 printf '}\n' >> "$TEMP_DIR/go_block"
 
 awk -v block="$TEMP_DIR/go_block" '
@@ -67,11 +86,21 @@ mapfile -t RS_KEYS < <(awk '
     }
 ' "$RS_FILE")
 
+RS_KEPT=0 RS_REMOVED=0
 printf 'pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[\n' > "$TEMP_DIR/rs_block"
 for ((i = 0; i < ${#RS_KEYS[@]}; i += 2)); do
-    printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "${RS_KEYS[$i]}" "${RS_KEYS[$((i+1))]}" >> "$TEMP_DIR/rs_block"
+    KEY="${RS_KEYS[$i]}"
+    EXP="${RS_KEYS[$((i+1))]}"
+    if not_expired "$EXP"; then
+        printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$KEY" "$EXP" >> "$TEMP_DIR/rs_block"
+        RS_KEPT=$((RS_KEPT + 1))
+    else
+        echo ">>> 移除过期公钥 (Rust): $KEY ($EXP)"
+        RS_REMOVED=$((RS_REMOVED + 1))
+    fi
 done
 printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$NEW_KEY" "$EXPIRES" >> "$TEMP_DIR/rs_block"
+RS_KEPT=$((RS_KEPT + 1))
 printf '];\n' >> "$TEMP_DIR/rs_block"
 
 awk -v block="$TEMP_DIR/rs_block" '
@@ -83,8 +112,10 @@ rustfmt "$RS_FILE"
 
 echo ""
 echo "============================================"
-echo "✅ 新公钥已追加，过期日期: $EXPIRES"
-echo "   过期后自动失效，无需手动删除"
+echo "✅ 密钥轮换完成"
+echo "   Go:   $GO_KEPT 个有效密钥（移除 $GO_REMOVED 个过期）"
+echo "   Rust: $RS_KEPT 个有效密钥（移除 $RS_REMOVED 个过期）"
+echo "   新密钥过期日期: $EXPIRES"
 echo ""
 echo "将以下私钥添加到 GitHub Secrets（production Environment → MINISIGN_SECRET_KEY）："
 echo "============================================"
