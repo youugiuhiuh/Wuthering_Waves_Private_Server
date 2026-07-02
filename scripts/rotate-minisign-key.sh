@@ -32,7 +32,10 @@ keep_key() {
 
 # ---------- Go ----------
 mapfile -t GO_KEYS < <(awk '
-    /^var minisignPublicKeys/ { printing=1; next }
+    /^var minisignPublicKeys/ {
+        if ($0 ~ /}\s*$/) exit
+        printing=1; next
+    }
     printing && /^\s*}\s*$/ { exit }
     printing && /PublicKey:/ {
         line = $0
@@ -64,7 +67,10 @@ GO_KEPT=$((GO_KEPT + 1))
 printf '}\n' >> "$TEMP_DIR/go_block"
 
 awk -v block="$TEMP_DIR/go_block" '
-    /^var minisignPublicKeys/ { printing=1; next }
+    /^var minisignPublicKeys/ {
+        if ($0 ~ /}\s*$/) { system("cat " block); next }
+        printing=1; next
+    }
     printing && /^\s*}\s*$/ { printing=0; system("cat " block); next }
     !printing { print }
 ' "$GO_FILE" > "$TEMP_DIR/go_new.go" && cp "$TEMP_DIR/go_new.go" "$GO_FILE"
@@ -72,7 +78,10 @@ gofmt -w "$GO_FILE"
 
 # ---------- Rust ----------
 mapfile -t RS_KEYS < <(awk '
-    /^pub const MINISIGN_PUBLIC_KEYS/ { printing=1; next }
+    /^pub const MINISIGN_PUBLIC_KEYS/ {
+        if ($0 ~ /];/) exit
+        printing=1; next
+    }
     printing && /];\s*$/ { exit }
     printing && /public_key:/ {
         line = $0
@@ -104,7 +113,10 @@ RS_KEPT=$((RS_KEPT + 1))
 printf '];\n' >> "$TEMP_DIR/rs_block"
 
 awk -v block="$TEMP_DIR/rs_block" '
-    /^pub const MINISIGN_PUBLIC_KEYS/ { printing=1; next }
+    /^pub const MINISIGN_PUBLIC_KEYS/ {
+        if ($0 ~ /];/) { system("cat " block); next }
+        printing=1; next
+    }
     printing && /];\s*$/ { printing=0; system("cat " block); next }
     !printing { print }
 ' "$RS_FILE" > "$TEMP_DIR/rs_new.rs" && cp "$TEMP_DIR/rs_new.rs" "$RS_FILE"

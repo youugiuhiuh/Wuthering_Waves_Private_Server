@@ -29,7 +29,9 @@ func (e *minisignKeyEntry) expired() bool {
 	return time.Now().After(t)
 }
 
-var minisignPublicKeys = []minisignKeyEntry{}
+var minisignPublicKeys = []minisignKeyEntry{
+	{PublicKey: "RWTZPf3UsUDo9hPmWcOp+0TcwRLWHmOkNCGPw3kXcM3x5awPEzR3Y3Sf", ExpiresAt: "2027-07-02"},
+}
 
 func verifyMinisign(binaryPath, sigPath string, pubKeys []minisignKeyEntry) (*MinisigInfo, error) {
 	binaryData, err := os.ReadFile(binaryPath)
