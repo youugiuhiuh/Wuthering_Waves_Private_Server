@@ -15,22 +15,22 @@ type MinisigInfo struct {
 
 type minisignKeyEntry struct {
 	PublicKey string
-	ExpiresAt string // YYYY-MM-DD, empty = never expires
+	ExpiresAt string // YYYY-MM-DD, empty = expired (key without date is invalid)
 }
 
 func (e *minisignKeyEntry) expired() bool {
 	if e.ExpiresAt == "" {
-		return false
+		return true
 	}
 	t, err := time.Parse("2006-01-02", e.ExpiresAt)
 	if err != nil {
-		return false
+		return true
 	}
 	return time.Now().After(t)
 }
 
 var minisignPublicKeys = []minisignKeyEntry{
-	{PublicKey: "RWS6qEwIdsvM7UppXGmoZ+nksGYr+sc6POwW2Tdby1mZhpfiipMAu7ts", ExpiresAt: ""},
+	{PublicKey: "RWS6qEwIdsvM7UppXGmoZ+nksGYr+sc6POwW2Tdby1mZhpfiipMAu7ts", ExpiresAt: "2027-07-02"},
 	{PublicKey: "RWRtqaFpUXIpMym7ZGrOAO/4VuP6vV08QZKODsB/I4Mav/WOgi5VTwPS", ExpiresAt: "2027-07-02"},
 }
 

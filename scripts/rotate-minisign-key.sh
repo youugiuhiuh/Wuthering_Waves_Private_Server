@@ -21,13 +21,11 @@ echo ">>> 新公钥: $NEW_KEY"
 EXPIRES=$(date -d "+1 year" +%Y-%m-%d)
 echo ">>> 过期日期: $EXPIRES"
 
-# 判断密钥是否仍应保留（空=永不过期）
-# 运行脚本 = 正在主动轮换，到期或即将到期（≤90天）的密钥都将移除
+# 判断密钥是否仍应保留：运行脚本 = 主动轮换，≤90天到期即移除
 keep_key() {
     local expires="$1"
-    if [ -z "$expires" ]; then return 0; fi
     local now_epoch=$(date +%s)
-    local exp_epoch=$(date -d "$expires" +%s 2>/dev/null || return 0)
+    local exp_epoch=$(date -d "$expires" +%s 2>/dev/null || return 1)
     local keep_before=$((now_epoch + 90 * 86400))
     [ "$exp_epoch" -ge "$keep_before" ]
 }

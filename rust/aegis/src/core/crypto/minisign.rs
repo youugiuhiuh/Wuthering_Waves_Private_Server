@@ -1,14 +1,14 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 pub struct MinisignKeyEntry {
     pub public_key: &'static str,
-    pub expires_at: &'static str, // "YYYY-MM-DD" or "" = never expires
+    pub expires_at: &'static str, // "YYYY-MM-DD", empty = expired
 }
 
 pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[
     MinisignKeyEntry {
         public_key: "RWS6qEwIdsvM7UppXGmoZ+nksGYr+sc6POwW2Tdby1mZhpfiipMAu7ts",
-        expires_at: "",
+        expires_at: "2027-07-02",
     },
     MinisignKeyEntry {
         public_key: "RWRtqaFpUXIpMym7ZGrOAO/4VuP6vV08QZKODsB/I4Mav/WOgi5VTwPS",
@@ -22,7 +22,7 @@ pub struct MinisigInfo {
 
 fn key_expired(expires_at: &str) -> bool {
     if expires_at.is_empty() {
-        return false;
+        return true;
     }
     // ISO 8601 dates sort lexicographically
     let now_str = chrono::Utc::now().format("%Y-%m-%d").to_string();
