@@ -5,16 +5,7 @@ pub struct MinisignKeyEntry {
     pub expires_at: &'static str, // "YYYY-MM-DD", empty = expired
 }
 
-pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[
-    MinisignKeyEntry {
-        public_key: "RWS6qEwIdsvM7UppXGmoZ+nksGYr+sc6POwW2Tdby1mZhpfiipMAu7ts",
-        expires_at: "2027-07-02",
-    },
-    MinisignKeyEntry {
-        public_key: "RWRtqaFpUXIpMym7ZGrOAO/4VuP6vV08QZKODsB/I4Mav/WOgi5VTwPS",
-        expires_at: "2027-07-02",
-    },
-];
+pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[];
 
 pub struct MinisigInfo {
     pub trusted_comment: String,
