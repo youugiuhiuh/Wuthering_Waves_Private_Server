@@ -302,6 +302,20 @@ async fn main() -> Result<()> {
     .await?;
 
     let token_manager = TokenManager::new("/etc/wwps/sub-server/tokens.db").ok();
+
+    // Start gRPC subscription server in background if token manager initialized
+    if let Some(ref tm) = token_manager {
+        let grpc_sock = aegis::core::paths::sub_server::GRPC_SOCK.to_string();
+        let tm_clone = tm.clone();
+        tokio::spawn(async move {
+            if let Err(e) =
+                aegis::core::subscription::server::start_grpc_server(&grpc_sock, tm_clone).await
+            {
+                log::error!("Subscription gRPC server error: {}", e);
+            }
+        });
+    }
+
     let state = Arc::new(AppState::new(
         app_config.decrypted.admin_id,
         app_config.totp_manager,
