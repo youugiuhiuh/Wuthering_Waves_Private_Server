@@ -569,7 +569,8 @@ impl ConfigManager {
             "routing": {
                 "domainStrategy": "IPIfNonMatch",
                 "rules": [
-                    {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"}
+                    {"type": "field", "ip": ["geoip:private", "geoip:cn"], "outboundTag": "blocked"},
+                    {"type": "field", "domain": ["geosite:cn", "geosite:private"], "outboundTag": "blocked"}
                 ]
             },
             "outbounds": [
@@ -894,7 +895,8 @@ mod tests {
             "routing": {
                 "domainStrategy": "IPIfNonMatch",
                 "rules": [
-                    {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"}
+                    {"type": "field", "ip": ["geoip:private", "geoip:cn"], "outboundTag": "blocked"},
+                    {"type": "field", "domain": ["geosite:cn", "geosite:private"], "outboundTag": "blocked"}
                 ]
             },
             "outbounds": [
@@ -908,7 +910,7 @@ mod tests {
         assert!(base_config.get("routing").is_some());
         assert!(base_config.get("outbounds").is_some());
         let rules = base_config["routing"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 1);
+        assert_eq!(rules.len(), 2);
     }
 }
 
