@@ -33,6 +33,15 @@ pub fn trigger(executor: Arc<dyn SelfDestructExecutor>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mockall::mock;
+    use std::time::Duration;
+
+    mock! {
+        pub ExecutorMock {}
+        impl SelfDestructExecutor for ExecutorMock {
+            fn execute(&self) -> BoxFuture<'static, Result<()>>;
+        }
+    }
 
     #[test]
     fn test_production_executor_creation() {
@@ -44,5 +53,27 @@ mod tests {
     fn test_executor_trait_available() {
         let executor: Arc<dyn SelfDestructExecutor> = production_executor();
         let _ = executor.clone();
+    }
+
+    #[tokio::test]
+    async fn test_trigger_calls_executor() {
+        let mut mock = MockExecutorMock::new();
+        mock.expect_execute()
+            .times(1)
+            .returning(|| Box::pin(async { Ok(()) }));
+
+        trigger(Arc::new(mock));
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+
+    #[tokio::test]
+    async fn test_trigger_handles_executor_error() {
+        let mut mock = MockExecutorMock::new();
+        mock.expect_execute()
+            .times(1)
+            .returning(|| Box::pin(async { Err(anyhow::anyhow!("test error")) }));
+
+        trigger(Arc::new(mock));
+        tokio::time::sleep(Duration::from_secs(3)).await;
     }
 }
