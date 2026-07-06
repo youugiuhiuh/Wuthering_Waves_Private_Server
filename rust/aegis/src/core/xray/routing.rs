@@ -1,6 +1,10 @@
 use crate::core::paths::xray;
 use anyhow::{Context, Result};
+use once_cell::sync::Lazy;
 use serde_json::{Value, json};
+use tokio::sync::Mutex;
+
+static CONFIG_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 #[derive(Debug, Clone)]
 pub struct RuleDef {
@@ -84,6 +88,7 @@ impl RoutingManager {
     }
 
     async fn write_rules(rules: &[Value]) -> Result<()> {
+        let _lock = CONFIG_LOCK.lock().await;
         let (mut v, base_path) = Self::read_base_json().await?;
         v["routing"]["rules"] = Value::Array(rules.to_vec());
         let new_content = serde_json::to_string_pretty(&v).context("序列化配置失败")?;
