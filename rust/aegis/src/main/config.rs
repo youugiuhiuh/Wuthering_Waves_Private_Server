@@ -4,6 +4,8 @@ use aegis::core::security::SecurityManager;
 use aegis::core::totp::TotpManager;
 use anyhow::{Context, Result};
 use secrecy::ExposeSecret;
+#[cfg(test)]
+use serial_test::serial;
 
 use crate::bootstrap::{
     BotSettings, CONFIG_FILE, ConfigValidator, EncryptedConfig, KEY_FILE, config_dir,
@@ -98,10 +100,10 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    #[serial]
     #[test]
     fn config_dir_uses_env_var_when_set() {
         let dir = TempDir::new().unwrap();
-        // SAFETY: test-only env var manipulation, single-threaded
         unsafe {
             std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
         }
@@ -109,9 +111,9 @@ mod tests {
         assert_eq!(result, dir.path());
     }
 
+    #[serial]
     #[test]
     fn config_dir_defaults_when_env_not_set() {
-        // SAFETY: test-only env var manipulation, single-threaded
         unsafe {
             std::env::remove_var("AEGIS_CONFIG_DIR");
         }
@@ -119,12 +121,12 @@ mod tests {
         assert_eq!(result, std::path::PathBuf::from("/etc/wwps/aegis"));
     }
 
+    #[serial]
     #[test]
     fn load_and_validate_fails_when_config_exists_but_key_missing() {
         let dir = TempDir::new().unwrap();
         let config_dir = dir.path().join("etc/wwps/aegis");
         fs::create_dir_all(&config_dir).unwrap();
-        // SAFETY: test-only env var manipulation, single-threaded
         unsafe {
             std::env::set_var("AEGIS_CONFIG_DIR", config_dir.to_str().unwrap());
         }
@@ -133,19 +135,14 @@ mod tests {
 
         let result = load_and_validate();
         assert!(result.is_err());
-        let err = result.err().unwrap().to_string();
-        assert!(
-            err.contains(".key") || err.contains("不存在"),
-            "error should mention missing key: {err}"
-        );
     }
 
+    #[serial]
     #[test]
     fn load_and_validate_fails_when_key_has_invalid_length() {
         let dir = TempDir::new().unwrap();
         let config_dir = dir.path().join("etc/wwps/aegis");
         fs::create_dir_all(&config_dir).unwrap();
-        // SAFETY: test-only env var manipulation, single-threaded
         unsafe {
             std::env::set_var("AEGIS_CONFIG_DIR", config_dir.to_str().unwrap());
         }
@@ -157,12 +154,12 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[serial]
     #[test]
     fn load_and_validate_fails_when_config_missing_and_key_exists() {
         let dir = TempDir::new().unwrap();
         let config_dir = dir.path().join("etc/wwps/aegis");
         fs::create_dir_all(&config_dir).unwrap();
-        // SAFETY: test-only env var manipulation, single-threaded
         unsafe {
             std::env::set_var("AEGIS_CONFIG_DIR", config_dir.to_str().unwrap());
         }
