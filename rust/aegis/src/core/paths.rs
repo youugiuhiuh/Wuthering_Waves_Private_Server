@@ -62,6 +62,18 @@ pub mod warp {
     pub const ROUTING_FILE: &str = "/etc/wwps/wwps-core/conf/10_warp_routing.json";
 }
 
+/// Subscription server paths
+pub mod sub_server {
+    pub const BIN: &str = "/usr/local/bin/sub-server";
+    pub const DIR: &str = "/etc/wwps/sub-server";
+    pub const CERTS_DIR: &str = "/etc/wwps/sub-server/certs";
+    pub const TLS_CERT: &str = "/etc/wwps/sub-server/certs/fullchain.pem";
+    pub const TLS_KEY: &str = "/etc/wwps/sub-server/certs/privkey.pem";
+    pub const GRPC_SOCK: &str = "/var/run/aegis/sub.sock";
+    pub const SERVICE: &str = "wwps-sub-server";
+    pub const CONFIG_FILE: &str = "/etc/wwps/sub-server/config.json";
+}
+
 /// 日志目录
 pub mod log {
     pub const DIR: &str = "/var/log";
@@ -161,5 +173,13 @@ mod tests {
     #[test]
     fn test_log_paths() {
         assert_eq!(log::DIR, "/var/log");
+    }
+
+    #[test]
+    fn test_sub_server_paths() {
+        assert_eq!(sub_server::BIN, "/usr/local/bin/sub-server");
+        assert_eq!(sub_server::GRPC_SOCK, "/var/run/aegis/sub.sock");
+        assert_eq!(sub_server::SERVICE, "wwps-sub-server");
+        assert_eq!(sub_server::TLS_CERT, "/etc/wwps/sub-server/certs/fullchain.pem");
     }
 }
