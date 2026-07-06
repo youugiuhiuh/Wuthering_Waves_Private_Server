@@ -125,6 +125,7 @@ impl AppState {
         self.totp_manager.verify(code)
     }
 
+    #[expect(dead_code, reason = "used by destruct_flow tests in bin crate")]
     pub fn generate_current_totp(&self) -> Result<String, std::time::SystemTimeError> {
         self.totp_manager.generate_current()
     }

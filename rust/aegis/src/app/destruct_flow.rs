@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rust_i18n::t;
-use sha2::{Digest, Sha256};
+use sha2::Digest;
 use teloxide::net::Download;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
