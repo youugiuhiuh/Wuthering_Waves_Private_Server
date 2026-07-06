@@ -135,6 +135,11 @@ mod tests {
 
         let result = load_and_validate();
         assert!(result.is_err());
+        let err = result.err().unwrap().to_string();
+        assert!(
+            err.contains(".key") || err.contains("不存在") || err.contains("Config file miss"),
+            "error should mention missing key or config: {err}"
+        );
     }
 
     #[serial]
@@ -152,6 +157,11 @@ mod tests {
 
         let result = load_and_validate();
         assert!(result.is_err());
+        let err = format!("{:?}", result.err().unwrap());
+        assert!(
+            err.contains("Invalid key length") || err.contains(".key"),
+            "error should mention invalid key length or .key: {err}"
+        );
     }
 
     #[serial]
@@ -168,5 +178,10 @@ mod tests {
 
         let result = load_and_validate();
         assert!(result.is_err());
+        let err = format!("{}", result.err().unwrap());
+        assert!(
+            err.contains("Config file miss") || err.contains("配置文件"),
+            "error should mention missing config file: {err}"
+        );
     }
 }

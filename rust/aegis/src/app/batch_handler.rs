@@ -117,7 +117,6 @@ mod tests {
         send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result)
             .await
             .unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
     #[tokio::test]
@@ -132,7 +131,6 @@ mod tests {
         send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result)
             .await
             .unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
     #[tokio::test]
@@ -146,7 +144,6 @@ mod tests {
         let result = make_result(5, vec!["vless://x"], Some("/tmp/x.json"));
         let output = send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result).await;
         assert!(output.is_ok());
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
     #[tokio::test]
@@ -164,6 +161,5 @@ mod tests {
         send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result)
             .await
             .unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 }
