@@ -401,8 +401,6 @@ xray:
   routing_toggled_on: "✅ 已开启 %{name}"
   routing_toggled_off: "❌ 已关闭 %{name}"
   routing_reload_failed: "❌ Xray 重载失败"
-  routing_enable_btn: "🔴 禁用"
-  routing_disable_btn: "🟢 启用"
   routing_rule_private_ip: "私有IP封锁"
   routing_rule_cn_ip: "中国IP封锁"
   routing_rule_cn_domain: "中国域名封锁"

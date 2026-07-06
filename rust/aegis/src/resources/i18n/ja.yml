@@ -390,8 +390,6 @@ xray:
   routing_toggled_on: "✅ %{name} を有効化"
   routing_toggled_off: "❌ %{name} を無効化"
   routing_reload_failed: "❌ Xray の再読み込みに失敗"
-  routing_enable_btn: "🔴 無効化"
-  routing_disable_btn: "🟢 有効化"
   routing_rule_private_ip: "プライベートIPをブロック"
   routing_rule_cn_ip: "中国IPをブロック"
   routing_rule_cn_domain: "中国ドメインをブロック"

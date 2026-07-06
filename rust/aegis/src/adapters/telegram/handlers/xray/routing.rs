@@ -21,13 +21,9 @@ pub(super) async fn handle_routing_menu(ctx: &CallbackContext) -> HandlerResult 
         .map(|(def, enabled)| {
             let i18n_key = format!("xray.routing_rule_{}", def.id);
             let name = t!(i18n_key.as_str());
-            let (icon, btn) = if *enabled {
-                ("✅", t!("xray.routing_enable_btn"))
-            } else {
-                ("⬜", t!("xray.routing_disable_btn"))
-            };
+            let icon = if *enabled { "✅" } else { "⬜" };
             vec![InlineKeyboardButton::callback(
-                format!("{} {} [{}]", icon, name, btn),
+                format!("{} {}", icon, name),
                 format!("routing_toggle:{}", def.id),
             )]
         })

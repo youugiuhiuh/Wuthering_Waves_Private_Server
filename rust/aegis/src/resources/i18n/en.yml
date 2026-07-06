@@ -390,8 +390,6 @@ xray:
   routing_toggled_on: "✅ %{name} enabled"
   routing_toggled_off: "❌ %{name} disabled"
   routing_reload_failed: "❌ Xray reload failed"
-  routing_enable_btn: "🔴 Disable"
-  routing_disable_btn: "🟢 Enable"
   routing_rule_private_ip: "Block Private IP"
   routing_rule_cn_ip: "Block China IP"
   routing_rule_cn_domain: "Block China Domain"
