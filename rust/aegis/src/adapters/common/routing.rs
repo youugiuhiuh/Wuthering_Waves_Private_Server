@@ -123,4 +123,83 @@ mod tests {
     fn is_sensitive_detects_hysteria2() {
         assert!(is_sensitive("hysteria2://abc123"));
     }
+
+    mod routing_tests {
+        use super::*;
+        use crate::adapters::common::MockBotAdapter;
+
+        #[tokio::test]
+        async fn sends_sensitive_to_secondary() {
+            let mut primary = MockBotAdapter::new();
+            primary.expect_platform().returning(|| Platform::Telegram);
+            primary.expect_send_message().never();
+
+            let mut secondary = MockBotAdapter::new();
+            secondary.expect_platform().returning(|| Platform::Matrix);
+            secondary
+                .expect_send_message()
+                .times(1)
+                .returning(|_, _| Ok(MessageId("1".to_string())));
+
+            let routing = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)));
+            routing
+                .send_message(
+                    &TargetId("1".to_string()),
+                    MessageContent {
+                        text: "vless://abc123".into(),
+                        markup: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn sends_normal_to_primary() {
+            let mut primary = MockBotAdapter::new();
+            primary.expect_platform().returning(|| Platform::Telegram);
+            primary
+                .expect_send_message()
+                .times(1)
+                .returning(|_, _| Ok(MessageId("1".to_string())));
+
+            let mut secondary = MockBotAdapter::new();
+            secondary.expect_platform().returning(|| Platform::Matrix);
+            secondary.expect_send_message().never();
+
+            let routing = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)));
+            routing
+                .send_message(
+                    &TargetId("1".to_string()),
+                    MessageContent {
+                        text: "normal system message".into(),
+                        markup: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn sends_all_to_primary_when_no_secondary() {
+            let mut primary = MockBotAdapter::new();
+            primary.expect_platform().returning(|| Platform::Telegram);
+            primary
+                .expect_send_message()
+                .times(1)
+                .returning(|_, _| Ok(MessageId("1".to_string())));
+
+            let routing = RoutingAdapter::new(Arc::new(primary), None);
+            routing
+                .send_message(
+                    &TargetId("1".to_string()),
+                    MessageContent {
+                        text: "vless://any-content".into(),
+                        markup: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+    }
 }
