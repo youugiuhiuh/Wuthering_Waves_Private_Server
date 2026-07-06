@@ -93,7 +93,7 @@ impl RoutingManager {
         crate::core::system::maintenance::MaintenanceManager::reload_core().await
     }
 
-    fn rule_def_to_json(rule: &RuleDef) -> Value {
+    pub(crate) fn rule_def_to_json(rule: &RuleDef) -> Value {
         let mut obj = json!({"type": "field", "ruleTag": rule.id, "outboundTag": rule.outbound});
         match rule.rule_type {
             "ip" => {
