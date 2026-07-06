@@ -120,7 +120,7 @@ impl RoutingManager {
                         .collect(),
                 );
             }
-            _ => {}
+            _ => unreachable!("unknown rule_type: {}", rule.rule_type),
         }
         obj
     }
