@@ -126,3 +126,82 @@ pub async fn connect_matrix(
     let matrix_adapter: Arc<dyn BotAdapter> = Arc::new(MatrixAdapter::new(room.clone()));
     Ok((client, room, matrix_adapter))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bootstrap::EncryptedConfig;
+
+    fn empty_config() -> EncryptedConfig {
+        EncryptedConfig {
+            token: vec![],
+            admin_id: vec![],
+            totp_secret: vec![],
+            self_destruct_key_hash: None,
+            matrix_homeserver: None,
+            matrix_username: None,
+            matrix_password: None,
+            matrix_room_id: None,
+            matrix_store_passphrase: None,
+            lang: None,
+        }
+    }
+
+    #[test]
+    fn returns_true_when_all_matrix_fields_present() {
+        let config = EncryptedConfig {
+            token: vec![],
+            admin_id: vec![],
+            totp_secret: vec![],
+            self_destruct_key_hash: None,
+            matrix_homeserver: Some(vec![1]),
+            matrix_username: Some(vec![1]),
+            matrix_password: Some(vec![1]),
+            matrix_room_id: Some(vec![1]),
+            matrix_store_passphrase: None,
+            lang: None,
+        };
+        assert!(has_matrix_config(&config, &[]));
+    }
+
+    #[test]
+    fn returns_false_when_matrix_fields_missing() {
+        let config = empty_config();
+        assert!(!has_matrix_config(&config, &[]));
+    }
+
+    #[test]
+    fn returns_true_when_flag_overrides_empty_fields() {
+        let config = empty_config();
+        assert!(has_matrix_config(&config, &["--matrix".to_string()]));
+    }
+
+    #[test]
+    fn returns_true_when_all_flag_overrides_empty_fields() {
+        let config = empty_config();
+        assert!(has_matrix_config(&config, &["--all".to_string()]));
+    }
+
+    #[test]
+    fn returns_false_when_some_fields_missing() {
+        let config = EncryptedConfig {
+            token: vec![],
+            admin_id: vec![],
+            totp_secret: vec![],
+            self_destruct_key_hash: None,
+            matrix_homeserver: Some(vec![1]),
+            matrix_username: Some(vec![1]),
+            matrix_password: None,
+            matrix_room_id: None,
+            matrix_store_passphrase: None,
+            lang: None,
+        };
+        assert!(!has_matrix_config(&config, &[]));
+    }
+
+    #[test]
+    fn ignores_non_matrix_flags() {
+        let config = empty_config();
+        assert!(!has_matrix_config(&config, &["--tg-only".to_string()]));
+    }
+}

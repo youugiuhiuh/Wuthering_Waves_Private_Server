@@ -85,3 +85,81 @@ pub async fn send_singbox_batch_result(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aegis::adapters::common::MockBotAdapter;
+    use aegis::core::types::BatchCreationResult;
+
+    fn make_result(
+        created_count: usize,
+        links: Vec<&str>,
+        config_file: Option<&str>,
+    ) -> BatchCreationResult {
+        BatchCreationResult {
+            created_count,
+            links: links.into_iter().map(String::from).collect(),
+            config_file: config_file.map(String::from),
+            backup_file: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn sends_header_links_and_result_messages() {
+        let mut mock = MockBotAdapter::new();
+        mock.expect_send_message()
+            .times(3)
+            .returning(|_, _| Ok(MessageId("1".to_string())));
+        mock.expect_delete_message().returning(|_, _| Ok(()));
+
+        let result = make_result(2, vec!["vless://a", "vless://b"], Some("/tmp/cfg.json"));
+        send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn skips_links_when_empty() {
+        let mut mock = MockBotAdapter::new();
+        mock.expect_send_message()
+            .times(2) // header + result (no links)
+            .returning(|_, _| Ok(MessageId("1".to_string())));
+        mock.expect_delete_message().returning(|_, _| Ok(()));
+
+        let result = make_result(0, vec![], None);
+        send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn handles_adapter_send_failure_gracefully() {
+        let mut mock = MockBotAdapter::new();
+        mock.expect_send_message()
+            .times(3)
+            .returning(|_, _| Err(anyhow::anyhow!("network error")));
+        mock.expect_delete_message().returning(|_, _| Ok(()));
+
+        let result = make_result(5, vec!["vless://x"], Some("/tmp/x.json"));
+        let output = send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result).await;
+        assert!(output.is_ok());
+    }
+
+    #[tokio::test]
+    async fn includes_protocol_name_in_header() {
+        let mut mock = MockBotAdapter::new();
+        mock.expect_send_message()
+            .withf(|_, content| content.text.contains("hy2"))
+            .times(1)
+            .returning(|_, _| Ok(MessageId("1".to_string())));
+        mock.expect_send_message()
+            .returning(|_, _| Ok(MessageId("2".to_string())));
+        mock.expect_delete_message().returning(|_, _| Ok(()));
+
+        let result = make_result(1, vec!["vless://x"], Some("/tmp/x.json"));
+        send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result)
+            .await
+            .unwrap();
+    }
+}

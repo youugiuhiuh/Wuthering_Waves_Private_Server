@@ -30,6 +30,10 @@ impl TotpManager {
         self.totp.check_current(token).unwrap_or(false)
     }
 
+    pub fn generate_current(&self) -> Result<String, std::time::SystemTimeError> {
+        self.totp.generate_current()
+    }
+
     pub fn generate_new_secret() -> String {
         Secret::generate_secret().to_encoded().to_string()
     }

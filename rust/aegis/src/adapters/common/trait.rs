@@ -31,6 +31,7 @@ pub enum Platform {
     Matrix,
 }
 
+#[mockall::automock]
 #[async_trait]
 pub trait BotAdapter: Send + Sync {
     fn platform(&self) -> Platform;
