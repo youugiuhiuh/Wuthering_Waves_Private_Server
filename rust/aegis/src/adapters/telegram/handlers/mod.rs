@@ -49,6 +49,8 @@ pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
     }
 
     if data == "m_xray_mgmt"
+        || data == "m_routing"
+        || data.starts_with("routing_toggle:")
         || data == "m_del_cfg"
         || data == "m_pq_mgmt"
         || data == "a_inst_base"

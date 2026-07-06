@@ -9,6 +9,7 @@ use tokio::fs;
 use crate::core::cmd_async::run_cmd_output;
 use crate::core::paths::xray;
 use crate::core::types::{BatchCreationResult, IpVersion};
+use crate::core::xray::routing::{ROUTING_RULES, RoutingManager};
 
 use super::reality::{REALITY_PQ_SEED, REALITY_PQ_VERIFY, reality_pq_verify_as_base64url};
 
@@ -560,6 +561,12 @@ impl ConfigManager {
             .await
             .context("创建配置目录失败")?;
 
+        let default_rules: Vec<Value> = ROUTING_RULES
+            .iter()
+            .filter(|r| r.default_enabled)
+            .map(RoutingManager::rule_def_to_json)
+            .collect();
+
         let base_config = serde_json::json!({
             "log": {"loglevel": "warning"},
             "dns": {
@@ -568,10 +575,7 @@ impl ConfigManager {
             },
             "routing": {
                 "domainStrategy": "IPIfNonMatch",
-                "rules": [
-                    {"type": "field", "ip": ["geoip:private", "geoip:cn"], "outboundTag": "blocked"},
-                    {"type": "field", "domain": ["geosite:cn", "geosite:private"], "outboundTag": "blocked"}
-                ]
+                "rules": default_rules
             },
             "outbounds": [
                 {"protocol": "freedom", "settings": {}, "tag": "direct"},
@@ -886,6 +890,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_ensure_base_config_structure() {
+        let default_rules: Vec<Value> = ROUTING_RULES
+            .iter()
+            .filter(|r| r.default_enabled)
+            .map(RoutingManager::rule_def_to_json)
+            .collect();
+
         let base_config = serde_json::json!({
             "log": {"loglevel": "warning"},
             "dns": {
@@ -894,10 +904,7 @@ mod tests {
             },
             "routing": {
                 "domainStrategy": "IPIfNonMatch",
-                "rules": [
-                    {"type": "field", "ip": ["geoip:private", "geoip:cn"], "outboundTag": "blocked"},
-                    {"type": "field", "domain": ["geosite:cn", "geosite:private"], "outboundTag": "blocked"}
-                ]
+                "rules": default_rules
             },
             "outbounds": [
                 {"protocol": "freedom", "settings": {}, "tag": "direct"},
@@ -910,7 +917,8 @@ mod tests {
         assert!(base_config.get("routing").is_some());
         assert!(base_config.get("outbounds").is_some());
         let rules = base_config["routing"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 2);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["ruleTag"], "private_ip");
     }
 }
 

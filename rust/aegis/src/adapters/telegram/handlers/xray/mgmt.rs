@@ -19,6 +19,10 @@ pub(super) async fn handle_mgmt(ctx: &CallbackContext) -> HandlerResult {
             t!("xray.pq_mgmt"),
             "m_pq_mgmt",
         )]);
+        buttons.push(vec![InlineKeyboardButton::callback(
+            t!("xray.routing_mgmt_btn"),
+            "m_routing",
+        )]);
         ctx.bot
             .edit_message_text(ctx.chat_id, ctx.msg_id, t!("xray.mgmt_no_cfg"))
             .parse_mode(ParseMode::Html)
@@ -43,6 +47,7 @@ pub(super) async fn handle_mgmt(ctx: &CallbackContext) -> HandlerResult {
         buttons.push(vec![
             InlineKeyboardButton::callback(t!("xray.batch_kcp"), "u_kcp_init"),
             InlineKeyboardButton::callback(t!("xray.pq_mgmt"), "m_pq_mgmt"),
+            InlineKeyboardButton::callback(t!("xray.routing_mgmt_btn"), "m_routing"),
         ]);
         buttons.push(vec![InlineKeyboardButton::callback(
             t!("menu.back_user"),

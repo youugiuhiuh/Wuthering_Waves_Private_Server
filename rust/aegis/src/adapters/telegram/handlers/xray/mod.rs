@@ -14,6 +14,7 @@ mod delete;
 mod delete_count;
 mod delete_select;
 mod mgmt;
+mod routing;
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     let data = ctx.data.as_str();
@@ -68,6 +69,9 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         d if d.starts_with("u_l:") => batch::handle_user_list(ctx, d).await,
         d if d.starts_with("u_d:") => batch::handle_user_del(ctx, d).await,
         d if d.starts_with("u_d_confirm:") => batch::handle_user_del_confirm(ctx, d).await,
+
+        "m_routing" => routing::handle_routing_menu(ctx).await,
+        d if d.starts_with("routing_toggle:") => routing::handle_routing_toggle(ctx, d).await,
 
         _ => Ok(HandlerAction::Done),
     }
