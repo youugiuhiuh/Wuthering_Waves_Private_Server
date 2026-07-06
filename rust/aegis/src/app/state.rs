@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 use aegis::adapters::common::BotAdapter;
 use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
+use aegis::core::subscription::token::TokenManager;
 use aegis::core::system::scheduler::task_types::TaskType;
 use aegis::core::totp::TotpManager;
 
@@ -69,9 +70,32 @@ pub struct ScheduleInputState {
     pub return_to: String,
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SubSetupStep {
+    ChooseDomain,
+    EnterDomain,
+    EnterPort,
+    EnterRateLimit,
+    ChooseTls,
+    Confirm,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct SubSetupState {
+    pub step: SubSetupStep,
+    pub has_domain: bool,
+    pub domain: String,
+    pub port: u16,
+    pub rate_limit: u32,
+    pub tls_mode: u8,
+}
+
 pub struct AppState {
     #[allow(dead_code)]
     pub adapter: Arc<dyn BotAdapter>,
+    pub token_manager: Option<TokenManager>,
     admin_id: i64,
     totp_manager: TotpManager,
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
@@ -81,6 +105,8 @@ pub struct AppState {
     self_destruct_key_hash: Mutex<Option<String>>,
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
+    #[allow(dead_code)]
+    pending_sub_setup: Mutex<HashMap<String, SubSetupState>>,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
     lang_configured: Mutex<bool>,
@@ -94,9 +120,11 @@ impl AppState {
         self_destruct_key_hash: Option<String>,
         session_timeout_secs: u64,
         adapter: Arc<dyn BotAdapter>,
+        token_manager: Option<TokenManager>,
     ) -> Self {
         Self {
             adapter,
+            token_manager,
             admin_id,
             totp_manager,
             self_destruct_executor,
@@ -106,6 +134,7 @@ impl AppState {
             self_destruct_key_hash: Mutex::new(self_destruct_key_hash),
             pending_warp_inputs: Mutex::new(HashMap::new()),
             pending_schedule_inputs: Mutex::new(HashMap::new()),
+            pending_sub_setup: Mutex::new(HashMap::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
             lang: Mutex::new(Lang::Zh),
             lang_configured: Mutex::new(false),
@@ -440,6 +469,25 @@ impl AppState {
         let mut inputs = self.pending_schedule_inputs.lock().await;
         inputs.get_mut(chat_id).map(f)
     }
+
+    pub fn token_manager(&self) -> Option<&TokenManager> {
+        self.token_manager.as_ref()
+    }
+
+    #[allow(dead_code)]
+    pub async fn insert_sub_setup(&self, chat_id: String, state: SubSetupState) {
+        self.pending_sub_setup.lock().await.insert(chat_id, state);
+    }
+
+    #[allow(dead_code)]
+    pub async fn sub_setup_snapshot(&self, chat_id: &str) -> Option<SubSetupState> {
+        self.pending_sub_setup.lock().await.get(chat_id).cloned()
+    }
+
+    #[allow(dead_code)]
+    pub async fn remove_sub_setup(&self, chat_id: &str) {
+        self.pending_sub_setup.lock().await.remove(chat_id);
+    }
 }
 
 fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
@@ -500,6 +548,7 @@ mod tests {
             None,
             600,
             Arc::new(MockAdapter),
+            None,
         )
     }
 

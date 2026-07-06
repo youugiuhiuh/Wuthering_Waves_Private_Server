@@ -30,6 +30,10 @@ pub async fn send_main_menu(bot: Bot, chat_id: ChatId) -> ResponseResult<()> {
         t!("menu.one_click_deploy"),
         "a_one_click",
     )]);
+    rows.push(vec![InlineKeyboardButton::callback(
+        t!("menu.sub_service"),
+        "m_sub",
+    )]);
     if !aegis::core::i18n::is_lang_configured() {
         rows.push(vec![
             InlineKeyboardButton::callback(t!("lang.zh"), "lang:zh"),
@@ -65,6 +69,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             kb_rows.push(vec![InlineKeyboardButton::callback(
                 t!("menu.one_click_deploy"),
                 "a_one_click",
+            )]);
+            kb_rows.push(vec![InlineKeyboardButton::callback(
+                t!("menu.sub_service"),
+                "m_sub",
             )]);
             let keyboard = InlineKeyboardMarkup::new(kb_rows);
             ctx.bot

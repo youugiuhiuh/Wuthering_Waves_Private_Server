@@ -25,6 +25,7 @@ use aegis::core::i18n;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::SecurityManager;
 use aegis::core::security::self_destruct::production_executor;
+use aegis::core::subscription::token::TokenManager;
 use aegis::core::system::SystemMonitor;
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::upgrade::UPGRADE_FLAG_FILE;
@@ -300,6 +301,7 @@ async fn main() -> Result<()> {
     )
     .await?;
 
+    let token_manager = TokenManager::new("/etc/wwps/sub-server/tokens.db").ok();
     let state = Arc::new(AppState::new(
         app_config.decrypted.admin_id,
         app_config.totp_manager,
@@ -311,6 +313,7 @@ async fn main() -> Result<()> {
             .clone(),
         app_config.bot_settings.session_timeout_secs,
         adapter,
+        token_manager,
     ));
 
     main::runtime::run(
