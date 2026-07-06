@@ -67,23 +67,24 @@ pub struct RoutingManager;
 
 impl RoutingManager {
     async fn read_rules() -> Result<Vec<Value>> {
-        let base_path = format!("{}/00_base.json", xray::CONF_DIR);
-        let content = tokio::fs::read_to_string(&base_path)
-            .await
-            .context("读取 00_base.json 失败")?;
-        let v: Value = serde_json::from_str(&content).context("解析 00_base.json 失败")?;
+        let (v, _) = Self::read_base_json().await?;
         Ok(v["routing"]["rules"]
             .as_array()
             .cloned()
             .unwrap_or_default())
     }
 
-    async fn write_rules(rules: &[Value]) -> Result<()> {
+    async fn read_base_json() -> Result<(Value, String)> {
         let base_path = format!("{}/00_base.json", xray::CONF_DIR);
         let content = tokio::fs::read_to_string(&base_path)
             .await
             .context("读取 00_base.json 失败")?;
-        let mut v: Value = serde_json::from_str(&content).context("解析 00_base.json 失败")?;
+        let v: Value = serde_json::from_str(&content).context("解析 00_base.json 失败")?;
+        Ok((v, base_path))
+    }
+
+    async fn write_rules(rules: &[Value]) -> Result<()> {
+        let (mut v, base_path) = Self::read_base_json().await?;
         v["routing"]["rules"] = Value::Array(rules.to_vec());
         let new_content = serde_json::to_string_pretty(&v).context("序列化配置失败")?;
         tokio::fs::write(&base_path, new_content)
@@ -93,18 +94,35 @@ impl RoutingManager {
     }
 
     fn rule_def_to_json(rule: &RuleDef) -> Value {
+        let mut obj = json!({"type": "field", "ruleTag": rule.id, "outboundTag": rule.outbound});
         match rule.rule_type {
             "ip" => {
-                json!({"type": "field", "ruleTag": rule.id, "ip": rule.targets, "outboundTag": rule.outbound})
+                obj["ip"] = Value::Array(
+                    rule.targets
+                        .iter()
+                        .map(|s| Value::String(s.to_string()))
+                        .collect(),
+                );
             }
             "domain" => {
-                json!({"type": "field", "ruleTag": rule.id, "domain": rule.targets, "outboundTag": rule.outbound})
+                obj["domain"] = Value::Array(
+                    rule.targets
+                        .iter()
+                        .map(|s| Value::String(s.to_string()))
+                        .collect(),
+                );
             }
             "protocol" => {
-                json!({"type": "field", "ruleTag": rule.id, "protocol": rule.targets, "outboundTag": rule.outbound})
+                obj["protocol"] = Value::Array(
+                    rule.targets
+                        .iter()
+                        .map(|s| Value::String(s.to_string()))
+                        .collect(),
+                );
             }
-            _ => unreachable!(),
+            _ => {}
         }
+        obj
     }
 
     pub async fn get_all_with_status() -> Result<Vec<(&'static RuleDef, bool)>> {
@@ -150,19 +168,19 @@ impl RoutingManager {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_rule_def_constants_count() {
+    #[test]
+    fn test_rule_def_constants_count() {
         assert_eq!(ROUTING_RULES.len(), 7);
     }
 
-    #[tokio::test]
-    async fn test_rule_def_has_private_ip_default() {
+    #[test]
+    fn test_rule_def_has_private_ip_default() {
         let private = ROUTING_RULES.iter().find(|r| r.id == "private_ip").unwrap();
         assert!(private.default_enabled);
     }
 
-    #[tokio::test]
-    async fn test_rule_def_to_json_ip() {
+    #[test]
+    fn test_rule_def_to_json_ip() {
         let rule = RuleDef {
             id: "test",
             rule_type: "ip",
@@ -177,8 +195,8 @@ mod tests {
         assert_eq!(json["outboundTag"], "blocked");
     }
 
-    #[tokio::test]
-    async fn test_rule_def_to_json_domain() {
+    #[test]
+    fn test_rule_def_to_json_domain() {
         let rule = RuleDef {
             id: "test_d",
             rule_type: "domain",
@@ -191,8 +209,8 @@ mod tests {
         assert_eq!(json["outboundTag"], "direct");
     }
 
-    #[tokio::test]
-    async fn test_rule_def_to_json_protocol() {
+    #[test]
+    fn test_rule_def_to_json_protocol() {
         let rule = RuleDef {
             id: "test_p",
             rule_type: "protocol",
