@@ -1,4 +1,13 @@
 menu:
+  sub_service: "📡 Subscription Service"
+  sub_setup: "🚀 Setup Subscription Server"
+  sub_status: "📊 Subscription Status"
+  sub_info: "ℹ️ Subscription Info"
+  sub_not_installed: "⚠️ <b>Subscription Server Not Installed</b>\n\nYou can deploy it now. Required for auto-updating client configs via URL."
+  sub_installed: "✅ <b>Subscription Server Status</b>\n\nService: <b>%{0}</b>\nPort: <b>%{1}</b>\nTLS: <b>%{2}</b>"
+  sub_create: "➕ Create Token"
+  sub_list: "📋 List Tokens"
+  sub_revoke: "🗑 Revoke Token"
   title: "🏠 <b>Main Menu</b>"
   prompt: "Select a category:"
   monitor: "📊 System Status"
@@ -529,6 +538,62 @@ upgrade:
   bot_sha256_mismatch: "SHA256 mismatch, expected: %{0}, actual: %{1}"
   bot_minisign_verifying: "🔐 Verifying Minisign signature..."
   bot_minisign_ok: "✅ Minisign signature verified"
+
+sub:
+  setup_welcome: "📡 <b>Subscription Server Setup</b>\n\nThis will install and configure the subscription server.\nClients can auto-update via subscription URL."
+  setup_q_domain: "Do you have a domain name?"
+  setup_q_domain_yes: "✅ Yes, I have a domain"
+  setup_q_domain_no: "❌ No, IP only"
+  setup_q_domain_input: "✏️ Enter your domain name (e.g. <code>sub.example.com</code>):"
+  setup_q_port: "Enter listening port (default: <b>8443</b>):"
+  setup_q_rate: "Rate limit per token (requests/min, default: <b>10</b>):"
+  setup_q_cert: "Select TLS certificate method:"
+  setup_cert_le: "🔒 Let's Encrypt (Domain) — 90 days, auto-renew, needs port 80"
+  setup_cert_ip: "🔒 Let's Encrypt (IP) — 6 days, auto-renew, needs port 80"
+  setup_cert_self: "⚠️ Self-Signed — 365 days, no port 80 needed, client must allow insecure"
+  setup_confirm_title: "📡 <b>Confirm Deployment</b>\n\nDomain: <b>%{0}</b>\nPort: <b>%{1}</b>\nRate Limit: <b>%{2}/min</b>\nTLS: <b>%{3}</b>\n\nStart installation?"
+  setup_confirm_btn: "✅ Confirm & Install"
+  setup_cancel: "❌ Cancel"
+  setup_cancelled: "✅ Setup cancelled"
+  setup_step_download: "⬇️ Downloading sub-server binary..."
+  setup_step_verify: "🔐 Verifying minisign signature..."
+  setup_step_verify_ok: "✅ Minisign signature verified"
+  setup_step_cert: "🔒 Obtaining TLS certificate..."
+  setup_step_deploy: "📦 Deploying binary and systemd service..."
+  setup_step_firewall: "🛡️ Opening firewall port..."
+  setup_step_start: "🚀 Starting subscription server..."
+  setup_step_token: "🔑 Creating default subscription token..."
+  setup_success: "✅ <b>Subscription Server Installed!</b>\n\n📡 URL: <code>https://%{0}:%{1}/sub/%{2}</code>\n🌐 Info Page: <code>https://%{0}:%{1}/sub/%{2}?info</code>\n➖️ Manage: <code>/sub list</code>\n🪵 Logs: <code>journalctl -u wwps-sub-server -f</code>"
+  setup_fail: "❌ <b>Setup Failed</b>\nReason: %{0}"
+  setup_fail_download: "Download failed: %{0}"
+  setup_fail_verify: "Signature verification failed: %{0}"
+  setup_fail_cert: "Certificate setup failed: %{0}"
+  setup_fail_deploy: "Deployment failed: %{0}"
+  setup_port_invalid: "❌ Invalid port. Must be 1024-65535."
+  setup_rate_invalid: "❌ Invalid rate limit. Must be 1-100."
+  setup_input_timeout: "⏳ Input timed out. Cancelled."
+  token_created: "✅ <b>Token Created</b>\n\nToken: <code>%{0}</code>\nURL: <code>https://.../sub/%{0}</code>\nConfigs: All available\n\nUse <code>/sub info %{0}</code> for details."
+  token_list_title: "📋 <b>Subscription Tokens</b>\n\n%{0}"
+  token_list_empty: "<i>No tokens yet. Create one with /sub create</i>"
+  token_entry: "• <code>%{0}****</code> %{1}%{2}\n  URL: <code>https://.../sub/%{0}...</code>"
+  token_status_active: "🟢 Active"
+  token_status_expired: "🔴 Expired"
+  token_status_revoked: "⛔ Revoked"
+  token_revoked: "✅ Token <code>%{0}****</code> revoked"
+  token_revoke_fail: "❌ Revoke failed: %{0}"
+  token_info_title: "ℹ️ <b>Token Info</b>\n\nToken: <code>%{0}****</code>\nStatus: %{1}\nCreated: %{2}\nExpires: %{3}\nConfigs: %{4}\n\n📡 <code>%{5}</code>"
+  token_not_found: "❌ Token not found"
+  risk_self_signed: |
+    ⚠️ <b>High Risk: Self-Signed Certificate</b>
+
+    You are using a self-signed certificate. Most clients cannot verify it automatically.
+
+    • v2rayNG / NekoBox / Furious: enable <code>allowInsecure</code>
+    • Shadowrocket / Stash: manually install CA certificate
+    • Sing-box / Hiddify: configure <code>tls.accept_insecure_cert</code>
+
+    <b>Recommendation:</b> Use Let's Encrypt IP certificate instead.
+    Open port 80 and re-run setup for automatic HTTPS certificate.
 
 help:
   matrix_text: |

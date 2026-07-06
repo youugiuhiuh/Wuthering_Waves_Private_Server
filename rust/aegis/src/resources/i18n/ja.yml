@@ -1,4 +1,13 @@
 menu:
+  sub_service: "📡 サブスクリプション"
+  sub_setup: "🚀 サブスクサーバーをセットアップ"
+  sub_status: "📊 サブスク状態"
+  sub_info: "ℹ️ サブスク情報"
+  sub_not_installed: "⚠️ <b>サブスクリプションサーバー未インストール</b>\n\n導入すると、クライアントがURL経由で設定を自動更新できます。"
+  sub_installed: "✅ <b>サブスクリプションサーバー状態</b>\n\nサービス: <b>%{0}</b>\nポート: <b>%{1}</b>\nTLS: <b>%{2}</b>"
+  sub_create: "➕ Token 作成"
+  sub_list: "📋 Token 一覧"
+  sub_revoke: "🗑 Token 失効"
   title: "🏠 <b>メインメニュー</b>"
   prompt: "カテゴリを選択:"
   monitor: "📊 システム状態"
@@ -529,6 +538,62 @@ upgrade:
   bot_sha256_mismatch: "SHA256 不一致、期待値: %{0}, 実際: %{1}"
   bot_minisign_verifying: "🔐 Minisign 署名を検証中..."
   bot_minisign_ok: "✅ Minisign 署名が確認されました"
+
+sub:
+  setup_welcome: "📡 <b>サブスクリプションサーバーセットアップ</b>\n\nサブスクリプションサーバーをインストールして構成します。クライアントはURL経由で自動更新できます。"
+  setup_q_domain: "ドメイン名をお持ちですか？"
+  setup_q_domain_yes: "✅ はい、ドメインあり"
+  setup_q_domain_no: "❌ いいえ、IPのみ"
+  setup_q_domain_input: "✏️ ドメイン名を入力（例: <code>sub.example.com</code>）:"
+  setup_q_port: "リスニングポート（デフォルト: <b>8443</b>）:"
+  setup_q_rate: "トークンあたりのレート制限（リクエスト/分、デフォルト: <b>10</b>）:"
+  setup_q_cert: "TLS 証明書の方式を選択:"
+  setup_cert_le: "🔒 Let's Encrypt（ドメイン）— 90日、自動更新、ポート80が必要"
+  setup_cert_ip: "🔒 Let's Encrypt（IP）— 6日、自動更新、ポート80が必要"
+  setup_cert_self: "⚠️ 自己署名証明書 — 365日、ポート80不要、クライアント側でallowInsecureが必要"
+  setup_confirm_title: "📡 <b>デプロイ確認</b>\n\nドメイン: <b>%{0}</b>\nポート: <b>%{1}</b>\nレート制限: <b>%{2}/min</b>\nTLS: <b>%{3}</b>\n\nインストールを開始しますか？"
+  setup_confirm_btn: "✅ 確認してインストール"
+  setup_cancel: "❌ キャンセル"
+  setup_cancelled: "✅ キャンセルしました"
+  setup_step_download: "⬇️ sub-server バイナリをダウンロード中..."
+  setup_step_verify: "🔐 Minisign 署名を検証中..."
+  setup_step_verify_ok: "✅ Minisign 署名が確認されました"
+  setup_step_cert: "🔒 TLS 証明書を取得中..."
+  setup_step_deploy: "📦 バイナリと systemd サービスをデプロイ中..."
+  setup_step_firewall: "🛡️ ファイアウォールポートを開放中..."
+  setup_step_start: "🚀 サブスクリプションサーバーを起動中..."
+  setup_step_token: "🔑 デフォルトのサブスクリプショントークンを作成中..."
+  setup_success: "✅ <b>サブスクリプションサーバーがインストールされました！</b>\n\n📡 URL: <code>https://%{0}:%{1}/sub/%{2}</code>\n🌐 情報ページ: <code>https://%{0}:%{1}/sub/%{2}?info</code>\n➖️ 管理: <code>/sub list</code>\n🪵 ログ: <code>journalctl -u wwps-sub-server -f</code>"
+  setup_fail: "❌ <b>セットアップ失敗</b>\n理由: %{0}"
+  setup_fail_download: "ダウンロード失敗: %{0}"
+  setup_fail_verify: "署名検証失敗: %{0}"
+  setup_fail_cert: "証明書セットアップ失敗: %{0}"
+  setup_fail_deploy: "デプロイ失敗: %{0}"
+  setup_port_invalid: "❌ 無効なポート。1024〜65535 の範囲で指定してください"
+  setup_rate_invalid: "❌ 無効なレート制限。1〜100 の範囲で指定してください"
+  setup_input_timeout: "⏳ 入力がタイムアウトしました。キャンセルされました"
+  token_created: "✅ <b>Token 作成完了</b>\n\nToken: <code>%{0}</code>\nURL: <code>https://.../sub/%{0}</code>\n設定: すべて\n\n詳細: <code>/sub info %{0}</code>"
+  token_list_title: "📋 <b>サブスクリプション Token 一覧</b>\n\n%{0}"
+  token_list_empty: "<i>Token はまだありません。/sub create で作成</i>"
+  token_entry: "• <code>%{0}****</code> %{1}%{2}\n  URL: <code>https://.../sub/%{0}...</code>"
+  token_status_active: "🟢 有効"
+  token_status_expired: "🔴 期限切れ"
+  token_status_revoked: "⛔ 失効済み"
+  token_revoked: "✅ Token <code>%{0}****</code> を失効しました"
+  token_revoke_fail: "❌ 失効失敗: %{0}"
+  token_info_title: "ℹ️ <b>Token 情報</b>\n\nToken: <code>%{0}****</code>\n状態: %{1}\n作成日: %{2}\n有効期限: %{3}\n設定数: %{4}\n\n📡 <code>%{5}</code>"
+  token_not_found: "❌ Token が見つかりません"
+  risk_self_signed: |
+    ⚠️ <b>高リスク: 自己署名証明書</b>
+
+    自己署名証明書を使用しています。ほとんどのクライアントは自動検証できません。
+
+    • v2rayNG / NekoBox / Furious: <code>allowInsecure</code> を有効にする
+    • Shadowrocket / Stash: CA 証明書を手動インストール
+    • Sing-box / Hiddify: <code>tls.accept_insecure_cert</code> を設定
+
+    <b>推奨:</b> 代わりに Let's Encrypt IP 証明書を使用してください。
+    ポート80を開放し、セットアップを再実行して自動 HTTPS 証明書を取得してください。
 
 help:
   matrix_text: |

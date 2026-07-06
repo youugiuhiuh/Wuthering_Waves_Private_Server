@@ -354,7 +354,25 @@ aead.dev/minisign
 - `x509-parser` ✅ 已在 Cargo.toml
 - `prost-build = "0.14"` ✅ 已在 build-dependencies
 
-## 9. 实施计划
+## 9. i18n 翻译条目
+
+所有 Bot 交互文案已预翻译到三个 YAML 文件中，新增 `sub:` 根键：
+
+| 文件 | 内容 |
+|------|------|
+| `rust/aegis/src/resources/i18n/en.yml` | `menu.sub_*` + `sub.*` |
+| `rust/aegis/src/resources/i18n/zh.yml` | `menu.sub_*` + `sub.*` |
+| `rust/aegis/src/resources/i18n/ja.yml` | `menu.sub_*` + `sub.*` |
+
+覆盖范围：
+- Bot 菜单按钮（部署/状态/管理入口）
+- 部署交互问答（域名选择、端口、速率、TLS 模式）
+- 部署进度提示（下载、验证、证书、部署）
+- 部署成功/失败输出
+- Token 管理（创建/列表/吊销/信息）
+- 高风险自签证书警告
+
+## 10. 实施计划
 
 | # | 阶段 | 文件 |
 |---|------|------|

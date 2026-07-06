@@ -1,4 +1,13 @@
 menu:
+  sub_service: "📡 订阅服务"
+  sub_setup: "🚀 部署订阅服务器"
+  sub_status: "📊 订阅服务状态"
+  sub_info: "ℹ️ 订阅信息"
+  sub_not_installed: "⚠️ <b>订阅服务器未安装</b>\n\n部署后客户端可通过订阅链接自动更新配置。"
+  sub_installed: "✅ <b>订阅服务器状态</b>\n\n服务: <b>%{0}</b>\n端口: <b>%{1}</b>\nTLS: <b>%{2}</b>"
+  sub_create: "➕ 创建 Token"
+  sub_list: "📋 列出 Token"
+  sub_revoke: "🗑 吊销 Token"
   title: "🏠 <b>主菜单</b>"
   prompt: "请选择操作类目:"
   monitor: "📊 系统状态"
@@ -555,6 +564,62 @@ upgrade:
   bot_sha256_mismatch: "SHA256 校验失败，期望: %{0}, 实际: %{1}"
   bot_minisign_verifying: "🔐 正在验证 Minisign 签名..."
   bot_minisign_ok: "✅ Minisign 签名验证通过"
+
+sub:
+  setup_welcome: "📡 <b>订阅服务器设置</b>\n\n将安装并配置订阅服务器。客户端可通过订阅链接自动更新配置。"
+  setup_q_domain: "你有域名吗？"
+  setup_q_domain_yes: "✅ 有域名"
+  setup_q_domain_no: "❌ 仅 IP"
+  setup_q_domain_input: "✏️ 输入域名（如 <code>sub.example.com</code>）:"
+  setup_q_port: "监听端口（默认 <b>8443</b>）:"
+  setup_q_rate: "每 token 速率限制（请求/分钟，默认 <b>10</b>）:"
+  setup_q_cert: "选择 TLS 证书方案:"
+  setup_cert_le: "🔒 Let's Encrypt（域名）— 90天，自动续期，需端口80"
+  setup_cert_ip: "🔒 Let's Encrypt（IP）— 6天，自动续期，需端口80"
+  setup_cert_self: "⚠️ 自签证书 — 365天，无需端口80，客户端需 allowInsecure"
+  setup_confirm_title: "📡 <b>确认部署</b>\n\n域名: <b>%{0}</b>\n端口: <b>%{1}</b>\n速率限制: <b>%{2}/min</b>\nTLS: <b>%{3}</b>\n\n开始安装？"
+  setup_confirm_btn: "✅ 确认安装"
+  setup_cancel: "❌ 取消"
+  setup_cancelled: "✅ 已取消"
+  setup_step_download: "⬇️ 正在下载 sub-server..."
+  setup_step_verify: "🔐 正在验证 minisign 签名..."
+  setup_step_verify_ok: "✅ Minisign 签名验证通过"
+  setup_step_cert: "🔒 正在获取 TLS 证书..."
+  setup_step_deploy: "📦 正在部署二进制和 systemd 服务..."
+  setup_step_firewall: "🛡️ 正在开放防火墙端口..."
+  setup_step_start: "🚀 正在启动订阅服务..."
+  setup_step_token: "🔑 正在创建默认订阅 token..."
+  setup_success: "✅ <b>订阅服务器安装完成！</b>\n\n📡 URL: <code>https://%{0}:%{1}/sub/%{2}</code>\n🌐 信息页: <code>https://%{0}:%{1}/sub/%{2}?info</code>\n➖️ 管理: <code>/sub list</code>\n🪵 日志: <code>journalctl -u wwps-sub-server -f</code>"
+  setup_fail: "❌ <b>安装失败</b>\n原因: %{0}"
+  setup_fail_download: "下载失败: %{0}"
+  setup_fail_verify: "签名验证失败: %{0}"
+  setup_fail_cert: "证书配置失败: %{0}"
+  setup_fail_deploy: "部署失败: %{0}"
+  setup_port_invalid: "❌ 无效端口，必须为 1024-65535"
+  setup_rate_invalid: "❌ 无效速率限制，必须为 1-100"
+  setup_input_timeout: "⏳ 输入超时，已取消"
+  risk_self_signed: |
+    ⚠️ <b>高风险: 自签证书</b>
+
+    您正在使用自签证书。大多数客户端无法自动验证。
+
+    • v2rayNG / NekoBox / Furious: 需开启 <code>allowInsecure</code>
+    • Shadowrocket / Stash: 需手动安装 CA 证书
+    • Sing-box / Hiddify: 需配置 <code>tls.accept_insecure_cert</code>
+
+    <b>建议:</b> 使用 Let's Encrypt IP 证书替代。
+    开放端口 80 并重新运行安装以获得自动 HTTPS 证书。
+  token_created: "✅ <b>Token 已创建</b>\n\nToken: <code>%{0}</code>\nURL: <code>https://.../sub/%{0}</code>\n配置: 全部\n\n详情: <code>/sub info %{0}</code>"
+  token_list_title: "📋 <b>订阅 Token 列表</b>\n\n%{0}"
+  token_list_empty: "<i>暂无 Token。使用 /sub create 创建</i>"
+  token_entry: "• <code>%{0}****</code> %{1}%{2}\n  URL: <code>https://.../sub/%{0}...</code>"
+  token_status_active: "🟢 活跃"
+  token_status_expired: "🔴 已过期"
+  token_status_revoked: "⛔ 已吊销"
+  token_revoked: "✅ Token <code>%{0}****</code> 已吊销"
+  token_revoke_fail: "❌ 吊销失败: %{0}"
+  token_info_title: "ℹ️ <b>Token 信息</b>\n\nToken: <code>%{0}****</code>\n状态: %{1}\n创建时间: %{2}\n过期时间: %{3}\n配置数: %{4}\n\n📡 <code>%{5}</code>"
+  token_not_found: "❌ Token 未找到"
 
 help:
   matrix_text: |
