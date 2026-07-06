@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 pub struct MinisignKeyEntry {
     pub public_key: &'static str,
