@@ -18,4 +18,5 @@ pub mod system;
 pub mod totp;
 pub mod types;
 pub mod utils;
+pub mod subscription;
 pub mod xray;
