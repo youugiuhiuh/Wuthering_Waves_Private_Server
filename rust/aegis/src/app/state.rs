@@ -125,6 +125,10 @@ impl AppState {
         self.totp_manager.verify(code)
     }
 
+    pub fn generate_current_totp(&self) -> Result<String, std::time::SystemTimeError> {
+        self.totp_manager.generate_current()
+    }
+
     pub async fn is_authorized(&self, user_id: i64) -> bool {
         if !self.is_admin_user(user_id) {
             return false;
