@@ -44,7 +44,9 @@ pub async fn process_destruct_message(
             None => DestructMessageAction::Noop,
         },
         DestructStep::AwaitSecondTotp => match text {
-            Some(code) if state.verify_totp(code.trim()) => DestructMessageAction::AwaitingSecondTotp,
+            Some(code) if state.verify_totp(code.trim()) => {
+                DestructMessageAction::AwaitingSecondTotp
+            }
             Some(_) => DestructMessageAction::VerifyFailed,
             None => DestructMessageAction::Noop,
         },
@@ -113,7 +115,11 @@ pub async fn handle_message_flow(
     match (destruct_state.step, action) {
         (DestructStep::AwaitFirstTotp, DestructMessageAction::ConfirmFirstTotp) => {
             if state
-                .confirm_first_destruct_totp(&chat_id_str, msg.text().unwrap().trim(), Instant::now())
+                .confirm_first_destruct_totp(
+                    &chat_id_str,
+                    msg.text().unwrap().trim(),
+                    Instant::now(),
+                )
                 .await
             {
                 let keyboard = InlineKeyboardMarkup::new(vec![
@@ -134,7 +140,11 @@ pub async fn handle_message_flow(
         }
         (DestructStep::AwaitSecondTotp, DestructMessageAction::AwaitingSecondTotp) => {
             match state
-                .confirm_second_destruct_totp(&chat_id_str, msg.text().unwrap().trim(), Instant::now())
+                .confirm_second_destruct_totp(
+                    &chat_id_str,
+                    msg.text().unwrap().trim(),
+                    Instant::now(),
+                )
                 .await
             {
                 Err(_) => {
@@ -148,12 +158,14 @@ pub async fn handle_message_flow(
                         .await?;
                 }
                 Ok(false) => {
-                    bot.send_message(chat_id, t!("destruct.state_invalid")).await?;
+                    bot.send_message(chat_id, t!("destruct.state_invalid"))
+                        .await?;
                 }
             }
         }
         (_, DestructMessageAction::VerifyFailed) => {
-            bot.send_message(chat_id, t!("destruct.verify_fail")).await?;
+            bot.send_message(chat_id, t!("destruct.verify_fail"))
+                .await?;
         }
         (DestructStep::AwaitSecurityFile, DestructMessageAction::AwaitingFile) => {
             let (file_id, file_name) = if let Some(doc) = msg.document() {
@@ -189,7 +201,10 @@ pub async fn handle_message_flow(
                             .map(|n| format!("{} | {}", n, hash_short))
                             .unwrap_or_else(|| hash_short.clone());
 
-                        if state.mark_destruct_file_verified(&chat_id_str, Instant::now()).await {
+                        if state
+                            .mark_destruct_file_verified(&chat_id_str, Instant::now())
+                            .await
+                        {
                             let keyboard = InlineKeyboardMarkup::new(vec![
                                 vec![InlineKeyboardButton::callback(
                                     t!("destruct.final_btn"),
@@ -200,22 +215,28 @@ pub async fn handle_message_flow(
                                     "a_destroy_cancel",
                                 )],
                             ]);
-                            bot.send_message(chat_id, t!("destruct.file_verify_ok", "0" => file_display))
-                                .parse_mode(ParseMode::Html)
-                                .reply_markup(keyboard)
-                                .await?;
+                            bot.send_message(
+                                chat_id,
+                                t!("destruct.file_verify_ok", "0" => file_display),
+                            )
+                            .parse_mode(ParseMode::Html)
+                            .reply_markup(keyboard)
+                            .await?;
                         }
                     }
                     DestructMessageAction::FileMismatch => {
-                        bot.send_message(chat_id, t!("destruct.file_verify_fail")).await?;
+                        bot.send_message(chat_id, t!("destruct.file_verify_fail"))
+                            .await?;
                     }
                     DestructMessageAction::NoSecurityKey => {
-                        bot.send_message(chat_id, t!("destruct.no_security_file")).await?;
+                        bot.send_message(chat_id, t!("destruct.no_security_file"))
+                            .await?;
                     }
                     _ => {}
                 }
             } else {
-                bot.send_message(chat_id, t!("destruct.file_send_prompt")).await?;
+                bot.send_message(chat_id, t!("destruct.file_send_prompt"))
+                    .await?;
             }
         }
         _ => {}
@@ -433,8 +454,13 @@ mod tests {
         let state = make_test_state(&secret).await;
         let totp = state.generate_current_totp().unwrap();
         let action = process_destruct_message(
-            Some(&totp), DestructStep::AwaitFirstTotp, &state, None, None,
-        ).await;
+            Some(&totp),
+            DestructStep::AwaitFirstTotp,
+            &state,
+            None,
+            None,
+        )
+        .await;
         assert_eq!(action, DestructMessageAction::ConfirmFirstTotp);
     }
 
@@ -443,8 +469,13 @@ mod tests {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
         let action = process_destruct_message(
-            Some("000000"), DestructStep::AwaitFirstTotp, &state, None, None,
-        ).await;
+            Some("000000"),
+            DestructStep::AwaitFirstTotp,
+            &state,
+            None,
+            None,
+        )
+        .await;
         assert_eq!(action, DestructMessageAction::VerifyFailed);
     }
 
@@ -452,21 +483,25 @@ mod tests {
     async fn first_totp_no_text_returns_noop() {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
-        let action = process_destruct_message(
-            None, DestructStep::AwaitFirstTotp, &state, None, None,
-        ).await;
+        let action =
+            process_destruct_message(None, DestructStep::AwaitFirstTotp, &state, None, None).await;
         assert_eq!(action, DestructMessageAction::Noop);
     }
 
     #[tokio::test]
     async fn security_file_match_returns_file_verified() {
         let content = b"test security file content";
-        let hash = hex::encode(Sha256::digest(content));
+        let hash = hex::encode(sha2::Sha256::digest(content));
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
         let action = process_destruct_message(
-            None, DestructStep::AwaitSecurityFile, &state, Some(&hash), Some(content.as_slice()),
-        ).await;
+            None,
+            DestructStep::AwaitSecurityFile,
+            &state,
+            Some(&hash),
+            Some(content.as_slice()),
+        )
+        .await;
         assert!(matches!(action, DestructMessageAction::FileVerified { .. }));
     }
 
@@ -477,8 +512,13 @@ mod tests {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
         let action = process_destruct_message(
-            None, DestructStep::AwaitSecurityFile, &state, Some(wrong_hash), Some(content),
-        ).await;
+            None,
+            DestructStep::AwaitSecurityFile,
+            &state,
+            Some(wrong_hash),
+            Some(content),
+        )
+        .await;
         assert_eq!(action, DestructMessageAction::FileMismatch);
     }
 
@@ -486,9 +526,8 @@ mod tests {
     async fn confirm_step_returns_noop() {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
-        let action = process_destruct_message(
-            None, DestructStep::AwaitConfirm, &state, None, None,
-        ).await;
+        let action =
+            process_destruct_message(None, DestructStep::AwaitConfirm, &state, None, None).await;
         assert_eq!(action, DestructMessageAction::Noop);
     }
 }
