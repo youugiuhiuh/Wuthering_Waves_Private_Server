@@ -4,6 +4,7 @@ pub mod kcp;
 pub mod kcp_mask;
 pub mod port_allocator;
 pub mod reality;
+pub mod routing;
 pub mod warp;
 pub mod xhttp;
 
