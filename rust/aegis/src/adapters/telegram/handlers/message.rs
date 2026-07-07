@@ -1,7 +1,7 @@
 use crate::MAX_INPUT_LENGTH;
-use crate::app::destruct_flow;
 use crate::app::destruct_flow::MessageFlowOutcome;
 use crate::app::state::{AppState, TimeoutStatus};
+use super::destruct;
 use super::subscription;
 use aegis::adapters::common::TargetId;
 use aegis::core::xray::config::ConfigManager;
@@ -114,7 +114,7 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
         }
     }
 
-    if destruct_flow::handle_message_flow(&bot, &msg, user_id, &state).await?
+    if destruct::handle_message_flow(&bot, &msg, user_id, &state).await?
         == MessageFlowOutcome::Handled
     {
         return Ok(());

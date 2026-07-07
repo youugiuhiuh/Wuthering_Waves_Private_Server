@@ -1,5 +1,6 @@
 pub(crate) mod callback;
 pub mod context;
+pub(crate) mod destruct;
 pub mod log;
 pub mod menu;
 pub(crate) mod message;
