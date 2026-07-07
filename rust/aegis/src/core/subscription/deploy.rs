@@ -18,6 +18,17 @@ pub struct DeployResult {
     pub token: String,
 }
 
+pub fn resolve_binary_name() -> &'static str {
+    #[cfg(target_arch = "aarch64")]
+    {
+        "sub-server-arm64"
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        "sub-server"
+    }
+}
+
 pub async fn download_binary(
     repo_owner: &str,
     repo_name: &str,
@@ -56,7 +67,7 @@ pub async fn download_binary(
         repo_owner, repo_name, tag_name
     );
 
-    let binary_url = format!("{}/sub-server", &base_url);
+    let binary_url = format!("{}/{}", &base_url, resolve_binary_name());
     let sig_url = format!("{}/sub-server.minisig", &base_url);
 
     // Stream binary download directly to a temp file to avoid OOM
@@ -212,6 +223,15 @@ mod tests {
         assert!(result.is_err(), "should timeout on non-existent socket");
         let err = result.unwrap_err();
         assert!(err.contains("timed out"), "error should mention timeout");
+    }
+
+    #[test]
+    fn test_resolve_binary_name() {
+        let name = super::resolve_binary_name();
+        assert!(
+            name == "sub-server" || name == "sub-server-arm64",
+            "binary name should match known architectures"
+        );
     }
 
     #[test]
