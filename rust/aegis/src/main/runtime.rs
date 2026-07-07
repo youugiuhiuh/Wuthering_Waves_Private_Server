@@ -16,8 +16,10 @@ use aegis::app::state::AppState;
 pub async fn run(
     state: Arc<AppState>,
     matrix_handle: Option<super::matrix::MatrixHandle>,
+    discord_handle: Option<super::discord::DiscordHandle>,
     enable_telegram: bool,
     enable_matrix: bool,
+    enable_discord: bool,
     token: String,
     admin_id: i64,
 ) -> Result<(), anyhow::Error> {
@@ -153,8 +155,21 @@ pub async fn run(
             .await;
     }
 
-    // ── Matrix-only: 后台初始化 + 保活 ──
-    if enable_matrix && !enable_telegram {
+    // ── Discord 事件循环 ──
+    if let Some(mut discord_handle) = discord_handle {
+        discord_handle.state.set(state.clone()).unwrap_or_else(|_| {
+            log::warn!("Discord state already set");
+        });
+        tokio::spawn(async move {
+            if let Err(e) = discord_handle.client.start().await {
+                log::error!("Discord client error: {}", e);
+            }
+        });
+    }
+
+    // ── 非 Telegram 后台: 初始化 + 保活 ──
+    let has_any_backend = enable_matrix || enable_discord;
+    if has_any_backend && !enable_telegram {
         let adapter_for_init = state.adapter.clone();
         let target_for_init = TargetId(admin_id.to_string());
         tokio::spawn(async move {

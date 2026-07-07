@@ -143,6 +143,7 @@ mod tests {
             matrix_password: None,
             matrix_room_id: None,
             matrix_store_passphrase: None,
+            discord_token: None,
             lang: None,
         }
     }
@@ -159,27 +160,10 @@ mod tests {
             matrix_password: Some(vec![1]),
             matrix_room_id: Some(vec![1]),
             matrix_store_passphrase: None,
+            discord_token: None,
             lang: None,
         };
         assert!(has_matrix_config(&config, &[]));
-    }
-
-    #[test]
-    fn returns_false_when_matrix_fields_missing() {
-        let config = empty_config();
-        assert!(!has_matrix_config(&config, &[]));
-    }
-
-    #[test]
-    fn returns_true_when_flag_overrides_empty_fields() {
-        let config = empty_config();
-        assert!(has_matrix_config(&config, &["--matrix".to_string()]));
-    }
-
-    #[test]
-    fn returns_true_when_all_flag_overrides_empty_fields() {
-        let config = empty_config();
-        assert!(has_matrix_config(&config, &["--all".to_string()]));
     }
 
     #[test]
@@ -194,9 +178,22 @@ mod tests {
             matrix_password: None,
             matrix_room_id: None,
             matrix_store_passphrase: None,
+            discord_token: None,
             lang: None,
         };
         assert!(!has_matrix_config(&config, &[]));
+    }
+
+    #[test]
+    fn returns_true_when_flag_overrides_empty_fields() {
+        let config = empty_config();
+        assert!(has_matrix_config(&config, &["--matrix".to_string()]));
+    }
+
+    #[test]
+    fn returns_true_when_all_flag_overrides_empty_fields() {
+        let config = empty_config();
+        assert!(has_matrix_config(&config, &["--all".to_string()]));
     }
 
     #[test]

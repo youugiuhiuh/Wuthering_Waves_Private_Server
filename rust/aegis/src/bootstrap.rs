@@ -41,6 +41,8 @@ pub struct EncryptedConfig {
     #[serde(default)]
     pub matrix_store_passphrase: Option<Vec<u8>>,
     #[serde(default)]
+    pub discord_token: Option<Vec<u8>>,
+    #[serde(default)]
     pub lang: Option<String>,
 }
 
@@ -79,6 +81,9 @@ impl Drop for EncryptedConfig {
             v.zeroize();
         }
         if let Some(v) = &mut self.matrix_store_passphrase {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.discord_token {
             v.zeroize();
         }
     }
@@ -211,6 +216,7 @@ pub async fn run_setup(
         matrix_password,
         matrix_room_id,
         matrix_store_passphrase,
+        discord_token: None,
         lang: None,
     };
     fs::write(

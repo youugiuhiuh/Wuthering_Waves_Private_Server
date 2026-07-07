@@ -267,8 +267,10 @@ async fn main() -> Result<()> {
 
     // CLI 模式检测（初始; auto-detect 补充在 encrypted_config 加载后）
     let use_matrix = args.iter().any(|a| a == "--matrix");
+    let use_discord = args.iter().any(|a| a == "--discord");
     let use_all = args.iter().any(|a| a == "--all");
     let mut enable_matrix = use_matrix || use_all;
+    let mut enable_discord = use_discord || use_all;
     let enable_telegram = !use_matrix || use_all;
 
     let (app_config, security) = main::config::load_and_validate()?;
@@ -277,6 +279,13 @@ async fn main() -> Result<()> {
     let has_matrix = main::matrix::has_matrix_config(&app_config.decrypted.encrypted_config, &args);
     if !use_matrix && !use_all {
         enable_matrix = has_matrix && !args.iter().any(|a| a == "--tg-only");
+    }
+
+    // Auto-detect Discord 配置
+    let has_discord =
+        main::discord::has_discord_config(&app_config.decrypted.encrypted_config, &args);
+    if !use_discord && !use_all {
+        enable_discord = has_discord && !args.iter().any(|a| a == "--tg-only");
     }
 
     let matrix_handle = if enable_matrix {
@@ -292,11 +301,22 @@ async fn main() -> Result<()> {
         None
     };
 
+    let discord_handle = if enable_discord {
+        Some(
+            main::discord::connect_discord(&security, &app_config.decrypted.encrypted_config)
+                .await?,
+        )
+    } else {
+        None
+    };
+
     let adapter = main::adapter::build_adapter(
         &app_config.decrypted.token,
         enable_telegram,
         enable_matrix,
+        enable_discord,
         &matrix_handle,
+        &discord_handle,
     )
     .await?;
 
@@ -332,8 +352,10 @@ async fn main() -> Result<()> {
     main::runtime::run(
         state,
         matrix_handle,
+        discord_handle,
         enable_telegram,
         enable_matrix,
+        enable_discord,
         app_config.decrypted.token,
         app_config.decrypted.admin_id,
     )
