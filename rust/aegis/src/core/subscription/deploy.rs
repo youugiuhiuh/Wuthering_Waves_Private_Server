@@ -123,7 +123,8 @@ pub fn write_systemd_service(port: u16) -> Result<(), String> {
     let unit = format!(
         "[Unit]\n\
          Description=WWPS Subscription Server\n\
-         After=network.target\n\
+         After=network.target wwps-aegis.service\n\
+         BindsTo=wwps-aegis.service\n\
          \n\
          [Service]\n\
          Type=simple\n\
@@ -197,6 +198,23 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
     config::write_config(&addr, &tls_cert, &tls_key, params.rate_limit)?;
 
     write_systemd_service(params.port)?;
+
+    let sock_path = paths::sub_server::GRPC_SOCK;
+    let mut ready = false;
+    for _ in 0..30 {
+        if std::path::Path::new(sock_path).exists() {
+            ready = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    if !ready {
+        return Err(format!(
+            "sub-server did not create gRPC socket at {} within 30s",
+            sock_path
+        ));
+    }
+
     open_firewall_port(params.port);
 
     let token_record = tm
