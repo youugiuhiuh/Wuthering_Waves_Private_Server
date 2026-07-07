@@ -45,6 +45,17 @@ message ProxyConfig {
   string alpn = 19;
   string congestion_control = 20;
   string cert_sha256 = 21;
+  string fingerprint = 22;       // TLS fingerprint (e.g., "chrome")
+  string spx = 23;               // Reality short path
+  string http_host = 24;        // HTTP Host header (WS/XHTTP)
+  string mode = 25;              // XHTTP mode (e.g., "auto")
+  string extra = 26;             // XHTTP extra JSON settings
+  string header_type = 27;       // TCP header type
+  string service_name = 28;      // gRPC service name
+  string authority = 29;         // gRPC authority
+  bool insecure = 30;            // TLS allowInsecure
+  string encryption = 31;        // VLESS encryption
+  string server_name = 32;       // TLS SNI override
 }
 
 message GetConfigsRequest {

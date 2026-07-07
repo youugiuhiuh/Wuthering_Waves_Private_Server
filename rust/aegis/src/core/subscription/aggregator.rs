@@ -47,10 +47,13 @@ fn scan_xray_configs() -> Vec<ProxyConfig> {
                 _ => continue,
             };
             let port = inbound.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            let host = match inbound.get("host").and_then(|v| v.as_str()) {
-                Some(h) => h.to_string(),
-                None => continue,
-            };
+            let host = inbound
+                .get("listen")
+                .and_then(|v| v.as_str())
+                .filter(|h| !h.is_empty() && *h != "0.0.0.0")
+                .or_else(|| inbound.get("host").and_then(|v| v.as_str()))
+                .unwrap_or("0.0.0.0")
+                .to_string();
             let settings = inbound.get("settings");
             let uuid = settings
                 .and_then(|s| s.get("clients"))
@@ -85,14 +88,33 @@ fn scan_xray_configs() -> Vec<ProxyConfig> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            let http_host = stream_settings
+                .and_then(|s| s.get("wsSettings").or_else(|| s.get("httpSettings")))
+                .and_then(|ws| ws.get("host"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let alpn = stream_settings
+                .and_then(|s| s.get("alpn"))
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let reality_settings = stream_settings.and_then(|s| s.get("realitySettings"));
             let sni = reality_settings
                 .and_then(|r| r.get("serverName"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let pin_sha256 = reality_settings
+            let fingerprint = reality_settings
                 .and_then(|r| r.get("fingerprint"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let spx = reality_settings
+                .and_then(|r| r.get("shortPath"))
+                .or_else(|| reality_settings.and_then(|r| r.get("spx")))
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -115,7 +137,7 @@ fn scan_xray_configs() -> Vec<ProxyConfig> {
                 password: String::new(),
                 uuid,
                 sni,
-                pin_sha256,
+                pin_sha256: String::new(),
                 public_key,
                 short_id,
                 transport,
@@ -126,9 +148,20 @@ fn scan_xray_configs() -> Vec<ProxyConfig> {
                 obfs_password: String::new(),
                 hop_port_start: 0,
                 hop_port_end: 0,
-                alpn: String::new(),
+                alpn,
                 congestion_control: String::new(),
                 cert_sha256: String::new(),
+                fingerprint,
+                spx,
+                http_host,
+                mode: String::new(),
+                extra: String::new(),
+                header_type: String::new(),
+                service_name: String::new(),
+                authority: String::new(),
+                insecure: false,
+                encryption: String::new(),
+                server_name: String::new(),
             });
         }
     }
@@ -207,6 +240,23 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
+                    let (hop_port_start, hop_port_end) = outbound
+                        .get("hop_port")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.split_once('-'))
+                        .map(|(start, end)| {
+                            (
+                                start.parse::<u32>().unwrap_or(0),
+                                end.parse::<u32>().unwrap_or(0),
+                            )
+                        })
+                        .unwrap_or((0, 0));
+                    let cert_sha256 = outbound
+                        .get("cert_sha256")
+                        .or_else(|| outbound.get("server_cert_sha256"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let config_id = generate_config_id(protocol, &host, port);
                     configs.push(ProxyConfig {
                         config_id,
@@ -225,11 +275,22 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
                         tag: String::new(),
                         obfs_type,
                         obfs_password,
-                        hop_port_start: 0,
-                        hop_port_end: 0,
+                        hop_port_start,
+                        hop_port_end,
                         alpn: String::new(),
                         congestion_control: String::new(),
-                        cert_sha256: String::new(),
+                        cert_sha256,
+                        fingerprint: String::new(),
+                        spx: String::new(),
+                        http_host: String::new(),
+                        mode: String::new(),
+                        extra: String::new(),
+                        header_type: String::new(),
+                        service_name: String::new(),
+                        authority: String::new(),
+                        insecure: false,
+                        encryption: String::new(),
+                        server_name: String::new(),
                     });
                 }
                 "tuic" => {
@@ -292,6 +353,17 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
                         alpn,
                         congestion_control,
                         cert_sha256,
+                        fingerprint: String::new(),
+                        spx: String::new(),
+                        http_host: String::new(),
+                        mode: String::new(),
+                        extra: String::new(),
+                        header_type: String::new(),
+                        service_name: String::new(),
+                        authority: String::new(),
+                        insecure: false,
+                        encryption: String::new(),
+                        server_name: String::new(),
                     });
                 }
                 _ => {}
@@ -327,5 +399,56 @@ mod tests {
     fn test_aggregate_all_no_configs() {
         let configs = aggregate_all();
         assert!(configs.is_empty());
+    }
+
+    #[test]
+    fn test_host_fallback_to_listen() {
+        let host = serde_json::from_str::<serde_json::Value>(r#"{"listen":"127.0.0.1","port":443,"protocol":"vless","settings":{"clients":[{"id":"uuid-1"}]}}"#).unwrap();
+        let result = host
+            .get("listen")
+            .and_then(|v| v.as_str())
+            .filter(|h| !h.is_empty() && *h != "0.0.0.0")
+            .or_else(|| host.get("host").and_then(|v| v.as_str()))
+            .unwrap_or("0.0.0.0");
+        assert_eq!(result, "127.0.0.1");
+    }
+
+    #[test]
+    fn test_host_fallback_no_listen_no_host() {
+        let inbound = serde_json::from_str::<serde_json::Value>(
+            r#"{"port":443,"protocol":"vless","settings":{"clients":[{"id":"uuid-1"}]}}"#,
+        )
+        .unwrap();
+        let result = inbound
+            .get("listen")
+            .and_then(|v| v.as_str())
+            .filter(|h| !h.is_empty() && *h != "0.0.0.0")
+            .or_else(|| inbound.get("host").and_then(|v| v.as_str()))
+            .unwrap_or("0.0.0.0");
+        assert_eq!(result, "0.0.0.0");
+    }
+
+    #[test]
+    fn test_host_fallback_ignores_zero_listen() {
+        let inbound = serde_json::from_str::<serde_json::Value>(r#"{"listen":"0.0.0.0","port":443,"protocol":"vless","settings":{"clients":[{"id":"uuid-1"}]}}"#).unwrap();
+        let result = inbound
+            .get("listen")
+            .and_then(|v| v.as_str())
+            .filter(|h| !h.is_empty() && *h != "0.0.0.0")
+            .or_else(|| inbound.get("host").and_then(|v| v.as_str()))
+            .unwrap_or("0.0.0.0");
+        assert_eq!(result, "0.0.0.0");
+    }
+
+    #[test]
+    fn test_host_fallback_listen_wins_over_host() {
+        let inbound = serde_json::from_str::<serde_json::Value>(r#"{"listen":"1.2.3.4","host":"example.com","port":443,"protocol":"vless","settings":{"clients":[{"id":"uuid-1"}]}}"#).unwrap();
+        let result = inbound
+            .get("listen")
+            .and_then(|v| v.as_str())
+            .filter(|h| !h.is_empty() && *h != "0.0.0.0")
+            .or_else(|| inbound.get("host").and_then(|v| v.as_str()))
+            .unwrap_or("0.0.0.0");
+        assert_eq!(result, "1.2.3.4");
     }
 }
