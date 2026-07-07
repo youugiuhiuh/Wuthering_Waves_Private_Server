@@ -1,4 +1,4 @@
-module github.com/NicholasDewar/Wuthering_Waves_Private_Server/go/installer
+module github.com/youugiuhiuh/Wuthering_Waves_Private_Server/go/installer
 
 go 1.26.4
 

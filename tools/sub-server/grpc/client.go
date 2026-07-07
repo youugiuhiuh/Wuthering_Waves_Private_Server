@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/proto/sub"
+	pb "github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/proto/sub"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

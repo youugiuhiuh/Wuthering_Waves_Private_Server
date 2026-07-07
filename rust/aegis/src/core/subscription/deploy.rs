@@ -118,8 +118,13 @@ pub fn deploy_binary(binary_data: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-pub fn write_systemd_service(port: u16) -> Result<(), String> {
+pub fn write_systemd_service(port: u16, tls_cert: &str, tls_key: &str) -> Result<(), String> {
     let service_file = "/etc/systemd/system/wwps-sub-server.service";
+    let tls_flags = if !tls_cert.is_empty() && !tls_key.is_empty() {
+        format!(" --tls-cert={} --tls-key={}", tls_cert, tls_key)
+    } else {
+        String::new()
+    };
     let unit = format!(
         "[Unit]\n\
          Description=WWPS Subscription Server\n\
@@ -127,7 +132,7 @@ pub fn write_systemd_service(port: u16) -> Result<(), String> {
          \n\
          [Service]\n\
          Type=simple\n\
-         ExecStart={bin} --listen-addr=:{port} --aegis-grpc=unix:///var/run/aegis/sub.sock --rate-limit=10\n\
+         ExecStart={bin} --listen-addr=:{port} --aegis-grpc=unix:///var/run/aegis/sub.sock --rate-limit=10{tls_flags}\n\
          Restart=always\n\
          RestartSec=5\n\
          \n\
@@ -171,7 +176,7 @@ pub fn open_firewall_port(port: u16) {
 }
 
 pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<DeployResult, String> {
-    let repo_owner = "NicholasDewar";
+    let repo_owner = "youugiuhiuh";
     let repo_name = "Wuthering_Waves_Private_Server";
 
     let (binary_data, sig_data) = download_binary(repo_owner, repo_name).await?;
@@ -196,7 +201,7 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
     let addr = format!("0.0.0.0:{}", params.port);
     config::write_config(&addr, &tls_cert, &tls_key, params.rate_limit)?;
 
-    write_systemd_service(params.port)?;
+    write_systemd_service(params.port, &tls_cert, &tls_key)?;
     open_firewall_port(params.port);
 
     let token_record = tm

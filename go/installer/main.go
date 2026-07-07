@@ -19,7 +19,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/go/installer/i18n"
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/go/installer/i18n"
 
 	"github.com/awnumar/memguard"
 	"golang.org/x/sys/unix"
@@ -39,7 +39,7 @@ type releaseRepo struct {
 }
 
 var defaultReleaseRepositories = []releaseRepo{
-	{Owner: "NicholasDewar", Name: "Wuthering_Waves_Private_Server"},
+	{Owner: "youugiuhiuh", Name: "Wuthering_Waves_Private_Server"},
 	{Owner: "youugiuhiuh", Name: "Wuthering_Waves_Private_Server"},
 }
 
