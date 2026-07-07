@@ -79,7 +79,10 @@ pub async fn download_binary(
             .await
             .map_err(|e| format!("write chunk failed: {e}"))?;
     }
-    tmp_file.flush().await.map_err(|e| format!("flush failed: {e}"))?;
+    tmp_file
+        .flush()
+        .await
+        .map_err(|e| format!("flush failed: {e}"))?;
 
     // Read the full binary into memory only after download completes
     let binary_data = tokio::fs::read(&tmp_path)
@@ -128,8 +131,7 @@ pub fn deploy_binary(binary_data: &[u8]) -> Result<(), String> {
     let tmp_path = format!("{}.tmp", paths::sub_server::BIN);
     // Clean up any stale temp file
     let _ = std::fs::remove_file(&tmp_path);
-    std::fs::write(&tmp_path, binary_data)
-        .map_err(|e| format!("write binary failed: {e}"))?;
+    std::fs::write(&tmp_path, binary_data).map_err(|e| format!("write binary failed: {e}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -230,14 +232,20 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
         TlsMode::DomainAcme => match cert::setup_acme_domain(&effective_domain) {
             Ok(r) => r,
             Err(e) => {
-                log::warn!("acme.sh domain cert failed ({}), falling back to self-signed", e);
+                log::warn!(
+                    "acme.sh domain cert failed ({}), falling back to self-signed",
+                    e
+                );
                 cert::setup_self_signed()?
             }
         },
         TlsMode::IpAcme => match cert::setup_acme_ip(&effective_domain) {
             Ok(r) => r,
             Err(e) => {
-                log::warn!("acme.sh IP cert failed ({}), falling back to self-signed", e);
+                log::warn!(
+                    "acme.sh IP cert failed ({}), falling back to self-signed",
+                    e
+                );
                 cert::setup_self_signed()?
             }
         },
