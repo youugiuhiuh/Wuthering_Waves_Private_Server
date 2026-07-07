@@ -84,9 +84,9 @@ jobs:
             ~/.cache/go-build
             ~/.cache/garble
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-installer-${{ hashFiles('go/installer/go.sum', 'go/installer/go.mod') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('go/installer/go.sum', 'go/installer/go.mod', 'tools/sub-server/go.sum', 'tools/sub-server/go.mod') }}
           restore-keys: |
-            ${{ runner.os }}-go-installer-
+            ${{ runner.os }}-go-
 
       - name: Build Runtime Binary
         env:
@@ -106,11 +106,39 @@ jobs:
           cd go/installer
           CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
 
+      - name: Build Sub-Server Binary
+        run: |
+          cd tools/sub-server
+          go mod download
+          CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build \
+            -ldflags="-s -w -X main.version=${{ env.NEW_VERSION }}" \
+            -o sub-server .
+
+      - name: Sign Sub-Server Binary
+        env:
+          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+        run: |
+          if [ -n "$MINISIGN_PRIVATE_KEY" ]; then
+            KEY_FILE=$(mktemp)
+            echo "$MINISIGN_PRIVATE_KEY" > "$KEY_FILE"
+            cd tools/sub-server
+            minisign -S -s "$KEY_FILE" \
+              -m sub-server \
+              -t "${{ env.NEW_VERSION }}:sub-server" \
+              -x sub-server.minisig
+            rm -f "$KEY_FILE"
+            echo "✅ Sub-server binary signed"
+          else
+            echo "⚠️ MINISIGN_PRIVATE_KEY not set, skipping signature"
+          fi
+
       - name: Prepare Distribution Artifacts
         run: |
           mkdir -p dist
           cp rust/aegis/target/release/aegis dist/
           cp go/installer/installer dist/
+          cp tools/sub-server/sub-server dist/ 2>/dev/null || true
+          cp tools/sub-server/sub-server.minisig dist/ 2>/dev/null || true
 
       - name: Cleanup Old Releases (Keep Last 3)
         env:
@@ -134,15 +162,20 @@ jobs:
         with:
           tag_name: v${{ env.NEW_VERSION }}
           name: v${{ env.NEW_VERSION }}
+          fail_on_unmatched_files: false
           files: |
             dist/aegis
             dist/installer
+            dist/sub-server
+            dist/sub-server.minisig
           body: |
             Release `v${{ env.NEW_VERSION }}`.
 
             ### Included Files
             - `installer`: bootstrap executable
             - `aegis`: runtime management executable
+            - `sub-server`: optional HTTP subscription endpoint
+            - `sub-server.minisig`: minisign signature for binary verification
 
       - name: Dispatch Signing Workflow
         env:
