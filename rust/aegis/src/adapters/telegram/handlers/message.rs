@@ -109,7 +109,7 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
     }
 
     if let Some(text) = msg.text() {
-        if subscription::handle_text_input(&bot, msg.chat.id, msg.id, &state, text).await? {
+        if subscription::handle_text_input(&bot, msg.chat.id, &state, text).await? {
             return Ok(());
         }
     }

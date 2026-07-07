@@ -6,8 +6,9 @@ use aegis::core::subscription::deploy::{self, DeployParams};
 use rust_i18n::t;
 use std::path::Path;
 use std::time::Duration;
+use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, MessageId, ParseMode};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     match ctx.data.as_str() {
@@ -29,7 +30,6 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
 pub async fn handle_text_input(
     bot: &Bot,
     chat_id: ChatId,
-    msg_id: MessageId,
     state: &AppState,
     text: &str,
 ) -> Result<bool, teloxide::RequestError> {
@@ -41,7 +41,7 @@ pub async fn handle_text_input(
     match setup.step {
         SubSetupStep::EnterDomain => {
             if text.is_empty() || text.contains(' ') || !text.contains('.') {
-                bot.edit_message_text(chat_id, msg_id, t!("sub.setup_q_domain_input"))
+                bot.send_message(chat_id, t!("sub.setup_q_domain_input"))
                     .parse_mode(ParseMode::Html)
                     .await?;
                 return Ok(true);
@@ -49,7 +49,7 @@ pub async fn handle_text_input(
             setup.domain = text.trim().to_string();
             setup.step = SubSetupStep::EnterPort;
             state.insert_sub_setup(chat_id_str, setup).await;
-            bot.edit_message_text(chat_id, msg_id, t!("sub.setup_q_port"))
+            bot.send_message(chat_id, t!("sub.setup_q_port"))
                 .parse_mode(ParseMode::Html)
                 .await?;
         }
@@ -61,7 +61,7 @@ pub async fn handle_text_input(
             setup.port = port;
             setup.step = SubSetupStep::EnterRateLimit;
             state.insert_sub_setup(chat_id_str, setup).await;
-            bot.edit_message_text(chat_id, msg_id, t!("sub.setup_q_rate"))
+            bot.send_message(chat_id, t!("sub.setup_q_rate"))
                 .parse_mode(ParseMode::Html)
                 .await?;
         }
@@ -79,7 +79,7 @@ pub async fn handle_text_input(
                 vec![InlineKeyboardButton::callback(t!("sub.setup_cert_self"), "sub_tls:self")],
                 vec![InlineKeyboardButton::callback(t!("menu.back"), "m_sub")],
             ]);
-            bot.edit_message_text(chat_id, msg_id, t!("sub.setup_q_cert"))
+            bot.send_message(chat_id, t!("sub.setup_q_cert"))
                 .parse_mode(ParseMode::Html)
                 .reply_markup(keyboard)
                 .await?;
