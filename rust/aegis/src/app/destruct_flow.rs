@@ -75,7 +75,10 @@ pub async fn handle_message_flow_adapter(
     state: &AppState,
     chat_id: &str,
     user_id: i64,
-) -> (MessageFlowOutcome, Option<(MessageContent, Option<MessageId>)>) {
+) -> (
+    MessageFlowOutcome,
+    Option<(MessageContent, Option<MessageId>)>,
+) {
     match state
         .touch_destruct(chat_id, Instant::now(), Duration::from_secs(60))
         .await
@@ -84,7 +87,13 @@ pub async fn handle_message_flow_adapter(
             state.cancel_destruct(chat_id).await;
             return (
                 MessageFlowOutcome::Handled,
-                Some((MessageContent { text: t!("destruct.timeout").to_string(), markup: None }, None)),
+                Some((
+                    MessageContent {
+                        text: t!("destruct.timeout").to_string(),
+                        markup: None,
+                    },
+                    None,
+                )),
             );
         }
         TimeoutStatus::NotTracked => return (MessageFlowOutcome::NotHandled, None),
@@ -94,7 +103,13 @@ pub async fn handle_message_flow_adapter(
     if !state.is_admin_user(user_id) && !state.is_authorized(user_id).await {
         return (
             MessageFlowOutcome::Handled,
-            Some((MessageContent { text: t!("auth.expired").to_string(), markup: None }, None)),
+            Some((
+                MessageContent {
+                    text: t!("auth.expired").to_string(),
+                    markup: None,
+                },
+                None,
+            )),
         );
     }
 
@@ -129,7 +144,16 @@ pub async fn handle_message_flow_adapter(
                         }],
                     ],
                 };
-                (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.title_2").to_string(), markup: Some(markup) }, None)))
+                (
+                    MessageFlowOutcome::Handled,
+                    Some((
+                        MessageContent {
+                            text: t!("destruct.title_2").to_string(),
+                            markup: Some(markup),
+                        },
+                        None,
+                    )),
+                )
             } else {
                 (MessageFlowOutcome::Handled, None)
             }
@@ -139,20 +163,48 @@ pub async fn handle_message_flow_adapter(
                 .confirm_second_destruct_totp(chat_id, text.unwrap().trim(), Instant::now())
                 .await
             {
-                Err(_) => {
-                    (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.security_warn").to_string(), markup: None }, None)))
-                }
-                Ok(true) => {
-                    (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.title_4").to_string(), markup: None }, None)))
-                }
-                Ok(false) => {
-                    (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.state_invalid").to_string(), markup: None }, None)))
-                }
+                Err(_) => (
+                    MessageFlowOutcome::Handled,
+                    Some((
+                        MessageContent {
+                            text: t!("destruct.security_warn").to_string(),
+                            markup: None,
+                        },
+                        None,
+                    )),
+                ),
+                Ok(true) => (
+                    MessageFlowOutcome::Handled,
+                    Some((
+                        MessageContent {
+                            text: t!("destruct.title_4").to_string(),
+                            markup: None,
+                        },
+                        None,
+                    )),
+                ),
+                Ok(false) => (
+                    MessageFlowOutcome::Handled,
+                    Some((
+                        MessageContent {
+                            text: t!("destruct.state_invalid").to_string(),
+                            markup: None,
+                        },
+                        None,
+                    )),
+                ),
             }
         }
-        (_, DestructMessageAction::VerifyFailed) => {
-            (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.verify_fail").to_string(), markup: None }, None)))
-        }
+        (_, DestructMessageAction::VerifyFailed) => (
+            MessageFlowOutcome::Handled,
+            Some((
+                MessageContent {
+                    text: t!("destruct.verify_fail").to_string(),
+                    markup: None,
+                },
+                None,
+            )),
+        ),
         (DestructStep::AwaitSecurityFile, DestructMessageAction::AwaitingFile) => {
             if file_content.is_some() {
                 let re_action = process_destruct_message(
@@ -161,10 +213,14 @@ pub async fn handle_message_flow_adapter(
                     state,
                     state.self_destruct_key_hash().await.as_deref(),
                     file_content,
-                ).await;
+                )
+                .await;
                 match re_action {
                     DestructMessageAction::FileVerified { ref hash_short } => {
-                        if state.mark_destruct_file_verified(chat_id, Instant::now()).await {
+                        if state
+                            .mark_destruct_file_verified(chat_id, Instant::now())
+                            .await
+                        {
                             let markup = Markup {
                                 buttons: vec![
                                     vec![InlineButton {
@@ -177,24 +233,54 @@ pub async fn handle_message_flow_adapter(
                                     }],
                                 ],
                             };
-                            (MessageFlowOutcome::Handled, Some((MessageContent {
-                                text: t!("destruct.file_verify_ok", "0" => hash_short).to_string(),
-                                markup: Some(markup),
-                            }, None)))
+                            (
+                                MessageFlowOutcome::Handled,
+                                Some((
+                                    MessageContent {
+                                        text: t!("destruct.file_verify_ok", "0" => hash_short)
+                                            .to_string(),
+                                        markup: Some(markup),
+                                    },
+                                    None,
+                                )),
+                            )
                         } else {
                             (MessageFlowOutcome::Handled, None)
                         }
                     }
-                    DestructMessageAction::FileMismatch => {
-                        (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.file_verify_fail").to_string(), markup: None }, None)))
-                    }
-                    DestructMessageAction::NoSecurityKey => {
-                        (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.no_security_file").to_string(), markup: None }, None)))
-                    }
+                    DestructMessageAction::FileMismatch => (
+                        MessageFlowOutcome::Handled,
+                        Some((
+                            MessageContent {
+                                text: t!("destruct.file_verify_fail").to_string(),
+                                markup: None,
+                            },
+                            None,
+                        )),
+                    ),
+                    DestructMessageAction::NoSecurityKey => (
+                        MessageFlowOutcome::Handled,
+                        Some((
+                            MessageContent {
+                                text: t!("destruct.no_security_file").to_string(),
+                                markup: None,
+                            },
+                            None,
+                        )),
+                    ),
                     _ => (MessageFlowOutcome::Handled, None),
                 }
             } else {
-                (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.file_send_prompt").to_string(), markup: None }, None)))
+                (
+                    MessageFlowOutcome::Handled,
+                    Some((
+                        MessageContent {
+                            text: t!("destruct.file_send_prompt").to_string(),
+                            markup: None,
+                        },
+                        None,
+                    )),
+                )
             }
         }
         _ => (MessageFlowOutcome::Handled, None),

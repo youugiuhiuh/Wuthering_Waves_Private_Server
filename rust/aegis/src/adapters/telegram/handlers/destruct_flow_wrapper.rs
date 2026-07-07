@@ -2,9 +2,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rust_i18n::t;
+use teloxide::payloads::EditMessageTextSetters;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode;
-use teloxide::payloads::EditMessageTextSetters;
 
 use aegis::app::destruct_flow::MessageFlowOutcome;
 use aegis::app::state::{AppState, DestructStep, TimeoutStatus};

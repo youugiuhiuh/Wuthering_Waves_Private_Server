@@ -1,6 +1,6 @@
+use crate::save_lang_to_config;
 use aegis::app::destruct_flow::MessageFlowOutcome;
 use aegis::app::state::{AppState, TimeoutStatus};
-use crate::save_lang_to_config;
 use aegis::core::i18n;
 use futures_util::future::BoxFuture;
 use std::sync::Arc;
@@ -95,7 +95,8 @@ pub fn handle_callback(
                 continue;
             }
 
-            if destruct_flow_wrapper::handle_callback_timeout(&bot, &q, chat_id, msg_id, &state).await?
+            if destruct_flow_wrapper::handle_callback_timeout(&bot, &q, chat_id, msg_id, &state)
+                .await?
                 == MessageFlowOutcome::Handled
             {
                 break Ok(());

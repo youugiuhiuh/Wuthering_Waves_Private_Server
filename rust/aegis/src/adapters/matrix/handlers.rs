@@ -1,6 +1,6 @@
-use aegis::app::state::AppState;
 use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
 use aegis::adapters::matrix::commands::*;
+use aegis::app::state::AppState;
 use aegis::core::singbox::SingBoxConfigManager;
 use aegis::core::system::SystemMonitor;
 use aegis::core::system::maintenance::MaintenanceManager;

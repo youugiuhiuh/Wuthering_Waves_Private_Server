@@ -1,6 +1,6 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
-use aegis::app::batch_handler::send_singbox_batch_result;
 use aegis::adapters::common::{MessageContent, TargetId};
+use aegis::app::batch_handler::send_singbox_batch_result;
 use aegis::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use aegis::core::system::SystemMonitor;
 use aegis::core::types::IpVersion;
@@ -372,13 +372,9 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 {
                     Ok(result) => {
                         let target = TargetId(chat_id_clone.0.to_string());
-                        if let Err(e) = send_singbox_batch_result(
-                            adapter.clone(),
-                            target,
-                            "Hysteria2",
-                            &result,
-                        )
-                        .await
+                        if let Err(e) =
+                            send_singbox_batch_result(adapter.clone(), target, "Hysteria2", &result)
+                                .await
                         {
                             log::warn!("发送批量创建结果失败: {}", e);
                         }
@@ -435,13 +431,9 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
                     Ok(result) => {
                         let target = TargetId(chat_id_clone.0.to_string());
-                        if let Err(e) = send_singbox_batch_result(
-                            adapter.clone(),
-                            target,
-                            "TUIC",
-                            &result,
-                        )
-                        .await
+                        if let Err(e) =
+                            send_singbox_batch_result(adapter.clone(), target, "TUIC", &result)
+                                .await
                         {
                             log::warn!("发送批量创建结果失败: {}", e);
                         }

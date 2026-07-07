@@ -1,14 +1,15 @@
+use super::subscription;
 use crate::MAX_INPUT_LENGTH;
+use aegis::adapters::common::TargetId;
 use aegis::app::destruct_flow;
 use aegis::app::destruct_flow::MessageFlowOutcome;
-use aegis::app::state::{AppState, TimeoutStatus};
-use super::subscription;
-use aegis::adapters::common::TargetId;
+use aegis::app::state::{AppState, DestructStep, TimeoutStatus};
 use aegis::core::xray::config::ConfigManager;
 use rust_i18n::t;
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::Bot;
+use teloxide::net::Download;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Message, Requester, ResponseResult};
 use teloxide::types::ParseMode;
@@ -108,17 +109,40 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
         TimeoutStatus::NotTracked => {}
     }
 
-    if let Some(text) = msg.text() {
-        if subscription::handle_text_input(&bot, msg.chat.id, &state, text).await? {
-            return Ok(());
-        }
+    if let Some(text) = msg.text()
+        && subscription::handle_text_input(&bot, msg.chat.id, &state, text).await?
+    {
+        return Ok(());
     }
+
+    let file_content: Option<Vec<u8>> = match state.destruct_snapshot(&chat_id_str).await {
+        Some(s) if s.step == DestructStep::AwaitSecurityFile => {
+            let file_id = msg.document().map(|d| d.file.id.clone()).or_else(|| {
+                msg.photo()
+                    .and_then(|p| p.last().map(|ph| ph.file.id.clone()))
+            });
+            match file_id {
+                Some(fid) => match bot.get_file(&fid).await {
+                    Ok(file) => {
+                        let mut content = Vec::new();
+                        match bot.download_file(&file.path, &mut content).await {
+                            Ok(()) => Some(content),
+                            Err(_) => None,
+                        }
+                    }
+                    Err(_) => None,
+                },
+                None => None,
+            }
+        }
+        _ => None,
+    };
 
     let (outcome, response) = destruct_flow::handle_message_flow_adapter(
         msg.text(),
-        None,
+        file_content.as_deref(),
         &state,
-        &chat_id.0.to_string(),
+        &chat_id_str,
         user_id,
     )
     .await;
@@ -134,7 +158,9 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
                     .map(|row| {
                         row.iter()
                             .map(|btn| {
-                                teloxide::types::InlineKeyboardButton::callback(&btn.text, &btn.data)
+                                teloxide::types::InlineKeyboardButton::callback(
+                                    &btn.text, &btn.data,
+                                )
                             })
                             .collect()
                     })

@@ -14,12 +14,12 @@ mod bootstrap;
 mod main;
 mod utils;
 
-use aegis::app::auth;
-use aegis::app::state::AppState;
 use crate::bootstrap::{
     CONFIG_FILE, EncryptedConfig, KEY_FILE, config_dir, harden_process, verify_integrity,
 };
 use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
+use aegis::app::auth;
+use aegis::app::state::AppState;
 use aegis::core::i18n;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::SecurityManager;
