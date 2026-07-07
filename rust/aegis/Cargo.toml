@@ -32,6 +32,7 @@ hex = "0.4"
 reqwest = { version = "0.11", default-features = false, features = [
     "json",
     "rustls-tls",
+    "stream",
 ] }
 percent-encoding = "2.3"
 tokio-rustls = "0.24"

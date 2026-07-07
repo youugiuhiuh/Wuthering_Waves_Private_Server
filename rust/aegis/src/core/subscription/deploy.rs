@@ -3,6 +3,7 @@ use crate::core::subscription::cert::{self, TlsMode, TlsResult};
 use crate::core::subscription::config;
 use crate::core::subscription::minisign;
 use crate::core::subscription::token::TokenManager;
+use tokio::io::AsyncWriteExt;
 
 pub struct DeployParams {
     pub domain: String,
@@ -57,16 +58,34 @@ pub async fn download_binary(
     let binary_url = format!("{}/sub-server", &base_url);
     let sig_url = format!("{}/sub-server.minisig", &base_url);
 
-    let binary_data = client
+    // Stream binary download directly to a temp file to avoid OOM
+    let tmp_path = format!("{}.tmp", paths::sub_server::BIN);
+    let bin_resp = client
         .get(&binary_url)
         .header("User-Agent", "wwps-aegis")
         .send()
         .await
-        .map_err(|e| format!("download binary failed: {e}"))?
-        .bytes()
+        .map_err(|e| format!("download binary failed: {e}"))?;
+    let mut tmp_file = tokio::fs::File::create(&tmp_path)
         .await
-        .map_err(|e| format!("read binary body failed: {e}"))?;
+        .map_err(|e| format!("create temp file failed: {e}"))?;
+    let mut stream = bin_resp.bytes_stream();
+    use tokio_stream::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("stream chunk failed: {e}"))?;
+        tmp_file
+            .write_all(&chunk)
+            .await
+            .map_err(|e| format!("write chunk failed: {e}"))?;
+    }
+    tmp_file.flush().await.map_err(|e| format!("flush failed: {e}"))?;
 
+    // Read the full binary into memory only after download completes
+    let binary_data = tokio::fs::read(&tmp_path)
+        .await
+        .map_err(|e| format!("read temp file failed: {e}"))?;
+
+    // Minisig is small, download directly
     let sig_data = client
         .get(&sig_url)
         .header("User-Agent", "wwps-aegis")
@@ -75,9 +94,10 @@ pub async fn download_binary(
         .map_err(|e| format!("download signature failed: {e}"))?
         .bytes()
         .await
-        .map_err(|e| format!("read signature body failed: {e}"))?;
+        .map_err(|e| format!("read signature body failed: {e}"))?
+        .to_vec();
 
-    Ok((binary_data.to_vec(), sig_data.to_vec()))
+    Ok((binary_data, sig_data))
 }
 
 pub fn verify_binary(
@@ -104,17 +124,19 @@ pub fn verify_binary(
 }
 
 pub fn deploy_binary(binary_data: &[u8]) -> Result<(), String> {
-    std::fs::write(paths::sub_server::BIN, binary_data)
+    let tmp_path = format!("{}.tmp", paths::sub_server::BIN);
+    // Clean up any stale temp file
+    let _ = std::fs::remove_file(&tmp_path);
+    std::fs::write(&tmp_path, binary_data)
         .map_err(|e| format!("write binary failed: {e}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(
-            paths::sub_server::BIN,
-            std::fs::Permissions::from_mode(0o755),
-        )
-        .map_err(|e| format!("set permissions failed: {e}"))?;
+        std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("set permissions failed: {e}"))?;
     }
+    std::fs::rename(&tmp_path, paths::sub_server::BIN)
+        .map_err(|e| format!("rename binary failed: {e}"))?;
     Ok(())
 }
 
