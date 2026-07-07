@@ -1,5 +1,5 @@
 use crate::core::paths;
-use rcgen::{BasicConstraints, CertificateParams, IsCa, KeyPair};
+use rcgen::{CertificateParams, IsCa, KeyPair};
 use std::fs;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -15,7 +15,41 @@ pub enum TlsResult {
     SkippedReverseProxy,
 }
 
+fn check_acme_sh() -> bool {
+    std::process::Command::new("acme.sh")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn install_acme_sh() -> Result<(), String> {
+    let output = std::process::Command::new("sh")
+        .args(["-c", "curl -fsSL https://get.acme.sh | sh"])
+        .output()
+        .map_err(|e| format!("install acme.sh failed: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("install acme.sh script failed: {stderr}"));
+    }
+    // Verify installation succeeded
+    if !check_acme_sh() {
+        return Err("acme.sh was installed but still not found after install".to_string());
+    }
+    Ok(())
+}
+
+fn ensure_acme_sh() -> Result<(), String> {
+    if check_acme_sh() {
+        return Ok(());
+    }
+    log::info!("acme.sh not found, attempting auto-install...");
+    install_acme_sh()
+}
+
 pub fn setup_acme_domain(domain: &str) -> Result<TlsResult, String> {
+    ensure_acme_sh()?;
+
     let cert_path = format!(
         "/root/.acme.sh/{}_ecc/fullchain.cer",
         domain.replace('*', "_")
@@ -56,8 +90,10 @@ pub fn setup_acme_domain(domain: &str) -> Result<TlsResult, String> {
 }
 
 pub fn setup_acme_ip(ip: &str) -> Result<TlsResult, String> {
+    ensure_acme_sh()?;
+
     let output = std::process::Command::new("acme.sh")
-        .args(["--issue", "--standalone", "-d", ip, "--keylength", "ec-256"])
+        .args(["--issue", "--standalone", "-d", ip, "--keylength", "ec-256", "--server", "letsencrypt"])
         .output()
         .map_err(|e| format!("acme.sh execution failed: {e}"))?;
     if !output.status.success() {
@@ -94,9 +130,10 @@ pub fn setup_self_signed() -> Result<TlsResult, String> {
         });
     }
 
-    let mut params = CertificateParams::new(vec!["wwps-sub-server".to_string()])
+    let mut params = CertificateParams::new(vec!["0.0.0.0".to_string()])
         .map_err(|e| format!("create cert params failed: {e}"))?;
-    params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    params.is_ca = IsCa::ExplicitNoCa;
+    params.distinguished_name = rcgen::DistinguishedName::new();
     let key_pair = KeyPair::generate().map_err(|e| format!("generate key pair failed: {e}"))?;
     let cert = params
         .self_signed(&key_pair)
