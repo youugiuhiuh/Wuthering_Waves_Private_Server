@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/base64"
 	"log"
 	"net/http"
 	"strings"
@@ -39,6 +40,7 @@ func SubscriptionHandler(cfg *config.Config) http.HandlerFunc {
 		explicitFormat := r.URL.Query().Get("format")
 		formatType := detectFormat(ua, explicitFormat)
 
+		setSubscriptionHeaders(w, token)
 		cacheKey := token + ":" + formatType
 		if cached, ok := lruCache.Get(cacheKey); ok {
 			writeResponse(w, formatType, cached.(string))
@@ -58,8 +60,13 @@ func SubscriptionHandler(cfg *config.Config) http.HandlerFunc {
 			output, err = format.ToClashYAML(configs)
 		case "singbox":
 			output, err = format.ToSingBox(configs)
+		case "xray":
+			output, err = format.ToXrayJSON(configs)
 		case "base64":
 			output = format.ToBase64List(configs)
+		case "html":
+			renderHTML(w, configs)
+			return
 		default:
 			output = format.ToURIPlain(configs)
 		}
@@ -102,6 +109,12 @@ func detectFormat(ua, explicit string) string {
 			return "singbox"
 		}
 	}
+	xray := []string{"xray", "x-ui", "3x-ui", "nekobox"}
+	for _, kw := range xray {
+		if strings.Contains(uaLower, kw) {
+			return "xray"
+		}
+	}
 	base64 := []string{"shadowrocket", "v2rayng", "v2rayn", "nekoray", "v2ray", "v2fly", "fair", "pharos"}
 	for _, kw := range base64 {
 		if strings.Contains(uaLower, kw) {
@@ -121,12 +134,22 @@ func writeResponse(w http.ResponseWriter, formatType, content string) {
 		ct = "text/yaml; charset=utf-8"
 	case "singbox":
 		ct = "application/json; charset=utf-8"
+	case "xray":
+		ct = "text/plain; charset=utf-8"
 	default:
 		ct = "text/plain; charset=utf-8"
 	}
 	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write([]byte(content))
+}
+
+func setSubscriptionHeaders(w http.ResponseWriter, token string) {
+	w.Header().Set("Subscription-Userinfo", "upload=0; download=0; total=1099511627776; expire=0")
+	w.Header().Set("Profile-Update-Interval", "12")
+	w.Header().Set("Profile-Title", base64.StdEncoding.EncodeToString([]byte("WWPS Subscription")))
+	w.Header().Set("Support-Url", "https://t.me/wwps_support")
+	w.Header().Set("Profile-Web-Page-Url", "/sub/"+token)
 }
 
 func safePrefix(token string) string {
