@@ -20,4 +20,13 @@ pub enum HandlerAction {
     Redirect(String), // 内部跳转（相当于老代码的 continue）
 }
 
-pub type HandlerResult = Result<HandlerAction>;
+pub type HandlerResult = Result<HandlerAction>;  
+
+impl From<aegis::handlers::context::HandlerAction> for HandlerAction {
+    fn from(action: aegis::handlers::context::HandlerAction) -> Self {
+        match action {
+            aegis::handlers::context::HandlerAction::Done => HandlerAction::Done,
+            aegis::handlers::context::HandlerAction::Redirect(s) => HandlerAction::Redirect(s),
+        }
+    }
+}
