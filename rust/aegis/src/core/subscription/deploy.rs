@@ -3,6 +3,7 @@ use crate::core::subscription::cert::{self, TlsMode, TlsResult};
 use crate::core::subscription::config;
 use crate::core::subscription::minisign;
 use crate::core::subscription::token::TokenManager;
+use crate::core::system::SystemMonitor;
 use tokio::io::AsyncWriteExt;
 
 pub struct DeployParams {
@@ -210,15 +211,32 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
     verify_binary(&binary_data, &sig_data, "3", "sub-server")?;
     deploy_binary(&binary_data)?;
 
+    // Auto-detect public IP when user selected IP cert but provided no domain
+    let effective_domain = if params.tls_mode == TlsMode::IpAcme
+        && (params.domain.is_empty() || params.domain == "0.0.0.0")
+    {
+        match SystemMonitor::get_public_ip().await {
+            Ok(ip) => {
+                log::info!("auto-detected public IP for certificate: {}", ip);
+                ip
+            }
+            Err(e) => {
+                return Err(format!("failed to detect public IP for IP cert: {e}"));
+            }
+        }
+    } else {
+        params.domain.clone()
+    };
+
     let tls_result = match params.tls_mode {
-        TlsMode::DomainAcme => match cert::setup_acme_domain(&params.domain) {
+        TlsMode::DomainAcme => match cert::setup_acme_domain(&effective_domain) {
             Ok(r) => r,
             Err(e) => {
                 log::warn!("acme.sh domain cert failed ({}), falling back to self-signed", e);
                 cert::setup_self_signed()?
             }
         },
-        TlsMode::IpAcme => match cert::setup_acme_ip(&params.domain) {
+        TlsMode::IpAcme => match cert::setup_acme_ip(&effective_domain) {
             Ok(r) => r,
             Err(e) => {
                 log::warn!("acme.sh IP cert failed ({}), falling back to self-signed", e);
@@ -247,6 +265,7 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
         .create_token("default", &[])
         .map_err(|e| format!("create token failed: {e}"))?;
 
+    let display_host = &effective_domain;
     let port_part = if params.tls_mode == TlsMode::ReverseProxy {
         String::new()
     } else {
@@ -254,7 +273,7 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
     };
     let sub_url = format!(
         "https://{}{}/sub/{}",
-        params.domain, port_part, token_record.token
+        display_host, port_part, token_record.token
     );
 
     Ok(DeployResult {
