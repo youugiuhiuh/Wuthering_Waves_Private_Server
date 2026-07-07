@@ -106,7 +106,7 @@ jobs:
           cd go/installer
           CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
 
-      - name: Build Sub-Server Binary
+      - name: Build Sub-Server Binary (amd64)
         run: |
           cd tools/sub-server
           go mod download
@@ -114,7 +114,15 @@ jobs:
             -ldflags="-s -w -X main.version=${{ env.NEW_VERSION }}" \
             -o sub-server .
 
-      - name: Sign Sub-Server Binary
+      - name: Build Sub-Server Binary (arm64)
+        run: |
+          cd tools/sub-server
+          go mod download
+          CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=arm64 garble -literals -tiny -seed=random build \
+            -ldflags="-s -w -X main.version=${{ env.NEW_VERSION }}" \
+            -o sub-server-arm64 .
+
+      - name: Sign Sub-Server Binaries
         env:
           MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
         run: |
@@ -122,14 +130,24 @@ jobs:
             KEY_FILE=$(mktemp)
             echo "$MINISIGN_PRIVATE_KEY" > "$KEY_FILE"
             cd tools/sub-server
+
+            # Sign amd64
             minisign -S -s "$KEY_FILE" \
               -m sub-server \
               -t "${{ env.NEW_VERSION }}:sub-server" \
               -x sub-server.minisig
+            echo "✅ amd64 binary signed"
+
+            # Sign arm64
+            minisign -S -s "$KEY_FILE" \
+              -m sub-server-arm64 \
+              -t "${{ env.NEW_VERSION }}:sub-server-arm64" \
+              -x sub-server-arm64.minisig
+            echo "✅ arm64 binary signed"
+
             rm -f "$KEY_FILE"
-            echo "✅ Sub-server binary signed"
           else
-            echo "⚠️ MINISIGN_PRIVATE_KEY not set, skipping signature"
+            echo "⚠️ MINISIGN_PRIVATE_KEY not set, skipping signatures"
           fi
 
       - name: Prepare Distribution Artifacts
@@ -138,7 +156,9 @@ jobs:
           cp rust/aegis/target/release/aegis dist/
           cp go/installer/installer dist/
           cp tools/sub-server/sub-server dist/ 2>/dev/null || true
+          cp tools/sub-server/sub-server-arm64 dist/ 2>/dev/null || true
           cp tools/sub-server/sub-server.minisig dist/ 2>/dev/null || true
+          cp tools/sub-server/sub-server-arm64.minisig dist/ 2>/dev/null || true
 
       - name: Cleanup Old Releases (Keep Last 3)
         env:
@@ -167,15 +187,19 @@ jobs:
             dist/aegis
             dist/installer
             dist/sub-server
+            dist/sub-server-arm64
             dist/sub-server.minisig
+            dist/sub-server-arm64.minisig
           body: |
             Release `v${{ env.NEW_VERSION }}`.
 
             ### Included Files
             - `installer`: bootstrap executable
             - `aegis`: runtime management executable
-            - `sub-server`: optional HTTP subscription endpoint
-            - `sub-server.minisig`: minisign signature for binary verification
+            - `sub-server` (amd64): optional HTTP subscription endpoint
+            - `sub-server-arm64`: optional HTTP subscription endpoint (arm64)
+            - `sub-server.minisig`: minisign signature for amd64 binary
+            - `sub-server-arm64.minisig`: minisign signature for arm64 binary
 
       - name: Dispatch Signing Workflow
         env:

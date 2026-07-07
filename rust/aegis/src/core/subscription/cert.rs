@@ -93,7 +93,16 @@ pub fn setup_acme_ip(ip: &str) -> Result<TlsResult, String> {
     ensure_acme_sh()?;
 
     let output = std::process::Command::new("acme.sh")
-        .args(["--issue", "--standalone", "-d", ip, "--keylength", "ec-256", "--server", "letsencrypt"])
+        .args([
+            "--issue",
+            "--standalone",
+            "-d",
+            ip,
+            "--keylength",
+            "ec-256",
+            "--server",
+            "letsencrypt",
+        ])
         .output()
         .map_err(|e| format!("acme.sh execution failed: {e}"))?;
     if !output.status.success() {

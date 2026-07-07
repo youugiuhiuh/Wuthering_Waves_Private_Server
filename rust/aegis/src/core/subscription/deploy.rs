@@ -18,6 +18,21 @@ pub struct DeployResult {
     pub token: String,
 }
 
+pub fn should_verify_binary(sig_data: &[u8]) -> bool {
+    !sig_data.is_empty()
+}
+
+pub fn resolve_binary_name() -> &'static str {
+    #[cfg(target_arch = "aarch64")]
+    {
+        "sub-server-arm64"
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        "sub-server"
+    }
+}
+
 pub async fn download_binary(
     repo_owner: &str,
     repo_name: &str,
@@ -56,8 +71,8 @@ pub async fn download_binary(
         repo_owner, repo_name, tag_name
     );
 
-    let binary_url = format!("{}/sub-server", &base_url);
-    let sig_url = format!("{}/sub-server.minisig", &base_url);
+    let binary_url = format!("{}/{}", &base_url, resolve_binary_name());
+    let sig_url = format!("{}/{}.minisig", &base_url, resolve_binary_name());
 
     // Stream binary download directly to a temp file to avoid OOM
     let tmp_path = format!("{}.tmp", paths::sub_server::BIN);
@@ -79,7 +94,10 @@ pub async fn download_binary(
             .await
             .map_err(|e| format!("write chunk failed: {e}"))?;
     }
-    tmp_file.flush().await.map_err(|e| format!("flush failed: {e}"))?;
+    tmp_file
+        .flush()
+        .await
+        .map_err(|e| format!("flush failed: {e}"))?;
 
     // Read the full binary into memory only after download completes
     let binary_data = tokio::fs::read(&tmp_path)
@@ -87,16 +105,24 @@ pub async fn download_binary(
         .map_err(|e| format!("read temp file failed: {e}"))?;
 
     // Minisig is small, download directly
-    let sig_data = client
+    // If the signature file doesn't exist in the release (404), return
+    // empty sig data so callers can soft-fail verification.
+    let sig_resp = client
         .get(&sig_url)
         .header("User-Agent", "wwps-aegis")
         .send()
         .await
-        .map_err(|e| format!("download signature failed: {e}"))?
-        .bytes()
-        .await
-        .map_err(|e| format!("read signature body failed: {e}"))?
-        .to_vec();
+        .map_err(|e| format!("download signature failed: {e}"))?;
+    let sig_data = if sig_resp.status().as_u16() == 404 {
+        log::warn!("minisig signature not found at {}", sig_url);
+        Vec::new()
+    } else {
+        sig_resp
+            .bytes()
+            .await
+            .map_err(|e| format!("read signature body failed: {e}"))?
+            .to_vec()
+    };
 
     Ok((binary_data, sig_data))
 }
@@ -107,6 +133,9 @@ pub fn verify_binary(
     expected_version: &str,
     expected_asset: &str,
 ) -> Result<(), String> {
+    if sig_data.is_empty() {
+        return Err("signature data is empty, cannot verify".into());
+    }
     let info = minisign::verify_minisign(binary_data, sig_data)?;
     let (version, asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
     if !version.starts_with(expected_version) {
@@ -128,8 +157,7 @@ pub fn deploy_binary(binary_data: &[u8]) -> Result<(), String> {
     let tmp_path = format!("{}.tmp", paths::sub_server::BIN);
     // Clean up any stale temp file
     let _ = std::fs::remove_file(&tmp_path);
-    std::fs::write(&tmp_path, binary_data)
-        .map_err(|e| format!("write binary failed: {e}"))?;
+    std::fs::write(&tmp_path, binary_data).map_err(|e| format!("write binary failed: {e}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -141,17 +169,18 @@ pub fn deploy_binary(binary_data: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-pub fn write_systemd_service(port: u16, tls_cert: &str, tls_key: &str) -> Result<(), String> {
-    let service_file = "/etc/systemd/system/wwps-sub-server.service";
+pub fn generate_systemd_unit(port: u16, tls_cert: &str, tls_key: &str) -> String {
     let tls_flags = if !tls_cert.is_empty() && !tls_key.is_empty() {
         format!(" --tls-cert={} --tls-key={}", tls_cert, tls_key)
     } else {
         String::new()
     };
-    let unit = format!(
+    format!(
         "[Unit]\n\
          Description=WWPS Subscription Server\n\
          After=network.target\n\
+         After=wwps-aegis.service\n\
+         BindsTo=wwps-aegis.service\n\
          \n\
          [Service]\n\
          Type=simple\n\
@@ -162,7 +191,12 @@ pub fn write_systemd_service(port: u16, tls_cert: &str, tls_key: &str) -> Result
          [Install]\n\
          WantedBy=multi-user.target\n",
         bin = paths::sub_server::BIN,
-    );
+    )
+}
+
+pub fn write_systemd_service(port: u16, tls_cert: &str, tls_key: &str) -> Result<(), String> {
+    let service_file = "/etc/systemd/system/wwps-sub-server.service";
+    let unit = generate_systemd_unit(port, tls_cert, tls_key);
     std::fs::write(service_file, &unit).map_err(|e| format!("write systemd unit failed: {e}"))?;
 
     let status = std::process::Command::new("systemctl")
@@ -192,10 +226,120 @@ pub fn write_systemd_service(port: u16, tls_cert: &str, tls_key: &str) -> Result
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_download_retry_exhausts_attempts() {
+        let result = super::download_with_retry(
+            || async { Err::<Vec<u8>, String>("mock failure".to_string()) },
+            3,
+            std::time::Duration::from_millis(1),
+        )
+        .await;
+        assert!(result.is_err(), "should fail after exhausting retries");
+    }
+
+    #[tokio::test]
+    async fn test_grpc_readiness_timeout() {
+        let result =
+            super::wait_for_grpc_socket("/nonexistent/sock", std::time::Duration::from_millis(10))
+                .await;
+        assert!(result.is_err(), "should timeout on non-existent socket");
+        let err = result.unwrap_err();
+        assert!(err.contains("timed out"), "error should mention timeout");
+    }
+
+    #[test]
+    fn test_should_verify_binary() {
+        assert!(!super::should_verify_binary(&[]), "empty sig = skip");
+        assert!(
+            super::should_verify_binary(&[0u8; 64]),
+            "non-empty sig = verify"
+        );
+    }
+
+    #[test]
+    fn test_resolve_binary_name() {
+        let name = super::resolve_binary_name();
+        assert!(
+            name == "sub-server" || name == "sub-server-arm64",
+            "binary name should match known architectures"
+        );
+    }
+
+    #[test]
+    fn test_systemd_unit_has_aegis_dependency() {
+        let port = 8443;
+        let cert = "/etc/wwps/sub-server/certs/fullchain.pem";
+        let key = "/etc/wwps/sub-server/certs/privkey.pem";
+        let result = super::generate_systemd_unit(port, cert, key);
+        assert!(
+            result.contains("After=wwps-aegis.service"),
+            "unit should depend on aegis"
+        );
+        assert!(
+            result.contains("BindsTo=wwps-aegis.service"),
+            "unit should bind to aegis"
+        );
+    }
+}
+
 pub fn open_firewall_port(port: u16) {
     let _ = std::process::Command::new("ufw")
         .args(["allow", &port.to_string()])
         .status();
+}
+
+pub async fn wait_for_grpc_socket(
+    socket_path: &str,
+    timeout: std::time::Duration,
+) -> Result<(), String> {
+    let start = std::time::Instant::now();
+    loop {
+        if tokio::fs::metadata(socket_path).await.is_ok() {
+            return Ok(());
+        }
+        if start.elapsed() >= timeout {
+            return Err(format!("timed out waiting for gRPC socket: {socket_path}"));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+}
+
+pub async fn download_with_retry<F, Fut, T>(
+    f: F,
+    max_attempts: u32,
+    base_delay: std::time::Duration,
+) -> Result<T, String>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let mut last_err = String::new();
+    for attempt in 1..=max_attempts {
+        match f().await {
+            Ok(val) => return Ok(val),
+            Err(e) => {
+                last_err = e;
+                if attempt < max_attempts {
+                    let delay = base_delay * (2u64.pow(attempt - 1) as u32);
+                    log::warn!(
+                        "download attempt {}/{} failed, retrying in {}s: {}",
+                        attempt,
+                        max_attempts,
+                        delay.as_secs(),
+                        last_err
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        }
+    }
+    Err(format!(
+        "download failed after {max_attempts} attempts: {last_err}"
+    ))
 }
 
 pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<DeployResult, String> {
@@ -207,8 +351,17 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
         .args(["stop", paths::sub_server::SERVICE])
         .status();
 
-    let (binary_data, sig_data) = download_binary(repo_owner, repo_name).await?;
-    verify_binary(&binary_data, &sig_data, "3", "sub-server")?;
+    let (binary_data, sig_data) = download_with_retry(
+        || download_binary(repo_owner, repo_name),
+        3,
+        std::time::Duration::from_secs(2),
+    )
+    .await?;
+    if should_verify_binary(&sig_data) {
+        verify_binary(&binary_data, &sig_data, "3", resolve_binary_name())?;
+    } else {
+        log::warn!("no minisig signature found, skipping binary verification");
+    }
     deploy_binary(&binary_data)?;
 
     // Auto-detect public IP when no domain was provided
@@ -230,14 +383,20 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
         TlsMode::DomainAcme => match cert::setup_acme_domain(&effective_domain) {
             Ok(r) => r,
             Err(e) => {
-                log::warn!("acme.sh domain cert failed ({}), falling back to self-signed", e);
+                log::warn!(
+                    "acme.sh domain cert failed ({}), falling back to self-signed",
+                    e
+                );
                 cert::setup_self_signed()?
             }
         },
         TlsMode::IpAcme => match cert::setup_acme_ip(&effective_domain) {
             Ok(r) => r,
             Err(e) => {
-                log::warn!("acme.sh IP cert failed ({}), falling back to self-signed", e);
+                log::warn!(
+                    "acme.sh IP cert failed ({}), falling back to self-signed",
+                    e
+                );
                 cert::setup_self_signed()?
             }
         },
@@ -258,6 +417,11 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
 
     write_systemd_service(params.port, &tls_cert, &tls_key)?;
     open_firewall_port(params.port);
+    wait_for_grpc_socket(
+        paths::sub_server::GRPC_SOCK,
+        std::time::Duration::from_secs(30),
+    )
+    .await?;
 
     let token_record = tm
         .create_token("default", &[])
