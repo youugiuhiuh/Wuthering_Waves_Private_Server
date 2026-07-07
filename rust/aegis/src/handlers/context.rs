@@ -69,10 +69,10 @@ mod tests {
     use crate::adapters::common::{MockBotAdapter, TargetId};
     use crate::app::state::AppState;
     use crate::core::security::self_destruct::SelfDestructExecutor;
-    use std::sync::Arc;
     use crate::core::totp::TotpManager;
     use futures_util::future::BoxFuture;
     use secrecy::SecretString;
+    use std::sync::Arc;
 
     struct NoopExecutor;
     impl SelfDestructExecutor for NoopExecutor {
