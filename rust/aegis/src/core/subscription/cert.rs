@@ -1,5 +1,5 @@
 use crate::core::paths;
-use rcgen::{BasicConstraints, CertificateParams, IsCa, KeyPair};
+use rcgen::{CertificateParams, IsCa, KeyPair};
 use std::fs;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -94,9 +94,9 @@ pub fn setup_self_signed() -> Result<TlsResult, String> {
         });
     }
 
-    let mut params = CertificateParams::new(vec!["wwps-sub-server".to_string()])
+    let mut params = CertificateParams::new(vec!["0.0.0.0".to_string()])
         .map_err(|e| format!("create cert params failed: {e}"))?;
-    params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    params.is_ca = IsCa::ExplicitNoCa;
     let key_pair = KeyPair::generate().map_err(|e| format!("generate key pair failed: {e}"))?;
     let cert = params
         .self_signed(&key_pair)
