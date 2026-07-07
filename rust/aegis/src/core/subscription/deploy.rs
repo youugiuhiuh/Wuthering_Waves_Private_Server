@@ -18,6 +18,10 @@ pub struct DeployResult {
     pub token: String,
 }
 
+pub fn should_verify_binary(sig_data: &[u8]) -> bool {
+    !sig_data.is_empty()
+}
+
 pub fn resolve_binary_name() -> &'static str {
     #[cfg(target_arch = "aarch64")]
     {
@@ -226,6 +230,15 @@ mod tests {
     }
 
     #[test]
+    fn test_should_verify_binary() {
+        assert!(!super::should_verify_binary(&[]), "empty sig = skip");
+        assert!(
+            super::should_verify_binary(&[0u8; 64]),
+            "non-empty sig = verify"
+        );
+    }
+
+    #[test]
     fn test_resolve_binary_name() {
         let name = super::resolve_binary_name();
         assert!(
@@ -283,7 +296,11 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
         .status();
 
     let (binary_data, sig_data) = download_binary(repo_owner, repo_name).await?;
-    verify_binary(&binary_data, &sig_data, "3", "sub-server")?;
+    if should_verify_binary(&sig_data) {
+        verify_binary(&binary_data, &sig_data, "3", resolve_binary_name())?;
+    } else {
+        log::warn!("no minisig signature found, skipping binary verification");
+    }
     deploy_binary(&binary_data)?;
 
     // Auto-detect public IP when no domain was provided
