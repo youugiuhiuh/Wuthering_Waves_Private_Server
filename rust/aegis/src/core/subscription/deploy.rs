@@ -79,7 +79,10 @@ pub async fn download_binary(
             .await
             .map_err(|e| format!("write chunk failed: {e}"))?;
     }
-    tmp_file.flush().await.map_err(|e| format!("flush failed: {e}"))?;
+    tmp_file
+        .flush()
+        .await
+        .map_err(|e| format!("flush failed: {e}"))?;
 
     // Read the full binary into memory only after download completes
     let binary_data = tokio::fs::read(&tmp_path)
@@ -128,8 +131,7 @@ pub fn deploy_binary(binary_data: &[u8]) -> Result<(), String> {
     let tmp_path = format!("{}.tmp", paths::sub_server::BIN);
     // Clean up any stale temp file
     let _ = std::fs::remove_file(&tmp_path);
-    std::fs::write(&tmp_path, binary_data)
-        .map_err(|e| format!("write binary failed: {e}"))?;
+    std::fs::write(&tmp_path, binary_data).map_err(|e| format!("write binary failed: {e}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -141,17 +143,18 @@ pub fn deploy_binary(binary_data: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-pub fn write_systemd_service(port: u16, tls_cert: &str, tls_key: &str) -> Result<(), String> {
-    let service_file = "/etc/systemd/system/wwps-sub-server.service";
+pub fn generate_systemd_unit(port: u16, tls_cert: &str, tls_key: &str) -> String {
     let tls_flags = if !tls_cert.is_empty() && !tls_key.is_empty() {
         format!(" --tls-cert={} --tls-key={}", tls_cert, tls_key)
     } else {
         String::new()
     };
-    let unit = format!(
+    format!(
         "[Unit]\n\
          Description=WWPS Subscription Server\n\
          After=network.target\n\
+         After=wwps-aegis.service\n\
+         BindsTo=wwps-aegis.service\n\
          \n\
          [Service]\n\
          Type=simple\n\
@@ -162,7 +165,12 @@ pub fn write_systemd_service(port: u16, tls_cert: &str, tls_key: &str) -> Result
          [Install]\n\
          WantedBy=multi-user.target\n",
         bin = paths::sub_server::BIN,
-    );
+    )
+}
+
+pub fn write_systemd_service(port: u16, tls_cert: &str, tls_key: &str) -> Result<(), String> {
+    let service_file = "/etc/systemd/system/wwps-sub-server.service";
+    let unit = generate_systemd_unit(port, tls_cert, tls_key);
     std::fs::write(service_file, &unit).map_err(|e| format!("write systemd unit failed: {e}"))?;
 
     let status = std::process::Command::new("systemctl")
@@ -190,6 +198,27 @@ pub fn write_systemd_service(port: u16, tls_cert: &str, tls_key: &str) -> Result
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_systemd_unit_has_aegis_dependency() {
+        let port = 8443;
+        let cert = "/etc/wwps/sub-server/certs/fullchain.pem";
+        let key = "/etc/wwps/sub-server/certs/privkey.pem";
+        let result = super::generate_systemd_unit(port, cert, key);
+        assert!(
+            result.contains("After=wwps-aegis.service"),
+            "unit should depend on aegis"
+        );
+        assert!(
+            result.contains("BindsTo=wwps-aegis.service"),
+            "unit should bind to aegis"
+        );
+    }
 }
 
 pub fn open_firewall_port(port: u16) {
@@ -230,14 +259,20 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
         TlsMode::DomainAcme => match cert::setup_acme_domain(&effective_domain) {
             Ok(r) => r,
             Err(e) => {
-                log::warn!("acme.sh domain cert failed ({}), falling back to self-signed", e);
+                log::warn!(
+                    "acme.sh domain cert failed ({}), falling back to self-signed",
+                    e
+                );
                 cert::setup_self_signed()?
             }
         },
         TlsMode::IpAcme => match cert::setup_acme_ip(&effective_domain) {
             Ok(r) => r,
             Err(e) => {
-                log::warn!("acme.sh IP cert failed ({}), falling back to self-signed", e);
+                log::warn!(
+                    "acme.sh IP cert failed ({}), falling back to self-signed",
+                    e
+                );
                 cert::setup_self_signed()?
             }
         },
