@@ -72,7 +72,7 @@ pub async fn download_binary(
     );
 
     let binary_url = format!("{}/{}", &base_url, resolve_binary_name());
-    let sig_url = format!("{}/sub-server.minisig", &base_url);
+    let sig_url = format!("{}/{}.minisig", &base_url, resolve_binary_name());
 
     // Stream binary download directly to a temp file to avoid OOM
     let tmp_path = format!("{}.tmp", paths::sub_server::BIN);
@@ -133,6 +133,9 @@ pub fn verify_binary(
     expected_version: &str,
     expected_asset: &str,
 ) -> Result<(), String> {
+    if sig_data.is_empty() {
+        return Err("signature data is empty, cannot verify".into());
+    }
     let info = minisign::verify_minisign(binary_data, sig_data)?;
     let (version, asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
     if !version.starts_with(expected_version) {
