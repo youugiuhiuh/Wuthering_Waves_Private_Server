@@ -176,7 +176,7 @@ pub fn open_firewall_port(port: u16) {
 }
 
 pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<DeployResult, String> {
-    let repo_owner = "NicholasDewar";
+    let repo_owner = "youugiuhiuh";
     let repo_name = "Wuthering_Waves_Private_Server";
 
     // Stop existing sub-server service before overwriting binary
