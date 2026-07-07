@@ -283,7 +283,7 @@ pub async fn run_deploy<F>(
 where
     F: Fn(DeployStep, u8, u8) + Send + Sync,
 {
-    let repo_owner = "NicholasDewar";
+    let repo_owner = "youugiuhiuh";
     let repo_name = "Wuthering_Waves_Private_Server";
 
     on_progress(DeployStep::DownloadBinary, 0, DeployStep::TOTAL);

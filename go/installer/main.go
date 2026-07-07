@@ -19,14 +19,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/go/installer/i18n"
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/go/installer/i18n"
 
 	"github.com/awnumar/memguard"
 	"golang.org/x/sys/unix"
 )
 
 const (
-	version     = "3.3.4"
+	version     = "3.3.5"
 	installDir  = "/etc/wwps/aegis"
 	binaryName  = "aegis"
 	serviceName = "wwps-aegis"
@@ -39,7 +39,7 @@ type releaseRepo struct {
 }
 
 var defaultReleaseRepositories = []releaseRepo{
-	{Owner: "NicholasDewar", Name: "Wuthering_Waves_Private_Server"},
+	{Owner: "youugiuhiuh", Name: "Wuthering_Waves_Private_Server"},
 	{Owner: "youugiuhiuh", Name: "Wuthering_Waves_Private_Server"},
 }
 

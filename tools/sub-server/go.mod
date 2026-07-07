@@ -1,4 +1,4 @@
-module github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server
+module github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server
 
 go 1.26.4
 

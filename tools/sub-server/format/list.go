@@ -2,8 +2,9 @@ package format
 
 import (
 	"encoding/base64"
-	pb "github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/proto/sub"
 	"strings"
+
+	pb "github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/proto/sub"
 )
 
 func ToBase64List(configs []*pb.ProxyConfig) string {

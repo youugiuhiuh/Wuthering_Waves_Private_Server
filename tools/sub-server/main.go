@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/config"
-	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/handler"
-	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/middleware"
 	"github.com/go-chi/chi/v5"
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/config"
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/handler"
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/middleware"
 )
 
 var version = "dev"

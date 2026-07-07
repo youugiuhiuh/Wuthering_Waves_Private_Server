@@ -2,8 +2,9 @@ package format
 
 import (
 	"bytes"
-	pb "github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/proto/sub"
 	"text/template"
+
+	pb "github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/proto/sub"
 )
 
 const clashTemplate = `port: 7890

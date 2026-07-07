@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/cache"
-	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/config"
-	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/format"
-	grpcclient "github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/grpc"
 	"github.com/go-chi/chi/v5"
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/cache"
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/config"
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/format"
+	grpcclient "github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/grpc"
 )
 
 var (

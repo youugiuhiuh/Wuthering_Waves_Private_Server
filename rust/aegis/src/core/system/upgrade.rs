@@ -21,7 +21,7 @@ use crate::core::network::release_api::{
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
 
 const DEFAULT_RELEASE_REPOSITORIES: &[(&str, &str)] = &[
-    ("NicholasDewar", "Wuthering_Waves_Private_Server"),
+    ("youugiuhiuh", "Wuthering_Waves_Private_Server"),
     ("youugiuhiuh", "Wuthering_Waves_Private_Server"),
 ];
 const DEFAULT_ASSET_NAME: &str = "aegis";
