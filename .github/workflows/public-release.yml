@@ -65,7 +65,7 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Cache Rust build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/git
@@ -78,15 +78,15 @@ jobs:
             ${{ runner.os }}-rust-aegis-
 
       - name: Cache Go build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
             ~/.cache/garble
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-installer-${{ hashFiles('go/installer/go.sum', 'go/installer/go.mod') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('go/installer/go.sum', 'go/installer/go.mod', 'tools/sub-server/go.sum', 'tools/sub-server/go.mod') }}
           restore-keys: |
-            ${{ runner.os }}-go-installer-
+            ${{ runner.os }}-go-
 
       - name: Build Runtime Binary
         env:
@@ -106,11 +106,53 @@ jobs:
           cd go/installer
           CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
 
+      - name: Build Sub-Server Binary
+        run: |
+          cd tools/sub-server
+          go mod download
+          CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build \
+            -ldflags="-s -w -X main.version=${{ env.NEW_VERSION }}" \
+            -o sub-server .
+
+      - name: Build Sub-Server Binary (arm64)
+        run: |
+          cd tools/sub-server
+          go mod download
+          CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=arm64 garble -literals -tiny -seed=random build \
+            -ldflags="-s -w -X main.version=${{ env.NEW_VERSION }}" \
+            -o sub-server-arm64 .
+
+      - name: Sign Sub-Server Binary
+        env:
+          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+        run: |
+          if [ -n "$MINISIGN_PRIVATE_KEY" ]; then
+            KEY_FILE=$(mktemp)
+            echo "$MINISIGN_PRIVATE_KEY" > "$KEY_FILE"
+            cd tools/sub-server
+            minisign -S -s "$KEY_FILE" \
+              -m sub-server \
+              -t "${{ env.NEW_VERSION }}:sub-server" \
+              -x sub-server.minisig
+            minisign -S -s "$KEY_FILE" \
+              -m sub-server-arm64 \
+              -t "${{ env.NEW_VERSION }}:sub-server-arm64" \
+              -x sub-server-arm64.minisig
+            rm -f "$KEY_FILE"
+            echo "✅ Sub-server binary signed"
+          else
+            echo "⚠️ MINISIGN_PRIVATE_KEY not set, skipping signature"
+          fi
+
       - name: Prepare Distribution Artifacts
         run: |
           mkdir -p dist
           cp rust/aegis/target/release/aegis dist/
           cp go/installer/installer dist/
+          cp tools/sub-server/sub-server dist/ 2>/dev/null || true
+          cp tools/sub-server/sub-server.minisig dist/ 2>/dev/null || true
+          cp tools/sub-server/sub-server-arm64 dist/ 2>/dev/null || true
+          cp tools/sub-server/sub-server-arm64.minisig dist/ 2>/dev/null || true
 
       - name: Cleanup Old Releases (Keep Last 3)
         env:
@@ -130,19 +172,28 @@ jobs:
           echo "Kept $((COUNT > 3 ? 3 : COUNT)) releases, deleted $((COUNT > 3 ? COUNT - 3 : 0)) old releases"
 
       - name: Create Release
-        uses: softprops/action-gh-release@7c4723f7a335432393329f8f1c564994ce50185d
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
           tag_name: v${{ env.NEW_VERSION }}
           name: v${{ env.NEW_VERSION }}
+          fail_on_unmatched_files: false
           files: |
             dist/aegis
             dist/installer
+            dist/sub-server
+            dist/sub-server.minisig
+            dist/sub-server-arm64
+            dist/sub-server-arm64.minisig
           body: |
             Release `v${{ env.NEW_VERSION }}`.
 
             ### Included Files
             - `installer`: bootstrap executable
             - `aegis`: runtime management executable
+            - `sub-server`: optional HTTP subscription endpoint (AMD64)
+            - `sub-server-arm64`: HTTP subscription endpoint (ARM64)
+            - `sub-server.minisig`: minisign signature for amd64 binary
+            - `sub-server-arm64.minisig`: minisign signature for arm64 binary
 
       - name: Dispatch Signing Workflow
         env:

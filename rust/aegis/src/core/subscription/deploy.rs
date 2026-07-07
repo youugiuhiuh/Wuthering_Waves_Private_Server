@@ -240,7 +240,7 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
             ready = true;
             break;
         }
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
     if !ready {
         return Err(format!(
