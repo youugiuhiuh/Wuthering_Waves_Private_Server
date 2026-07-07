@@ -10,6 +10,23 @@ use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 
+fn deploy_progress_bar(current: u8, total: u8) -> String {
+    if total == 0 {
+        return "[░░░░░░░░░░] 0%".to_string();
+    }
+    let segments = 10;
+    let ratio = current as f32 / total as f32;
+    let filled = (ratio * segments as f32).round() as usize;
+    let filled = filled.min(segments);
+    let mut bar = String::from("[");
+    for i in 0..segments {
+        bar.push(if i < filled { '█' } else { '░' });
+    }
+    bar.push(']');
+    let percent = (ratio * 100.0).round() as i32;
+    format!("{} {}%", bar, percent.clamp(0, 100))
+}
+
 pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
     match ctx.data.as_str() {
         "m_sub" => handle_main_menu(ctx).await,
@@ -250,11 +267,11 @@ async fn handle_tls_select(ctx: &CallbackContext, data: &str) -> HandlerResult {
 }
 
 async fn handle_deploy_execute(ctx: &CallbackContext) -> HandlerResult {
-    let chat_id = ctx.chat_id.0.to_string();
-    let Some(setup) = ctx.state.sub_setup_status(&chat_id).await else {
+    let chat_id_str = ctx.chat_id.0.to_string();
+    let Some(setup) = ctx.state.sub_setup_status(&chat_id_str).await else {
         return Ok(HandlerAction::Done);
     };
-    ctx.state.remove_sub_setup(&chat_id).await;
+    ctx.state.remove_sub_setup(&chat_id_str).await;
 
     let Some(tm) = ctx.state.token_manager() else {
         ctx.bot
@@ -265,34 +282,109 @@ async fn handle_deploy_execute(ctx: &CallbackContext) -> HandlerResult {
     };
     let tm = tm.clone();
 
+    // Auto-detect public IPv4 if no domain
+    let domain = if setup.has_domain {
+        if setup.domain.is_empty() {
+            "0.0.0.0".to_string()
+        } else {
+            setup.domain.clone()
+        }
+    } else {
+        ctx.bot
+            .edit_message_text(ctx.chat_id, ctx.msg_id, t!("sub.setup_auto_ip"))
+            .parse_mode(ParseMode::Html)
+            .await?;
+
+        match deploy::get_public_ipv4().await {
+            Ok(ip) => {
+                let ip_msg = t!("sub.setup_auto_ip_done", "0" => &ip);
+                ctx.bot
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, ip_msg)
+                    .parse_mode(ParseMode::Html)
+                    .await?;
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                ip
+            }
+            Err(_) => {
+                ctx.bot
+                    .edit_message_text(ctx.chat_id, ctx.msg_id, t!("sub.setup_auto_ip_fail"))
+                    .parse_mode(ParseMode::Html)
+                    .await?;
+                "0.0.0.0".to_string()
+            }
+        }
+    };
+
     let tls_mode = match setup.tls_mode {
         0 => TlsMode::DomainAcme,
         1 => TlsMode::IpAcme,
         _ => TlsMode::SelfSigned,
     };
     let params = DeployParams {
-        domain: if setup.domain.is_empty() {
-            "0.0.0.0".to_string()
-        } else {
-            setup.domain.clone()
-        },
+        domain: domain.clone(),
         port: setup.port,
         rate_limit: setup.rate_limit,
         tls_mode,
     };
 
+    // Pre-fetch step descriptions for use in the sync callback
+    let step_descs: Vec<String> = vec![
+        t!("sub.setup_step_download").into(),
+        t!("sub.setup_step_verify").into(),
+        t!("sub.setup_step_write").into(),
+        t!("sub.setup_step_tls").into(),
+        t!("sub.setup_step_config").into(),
+        t!("sub.setup_step_service").into(),
+        t!("sub.setup_step_firewall").into(),
+        t!("sub.setup_step_token").into(),
+    ];
+
+    // Send initial progress message
+    let initial_text = t!(
+        "sub.setup_progress",
+        "0" => deploy_progress_bar(0, 8),
+        "1" => "0",
+        "2" => "8",
+        "3" => &step_descs[0],
+    );
     ctx.bot
-        .edit_message_text(ctx.chat_id, ctx.msg_id, t!("sub.setup_step_download"))
+        .edit_message_text(ctx.chat_id, ctx.msg_id, initial_text)
         .parse_mode(ParseMode::Html)
         .await?;
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    let (progress_tx, mut progress_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
-    match deploy::run_deploy(&params, &tm).await {
+    let bot_bg = ctx.bot.clone();
+    let chat_id_bg = ctx.chat_id;
+    let msg_id_bg = ctx.msg_id;
+    tokio::spawn(async move {
+        while let Some(text) = progress_rx.recv().await {
+            let _ = bot_bg
+                .edit_message_text(chat_id_bg, msg_id_bg, text)
+                .parse_mode(ParseMode::Html)
+                .await;
+        }
+    });
+
+    match deploy::run_deploy(&params, &tm, move |step, current, total| {
+        let idx = step.index() as usize;
+        let desc = &step_descs[idx];
+        let bar = deploy_progress_bar(current, total);
+        let text = t!(
+            "sub.setup_progress",
+            "0" => bar,
+            "1" => (current + 1).to_string(),
+            "2" => total.to_string(),
+            "3" => desc,
+        );
+        let _ = progress_tx.send(text.into());
+    })
+    .await
+    {
         Ok(result) => {
             let success_msg = t!(
                 "sub.setup_success",
-                "0" => &params.domain,
+                "0" => &domain,
                 "1" => params.port.to_string(),
                 "2" => &result.token,
             );
