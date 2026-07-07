@@ -19,7 +19,7 @@ pub struct DeployResult {
 pub async fn download_binary(
     repo_owner: &str,
     repo_name: &str,
-) -> Result<(Vec<u8>, Vec<u8>), String> {
+) -> Result<(Vec<u8>, Option<Vec<u8>>), String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
         .build()
@@ -67,17 +67,20 @@ pub async fn download_binary(
         .await
         .map_err(|e| format!("read binary body failed: {e}"))?;
 
-    let sig_data = client
+    let sig_data = match client
         .get(&sig_url)
         .header("User-Agent", "wwps-aegis")
         .send()
         .await
-        .map_err(|e| format!("download signature failed: {e}"))?
-        .bytes()
-        .await
-        .map_err(|e| format!("read signature body failed: {e}"))?;
+    {
+        Ok(resp) if resp.status().is_success() => match resp.bytes().await {
+            Ok(b) => Some(b.to_vec()),
+            Err(_) => None,
+        },
+        _ => None,
+    };
 
-    Ok((binary_data.to_vec(), sig_data.to_vec()))
+    Ok((binary_data.to_vec(), sig_data))
 }
 
 pub fn verify_binary(
@@ -176,7 +179,11 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
     let repo_name = "Wuthering_Waves_Private_Server";
 
     let (binary_data, sig_data) = download_binary(repo_owner, repo_name).await?;
-    verify_binary(&binary_data, &sig_data, "3", "sub-server")?;
+    if let Some(sig) = &sig_data {
+        verify_binary(&binary_data, sig, "3", "sub-server")?;
+    } else {
+        log::warn!("No minisign signature available, skipping binary verification");
+    }
     deploy_binary(&binary_data)?;
 
     let tls_result = match params.tls_mode {
