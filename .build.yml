@@ -12,6 +12,7 @@ packages:
   - upx-ucl
   - jq
   - build-essential
+  - minisign
 sources:
   - https://git.sr.ht/~youruser/your-repo
 # secrets:
@@ -107,4 +108,3 @@ artifacts:
   - dist/tgbot
   - dist/installer
   - dist/sub-server
-  - dist/sub-server.minisig
