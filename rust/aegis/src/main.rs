@@ -22,6 +22,7 @@ use crate::bootstrap::{
 };
 use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
 use aegis::core::i18n;
+use aegis::core::paths;
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::SecurityManager;
 use aegis::core::security::self_destruct::production_executor;
@@ -301,7 +302,9 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    let token_manager = TokenManager::new("/etc/wwps/sub-server/tokens.db").ok();
+    let tokens_db = format!("{}/tokens.db", paths::sub_server::DIR);
+    let _ = std::fs::create_dir_all(paths::sub_server::DIR);
+    let token_manager = TokenManager::new(&tokens_db).ok();
 
     // Start gRPC subscription server in background if token manager initialized
     if let Some(ref tm) = token_manager {
