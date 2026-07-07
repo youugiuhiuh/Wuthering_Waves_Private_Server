@@ -25,7 +25,8 @@ pub fn parse_trusted_comment(comment: &str) -> Result<(String, String), String> 
     if parts.len() != 2 {
         return Err(format!("无效的可信注释格式: {}", comment));
     }
-    Ok((parts[0].to_string(), parts[1].to_string()))
+    let version = parts[0].trim_start_matches('v').to_string();
+    Ok((version, parts[1].to_string()))
 }
 
 #[cfg(test)]
@@ -36,6 +37,13 @@ mod tests {
     fn test_parse_trusted_comment_valid() {
         let (ver, asset) = parse_trusted_comment("3.2.10:sub-server").unwrap();
         assert_eq!(ver, "3.2.10");
+        assert_eq!(asset, "sub-server");
+    }
+
+    #[test]
+    fn test_parse_trusted_comment_with_v_prefix() {
+        let (ver, asset) = parse_trusted_comment("v3.4.0:sub-server").unwrap();
+        assert_eq!(ver, "3.4.0");
         assert_eq!(asset, "sub-server");
     }
 
