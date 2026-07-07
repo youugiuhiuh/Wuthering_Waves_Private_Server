@@ -49,13 +49,19 @@ pub async fn download_binary(
         .as_str()
         .ok_or_else(|| "tag_name not found in release".to_string())?;
 
+    let arch = std::env::consts::ARCH;
+    let binary_name = match arch {
+        "aarch64" | "arm64" => "sub-server-arm64",
+        _ => "sub-server",
+    };
+
     let base_url = format!(
         "https://github.com/{}/{}/releases/download/{}",
         repo_owner, repo_name, tag_name
     );
 
-    let binary_url = format!("{}/sub-server", &base_url);
-    let sig_url = format!("{}/sub-server.minisig", &base_url);
+    let binary_url = format!("{}/{}", &base_url, binary_name);
+    let sig_url = format!("{}/{}.minisig", &base_url, binary_name);
 
     let binary_data = client
         .get(&binary_url)
