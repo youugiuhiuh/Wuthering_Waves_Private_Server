@@ -1,46 +1,34 @@
-# Task 1 Report: Sing-box JSON Rewrite
+# Task 1 Report: Xray JSON Output Format
 
 ## Summary
-Successfully rewrote `tools/sub-server/format/singbox.go` with full transport/REALITY/TLS + DNS/route support and added comprehensive tests.
 
-## Files Changed
-- `tools/sub-server/format/singbox.go` — Full rewrite (216 lines)
-- `tools/sub-server/format/singbox_test.go` — New test file (109 lines)
+Implemented Xray JSON output format support for the subscription server. Added 3 files, modified 1 file. All quality gates pass.
 
-## Implementation Details
+## Files Created
 
-### New Functions
-- `buildSingboxTransport(cfg)` — Handles ws, xhttp, grpc transport types with proper field mapping
-- `buildSingboxTLS(cfg)` — Builds TLS section with SNI, UTLS fingerprint, certificate pinning, ALPN, insecure toggle
-- `buildSingboxReality(cfg)` — Builds Reality section with public_key, short_id, server_name, short_path, and UTLS fingerprint
+### `tools/sub-server/format/xray.go` (76 lines)
+- `buildXrayOutbound(cfg)`: Builds Xray-compatible outbound map with `protocol`, `tag`, `settings`, and `streamSettings`
+- `buildXrayStreamSettings(cfg)`: Builds streamSettings supporting:
+  - **security**: `reality` (realitySettings) or `tls` (tlsSettings)
+  - **transport**: `ws` (wsSettings), `xhttp` (xhttpSettings), `grpc` (grpcSettings), `tcp`
+- `ToXrayJSON(configs)`: Wraps outbounds in Xray JSON structure with `log.loglevel: "warning"`
 
-### Protocol Support
-- **VLESS**: uuid, flow, encryption, transport, reality, TLS (non-reality only)
-- **Hysteria2/hy2**: password, hop_port range, obfs with type+password, TLS
-- **TUIC**: password, congestion_control, udp_relay_mode, heartbeat, TLS
+### `tools/sub-server/format/xray_test.go` (61 lines)
+- `TestToXrayJSON_VLESS_Reality`: Validates VLESS with REALITY — uuid, flow, publicKey, reality security
+- `TestToXrayJSON_VLESS_Ws`: Validates VLESS with WebSocket TLS — network ws, path, tls security
 
-### Global Config
-- **DNS**: HTTPS resolver (1.1.1.1) with local fallback, CN geosite rules
-- **Route**: CN geoip/geosite routing to direct outbound
-- **Inbound**: TUN interface (172.19.0.1/30) with auto_route
+## Files Modified
 
-### Deviation from Brief
-- Made `short_id` conditional (only set when non-empty) to avoid `"short_id": ""` in JSON output
-- Added UTLS fingerprint support to Reality section (`reality.utls.fingerprint`) since Reality configs skip the TLS block and need their own fingerprint
-
-## Test Results
-```
-=== RUN   TestToSingBox_VLESS_Reality    — PASS
-=== RUN   TestToSingBox_Hysteria2         — PASS
-=== RUN   TestToSingBox_VLESS_Ws          — PASS
-ok  	github.com/youugiuhiuh/Wuthering_Waves_Private_Server/tools/sub-server/format
-```
+### `tools/sub-server/handler/subscription.go`
+- Added `case "xray"` → `format.ToXrayJSON(configs)` in format switch
+- Added `xray` UA detection in `detectFormat()`: matches `xray`, `x-ui`, `3x-ui`, `nekobox`
+- Added `case "xray"` → `text/plain` Content-Type in `writeResponse`
 
 ## Quality Gates
-| Gate | Result |
-|------|--------|
-| `go fmt ./...` | Pass |
-| `go build ./...` | Pass |
-| `go vet ./...` | Pass |
-| `go test ./... -v` | Pass (3/3) |
-| `staticcheck ./...` | Pass (no warnings) |
+
+```
+go fmt ./...        ✅
+go build ./...      ✅
+go vet ./...        ✅
+go test ./... -v    ✅ (14/14 tests pass, including 2 new)
+```
