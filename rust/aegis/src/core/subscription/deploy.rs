@@ -196,8 +196,26 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
     deploy_binary(&binary_data)?;
 
     let tls_result = match params.tls_mode {
-        TlsMode::DomainAcme => cert::setup_acme_domain(&params.domain)?,
-        TlsMode::IpAcme => cert::setup_acme_ip(&params.domain)?,
+        TlsMode::DomainAcme => match cert::setup_acme_domain(&params.domain) {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!(
+                    "acme.sh domain cert failed ({}), falling back to self-signed",
+                    e
+                );
+                cert::setup_self_signed()?
+            }
+        },
+        TlsMode::IpAcme => match cert::setup_acme_ip(&params.domain) {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!(
+                    "acme.sh IP cert failed ({}), falling back to self-signed",
+                    e
+                );
+                cert::setup_self_signed()?
+            }
+        },
         TlsMode::SelfSigned => cert::setup_self_signed()?,
         TlsMode::ReverseProxy => TlsResult::SkippedReverseProxy,
     };

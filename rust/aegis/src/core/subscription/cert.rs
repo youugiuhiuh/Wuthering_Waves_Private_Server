@@ -15,7 +15,18 @@ pub enum TlsResult {
     SkippedReverseProxy,
 }
 
+fn check_acme_sh() -> bool {
+    std::process::Command::new("acme.sh")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 pub fn setup_acme_domain(domain: &str) -> Result<TlsResult, String> {
+    if !check_acme_sh() {
+        return Err("acme.sh not installed, cannot issue domain certificate".to_string());
+    }
     let cert_path = format!(
         "/root/.acme.sh/{}_ecc/fullchain.cer",
         domain.replace('*', "_")
@@ -56,8 +67,20 @@ pub fn setup_acme_domain(domain: &str) -> Result<TlsResult, String> {
 }
 
 pub fn setup_acme_ip(ip: &str) -> Result<TlsResult, String> {
+    if !check_acme_sh() {
+        return Err("acme.sh not installed, cannot issue IP certificate".to_string());
+    }
     let output = std::process::Command::new("acme.sh")
-        .args(["--issue", "--standalone", "-d", ip, "--keylength", "ec-256"])
+        .args([
+            "--issue",
+            "--standalone",
+            "-d",
+            ip,
+            "--keylength",
+            "ec-256",
+            "--server",
+            "letsencrypt",
+        ])
         .output()
         .map_err(|e| format!("acme.sh execution failed: {e}"))?;
     if !output.status.success() {
