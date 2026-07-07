@@ -16,6 +16,7 @@ use aegis::core::security::SecurityManager;
 pub struct DiscordHandle {
     pub client: Client,
     pub adapter: Arc<dyn BotAdapter>,
+    #[expect(dead_code)]
     pub http: Arc<Http>,
     pub state: Arc<OnceLock<Arc<AppState>>>,
 }

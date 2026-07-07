@@ -13,6 +13,7 @@ use crate::handlers::{callback, message};
 use crate::{Command, handle_command};
 use aegis::app::state::AppState;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     state: Arc<AppState>,
     matrix_handle: Option<super::matrix::MatrixHandle>,
