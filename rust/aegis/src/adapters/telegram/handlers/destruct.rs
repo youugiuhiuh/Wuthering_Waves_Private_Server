@@ -40,9 +40,9 @@ pub async fn handle_message_flow(
     } else if let Some(doc) = msg.document() {
         let file = bot.get_file(doc.file.id.clone()).await?;
         let mut content = Vec::new();
-            bot.download_file(&file.path, &mut content)
-                .await
-                .map_err(std::io::Error::other)?;
+        bot.download_file(&file.path, &mut content)
+            .await
+            .map_err(std::io::Error::other)?;
         DestructInput::File(content)
     } else if let Some(photos) = msg.photo() {
         if let Some(p) = photos.last() {

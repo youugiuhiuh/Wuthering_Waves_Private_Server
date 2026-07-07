@@ -105,16 +105,24 @@ pub async fn download_binary(
         .map_err(|e| format!("read temp file failed: {e}"))?;
 
     // Minisig is small, download directly
-    let sig_data = client
+    // If the signature file doesn't exist in the release (404), return
+    // empty sig data so callers can soft-fail verification.
+    let sig_resp = client
         .get(&sig_url)
         .header("User-Agent", "wwps-aegis")
         .send()
         .await
-        .map_err(|e| format!("download signature failed: {e}"))?
-        .bytes()
-        .await
-        .map_err(|e| format!("read signature body failed: {e}"))?
-        .to_vec();
+        .map_err(|e| format!("download signature failed: {e}"))?;
+    let sig_data = if sig_resp.status().as_u16() == 404 {
+        log::warn!("minisig signature not found at {}", sig_url);
+        Vec::new()
+    } else {
+        sig_resp
+            .bytes()
+            .await
+            .map_err(|e| format!("read signature body failed: {e}"))?
+            .to_vec()
+    };
 
     Ok((binary_data, sig_data))
 }
@@ -220,6 +228,17 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn test_download_retry_exhausts_attempts() {
+        let result = super::download_with_retry(
+            || async { Err::<Vec<u8>, String>("mock failure".to_string()) },
+            3,
+            std::time::Duration::from_millis(1),
+        )
+        .await;
+        assert!(result.is_err(), "should fail after exhausting retries");
+    }
+
+    #[tokio::test]
     async fn test_grpc_readiness_timeout() {
         let result =
             super::wait_for_grpc_socket("/nonexistent/sock", std::time::Duration::from_millis(10))
@@ -286,6 +305,40 @@ pub async fn wait_for_grpc_socket(
     }
 }
 
+pub async fn download_with_retry<F, Fut, T>(
+    f: F,
+    max_attempts: u32,
+    base_delay: std::time::Duration,
+) -> Result<T, String>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let mut last_err = String::new();
+    for attempt in 1..=max_attempts {
+        match f().await {
+            Ok(val) => return Ok(val),
+            Err(e) => {
+                last_err = e;
+                if attempt < max_attempts {
+                    let delay = base_delay * (2u64.pow(attempt - 1) as u32);
+                    log::warn!(
+                        "download attempt {}/{} failed, retrying in {}s: {}",
+                        attempt,
+                        max_attempts,
+                        delay.as_secs(),
+                        last_err
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        }
+    }
+    Err(format!(
+        "download failed after {max_attempts} attempts: {last_err}"
+    ))
+}
+
 pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<DeployResult, String> {
     let repo_owner = "youugiuhiuh";
     let repo_name = "Wuthering_Waves_Private_Server";
@@ -295,7 +348,12 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
         .args(["stop", paths::sub_server::SERVICE])
         .status();
 
-    let (binary_data, sig_data) = download_binary(repo_owner, repo_name).await?;
+    let (binary_data, sig_data) = download_with_retry(
+        || download_binary(repo_owner, repo_name),
+        3,
+        std::time::Duration::from_secs(2),
+    )
+    .await?;
     if should_verify_binary(&sig_data) {
         verify_binary(&binary_data, &sig_data, "3", resolve_binary_name())?;
     } else {
