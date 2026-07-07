@@ -38,8 +38,12 @@ pub enum DestructInput {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum DestructOutput {
-    Prompt { text: String, buttons: Vec<Vec<ButtonSpec>> },
+    Prompt {
+        text: String,
+        buttons: Vec<Vec<ButtonSpec>>,
+    },
     Text(String),
     Execute,
     Noop,
@@ -104,33 +108,34 @@ pub async fn handle_input(
     now: Instant,
 ) -> (MessageFlowOutcome, Vec<DestructOutput>) {
     if !state.is_authorized(user_id).await {
-        return (MessageFlowOutcome::Handled, vec![
-            DestructOutput::Text(t!("auth.expired").to_string()),
-        ]);
+        return (
+            MessageFlowOutcome::Handled,
+            vec![DestructOutput::Text(t!("auth.expired").to_string())],
+        );
     }
 
     // Buttons that don't require existing destruct state
     if let DestructInput::Button(btn) = &input {
         if btn == BTN_DESTROY_ASK {
             state.begin_destruct(chat_id.to_string(), now).await;
-            let buttons = vec![
-                vec![ButtonSpec {
-                    text: t!("destruct.cancelled").to_string(),
-                    action: BTN_DESTROY_CANCEL.to_string(),
-                }],
-            ];
-            return (MessageFlowOutcome::Handled, vec![
-                DestructOutput::Prompt {
+            let buttons = vec![vec![ButtonSpec {
+                text: t!("destruct.cancelled").to_string(),
+                action: BTN_DESTROY_CANCEL.to_string(),
+            }]];
+            return (
+                MessageFlowOutcome::Handled,
+                vec![DestructOutput::Prompt {
                     text: t!("destruct.title_1").to_string(),
                     buttons,
-                },
-            ]);
+                }],
+            );
         }
         if btn == BTN_DESTROY_CANCEL {
             state.cancel_destruct(chat_id).await;
-            return (MessageFlowOutcome::Handled, vec![
-                DestructOutput::Text(t!("destruct.cancelled").to_string()),
-            ]);
+            return (
+                MessageFlowOutcome::Handled,
+                vec![DestructOutput::Text(t!("destruct.cancelled").to_string())],
+            );
         }
     }
 
@@ -142,7 +147,9 @@ pub async fn handle_input(
         (DestructStep::AwaitFirstTotp, DestructInput::Text(code))
             if state.verify_totp(code.trim()) =>
         {
-            state.confirm_first_destruct_totp(chat_id, code.trim(), now).await;
+            state
+                .confirm_first_destruct_totp(chat_id, code.trim(), now)
+                .await;
             let buttons = vec![
                 vec![ButtonSpec {
                     text: t!("destruct.confirm_btn").to_string(),
@@ -153,12 +160,13 @@ pub async fn handle_input(
                     action: BTN_DESTROY_CANCEL.to_string(),
                 }],
             ];
-            (MessageFlowOutcome::Handled, vec![
-                DestructOutput::Prompt {
+            (
+                MessageFlowOutcome::Handled,
+                vec![DestructOutput::Prompt {
                     text: t!("destruct.title_2").to_string(),
                     buttons,
-                },
-            ])
+                }],
+            )
         }
 
         (DestructStep::AwaitFirstTotp, DestructInput::Text(_)) => (
@@ -169,16 +177,26 @@ pub async fn handle_input(
         (DestructStep::AwaitSecondTotp, DestructInput::Text(code))
             if state.verify_totp(code.trim()) =>
         {
-            match state.confirm_second_destruct_totp(chat_id, code.trim(), now).await {
-                Err(_) => (MessageFlowOutcome::Handled, vec![
-                    DestructOutput::Text(t!("destruct.security_warn").to_string()),
-                ]),
-                Ok(true) => (MessageFlowOutcome::Handled, vec![
-                    DestructOutput::Text(t!("destruct.title_4").to_string()),
-                ]),
-                Ok(false) => (MessageFlowOutcome::Handled, vec![
-                    DestructOutput::Text(t!("destruct.state_invalid").to_string()),
-                ]),
+            match state
+                .confirm_second_destruct_totp(chat_id, code.trim(), now)
+                .await
+            {
+                Err(_) => (
+                    MessageFlowOutcome::Handled,
+                    vec![DestructOutput::Text(
+                        t!("destruct.security_warn").to_string(),
+                    )],
+                ),
+                Ok(true) => (
+                    MessageFlowOutcome::Handled,
+                    vec![DestructOutput::Text(t!("destruct.title_4").to_string())],
+                ),
+                Ok(false) => (
+                    MessageFlowOutcome::Handled,
+                    vec![DestructOutput::Text(
+                        t!("destruct.state_invalid").to_string(),
+                    )],
+                ),
             }
         }
 
@@ -189,7 +207,9 @@ pub async fn handle_input(
 
         (DestructStep::AwaitSecurityFile, DestructInput::Text(_)) => (
             MessageFlowOutcome::Handled,
-            vec![DestructOutput::Text(t!("destruct.file_send_prompt").to_string())],
+            vec![DestructOutput::Text(
+                t!("destruct.file_send_prompt").to_string(),
+            )],
         ),
 
         (_, DestructInput::Text(_)) => (
@@ -219,53 +239,66 @@ pub async fn handle_input(
                                 action: BTN_DESTROY_CANCEL.to_string(),
                             }],
                         ];
-                        (MessageFlowOutcome::Handled, vec![
-                            DestructOutput::Prompt {
+                        (
+                            MessageFlowOutcome::Handled,
+                            vec![DestructOutput::Prompt {
                                 text: t!("destruct.file_verify_ok", "0" => hash_short).to_string(),
                                 buttons,
-                            },
-                        ])
+                            }],
+                        )
                     } else {
                         (MessageFlowOutcome::Handled, vec![])
                     }
                 }
-                DestructMessageAction::FileMismatch => (MessageFlowOutcome::Handled, vec![
-                    DestructOutput::Text(t!("destruct.file_verify_fail").to_string()),
-                ]),
-                DestructMessageAction::NoSecurityKey => (MessageFlowOutcome::Handled, vec![
-                    DestructOutput::Text(t!("destruct.no_security_file").to_string()),
-                ]),
-                _ => (MessageFlowOutcome::Handled, vec![
-                    DestructOutput::Text(t!("destruct.file_send_prompt").to_string()),
-                ]),
+                DestructMessageAction::FileMismatch => (
+                    MessageFlowOutcome::Handled,
+                    vec![DestructOutput::Text(
+                        t!("destruct.file_verify_fail").to_string(),
+                    )],
+                ),
+                DestructMessageAction::NoSecurityKey => (
+                    MessageFlowOutcome::Handled,
+                    vec![DestructOutput::Text(
+                        t!("destruct.no_security_file").to_string(),
+                    )],
+                ),
+                _ => (
+                    MessageFlowOutcome::Handled,
+                    vec![DestructOutput::Text(
+                        t!("destruct.file_send_prompt").to_string(),
+                    )],
+                ),
             }
         }
 
-        (DestructStep::AwaitConfirm, DestructInput::Button(btn))
-            if btn == BTN_DESTROY_CONFIRM =>
-        {
-            if state.advance_destruct_step(
-                chat_id,
-                DestructStep::AwaitConfirm,
-                DestructStep::AwaitSecondTotp,
-                now,
-            ).await {
-                let buttons = vec![
-                    vec![ButtonSpec {
-                        text: t!("destruct.cancelled").to_string(),
-                        action: BTN_DESTROY_CANCEL.to_string(),
-                    }],
-                ];
-                (MessageFlowOutcome::Handled, vec![
-                    DestructOutput::Prompt {
+        (DestructStep::AwaitConfirm, DestructInput::Button(btn)) if btn == BTN_DESTROY_CONFIRM => {
+            if state
+                .advance_destruct_step(
+                    chat_id,
+                    DestructStep::AwaitConfirm,
+                    DestructStep::AwaitSecondTotp,
+                    now,
+                )
+                .await
+            {
+                let buttons = vec![vec![ButtonSpec {
+                    text: t!("destruct.cancelled").to_string(),
+                    action: BTN_DESTROY_CANCEL.to_string(),
+                }]];
+                (
+                    MessageFlowOutcome::Handled,
+                    vec![DestructOutput::Prompt {
                         text: t!("destruct.title_3").to_string(),
                         buttons,
-                    },
-                ])
+                    }],
+                )
             } else {
-                (MessageFlowOutcome::Handled, vec![
-                    DestructOutput::Text(t!("destruct.state_invalid").to_string()),
-                ])
+                (
+                    MessageFlowOutcome::Handled,
+                    vec![DestructOutput::Text(
+                        t!("destruct.state_invalid").to_string(),
+                    )],
+                )
             }
         }
 
@@ -275,9 +308,7 @@ pub async fn handle_input(
             let executor = state.self_destruct_executor();
             aegis::core::security::self_destruct::trigger(executor);
             state.cancel_destruct(chat_id).await;
-            (MessageFlowOutcome::Handled, vec![
-                DestructOutput::Execute,
-            ])
+            (MessageFlowOutcome::Handled, vec![DestructOutput::Execute])
         }
 
         _ => (MessageFlowOutcome::NotHandled, vec![]),
@@ -434,13 +465,18 @@ mod tests {
         let totp = state.generate_current_totp().unwrap();
         let state = Arc::new(state);
         state.record_auth_success(42, Instant::now()).await;
-        state.begin_destruct("chat1".to_string(), Instant::now()).await;
+        state
+            .begin_destruct("chat1".to_string(), Instant::now())
+            .await;
 
         let (outcome, outputs) = handle_input(
-            &state, "chat1", 42,
+            &state,
+            "chat1",
+            42,
             DestructInput::Text(totp),
             Instant::now(),
-        ).await;
+        )
+        .await;
 
         assert_eq!(outcome, MessageFlowOutcome::Handled);
         assert_eq!(outputs.len(), 1);
@@ -451,13 +487,18 @@ mod tests {
     async fn handle_input_invalid_totp_returns_text() {
         let state = Arc::new(make_test_state(&TotpManager::generate_new_secret()).await);
         state.record_auth_success(42, Instant::now()).await;
-        state.begin_destruct("chat_fail".to_string(), Instant::now()).await;
+        state
+            .begin_destruct("chat_fail".to_string(), Instant::now())
+            .await;
 
         let (outcome, outputs) = handle_input(
-            &state, "chat_fail", 42,
+            &state,
+            "chat_fail",
+            42,
             DestructInput::Text("000000".to_string()),
             Instant::now(),
-        ).await;
+        )
+        .await;
         assert_eq!(outcome, MessageFlowOutcome::Handled);
         assert!(matches!(&outputs[0], DestructOutput::Text(_)));
     }
@@ -465,13 +506,18 @@ mod tests {
     #[tokio::test]
     async fn handle_input_unauthorized_returns_expired() {
         let state = Arc::new(make_test_state(&TotpManager::generate_new_secret()).await);
-        state.begin_destruct("chat_ua".to_string(), Instant::now()).await;
+        state
+            .begin_destruct("chat_ua".to_string(), Instant::now())
+            .await;
 
         let (outcome, outputs) = handle_input(
-            &state, "chat_ua", 999,
+            &state,
+            "chat_ua",
+            999,
             DestructInput::Text("111111".to_string()),
             Instant::now(),
-        ).await;
+        )
+        .await;
         assert_eq!(outcome, MessageFlowOutcome::Handled);
         assert!(matches!(&outputs[0], DestructOutput::Text(_)));
     }
@@ -482,10 +528,13 @@ mod tests {
         state.record_auth_success(42, Instant::now()).await;
 
         let (outcome, outputs) = handle_input(
-            &state, "no_destruct", 42,
+            &state,
+            "no_destruct",
+            42,
             DestructInput::Text("111111".to_string()),
             Instant::now(),
-        ).await;
+        )
+        .await;
         assert_eq!(outcome, MessageFlowOutcome::NotHandled);
         assert!(outputs.is_empty());
     }
@@ -494,13 +543,18 @@ mod tests {
     async fn handle_input_cancel_button_removes_destruct() {
         let state = Arc::new(make_test_state(&TotpManager::generate_new_secret()).await);
         state.record_auth_success(42, Instant::now()).await;
-        state.begin_destruct("chat_cancel".to_string(), Instant::now()).await;
+        state
+            .begin_destruct("chat_cancel".to_string(), Instant::now())
+            .await;
 
         let (outcome, outputs) = handle_input(
-            &state, "chat_cancel", 42,
+            &state,
+            "chat_cancel",
+            42,
             DestructInput::Button(BTN_DESTROY_CANCEL.to_string()),
             Instant::now(),
-        ).await;
+        )
+        .await;
         assert_eq!(outcome, MessageFlowOutcome::Handled);
         assert!(matches!(&outputs[0], DestructOutput::Text(_)));
         assert!(state.destruct_snapshot("chat_cancel").await.is_none());
@@ -512,10 +566,13 @@ mod tests {
         state.record_auth_success(42, Instant::now()).await;
 
         let (outcome, outputs) = handle_input(
-            &state, "chat_ask", 42,
+            &state,
+            "chat_ask",
+            42,
             DestructInput::Button(BTN_DESTROY_ASK.to_string()),
             Instant::now(),
-        ).await;
+        )
+        .await;
         assert_eq!(outcome, MessageFlowOutcome::Handled);
         assert!(matches!(&outputs[0], DestructOutput::Prompt { .. }));
         assert!(state.destruct_snapshot("chat_ask").await.is_some());
@@ -535,14 +592,26 @@ mod tests {
             None,
         ));
         state.record_auth_success(42, Instant::now()).await;
-        state.begin_destruct("chat_file".to_string(), Instant::now()).await;
-        state.advance_destruct_step("chat_file", DestructStep::AwaitFirstTotp, DestructStep::AwaitSecurityFile, Instant::now()).await;
+        state
+            .begin_destruct("chat_file".to_string(), Instant::now())
+            .await;
+        state
+            .advance_destruct_step(
+                "chat_file",
+                DestructStep::AwaitFirstTotp,
+                DestructStep::AwaitSecurityFile,
+                Instant::now(),
+            )
+            .await;
 
         let (outcome, outputs) = handle_input(
-            &state, "chat_file", 42,
+            &state,
+            "chat_file",
+            42,
             DestructInput::File(content.to_vec()),
             Instant::now(),
-        ).await;
+        )
+        .await;
         assert_eq!(outcome, MessageFlowOutcome::Handled);
         assert!(matches!(&outputs[0], DestructOutput::Prompt { .. }));
     }
@@ -559,14 +628,26 @@ mod tests {
             None,
         ));
         state.record_auth_success(42, Instant::now()).await;
-        state.begin_destruct("chat_mis".to_string(), Instant::now()).await;
-        state.advance_destruct_step("chat_mis", DestructStep::AwaitFirstTotp, DestructStep::AwaitSecurityFile, Instant::now()).await;
+        state
+            .begin_destruct("chat_mis".to_string(), Instant::now())
+            .await;
+        state
+            .advance_destruct_step(
+                "chat_mis",
+                DestructStep::AwaitFirstTotp,
+                DestructStep::AwaitSecurityFile,
+                Instant::now(),
+            )
+            .await;
 
         let (outcome, outputs) = handle_input(
-            &state, "chat_mis", 42,
+            &state,
+            "chat_mis",
+            42,
             DestructInput::File(b"wrong content".to_vec()),
             Instant::now(),
-        ).await;
+        )
+        .await;
         assert_eq!(outcome, MessageFlowOutcome::Handled);
         assert!(matches!(&outputs[0], DestructOutput::Text(_)));
     }
@@ -575,14 +656,26 @@ mod tests {
     async fn handle_input_confirm_button_advances_step() {
         let state = Arc::new(make_test_state(&TotpManager::generate_new_secret()).await);
         state.record_auth_success(42, Instant::now()).await;
-        state.begin_destruct("chat_cfm".to_string(), Instant::now()).await;
-        state.advance_destruct_step("chat_cfm", DestructStep::AwaitFirstTotp, DestructStep::AwaitConfirm, Instant::now()).await;
+        state
+            .begin_destruct("chat_cfm".to_string(), Instant::now())
+            .await;
+        state
+            .advance_destruct_step(
+                "chat_cfm",
+                DestructStep::AwaitFirstTotp,
+                DestructStep::AwaitConfirm,
+                Instant::now(),
+            )
+            .await;
 
         let (outcome, outputs) = handle_input(
-            &state, "chat_cfm", 42,
+            &state,
+            "chat_cfm",
+            42,
             DestructInput::Button(BTN_DESTROY_CONFIRM.to_string()),
             Instant::now(),
-        ).await;
+        )
+        .await;
         assert_eq!(outcome, MessageFlowOutcome::Handled);
         let snap = state.destruct_snapshot("chat_cfm").await.unwrap();
         assert_eq!(snap.step, DestructStep::AwaitSecondTotp);
@@ -592,14 +685,26 @@ mod tests {
     async fn handle_input_final_button_triggers_execute() {
         let state = Arc::new(make_test_state(&TotpManager::generate_new_secret()).await);
         state.record_auth_success(42, Instant::now()).await;
-        state.begin_destruct("chat_fin".to_string(), Instant::now()).await;
-        state.advance_destruct_step("chat_fin", DestructStep::AwaitFirstTotp, DestructStep::AwaitFinalConfirm, Instant::now()).await;
+        state
+            .begin_destruct("chat_fin".to_string(), Instant::now())
+            .await;
+        state
+            .advance_destruct_step(
+                "chat_fin",
+                DestructStep::AwaitFirstTotp,
+                DestructStep::AwaitFinalConfirm,
+                Instant::now(),
+            )
+            .await;
 
         let (outcome, outputs) = handle_input(
-            &state, "chat_fin", 42,
+            &state,
+            "chat_fin",
+            42,
             DestructInput::Button(BTN_DESTROY_FINAL.to_string()),
             Instant::now(),
-        ).await;
+        )
+        .await;
         assert_eq!(outcome, MessageFlowOutcome::Handled);
         assert_eq!(outputs.len(), 1);
         assert!(matches!(&outputs[0], DestructOutput::Execute));

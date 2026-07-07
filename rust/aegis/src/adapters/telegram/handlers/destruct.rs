@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::app::destruct_flow::{
-    self, ButtonSpec, DestructInput, DestructOutput, MessageFlowOutcome, BTN_DESTROY_ASK,
-    BTN_DESTROY_CANCEL,
+    self, BTN_DESTROY_ASK, BTN_DESTROY_CANCEL, ButtonSpec, DestructInput, DestructOutput,
+    MessageFlowOutcome,
 };
 use crate::app::state::{AppState, TimeoutStatus};
 use rust_i18n::t;
@@ -40,9 +40,9 @@ pub async fn handle_message_flow(
     } else if let Some(doc) = msg.document() {
         let file = bot.get_file(doc.file.id.clone()).await?;
         let mut content = Vec::new();
-        bot.download_file(&file.path, &mut content)
-            .await
-            .map_err(|e| std::io::Error::other(e))?;
+            bot.download_file(&file.path, &mut content)
+                .await
+                .map_err(std::io::Error::other)?;
         DestructInput::File(content)
     } else if let Some(photos) = msg.photo() {
         if let Some(p) = photos.last() {
@@ -50,7 +50,7 @@ pub async fn handle_message_flow(
             let mut content = Vec::new();
             bot.download_file(&file.path, &mut content)
                 .await
-                .map_err(|e| std::io::Error::other(e))?;
+                .map_err(std::io::Error::other)?;
             DestructInput::File(content)
         } else {
             return Ok(MessageFlowOutcome::NotHandled);
@@ -167,7 +167,8 @@ pub async fn handle_callback_action(
         user_id,
         DestructInput::Button(data.to_string()),
         Instant::now(),
-    ).await;
+    )
+    .await;
 
     for output in outputs {
         match &output {

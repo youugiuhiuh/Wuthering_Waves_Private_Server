@@ -114,10 +114,10 @@ pub async fn start_grpc_server(
     let grpc_server = SubGrpcServer { token_mgr };
     let uds = tokio::net::UnixListener::bind(socket_path)?;
     // Set socket permissions to 0600 for security
-    if let Ok(addr) = uds.local_addr() {
-        if let Some(path) = addr.as_pathname() {
-            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-        }
+    if let Ok(addr) = uds.local_addr()
+        && let Some(path) = addr.as_pathname()
+    {
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
     }
     let incoming = tokio_stream::wrappers::UnixListenerStream::new(uds);
     Server::builder()

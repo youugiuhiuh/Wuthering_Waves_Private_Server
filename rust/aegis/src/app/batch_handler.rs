@@ -140,7 +140,9 @@ mod tests {
         mock.expect_delete_message().returning(|_, _| Ok(()));
 
         let result = make_result(5, vec!["vless://x"], Some("/tmp/x.json"));
-        let output = send_singbox_batch_result(Arc::new(mock), TargetId("1".to_string()), "hy2", &result).await;
+        let output =
+            send_singbox_batch_result(Arc::new(mock), TargetId("1".to_string()), "hy2", &result)
+                .await;
         assert!(output.is_ok());
     }
 

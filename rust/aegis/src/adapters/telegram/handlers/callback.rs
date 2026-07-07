@@ -1,6 +1,6 @@
+use super::destruct;
 use crate::app::destruct_flow::MessageFlowOutcome;
 use crate::app::state::{AppState, TimeoutStatus};
-use super::destruct;
 use crate::save_lang_to_config;
 use aegis::core::i18n;
 use futures_util::future::BoxFuture;
@@ -124,15 +124,8 @@ pub fn handle_callback(
                 continue;
             }
 
-            if destruct::handle_callback_action(
-                &bot,
-                &q,
-                data.as_str(),
-                chat_id,
-                msg_id,
-                &state,
-            )
-            .await?
+            if destruct::handle_callback_action(&bot, &q, data.as_str(), chat_id, msg_id, &state)
+                .await?
                 == MessageFlowOutcome::Handled
             {
                 break Ok(());
