@@ -301,7 +301,8 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    let token_manager = TokenManager::new("/etc/wwps/sub-server/tokens.db").ok();
+    let public_ip = SystemMonitor::get_public_ip().await.ok();
+    let token_manager = TokenManager::new("/etc/wwps/sub-server/tokens.db", public_ip).ok();
 
     // Start gRPC subscription server in background if token manager initialized
     if let Some(ref tm) = token_manager {
