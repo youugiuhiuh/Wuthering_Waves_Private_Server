@@ -204,6 +204,16 @@ pub fn write_systemd_service(port: u16, tls_cert: &str, tls_key: &str) -> Result
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn test_grpc_readiness_timeout() {
+        let result =
+            super::wait_for_grpc_socket("/nonexistent/sock", std::time::Duration::from_millis(10))
+                .await;
+        assert!(result.is_err(), "should timeout on non-existent socket");
+        let err = result.unwrap_err();
+        assert!(err.contains("timed out"), "error should mention timeout");
+    }
+
     #[test]
     fn test_systemd_unit_has_aegis_dependency() {
         let port = 8443;
@@ -225,6 +235,22 @@ pub fn open_firewall_port(port: u16) {
     let _ = std::process::Command::new("ufw")
         .args(["allow", &port.to_string()])
         .status();
+}
+
+pub async fn wait_for_grpc_socket(
+    socket_path: &str,
+    timeout: std::time::Duration,
+) -> Result<(), String> {
+    let start = std::time::Instant::now();
+    loop {
+        if tokio::fs::metadata(socket_path).await.is_ok() {
+            return Ok(());
+        }
+        if start.elapsed() >= timeout {
+            return Err(format!("timed out waiting for gRPC socket: {socket_path}"));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
 }
 
 pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<DeployResult, String> {
@@ -293,6 +319,11 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
 
     write_systemd_service(params.port, &tls_cert, &tls_key)?;
     open_firewall_port(params.port);
+    wait_for_grpc_socket(
+        paths::sub_server::GRPC_SOCK,
+        std::time::Duration::from_secs(30),
+    )
+    .await?;
 
     let token_record = tm
         .create_token("default", &[])
