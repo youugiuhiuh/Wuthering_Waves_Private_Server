@@ -187,6 +187,11 @@ pub async fn handle_input(
             vec![DestructOutput::Text(t!("destruct.verify_fail").to_string())],
         ),
 
+        (DestructStep::AwaitSecurityFile, DestructInput::Text(_)) => (
+            MessageFlowOutcome::Handled,
+            vec![DestructOutput::Text(t!("destruct.file_send_prompt").to_string())],
+        ),
+
         (_, DestructInput::Text(_)) => (
             MessageFlowOutcome::Handled,
             vec![DestructOutput::Text(t!("destruct.verify_fail").to_string())],
@@ -271,7 +276,6 @@ pub async fn handle_input(
             aegis::core::security::self_destruct::trigger(executor);
             state.cancel_destruct(chat_id).await;
             (MessageFlowOutcome::Handled, vec![
-                DestructOutput::Text(t!("destruct.final_exec").to_string()),
                 DestructOutput::Execute,
             ])
         }
@@ -582,5 +586,23 @@ mod tests {
         assert_eq!(outcome, MessageFlowOutcome::Handled);
         let snap = state.destruct_snapshot("chat_cfm").await.unwrap();
         assert_eq!(snap.step, DestructStep::AwaitSecondTotp);
+    }
+
+    #[tokio::test]
+    async fn handle_input_final_button_triggers_execute() {
+        let state = Arc::new(make_test_state(&TotpManager::generate_new_secret()).await);
+        state.record_auth_success(42, Instant::now()).await;
+        state.begin_destruct("chat_fin".to_string(), Instant::now()).await;
+        state.advance_destruct_step("chat_fin", DestructStep::AwaitFirstTotp, DestructStep::AwaitFinalConfirm, Instant::now()).await;
+
+        let (outcome, outputs) = handle_input(
+            &state, "chat_fin", 42,
+            DestructInput::Button(BTN_DESTROY_FINAL.to_string()),
+            Instant::now(),
+        ).await;
+        assert_eq!(outcome, MessageFlowOutcome::Handled);
+        assert_eq!(outputs.len(), 1);
+        assert!(matches!(&outputs[0], DestructOutput::Execute));
+        assert!(state.destruct_snapshot("chat_fin").await.is_none());
     }
 }

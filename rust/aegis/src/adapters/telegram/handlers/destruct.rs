@@ -2,7 +2,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::app::destruct_flow::{
-    self, ButtonSpec, DestructInput, DestructOutput, MessageFlowOutcome,
+    self, ButtonSpec, DestructInput, DestructOutput, MessageFlowOutcome, BTN_DESTROY_ASK,
+    BTN_DESTROY_CANCEL,
 };
 use crate::app::state::{AppState, TimeoutStatus};
 use rust_i18n::t;
@@ -125,8 +126,6 @@ pub async fn handle_callback_action(
     msg_id: teloxide::types::MessageId,
     state: &Arc<AppState>,
 ) -> ResponseResult<MessageFlowOutcome> {
-    use crate::app::destruct_flow::BTN_DESTROY_CANCEL;
-    use crate::app::destruct_flow::BTN_DESTROY_ASK;
     let chat_id_str = chat_id.0.to_string();
 
     // Special case: cancel restores Telegram-specific menu
