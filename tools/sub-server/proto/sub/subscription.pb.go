@@ -128,6 +128,17 @@ type ProxyConfig struct {
 	Alpn              string                 `protobuf:"bytes,19,opt,name=alpn,proto3" json:"alpn,omitempty"`
 	CongestionControl string                 `protobuf:"bytes,20,opt,name=congestion_control,json=congestionControl,proto3" json:"congestion_control,omitempty"`
 	CertSha256        string                 `protobuf:"bytes,21,opt,name=cert_sha256,json=certSha256,proto3" json:"cert_sha256,omitempty"`
+	Fingerprint       string                 `protobuf:"bytes,22,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`                    // TLS fingerprint (e.g., "chrome")
+	Spx               string                 `protobuf:"bytes,23,opt,name=spx,proto3" json:"spx,omitempty"`                                    // Reality short path
+	HttpHost          string                 `protobuf:"bytes,24,opt,name=http_host,json=httpHost,proto3" json:"http_host,omitempty"`          // HTTP Host header (WS/XHTTP)
+	Mode              string                 `protobuf:"bytes,25,opt,name=mode,proto3" json:"mode,omitempty"`                                  // XHTTP mode (e.g., "auto")
+	Extra             string                 `protobuf:"bytes,26,opt,name=extra,proto3" json:"extra,omitempty"`                                // XHTTP extra JSON settings
+	HeaderType        string                 `protobuf:"bytes,27,opt,name=header_type,json=headerType,proto3" json:"header_type,omitempty"`    // TCP header type
+	ServiceName       string                 `protobuf:"bytes,28,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"` // gRPC service name
+	Authority         string                 `protobuf:"bytes,29,opt,name=authority,proto3" json:"authority,omitempty"`                        // gRPC authority
+	Insecure          bool                   `protobuf:"varint,30,opt,name=insecure,proto3" json:"insecure,omitempty"`                         // TLS allowInsecure
+	Encryption        string                 `protobuf:"bytes,31,opt,name=encryption,proto3" json:"encryption,omitempty"`                      // VLESS encryption
+	ServerName        string                 `protobuf:"bytes,32,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`    // TLS SNI override
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -305,6 +316,83 @@ func (x *ProxyConfig) GetCongestionControl() string {
 func (x *ProxyConfig) GetCertSha256() string {
 	if x != nil {
 		return x.CertSha256
+	}
+	return ""
+}
+
+func (x *ProxyConfig) GetFingerprint() string {
+	if x != nil {
+		return x.Fingerprint
+	}
+	return ""
+}
+
+func (x *ProxyConfig) GetSpx() string {
+	if x != nil {
+		return x.Spx
+	}
+	return ""
+}
+
+func (x *ProxyConfig) GetHttpHost() string {
+	if x != nil {
+		return x.HttpHost
+	}
+	return ""
+}
+
+func (x *ProxyConfig) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *ProxyConfig) GetExtra() string {
+	if x != nil {
+		return x.Extra
+	}
+	return ""
+}
+
+func (x *ProxyConfig) GetHeaderType() string {
+	if x != nil {
+		return x.HeaderType
+	}
+	return ""
+}
+
+func (x *ProxyConfig) GetServiceName() string {
+	if x != nil {
+		return x.ServiceName
+	}
+	return ""
+}
+
+func (x *ProxyConfig) GetAuthority() string {
+	if x != nil {
+		return x.Authority
+	}
+	return ""
+}
+
+func (x *ProxyConfig) GetInsecure() bool {
+	if x != nil {
+		return x.Insecure
+	}
+	return false
+}
+
+func (x *ProxyConfig) GetEncryption() string {
+	if x != nil {
+		return x.Encryption
+	}
+	return ""
+}
+
+func (x *ProxyConfig) GetServerName() string {
+	if x != nil {
+		return x.ServerName
 	}
 	return ""
 }
@@ -863,7 +951,7 @@ const file_subscription_proto_rawDesc = "" +
 	"created_at\x18\x04 \x01(\x03R\tcreatedAt\x12\x1d\n" +
 	"\n" +
 	"expires_at\x18\x05 \x01(\x03R\texpiresAt\x12\x18\n" +
-	"\arevoked\x18\x06 \x01(\bR\arevoked\"\xcf\x04\n" +
+	"\arevoked\x18\x06 \x01(\bR\arevoked\"\x89\a\n" +
 	"\vProxyConfig\x12\x1b\n" +
 	"\tconfig_id\x18\x01 \x01(\tR\bconfigId\x12\x1a\n" +
 	"\bprotocol\x18\x02 \x01(\tR\bprotocol\x12\x12\n" +
@@ -890,7 +978,22 @@ const file_subscription_proto_rawDesc = "" +
 	"\x04alpn\x18\x13 \x01(\tR\x04alpn\x12-\n" +
 	"\x12congestion_control\x18\x14 \x01(\tR\x11congestionControl\x12\x1f\n" +
 	"\vcert_sha256\x18\x15 \x01(\tR\n" +
-	"certSha256\")\n" +
+	"certSha256\x12 \n" +
+	"\vfingerprint\x18\x16 \x01(\tR\vfingerprint\x12\x10\n" +
+	"\x03spx\x18\x17 \x01(\tR\x03spx\x12\x1b\n" +
+	"\thttp_host\x18\x18 \x01(\tR\bhttpHost\x12\x12\n" +
+	"\x04mode\x18\x19 \x01(\tR\x04mode\x12\x14\n" +
+	"\x05extra\x18\x1a \x01(\tR\x05extra\x12\x1f\n" +
+	"\vheader_type\x18\x1b \x01(\tR\n" +
+	"headerType\x12!\n" +
+	"\fservice_name\x18\x1c \x01(\tR\vserviceName\x12\x1c\n" +
+	"\tauthority\x18\x1d \x01(\tR\tauthority\x12\x1a\n" +
+	"\binsecure\x18\x1e \x01(\bR\binsecure\x12\x1e\n" +
+	"\n" +
+	"encryption\x18\x1f \x01(\tR\n" +
+	"encryption\x12\x1f\n" +
+	"\vserver_name\x18  \x01(\tR\n" +
+	"serverName\")\n" +
 	"\x11GetConfigsRequest\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\"I\n" +
 	"\x12GetConfigsResponse\x123\n" +

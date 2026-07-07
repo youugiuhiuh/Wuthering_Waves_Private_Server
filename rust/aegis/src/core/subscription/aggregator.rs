@@ -129,6 +129,17 @@ fn scan_xray_configs() -> Vec<ProxyConfig> {
                 alpn: String::new(),
                 congestion_control: String::new(),
                 cert_sha256: String::new(),
+                fingerprint: String::new(),
+                spx: String::new(),
+                http_host: String::new(),
+                mode: String::new(),
+                extra: String::new(),
+                header_type: String::new(),
+                service_name: String::new(),
+                authority: String::new(),
+                insecure: false,
+                encryption: String::new(),
+                server_name: String::new(),
             });
         }
     }
@@ -230,6 +241,17 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
                         alpn: String::new(),
                         congestion_control: String::new(),
                         cert_sha256: String::new(),
+                        fingerprint: String::new(),
+                        spx: String::new(),
+                        http_host: String::new(),
+                        mode: String::new(),
+                        extra: String::new(),
+                        header_type: String::new(),
+                        service_name: String::new(),
+                        authority: String::new(),
+                        insecure: false,
+                        encryption: String::new(),
+                        server_name: String::new(),
                     });
                 }
                 "tuic" => {
@@ -292,6 +314,17 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
                         alpn,
                         congestion_control,
                         cert_sha256,
+                        fingerprint: String::new(),
+                        spx: String::new(),
+                        http_host: String::new(),
+                        mode: String::new(),
+                        extra: String::new(),
+                        header_type: String::new(),
+                        service_name: String::new(),
+                        authority: String::new(),
+                        insecure: false,
+                        encryption: String::new(),
+                        server_name: String::new(),
                     });
                 }
                 _ => {}
