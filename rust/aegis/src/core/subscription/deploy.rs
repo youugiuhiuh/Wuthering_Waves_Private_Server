@@ -133,7 +133,7 @@ pub fn write_systemd_service(port: u16) -> Result<(), String> {
          \n\
          [Install]\n\
          WantedBy=multi-user.target\n",
-         bin = paths::sub_server::BIN,
+        bin = paths::sub_server::BIN,
     );
     std::fs::write(service_file, &unit).map_err(|e| format!("write systemd unit failed: {e}"))?;
 

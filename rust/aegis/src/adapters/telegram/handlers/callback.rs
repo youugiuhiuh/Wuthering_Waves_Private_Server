@@ -1,4 +1,4 @@
-use crate::app::destruct_flow;
+use super::destruct;
 use crate::app::destruct_flow::MessageFlowOutcome;
 use crate::app::state::{AppState, TimeoutStatus};
 use crate::save_lang_to_config;
@@ -94,7 +94,7 @@ pub fn handle_callback(
                 continue;
             }
 
-            if destruct_flow::handle_callback_timeout(&bot, &q, chat_id, msg_id, &state).await?
+            if destruct::handle_callback_timeout(&bot, &q, chat_id, msg_id, &state).await?
                 == MessageFlowOutcome::Handled
             {
                 break Ok(());
@@ -124,15 +124,8 @@ pub fn handle_callback(
                 continue;
             }
 
-            if destruct_flow::handle_callback_action(
-                &bot,
-                &q,
-                data.as_str(),
-                chat_id,
-                msg_id,
-                &state,
-            )
-            .await?
+            if destruct::handle_callback_action(&bot, &q, data.as_str(), chat_id, msg_id, &state)
+                .await?
                 == MessageFlowOutcome::Handled
             {
                 break Ok(());

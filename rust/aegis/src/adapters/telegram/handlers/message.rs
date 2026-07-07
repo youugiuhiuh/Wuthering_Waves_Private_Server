@@ -1,8 +1,8 @@
+use super::destruct;
+use super::subscription;
 use crate::MAX_INPUT_LENGTH;
-use crate::app::destruct_flow;
 use crate::app::destruct_flow::MessageFlowOutcome;
 use crate::app::state::{AppState, TimeoutStatus};
-use super::subscription;
 use aegis::adapters::common::TargetId;
 use aegis::core::xray::config::ConfigManager;
 use rust_i18n::t;
@@ -108,13 +108,13 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
         TimeoutStatus::NotTracked => {}
     }
 
-    if let Some(text) = msg.text() {
-        if subscription::handle_text_input(&bot, msg.chat.id, &state, text).await? {
-            return Ok(());
-        }
+    if let Some(text) = msg.text()
+        && subscription::handle_text_input(&bot, msg.chat.id, &state, text).await?
+    {
+        return Ok(());
     }
 
-    if destruct_flow::handle_message_flow(&bot, &msg, user_id, &state).await?
+    if destruct::handle_message_flow(&bot, &msg, user_id, &state).await?
         == MessageFlowOutcome::Handled
     {
         return Ok(());

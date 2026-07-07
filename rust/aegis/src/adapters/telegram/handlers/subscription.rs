@@ -74,9 +74,18 @@ pub async fn handle_text_input(
             setup.step = SubSetupStep::ChooseTls;
             state.insert_sub_setup(chat_id_str, setup).await;
             let keyboard = InlineKeyboardMarkup::new(vec![
-                vec![InlineKeyboardButton::callback(t!("sub.setup_cert_le"), "sub_tls:le")],
-                vec![InlineKeyboardButton::callback(t!("sub.setup_cert_ip"), "sub_tls:ip")],
-                vec![InlineKeyboardButton::callback(t!("sub.setup_cert_self"), "sub_tls:self")],
+                vec![InlineKeyboardButton::callback(
+                    t!("sub.setup_cert_le"),
+                    "sub_tls:le",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("sub.setup_cert_ip"),
+                    "sub_tls:ip",
+                )],
+                vec![InlineKeyboardButton::callback(
+                    t!("sub.setup_cert_self"),
+                    "sub_tls:self",
+                )],
                 vec![InlineKeyboardButton::callback(t!("menu.back"), "m_sub")],
             ]);
             bot.send_message(chat_id, t!("sub.setup_q_cert"))
@@ -99,7 +108,10 @@ async fn handle_main_menu(ctx: &CallbackContext) -> HandlerResult {
             InlineKeyboardButton::callback(t!("menu.sub_create"), "sub_tcreate"),
             InlineKeyboardButton::callback(t!("menu.sub_list"), "sub_tlist"),
         ],
-        vec![InlineKeyboardButton::callback(t!("menu.back_main"), "m_main")],
+        vec![InlineKeyboardButton::callback(
+            t!("menu.back_main"),
+            "m_main",
+        )],
     ]);
     ctx.bot
         .edit_message_text(ctx.chat_id, ctx.msg_id, t!("menu.sub_service"))
@@ -112,7 +124,8 @@ async fn handle_main_menu(ctx: &CallbackContext) -> HandlerResult {
 async fn handle_status(ctx: &CallbackContext) -> HandlerResult {
     let installed = Path::new(paths::sub_server::BIN).exists();
     let text = if installed {
-        t!("menu.sub_installed", "0" => paths::sub_server::SERVICE, "1" => "8443", "2" => "N/A").into_owned()
+        t!("menu.sub_installed", "0" => paths::sub_server::SERVICE, "1" => "8443", "2" => "N/A")
+            .into_owned()
     } else {
         t!("menu.sub_not_installed").into_owned()
     };
@@ -192,7 +205,11 @@ async fn handle_tls_select(ctx: &CallbackContext, data: &str) -> HandlerResult {
     let Some(setup) = ctx.state.sub_setup_status(&chat_id).await else {
         return Ok(HandlerAction::Done);
     };
-    let domain_display = if setup.has_domain { setup.domain.as_str() } else { "IP only" };
+    let domain_display = if setup.has_domain {
+        setup.domain.as_str()
+    } else {
+        "IP only"
+    };
     let tls_name = match setup.tls_mode {
         0 => t!("sub.setup_tls_name_le"),
         1 => t!("sub.setup_tls_name_ip"),
@@ -211,11 +228,21 @@ async fn handle_tls_select(ctx: &CallbackContext, data: &str) -> HandlerResult {
         "3" => tls_name,
     );
     let keyboard = InlineKeyboardMarkup::new(vec![
-        vec![InlineKeyboardButton::callback(t!("sub.setup_confirm_btn"), "sub_confirm")],
-        vec![InlineKeyboardButton::callback(t!("sub.setup_cancel"), "sub_cancel")],
+        vec![InlineKeyboardButton::callback(
+            t!("sub.setup_confirm_btn"),
+            "sub_confirm",
+        )],
+        vec![InlineKeyboardButton::callback(
+            t!("sub.setup_cancel"),
+            "sub_cancel",
+        )],
     ]);
     ctx.bot
-        .edit_message_text(ctx.chat_id, ctx.msg_id, format!("{}{}", summary, self_signed_warn))
+        .edit_message_text(
+            ctx.chat_id,
+            ctx.msg_id,
+            format!("{}{}", summary, self_signed_warn),
+        )
         .parse_mode(ParseMode::Html)
         .reply_markup(keyboard)
         .await?;
@@ -340,7 +367,11 @@ async fn handle_token_list(ctx: &CallbackContext) -> HandlerResult {
                 let mut lines = Vec::new();
                 for t in &tokens {
                     let mask: String = t.token.chars().take(4).collect();
-                    let status = if t.revoked { t!("sub.token_status_revoked") } else { t!("sub.token_status_active") };
+                    let status = if t.revoked {
+                        t!("sub.token_status_revoked")
+                    } else {
+                        t!("sub.token_status_active")
+                    };
                     lines.push(format!("• <code>{}****</code> {}", mask, status));
                 }
                 t!("sub.token_list_title", "0" => lines.join("\n")).into_owned()
@@ -372,9 +403,17 @@ async fn handle_token_info(ctx: &CallbackContext, data: &str) -> HandlerResult {
     let text = match tm.get_token_info(token) {
         Ok((info, count)) => {
             let mask: String = info.token.chars().take(4).collect();
-            let status = if info.revoked { t!("sub.token_status_revoked") } else { t!("sub.token_status_active") };
+            let status = if info.revoked {
+                t!("sub.token_status_revoked")
+            } else {
+                t!("sub.token_status_active")
+            };
             let created = info.created_at.to_string();
-            let expires = if info.expires_at > 0 { info.expires_at.to_string() } else { "None".to_string() };
+            let expires = if info.expires_at > 0 {
+                info.expires_at.to_string()
+            } else {
+                "None".to_string()
+            };
             t!(
                 "sub.token_info_title",
                 "0" => mask,
@@ -383,7 +422,8 @@ async fn handle_token_info(ctx: &CallbackContext, data: &str) -> HandlerResult {
                 "3" => expires,
                 "4" => count.to_string(),
                 "5" => format!("https://.../sub/{}", mask)
-            ).into_owned()
+            )
+            .into_owned()
         }
         Err(_) => t!("sub.token_not_found").into_owned(),
     };

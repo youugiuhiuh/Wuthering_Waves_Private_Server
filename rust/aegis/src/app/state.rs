@@ -71,6 +71,7 @@ pub struct ScheduleInputState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum SubSetupStep {
     ChooseDomain,
     EnterDomain,

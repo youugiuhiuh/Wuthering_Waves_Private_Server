@@ -179,7 +179,10 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
             };
             match protocol {
                 "hysteria2" | "hy2" => {
-                    let port = outbound.get("server_port").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                    let port = outbound
+                        .get("server_port")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u32;
                     let host = match outbound.get("server").and_then(|v| v.as_str()) {
                         Some(h) => h.to_string(),
                         None => continue,
@@ -230,7 +233,10 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
                     });
                 }
                 "tuic" => {
-                    let port = outbound.get("server_port").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                    let port = outbound
+                        .get("server_port")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u32;
                     let host = match outbound.get("server").and_then(|v| v.as_str()) {
                         Some(h) => h.to_string(),
                         None => continue,

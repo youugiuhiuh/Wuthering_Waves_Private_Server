@@ -373,7 +373,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     Ok(result) => {
                         if let Err(e) = send_singbox_batch_result(
                             adapter.clone(),
-                            chat_id_clone,
+                            TargetId(chat_id_clone.0.to_string()),
                             "Hysteria2",
                             &result,
                         )
@@ -435,7 +435,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                     Ok(result) => {
                         if let Err(e) = send_singbox_batch_result(
                             adapter.clone(),
-                            chat_id_clone,
+                            TargetId(chat_id_clone.0.to_string()),
                             "TUIC",
                             &result,
                         )
