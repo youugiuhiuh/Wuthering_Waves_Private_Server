@@ -16,6 +16,13 @@ pub struct DeployResult {
     pub token: String,
 }
 
+fn resolve_binary_name() -> &'static str {
+    match std::env::consts::ARCH {
+        "aarch64" | "arm64" => "sub-server-arm64",
+        _ => "sub-server",
+    }
+}
+
 pub async fn download_binary(
     repo_owner: &str,
     repo_name: &str,
@@ -49,11 +56,7 @@ pub async fn download_binary(
         .as_str()
         .ok_or_else(|| "tag_name not found in release".to_string())?;
 
-    let arch = std::env::consts::ARCH;
-    let binary_name = match arch {
-        "aarch64" | "arm64" => "sub-server-arm64",
-        _ => "sub-server",
-    };
+    let binary_name = resolve_binary_name();
 
     let base_url = format!(
         "https://github.com/{}/{}/releases/download/{}",
@@ -186,7 +189,7 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
 
     let (binary_data, sig_data) = download_binary(repo_owner, repo_name).await?;
     if let Some(sig) = &sig_data {
-        verify_binary(&binary_data, sig, "3", "sub-server")?;
+        verify_binary(&binary_data, sig, "3", resolve_binary_name())?;
     } else {
         log::warn!("No minisign signature available, skipping binary verification");
     }
