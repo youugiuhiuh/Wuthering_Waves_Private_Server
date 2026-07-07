@@ -6,6 +6,7 @@ pub(crate) mod message;
 pub mod ops;
 pub mod schedule;
 pub mod singbox;
+pub mod subscription;
 pub mod warp;
 pub mod xray;
 
@@ -84,6 +85,10 @@ pub async fn dispatch(ctx: &CallbackContext) -> Result<Option<HandlerAction>> {
         || data.starts_with("wwps_core_tag:")
     {
         return Ok(Some(menu::handle(ctx).await?));
+    }
+
+    if data == "m_sub" || data.starts_with("sub_") {
+        return Ok(Some(subscription::handle(ctx).await?));
     }
 
     Ok(None)

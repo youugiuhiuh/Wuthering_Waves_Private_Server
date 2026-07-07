@@ -14,6 +14,7 @@ pub mod paths;
 pub mod security;
 pub mod singbox;
 pub mod sni;
+pub mod subscription;
 pub mod system;
 pub mod totp;
 pub mod types;

@@ -50,7 +50,6 @@ rust-embed = "8.11.0"
 obfstr = "0.4.4"
 goldberg = "0.1.0"
 chrono-tz = "0.10.4"
-prost = "0.14"
 thiserror = "2.0"
 tempfile = "3.8"
 async-trait = "0.1"
@@ -67,13 +66,19 @@ mime = "0.3.17"
 rust-i18n = "4.1"
 minisign-verify = "0.2.5"
 mockall = "0.14" # Needed at runtime for binary-crate tests (MockBotAdapter shared across lib/bin)
+rusqlite = { version = "0.37", features = ["bundled"] }
+tokio-stream = { version = "0.1.18", features = ["net"] }
+prost = "0.13"
+tonic = { version = "0.13", features = ["transport"] }
+rcgen = { version = "0.14.8", features = ["pem", "x509-parser"] }
 
 [dev-dependencies]
 env_logger = "0.11.8"
 serial_test = "3.5.0"
 
 [build-dependencies]
-prost-build = "0.14"
+prost-build = "0.13"
+tonic-build = "0.13"
 
 [features]
 default = ["telegram"]

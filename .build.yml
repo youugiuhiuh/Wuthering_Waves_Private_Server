@@ -61,10 +61,28 @@ tasks:
       export PATH="/usr/local/go/bin:$(go env GOPATH)/bin:$PATH"
       cd go/installer
       CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+  - build-sub-server: |
+      . ~/.buildenv
+      export PATH="/usr/local/go/bin:$(go env GOPATH)/bin:$PATH"
+      cd tools/sub-server
+      go mod download
+      CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build \
+        -ldflags="-s -w -X main.version=${NEW_VERSION}" \
+        -o sub-server .
+      if command -v minisign &>/dev/null && [ -n "${MINISIGN_SECRET_KEY}" ]; then
+        echo "${MINISIGN_SECRET_KEY}" > /tmp/minisign.key
+        minisign -S -s /tmp/minisign.key -m sub-server \
+          -t "${NEW_VERSION}:sub-server" -x sub-server.minisig
+        rm -f /tmp/minisign.key
+      fi
   - prepare-dist: |
       . ~/.buildenv
       mkdir -p dist
       cp rust/tgbot/target/release/tgbot go/installer/installer dist/
+      if [ -f tools/sub-server/sub-server ]; then
+        cp tools/sub-server/sub-server dist/
+        cp tools/sub-server/sub-server.minisig dist/ 2>/dev/null || true
+      fi
   - create-release: |
       set +x
       . ~/.buildenv
@@ -81,10 +99,12 @@ tasks:
       JSON=$(jq -n --arg tag "v${NEW_VERSION}" --arg name "v${NEW_VERSION}" --arg body "$BODY" '{tag_name:$tag,name:$name,body:$body}')
       RES=$(curl -sS -X POST -H "$AUTH" -H "Content-Type: application/json" -d "$JSON" "${API}/releases")
       RID=$(echo "$RES" | jq -r '.id // empty')
-      for f in dist/tgbot dist/installer; do
+      for f in dist/tgbot dist/installer dist/sub-server; do
         [ -f "$f" ] && curl -sS -X POST -H "$AUTH" -H "Content-Type: application/octet-stream" --data-binary "@$f" "${API}/releases/${RID}/assets?name=$(basename $f)"
       done
       set -x
 artifacts:
   - dist/tgbot
   - dist/installer
+  - dist/sub-server
+  - dist/sub-server.minisig

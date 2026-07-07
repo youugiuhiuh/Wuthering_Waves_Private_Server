@@ -445,6 +445,7 @@ mod tests {
             None,
             600,
             Arc::new(MockAdapter),
+            None,
         )
     }
 

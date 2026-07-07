@@ -1,0 +1,99 @@
+syntax = "proto3";
+package subscription;
+option go_package = "tools/sub-server/proto/sub";
+
+service SubscriptionService {
+  rpc GetConfigs(GetConfigsRequest) returns (GetConfigsResponse);
+  rpc GetTokenInfo(GetTokenInfoRequest) returns (TokenInfo);
+}
+
+service TokenService {
+  rpc CreateToken(CreateTokenRequest) returns (TokenResponse);
+  rpc ListTokens(ListTokensRequest) returns (ListTokensResponse);
+  rpc RevokeToken(RevokeTokenRequest) returns (RevokeTokenResponse);
+  rpc UpdateTokenConfigs(UpdateTokenConfigsRequest) returns (TokenResponse);
+}
+
+message SubscriptionToken {
+  string token = 1;
+  string label = 2;
+  repeated string config_ids = 3;
+  int64 created_at = 4;
+  int64 expires_at = 5;
+  bool revoked = 6;
+}
+
+message ProxyConfig {
+  string config_id = 1;
+  string protocol = 2;
+  string host = 3;
+  uint32 port = 4;
+  string password = 5;
+  string uuid = 6;
+  string sni = 7;
+  string pin_sha256 = 8;
+  string public_key = 9;
+  string short_id = 10;
+  string transport = 11;
+  string path = 12;
+  string flow = 13;
+  string tag = 14;
+  string obfs_type = 15;
+  string obfs_password = 16;
+  uint32 hop_port_start = 17;
+  uint32 hop_port_end = 18;
+  string alpn = 19;
+  string congestion_control = 20;
+  string cert_sha256 = 21;
+}
+
+message GetConfigsRequest {
+  string token = 1;
+}
+
+message GetConfigsResponse {
+  repeated ProxyConfig configs = 1;
+}
+
+message GetTokenInfoRequest {
+  string token = 1;
+}
+
+message TokenInfo {
+  SubscriptionToken info = 1;
+  string subscription_url = 2;
+  int64 configs_count = 3;
+}
+
+message CreateTokenRequest {
+  string label = 1;
+  repeated string config_ids = 2;
+}
+
+message TokenResponse {
+  SubscriptionToken info = 1;
+}
+
+message ListTokensRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message ListTokensResponse {
+  repeated SubscriptionToken tokens = 1;
+  int32 total = 2;
+}
+
+message RevokeTokenRequest {
+  string token = 1;
+}
+
+message RevokeTokenResponse {
+  bool success = 1;
+}
+
+message UpdateTokenConfigsRequest {
+  string token = 1;
+  repeated string config_ids = 2;
+  int64 expires_at = 3;
+}
