@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	pb "github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/proto/sub"
@@ -25,8 +26,10 @@ func New(socketPath string) (*Client, error) {
 	}
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	opts = append(opts, grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+		// Strip unix:// prefix if present (gRPC resolver may pass it through)
+		path := strings.TrimPrefix(addr, "unix://")
 		var d net.Dialer
-		return d.DialContext(ctx, "unix", addr)
+		return d.DialContext(ctx, "unix", path)
 	}))
 	opts = append(opts, grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(10*1024*1024)))
 	conn, err := grpc.NewClient(target, opts...)
