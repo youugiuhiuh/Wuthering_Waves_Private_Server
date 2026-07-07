@@ -176,8 +176,13 @@ pub fn open_firewall_port(port: u16) {
 }
 
 pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<DeployResult, String> {
-    let repo_owner = "youugiuhiuh";
+    let repo_owner = "NicholasDewar";
     let repo_name = "Wuthering_Waves_Private_Server";
+
+    // Stop existing sub-server service before overwriting binary
+    let _ = std::process::Command::new("systemctl")
+        .args(["stop", paths::sub_server::SERVICE])
+        .status();
 
     let (binary_data, sig_data) = download_binary(repo_owner, repo_name).await?;
     verify_binary(&binary_data, &sig_data, "3", "sub-server")?;
