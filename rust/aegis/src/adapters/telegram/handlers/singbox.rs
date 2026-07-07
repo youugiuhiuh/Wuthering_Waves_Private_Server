@@ -1,5 +1,5 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
-use crate::app::batch_handler::send_singbox_batch_result;
+use aegis::app::batch_handler::send_singbox_batch_result;
 use aegis::adapters::common::{MessageContent, TargetId};
 use aegis::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use aegis::core::system::SystemMonitor;
@@ -371,9 +371,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
                 .await
                 {
                     Ok(result) => {
+                        let target = TargetId(chat_id_clone.0.to_string());
                         if let Err(e) = send_singbox_batch_result(
                             adapter.clone(),
-                            chat_id_clone,
+                            target,
                             "Hysteria2",
                             &result,
                         )
@@ -433,9 +434,10 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
             tokio::spawn(async move {
                 match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
                     Ok(result) => {
+                        let target = TargetId(chat_id_clone.0.to_string());
                         if let Err(e) = send_singbox_batch_result(
                             adapter.clone(),
-                            chat_id_clone,
+                            target,
                             "TUIC",
                             &result,
                         )

@@ -1,5 +1,5 @@
 use super::context::{CallbackContext, HandlerAction, HandlerResult};
-use crate::app::state::ScheduleFrequency;
+use aegis::app::state::ScheduleFrequency;
 use aegis::core::system::scheduler::TaskType;
 use rust_i18n::t;
 

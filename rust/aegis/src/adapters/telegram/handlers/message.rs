@@ -1,7 +1,7 @@
 use crate::MAX_INPUT_LENGTH;
-use crate::app::destruct_flow;
-use crate::app::destruct_flow::MessageFlowOutcome;
-use crate::app::state::{AppState, TimeoutStatus};
+use aegis::app::destruct_flow;
+use aegis::app::destruct_flow::MessageFlowOutcome;
+use aegis::app::state::{AppState, TimeoutStatus};
 use super::subscription;
 use aegis::adapters::common::TargetId;
 use aegis::core::xray::config::ConfigManager;
@@ -114,9 +114,35 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
         }
     }
 
-    if destruct_flow::handle_message_flow(&bot, &msg, user_id, &state).await?
-        == MessageFlowOutcome::Handled
-    {
+    let (outcome, response) = destruct_flow::handle_message_flow_adapter(
+        msg.text(),
+        None,
+        &state,
+        &chat_id.0.to_string(),
+        user_id,
+    )
+    .await;
+    if outcome == MessageFlowOutcome::Handled {
+        if let Some((content, _)) = response {
+            let mut msg_r = bot
+                .send_message(chat_id, content.text)
+                .parse_mode(ParseMode::Html);
+            if let Some(ref markup) = content.markup {
+                let rows: Vec<Vec<teloxide::types::InlineKeyboardButton>> = markup
+                    .buttons
+                    .iter()
+                    .map(|row| {
+                        row.iter()
+                            .map(|btn| {
+                                teloxide::types::InlineKeyboardButton::callback(&btn.text, &btn.data)
+                            })
+                            .collect()
+                    })
+                    .collect();
+                msg_r = msg_r.reply_markup(teloxide::types::InlineKeyboardMarkup::new(rows));
+            }
+            msg_r.await?;
+        }
         return Ok(());
     }
 

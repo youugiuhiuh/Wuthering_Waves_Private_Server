@@ -4,12 +4,12 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 
-use aegis::adapters::common::BotAdapter;
-use aegis::core::i18n::Lang;
-use aegis::core::security::self_destruct::SelfDestructExecutor;
-use aegis::core::subscription::token::TokenManager;
-use aegis::core::system::scheduler::task_types::TaskType;
-use aegis::core::totp::TotpManager;
+use crate::adapters::common::BotAdapter;
+use crate::core::i18n::Lang;
+use crate::core::security::self_destruct::SelfDestructExecutor;
+use crate::core::subscription::token::TokenManager;
+use crate::core::system::scheduler::task_types::TaskType;
+use crate::core::totp::TotpManager;
 
 const RECENT_AUTH_WINDOW_SECS: u64 = 5 * 60;
 
@@ -491,7 +491,7 @@ fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::adapters::common::{MessageContent, MessageId, Platform, TargetId};
+    use crate::adapters::common::{MessageContent, MessageId, Platform, TargetId};
     use anyhow::Result;
     use async_trait::async_trait;
     use futures_util::future::BoxFuture;

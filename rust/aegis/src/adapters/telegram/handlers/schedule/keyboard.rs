@@ -1,5 +1,5 @@
 use super::{schedule_frequency_name, schedule_task_name, timezone_label, weekday_label};
-use crate::app::state::{ScheduleFrequency, ScheduleInputState};
+use aegis::app::state::{ScheduleFrequency, ScheduleInputState};
 use rust_i18n::t;
 use teloxide::types::InlineKeyboardButton;
 use teloxide::types::InlineKeyboardMarkup;

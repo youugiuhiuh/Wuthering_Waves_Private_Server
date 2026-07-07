@@ -9,14 +9,13 @@ mod handlers;
 #[path = "adapters/matrix/handlers.rs"]
 mod matrix_handlers;
 
-mod app;
 mod bootstrap;
 #[path = "main/mod.rs"]
 mod main;
 mod utils;
 
-use crate::app::auth;
-use crate::app::state::AppState;
+use aegis::app::auth;
+use aegis::app::state::AppState;
 use crate::bootstrap::{
     CONFIG_FILE, EncryptedConfig, KEY_FILE, config_dir, harden_process, verify_integrity,
 };

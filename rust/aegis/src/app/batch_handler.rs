@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
-use teloxide::types::ChatId;
 use tokio::time::{Duration, sleep};
 
-use aegis::adapters::common::{BotAdapter, MessageContent, MessageId, TargetId};
-use aegis::core::types::BatchCreationResult;
+use crate::adapters::common::{BotAdapter, MessageContent, MessageId, TargetId};
+use crate::core::types::BatchCreationResult;
 
 /// Send SingBox batch creation results through the adapter (supports routing):
 /// header message, chunked link messages, summary message,
@@ -12,11 +11,10 @@ use aegis::core::types::BatchCreationResult;
 /// Sensitive content (protocol links) is routed through the adapter's routing logic.
 pub async fn send_singbox_batch_result(
     adapter: Arc<dyn BotAdapter>,
-    chat_id: ChatId,
+    target: TargetId,
     protocol_name: &str,
     result: &BatchCreationResult,
 ) -> anyhow::Result<()> {
-    let target = TargetId(chat_id.0.to_string());
     let mut message_ids: Vec<String> = Vec::new();
 
     let header_msg = format!(
@@ -89,8 +87,8 @@ pub async fn send_singbox_batch_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::adapters::common::MockBotAdapter;
-    use aegis::core::types::BatchCreationResult;
+    use crate::adapters::common::MockBotAdapter;
+    use crate::core::types::BatchCreationResult;
 
     fn make_result(
         created_count: usize,
@@ -114,7 +112,7 @@ mod tests {
         mock.expect_delete_message().returning(|_, _| Ok(()));
 
         let result = make_result(2, vec!["vless://a", "vless://b"], Some("/tmp/cfg.json"));
-        send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result)
+        send_singbox_batch_result(Arc::new(mock), TargetId("1".to_string()), "hy2", &result)
             .await
             .unwrap();
     }
@@ -123,12 +121,12 @@ mod tests {
     async fn skips_links_when_empty() {
         let mut mock = MockBotAdapter::new();
         mock.expect_send_message()
-            .times(2) // header + result (no links)
+            .times(2)
             .returning(|_, _| Ok(MessageId("1".to_string())));
         mock.expect_delete_message().returning(|_, _| Ok(()));
 
         let result = make_result(0, vec![], None);
-        send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result)
+        send_singbox_batch_result(Arc::new(mock), TargetId("1".to_string()), "hy2", &result)
             .await
             .unwrap();
     }
@@ -142,7 +140,7 @@ mod tests {
         mock.expect_delete_message().returning(|_, _| Ok(()));
 
         let result = make_result(5, vec!["vless://x"], Some("/tmp/x.json"));
-        let output = send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result).await;
+        let output = send_singbox_batch_result(Arc::new(mock), TargetId("1".to_string()), "hy2", &result).await;
         assert!(output.is_ok());
     }
 
@@ -158,7 +156,7 @@ mod tests {
         mock.expect_delete_message().returning(|_, _| Ok(()));
 
         let result = make_result(1, vec!["vless://x"], Some("/tmp/x.json"));
-        send_singbox_batch_result(Arc::new(mock), ChatId(1), "hy2", &result)
+        send_singbox_batch_result(Arc::new(mock), TargetId("1".to_string()), "hy2", &result)
             .await
             .unwrap();
     }

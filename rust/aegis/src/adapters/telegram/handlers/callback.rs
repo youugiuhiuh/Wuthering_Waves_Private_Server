@@ -1,6 +1,4 @@
-use crate::app::destruct_flow;
-use crate::app::destruct_flow::MessageFlowOutcome;
-use crate::app::state::{AppState, TimeoutStatus};
+use aegis::app::state::{AppState, TimeoutStatus};
 use crate::save_lang_to_config;
 use aegis::core::i18n;
 use futures_util::future::BoxFuture;
@@ -94,12 +92,6 @@ pub fn handle_callback(
                 continue;
             }
 
-            if destruct_flow::handle_callback_timeout(&bot, &q, chat_id, msg_id, &state).await?
-                == MessageFlowOutcome::Handled
-            {
-                break Ok(());
-            }
-
             let is_custom_followup = data.starts_with("s_custom_ui:")
                 || data.starts_with("s_custom_set:")
                 || data == "s_custom_confirm"
@@ -122,20 +114,6 @@ pub fn handle_callback(
                     .show_alert(true)
                     .await?;
                 continue;
-            }
-
-            if destruct_flow::handle_callback_action(
-                &bot,
-                &q,
-                data.as_str(),
-                chat_id,
-                msg_id,
-                &state,
-            )
-            .await?
-                == MessageFlowOutcome::Handled
-            {
-                break Ok(());
             }
 
             let ctx = super::context::CallbackContext {

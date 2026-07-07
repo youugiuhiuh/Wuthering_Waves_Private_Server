@@ -1,12 +1,8 @@
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rust_i18n::t;
-use sha2::Digest;
-use teloxide::net::Download;
-use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 
+use crate::adapters::common::{InlineButton, Markup, MessageContent, MessageId};
 use crate::app::state::{AppState, DestructStep, TimeoutStatus};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,9 +23,6 @@ pub enum MessageFlowOutcome {
     NotHandled,
 }
 
-/// Pure logic layer: given the current destruct step and user input,
-/// decide what action should be taken.
-/// Does NOT depend on teloxide Bot/Message types — directly testable.
 pub async fn process_destruct_message(
     text: Option<&str>,
     step: DestructStep,
@@ -52,6 +45,7 @@ pub async fn process_destruct_message(
         },
         DestructStep::AwaitSecurityFile => {
             if let Some(content) = file_content {
+                use sha2::Digest;
                 let hash = hex::encode(sha2::Sha256::digest(content));
                 match self_destruct_key_hash {
                     Some(correct) if hash == correct => {
@@ -73,334 +67,151 @@ pub async fn process_destruct_message(
     }
 }
 
-pub async fn handle_message_flow(
-    bot: &Bot,
-    msg: &Message,
+/// Process destruct message flow using BotAdapter instead of teloxide types.
+/// Returns (MessageFlowOutcome, Option<MessageContent>) where MessageContent is the response to send.
+pub async fn handle_message_flow_adapter(
+    text: Option<&str>,
+    file_content: Option<&[u8]>,
+    state: &AppState,
+    chat_id: &str,
     user_id: i64,
-    state: &Arc<AppState>,
-) -> ResponseResult<MessageFlowOutcome> {
-    let chat_id = msg.chat.id;
-    let chat_id_str = chat_id.0.to_string();
+) -> (MessageFlowOutcome, Option<(MessageContent, Option<MessageId>)>) {
     match state
-        .touch_destruct(&chat_id_str, Instant::now(), Duration::from_secs(60))
+        .touch_destruct(chat_id, Instant::now(), Duration::from_secs(60))
         .await
     {
         TimeoutStatus::Expired => {
-            state.cancel_destruct(&chat_id_str).await;
-            bot.send_message(chat_id, t!("destruct.timeout")).await?;
-            return Ok(MessageFlowOutcome::Handled);
+            state.cancel_destruct(chat_id).await;
+            return (
+                MessageFlowOutcome::Handled,
+                Some((MessageContent { text: t!("destruct.timeout").to_string(), markup: None }, None)),
+            );
         }
-        TimeoutStatus::NotTracked => return Ok(MessageFlowOutcome::NotHandled),
+        TimeoutStatus::NotTracked => return (MessageFlowOutcome::NotHandled, None),
         TimeoutStatus::Active => {}
     }
 
-    if !state.is_authorized(user_id).await {
-        bot.send_message(chat_id, t!("auth.expired")).await?;
-        return Ok(MessageFlowOutcome::Handled);
+    if !state.is_admin_user(user_id) && !state.is_authorized(user_id).await {
+        return (
+            MessageFlowOutcome::Handled,
+            Some((MessageContent { text: t!("auth.expired").to_string(), markup: None }, None)),
+        );
     }
 
-    let Some(destruct_state) = state.destruct_snapshot(&chat_id_str).await else {
-        return Ok(MessageFlowOutcome::NotHandled);
+    let Some(destruct_state) = state.destruct_snapshot(chat_id).await else {
+        return (MessageFlowOutcome::NotHandled, None);
     };
 
     let action = process_destruct_message(
-        msg.text(),
+        text,
         destruct_state.step,
         state,
         state.self_destruct_key_hash().await.as_deref(),
-        None,
+        file_content,
     )
     .await;
 
     match (destruct_state.step, action) {
         (DestructStep::AwaitFirstTotp, DestructMessageAction::ConfirmFirstTotp) => {
             if state
-                .confirm_first_destruct_totp(
-                    &chat_id_str,
-                    msg.text().unwrap().trim(),
-                    Instant::now(),
-                )
+                .confirm_first_destruct_totp(chat_id, text.unwrap().trim(), Instant::now())
                 .await
             {
-                let keyboard = InlineKeyboardMarkup::new(vec![
-                    vec![InlineKeyboardButton::callback(
-                        t!("destruct.confirm_btn"),
-                        "a_destroy_confirm",
-                    )],
-                    vec![InlineKeyboardButton::callback(
-                        t!("destruct.cancelled"),
-                        "a_destroy_cancel",
-                    )],
-                ]);
-                bot.send_message(chat_id, t!("destruct.title_2"))
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(keyboard)
-                    .await?;
+                let markup = Markup {
+                    buttons: vec![
+                        vec![InlineButton {
+                            text: t!("destruct.confirm_btn").to_string(),
+                            data: "a_destroy_confirm".to_string(),
+                        }],
+                        vec![InlineButton {
+                            text: t!("destruct.cancelled").to_string(),
+                            data: "a_destroy_cancel".to_string(),
+                        }],
+                    ],
+                };
+                (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.title_2").to_string(), markup: Some(markup) }, None)))
+            } else {
+                (MessageFlowOutcome::Handled, None)
             }
         }
         (DestructStep::AwaitSecondTotp, DestructMessageAction::AwaitingSecondTotp) => {
             match state
-                .confirm_second_destruct_totp(
-                    &chat_id_str,
-                    msg.text().unwrap().trim(),
-                    Instant::now(),
-                )
+                .confirm_second_destruct_totp(chat_id, text.unwrap().trim(), Instant::now())
                 .await
             {
                 Err(_) => {
-                    bot.send_message(chat_id, t!("destruct.security_warn"))
-                        .parse_mode(ParseMode::Html)
-                        .await?;
+                    (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.security_warn").to_string(), markup: None }, None)))
                 }
                 Ok(true) => {
-                    bot.send_message(chat_id, t!("destruct.title_4"))
-                        .parse_mode(ParseMode::Html)
-                        .await?;
+                    (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.title_4").to_string(), markup: None }, None)))
                 }
                 Ok(false) => {
-                    bot.send_message(chat_id, t!("destruct.state_invalid"))
-                        .await?;
+                    (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.state_invalid").to_string(), markup: None }, None)))
                 }
             }
         }
         (_, DestructMessageAction::VerifyFailed) => {
-            bot.send_message(chat_id, t!("destruct.verify_fail"))
-                .await?;
+            (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.verify_fail").to_string(), markup: None }, None)))
         }
         (DestructStep::AwaitSecurityFile, DestructMessageAction::AwaitingFile) => {
-            let (file_id, file_name) = if let Some(doc) = msg.document() {
-                (Some(doc.file.id.clone()), doc.file_name.clone())
-            } else if let Some(photos) = msg.photo() {
-                (
-                    photos.last().map(|p| p.file.id.clone()),
-                    Some(t!("destruct.image_label").to_string()),
-                )
-            } else {
-                (None, None)
-            };
-
-            if let Some(fid) = file_id {
-                let file = bot.get_file(fid.clone()).await?;
-                let mut content = Vec::new();
-                bot.download_file(&file.path, &mut content)
-                    .await
-                    .map_err(std::io::Error::other)?;
-
+            if file_content.is_some() {
                 let re_action = process_destruct_message(
                     None,
                     DestructStep::AwaitSecurityFile,
                     state,
                     state.self_destruct_key_hash().await.as_deref(),
-                    Some(&content),
-                )
-                .await;
-
+                    file_content,
+                ).await;
                 match re_action {
                     DestructMessageAction::FileVerified { ref hash_short } => {
-                        let file_display = file_name
-                            .map(|n| format!("{} | {}", n, hash_short))
-                            .unwrap_or_else(|| hash_short.clone());
-
-                        if state
-                            .mark_destruct_file_verified(&chat_id_str, Instant::now())
-                            .await
-                        {
-                            let keyboard = InlineKeyboardMarkup::new(vec![
-                                vec![InlineKeyboardButton::callback(
-                                    t!("destruct.final_btn"),
-                                    "a_destroy_final",
-                                )],
-                                vec![InlineKeyboardButton::callback(
-                                    t!("destruct.cancelled"),
-                                    "a_destroy_cancel",
-                                )],
-                            ]);
-                            bot.send_message(
-                                chat_id,
-                                t!("destruct.file_verify_ok", "0" => file_display),
-                            )
-                            .parse_mode(ParseMode::Html)
-                            .reply_markup(keyboard)
-                            .await?;
+                        if state.mark_destruct_file_verified(chat_id, Instant::now()).await {
+                            let markup = Markup {
+                                buttons: vec![
+                                    vec![InlineButton {
+                                        text: t!("destruct.final_btn").to_string(),
+                                        data: "a_destroy_final".to_string(),
+                                    }],
+                                    vec![InlineButton {
+                                        text: t!("destruct.cancelled").to_string(),
+                                        data: "a_destroy_cancel".to_string(),
+                                    }],
+                                ],
+                            };
+                            (MessageFlowOutcome::Handled, Some((MessageContent {
+                                text: t!("destruct.file_verify_ok", "0" => hash_short).to_string(),
+                                markup: Some(markup),
+                            }, None)))
+                        } else {
+                            (MessageFlowOutcome::Handled, None)
                         }
                     }
                     DestructMessageAction::FileMismatch => {
-                        bot.send_message(chat_id, t!("destruct.file_verify_fail"))
-                            .await?;
+                        (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.file_verify_fail").to_string(), markup: None }, None)))
                     }
                     DestructMessageAction::NoSecurityKey => {
-                        bot.send_message(chat_id, t!("destruct.no_security_file"))
-                            .await?;
+                        (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.no_security_file").to_string(), markup: None }, None)))
                     }
-                    _ => {}
+                    _ => (MessageFlowOutcome::Handled, None),
                 }
             } else {
-                bot.send_message(chat_id, t!("destruct.file_send_prompt"))
-                    .await?;
+                (MessageFlowOutcome::Handled, Some((MessageContent { text: t!("destruct.file_send_prompt").to_string(), markup: None }, None)))
             }
         }
-        _ => {}
-    }
-    Ok(MessageFlowOutcome::Handled)
-}
-
-pub async fn handle_callback_timeout(
-    bot: &Bot,
-    q: &CallbackQuery,
-    chat_id: ChatId,
-    msg_id: teloxide::types::MessageId,
-    state: &Arc<AppState>,
-) -> ResponseResult<MessageFlowOutcome> {
-    let chat_id_str = chat_id.0.to_string();
-    match state
-        .touch_destruct(&chat_id_str, Instant::now(), Duration::from_secs(60))
-        .await
-    {
-        TimeoutStatus::Expired => {
-            state.cancel_destruct(&chat_id_str).await;
-            bot.answer_callback_query(q.id.clone())
-                .text(t!("destruct.callback_timeout"))
-                .await?;
-            bot.edit_message_text(chat_id, msg_id, t!("destruct.timeout"))
-                .parse_mode(ParseMode::Html)
-                .await?;
-            Ok(MessageFlowOutcome::Handled)
-        }
-        TimeoutStatus::Active => Ok(MessageFlowOutcome::NotHandled),
-        TimeoutStatus::NotTracked => Ok(MessageFlowOutcome::NotHandled),
-    }
-}
-
-pub async fn handle_callback_action(
-    bot: &Bot,
-    q: &CallbackQuery,
-    data: &str,
-    chat_id: ChatId,
-    msg_id: teloxide::types::MessageId,
-    state: &Arc<AppState>,
-) -> ResponseResult<MessageFlowOutcome> {
-    let chat_id_str = chat_id.0.to_string();
-    match data {
-        "a_destroy_ask" => {
-            if !state.is_authorized(chat_id.0).await {
-                bot.answer_callback_query(q.id.clone())
-                    .text(t!("auth.expired"))
-                    .await?;
-                return Ok(MessageFlowOutcome::Handled);
-            }
-            state
-                .begin_destruct(chat_id_str.clone(), Instant::now())
-                .await;
-            let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-                t!("destruct.cancelled"),
-                "a_destroy_cancel",
-            )]]);
-            bot.edit_message_text(chat_id, msg_id, t!("destruct.title_1"))
-                .parse_mode(ParseMode::Html)
-                .reply_markup(keyboard)
-                .await?;
-            Ok(MessageFlowOutcome::Handled)
-        }
-        "a_destroy_cancel" => {
-            if state.cancel_destruct(&chat_id_str).await {
-                bot.send_message(chat_id, t!("destruct.cancelled")).await?;
-            }
-            let keyboard = InlineKeyboardMarkup::new(vec![
-                vec![InlineKeyboardButton::callback(
-                    t!("destruct.destroy_btn"),
-                    "a_destroy_ask",
-                )],
-                vec![InlineKeyboardButton::callback(
-                    t!("menu.back_settings"),
-                    "m_settings",
-                )],
-            ]);
-            bot.edit_message_text(
-                chat_id,
-                msg_id,
-                format!(
-                    "{}\n\n{}",
-                    t!("menu.danger_zone"),
-                    t!("menu.danger_zone_desc")
-                ),
-            )
-            .parse_mode(ParseMode::Html)
-            .reply_markup(keyboard)
-            .await?;
-            Ok(MessageFlowOutcome::Handled)
-        }
-        "a_destroy_confirm" => {
-            if !state.is_authorized(chat_id.0).await {
-                bot.answer_callback_query(q.id.clone())
-                    .text(t!("auth.expired"))
-                    .await?;
-                return Ok(MessageFlowOutcome::Handled);
-            }
-            if state
-                .advance_destruct_step(
-                    &chat_id_str,
-                    DestructStep::AwaitConfirm,
-                    DestructStep::AwaitSecondTotp,
-                    Instant::now(),
-                )
-                .await
-            {
-                let keyboard =
-                    InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
-                        t!("destruct.cancelled"),
-                        "a_destroy_cancel",
-                    )]]);
-                bot.edit_message_text(chat_id, msg_id, t!("destruct.title_3"))
-                    .parse_mode(ParseMode::Html)
-                    .reply_markup(keyboard)
-                    .await?;
-            } else {
-                bot.answer_callback_query(q.id.clone())
-                    .text(t!("destruct.state_invalid"))
-                    .await?;
-            }
-            Ok(MessageFlowOutcome::Handled)
-        }
-        "a_destroy_final" => {
-            if !state.is_authorized(chat_id.0).await {
-                bot.answer_callback_query(q.id.clone())
-                    .text(t!("auth.expired"))
-                    .await?;
-                return Ok(MessageFlowOutcome::Handled);
-            }
-
-            let snapshot = state.destruct_snapshot(&chat_id_str).await;
-            if snapshot.map(|s| s.step) == Some(DestructStep::AwaitFinalConfirm) {
-                bot.answer_callback_query(q.id.clone())
-                    .text(t!("destruct.executing"))
-                    .await?;
-                bot.edit_message_text(chat_id, msg_id, t!("destruct.final_exec"))
-                    .parse_mode(ParseMode::Html)
-                    .await?;
-                let executor = state.self_destruct_executor();
-                aegis::core::security::self_destruct::trigger(executor);
-                state.cancel_destruct(&chat_id_str).await;
-            } else {
-                bot.answer_callback_query(q.id.clone())
-                    .text(t!("destruct.state_invalid"))
-                    .await?;
-            }
-            Ok(MessageFlowOutcome::Handled)
-        }
-        _ => Ok(MessageFlowOutcome::NotHandled),
+        _ => (MessageFlowOutcome::Handled, None),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
-    use aegis::core::security::self_destruct::SelfDestructExecutor;
-    use aegis::core::totp::TotpManager;
+    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use crate::core::security::self_destruct::SelfDestructExecutor;
+    use crate::core::totp::TotpManager;
     use anyhow::Result;
     use async_trait::async_trait;
     use futures_util::future::BoxFuture;
     use secrecy::SecretString;
+    use sha2::Digest;
     use std::sync::Arc;
 
     struct MockAdapter;

@@ -8,7 +8,7 @@ use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::prelude::*;
 use tokio_util::sync::CancellationToken;
 
-use crate::app::state::AppState;
+use aegis::app::state::AppState;
 use crate::bootstrap::config_dir;
 use crate::handlers::{callback, message};
 use crate::{Command, handle_command};

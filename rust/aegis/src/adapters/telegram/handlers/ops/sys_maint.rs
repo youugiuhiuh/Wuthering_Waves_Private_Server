@@ -1,6 +1,6 @@
 use super::super::context::{CallbackContext, HandlerAction, HandlerResult};
 use super::super::schedule::{build_custom_schedule_keyboard, build_custom_schedule_text};
-use crate::app::state::{ScheduleFrequency, ScheduleInputState};
+use aegis::app::state::{ScheduleFrequency, ScheduleInputState};
 use aegis::core::system::scheduler::TaskType;
 use rust_i18n::t;
 use std::time::Instant;

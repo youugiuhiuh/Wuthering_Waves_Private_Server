@@ -1,4 +1,4 @@
-use crate::app::state::AppState;
+use aegis::app::state::AppState;
 use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
 use aegis::adapters::matrix::commands::*;
 use aegis::core::singbox::SingBoxConfigManager;

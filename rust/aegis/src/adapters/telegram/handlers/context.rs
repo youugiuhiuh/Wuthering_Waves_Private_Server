@@ -1,4 +1,4 @@
-use crate::app::state::AppState;
+use aegis::app::state::AppState;
 use anyhow::Result;
 use std::sync::Arc;
 use teloxide::prelude::*;
