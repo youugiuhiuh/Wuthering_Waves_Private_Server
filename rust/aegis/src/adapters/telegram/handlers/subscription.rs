@@ -14,6 +14,7 @@ pub async fn handle(ctx: &CallbackContext) -> HandlerResult {
         "sub_tlist" => handle_token_list(ctx).await,
         d if d.starts_with("sub_tinfo:") => handle_token_info(ctx, d).await,
         d if d.starts_with("sub_trevoke:") => handle_token_revoke(ctx, d).await,
+        d if d.starts_with("sub_sel:") => handle_setup_select(ctx, d).await,
         _ => Ok(HandlerAction::Done),
     }
 }
@@ -77,6 +78,25 @@ async fn handle_setup(ctx: &CallbackContext) -> HandlerResult {
     Ok(HandlerAction::Done)
 }
 
+async fn handle_setup_select(ctx: &CallbackContext, data: &str) -> HandlerResult {
+    let choice = data.strip_prefix("sub_sel:").unwrap_or("");
+    let msg = if choice == "domain" {
+        t!("sub.setup_q_domain_input")
+    } else {
+        t!("sub.setup_q_port")
+    };
+    let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+        t!("menu.back"),
+        "m_sub",
+    )]]);
+    ctx.bot
+        .edit_message_text(ctx.chat_id, ctx.msg_id, msg)
+        .parse_mode(ParseMode::Html)
+        .reply_markup(keyboard)
+        .await?;
+    Ok(HandlerAction::Done)
+}
+
 async fn handle_token_create(ctx: &CallbackContext) -> HandlerResult {
     let Some(tm) = ctx.state.token_manager() else {
         ctx.bot
@@ -115,7 +135,7 @@ async fn handle_token_list(ctx: &CallbackContext) -> HandlerResult {
             } else {
                 let mut lines = Vec::new();
                 for t in &tokens {
-                    let mask: String = t.token.chars().take(8).collect();
+                    let mask: String = t.token.chars().take(4).collect();
                     let status = if t.revoked {
                         t!("sub.token_status_revoked")
                     } else {
@@ -151,7 +171,7 @@ async fn handle_token_info(ctx: &CallbackContext, data: &str) -> HandlerResult {
     )]]);
     let text = match tm.get_token_info(token) {
         Ok((info, count)) => {
-            let mask: String = info.token.chars().take(8).collect();
+            let mask: String = info.token.chars().take(4).collect();
             let status = if info.revoked {
                 t!("sub.token_status_revoked")
             } else {

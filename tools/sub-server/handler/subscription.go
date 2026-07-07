@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/cache"
 	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/tools/sub-server/config"
@@ -23,7 +24,7 @@ func Init(cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	lruCache = cache.New(1024)
+	lruCache = cache.NewWithTTL(1024, time.Duration(cfg.CacheTTL)*time.Second)
 	return nil
 }
 

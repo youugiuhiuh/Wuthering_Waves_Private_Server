@@ -127,14 +127,13 @@ pub fn write_systemd_service(port: u16) -> Result<(), String> {
          \n\
          [Service]\n\
          Type=simple\n\
-         ExecStart={bin} --listen-addr=:{port} --config {cfg}\n\
+         ExecStart={bin} --listen-addr=:{port} --aegis-grpc=unix:///var/run/aegis/sub.sock --rate-limit=10\n\
          Restart=always\n\
          RestartSec=5\n\
          \n\
          [Install]\n\
          WantedBy=multi-user.target\n",
-        bin = paths::sub_server::BIN,
-        cfg = paths::sub_server::CONFIG_FILE,
+         bin = paths::sub_server::BIN,
     );
     std::fs::write(service_file, &unit).map_err(|e| format!("write systemd unit failed: {e}"))?;
 

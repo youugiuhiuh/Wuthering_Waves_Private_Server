@@ -180,6 +180,9 @@ mod tests {
         assert_eq!(sub_server::BIN, "/usr/local/bin/sub-server");
         assert_eq!(sub_server::GRPC_SOCK, "/var/run/aegis/sub.sock");
         assert_eq!(sub_server::SERVICE, "wwps-sub-server");
-        assert_eq!(sub_server::TLS_CERT, "/etc/wwps/sub-server/certs/fullchain.pem");
+        assert_eq!(
+            sub_server::TLS_CERT,
+            "/etc/wwps/sub-server/certs/fullchain.pem"
+        );
     }
 }

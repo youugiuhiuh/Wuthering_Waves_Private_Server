@@ -213,6 +213,6 @@ impl TokenManager {
                 return Err("token expired".into());
             }
         }
-        Ok(Vec::new())
+        Ok(crate::core::subscription::aggregator::aggregate_all())
     }
 }
