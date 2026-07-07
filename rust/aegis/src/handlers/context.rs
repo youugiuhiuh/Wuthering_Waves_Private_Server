@@ -1,18 +1,8 @@
-use std::sync::Arc;
+pub use crate::adapters::common::context::HandlerContext;
 
 use anyhow::Result;
 
-use crate::adapters::common::{BotAdapter, Markup, MessageId, TargetId};
-use crate::app::state::AppState;
-
-pub struct HandlerContext<'a> {
-    pub adapter: &'a dyn BotAdapter,
-    pub target: TargetId,
-    pub state: &'a Arc<AppState>,
-    pub user_id: i64,
-    pub data: String,
-    pub msg_id: Option<MessageId>,
-}
+use crate::adapters::common::{Markup, MessageContent, MessageId};
 
 pub enum HandlerAction {
     Done,
@@ -24,10 +14,7 @@ pub type HandlerResult = Result<HandlerAction>;
 impl HandlerContext<'_> {
     pub async fn reply(&self, text: String) -> Result<MessageId> {
         self.adapter
-            .send_message(
-                &self.target,
-                crate::adapters::common::MessageContent { text, markup: None },
-            )
+            .send_message(&self.target, MessageContent { text, markup: None })
             .await
     }
 
@@ -35,7 +22,7 @@ impl HandlerContext<'_> {
         self.adapter
             .send_message(
                 &self.target,
-                crate::adapters::common::MessageContent {
+                MessageContent {
                     text,
                     markup: Some(markup),
                 },
@@ -46,11 +33,7 @@ impl HandlerContext<'_> {
     pub async fn edit(&self, text: String) -> Result<()> {
         if let Some(msg_id) = &self.msg_id {
             self.adapter
-                .edit_message(
-                    &self.target,
-                    msg_id,
-                    crate::adapters::common::MessageContent { text, markup: None },
-                )
+                .edit_message(&self.target, msg_id, MessageContent { text, markup: None })
                 .await?;
         }
         Ok(())
@@ -62,7 +45,7 @@ impl HandlerContext<'_> {
                 .edit_message(
                     &self.target,
                     msg_id,
-                    crate::adapters::common::MessageContent {
+                    MessageContent {
                         text,
                         markup: Some(markup),
                     },
@@ -83,8 +66,10 @@ impl HandlerContext<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::common::MockBotAdapter;
+    use crate::adapters::common::{MockBotAdapter, TargetId};
+    use crate::app::state::AppState;
     use crate::core::security::self_destruct::SelfDestructExecutor;
+    use std::sync::Arc;
     use crate::core::totp::TotpManager;
     use futures_util::future::BoxFuture;
     use secrecy::SecretString;
