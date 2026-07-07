@@ -211,17 +211,15 @@ pub async fn run_deploy(params: &DeployParams, tm: &TokenManager) -> Result<Depl
     verify_binary(&binary_data, &sig_data, "3", "sub-server")?;
     deploy_binary(&binary_data)?;
 
-    // Auto-detect public IP when user selected IP cert but provided no domain
-    let effective_domain = if params.tls_mode == TlsMode::IpAcme
-        && (params.domain.is_empty() || params.domain == "0.0.0.0")
-    {
+    // Auto-detect public IP when no domain was provided
+    let effective_domain = if params.domain.is_empty() || params.domain == "0.0.0.0" {
         match SystemMonitor::get_public_ip().await {
             Ok(ip) => {
-                log::info!("auto-detected public IP for certificate: {}", ip);
+                log::info!("auto-detected public IP: {}", ip);
                 ip
             }
             Err(e) => {
-                return Err(format!("failed to detect public IP for IP cert: {e}"));
+                return Err(format!("failed to detect public IP: {e}"));
             }
         }
     } else {
