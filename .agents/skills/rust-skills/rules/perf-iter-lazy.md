@@ -14,11 +14,11 @@ fn process(data: Vec<i32>) -> Vec<i32> {
     let filtered: Vec<_> = data.into_iter()
         .filter(|x| *x > 0)
         .collect();  // Unnecessary allocation
-    
+
     let mapped: Vec<_> = filtered.into_iter()
         .map(|x| x * 2)
         .collect();  // Another unnecessary allocation
-    
+
     mapped.into_iter()
         .take(10)
         .collect()
@@ -29,7 +29,7 @@ fn has_positive(data: &[i32]) -> bool {
     let positives: Vec<_> = data.iter()
         .filter(|&&x| x > 0)
         .collect();  // Allocates entire filtered result
-    
+
     !positives.is_empty()
 }
 ```

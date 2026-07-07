@@ -18,7 +18,7 @@ This keeps examples focused and readable while ensuring they still compile and r
 /// ```
 /// use my_crate::{Processor, Config, Item};
 /// use std::sync::Arc;
-/// 
+///
 /// let config = Config {
 ///     batch_size: 100,
 ///     timeout_ms: 5000,
@@ -30,7 +30,7 @@ This keeps examples focused and readable while ensuring they still compile and r
 ///     Item::new("b"),
 ///     Item::new("c"),
 /// ];
-/// 
+///
 /// // This is the actual example - buried after 15 lines of setup
 /// let results = processor.process_batch(&items)?;
 /// assert!(results.all_succeeded());

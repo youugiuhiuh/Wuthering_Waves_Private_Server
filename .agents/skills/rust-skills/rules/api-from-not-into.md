@@ -100,7 +100,7 @@ struct PositiveInt(u32);
 // Fallible conversion
 impl TryFrom<i32> for PositiveInt {
     type Error = &'static str;
-    
+
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         if value > 0 {
             Ok(PositiveInt(value as u32))

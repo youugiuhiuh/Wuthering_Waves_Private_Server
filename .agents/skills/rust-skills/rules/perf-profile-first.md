@@ -13,7 +13,7 @@ Intuition about performance is often wrong. The code you think is slow frequentl
 fn process(data: &[Item]) -> Vec<Output> {
     // "I bet this clone is slow..."
     let cloned: Vec<_> = data.iter().cloned().collect();
-    
+
     // Actually, 99% of time is spent here:
     cloned.iter().map(|x| expensive_computation(x)).collect()
 }
@@ -39,7 +39,7 @@ fn rarely_called() {
 fn process(data: &[Item]) -> Vec<Output> {
     // Clone is fine - only 1% of time
     let cloned: Vec<_> = data.iter().cloned().collect();
-    
+
     // Focus optimization HERE
     cloned.par_iter()  // Parallelize the expensive part
         .map(|x| expensive_computation(x))

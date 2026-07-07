@@ -78,7 +78,7 @@ enum Command {
 
 async fn run_store(mut commands: mpsc::Receiver<Command>) {
     let mut store = HashMap::new();
-    
+
     while let Some(cmd) = commands.recv().await {
         match cmd {
             Command::Get { key, reply } => {
@@ -97,12 +97,12 @@ async fn run_store(mut commands: mpsc::Receiver<Command>) {
 // Usage
 async fn client(tx: mpsc::Sender<Command>) -> Option<Value> {
     let (reply_tx, reply_rx) = oneshot::channel();
-    
-    tx.send(Command::Get { 
-        key: "foo".to_string(), 
-        reply: reply_tx 
+
+    tx.send(Command::Get {
+        key: "foo".to_string(),
+        reply: reply_tx
     }).await.unwrap();
-    
+
     reply_rx.await.unwrap()
 }
 ```

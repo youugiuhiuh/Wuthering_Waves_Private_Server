@@ -13,10 +13,10 @@ use tokio::sync::Mutex;
 
 async fn bad_update(state: &Mutex<State>) {
     let mut guard = state.lock().await;
-    
+
     // BAD: Lock held across await!
     let data = fetch_from_network().await;
-    
+
     guard.value = data;
 }  // Lock finally released
 
@@ -31,7 +31,7 @@ use tokio::sync::Mutex;
 async fn good_update(state: &Mutex<State>) {
     // Fetch data BEFORE taking the lock
     let data = fetch_from_network().await;
-    
+
     // Lock only for the quick update
     let mut guard = state.lock().await;
     guard.value = data;
@@ -44,10 +44,10 @@ async fn good_update_v2(state: &Mutex<State>) {
         let guard = state.lock().await;
         guard.id.clone()
     };  // Lock released!
-    
+
     // Do async work without lock
     let data = fetch_by_id(id).await;
-    
+
     // Quick update
     state.lock().await.value = data;
 }
@@ -81,7 +81,7 @@ async fn pattern_clone(state: &Mutex<State>) {
 // Pattern 2: Compute closure, apply
 async fn pattern_closure(state: &Mutex<State>) {
     let update = compute_update().await;
-    
+
     state.lock().await.apply(update);
 }
 
@@ -116,10 +116,10 @@ async fn read_heavy(state: &RwLock<State>) {
         let guard = state.read().await;
         guard.value.clone()
     };
-    
+
     // Process without lock
     let result = process(value).await;
-    
+
     // Write lock for update
     state.write().await.result = result;
 }

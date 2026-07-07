@@ -39,9 +39,9 @@ async fn good_approach(data: &Mutex<Vec<i32>>) {
         let guard = data.lock().unwrap();
         guard.last().copied()  // Extract what you need
     };  // Lock released here
-    
+
     let result = do_async_work(value).await;
-    
+
     {
         let mut guard = data.lock().unwrap();
         guard.push(result);
@@ -52,10 +52,10 @@ async fn good_approach(data: &Mutex<Vec<i32>>) {
 async fn good_async_mutex(data: &AsyncMutex<Vec<i32>>, item: i32) {
     // Quick lock, quick release
     data.lock().await.push(item);
-    
+
     // Async work without lock
     let result = slow_network_call().await;
-    
+
     // Quick lock again
     data.lock().await.push(result);
 }
@@ -67,11 +67,11 @@ async fn good_async_mutex(data: &AsyncMutex<Vec<i32>>, item: i32) {
 async fn process(data: &AsyncMutex<Config>) -> Result<()> {
     // Clone inside lock scope
     let config = data.lock().await.clone();
-    
+
     // Now use config freely across awaits
     let result = fetch_data(&config.url).await?;
     process_result(&config, result).await?;
-    
+
     Ok(())
 }
 ```

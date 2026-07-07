@@ -21,9 +21,9 @@ REQUIRED_PORTS=""
 # Xray configs
 XRAY_DIR="/etc/wwps/wwps-core/conf"
 if [ -d "$XRAY_DIR" ]; then
-    for f in "$XRAY_DIR"/*_inbounds.json; do
-        [ -f "$f" ] || continue
-        PORTS=$(python3 -c "
+  for f in "$XRAY_DIR"/*_inbounds.json; do
+    [ -f "$f" ] || continue
+    PORTS=$(python3 -c "
 import json, sys
 try:
     with open('$f') as fh:
@@ -36,22 +36,22 @@ try:
 except:
     pass
 " 2>/dev/null || true)
-        REQUIRED_PORTS="$REQUIRED_PORTS $PORTS"
-    done
-    echo "  Found xray configs in $XRAY_DIR"
+    REQUIRED_PORTS="$REQUIRED_PORTS $PORTS"
+  done
+  echo "  Found xray configs in $XRAY_DIR"
 else
-    echo "  No xray config directory found"
+  echo "  No xray config directory found"
 fi
 
 # Singbox configs
 SB_DIR="/etc/wwps/wwps-box/conf"
 if [ -d "$SB_DIR" ]; then
-    for f in "$SB_DIR"/*.json; do
-        [ -f "$f" ] || continue
-        basename_f=$(basename "$f")
-        [[ "$basename_f" == 00_* ]] && continue
-        [[ "$basename_f" == 01_* ]] && continue
-        PORTS=$(python3 -c "
+  for f in "$SB_DIR"/*.json; do
+    [ -f "$f" ] || continue
+    basename_f=$(basename "$f")
+    [[ $basename_f == 00_* ]] && continue
+    [[ $basename_f == 01_* ]] && continue
+    PORTS=$(python3 -c "
 import json
 def extract(obj):
     if isinstance(obj, dict):
@@ -73,11 +73,11 @@ try:
 except:
     pass
 " 2>/dev/null || true)
-        REQUIRED_PORTS="$REQUIRED_PORTS $PORTS"
-    done
-    echo "  Found singbox configs in $SB_DIR"
+    REQUIRED_PORTS="$REQUIRED_PORTS $PORTS"
+  done
+  echo "  Found singbox configs in $SB_DIR"
 else
-    echo "  No singbox config directory found"
+  echo "  No singbox config directory found"
 fi
 
 # Always include SSH
@@ -92,49 +92,49 @@ echo ""
 echo "[3/3] Checking firewalld for stale port rules..."
 
 if command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld 2>/dev/null; then
-    ZONE=$(firewall-cmd --get-default-zone 2>/dev/null || echo "public")
-    CURRENT=$(firewall-cmd --zone="$ZONE" --list-ports 2>/dev/null || echo "")
+  ZONE=$(firewall-cmd --get-default-zone 2>/dev/null || echo "public")
+  CURRENT=$(firewall-cmd --zone="$ZONE" --list-ports 2>/dev/null || echo "")
 
-    echo "  Current firewalld ports: $CURRENT"
-    echo ""
+  echo "  Current firewalld ports: $CURRENT"
+  echo ""
 
-    STALE=""
-    for entry in $CURRENT; do
-        PORT=$(echo "$entry" | cut -d'/' -f1)
-        if ! echo "$REQUIRED_SORTED" | grep -qw "$PORT"; then
-            STALE="$STALE $entry"
-        fi
-    done
-
-    if [ -z "$STALE" ]; then
-        echo "  No stale firewall rules found."
-    else
-        echo "  Found stale rules:$STALE"
-        echo ""
-        read -p "  Remove these stale rules? [y/N] " -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            for entry in $STALE; do
-                PORT=$(echo "$entry" | cut -d'/' -f1)
-                PROTO=$(echo "$entry" | cut -d'/' -f2)
-                echo "  Removing port $PORT/$PROTO ..."
-                firewall-cmd --zone="$ZONE" --remove-port="$PORT/$PROTO" 2>/dev/null || true
-                firewall-cmd --zone="$ZONE" --permanent --remove-port="$PORT/$PROTO" 2>/dev/null || true
-            done
-            firewall-cmd --reload 2>/dev/null || true
-            echo "  Stale rules removed and firewalld reloaded."
-        else
-            echo "  Skipped removal."
-        fi
+  STALE=""
+  for entry in $CURRENT; do
+    PORT=$(echo "$entry" | cut -d'/' -f1)
+    if ! echo "$REQUIRED_SORTED" | grep -qw "$PORT"; then
+      STALE="$STALE $entry"
     fi
-elif command -v ufw &>/dev/null && ufw status | grep -q "active" 2>/dev/null; then
-    echo "  UFW detected. Listing current rules:"
-    ufw status numbered | head -30
+  done
+
+  if [ -z "$STALE" ]; then
+    echo "  No stale firewall rules found."
+  else
+    echo "  Found stale rules:$STALE"
     echo ""
-    echo "  UFW port reconciliation is best handled by the aegis service."
-    echo "  Run the bot and it will auto-sync on next reload."
+    read -p "  Remove these stale rules? [y/N] " -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      for entry in $STALE; do
+        PORT=$(echo "$entry" | cut -d'/' -f1)
+        PROTO=$(echo "$entry" | cut -d'/' -f2)
+        echo "  Removing port $PORT/$PROTO ..."
+        firewall-cmd --zone="$ZONE" --remove-port="$PORT/$PROTO" 2>/dev/null || true
+        firewall-cmd --zone="$ZONE" --permanent --remove-port="$PORT/$PROTO" 2>/dev/null || true
+      done
+      firewall-cmd --reload 2>/dev/null || true
+      echo "  Stale rules removed and firewalld reloaded."
+    else
+      echo "  Skipped removal."
+    fi
+  fi
+elif command -v ufw &>/dev/null && ufw status | grep -q "active" 2>/dev/null; then
+  echo "  UFW detected. Listing current rules:"
+  ufw status numbered | head -30
+  echo ""
+  echo "  UFW port reconciliation is best handled by the aegis service."
+  echo "  Run the bot and it will auto-sync on next reload."
 else
-    echo "  No supported firewall backend detected (firewalld or ufw)."
+  echo "  No supported firewall backend detected (firewalld or ufw)."
 fi
 
 echo ""

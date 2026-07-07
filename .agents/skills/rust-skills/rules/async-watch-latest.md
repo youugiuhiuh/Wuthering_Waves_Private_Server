@@ -90,7 +90,7 @@ struct AppConfig {
 async fn config_watcher(tx: watch::Sender<Arc<AppConfig>>) {
     loop {
         tokio::time::sleep(Duration::from_secs(60)).await;
-        
+
         if let Ok(new_config) = reload_config_from_disk() {
             // Only notifies if value actually changed
             tx.send_if_modified(|current| {

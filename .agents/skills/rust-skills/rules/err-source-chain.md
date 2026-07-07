@@ -17,7 +17,7 @@ enum ConfigError {
 fn load_config(path: &str) -> Result<Config, ConfigError> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| ConfigError::ParseFailed(e.to_string()))?;  // Chain lost!
-    
+
     serde_json::from_str(&content)
         .map_err(|e| ConfigError::ParseFailed(e.to_string()))?  // No source
 }
@@ -39,7 +39,7 @@ enum ConfigError {
         #[source]  // Preserves the error chain
         source: std::io::Error,
     },
-    
+
     #[error("Failed to parse config file '{path}'")]
     ParseFailed {
         path: String,
@@ -54,7 +54,7 @@ fn load_config(path: &str) -> Result<Config, ConfigError> {
             path: path.to_string(),
             source,  // Chain preserved
         })?;
-    
+
     serde_json::from_str(&content)
         .map_err(|source| ConfigError::ParseFailed {
             path: path.to_string(),
@@ -92,7 +92,7 @@ impl Error for MyError {
 ```rust
 fn print_error_chain(error: &dyn std::error::Error) {
     eprintln!("Error: {}", error);
-    
+
     let mut source = error.source();
     while let Some(err) = source {
         eprintln!("Caused by: {}", err);
@@ -115,10 +115,10 @@ use anyhow::{Context, Result};
 fn load_config(path: &str) -> Result<Config> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read '{}'", path))?;
-    
+
     let config: Config = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse '{}'", path))?;
-    
+
     Ok(config)
 }
 
@@ -137,7 +137,7 @@ enum MyError {
     // #[from] = implements From + sets source
     #[error("IO error")]
     Io(#[from] std::io::Error),
-    
+
     // #[source] = only sets source (no From impl)
     #[error("Parse error in file '{path}'")]
     Parse {

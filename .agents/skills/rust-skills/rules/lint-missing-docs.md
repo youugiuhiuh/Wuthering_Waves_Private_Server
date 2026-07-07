@@ -95,7 +95,7 @@ pub struct Public { }  // WARN - public, needs docs
 pub mod api {
     /// Documented struct.
     pub struct Config { }
-    
+
     #[allow(missing_docs)]
     pub mod internal {
         // Internal API, docs not required

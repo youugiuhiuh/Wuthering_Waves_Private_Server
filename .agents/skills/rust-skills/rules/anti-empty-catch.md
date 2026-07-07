@@ -81,13 +81,13 @@ let guard = mutex.lock().unwrap_or_else(|e| e.into_inner());
 ```rust
 fn process_batch(items: Vec<Item>) -> BatchResult {
     let mut errors = Vec::new();
-    
+
     for item in items {
         if let Err(e) = process_item(&item) {
             errors.push((item.id, e));
         }
     }
-    
+
     if errors.is_empty() {
         BatchResult::AllSucceeded
     } else {

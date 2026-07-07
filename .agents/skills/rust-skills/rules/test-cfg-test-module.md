@@ -39,12 +39,12 @@ fn private_helper() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;  // Access to private items
-    
+
     #[test]
     fn test_public_api() {
         assert_eq!(public_api(), 42);
     }
-    
+
     #[test]
     fn test_private_helper() {
         assert_eq!(private_helper(), 21);  // Can test private!
@@ -72,13 +72,13 @@ fn build_ast(tokens: Vec<Token>) -> Result<Ast, Error> { ... }
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_simple() {
         let ast = parse("1 + 2").unwrap();
         assert_eq!(ast.evaluate(), 3);
     }
-    
+
     #[test]
     fn test_tokenize() {
         let tokens = tokenize("1 + 2").unwrap();
@@ -93,7 +93,7 @@ mod tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     // Test-only helpers
     fn create_test_data() -> Data {
         Data {
@@ -102,12 +102,12 @@ mod tests {
             values: vec![1, 2, 3],
         }
     }
-    
+
     fn assert_valid(data: &Data) {
         assert!(data.id > 0);
         assert!(!data.name.is_empty());
     }
-    
+
     #[test]
     fn test_processing() {
         let data = create_test_data();
@@ -124,20 +124,20 @@ mod tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     mod parsing {
         use super::*;
-        
+
         #[test]
         fn test_parse_number() { ... }
-        
+
         #[test]
         fn test_parse_string() { ... }
     }
-    
+
     mod validation {
         use super::*;
-        
+
         #[test]
         fn test_validate_range() { ... }
     }

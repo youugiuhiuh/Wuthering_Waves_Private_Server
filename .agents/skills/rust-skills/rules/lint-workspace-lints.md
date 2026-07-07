@@ -140,10 +140,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-      
+
       - name: Rustdoc
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```

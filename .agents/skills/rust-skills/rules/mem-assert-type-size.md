@@ -92,9 +92,9 @@ const _: () = assert!(
 
 ```rust
 /// Network protocol packet header.
-/// 
+///
 /// # Size
-/// 
+///
 /// This struct is guaranteed to be exactly 32 bytes to match
 /// the network protocol specification. Any changes to fields
 /// must maintain this size constraint.
@@ -116,7 +116,7 @@ const _: () = assert!(std::mem::size_of::<Header>() == 32);
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn critical_types_have_expected_sizes() {
         // Document expected sizes in tests too
@@ -124,7 +124,7 @@ mod tests {
         assert_eq!(std::mem::size_of::<Message>(), 64);
         assert_eq!(std::mem::size_of::<Header>(), 32);
     }
-    
+
     #[test]
     fn cache_line_aligned() {
         // Verify cache-friendly sizing

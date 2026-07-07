@@ -115,10 +115,10 @@ fn invalid_input_returns_error() {
 fn test_panics() -> Result<(), Error> {
     // Can combine with Result for setup
     let data = setup_test_data()?;
-    
+
     // This should panic
     process_invalid(&data);
-    
+
     Ok(())  // Never reached
 }
 ```

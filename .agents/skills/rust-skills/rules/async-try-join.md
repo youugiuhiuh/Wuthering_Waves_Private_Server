@@ -37,7 +37,7 @@ async fn fetch_all() -> Result<(A, B, C)> {
         fetch_b(),
         fetch_c(),
     )?;
-    
+
     Ok((a, b, c))
 }
 
@@ -48,7 +48,7 @@ async fn fetch_users(ids: &[u64]) -> Result<Vec<User>> {
     let futures: Vec<_> = ids.iter()
         .map(|id| fetch_user(*id))
         .collect();
-    
+
     try_join_all(futures).await
 }
 ```
@@ -75,7 +75,7 @@ async fn best_effort(ids: &[u64]) -> Vec<User> {
     let results = futures::future::join_all(
         ids.iter().map(|id| fetch_user(*id))
     ).await;
-    
+
     results.into_iter()
         .filter_map(|r| match r {
             Ok(user) => Some(user),
@@ -96,7 +96,7 @@ async fn with_cancellation() -> Result<()> {
     // If fetch_a() fails, fetch_b() and fetch_c() are dropped
     // But "dropped" != "immediately stopped"
     // They stop at their next .await point
-    
+
     try_join!(
         async {
             fetch_a().await?;
@@ -109,7 +109,7 @@ async fn with_cancellation() -> Result<()> {
             Ok::<_, Error>(())
         },
     )?;
-    
+
     Ok(())
 }
 

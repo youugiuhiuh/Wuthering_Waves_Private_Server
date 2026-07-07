@@ -95,7 +95,7 @@ let child = token.child_token();
 ```rust
 async fn run_server(shutdown: CancellationToken) {
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
-    
+
     loop {
         tokio::select! {
             _ = shutdown.cancelled() => {
@@ -110,7 +110,7 @@ async fn run_server(shutdown: CancellationToken) {
             }
         }
     }
-    
+
     // Child tokens auto-cancelled when we exit
 }
 
@@ -136,7 +136,7 @@ use tokio::signal;
 
 async fn main() -> Result<()> {
     let shutdown = CancellationToken::new();
-    
+
     // Spawn signal handler
     let shutdown_trigger = shutdown.clone();
     tokio::spawn(async move {
@@ -144,17 +144,17 @@ async fn main() -> Result<()> {
         println!("Received Ctrl+C, initiating shutdown...");
         shutdown_trigger.cancel();
     });
-    
+
     // Run application with shutdown token
     run_app(shutdown).await
 }
 
 async fn run_app(shutdown: CancellationToken) -> Result<()> {
     let mut tasks = JoinSet::new();
-    
+
     tasks.spawn(worker_task(shutdown.child_token()));
     tasks.spawn(server_task(shutdown.child_token()));
-    
+
     // Wait for shutdown or task completion
     tokio::select! {
         _ = shutdown.cancelled() => {
@@ -165,13 +165,13 @@ async fn run_app(shutdown: CancellationToken) -> Result<()> {
             result??;
         }
     }
-    
+
     // Wait for remaining tasks with timeout
     tokio::time::timeout(
         Duration::from_secs(30),
         async { while tasks.join_next().await.is_some() {} }
     ).await.ok();
-    
+
     Ok(())
 }
 ```

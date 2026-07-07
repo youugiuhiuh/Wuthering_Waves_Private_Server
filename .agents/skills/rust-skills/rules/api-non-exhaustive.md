@@ -120,7 +120,7 @@ impl Point {
 // External code can read fields but not construct with literals
 fn external(p: Point) {
     println!("x: {}, y: {}", p.x, p.y);  // Reading is fine
-    
+
     // let p2 = Point { x: 1.0, y: 2.0 };  // Error!
     let p2 = Point::new(1.0, 2.0);  // Must use constructor
 }
@@ -133,7 +133,7 @@ pub enum Message {
     // Specific variant is non-exhaustive
     #[non_exhaustive]
     Error { code: u32, message: String },
-    
+
     Ok(Data),
 }
 

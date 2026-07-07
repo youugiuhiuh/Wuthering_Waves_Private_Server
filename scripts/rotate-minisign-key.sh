@@ -6,8 +6,8 @@ GO_FILE="$ROOT/go/installer/minisign_verify.go"
 RS_FILE="$ROOT/rust/aegis/src/core/crypto/minisign.rs"
 
 if ! command -v minisign &>/dev/null; then
-    echo "请先安装 minisign: brew install minisign / apt install minisign"
-    exit 1
+  echo "请先安装 minisign: brew install minisign / apt install minisign"
+  exit 1
 fi
 
 TEMP_DIR=$(mktemp -d)
@@ -23,11 +23,11 @@ echo ">>> 过期日期: $EXPIRES"
 
 # 判断密钥是否仍应保留：运行脚本 = 主动轮换，≤90天到期即移除
 keep_key() {
-    local expires="$1"
-    local now_epoch=$(date +%s)
-    local exp_epoch=$(date -d "$expires" +%s 2>/dev/null || return 1)
-    local keep_before=$((now_epoch + 90 * 86400))
-    [ "$exp_epoch" -ge "$keep_before" ]
+  local expires="$1"
+  local now_epoch=$(date +%s)
+  local exp_epoch=$(date -d "$expires" +%s 2>/dev/null || return 1)
+  local keep_before=$((now_epoch + 90 * 86400))
+  [ "$exp_epoch" -ge "$keep_before" ]
 }
 
 # ---------- Go ----------
@@ -50,21 +50,21 @@ mapfile -t GO_KEYS < <(awk '
 ' "$GO_FILE")
 
 GO_KEPT=0 GO_REMOVED=0
-printf 'var minisignPublicKeys = []minisignKeyEntry{\n' > "$TEMP_DIR/go_block"
+printf 'var minisignPublicKeys = []minisignKeyEntry{\n' >"$TEMP_DIR/go_block"
 for ((i = 0; i < ${#GO_KEYS[@]}; i += 2)); do
-    KEY="${GO_KEYS[$i]}"
-    EXP="${GO_KEYS[$((i+1))]}"
-    if keep_key "$EXP"; then
-        printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$KEY" "$EXP" >> "$TEMP_DIR/go_block"
-        GO_KEPT=$((GO_KEPT + 1))
-    else
-        echo ">>> 移除旧公钥 (Go): $KEY ($EXP)"
-        GO_REMOVED=$((GO_REMOVED + 1))
-    fi
+  KEY="${GO_KEYS[$i]}"
+  EXP="${GO_KEYS[$((i + 1))]}"
+  if keep_key "$EXP"; then
+    printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$KEY" "$EXP" >>"$TEMP_DIR/go_block"
+    GO_KEPT=$((GO_KEPT + 1))
+  else
+    echo ">>> 移除旧公钥 (Go): $KEY ($EXP)"
+    GO_REMOVED=$((GO_REMOVED + 1))
+  fi
 done
-printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$NEW_KEY" "$EXPIRES" >> "$TEMP_DIR/go_block"
+printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$NEW_KEY" "$EXPIRES" >>"$TEMP_DIR/go_block"
 GO_KEPT=$((GO_KEPT + 1))
-printf '}\n' >> "$TEMP_DIR/go_block"
+printf '}\n' >>"$TEMP_DIR/go_block"
 
 awk -v block="$TEMP_DIR/go_block" '
     /^var minisignPublicKeys/ {
@@ -73,7 +73,7 @@ awk -v block="$TEMP_DIR/go_block" '
     }
     printing && /^\s*}\s*$/ { printing=0; system("cat " block); next }
     !printing { print }
-' "$GO_FILE" > "$TEMP_DIR/go_new.go" && cp "$TEMP_DIR/go_new.go" "$GO_FILE"
+' "$GO_FILE" >"$TEMP_DIR/go_new.go" && cp "$TEMP_DIR/go_new.go" "$GO_FILE"
 gofmt -w "$GO_FILE"
 
 # ---------- Rust ----------
@@ -96,21 +96,21 @@ mapfile -t RS_KEYS < <(awk '
 ' "$RS_FILE")
 
 RS_KEPT=0 RS_REMOVED=0
-printf 'pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[\n' > "$TEMP_DIR/rs_block"
+printf 'pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[\n' >"$TEMP_DIR/rs_block"
 for ((i = 0; i < ${#RS_KEYS[@]}; i += 2)); do
-    KEY="${RS_KEYS[$i]}"
-    EXP="${RS_KEYS[$((i+1))]}"
-    if keep_key "$EXP"; then
-        printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$KEY" "$EXP" >> "$TEMP_DIR/rs_block"
-        RS_KEPT=$((RS_KEPT + 1))
-    else
-        echo ">>> 移除旧公钥 (Rust): $KEY ($EXP)"
-        RS_REMOVED=$((RS_REMOVED + 1))
-    fi
+  KEY="${RS_KEYS[$i]}"
+  EXP="${RS_KEYS[$((i + 1))]}"
+  if keep_key "$EXP"; then
+    printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$KEY" "$EXP" >>"$TEMP_DIR/rs_block"
+    RS_KEPT=$((RS_KEPT + 1))
+  else
+    echo ">>> 移除旧公钥 (Rust): $KEY ($EXP)"
+    RS_REMOVED=$((RS_REMOVED + 1))
+  fi
 done
-printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$NEW_KEY" "$EXPIRES" >> "$TEMP_DIR/rs_block"
+printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$NEW_KEY" "$EXPIRES" >>"$TEMP_DIR/rs_block"
 RS_KEPT=$((RS_KEPT + 1))
-printf '];\n' >> "$TEMP_DIR/rs_block"
+printf '];\n' >>"$TEMP_DIR/rs_block"
 
 awk -v block="$TEMP_DIR/rs_block" '
     /^pub const MINISIGN_PUBLIC_KEYS/ {
@@ -119,7 +119,7 @@ awk -v block="$TEMP_DIR/rs_block" '
     }
     printing && /];\s*$/ { printing=0; system("cat " block); next }
     !printing { print }
-' "$RS_FILE" > "$TEMP_DIR/rs_new.rs" && cp "$TEMP_DIR/rs_new.rs" "$RS_FILE"
+' "$RS_FILE" >"$TEMP_DIR/rs_new.rs" && cp "$TEMP_DIR/rs_new.rs" "$RS_FILE"
 rustfmt "$RS_FILE"
 
 echo ""

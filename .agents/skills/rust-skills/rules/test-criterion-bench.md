@@ -60,13 +60,13 @@ b.iter(|| black_box(fibonacci(black_box(20))));
 ```rust
 fn bench_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("String concat");
-    
+
     let data = "hello";
-    
+
     group.bench_function("format!", |b| {
         b.iter(|| format!("{}{}", black_box(data), " world"))
     });
-    
+
     group.bench_function("push_str", |b| {
         b.iter(|| {
             let mut s = String::from(black_box(data));
@@ -74,11 +74,11 @@ fn bench_comparison(c: &mut Criterion) {
             s
         })
     });
-    
+
     group.bench_function("concat", |b| {
         b.iter(|| [black_box(data), " world"].concat())
     });
-    
+
     group.finish();
 }
 ```
@@ -88,7 +88,7 @@ fn bench_comparison(c: &mut Criterion) {
 ```rust
 fn bench_vec_push(c: &mut Criterion) {
     let mut group = c.benchmark_group("Vec::push");
-    
+
     for size in [100, 1000, 10000].iter() {
         group.bench_with_input(
             BenchmarkId::from_parameter(size),
@@ -104,7 +104,7 @@ fn bench_vec_push(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 ```
@@ -116,14 +116,14 @@ use criterion::Throughput;
 
 fn bench_parse(c: &mut Criterion) {
     let input = "a]ong string to parse...";
-    
+
     let mut group = c.benchmark_group("Parser");
     group.throughput(Throughput::Bytes(input.len() as u64));
-    
+
     group.bench_function("parse", |b| {
         b.iter(|| parse(black_box(input)))
     });
-    
+
     group.finish();
 }
 ```
@@ -151,7 +151,7 @@ cargo bench -- --baseline main
 use criterion::{criterion_group, criterion_main, Criterion};
 
 fn send_data<T: Default, const SIZE: usize>(
-    g: &mut BenchmarkGroup<WallTime>, 
+    g: &mut BenchmarkGroup<WallTime>,
     prefix: &str
 ) {
     let rt = rt();

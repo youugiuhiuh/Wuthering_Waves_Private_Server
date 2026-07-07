@@ -107,23 +107,23 @@ fn timeout_returns_timeout_error() { ... }
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     mod parsing {
         use super::*;
-        
+
         #[test]
         fn accepts_valid_json() { ... }
-        
+
         #[test]
         fn rejects_trailing_comma() { ... }
     }
-    
+
     mod validation {
         use super::*;
-        
+
         #[test]
         fn requires_name_field() { ... }
-        
+
         #[test]
         fn email_must_contain_at_symbol() { ... }
     }

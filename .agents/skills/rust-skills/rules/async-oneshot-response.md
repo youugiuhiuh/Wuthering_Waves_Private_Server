@@ -59,7 +59,7 @@ enum Request {
 // Service handler
 async fn service(mut rx: mpsc::Receiver<Request>) {
     let mut store = HashMap::new();
-    
+
     while let Some(req) = rx.recv().await {
         match req {
             Request::Get { key, reply } => {
@@ -77,12 +77,12 @@ async fn service(mut rx: mpsc::Receiver<Request>) {
 // Client
 async fn get_value(tx: &mpsc::Sender<Request>, key: &str) -> Option<Value> {
     let (reply_tx, reply_rx) = oneshot::channel();
-    
+
     tx.send(Request::Get {
         key: key.to_string(),
         reply: reply_tx,
     }).await.ok()?;
-    
+
     reply_rx.await.ok()?
 }
 ```
@@ -97,12 +97,12 @@ async fn request_with_timeout(
     key: &str,
 ) -> Result<Value, Error> {
     let (reply_tx, reply_rx) = oneshot::channel();
-    
+
     tx.send(Request::Get {
         key: key.to_string(),
         reply: reply_tx,
     }).await.map_err(|_| Error::ServiceDown)?;
-    
+
     timeout(Duration::from_secs(5), reply_rx)
         .await
         .map_err(|_| Error::Timeout)?
@@ -172,7 +172,7 @@ impl<Req, Res> RpcRequest<Req, Res> {
         let (tx, rx) = oneshot::channel();
         (RpcRequest { request, reply: tx }, rx)
     }
-    
+
     fn respond(self, response: Res) {
         let _ = self.reply.send(response);
     }

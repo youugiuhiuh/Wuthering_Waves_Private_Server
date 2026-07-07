@@ -105,7 +105,7 @@ impl Logger {
     fn new(prefix: String) -> Self {
         Self { prefix }
     }
-    
+
     // Or use Into for flexibility
     fn with_prefix(prefix: impl Into<String>) -> Self {
         Self { prefix: prefix.into() }

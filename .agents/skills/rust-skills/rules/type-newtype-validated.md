@@ -40,7 +40,7 @@ impl Email {
             Err(EmailError::Invalid(s.to_string()))
         }
     }
-    
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -96,7 +96,7 @@ impl PositiveI32 {
             None
         }
     }
-    
+
     pub fn get(&self) -> i32 {
         self.0
     }

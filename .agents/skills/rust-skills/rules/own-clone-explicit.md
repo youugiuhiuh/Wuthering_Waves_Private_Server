@@ -24,7 +24,7 @@ let result = process_data(my_data);
 
 ```rust
 fn process_data(data: Vec<u32>) -> Vec<u32> {
-    let backup = data; 
+    let backup = data;
     transform(backup)
 }
 
@@ -59,7 +59,7 @@ impl Clone for Document {
             metadata: self.metadata.clone(),
         }
     }
-    
+
     // Optimization: reuse existing allocations
     fn clone_from(&mut self, source: &Self) {
         self.id = source.id;

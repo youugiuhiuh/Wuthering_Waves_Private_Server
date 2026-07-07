@@ -73,7 +73,7 @@ mod tests {
     struct MockUserRepo {
         users: HashMap<u64, User>,
     }
-    
+
     #[async_trait]
     impl UserRepository for MockUserRepo {
         async fn find_by_id(&self, id: u64) -> Result<Option<User>, DbError> {
@@ -81,23 +81,23 @@ mod tests {
         }
         // ...
     }
-    
+
     #[tokio::test]
     async fn test_get_user_found() {
         let mut mock = MockUserRepo { users: HashMap::new() };
         mock.users.insert(1, User { id: 1, name: "Alice".into() });
-        
+
         let service = UserService { repo: mock };
         let user = service.get_user(1).await.unwrap();
-        
+
         assert_eq!(user.name, "Alice");
     }
-    
+
     #[tokio::test]
     async fn test_get_user_not_found() {
         let mock = MockUserRepo { users: HashMap::new() };
         let service = UserService { repo: mock };
-        
+
         let result = service.get_user(999).await;
         assert!(matches!(result, Err(Error::NotFound)));
     }
@@ -119,12 +119,12 @@ trait Database: Send + Sync {
 #[tokio::test]
 async fn test_with_mockall() {
     let mut mock = MockDatabase::new();
-    
+
     mock.expect_query()
         .with(eq("SELECT 1"))
         .times(1)
         .returning(|_| Ok(vec![Row::new()]));
-    
+
     let result = mock.query("SELECT 1").await;
     assert!(result.is_ok());
 }
@@ -151,7 +151,7 @@ impl HttpClient for FailingClient {
 async fn test_handles_timeout() {
     let client = FailingClient;
     let service = ApiService { client };
-    
+
     let result = service.fetch_data().await;
     assert!(matches!(result, Err(Error::NetworkError(_))));
 }

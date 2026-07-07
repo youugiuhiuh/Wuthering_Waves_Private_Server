@@ -26,7 +26,7 @@ proptest! {
         let double_reversed: String = reversed.chars().rev().collect();
         assert_eq!(s, double_reversed);
     }
-    
+
     #[test]
     fn test_sort_is_idempotent(mut v in prop::collection::vec(any::<i32>(), 0..100)) {
         v.sort();
@@ -46,19 +46,19 @@ proptest! {
     // Any type implementing Arbitrary
     #[test]
     fn test_i32(x in any::<i32>()) { }
-    
+
     // Regex-based string generation
     #[test]
     fn test_email(email in "[a-z]+@[a-z]+\\.[a-z]{2,3}") { }
-    
+
     // Ranges
     #[test]
     fn test_range(x in 0..100i32) { }
-    
+
     // Collections
     #[test]
     fn test_vec(v in prop::collection::vec(any::<i32>(), 0..10)) { }
-    
+
     // Optionals
     #[test]
     fn test_option(opt in prop::option::of(any::<i32>())) { }
@@ -148,7 +148,7 @@ proptest! {
         max_shrink_iters: 10000,  // More shrinking
         ..ProptestConfig::default()
     })]
-    
+
     #[test]
     fn extensive_test(x in any::<i32>()) { }
 }

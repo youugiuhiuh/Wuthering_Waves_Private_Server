@@ -11,13 +11,13 @@
 ```rust
 async fn process_files(paths: &[PathBuf]) -> Result<Vec<String>> {
     let mut contents = Vec::new();
-    
+
     for path in paths {
         // BLOCKS the entire executor thread!
         let data = std::fs::read_to_string(path)?;
         contents.push(data);
     }
-    
+
     Ok(contents)
 }
 
@@ -31,13 +31,13 @@ use tokio::fs;
 
 async fn process_files(paths: &[PathBuf]) -> Result<Vec<String>> {
     let mut contents = Vec::new();
-    
+
     for path in paths {
         // Non-blocking: allows other tasks to run
         let data = fs::read_to_string(path).await?;
         contents.push(data);
     }
-    
+
     Ok(contents)
 }
 
@@ -46,7 +46,7 @@ async fn process_files_concurrent(paths: &[PathBuf]) -> Result<Vec<String>> {
     let futures: Vec<_> = paths.iter()
         .map(|path| fs::read_to_string(path))
         .collect();
-    
+
     futures::future::try_join_all(futures).await
 }
 ```
@@ -125,7 +125,7 @@ while let Some(line) = lines.next_line().await? {
 fn main() {
     let config = std::fs::read_to_string("config.toml")
         .expect("config file required");
-    
+
     tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(run_with_config(config));

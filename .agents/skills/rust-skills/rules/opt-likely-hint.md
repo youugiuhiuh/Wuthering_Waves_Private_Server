@@ -16,7 +16,7 @@ fn process(data: Option<&Data>) -> i32 {
         None => return 0,  // Unlikely
         Some(d) => d,
     };
-    
+
     // Hot path continues here
     complex_processing(data)
 }
@@ -37,7 +37,7 @@ fn hot_path(data: &[u8]) -> Result<(), Error> {
     if data.is_empty() {
         return cold_empty_error();  // Extracted = unlikely
     }
-    
+
     process_fast(data)
 }
 
@@ -57,11 +57,11 @@ fn process(data: &Data) -> i32 {
     if unlikely(data.is_corrupted()) {
         return handle_corruption(data);
     }
-    
+
     if likely(data.is_cached()) {
         return fast_cached_path(data);
     }
-    
+
     slow_uncached_path(data)
 }
 ```
@@ -139,7 +139,7 @@ fn process_message(msg: Message) {
         // Most common - listed first
         Message::Data(d) => handle_data(d),
         Message::Heartbeat => (), // Second most common
-        
+
         // Rare cases last
         Message::Error(e) => handle_error(e),
         Message::Shutdown => shutdown(),
@@ -155,7 +155,7 @@ fn speculative(x: i32) -> i32 {
     // DON'T GUESS - measure with profiling
     // perf record / perf report
     // cargo flamegraph
-    
+
     if x > threshold {  // Is this actually common?
         path_a(x)
     } else {

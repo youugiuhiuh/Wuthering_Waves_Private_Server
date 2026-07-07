@@ -112,7 +112,7 @@ impl Door<Unlocked> {
         println!("Locking...");
         Door { _state: PhantomData }
     }
-    
+
     fn open(&self) {
         println!("Opening...");
     }
@@ -123,7 +123,7 @@ impl Door<Locked> {
         println!("Unlocking...");
         Door { _state: PhantomData }
     }
-    
+
     // Can't call open() on Locked door - method doesn't exist
 }
 

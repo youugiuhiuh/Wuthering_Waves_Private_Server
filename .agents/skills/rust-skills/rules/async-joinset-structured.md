@@ -53,19 +53,19 @@ use tokio::task::JoinSet;
 async fn worker_pool(mut rx: mpsc::Receiver<Task>) {
     let mut set = JoinSet::new();
     let max_concurrent = 10;
-    
+
     loop {
         tokio::select! {
             // Accept new tasks if under limit
             Some(task) = rx.recv(), if set.len() < max_concurrent => {
                 set.spawn(process_task(task));
             }
-            
+
             // Process completed tasks
             Some(result) = set.join_next() => {
                 handle_result(result);
             }
-            
+
             // Exit when no tasks and channel closed
             else => break,
         }
@@ -82,7 +82,7 @@ use tokio::task::JoinSet;
     let mut set = JoinSet::new();
     set.spawn(long_running_task());
     set.spawn(another_task());
-    
+
     // Early exit
     return;
 }  // JoinSet dropped here - all tasks are aborted!
@@ -101,11 +101,11 @@ use tokio::task::JoinSet;
 async fn fetch_all(urls: &[String]) -> Vec<Result<Data, Error>> {
     let mut set = JoinSet::new();
     let mut results = Vec::new();
-    
+
     for url in urls {
         set.spawn(fetch(url.clone()));
     }
-    
+
     while let Some(join_result) = set.join_next().await {
         let result = match join_result {
             Ok(task_result) => task_result,
@@ -119,7 +119,7 @@ async fn fetch_all(urls: &[String]) -> Vec<Result<Data, Error>> {
         };
         results.push(result);
     }
-    
+
     results
 }
 ```
@@ -132,7 +132,7 @@ use tokio_util::sync::CancellationToken;
 
 async fn run_workers(shutdown: CancellationToken) {
     let mut set = JoinSet::new();
-    
+
     for i in 0..4 {
         let token = shutdown.child_token();
         set.spawn(async move {
@@ -144,13 +144,13 @@ async fn run_workers(shutdown: CancellationToken) {
             }
         });
     }
-    
+
     // Wait for shutdown
     shutdown.cancelled().await;
-    
+
     // Abort remaining tasks
     set.abort_all();
-    
+
     // Wait for all to finish (drain aborted tasks)
     while set.join_next().await.is_some() {}
 }

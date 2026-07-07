@@ -99,7 +99,7 @@ enum OrderStatus {
 
 impl FromStr for OrderStatus {
     type Err = ParseError;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "pending" => Ok(OrderStatus::Pending),

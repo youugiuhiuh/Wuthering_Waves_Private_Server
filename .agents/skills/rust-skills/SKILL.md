@@ -94,7 +94,7 @@ Reference these guidelines when:
 - [`mem-clone-from`](rules/mem-clone-from.md) - Use `clone_from()` to reuse allocations
 - [`mem-reuse-collections`](rules/mem-reuse-collections.md) - Reuse collections with `clear()` in loops
 - [`mem-avoid-format`](rules/mem-avoid-format.md) - Avoid `format!()` when string literals work
-- [`mem-write-over-format`](rules/mem-write-over-format.md) - Use `write!()` instead of `format!()` 
+- [`mem-write-over-format`](rules/mem-write-over-format.md) - Use `write!()` instead of `format!()`
 - [`mem-arena-allocator`](rules/mem-arena-allocator.md) - Use arena allocators for batch allocations
 - [`mem-zero-copy`](rules/mem-zero-copy.md) - Use zero-copy patterns with slices and `Bytes`
 - [`mem-compact-string`](rules/mem-compact-string.md) - Use `CompactString` for small string optimization

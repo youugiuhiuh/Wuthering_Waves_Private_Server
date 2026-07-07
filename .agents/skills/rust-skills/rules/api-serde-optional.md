@@ -97,7 +97,7 @@ pub struct Point {
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 /// A configuration type.
-/// 
+///
 /// When the `serde` feature is enabled, this type implements
 /// `Serialize` and `Deserialize`.
 #[derive(Debug, Clone)]

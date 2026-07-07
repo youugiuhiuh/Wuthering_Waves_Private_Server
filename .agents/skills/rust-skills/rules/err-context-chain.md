@@ -27,13 +27,13 @@ use anyhow::{Context, Result};
 
 fn load_user(id: u64) -> Result<User> {
     let path = format!("users/{}.json", id);
-    
+
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("failed to read user file: {}", path))?;
-    
+
     let user: User = serde_json::from_str(&content)
         .with_context(|| format!("failed to parse user {} JSON", id))?;
-    
+
     Ok(user)
 }
 
@@ -64,16 +64,16 @@ fs::read_to_string(path)
 fn process_order(order_id: u64) -> Result<()> {
     let order = fetch_order(order_id)
         .with_context(|| format!("failed to fetch order {}", order_id))?;
-    
+
     let user = load_user(order.user_id)
         .with_context(|| format!("failed to load user for order {}", order_id))?;
-    
+
     let payment = process_payment(&order, &user)
         .context("payment processing failed")?;
-    
+
     ship_order(&order, &payment)
         .context("shipping failed")?;
-    
+
     Ok(())
 }
 
@@ -90,13 +90,13 @@ fn main() {
     if let Err(e) = run() {
         // Just top-level message
         eprintln!("Error: {}", e);
-        
+
         // Full chain with alternate format
         eprintln!("Error: {:#}", e);
-        
+
         // Debug format (includes backtrace if enabled)
         eprintln!("Error: {:?}", e);
-        
+
         // Iterate through chain
         for (i, cause) in e.chain().enumerate() {
             eprintln!("  {}: {}", i, cause);
@@ -118,7 +118,7 @@ pub enum AppError {
         #[source]
         cause: std::io::Error,
     },
-    
+
     #[error("failed to connect to database")]
     Database {
         #[source]

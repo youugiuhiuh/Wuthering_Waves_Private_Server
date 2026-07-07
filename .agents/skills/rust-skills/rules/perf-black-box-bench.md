@@ -22,7 +22,7 @@ fn benchmark_bad(c: &mut Criterion) {
 
 fn benchmark_also_bad(c: &mut Criterion) {
     let input = 42;  // Constant - compiler may precompute
-    
+
     c.bench_function("compute", |b| {
         b.iter(|| {
             expensive_computation(input)
@@ -93,7 +93,7 @@ fn benchmark_with_setup(c: &mut Criterion) {
     c.bench_function("process_data", |b| {
         // Setup outside iter - not measured
         let data = generate_test_data(1000);
-        
+
         b.iter(|| {
             // black_box the input reference
             let result = process(black_box(&data));
@@ -108,10 +108,10 @@ fn benchmark_with_setup(c: &mut Criterion) {
 ```rust
 fn benchmark_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("scaling");
-    
+
     for size in [100, 1000, 10000] {
         let data = generate_data(size);
-        
+
         group.bench_with_input(
             BenchmarkId::from_parameter(size),
             &data,

@@ -68,17 +68,17 @@ select! {
         // Handle result
         println!("Got: {:?}", result);
     }
-    
+
     // Can bind with pattern matching
     Ok(data) = fallible_operation() => {
         process(data);
     }
-    
+
     // Conditional branches with if guards
     msg = channel.recv(), if should_receive => {
         handle_message(msg);
     }
-    
+
     // else branch for when all futures are disabled
     else => {
         println!("All branches disabled");
@@ -113,7 +113,7 @@ async fn select_example() {
 // Use biased mode for deterministic priority
 select! {
     biased;  // Check branches in order
-    
+
     msg = high_priority.recv() => handle_high(msg),
     msg = low_priority.recv() => handle_low(msg),
 }
@@ -155,11 +155,11 @@ async fn fastest_response(servers: &[String]) -> Result<Response> {
     let futures = servers.iter()
         .map(|s| fetch_from(s))
         .collect::<Vec<_>>();
-    
+
     // select! requires static branches, use select_all for dynamic
-    let (result, _index, _remaining) = 
+    let (result, _index, _remaining) =
         futures::future::select_all(futures).await;
-    
+
     result
 }
 ```

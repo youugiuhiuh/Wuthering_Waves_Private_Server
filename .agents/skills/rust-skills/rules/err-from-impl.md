@@ -19,13 +19,13 @@ enum AppError {
 fn load_config(path: &str) -> Result<Config, AppError> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| AppError::Io(e))?;  // Manual conversion everywhere
-    
+
     let config: Config = serde_json::from_str(&content)
         .map_err(|e| AppError::Parse(e))?;  // Repeated boilerplate
-    
+
     save_to_db(&config)
         .map_err(|e| AppError::Database(e))?;  // Gets tedious
-    
+
     Ok(config)
 }
 ```
@@ -76,10 +76,10 @@ use thiserror::Error;
 enum AppError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),  // Auto-generates From impl
-    
+
     #[error("Parse error: {0}")]
     Parse(#[from] serde_json::Error),  // #[from] does the work
-    
+
     #[error("Database error: {0}")]
     Database(#[from] diesel::result::Error),
 }

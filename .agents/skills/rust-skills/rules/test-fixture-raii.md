@@ -13,9 +13,9 @@ Tests often need setup and teardown—creating temp files, starting servers, set
 fn test_with_temp_file() {
     let path = "/tmp/test_file.txt";
     std::fs::write(path, "test data").unwrap();
-    
+
     let result = process_file(path);
-    
+
     std::fs::remove_file(path).unwrap();  // Might not run if test panics!
     assert!(result.is_ok());
 }
@@ -23,9 +23,9 @@ fn test_with_temp_file() {
 #[test]
 fn test_with_env_var() {
     std::env::set_var("MY_VAR", "test_value");
-    
+
     let result = read_config();
-    
+
     std::env::remove_var("MY_VAR");  // Might not run if test panics!
     assert!(result.is_ok());
 }
@@ -41,10 +41,10 @@ fn test_with_temp_file() {
     // Arrange - file deleted automatically when `file` drops
     let file = NamedTempFile::new().unwrap();
     std::fs::write(file.path(), "test data").unwrap();
-    
+
     // Act
     let result = process_file(file.path());
-    
+
     // Assert - file cleaned up even if assertion panics
     assert!(result.is_ok());
 }
@@ -78,9 +78,9 @@ impl Drop for EnvGuard {
 #[test]
 fn test_with_env_var() {
     let _guard = EnvGuard::set("MY_VAR", "test_value");
-    
+
     let result = read_config();
-    
+
     assert!(result.is_ok());
 }  // MY_VAR automatically restored
 ```
@@ -96,7 +96,7 @@ fn test_with_temp_dir() {
     let dir = TempDir::new().unwrap();
     let file_path = dir.path().join("test.txt");
     std::fs::write(&file_path, "data").unwrap();
-    
+
     // dir and all contents deleted on drop
 }
 
@@ -134,11 +134,11 @@ use scopeguard::defer;
 fn test_with_defer() {
     let path = "/tmp/test_file.txt";
     std::fs::write(path, "data").unwrap();
-    
+
     defer! {
         std::fs::remove_file(path).ok();
     }
-    
+
     // Test logic here
     // File removed when scope exits
 }

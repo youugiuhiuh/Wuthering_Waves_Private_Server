@@ -80,13 +80,13 @@ impl Connection {
             _ => Err(Error::AlreadyConnected),
         }
     }
-    
+
     fn on_connected(&mut self, socket: TcpStream) {
         if let ConnectionState::Connecting { .. } = &self.state {
             self.state = ConnectionState::Connected { socket };
         }
     }
-    
+
     fn authenticate(&mut self, creds: Credentials) -> Result<(), Error> {
         match std::mem::replace(&mut self.state, ConnectionState::Disconnected) {
             ConnectionState::Connected { socket } => {

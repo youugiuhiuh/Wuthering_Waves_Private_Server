@@ -11,30 +11,30 @@ Creating new `Vec`, `String`, or `HashMap` instances in hot loops generates sign
 ```rust
 fn process_batches(batches: &[Batch]) -> Vec<Result> {
     let mut results = Vec::new();
-    
+
     for batch in batches {
         let mut temp = Vec::new();  // Allocates every iteration
-        
+
         for item in &batch.items {
             temp.push(transform(item));
         }
-        
+
         results.push(aggregate(&temp));
         // temp dropped here, deallocation
     }
-    
+
     results
 }
 
 fn format_lines(items: &[Item]) -> String {
     let mut output = String::new();
-    
+
     for item in items {
         let line = format!("{}: {}", item.name, item.value);  // Allocates
         output.push_str(&line);
         output.push('\n');
     }
-    
+
     output
 }
 ```
@@ -45,34 +45,34 @@ fn format_lines(items: &[Item]) -> String {
 fn process_batches(batches: &[Batch]) -> Vec<Result> {
     let mut results = Vec::with_capacity(batches.len());
     let mut temp = Vec::new();  // Allocate once outside loop
-    
+
     for batch in batches {
         temp.clear();  // Reuse allocation, just reset length
-        
+
         for item in &batch.items {
             temp.push(transform(item));
         }
-        
+
         results.push(aggregate(&temp));
         // temp keeps its capacity for next iteration
     }
-    
+
     results
 }
 
 fn format_lines(items: &[Item]) -> String {
     use std::fmt::Write;
-    
+
     let mut output = String::new();
     let mut line = String::new();  // Reusable buffer
-    
+
     for item in items {
         line.clear();
         write!(&mut line, "{}: {}", item.name, item.value).unwrap();
         output.push_str(&line);
         output.push('\n');
     }
-    
+
     output
 }
 ```
@@ -105,17 +105,17 @@ use std::collections::HashMap;
 fn count_words_per_line(lines: &[&str]) -> Vec<HashMap<String, usize>> {
     let mut results = Vec::with_capacity(lines.len());
     let mut counts = HashMap::new();  // Reuse across iterations
-    
+
     for line in lines {
         counts.clear();  // Keeps bucket allocation
-        
+
         for word in line.split_whitespace() {
             *counts.entry(word.to_string()).or_insert(0) += 1;
         }
-        
+
         results.push(counts.clone());
     }
-    
+
     results
 }
 ```
@@ -129,14 +129,14 @@ fn write_many_records(records: &[Record], mut output: impl Write) -> std::io::Re
     // BufWriter reuses its internal buffer
     let mut writer = BufWriter::with_capacity(8192, &mut output);
     let mut line = String::with_capacity(256);  // Reusable formatting buffer
-    
+
     for record in records {
         line.clear();
         format_record(record, &mut line);
         writer.write_all(line.as_bytes())?;
         writer.write_all(b"\n")?;
     }
-    
+
     writer.flush()
 }
 ```
@@ -147,12 +147,12 @@ fn write_many_records(records: &[Record], mut output: impl Write) -> std::io::Re
 // When ownership transfer is needed
 fn produce_results() -> Vec<Vec<Item>> {
     let mut results = Vec::new();
-    
+
     for batch in batches {
         let processed: Vec<Item> = batch.process();  // Ownership transferred
         results.push(processed);  // Moved into results
     }
-    
+
     results  // Each inner Vec is independent
 }
 

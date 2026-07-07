@@ -17,7 +17,7 @@ fn process_data(data: &[u8]) -> Result<Output, Error> {
             suggestions: vec!["Check input", "Validate before calling"],
         });
     }
-    
+
     // Hot path - now polluted with error construction code
     do_processing(data)
 }
@@ -30,7 +30,7 @@ fn process_data(data: &[u8]) -> Result<Output, Error> {
     if data.is_empty() {
         return Err(empty_data_error());  // Cold path stays small
     }
-    
+
     do_processing(data)
 }
 
@@ -93,7 +93,7 @@ impl MyError {
             context: get_context(),
         }
     }
-    
+
     #[cold]
     pub fn validation_error(msg: &str, field: &str) -> Self {
         MyError::Validation {
@@ -122,9 +122,9 @@ fn process(data: Option<&Data>) -> Result<Output, Error> {
     if unlikely(data.is_none()) {
         return cold_none_error();
     }
-    
+
     let data = data.unwrap();
-    
+
     if likely(data.is_valid()) {
         fast_process(data)
     } else {
@@ -138,7 +138,7 @@ fn process(data: Option<&Data>) -> Result<Output, Error> {
         Some(d) => d,
         None => return cold_none_error(),  // Early return = unlikely hint
     };
-    
+
     // Compiler assumes code after early returns is "hot"
     fast_process(data)
 }

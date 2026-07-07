@@ -44,7 +44,7 @@ impl Clone for String {
         // Always allocates new memory
         String::from(self.as_str())
     }
-    
+
     fn clone_from(&mut self, source: &Self) {
         // Reuse existing capacity if possible
         self.clear();
@@ -80,14 +80,14 @@ use criterion::{black_box, criterion_group, Criterion};
 
 fn bench_clone_patterns(c: &mut Criterion) {
     let source = "x".repeat(1000);
-    
+
     c.bench_function("clone assignment", |b| {
         let mut buffer = String::new();
         b.iter(|| {
             buffer = black_box(&source).clone();
         });
     });
-    
+
     c.bench_function("clone_from", |b| {
         let mut buffer = String::with_capacity(1000);
         b.iter(|| {
@@ -116,7 +116,7 @@ impl Clone for Buffer {
             metadata: self.metadata.clone(),
         }
     }
-    
+
     // Optimize clone_from to reuse vec capacity
     fn clone_from(&mut self, source: &Self) {
         self.data.clone_from(&source.data);  // Reuses allocation

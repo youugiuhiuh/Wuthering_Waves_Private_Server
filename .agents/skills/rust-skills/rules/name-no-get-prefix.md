@@ -20,11 +20,11 @@ impl User {
     fn get_name(&self) -> &str {      // Verbose
         &self.name
     }
-    
+
     fn get_age(&self) -> u32 {         // Verbose
         self.age
     }
-    
+
     fn get_is_adult(&self) -> bool {   // Doubly verbose
         self.age >= 18
     }
@@ -46,11 +46,11 @@ impl User {
     fn name(&self) -> &str {           // Clean
         &self.name
     }
-    
+
     fn age(&self) -> u32 {             // Clean
         self.age
     }
-    
+
     fn is_adult(&self) -> bool {       // Boolean uses is_ prefix
         self.age >= 18
     }
@@ -68,7 +68,7 @@ Use `get` when the method does more than simple access:
 impl HashMap<K, V> {
     // Returns Option - not just field access
     fn get(&self, key: &K) -> Option<&V> { }
-    
+
     // Mutable variant
     fn get_mut(&mut self, key: &K) -> Option<&mut V> { }
 }
@@ -112,7 +112,7 @@ impl Config {
     fn timeout(&self) -> Duration {
         self.timeout
     }
-    
+
     // Setter: use set_ prefix
     fn set_timeout(&mut self, timeout: Duration) {
         self.timeout = timeout;
@@ -129,7 +129,7 @@ impl ConfigBuilder {
         self.timeout = timeout;
         self
     }
-    
+
     fn retries(mut self, retries: u32) -> Self {
         self.retries = retries;
         self

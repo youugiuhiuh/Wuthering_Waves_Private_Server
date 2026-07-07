@@ -44,36 +44,36 @@ impl ClientBuilder {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Sets the base URL for all requests.
     pub fn base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = Some(url.into());
         self
     }
-    
+
     /// Sets the request timeout. Default is 30 seconds.
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
     }
-    
+
     /// Sets the maximum number of retries. Default is 3.
     pub fn max_retries(mut self, n: u32) -> Self {
         self.max_retries = n;
         self
     }
-    
+
     /// Sets the authentication token.
     pub fn auth_token(mut self, token: impl Into<String>) -> Self {
         self.auth_token = Some(token.into());
         self
     }
-    
+
     /// Builds the client with the configured options.
     pub fn build(self) -> Result<Client, BuilderError> {
         let base_url = self.base_url
             .ok_or(BuilderError::MissingBaseUrl)?;
-        
+
         Ok(Client {
             base_url,
             timeout: self.timeout.unwrap_or(Duration::from_secs(30)),
@@ -118,7 +118,7 @@ impl ClientBuilder<NoUrl> {
     pub fn new() -> Self {
         Self { url: NoUrl, timeout: None }
     }
-    
+
     pub fn url(self, url: String) -> ClientBuilder<HasUrl> {
         ClientBuilder { url: HasUrl(url), timeout: self.timeout }
     }
@@ -155,12 +155,12 @@ impl ClientBuilder {
             config: Config::default(),
         }
     }
-    
+
     pub fn timeout(mut self, timeout: Duration) -> ClientBuilder {
         self.config.timeout = Some(timeout);
         self
     }
-    
+
     pub fn build(self) -> Result<Client, Error> {
         // Validation and construction
     }

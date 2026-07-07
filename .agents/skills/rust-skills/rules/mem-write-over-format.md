@@ -22,12 +22,12 @@ fn log_event(event: &Event, output: &mut Vec<u8>) {
 
 fn build_response(items: &[Item]) -> String {
     let mut result = String::new();
-    
+
     for item in items {
         // format! allocates for each item
         result.push_str(&format!("{}: {}\n", item.name, item.value));
     }
-    
+
     result
 }
 ```
@@ -51,14 +51,14 @@ fn log_event(event: &Event, output: &mut Vec<u8>) {
 
 fn build_response(items: &[Item]) -> String {
     use std::fmt::Write;
-    
+
     let mut result = String::with_capacity(items.len() * 64);
-    
+
     for item in items {
         // write! into existing String, reuses capacity
         write!(&mut result, "{}: {}\n", item.name, item.value).unwrap();
     }
-    
+
     result
 }
 ```
@@ -93,13 +93,13 @@ impl Formatter {
     fn new() -> Self {
         Self { buffer: String::with_capacity(1024) }
     }
-    
+
     fn format_event(&mut self, event: &Event) -> &str {
         self.buffer.clear();  // Reuse allocation
         write!(
-            &mut self.buffer, 
+            &mut self.buffer,
             "[{}] {}",
-            event.timestamp, 
+            event.timestamp,
             event.message
         ).unwrap();
         &self.buffer

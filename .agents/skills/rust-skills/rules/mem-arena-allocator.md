@@ -46,11 +46,11 @@ fn parse<'a>(input: &str, arena: &'a Bump) -> Vec<&'a Node> {
 // Per-request arena
 fn handle_request(req: Request) -> Response {
     let arena = Bump::new();
-    
+
     let headers = parse_headers(&req, &arena);
     let body = parse_body(&req, &arena);
     let response = generate_response(&arena);
-    
+
     // Convert to owned response before arena drops
     response.to_owned()
 }  // All request memory freed instantly
@@ -87,10 +87,10 @@ fn process_batch(items: &[Item]) -> Vec<Output> {
             .iter()
             .map(|item| arena.alloc(compute_temp(item)))
             .collect();
-        
+
         // Use temp_data...
         let result = finalize(&temp_data);
-        
+
         reset_scratch();  // Reuse arena memory
         result
     })
@@ -102,7 +102,7 @@ fn process_batch(items: &[Item]) -> Vec<Output> {
 ```rust
 // https://github.com/roc-lang/roc/blob/main/crates/compiler/solve/src/to_var.rs
 std::thread_local! {
-    static SCRATCHPAD: RefCell<Option<bumpalo::Bump>> = 
+    static SCRATCHPAD: RefCell<Option<bumpalo::Bump>> =
         RefCell::new(Some(bumpalo::Bump::with_capacity(4 * 1024)));
 }
 
@@ -125,14 +125,14 @@ use bumpalo::collections::{Vec, String};
 
 fn process<'a>(arena: &'a Bump, input: &str) -> Vec<'a, String<'a>> {
     let mut results = Vec::new_in(arena);
-    
+
     for word in input.split_whitespace() {
         let mut s = String::new_in(arena);
         s.push_str(word);
         s.push_str("_processed");
         results.push(s);
     }
-    
+
     results  // All allocated in arena
 }
 ```

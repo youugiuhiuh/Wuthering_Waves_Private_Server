@@ -14,7 +14,7 @@ impl Name {
     fn as_uppercase(&self) -> String {
         self.0.to_uppercase()  // Allocates!
     }
-    
+
     // Misleading: suggests cheap reference
     fn get_string(&self) -> String {
         self.0.clone()  // Allocates!
@@ -30,12 +30,12 @@ impl Name {
     fn to_uppercase(&self) -> String {
         self.0.to_uppercase()
     }
-    
+
     // to_ = creates new value
     fn to_string(&self) -> String {
         self.0.clone()
     }
-    
+
     // as_ = free reference (cheap)
     fn as_str(&self) -> &str {
         &self.0
@@ -76,17 +76,17 @@ impl Email {
     fn as_str(&self) -> &str {
         &self.0
     }
-    
+
     // Expensive: allocates
     fn to_lowercase(&self) -> Email {
         Email(self.0.to_lowercase())
     }
-    
+
     // Expensive: allocates
     fn to_display_format(&self) -> String {
         format!("<{}>", self.0)
     }
-    
+
     // Ownership transfer: usually cheap
     fn into_string(self) -> String {
         self.0

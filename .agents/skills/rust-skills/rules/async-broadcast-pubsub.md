@@ -109,12 +109,12 @@ impl EventBus {
         let (tx, _) = broadcast::channel(1000);
         EventBus { tx }
     }
-    
+
     fn publish(&self, event: AppEvent) {
         // Ignore error if no subscribers
         let _ = self.tx.send(event);
     }
-    
+
     fn subscribe(&self) -> broadcast::Receiver<AppEvent> {
         self.tx.subscribe()
     }

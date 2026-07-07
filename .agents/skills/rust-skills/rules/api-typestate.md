@@ -29,7 +29,7 @@ impl Connection {
         self.socket.as_mut().unwrap().write_all(data)?;
         Ok(())
     }
-    
+
     fn authenticate(&mut self, password: &str) -> Result<(), Error> {
         // Runtime check - can fail
         if self.state != ConnectionState::Connected {
@@ -61,7 +61,7 @@ impl Connection<Disconnected> {
     fn new() -> Self {
         Connection { state: Disconnected }
     }
-    
+
     fn connect(self, addr: &str) -> Result<Connection<Connected>, Error> {
         let socket = TcpStream::connect(addr)?;
         Ok(Connection { state: Connected { socket } })
@@ -116,7 +116,7 @@ impl RequestBuilder<BuilderNoUrl> {
             timeout: None,
         }
     }
-    
+
     fn url(self, url: &str) -> RequestBuilder<BuilderWithUrl> {
         RequestBuilder {
             state: BuilderWithUrl { url: url.to_string() },
@@ -130,7 +130,7 @@ impl RequestBuilder<BuilderWithUrl> {
         self.timeout = Some(t);
         self
     }
-    
+
     // Only available once URL is set
     fn build(self) -> Request {
         Request {
@@ -176,7 +176,7 @@ impl Transaction<InProgress> {
     fn execute(&mut self, sql: &str) -> Result<(), Error> {
         self.conn.execute(sql)
     }
-    
+
     fn commit(self) -> Result<Transaction<Committed>, Error> {
         self.conn.execute("COMMIT")?;
         Ok(Transaction {
@@ -184,7 +184,7 @@ impl Transaction<InProgress> {
             state: Committed,
         })
     }
-    
+
     fn rollback(self) -> Connection {
         let _ = self.conn.execute("ROLLBACK");
         self.conn

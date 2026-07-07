@@ -87,7 +87,7 @@ async fn test_operation_completes_in_time() {
         Duration::from_secs(5),
         slow_operation()
     ).await;
-    
+
     assert!(result.is_ok(), "Operation timed out");
 }
 
@@ -97,7 +97,7 @@ async fn test_timeout_triggers() {
         Duration::from_millis(100),
         never_completes()
     ).await;
-    
+
     assert!(result.is_err(), "Expected timeout");
 }
 ```
@@ -110,12 +110,12 @@ use tokio::sync::mpsc;
 #[tokio::test]
 async fn test_channel_communication() {
     let (tx, mut rx) = mpsc::channel(10);
-    
+
     tokio::spawn(async move {
         tx.send("hello").await.unwrap();
         tx.send("world").await.unwrap();
     });
-    
+
     assert_eq!(rx.recv().await, Some("hello"));
     assert_eq!(rx.recv().await, Some("world"));
     assert_eq!(rx.recv().await, None);
@@ -139,10 +139,10 @@ async fn test_with_mock_database() {
     mock.expect_get_user()
         .with(eq(42))
         .returning(|_| Some(User { id: 42, name: "Alice".into() }));
-    
+
     let service = UserService::new(mock);
     let user = service.find_user(42).await;
-    
+
     assert_eq!(user.unwrap().name, "Alice");
 }
 ```

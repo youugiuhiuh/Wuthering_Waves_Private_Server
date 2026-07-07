@@ -54,13 +54,13 @@ use thiserror::Error;
 pub enum ParseError {
     #[error("invalid syntax at line {line}: {message}")]
     Syntax { line: usize, message: String },
-    
+
     #[error("unexpected end of file")]
     UnexpectedEof,
-    
+
     #[error("invalid utf-8 encoding")]
     Utf8(#[from] std::str::Utf8Error),
-    
+
     #[error("io error reading input")]
     Io(#[from] std::io::Error),
 }
@@ -96,19 +96,19 @@ pub enum MyError {
     // Simple message
     #[error("operation failed")]
     Failed,
-    
+
     // Interpolated fields
     #[error("invalid value: {0}")]
     InvalidValue(String),
-    
+
     // Named fields
     #[error("connection to {host}:{port} failed")]
     Connection { host: String, port: u16 },
-    
+
     // Automatic From impl with #[from]
     #[error("database error")]
     Database(#[from] sqlx::Error),
-    
+
     // Source without From (manual conversion needed)
     #[error("validation failed")]
     Validation {
@@ -116,7 +116,7 @@ pub enum MyError {
         cause: ValidationError,
         field: String,
     },
-    
+
     // Transparent - delegates Display and source to inner
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -132,10 +132,10 @@ use thiserror::Error;
 pub enum ConfigError {
     #[error("failed to read config file")]
     Read(#[source] std::io::Error),
-    
+
     #[error("failed to parse config")]
     Parse(#[source] toml::de::Error),
-    
+
     #[error("invalid config value for '{key}'")]
     InvalidValue {
         key: String,
@@ -148,10 +148,10 @@ pub enum ConfigError {
 fn load_config(path: &Path) -> Result<Config, ConfigError> {
     let content = std::fs::read_to_string(path)
         .map_err(ConfigError::Read)?;
-    
+
     let config: Config = toml::from_str(&content)
         .map_err(ConfigError::Parse)?;
-    
+
     Ok(config)
 }
 ```

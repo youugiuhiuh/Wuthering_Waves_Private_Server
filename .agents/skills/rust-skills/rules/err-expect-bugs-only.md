@@ -54,8 +54,8 @@ fn process_validated(data: ValidatedData) -> Result<Output, ProcessError> {
 }
 
 // Invariant: type system guarantees
-fn get_first<T>(vec: Vec<T>) -> T 
-where 
+fn get_first<T>(vec: Vec<T>) -> T
+where
     Vec<T>: NonEmpty,  // Hypothetical trait
 {
     vec.into_iter().next()
@@ -95,7 +95,7 @@ impl ValidatedEmail {
         }
         Ok(ValidatedEmail(email.to_string()))
     }
-    
+
     pub fn domain(&self) -> &str {
         // After validation, expect() is fine
         self.0.split('@').nth(1)

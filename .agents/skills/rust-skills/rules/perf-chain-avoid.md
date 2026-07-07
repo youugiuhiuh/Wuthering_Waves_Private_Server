@@ -12,7 +12,7 @@
 // Chain in hot inner loop
 fn process_hot_path(a: &[i32], b: &[i32]) -> i64 {
     let mut sum = 0i64;
-    
+
     // Called millions of times
     for _ in 0..1_000_000 {
         for x in a.iter().chain(b.iter()) {  // Branch every iteration
@@ -40,7 +40,7 @@ fn combine_results(parts: &[&[u8]]) -> Vec<u8> {
 // Separate loops - branch-free inner loops
 fn process_hot_path(a: &[i32], b: &[i32]) -> i64 {
     let mut sum = 0i64;
-    
+
     for _ in 0..1_000_000 {
         for x in a {
             sum += *x as i64;

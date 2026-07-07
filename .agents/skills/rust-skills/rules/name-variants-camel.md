@@ -54,13 +54,13 @@ enum HttpMethod {
 enum Message {
     // Unit variant
     Quit,
-    
+
     // Tuple variant
     Move(i32, i32),
-    
+
     // Struct variant
     Write { text: String },
-    
+
     // Named fields
     ChangeColor {
         red: u8,

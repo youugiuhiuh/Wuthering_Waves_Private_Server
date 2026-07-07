@@ -15,7 +15,7 @@ pub mod internal {
         pub buffer: Vec<u8>,    // Implementation detail exposed
         pub dirty: bool,
     }
-    
+
     pub fn process_internal(state: &mut InternalState) {
         // Users can call this, creating coupling
     }
@@ -35,7 +35,7 @@ pub(crate) mod internal {
         pub(crate) buffer: Vec<u8>,
         pub(crate) dirty: bool,
     }
-    
+
     pub(crate) fn process_internal(state: &mut InternalState) {
         // Only callable within crate
     }
@@ -54,7 +54,7 @@ impl Widget {
             }
         }
     }
-    
+
     pub fn do_something(&mut self) {
         internal::process_internal(&mut self.state);
     }

@@ -51,11 +51,11 @@ impl Email {
             Err(EmailError::Invalid)
         }
     }
-    
+
     fn is_valid(s: &str) -> bool {
         s.contains('@') && s.len() > 3  // Simplified
     }
-    
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -83,7 +83,7 @@ impl Port {
     pub fn new(n: u16) -> Option<Self> {
         if n > 0 { Some(Port(n)) } else { None }
     }
-    
+
     pub fn get(&self) -> u16 {
         self.0
     }
@@ -127,7 +127,7 @@ fn handle_request(raw: RawRequest) -> Result<Response, Error> {
     let email = Email::parse(&raw.email)?;
     let age = Age::parse(raw.age)?;
     let username = Username::parse(&raw.username)?;
-    
+
     // Now work with validated types
     process_user(email, age, username)
 }

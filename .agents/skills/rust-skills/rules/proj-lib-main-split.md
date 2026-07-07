@@ -14,7 +14,7 @@ fn main() {
     let args = parse_args();
     let config = load_config(&args.config_path).unwrap();
     let db = connect_database(&config.db_url).unwrap();
-    
+
     // Hundreds of lines of application logic...
     // All untestable from integration tests!
 }
@@ -70,7 +70,7 @@ use clap::Parser;
 pub struct Args {
     #[arg(short, long)]
     pub config: PathBuf,
-    
+
     #[arg(short, long, default_value = "info")]
     pub log_level: String,
 }

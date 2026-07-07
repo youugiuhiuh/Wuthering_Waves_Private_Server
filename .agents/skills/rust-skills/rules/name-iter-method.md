@@ -18,11 +18,11 @@ impl<T> Collection<T> {
     fn elements(&self) -> impl Iterator<Item = &T> {
         self.items.iter()
     }
-    
+
     fn get_iterator(&self) -> impl Iterator<Item = &T> {
         self.items.iter()
     }
-    
+
     fn to_iter(self) -> impl Iterator<Item = T> {
         self.items.into_iter()
     }
@@ -41,7 +41,7 @@ impl<T> Collection<T> {
     fn iter(&self) -> impl Iterator<Item = &T> {
         self.items.iter()
     }
-    
+
     /// Returns an iterator over mutable references.
     fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.items.iter_mut()
@@ -52,7 +52,7 @@ impl<T> Collection<T> {
 impl<T> IntoIterator for Collection<T> {
     type Item = T;
     type IntoIter = std::vec::IntoIter<T>;
-    
+
     fn into_iter(self) -> Self::IntoIter {
         self.items.into_iter()
     }
@@ -61,7 +61,7 @@ impl<T> IntoIterator for Collection<T> {
 impl<'a, T> IntoIterator for &'a Collection<T> {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
-    
+
     fn into_iter(self) -> Self::IntoIter {
         self.items.iter()
     }
@@ -70,7 +70,7 @@ impl<'a, T> IntoIterator for &'a Collection<T> {
 impl<'a, T> IntoIterator for &'a mut Collection<T> {
     type Item = &'a mut T;
     type IntoIter = std::slice::IterMut<'a, T>;
-    
+
     fn into_iter(self) -> Self::IntoIter {
         self.items.iter_mut()
     }
@@ -109,16 +109,16 @@ for item in col {            // Calls col.into_iter()
 ```rust
 impl<T> Collection<T> {
     // Domain-specific iterators follow similar patterns
-    
+
     /// Iterates over keys (for map-like structures).
     fn keys(&self) -> impl Iterator<Item = &K> { ... }
-    
+
     /// Iterates over values.
     fn values(&self) -> impl Iterator<Item = &V> { ... }
-    
+
     /// Iterates over mutable values.
     fn values_mut(&mut self) -> impl Iterator<Item = &mut V> { ... }
-    
+
     /// Drains elements, leaving container empty.
     fn drain(&mut self) -> impl Iterator<Item = T> { ... }
 }

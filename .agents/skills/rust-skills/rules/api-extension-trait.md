@@ -38,7 +38,7 @@ impl ByteSliceExt for [u8] {
             .map(|b| format!("{:02x}", b))
             .collect()
     }
-    
+
     fn is_ascii_printable(&self) -> bool {
         self.iter().all(|b| b.is_ascii_graphic() || b.is_ascii_whitespace())
     }
@@ -113,7 +113,7 @@ mod string_utils {
     pub trait StringExt {
         fn truncate_ellipsis(&self, max_len: usize) -> String;
     }
-    
+
     impl StringExt for str {
         fn truncate_ellipsis(&self, max_len: usize) -> String {
             if self.len() <= max_len {

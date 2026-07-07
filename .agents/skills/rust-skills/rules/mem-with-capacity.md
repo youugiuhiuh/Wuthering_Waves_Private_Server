@@ -104,7 +104,7 @@ fn filter_valid(items: &[Item]) -> Vec<&Item> {
 fn join_with_sep(parts: &[&str], sep: &str) -> String {
     let total_len: usize = parts.iter().map(|p| p.len()).sum();
     let sep_len = if parts.is_empty() { 0 } else { sep.len() * (parts.len() - 1) };
-    
+
     let mut result = String::with_capacity(total_len + sep_len);
     for (i, part) in parts.iter().enumerate() {
         if i > 0 {

@@ -106,10 +106,10 @@ use thiserror::Error;
 pub enum ConfigError {
     #[error("failed to read file: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("failed to parse config: {0}")]
     Parse(#[from] toml::de::Error),
-    
+
     #[error("missing required field: {0}")]
     MissingField(String),
 }

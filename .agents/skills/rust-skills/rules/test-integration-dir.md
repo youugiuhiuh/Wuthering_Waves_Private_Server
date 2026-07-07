@@ -42,7 +42,7 @@ use my_crate::{Client, Config};  // Uses public API only
 fn test_full_workflow() {
     let config = Config::default();
     let client = Client::new(config);
-    
+
     let result = client.process("input");
     assert!(result.is_ok());
 }
@@ -50,7 +50,7 @@ fn test_full_workflow() {
 #[test]
 fn test_error_handling() {
     let client = Client::new(Config::strict());
-    
+
     let result = client.process("invalid");
     assert!(matches!(result, Err(Error::InvalidInput { .. })));
 }

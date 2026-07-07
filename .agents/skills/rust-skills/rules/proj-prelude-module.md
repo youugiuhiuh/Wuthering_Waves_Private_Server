@@ -56,16 +56,16 @@ use my_crate::prelude::*;
 pub mod prelude {
     // Core request/response
     pub use crate::{Request, Response, Body};
-    
+
     // Error handling
     pub use crate::Error;
-    
+
     // Common traits
     pub use crate::traits::{FromRequest, IntoResponse};
-    
+
     // Routing
     pub use crate::Router;
-    
+
     // HTTP types
     pub use crate::http::{Method, StatusCode};
 }
@@ -77,13 +77,13 @@ pub mod prelude {
 pub mod prelude {
     // Connection and pool
     pub use crate::{Connection, Pool};
-    
+
     // Query building
     pub use crate::query::{Query, Select, Insert, Update, Delete};
-    
+
     // Traits for custom types
     pub use crate::traits::{FromRow, ToSql};
-    
+
     // Error type
     pub use crate::Error;
 }
@@ -110,10 +110,10 @@ pub mod full_prelude {
 ```rust
 pub mod prelude {
     pub use crate::{Client, Error};
-    
+
     #[cfg(feature = "async")]
     pub use crate::async_client::AsyncClient;
-    
+
     #[cfg(feature = "serde")]
     pub use crate::serde::{Serialize, Deserialize};
 }

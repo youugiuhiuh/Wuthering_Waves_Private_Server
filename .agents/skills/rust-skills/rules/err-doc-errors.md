@@ -16,7 +16,7 @@ pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
 }
 
 /// Parses and validates the input string.
-/// 
+///
 /// Returns the parsed value.  // What about errors?
 pub fn parse_input(input: &str) -> Result<Value, ParseError> {
     // ...

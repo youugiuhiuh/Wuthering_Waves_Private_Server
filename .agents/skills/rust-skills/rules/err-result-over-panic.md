@@ -12,7 +12,7 @@ Panics unwind the stack and crash the thread (or program). They're unrecoverable
 fn parse_config(path: &str) -> Config {
     let content = std::fs::read_to_string(path)
         .expect("Failed to read config");  // Crashes on missing file
-    
+
     serde_json::from_str(&content)
         .expect("Invalid config format")   // Crashes on bad JSON
 }

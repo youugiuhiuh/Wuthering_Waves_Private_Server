@@ -137,7 +137,7 @@ pub struct ApiResponse {
 pub struct Config {
     #[serde(default)]
     pub verbose: bool,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
 }

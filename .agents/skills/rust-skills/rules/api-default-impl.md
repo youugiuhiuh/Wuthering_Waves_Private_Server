@@ -103,7 +103,7 @@ impl ServerBuilder {
         self.host = host.into();
         self
     }
-    
+
     fn port(mut self, port: u16) -> Self {
         self.port = port;
         self

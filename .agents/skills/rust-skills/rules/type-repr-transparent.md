@@ -100,10 +100,10 @@ assert_eq!(size_of::<Option<NonZeroHandle>>(), size_of::<u64>());
 ```rust
 mod ffi {
     use std::os::raw::c_int;
-    
+
     #[repr(transparent)]
     pub struct FileDescriptor(c_int);
-    
+
     extern "C" {
         pub fn open(path: *const i8, flags: c_int) -> FileDescriptor;
         pub fn close(fd: FileDescriptor) -> c_int;

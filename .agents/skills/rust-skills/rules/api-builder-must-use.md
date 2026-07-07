@@ -20,7 +20,7 @@ impl RequestBuilder {
         self.timeout = Some(duration);
         self
     }
-    
+
     fn header(mut self, key: &str, value: &str) -> Self {
         self.headers.push((key.to_string(), value.to_string()));
         self
@@ -49,7 +49,7 @@ impl RequestBuilder {
         self.timeout = Some(duration);
         self
     }
-    
+
     #[must_use = "builder methods return modified builder - chain or assign"]
     fn header(mut self, key: &str, value: &str) -> Self {
         self.headers.push((key.to_string(), value.to_string()));
@@ -83,12 +83,12 @@ impl ConfigBuilder {
         self.log_level = level;
         self
     }
-    
+
     fn max_connections(mut self, n: usize) -> Self {
         self.max_connections = n;
         self
     }
-    
+
     fn build(self) -> Config {
         Config {
             log_level: self.log_level,

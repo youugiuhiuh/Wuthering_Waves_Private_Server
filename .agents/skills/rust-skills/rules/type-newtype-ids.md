@@ -68,11 +68,11 @@ impl UserId {
     pub const fn new(id: u64) -> Self {
         Self(id)
     }
-    
+
     pub const fn get(self) -> u64 {
         self.0
     }
-    
+
     // For database queries
     pub fn as_i64(self) -> i64 {
         self.0 as i64
@@ -114,13 +114,13 @@ impl SessionId {
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4().to_string())
     }
-    
+
     pub fn parse(s: &str) -> Result<Self, ParseError> {
         // Validate format
         uuid::Uuid::parse_str(s)?;
         Ok(Self(s.to_string()))
     }
-    
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -135,12 +135,12 @@ macro_rules! define_id {
     ($name:ident) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub struct $name(pub u64);
-        
+
         impl $name {
             pub const fn new(id: u64) -> Self { Self(id) }
             pub const fn get(self) -> u64 { self.0 }
         }
-        
+
         impl From<u64> for $name {
             fn from(id: u64) -> Self { Self(id) }
         }

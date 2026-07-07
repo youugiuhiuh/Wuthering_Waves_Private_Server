@@ -91,7 +91,7 @@ impl Email {
             Err(EmailError::InvalidFormat)
         }
     }
-    
+
     /// Returns the email as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0

@@ -35,16 +35,16 @@ use anyhow::{Context, Result};
 fn load_config() -> Result<Config> {
     let path = find_config()
         .context("failed to locate config file")?;
-    
+
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("failed to read config from {}", path.display()))?;
-    
+
     let config: Config = toml::from_str(&content)
         .context("failed to parse config as TOML")?;
-    
+
     validate(&config)
         .context("config validation failed")?;
-    
+
     Ok(config)
 }
 
@@ -60,21 +60,21 @@ use anyhow::{anyhow, bail, ensure, Context, Result};
 fn example() -> Result<()> {
     // Create ad-hoc errors
     let err = anyhow!("something went wrong");
-    
+
     // Early return with error
     bail!("aborting due to {}", reason);
-    
+
     // Assert with error
     ensure!(condition, "condition was false");
-    
+
     // Add context to any error
     risky_operation()
         .context("risky operation failed")?;
-    
+
     // Dynamic context
     fetch(url)
         .with_context(|| format!("failed to fetch {}", url))?;
-    
+
     Ok(())
 }
 ```
@@ -113,15 +113,15 @@ fn show_error(err: anyhow::Error) {
     // Just the top-level message
     println!("{}", err);
     // "config validation failed"
-    
+
     // With cause chain (# alternate format)
     println!("{:#}", err);
     // "config validation failed: field 'port' must be > 0"
-    
+
     // Debug format with backtrace
     println!("{:?}", err);
     // Full backtrace if RUST_BACKTRACE=1
-    
+
     // Iterate through cause chain
     for cause in err.chain() {
         println!("Caused by: {}", cause);
