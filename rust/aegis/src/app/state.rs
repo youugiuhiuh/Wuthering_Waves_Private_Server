@@ -70,7 +70,6 @@ pub struct ScheduleInputState {
     pub return_to: String,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubSetupStep {
     ChooseDomain,
@@ -81,7 +80,6 @@ pub enum SubSetupStep {
     Confirm,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SubSetupState {
     pub step: SubSetupStep,
@@ -105,7 +103,6 @@ pub struct AppState {
     self_destruct_key_hash: Mutex<Option<String>>,
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
-    #[allow(dead_code)]
     pending_sub_setup: Mutex<HashMap<String, SubSetupState>>,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
@@ -474,19 +471,16 @@ impl AppState {
         self.token_manager.as_ref()
     }
 
-    #[allow(dead_code)]
     pub async fn insert_sub_setup(&self, chat_id: String, state: SubSetupState) {
         self.pending_sub_setup.lock().await.insert(chat_id, state);
     }
 
-    #[allow(dead_code)]
-    pub async fn sub_setup_snapshot(&self, chat_id: &str) -> Option<SubSetupState> {
-        self.pending_sub_setup.lock().await.get(chat_id).cloned()
-    }
-
-    #[allow(dead_code)]
     pub async fn remove_sub_setup(&self, chat_id: &str) {
         self.pending_sub_setup.lock().await.remove(chat_id);
+    }
+
+    pub async fn sub_setup_status(&self, chat_id: &str) -> Option<SubSetupState> {
+        self.pending_sub_setup.lock().await.get(chat_id).cloned()
     }
 }
 
