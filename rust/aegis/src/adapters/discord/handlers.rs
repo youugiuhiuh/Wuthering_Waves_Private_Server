@@ -68,18 +68,9 @@ impl DiscordHandler {
         }
 
         let data = build_command_data(&command);
-
         let target = TargetId(command.channel_id.to_string());
 
-        let hctx = HandlerContext {
-            adapter: &*self.adapter,
-            target: target.clone(),
-            state,
-            user_id,
-            data,
-            msg_id: None,
-        };
-
+        // Defer response to avoid 3s timeout
         let _ = command
             .create_response(
                 &self.http,
@@ -88,6 +79,22 @@ impl DiscordHandler {
                 ),
             )
             .await;
+
+        // Get the deferred message ID for edit tracking
+        let msg_id = command
+            .get_response(&self.http)
+            .await
+            .ok()
+            .map(|msg| MessageId(msg.id.to_string()));
+
+        let hctx = HandlerContext {
+            adapter: &*self.adapter,
+            target,
+            state,
+            user_id,
+            data,
+            msg_id,
+        };
 
         match crate::handlers::dispatch::dispatch(&hctx).await {
             Ok(_) => {}

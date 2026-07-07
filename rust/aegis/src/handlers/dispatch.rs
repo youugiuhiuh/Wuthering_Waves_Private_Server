@@ -12,6 +12,11 @@ pub async fn dispatch(ctx: &HandlerContext<'_>) -> HandlerResult {
         return super::menu::handle(ctx).await;
     }
 
+    // WARP (must check before a_* catch-all)
+    if data.starts_with("a_warp_") {
+        return super::warp::handle(ctx).await;
+    }
+
     // 运维操作
     if data.starts_with("a_") {
         return super::ops::handle(ctx).await;
@@ -25,11 +30,6 @@ pub async fn dispatch(ctx: &HandlerContext<'_>) -> HandlerResult {
     // SingBox
     if data.starts_with("sb_") {
         return super::singbox::handle(ctx).await;
-    }
-
-    // WARP
-    if data.starts_with("a_warp_") {
-        return super::warp::handle(ctx).await;
     }
 
     // 订阅
