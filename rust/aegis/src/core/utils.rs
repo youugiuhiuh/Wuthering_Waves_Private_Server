@@ -72,34 +72,6 @@ pub fn human_readable_size(bytes: u64) -> String {
     }
 }
 
-/// 格式化持续时间为可读字符串（用于人类展示）
-pub fn format_duration_human(secs: u64) -> String {
-    if secs < 60 {
-        format!("{}秒", secs)
-    } else if secs < 3600 {
-        format!("{}分钟", secs / 60)
-    } else if secs < 86400 {
-        let h = secs / 3600;
-        let m = (secs % 3600) / 60;
-        if m == 0 {
-            format!("{}小时", h)
-        } else {
-            format!("{}小时{}分", h, m)
-        }
-    } else {
-        let d = secs / 86400;
-        let h = (secs % 86400) / 3600;
-        let m = (secs % 3600) / 60;
-        if h == 0 {
-            format!("{}天", d)
-        } else if m == 0 {
-            format!("{}天{}小时", d, h)
-        } else {
-            format!("{}天{}小时{}分", d, h, m)
-        }
-    }
-}
-
 /// 格式化下载进度文本
 pub fn format_download_progress(downloaded: u64, total: Option<u64>, start: Instant) -> String {
     let elapsed = start.elapsed().as_secs_f64().max(0.1);

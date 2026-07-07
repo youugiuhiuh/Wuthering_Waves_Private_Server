@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use rust_i18n::t;
+use sha2::Digest;
 
 use crate::adapters::common::{InlineButton, Markup, MessageContent, MessageId};
 use crate::app::state::{AppState, DestructStep, TimeoutStatus};
@@ -45,7 +46,6 @@ pub async fn process_destruct_message(
         },
         DestructStep::AwaitSecurityFile => {
             if let Some(content) = file_content {
-                use sha2::Digest;
                 let hash = hex::encode(sha2::Sha256::digest(content));
                 match self_destruct_key_hash {
                     Some(correct) if hash == correct => {

@@ -48,7 +48,7 @@ pub async fn process_auth_code(
     if state.verify_totp(code) {
         let timeout = state.record_auth_success(user_id, now).await;
         let success_text =
-            t!("auth.success", "0" => crate::core::utils::format_duration_human(timeout)).to_string();
+            t!("auth.success", "0" => crate::app::format_duration_human(timeout)).to_string();
         if !state.is_lang_configured().await {
             let lang_text = t!("welcome.select_language").to_string();
             let lang_markup = Markup {
