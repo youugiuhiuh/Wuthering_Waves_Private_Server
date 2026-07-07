@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::core::subscription::aggregator;
 use crate::core::subscription::server::proto::{ProxyConfig, SubscriptionToken};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,10 +20,14 @@ struct TokenRow {
 #[derive(Clone)]
 pub struct TokenManager {
     db: std::sync::Arc<Mutex<Connection>>,
+    public_ip: Option<String>,
 }
 
 impl TokenManager {
-    pub fn new(db_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        db_path: &str,
+        public_ip: Option<String>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let conn = Connection::open(db_path)?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS subscription_tokens (
@@ -36,6 +41,7 @@ impl TokenManager {
         )?;
         Ok(TokenManager {
             db: std::sync::Arc::new(Mutex::new(conn)),
+            public_ip,
         })
     }
 
@@ -190,11 +196,17 @@ impl TokenManager {
         token: &str,
     ) -> Result<Vec<ProxyConfig>, Box<dyn std::error::Error>> {
         let db = self.db.lock().map_err(|e| e.to_string())?;
-        let (revoked, expires_at): (bool, i64) = db
+        let (revoked, expires_at, config_ids_str): (bool, i64, String) = db
             .query_row(
-                "SELECT revoked, expires_at FROM subscription_tokens WHERE token = ?1",
+                "SELECT revoked, expires_at, config_ids FROM subscription_tokens WHERE token = ?1",
                 params![token],
-                |row| Ok((row.get::<_, i32>(0)? != 0, row.get(1)?)),
+                |row| {
+                    Ok((
+                        row.get::<_, i32>(0)? != 0,
+                        row.get(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
             )
             .map_err(|e| -> Box<dyn std::error::Error> {
                 match e {
@@ -213,6 +225,15 @@ impl TokenManager {
                 return Err("token expired".into());
             }
         }
-        Ok(crate::core::subscription::aggregator::aggregate_all())
+        let allowed_ids: Vec<String> = serde_json::from_str(&config_ids_str)?;
+        let allowed: Option<&[String]> = if allowed_ids.is_empty() {
+            None
+        } else {
+            Some(&allowed_ids)
+        };
+        Ok(aggregator::aggregate_all(
+            self.public_ip.as_deref(),
+            allowed,
+        ))
     }
 }

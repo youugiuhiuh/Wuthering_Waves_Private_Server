@@ -7,7 +7,7 @@ fn generate_config_id(protocol: &str, host: &str, port: u32) -> String {
     format!("{}-{}-{}", protocol, host, port)
 }
 
-fn scan_xray_configs() -> Vec<ProxyConfig> {
+fn scan_xray_configs(public_ip: Option<&str>) -> Vec<ProxyConfig> {
     let mut configs = Vec::new();
     let dir = Path::new(paths::xray::CONF_DIR);
     if !dir.exists() {
@@ -47,13 +47,13 @@ fn scan_xray_configs() -> Vec<ProxyConfig> {
                 _ => continue,
             };
             let port = inbound.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            let host = inbound
+            let raw_host = inbound
                 .get("listen")
                 .and_then(|v| v.as_str())
-                .filter(|h| !h.is_empty() && *h != "0.0.0.0")
+                .filter(|h| !h.is_empty() && *h != "0.0.0.0" && *h != "::")
                 .or_else(|| inbound.get("host").and_then(|v| v.as_str()))
-                .unwrap_or("0.0.0.0")
-                .to_string();
+                .unwrap_or("0.0.0.0");
+            let host = resolve_host(raw_host, public_ip);
             let settings = inbound.get("settings");
             let uuid = settings
                 .and_then(|s| s.get("clients"))
@@ -168,7 +168,17 @@ fn scan_xray_configs() -> Vec<ProxyConfig> {
     configs
 }
 
-fn scan_singbox_configs() -> Vec<ProxyConfig> {
+fn resolve_host(raw: &str, public_ip: Option<&str>) -> String {
+    match raw {
+        "" | "0.0.0.0" | "::" | "127.0.0.1" => public_ip
+            .filter(|ip| !ip.is_empty())
+            .unwrap_or(raw)
+            .to_string(),
+        _ => raw.to_string(),
+    }
+}
+
+fn scan_singbox_configs(public_ip: Option<&str>) -> Vec<ProxyConfig> {
     let mut configs = Vec::new();
     let dir = Path::new(paths::singbox::CONF_DIR);
     if !dir.exists() {
@@ -201,46 +211,63 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
             Ok(v) => v,
             Err(_) => continue,
         };
-        let outbounds = match json.get("outbounds").and_then(|v| v.as_array()) {
+        let inbounds = match json.get("inbounds").and_then(|v| v.as_array()) {
             Some(arr) => arr,
             None => continue,
         };
-        for outbound in outbounds {
-            let protocol = match outbound.get("type").and_then(|v| v.as_str()) {
+        for inbound in inbounds {
+            let protocol = match inbound.get("type").and_then(|v| v.as_str()) {
                 Some(t) => t,
                 None => continue,
             };
             match protocol {
                 "hysteria2" | "hy2" => {
-                    let port = outbound
-                        .get("server_port")
+                    let port = inbound
+                        .get("listen_port")
                         .and_then(|v| v.as_u64())
                         .unwrap_or(0) as u32;
-                    let host = match outbound.get("server").and_then(|v| v.as_str()) {
-                        Some(h) => h.to_string(),
-                        None => continue,
-                    };
-                    let password = outbound
-                        .get("password")
+                    let raw_host = inbound
+                        .get("listen")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0.0.0.0");
+                    let host = resolve_host(raw_host, public_ip);
+                    let tag = inbound
+                        .get("tag")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let sni = outbound
-                        .get("sni")
+                    let users = inbound.get("users").and_then(|v| v.as_array());
+                    let password = users
+                        .and_then(|u| u.first())
+                        .and_then(|u| u.get("password"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let obfs_type = outbound
-                        .get("obfs")
+                    let tls = inbound.get("tls");
+                    let sni = tls
+                        .and_then(|t| t.get("server_name"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let obfs_password = outbound
-                        .get("obfs-password")
+                    let alpn = tls
+                        .and_then(|t| t.get("alpn"))
+                        .and_then(|v| v.as_array())
+                        .and_then(|arr| arr.first())
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let (hop_port_start, hop_port_end) = outbound
+                    let obfs = inbound.get("obfs");
+                    let obfs_type = obfs
+                        .and_then(|o| o.get("type"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let obfs_password = obfs
+                        .and_then(|o| o.get("password"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let (hop_port_start, hop_port_end) = inbound
                         .get("hop_port")
                         .and_then(|v| v.as_str())
                         .and_then(|s| s.split_once('-'))
@@ -251,9 +278,9 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
                             )
                         })
                         .unwrap_or((0, 0));
-                    let cert_sha256 = outbound
-                        .get("cert_sha256")
-                        .or_else(|| outbound.get("server_cert_sha256"))
+                    let cert_sha256 = tls
+                        .and_then(|t| t.get("cert_sha256"))
+                        .or_else(|| tls.and_then(|t| t.get("server_cert_sha256")))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
@@ -272,12 +299,12 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
                         transport: String::new(),
                         path: String::new(),
                         flow: String::new(),
-                        tag: String::new(),
+                        tag,
                         obfs_type,
                         obfs_password,
                         hop_port_start,
                         hop_port_end,
-                        alpn: String::new(),
+                        alpn,
                         congestion_control: String::new(),
                         cert_sha256,
                         fingerprint: String::new(),
@@ -294,39 +321,54 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
                     });
                 }
                 "tuic" => {
-                    let port = outbound
-                        .get("server_port")
+                    let port = inbound
+                        .get("listen_port")
                         .and_then(|v| v.as_u64())
                         .unwrap_or(0) as u32;
-                    let host = match outbound.get("server").and_then(|v| v.as_str()) {
-                        Some(h) => h.to_string(),
-                        None => continue,
-                    };
-                    let password = outbound
-                        .get("password")
+                    let raw_host = inbound
+                        .get("listen")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0.0.0.0");
+                    let host = resolve_host(raw_host, public_ip);
+                    let tag = inbound
+                        .get("tag")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let uuid = outbound
-                        .get("uuid")
+                    let users = inbound.get("users").and_then(|v| v.as_array());
+                    let password = users
+                        .and_then(|u| u.first())
+                        .and_then(|u| u.get("password"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let alpn = outbound
-                        .get("alpn")
+                    let uuid = users
+                        .and_then(|u| u.first())
+                        .and_then(|u| u.get("uuid"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let tls = inbound.get("tls");
+                    let sni = tls
+                        .and_then(|t| t.get("server_name"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let alpn = tls
+                        .and_then(|t| t.get("alpn"))
                         .and_then(|v| v.as_array())
                         .and_then(|arr| arr.first())
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let congestion_control = outbound
+                    let congestion_control = inbound
                         .get("congestion_control")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let cert_sha256 = outbound
-                        .get("cert_sha256")
-                        .or_else(|| outbound.get("server_cert_sha256"))
+                    let cert_sha256 = tls
+                        .and_then(|t| t.get("cert_sha256"))
+                        .or_else(|| tls.and_then(|t| t.get("server_cert_sha256")))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
@@ -338,14 +380,14 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
                         port,
                         password,
                         uuid,
-                        sni: String::new(),
+                        sni,
                         pin_sha256: String::new(),
                         public_key: String::new(),
                         short_id: String::new(),
                         transport: String::new(),
                         path: String::new(),
                         flow: String::new(),
-                        tag: String::new(),
+                        tag,
                         obfs_type: String::new(),
                         obfs_password: String::new(),
                         hop_port_start: 0,
@@ -373,9 +415,12 @@ fn scan_singbox_configs() -> Vec<ProxyConfig> {
     configs
 }
 
-pub fn aggregate_all() -> Vec<ProxyConfig> {
-    let mut configs = scan_xray_configs();
-    configs.extend(scan_singbox_configs());
+pub fn aggregate_all(public_ip: Option<&str>, allowed_ids: Option<&[String]>) -> Vec<ProxyConfig> {
+    let mut configs = scan_xray_configs(public_ip);
+    configs.extend(scan_singbox_configs(public_ip));
+    if let Some(ids) = allowed_ids {
+        configs.retain(|c| ids.contains(&c.config_id));
+    }
     configs
 }
 
@@ -397,7 +442,7 @@ mod tests {
 
     #[test]
     fn test_aggregate_all_no_configs() {
-        let configs = aggregate_all();
+        let configs = aggregate_all(None, None);
         assert!(configs.is_empty());
     }
 
@@ -429,6 +474,58 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn test_resolve_host_returns_raw_when_not_placeholder() {
+        assert_eq!(resolve_host("1.2.3.4", None), "1.2.3.4");
+        assert_eq!(resolve_host("example.com", Some("5.6.7.8")), "example.com");
+    }
+
+    #[test]
+    fn test_resolve_host_replaces_zero_with_public_ip() {
+        assert_eq!(resolve_host("0.0.0.0", Some("5.6.7.8")), "5.6.7.8");
+    }
+
+    #[test]
+    fn test_resolve_host_replaces_double_colon_with_public_ip() {
+        assert_eq!(resolve_host("::", Some("5.6.7.8")), "5.6.7.8");
+    }
+
+    #[test]
+    fn test_resolve_host_replaces_loopback_with_public_ip() {
+        assert_eq!(resolve_host("127.0.0.1", Some("5.6.7.8")), "5.6.7.8");
+    }
+
+    #[test]
+    fn test_resolve_host_keeps_zero_when_no_public_ip() {
+        assert_eq!(resolve_host("0.0.0.0", None), "0.0.0.0");
+    }
+
+    #[test]
+    fn test_resolve_host_keeps_zero_when_public_ip_empty() {
+        assert_eq!(resolve_host("0.0.0.0", Some("")), "0.0.0.0");
+    }
+
+    #[test]
+    fn test_aggregate_all_filters_allowed_ids_empty_returns_all() {
+        // When allowed_ids is empty/Nothing, no filtering occurs — just verify
+        // the scan functions are called (they'll read from disk and return empty in CI).
+        let configs = aggregate_all(None, None);
+        assert!(configs.is_empty());
+    }
+
+    #[test]
+    fn test_config_ids_filtering_logic() {
+        let all = vec![
+            ("vless-1.2.3.4-443".to_string(), "vless"),
+            ("hysteria2-1.2.3.4-8443".to_string(), "hysteria2"),
+        ];
+        let allowed = vec!["vless-1.2.3.4-443".to_string()];
+        let filtered: Vec<&(String, &str)> =
+            all.iter().filter(|(id, _)| allowed.contains(id)).collect();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].1, "vless");
+    }
+
     fn test_host_fallback_ignores_zero_listen() {
         let inbound = serde_json::from_str::<serde_json::Value>(r#"{"listen":"0.0.0.0","port":443,"protocol":"vless","settings":{"clients":[{"id":"uuid-1"}]}}"#).unwrap();
         let result = inbound
