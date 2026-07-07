@@ -72,6 +72,28 @@ proxies:
     ports: {{.HopPortStart}}-{{.HopPortEnd}}
 {{- end}}
 {{end}}
+
+proxy-groups:
+  - name: Proxy
+    type: select
+    proxies:
+      - Auto
+{{- range .}}
+      - "{{.Tag}}"
+{{- end}}
+  - name: Auto
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    proxies:
+{{- range .}}
+      - "{{.Tag}}"
+{{- end}}
+
+rules:
+  - GEOIP,CN,DIRECT
+  - MATCH,Proxy
 `
 
 func protocolClash(proto string) string {

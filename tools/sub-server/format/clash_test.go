@@ -36,6 +36,35 @@ func TestToClashYAML_HasProxies(t *testing.T) {
 	}
 }
 
+func TestToClashYAML_HasProxyGroups(t *testing.T) {
+	cfg := &pb.ProxyConfig{
+		Protocol: "vless",
+		Host:     "example.com",
+		Port:     443,
+		Uuid:     "uuid",
+		Tag:      "test-node",
+	}
+	yaml, err := ToClashYAML([]*pb.ProxyConfig{cfg})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(yaml, "proxy-groups:") {
+		t.Error("should have proxy-groups section")
+	}
+	if !strings.Contains(yaml, "type: select") {
+		t.Error("should have select group")
+	}
+	if !strings.Contains(yaml, "type: url-test") {
+		t.Error("should have url-test group")
+	}
+	if !strings.Contains(yaml, "GEOIP,CN,DIRECT") {
+		t.Error("should have geoip rule")
+	}
+	if !strings.Contains(yaml, "MATCH,Proxy") {
+		t.Error("should have MATCH rule")
+	}
+}
+
 func TestToClashYAML_Hysteria2(t *testing.T) {
 	cfg := &pb.ProxyConfig{
 		Protocol:     "hysteria2",
