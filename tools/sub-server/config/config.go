@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
 const defaultConfigPath = "/etc/wwps/sub-server/config.json"
@@ -20,14 +19,8 @@ type Config struct {
 }
 
 func defaultConfig() *Config {
-	exe, _ := os.Executable()
-	cfgDir := filepath.Dir(exe)
-	defaultCert := cfgDir + "/certs/fullchain.pem"
-	defaultKey := cfgDir + "/certs/privkey.pem"
 	return &Config{
 		ListenAddr: ":8443",
-		TLSCert:    defaultCert,
-		TLSKey:     defaultKey,
 		AegisGrpc:  "unix:///var/run/aegis/sub.sock",
 		RateLimit:  10,
 		CacheTTL:   60,
