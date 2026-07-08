@@ -1,12 +1,14 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use sha2::Digest;
 
+use crate::adapters::common::MessageContent;
 use crate::app::auth;
 use crate::app::state::AppState;
 use crate::shared::handlers::message::{self, MessageAction};
 use crate::shared::types::{
-    BotCommand, BotEvent, CallbackEvent, CommandEvent, HandlerAction, MessageEvent,
+    BotCommand, BotEvent, CallbackEvent, CommandEvent, HandlerAction, MessageEvent, TimeoutStatus,
 };
 use crate::shared::{commands, destruct, handlers, state_ops};
 
@@ -135,7 +137,147 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
             .await;
         }
     }
+
+    let file_timeout = Duration::from_secs(180);
+    if state
+        .take_security_file_input_status(&msg.target.0, file_timeout)
+        .await
+        == TimeoutStatus::Active
+    {
+        if let Some(ref fid) = msg.file_id {
+            const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+            let content = msg.adapter.download_file(fid).await?;
+            if content.len() as u64 > MAX_FILE_SIZE {
+                msg.adapter
+                    .send_message(
+                        &msg.target,
+                        MessageContent {
+                            text: rust_i18n::t!(
+                                "bot_commands.file_too_big",
+                                "0" => content.len() as u64,
+                                "1" => MAX_FILE_SIZE
+                            )
+                            .into(),
+                            markup: None,
+                        },
+                    )
+                    .await?;
+                return Ok(());
+            }
+            let hash = hex::encode(sha2::Sha256::digest(&content));
+            state.set_self_destruct_key_hash(Some(hash.clone())).await;
+            if let Err(e) =
+                crate::bootstrap::save_self_destruct_key_hash_to_config(Some(hash.clone()))
+            {
+                log::error!("保存安全文件雜湊失敗: {}", e);
+            }
+            let file_display = msg
+                .file_name
+                .as_ref()
+                .map(|n| format!("{} | {}", n, &hash[..8]))
+                .unwrap_or_else(|| hash[..8].to_string());
+            msg.adapter
+                .send_message(
+                    &msg.target,
+                    MessageContent {
+                        text: rust_i18n::t!(
+                            "bot_commands.security_file_set",
+                            "0" => file_display
+                        )
+                        .into(),
+                        markup: None,
+                    },
+                )
+                .await?;
+        }
+        return Ok(());
+    }
+
     Ok(())
+}
+
+#[cfg(test)]
+mod dispatch_security_file_tests {
+    use super::*;
+
+    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use crate::core::security::self_destruct::SelfDestructExecutor;
+    use crate::core::totp::TotpManager;
+    use crate::shared::types::MessageEvent;
+
+    use async_trait::async_trait;
+    use futures_util::future::BoxFuture;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    struct TestAdapter;
+    #[async_trait]
+    impl BotAdapter for TestAdapter {
+        fn platform(&self) -> Platform {
+            Platform::Telegram
+        }
+        async fn send_message(
+            &self,
+            _t: &TargetId,
+            _c: MessageContent,
+        ) -> anyhow::Result<MessageId> {
+            Ok(MessageId("0".into()))
+        }
+        async fn edit_message(
+            &self,
+            _t: &TargetId,
+            _m: &MessageId,
+            _c: MessageContent,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn delete_message(&self, _t: &TargetId, _m: &MessageId) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn download_file(&self, fid: &str) -> anyhow::Result<Vec<u8>> {
+            Ok(fid.as_bytes().to_vec())
+        }
+        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
+            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        }
+    }
+
+    struct TestExecutor;
+    impl SelfDestructExecutor for TestExecutor {
+        fn execute(&self) -> BoxFuture<'static, anyhow::Result<()>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    #[tokio::test]
+    async fn file_captured_when_pending_sets_hash() {
+        let secret = TotpManager::generate_new_secret();
+        let state = Arc::new(AppState::new(
+            42,
+            TotpManager::new(&secrecy::SecretString::from(secret)).unwrap(),
+            Arc::new(TestExecutor),
+            None,
+            600,
+            Arc::new(TestAdapter),
+        ));
+        state.record_auth_success(42, Instant::now()).await;
+        state
+            .start_security_file_input("42".into(), Instant::now())
+            .await;
+
+        let msg = MessageEvent {
+            adapter: Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
+            target: TargetId("42".into()),
+            user_id: 42,
+            text: None,
+            file_id: Some("test-file".into()),
+            file_name: Some("test.txt".into()),
+            reply_to_text: None,
+        };
+        handle_message(msg, &state).await.unwrap();
+        let hash = state.self_destruct_key_hash().await;
+        assert!(hash.is_some(), "hash should be set after file capture");
+    }
 }
 
 #[cfg(test)]
