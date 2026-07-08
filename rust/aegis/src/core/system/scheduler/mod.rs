@@ -416,6 +416,7 @@ mod tests {
     async fn add_new_task_rejects_invalid_task_without_persisting_state() {
         let tempdir = tempdir().unwrap();
         let state_path = tempdir.path().join("scheduler_state.json");
+        use crate::adapters::common::PlatformCapabilities;
         use crate::adapters::common::{MessageContent, Platform};
         use async_trait::async_trait;
 
@@ -446,6 +447,12 @@ mod tests {
                 _msg_id: &crate::adapters::common::MessageId,
             ) -> Result<()> {
                 Ok(())
+            }
+            async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
+                Ok(Vec::new())
+            }
+            fn capabilities(&self) -> PlatformCapabilities {
+                PlatformCapabilities::TELEGRAM
             }
         }
 

@@ -1,6 +1,9 @@
-use crate::adapters::common::{BotAdapter, Markup, MessageContent, MessageId, Platform, TargetId};
+use crate::adapters::common::{
+    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+};
 use anyhow::Result;
 use async_trait::async_trait;
+use teloxide::net::Download;
 use teloxide::prelude::*;
 use teloxide::types::{ChatId, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 
@@ -63,6 +66,31 @@ impl BotAdapter for TelegramAdapter {
         let teloxide_id = teloxide::types::MessageId(msg_id.0.parse::<i32>()?);
         self.bot.delete_message(chat_id, teloxide_id).await?;
         Ok(())
+    }
+
+    async fn answer_callback(
+        &self,
+        _target: &TargetId,
+        callback_id: &str,
+        text: Option<String>,
+    ) -> Result<()> {
+        let mut answer = self.bot.answer_callback_query(callback_id);
+        if let Some(ref t) = text {
+            answer = answer.text(t);
+        }
+        answer.await?;
+        Ok(())
+    }
+
+    async fn download_file(&self, file_id: &str) -> Result<Vec<u8>> {
+        let file = self.bot.get_file(file_id).await?;
+        let mut buf = Vec::with_capacity(file.size as usize);
+        self.bot.download_file(&file.path, &mut buf).await?;
+        Ok(buf)
+    }
+
+    fn capabilities(&self) -> PlatformCapabilities {
+        PlatformCapabilities::TELEGRAM
     }
 }
 

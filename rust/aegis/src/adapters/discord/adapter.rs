@@ -1,4 +1,6 @@
-use crate::adapters::common::{BotAdapter, Markup, MessageContent, MessageId, Platform, TargetId};
+use crate::adapters::common::{
+    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serenity::all::{ChannelId, MessageId as SerenityMessageId};
@@ -67,6 +69,31 @@ impl BotAdapter for DiscordAdapter {
             .await
             .context("删除 Discord 消息失败")?;
         Ok(())
+    }
+
+    async fn answer_callback(
+        &self,
+        _target: &TargetId,
+        _callback_id: &str,
+        _text: Option<String>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn download_file(&self, file_id: &str) -> Result<Vec<u8>> {
+        let response = reqwest::get(file_id).await?;
+        let bytes = response.bytes().await?;
+        Ok(bytes.to_vec())
+    }
+
+    fn capabilities(&self) -> PlatformCapabilities {
+        PlatformCapabilities {
+            can_edit_message: true,
+            can_delete_message: true,
+            has_inline_keyboard: true,
+            has_slash_commands: true,
+            has_file_transfer: false,
+        }
     }
 }
 
