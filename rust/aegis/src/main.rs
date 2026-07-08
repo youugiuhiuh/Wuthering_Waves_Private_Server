@@ -20,7 +20,6 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -235,7 +234,7 @@ mod tests {
         });
 
         aegis::core::security::self_destruct::trigger(executor);
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
