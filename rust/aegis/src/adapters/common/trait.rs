@@ -1,3 +1,5 @@
+use crate::core::i18n::Lang;
+
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -74,6 +76,12 @@ pub trait BotAdapter: Send + Sync {
 
     async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
         anyhow::bail!("platform does not support file download")
+    }
+
+    /// Apply OS-level locale/system settings for a chosen language.
+    /// Default no-op; only the Telegram adapter performs system operations.
+    async fn set_system_locale(&self, _lang: Lang) -> Result<()> {
+        Ok(())
     }
 
     fn capabilities(&self) -> PlatformCapabilities;

@@ -6,17 +6,16 @@ use crate::shared::types::CallbackEvent;
 use std::time::Instant;
 
 #[allow(dead_code)]
-pub async fn intercept(cb: &CallbackEvent, state: &AppState) {
+pub async fn intercept(cb: &CallbackEvent, state: &AppState) -> Option<String> {
     let data = cb.data.as_str();
 
     if data.starts_with("lang:") {
-        handle_lang(cb, state).await;
-        return;
+        return handle_lang(cb, state).await;
     }
 
     if data.starts_with("set_timeout:") {
         handle_set_timeout(cb, state).await;
-        return;
+        return None;
     }
 
     if data == "a_warp_add_input" {
@@ -24,6 +23,8 @@ pub async fn intercept(cb: &CallbackEvent, state: &AppState) {
             .start_warp_input(cb.target.0.clone(), Instant::now())
             .await;
     }
+
+    None
 }
 
 async fn handle_set_timeout(cb: &CallbackEvent, state: &AppState) {
@@ -42,19 +43,24 @@ async fn handle_set_timeout(cb: &CallbackEvent, state: &AppState) {
     }
 }
 
-async fn handle_lang(cb: &CallbackEvent, state: &AppState) {
+async fn handle_lang(cb: &CallbackEvent, state: &AppState) -> Option<String> {
     let lang = match cb.data.as_str() {
         "lang:zh" => i18n::Lang::Zh,
         "lang:en" => i18n::Lang::En,
         "lang:ja" => i18n::Lang::Ja,
-        _ => return,
+        _ => return None,
     };
     i18n::set_lang(lang);
     state.set_lang(lang).await;
+    if let Err(e) = crate::bootstrap::save_lang_to_config(lang) {
+        log::error!("保存语言配置失败: {}", e);
+    }
     state.mark_lang_configured().await;
     i18n::mark_lang_configured();
-    // Note: timedatectl and apt-daily timer stay in Telegram layer
-    // (system operations that don't belong in shared)
+    if let Err(e) = cb.adapter.set_system_locale(lang).await {
+        log::error!("设置系统语言环境失败: {}", e);
+    }
+    Some("m_main".into())
 }
 
 #[cfg(test)]

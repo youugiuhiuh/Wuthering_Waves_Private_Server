@@ -40,9 +40,12 @@ pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<()> {
         BotEvent::Message(msg) => {
             handle_message(msg, state).await?;
         }
-        BotEvent::Callback(cb) => {
-            // State operations (lang, set_timeout, warp input)
-            state_ops::intercept(&cb, state).await;
+        BotEvent::Callback(mut cb) => {
+            // State operations (lang, set_timeout, warp input). The lang branch
+            // may return a redirect (e.g. re-show main menu).
+            if let Some(next) = state_ops::intercept(&cb, state).await {
+                cb = CallbackEvent { data: next, ..cb };
+            }
             // Shared callback dispatch (from Phase A), following redirects for
             // multi-step menu flows.
             let mut current = cb;

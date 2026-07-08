@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
+use aegis::core::i18n;
 use aegis::core::paths::xray::{BIN, PQ_PUB_PATH, PQ_SEED_PATH};
 use aegis::core::security::SecurityManager;
 
@@ -284,6 +285,19 @@ pub async fn verify_integrity() -> Result<()> {
     let hash = hex::encode(hasher.finalize());
 
     eprintln!("Binary Integrity Hash: {}", hash);
+    Ok(())
+}
+
+/// Persist the chosen language to the encrypted config file.
+#[allow(dead_code)]
+pub fn save_lang_to_config(lang: i18n::Lang) -> Result<()> {
+    let config_dir = config_dir();
+    let _ = SecurityManager::new(&config_dir.join(KEY_FILE))?;
+    let path = config_dir.join(CONFIG_FILE);
+    let config_data = fs::read(&path)?;
+    let mut encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
+    encrypted_config.lang = Some(lang.as_str().to_string());
+    fs::write(path, serde_json::to_vec(&encrypted_config)?)?;
     Ok(())
 }
 
