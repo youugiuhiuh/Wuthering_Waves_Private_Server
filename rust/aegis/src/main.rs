@@ -228,8 +228,6 @@ async fn handle_command(
     Ok(())
 }
 
-const MAX_INPUT_LENGTH: usize = 4096;
-
 async fn save_config(state: &Arc<AppState>) -> Result<()> {
     let config_dir = config_dir();
     let _ = SecurityManager::new(&config_dir.join(KEY_FILE))?;

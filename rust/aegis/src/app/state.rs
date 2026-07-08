@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 use aegis::adapters::common::BotAdapter;
@@ -9,6 +10,8 @@ use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::system::scheduler::task_types::TaskType;
 use aegis::core::totp::TotpManager;
+use aegis::shared::handlers::message::MessageState;
+use aegis::shared::types::TimeoutStatus;
 
 const RECENT_AUTH_WINDOW_SECS: u64 = 5 * 60;
 
@@ -32,13 +35,6 @@ pub enum ScheduleFrequency {
 pub enum AuthFailureOutcome {
     Invalid { attempts: u32, max_attempts: u32 },
     Locked { duration: Duration },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TimeoutStatus {
-    NotTracked,
-    Active,
-    Expired,
 }
 
 #[derive(Debug, Clone)]
@@ -439,6 +435,21 @@ impl AppState {
     ) -> Option<R> {
         let mut inputs = self.pending_schedule_inputs.lock().await;
         inputs.get_mut(chat_id).map(f)
+    }
+}
+
+#[async_trait]
+impl MessageState for AppState {
+    async fn schedule_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
+        self.schedule_timeout_status(chat_id, timeout).await
+    }
+
+    async fn remove_schedule_input(&self, chat_id: &str) {
+        self.remove_schedule_input(chat_id).await
+    }
+
+    async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
+        self.take_warp_input_status(chat_id, timeout).await
     }
 }
 

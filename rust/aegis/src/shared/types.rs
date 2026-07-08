@@ -4,6 +4,13 @@ use anyhow::Result;
 
 use crate::adapters::common::{BotAdapter, MessageId, TargetId};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeoutStatus {
+    NotTracked,
+    Active,
+    Expired,
+}
+
 pub struct CallbackEvent {
     pub adapter: Arc<dyn BotAdapter>,
     pub target: TargetId,

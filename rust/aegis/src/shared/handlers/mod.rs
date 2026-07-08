@@ -1,13 +1,6 @@
 pub(crate) mod callback;
+pub mod message;
 pub mod menu;
-// Additional handler modules will be added by Tasks 4–11:
-// pub(crate) mod log;
-// pub(crate) mod message;
-// pub(crate) mod ops;
-// pub(crate) mod schedule;
-// pub(crate) mod singbox;
-// pub(crate) mod warp;
-// pub(crate) mod xray;
 
 use crate::shared::types::{CallbackEvent, DispatchResult, HandlerAction};
 

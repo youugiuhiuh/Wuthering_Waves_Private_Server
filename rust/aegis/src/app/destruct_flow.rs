@@ -7,7 +7,9 @@ use teloxide::net::Download;
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
 
-use crate::app::state::{AppState, DestructStep, TimeoutStatus};
+use aegis::shared::types::TimeoutStatus;
+
+use crate::app::state::{AppState, DestructStep};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DestructMessageAction {

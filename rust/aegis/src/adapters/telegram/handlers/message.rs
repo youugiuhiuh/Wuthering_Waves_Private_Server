@@ -1,16 +1,15 @@
-use crate::MAX_INPUT_LENGTH;
-use crate::app::destruct_flow;
-use crate::app::destruct_flow::MessageFlowOutcome;
-use crate::app::state::{AppState, TimeoutStatus};
 use aegis::adapters::common::TargetId;
-use aegis::core::xray::config::ConfigManager;
+use aegis::shared::handlers::message::MessageAction;
 use rust_i18n::t;
 use std::sync::Arc;
-use std::time::Duration;
 use teloxide::Bot;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Message, Requester, ResponseResult};
 use teloxide::types::ParseMode;
+
+use crate::app::destruct_flow;
+use crate::app::destruct_flow::MessageFlowOutcome;
+use crate::app::state::AppState;
 
 pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> ResponseResult<()> {
     let chat_id = msg.chat.id;
@@ -26,85 +25,24 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
         return Ok(());
     }
 
-    if let Some(text) = msg.text()
-        && text.len() > MAX_INPUT_LENGTH
+    let target = TargetId(chat_id.0.to_string());
+    let text = msg.text();
+    let has_file = msg.document().is_some() || msg.photo().is_some();
+
+    match aegis::shared::handlers::message::handle_message(
+        &*state.adapter,
+        &target,
+        text,
+        has_file,
+        &*state as &dyn aegis::shared::handlers::message::MessageState,
+    )
+    .await
     {
-        bot.send_message(
-            chat_id,
-            t!("message.input_too_long", "0" => MAX_INPUT_LENGTH.to_string()),
-        )
-        .parse_mode(ParseMode::Html)
-        .await?;
-        return Ok(());
-    }
-
-    let chat_id_str = chat_id.0.to_string();
-    match state
-        .schedule_timeout_status(&chat_id_str, Duration::from_secs(180))
-        .await
-    {
-        TimeoutStatus::Expired => {
-            state.remove_schedule_input(&chat_id_str).await;
-            bot.send_message(chat_id, t!("schedule.input_timeout"))
-                .parse_mode(ParseMode::Html)
-                .await?;
-            return Ok(());
+        Ok(MessageAction::Handled) => return Ok(()),
+        Ok(MessageAction::NeedsDestruct) => {}
+        Err(e) => {
+            log::error!("Shared message handler error: {:?}", e);
         }
-        TimeoutStatus::Active => {
-            if msg.text().is_some() || msg.document().is_some() || msg.photo().is_some() {
-                bot.send_message(chat_id, t!("schedule.input_prompt"))
-                    .parse_mode(ParseMode::Html)
-                    .await?;
-            }
-            return Ok(());
-        }
-        TimeoutStatus::NotTracked => {}
-    }
-
-    match state
-        .take_warp_input_status(&chat_id_str, Duration::from_secs(60))
-        .await
-    {
-        TimeoutStatus::Expired => {
-            bot.send_message(chat_id, t!("message.warp_input_timeout"))
-                .parse_mode(ParseMode::Html)
-                .await?;
-            return Ok(());
-        }
-        TimeoutStatus::Active => {
-            if let Some(text) = msg.text() {
-                let rules: Vec<String> = text
-                    .split([',', '，', '\n'])
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-
-                if rules.is_empty() {
-                    bot.send_message(chat_id, t!("message.warp_input_empty"))
-                        .parse_mode(ParseMode::Html)
-                        .await?;
-                    return Ok(());
-                }
-
-                match ConfigManager::add_warp_routing_rules(rules).await {
-                    Ok(_) => {
-                        bot.send_message(chat_id, t!("message.warp_rule_added"))
-                            .parse_mode(ParseMode::Html)
-                            .await?;
-                    }
-                    Err(e) => {
-                        bot.send_message(
-                            chat_id,
-                            t!("message.warp_add_fail", "0" => e.to_string()),
-                        )
-                        .parse_mode(ParseMode::Html)
-                        .await?;
-                    }
-                }
-            }
-            return Ok(());
-        }
-        TimeoutStatus::NotTracked => {}
     }
 
     if destruct_flow::handle_message_flow(&bot, &msg, user_id, &state).await?
@@ -116,7 +54,6 @@ pub async fn handle_message(bot: Bot, msg: Message, state: Arc<AppState>) -> Res
     if let Some(text) = msg.text() {
         let code = text.trim();
         if crate::looks_like_totp_code(code) && !state.is_authorized(user_id).await {
-            let target = TargetId(chat_id.0.to_string());
             let _ = crate::process_auth_code(&state, &target, user_id, code).await;
             return Ok(());
         }

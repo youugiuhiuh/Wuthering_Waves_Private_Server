@@ -1,6 +1,8 @@
 use crate::app::destruct_flow;
 use crate::app::destruct_flow::MessageFlowOutcome;
-use crate::app::state::{AppState, TimeoutStatus};
+use aegis::shared::types::TimeoutStatus;
+
+use crate::app::state::AppState;
 use crate::save_lang_to_config;
 use aegis::core::i18n;
 use futures_util::future::BoxFuture;
