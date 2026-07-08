@@ -238,11 +238,12 @@ pub fn parse_to_event(
         {
             return Some(event(&format!("u_batch_exec:{}", params)));
         }
-        // xray del <name> → cfg_del
-        if let Some(name) = text_lower.strip_prefix("xray del ") {
+        // xray delete/del <name> → cfg_del
+        // Check "delete" before "del" to avoid matching extra chars
+        if let Some(name) = text_lower.strip_prefix("xray delete ") {
             return Some(event(&format!("cfg_del:{}", name)));
         }
-        if let Some(name) = text_lower.strip_prefix("xray delete ") {
+        if let Some(name) = text_lower.strip_prefix("xray del ") {
             return Some(event(&format!("cfg_del:{}", name)));
         }
         // xray routing → routing menu
