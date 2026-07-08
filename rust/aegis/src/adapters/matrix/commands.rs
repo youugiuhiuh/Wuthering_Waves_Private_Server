@@ -1,4 +1,7 @@
-use aegis::shared::types::BotCommand;
+use std::sync::Arc;
+
+use aegis::adapters::common::{BotAdapter, MessageId, TargetId};
+use aegis::shared::types::{BotCommand, BotEvent, CallbackEvent, CommandEvent};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
@@ -166,6 +169,95 @@ pub fn parse_to_bot_command(text: &str) -> Option<BotCommand> {
     None
 }
 
+pub fn parse_to_event(
+    text: &str,
+    adapter: Arc<dyn BotAdapter>,
+    target: &TargetId,
+    user_id: i64,
+) -> Option<BotEvent> {
+    let text = text.trim();
+
+    // Try basic BotCommand commands first
+    if let Some(cmd) = parse_to_bot_command(text) {
+        return Some(BotEvent::Command(CommandEvent {
+            adapter,
+            target: target.clone(),
+            user_id,
+            command: cmd,
+        }));
+    }
+
+    let text_lower = text.to_lowercase();
+    let target = target.clone();
+
+    let event = |data: &str| -> BotEvent {
+        BotEvent::Callback(CallbackEvent {
+            adapter,
+            target,
+            user_id: user_id.to_string(),
+            msg_id: MessageId("0".into()),
+            data: data.to_string(),
+            callback_id: format!("synth:{}", data),
+            session_timeout_secs: 600,
+        })
+    };
+
+    // ops subcommands — 1:1 mapping to callback data
+    if let Some(data) = text_lower.strip_prefix("ops ") {
+        return Some(match data {
+            "reload" => event("a_reload"),
+            "upgrade" => event("a_upgrade"),
+            "fw" | "firewall" => event("a_fw"),
+            "geo" => event("a_geo"),
+            "bbr3" => event("a_bbr3"),
+            "maintenance" | "tune" => event("a_tune"),
+            _ => return None,
+        });
+    }
+
+    // warp subcommands — 1:1 mapping
+    if let Some(data) = text_lower.strip_prefix("warp ") {
+        return Some(match data {
+            "status" => event("a_warp_status"),
+            "install" => event("a_inst_warp"),
+            "uninstall" => event("a_warp_uninstall"),
+            _ => return None,
+        });
+    }
+
+    // destruct — start the flow
+    if text_lower == "destruct" {
+        return Some(event("a_destroy_ask"));
+    }
+
+    // xray — show menu
+    if text_lower.starts_with("xray ") || text_lower == "xray" {
+        return Some(event("m_xray_mgmt"));
+    }
+
+    // singbox install shortcut
+    if let Some(cmd) = text_lower.strip_prefix("sb ") {
+        return match cmd {
+            "install" | "singbox install" => Some(event("sb_install")),
+            _ => Some(event("m_singbox_mgmt")),
+        };
+    }
+    if text_lower == "singbox" || text_lower == "sb" {
+        return Some(event("m_singbox_mgmt"));
+    }
+
+    // schedule — show menu
+    if text_lower.starts_with("schedule ")
+        || text_lower == "schedule"
+        || text_lower.starts_with("sched ")
+        || text_lower == "sched"
+    {
+        return Some(event("m_sched"));
+    }
+
+    None
+}
+
 fn parse_warp(args: &[&str]) -> Command {
     match args.first().map(|s| s.to_lowercase()).as_deref() {
         None | Some("status") => Command::Warp(WarpSubCommand::Status),
@@ -223,5 +315,125 @@ mod tests {
     #[test]
     fn parse_empty() {
         assert!(matches!(parse(""), Command::Unknown(_)));
+    }
+}
+
+#[cfg(test)]
+mod parse_to_event_tests {
+    use super::*;
+    use aegis::adapters::common::{
+        BotAdapter, MockBotAdapter, Platform, PlatformCapabilities, TargetId,
+    };
+    use std::sync::Arc;
+
+    fn test_adapter() -> Arc<dyn BotAdapter> {
+        let mut m = MockBotAdapter::new();
+        m.expect_platform().returning(|| Platform::Matrix);
+        m.expect_capabilities().returning(|| PlatformCapabilities {
+            can_edit_message: false,
+            can_delete_message: false,
+            has_inline_keyboard: false,
+            has_slash_commands: false,
+            has_file_transfer: false,
+        });
+        Arc::new(m)
+    }
+
+    #[test]
+    fn parse_help_returns_command() {
+        let result = parse_to_event(
+            "/help",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Command(CommandEvent {
+                command: BotCommand::Help,
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn parse_ops_reload_returns_callback() {
+        let result = parse_to_event(
+            "ops reload",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "a_reload"
+        ));
+    }
+
+    #[test]
+    fn parse_warp_status_returns_callback() {
+        let result = parse_to_event(
+            "warp status",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "a_warp_status"
+        ));
+    }
+
+    #[test]
+    fn parse_destruct_returns_callback() {
+        let result = parse_to_event(
+            "destruct",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "a_destroy_ask"
+        ));
+    }
+
+    #[test]
+    fn parse_xray_returns_menu_callback() {
+        let result = parse_to_event(
+            "xray status",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_xray_mgmt"
+        ));
+    }
+
+    #[test]
+    fn parse_schedule_returns_menu_callback() {
+        let result = parse_to_event(
+            "schedule list",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_sched"
+        ));
+    }
+
+    #[test]
+    fn parse_unknown_text_returns_none() {
+        let result = parse_to_event(
+            "some random text",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(result.is_none());
     }
 }
