@@ -1,6 +1,6 @@
 use crate::adapters::common::routing::is_sensitive;
 use crate::adapters::common::{
-    BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -26,6 +26,25 @@ impl MatrixAdapter {
     pub fn inner_room(&self) -> &Room {
         &self.room
     }
+}
+
+/// Render inline keyboard markup as a text command list for Matrix clients
+/// that don't support inline keyboards.
+fn render_markup_buttons(base: String, markup: &Markup) -> String {
+    let mut body = base;
+    let mut lines: Vec<String> = Vec::new();
+    let mut idx = 1;
+    for row in &markup.buttons {
+        for btn in row {
+            lines.push(format!("{}. {} — send: `{}`", idx, btn.text, btn.data));
+            idx += 1;
+        }
+    }
+    if !lines.is_empty() {
+        body.push_str("\n\n📋 **可用操作:**\n");
+        body.push_str(&lines.join("\n"));
+    }
+    body
 }
 
 #[cfg(test)]
@@ -60,6 +79,47 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod matrix_adapter_tests {
+    use crate::adapters::common::{InlineButton, Markup};
+
+    #[test]
+    fn send_message_with_markup_appends_command_list() {
+        let markup = Markup {
+            buttons: vec![
+                vec![
+                    InlineButton {
+                        text: "Search".into(),
+                        data: "/search".into(),
+                    },
+                    InlineButton {
+                        text: "Help".into(),
+                        data: "/help".into(),
+                    },
+                ],
+                vec![InlineButton {
+                    text: "Cancel".into(),
+                    data: "/cancel".into(),
+                }],
+            ],
+        };
+        let result = super::render_markup_buttons("Hello".to_string(), &markup);
+        assert!(result.contains("Hello"));
+        assert!(result.contains("1. Search"));
+        assert!(result.contains("/search"));
+        assert!(result.contains("2. Help"));
+        assert!(result.contains("/help"));
+        assert!(result.contains("3. Cancel"));
+        assert!(result.contains("/cancel"));
+    }
+
+    #[test]
+    fn send_message_without_markup_returns_plain_text() {
+        let result = super::render_markup_buttons("plain".into(), &Markup { buttons: vec![] });
+        assert_eq!(result, "plain");
+    }
+}
+
 #[async_trait]
 impl BotAdapter for MatrixAdapter {
     fn platform(&self) -> Platform {
@@ -67,8 +127,13 @@ impl BotAdapter for MatrixAdapter {
     }
 
     async fn send_message(&self, _target: &TargetId, content: MessageContent) -> Result<MessageId> {
-        if is_sensitive(&content.text) {
-            let data = content.text.into_bytes();
+        let body_text = match &content.markup {
+            Some(markup) => render_markup_buttons(content.text, markup),
+            None => content.text,
+        };
+
+        if is_sensitive(&body_text) {
+            let data = body_text.into_bytes();
             let response = self
                 .room
                 .send_attachment(
@@ -80,7 +145,7 @@ impl BotAdapter for MatrixAdapter {
                 .await?;
             Ok(MessageId(response.event_id.to_string()))
         } else {
-            let body = RoomMessageEventContent::text_plain(&content.text);
+            let body = RoomMessageEventContent::text_plain(&body_text);
             let response = self.room.send(body).await?;
             Ok(MessageId(response.response.event_id.to_string()))
         }
