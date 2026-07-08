@@ -60,6 +60,17 @@ async fn handle_lang(cb: &CallbackEvent, state: &AppState) -> Option<String> {
     if let Err(e) = cb.adapter.set_system_locale(lang).await {
         log::error!("设置系统语言环境失败: {}", e);
     }
+    if let Err(e) = cb
+        .adapter
+        .answer_callback(
+            &cb.target,
+            &cb.callback_id,
+            Some(rust_i18n::t!("lang.switched", "0" => lang.as_str()).to_string()),
+        )
+        .await
+    {
+        log::error!("语言切换回调确认失败: {}", e);
+    }
     Some("m_main".into())
 }
 

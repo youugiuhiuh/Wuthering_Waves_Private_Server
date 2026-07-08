@@ -243,6 +243,7 @@ mod tests {
             user_id: 42,
             text,
             file_id: None,
+            file_name: None,
             reply_to_text: None,
         })
     }

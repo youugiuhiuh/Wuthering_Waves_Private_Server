@@ -67,6 +67,7 @@ pub struct MessageEvent {
     pub user_id: i64,
     pub text: Option<String>,
     pub file_id: Option<String>,
+    pub file_name: Option<String>,
     pub reply_to_text: Option<String>,
 }
 
@@ -98,6 +99,7 @@ mod event_tests {
             user_id: 42,
             text: Some("hello".into()),
             file_id: None,
+            file_name: None,
             reply_to_text: None,
         };
     }

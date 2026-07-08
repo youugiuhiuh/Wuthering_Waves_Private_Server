@@ -135,6 +135,7 @@ pub async fn run(
                             user_id,
                             text: Some(text),
                             file_id: None,
+                            file_name: None,
                             reply_to_text: None,
                         })
                     };
@@ -189,6 +190,11 @@ pub async fn run(
                     file_id: msg.document().map(|d| d.file.id.clone()).or_else(|| {
                         msg.photo()
                             .and_then(|p| p.last().map(|ph| ph.file.id.clone()))
+                    }),
+                    file_name: msg.document().and_then(|d| d.file_name.clone()).or_else(|| {
+                        msg.photo().map(|_| {
+                            rust_i18n::t!("destruct.image_label").to_string()
+                        })
                     }),
                     reply_to_text: msg
                         .reply_to_message()

@@ -237,7 +237,9 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
 
                 match re_action {
                     DestructMessageAction::FileVerified { ref hash_short } => {
-                        let file_display = hash_short.clone();
+                        let file_display = msg.file_name.as_ref()
+                            .map(|n| format!("{} | {}", n, hash_short))
+                            .unwrap_or_else(|| hash_short.clone());
                         if state
                             .mark_destruct_file_verified(&chat_id_str, Instant::now())
                             .await
@@ -677,6 +679,7 @@ mod tests {
             user_id: 42,
             text: Some(totp),
             file_id: None,
+            file_name: None,
             reply_to_text: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
@@ -695,6 +698,7 @@ mod tests {
             user_id: 42,
             text: Some("hi".into()),
             file_id: None,
+            file_name: None,
             reply_to_text: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
