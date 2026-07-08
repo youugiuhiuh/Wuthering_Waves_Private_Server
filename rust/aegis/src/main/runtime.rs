@@ -127,7 +127,7 @@ pub async fn run(
                     ) -> (Option<String>, Option<String>) {
                         let fid = match source {
                             MediaSource::Plain(url) => Some(url.to_string()),
-                            MediaSource::Encrypted(_) => None,
+                            MediaSource::Encrypted(info) => Some(info.url.to_string()),
                         };
                         let fname = Some(filename.to_string());
                         (fid, fname)
