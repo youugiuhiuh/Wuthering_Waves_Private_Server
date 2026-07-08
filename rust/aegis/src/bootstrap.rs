@@ -20,6 +20,7 @@ pub fn config_dir() -> PathBuf {
 pub const KEY_FILE: &str = ".key";
 pub const CONFIG_FILE: &str = "config.enc";
 pub const BOT_SETTINGS_FILE: &str = "bot_settings.json";
+#[allow(dead_code)]
 pub const BOT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_SESSION_TIMEOUT_SECS: u64 = 10 * 60;
 
@@ -108,6 +109,7 @@ impl BotSettings {
         }
     }
 
+    #[expect(dead_code)]
     pub fn save(&self) -> Result<()> {
         let dir = config_dir();
         fs::create_dir_all(&dir)?;

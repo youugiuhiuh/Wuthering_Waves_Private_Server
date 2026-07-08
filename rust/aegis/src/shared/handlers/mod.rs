@@ -1,6 +1,12 @@
 pub(crate) mod callback;
-pub mod message;
+pub mod log;
 pub mod menu;
+pub mod message;
+pub mod ops;
+pub mod schedule;
+pub mod singbox;
+pub mod warp;
+pub mod xray;
 
 use crate::shared::types::{CallbackEvent, DispatchResult, HandlerAction};
 
@@ -8,32 +14,35 @@ pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
     let data = event.data.as_str();
 
     if data == "m_log" || data.starts_with("l_") {
-        return Ok(Some(HandlerAction::Done));
+        return Ok(Some(self::log::handle(event).await?));
     }
     if data == "m_singbox_mgmt" || data == "sb_install" || data.starts_with("sb_") {
-        return Ok(Some(HandlerAction::Done));
+        return Ok(Some(singbox::handle(event).await?));
     }
     if data == "m_warp" || data == "a_inst_warp" || data.starts_with("a_warp_") {
-        return Ok(Some(HandlerAction::Done));
+        return Ok(Some(warp::handle(event).await?));
     }
     if data == "m_sched"
         || data == "a_geo_sched_menu"
         || data == "geo_sched_off"
         || data.starts_with("s_")
     {
+        return Ok(Some(schedule::handle(event).await?));
+    }
+    if data == "a_sys_maint" {
         return Ok(Some(HandlerAction::Done));
     }
     if data.starts_with("a_bbr3")
         || data == "a_fw"
         || data == "a_one_click"
         || data == "a_reload"
-        || data == "a_sys_maint"
         || data == "a_sys_reboot"
         || data == "a_upgrade"
         || data == "a_geo"
         || data == "a_tune"
+        || data == "a_sys_update"
     {
-        return Ok(Some(HandlerAction::Done));
+        return Ok(Some(ops::handle(event).await?));
     }
     if data == "m_xray_mgmt"
         || data == "m_routing"
@@ -45,8 +54,7 @@ pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
         || data.starts_with("cfg_")
         || data.starts_with("m_pq_")
     {
-        // Task 9 will replace with xray::handle(event).await
-        return Ok(Some(HandlerAction::Done));
+        return Ok(Some(xray::handle(event).await?));
     }
     if matches!(
         data,

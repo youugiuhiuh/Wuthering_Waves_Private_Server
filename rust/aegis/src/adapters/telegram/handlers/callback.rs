@@ -1,5 +1,8 @@
 use crate::app::destruct_flow;
 use crate::app::destruct_flow::MessageFlowOutcome;
+use aegis::adapters::common::{MessageId, TargetId};
+use aegis::shared::types::CallbackEvent;
+use aegis::shared::types::HandlerAction;
 use aegis::shared::types::TimeoutStatus;
 
 use crate::app::state::AppState;
@@ -140,29 +143,19 @@ pub fn handle_callback(
                 break Ok(());
             }
 
-            let ctx = super::context::CallbackContext {
-                bot: bot.clone(),
-                q: q.clone(),
-                state: state.clone(),
-                chat_id,
-                msg_id,
-                user_id,
+            let event = CallbackEvent {
+                adapter: state.adapter.clone(),
+                target: TargetId(chat_id.0.to_string()),
+                user_id: user_id.to_string(),
+                msg_id: MessageId(msg_id.0.to_string()),
                 data: data.clone(),
+                callback_id: q.id.clone(),
+                session_timeout_secs: state.session_timeout_secs().await,
             };
-
-            match super::dispatch(&ctx).await {
-                Ok(Some(action)) => match action {
-                    super::context::HandlerAction::Done => break Ok(()),
-                    super::context::HandlerAction::Redirect(new_data) => {
-                        let new_q = q.clone();
-                        q = CallbackQuery {
-                            data: Some(new_data),
-                            ..new_q
-                        };
-                        continue;
-                    }
-                },
-                Ok(None) => {} // No handler matched
+            match aegis::shared::handlers::dispatch(&event).await {
+                Ok(Some(HandlerAction::Done)) => break Ok(()),
+                Ok(None) => break Ok(()),
+                Ok(_) => {} // Redirect not supported yet
                 Err(e) => {
                     eprintln!("[ERROR] Handler dispatch failed: {:?}", e);
                     let _ = bot

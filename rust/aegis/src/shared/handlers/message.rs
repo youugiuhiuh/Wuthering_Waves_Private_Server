@@ -29,20 +29,20 @@ pub async fn handle_message(
     state: &dyn MessageState,
 ) -> anyhow::Result<MessageAction> {
     // Input length check
-    if let Some(t) = text {
-        if t.len() > MAX_INPUT_LENGTH {
-            adapter
-                .send_message(
-                    target,
-                    MessageContent {
-                        text: t!("message.input_too_long", "0" => MAX_INPUT_LENGTH.to_string())
-                            .to_string(),
-                        markup: None,
-                    },
-                )
-                .await?;
-            return Ok(MessageAction::Handled);
-        }
+    if let Some(t) = text
+        && t.len() > MAX_INPUT_LENGTH
+    {
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: t!("message.input_too_long", "0" => MAX_INPUT_LENGTH.to_string())
+                        .to_string(),
+                    markup: None,
+                },
+            )
+            .await?;
+        return Ok(MessageAction::Handled);
     }
 
     let target_str = &target.0;

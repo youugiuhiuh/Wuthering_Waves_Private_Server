@@ -216,12 +216,7 @@ async fn handle_command(
             let target = TargetId(msg.chat.id.0.to_string());
             aegis::shared::handlers::menu::send_main_menu(&*state.adapter, &target)
                 .await
-                .map_err(|e| {
-                    teloxide::RequestError::from(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    ))
-                })?;
+                .map_err(|e| teloxide::RequestError::from(std::io::Error::other(e.to_string())))?;
         }
     }
 

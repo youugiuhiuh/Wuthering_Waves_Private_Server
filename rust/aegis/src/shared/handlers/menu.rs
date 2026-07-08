@@ -192,7 +192,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                         },
                     ],
                     vec![InlineButton {
-                        text: timeout_label.into(),
+                        text: timeout_label,
                         data: "m_session_timeout".into(),
                     }],
                     vec![InlineButton {
