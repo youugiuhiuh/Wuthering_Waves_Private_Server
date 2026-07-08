@@ -1,17 +1,52 @@
 use std::sync::Arc;
 
-use aegis::adapters::common::TargetId;
+use aegis::adapters::common::{MessageId, TargetId};
 use aegis::core::i18n;
+use aegis::shared::dispatch_event;
+use aegis::shared::types::*;
+use anyhow::Result;
 use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::Room as MatrixRoom;
 use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::prelude::*;
+use teloxide::types::{CallbackQuery, ChatId, Message};
+use teloxide::utils::command::BotCommands;
 use tokio_util::sync::CancellationToken;
 
-use crate::app::state::AppState;
 use crate::bootstrap::config_dir;
-use crate::handlers::{callback, message};
-use crate::{Command, handle_command};
+use aegis::app::state::AppState;
+
+#[derive(BotCommands, Clone)]
+#[command(rename_rule = "lowercase", description = "Available commands:")]
+enum TeloxideCommand {
+    #[command(description = "Show help")]
+    Help,
+    #[command(description = "Start bot")]
+    Start,
+    #[command(description = "Show admin menu")]
+    Menu,
+    #[command(description = "Verify TOTP code")]
+    Auth(String),
+    #[command(description = "Set destruct verification file")]
+    SetSecurityFile,
+}
+
+pub(crate) async fn register_bot_commands(bot: &Bot) -> Result<()> {
+    bot.set_my_commands(TeloxideCommand::bot_commands())
+        .await
+        .map_err(|e| anyhow::anyhow!("无法向 Telegram 注册主命令: {e}"))?;
+    Ok(())
+}
+
+fn teloxide_to_bot(cmd: TeloxideCommand) -> BotCommand {
+    match cmd {
+        TeloxideCommand::Help => BotCommand::Help,
+        TeloxideCommand::Start => BotCommand::Start,
+        TeloxideCommand::Menu => BotCommand::Menu,
+        TeloxideCommand::Auth(code) => BotCommand::Auth { code },
+        TeloxideCommand::SetSecurityFile => BotCommand::SetSecurityFile,
+    }
+}
 
 pub async fn run(
     state: Arc<AppState>,
@@ -84,16 +119,26 @@ pub async fn run(
                     }
                     let text = event.content.body().trim().to_string();
 
-                    if crate::looks_like_totp_code(&text) && !state.is_authorized(user_id).await {
-                        let _ = crate::process_auth_code(&state, &target, user_id, &text).await;
-                        return;
-                    }
-
-                    let cmd = aegis::adapters::matrix::commands::parse(&text);
-                    if !matches!(cmd, aegis::adapters::matrix::commands::Command::Auth { .. }) {
-                        let _ = crate::matrix_handlers::dispatch(&cmd, &*adapter, &target, &state)
-                            .await;
-                    }
+                    let event = if let Some(cmd) =
+                        aegis::adapters::matrix::commands::parse_to_bot_command(&text)
+                    {
+                        BotEvent::Command(CommandEvent {
+                            adapter: adapter.clone(),
+                            target: target.clone(),
+                            user_id,
+                            command: cmd,
+                        })
+                    } else {
+                        BotEvent::Message(MessageEvent {
+                            adapter: adapter.clone(),
+                            target: target.clone(),
+                            user_id,
+                            text: Some(text),
+                            file_id: None,
+                            reply_to_text: None,
+                        })
+                    };
+                    let _ = dispatch_event(event, &state).await;
                 }
             },
         );
@@ -110,14 +155,84 @@ pub async fn run(
 
     // ── Telegram Dispatcher ──
     if enable_telegram {
+        async fn handle_command(
+            _bot: Bot,
+            msg: Message,
+            cmd: TeloxideCommand,
+            state: Arc<AppState>,
+        ) -> Result<(), teloxide::RequestError> {
+            let _ = dispatch_event(
+                BotEvent::Command(CommandEvent {
+                    adapter: state.adapter.clone(),
+                    target: TargetId(msg.chat.id.0.to_string()),
+                    user_id: msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0),
+                    command: teloxide_to_bot(cmd),
+                }),
+                &state,
+            )
+            .await;
+            Ok(())
+        }
+
+        async fn handle_message(
+            _bot: Bot,
+            msg: Message,
+            state: Arc<AppState>,
+        ) -> Result<(), teloxide::RequestError> {
+            let user_id = msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
+            let _ = dispatch_event(
+                BotEvent::Message(MessageEvent {
+                    adapter: state.adapter.clone(),
+                    target: TargetId(msg.chat.id.0.to_string()),
+                    user_id,
+                    text: msg.text().map(|s| s.to_string()),
+                    file_id: msg.document().map(|d| d.file.id.clone()).or_else(|| {
+                        msg.photo()
+                            .and_then(|p| p.last().map(|ph| ph.file.id.clone()))
+                    }),
+                    reply_to_text: msg
+                        .reply_to_message()
+                        .and_then(|r| r.text().map(|s| s.to_string())),
+                }),
+                &state,
+            )
+            .await;
+            Ok(())
+        }
+
+        async fn handle_callback(
+            _bot: Bot,
+            q: CallbackQuery,
+            state: Arc<AppState>,
+        ) -> Result<(), teloxide::RequestError> {
+            let chat_id = q.message.as_ref().map(|m| m.chat().id).unwrap_or(ChatId(0));
+            let msg_id = q.message.as_ref().map(|m| m.id()).unwrap_or_default();
+            let _ = dispatch_event(
+                BotEvent::Callback(CallbackEvent {
+                    adapter: state.adapter.clone(),
+                    target: TargetId(chat_id.0.to_string()),
+                    user_id: q.from.id.0.to_string(),
+                    msg_id: MessageId(msg_id.0.to_string()),
+                    data: q.data.clone().unwrap_or_default(),
+                    callback_id: q.id.clone(),
+                    session_timeout_secs: state.session_timeout_secs().await,
+                }),
+                &state,
+            )
+            .await;
+            Ok(())
+        }
+
+        let bot = Bot::new(&token);
+
         let handler = dptree::entry()
             .branch(
                 Update::filter_message()
-                    .filter_command::<Command>()
+                    .filter_command::<TeloxideCommand>()
                     .endpoint(handle_command),
             )
-            .branch(Update::filter_message().endpoint(message::handle_message))
-            .branch(Update::filter_callback_query().endpoint(callback::handle_callback));
+            .branch(Update::filter_message().endpoint(handle_message))
+            .branch(Update::filter_callback_query().endpoint(handle_callback));
 
         let adapter_for_init = state.adapter.clone();
         let target_for_init = TargetId(admin_id.to_string());
@@ -145,7 +260,7 @@ pub async fn run(
             );
         });
 
-        Dispatcher::builder(Bot::new(&token), handler)
+        Dispatcher::builder(bot.clone(), handler)
             .dependencies(dptree::deps![state.clone()])
             .enable_ctrlc_handler()
             .build()

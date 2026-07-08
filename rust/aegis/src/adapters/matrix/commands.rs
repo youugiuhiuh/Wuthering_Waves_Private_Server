@@ -1,3 +1,5 @@
+use aegis::shared::types::BotCommand;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     Auth { code: String },
@@ -140,6 +142,28 @@ fn parse_schedule(args: &[&str]) -> Command {
         }
         _ => Command::Unknown("可用 schedule 子命令: list, add, del <index>".to_string()),
     }
+}
+
+pub fn parse_to_bot_command(text: &str) -> Option<BotCommand> {
+    let t = text.trim();
+    if t == "/help" || t == "/h" {
+        return Some(BotCommand::Help);
+    }
+    if t == "/start" {
+        return Some(BotCommand::Start);
+    }
+    if t == "/menu" {
+        return Some(BotCommand::Menu);
+    }
+    if t == "/setsecurityfile" {
+        return Some(BotCommand::SetSecurityFile);
+    }
+    if let Some(code) = t.strip_prefix("/auth ") {
+        return Some(BotCommand::Auth {
+            code: code.trim().to_string(),
+        });
+    }
+    None
 }
 
 fn parse_warp(args: &[&str]) -> Command {

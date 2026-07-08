@@ -5,7 +5,7 @@ use aegis::adapters::telegram::TelegramAdapter;
 use anyhow::Result;
 use teloxide::Bot;
 
-use crate::register_bot_commands;
+use crate::main::runtime::register_bot_commands;
 
 pub async fn build_adapter(
     token: &str,

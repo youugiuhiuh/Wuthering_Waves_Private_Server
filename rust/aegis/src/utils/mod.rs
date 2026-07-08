@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub fn format_duration_human(secs: u64) -> String {
     if secs < 60 {
         format!("{}秒", secs)
