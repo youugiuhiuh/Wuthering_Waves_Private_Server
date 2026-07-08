@@ -109,7 +109,6 @@ impl BotSettings {
         }
     }
 
-    #[expect(dead_code)]
     pub fn save(&self) -> Result<()> {
         let dir = config_dir();
         fs::create_dir_all(&dir)?;

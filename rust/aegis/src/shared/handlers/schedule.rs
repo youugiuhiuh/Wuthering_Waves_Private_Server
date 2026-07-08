@@ -106,10 +106,6 @@ async fn handle_add_menu(event: &CallbackEvent) -> HandlerResult {
                 data: "s_add:reload_daily_4".into(),
             }],
             vec![InlineButton {
-                text: t!("schedule.custom_btn").into(),
-                data: "s_add_custom_menu".into(),
-            }],
-            vec![InlineButton {
                 text: t!("menu.back").into(),
                 data: "m_sched".into(),
             }],

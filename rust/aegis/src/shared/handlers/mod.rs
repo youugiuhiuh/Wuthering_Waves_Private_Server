@@ -8,7 +8,7 @@ pub mod singbox;
 pub mod warp;
 pub mod xray;
 
-use crate::shared::types::{CallbackEvent, DispatchResult, HandlerAction};
+use crate::shared::types::{CallbackEvent, DispatchResult};
 
 pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
     let data = event.data.as_str();
@@ -25,12 +25,12 @@ pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
     if data == "m_sched"
         || data == "a_geo_sched_menu"
         || data == "geo_sched_off"
-        || data.starts_with("s_")
+        || data == "s_add_menu"
+        || data == "s_del_menu"
+        || data.starts_with("s_add:")
+        || data.starts_with("s_del:")
     {
         return Ok(Some(schedule::handle(event).await?));
-    }
-    if data == "a_sys_maint" {
-        return Ok(Some(HandlerAction::Done));
     }
     if data.starts_with("a_bbr3")
         || data == "a_fw"

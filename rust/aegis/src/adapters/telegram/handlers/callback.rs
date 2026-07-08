@@ -1,16 +1,16 @@
 use crate::app::destruct_flow;
 use crate::app::destruct_flow::MessageFlowOutcome;
+use crate::bootstrap::BotSettings;
 use aegis::adapters::common::{MessageId, TargetId};
 use aegis::shared::types::CallbackEvent;
 use aegis::shared::types::HandlerAction;
-use aegis::shared::types::TimeoutStatus;
 
 use crate::app::state::AppState;
 use crate::save_lang_to_config;
 use aegis::core::i18n;
 use futures_util::future::BoxFuture;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::Instant;
 use teloxide::Bot;
 use teloxide::payloads::AnswerCallbackQuerySetters;
 use teloxide::prelude::{CallbackQuery, ChatId, Requester, ResponseResult};
@@ -105,30 +105,6 @@ pub fn handle_callback(
                 break Ok(());
             }
 
-            let is_custom_followup = data.starts_with("s_custom_ui:")
-                || data.starts_with("s_custom_set:")
-                || data == "s_custom_confirm"
-                || data == "s_custom_cancel";
-            let chat_id_str = chat_id.0.to_string();
-            if is_custom_followup
-                && state
-                    .schedule_timeout_status(&chat_id_str, Duration::from_secs(180))
-                    .await
-                    == TimeoutStatus::Expired
-            {
-                state.remove_schedule_input(&chat_id_str).await;
-                let new_q = q.clone();
-                q = CallbackQuery {
-                    data: Some("s_add_custom_menu".to_string()),
-                    ..new_q
-                };
-                bot.answer_callback_query(q.id.clone())
-                    .text(rust_i18n::t!("schedule.input_timeout"))
-                    .show_alert(true)
-                    .await?;
-                continue;
-            }
-
             if destruct_flow::handle_callback_action(
                 &bot,
                 &q,
@@ -143,6 +119,27 @@ pub fn handle_callback(
                 break Ok(());
             }
 
+            if data == "a_warp_add_input" {
+                state
+                    .start_warp_input(chat_id.0.to_string(), Instant::now())
+                    .await;
+            }
+
+            if data.starts_with("set_timeout:") {
+                let secs: u64 = data
+                    .strip_prefix("set_timeout:")
+                    .unwrap_or("0")
+                    .parse()
+                    .unwrap_or(600);
+                state.set_session_timeout_secs(secs).await;
+                let settings = BotSettings {
+                    session_timeout_secs: secs,
+                };
+                if let Err(e) = settings.save() {
+                    log::error!("保存会话设置失败: {}", e);
+                }
+            }
+
             let event = CallbackEvent {
                 adapter: state.adapter.clone(),
                 target: TargetId(chat_id.0.to_string()),
@@ -153,9 +150,22 @@ pub fn handle_callback(
                 session_timeout_secs: state.session_timeout_secs().await,
             };
             match aegis::shared::handlers::dispatch(&event).await {
-                Ok(Some(HandlerAction::Done)) => break Ok(()),
-                Ok(None) => break Ok(()),
-                Ok(_) => {} // Redirect not supported yet
+                Ok(Some(HandlerAction::Done)) => {
+                    bot.answer_callback_query(q.id).await?;
+                    break Ok(());
+                }
+                Ok(Some(HandlerAction::Redirect(d))) => {
+                    let new_q = q.clone();
+                    q = CallbackQuery {
+                        data: Some(d),
+                        ..new_q
+                    };
+                    continue;
+                }
+                Ok(None) => {
+                    bot.answer_callback_query(q.id).await?;
+                    break Ok(());
+                }
                 Err(e) => {
                     eprintln!("[ERROR] Handler dispatch failed: {:?}", e);
                     let _ = bot
@@ -166,9 +176,6 @@ pub fn handle_callback(
                     break Ok(());
                 }
             }
-
-            bot.answer_callback_query(q.id).await?;
-            break Ok(());
         }
     })
 }
