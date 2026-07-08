@@ -230,8 +230,30 @@ pub fn parse_to_event(
         return Some(event("a_destroy_ask"));
     }
 
-    // xray — show menu
+    // xray — parse subcommands or fallback to menu
     if text_lower.starts_with("xray ") || text_lower == "xray" {
+        // xray add <proto> <count> <ip> → batch exec
+        if let Some(params) = text_lower.strip_prefix("xray add ")
+            && !params.is_empty()
+        {
+            return Some(event(&format!("u_batch_exec:{}", params)));
+        }
+        // xray del <name> → cfg_del
+        if let Some(name) = text_lower.strip_prefix("xray del ") {
+            return Some(event(&format!("cfg_del:{}", name)));
+        }
+        if let Some(name) = text_lower.strip_prefix("xray delete ") {
+            return Some(event(&format!("cfg_del:{}", name)));
+        }
+        // xray routing → routing menu
+        if text_lower == "xray routing" {
+            return Some(event("m_routing"));
+        }
+        // xray pq status → pq management
+        if text_lower == "xray pq status" {
+            return Some(event("m_pq_mgmt"));
+        }
+        // fallback: show xray menu
         return Some(event("m_xray_mgmt"));
     }
 
@@ -435,5 +457,89 @@ mod parse_to_event_tests {
             42,
         );
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_xray_add_returns_batch_exec() {
+        let result = parse_to_event(
+            "xray add reality 5 1.2.3.4",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "u_batch_exec:reality 5 1.2.3.4"
+        ));
+    }
+
+    #[test]
+    fn parse_xray_del_returns_cfg_del() {
+        let result = parse_to_event(
+            "xray del myconfig",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "cfg_del:myconfig"
+        ));
+    }
+
+    #[test]
+    fn parse_xray_delete_returns_cfg_del() {
+        let result = parse_to_event(
+            "xray delete myconfig",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "cfg_del:myconfig"
+        ));
+    }
+
+    #[test]
+    fn parse_xray_routing_returns_m_routing() {
+        let result = parse_to_event(
+            "xray routing",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_routing"
+        ));
+    }
+
+    #[test]
+    fn parse_xray_pq_status_returns_m_pq_mgmt() {
+        let result = parse_to_event(
+            "xray pq status",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_pq_mgmt"
+        ));
+    }
+
+    #[test]
+    fn parse_xray_status_falls_back_to_menu() {
+        let result = parse_to_event(
+            "xray status",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_xray_mgmt"
+        ));
     }
 }
