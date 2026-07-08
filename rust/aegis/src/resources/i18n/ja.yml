@@ -531,6 +531,14 @@ upgrade:
   bot_minisign_ok: "✅ Minisign 署名が確認されました"
 
 help:
+  text: |
+    利用可能なコマンド:
+
+      /help                - このヘルプを表示
+      /start               - ようこそ・案内
+      /menu                - メインメニューを表示
+      /auth <code>         - TOTP 認証
+      /setsecurityfile     - セキュリティファイルを設定（再認証が必要）
   matrix_text: |
     利用可能なコマンド（プレフィックスなし、直接送信）:
 

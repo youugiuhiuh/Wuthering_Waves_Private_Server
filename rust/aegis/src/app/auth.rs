@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use aegis::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
@@ -13,7 +12,7 @@ pub async fn process_auth_code(
     target: &TargetId,
     user_id: i64,
     code: &str,
-    state: &Arc<AppState>,
+    state: &AppState,
     max_attempts: u32,
     failure_window: Duration,
     lockout_durations: &[Duration],

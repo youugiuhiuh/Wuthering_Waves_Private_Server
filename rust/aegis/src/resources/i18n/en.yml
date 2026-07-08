@@ -531,6 +531,14 @@ upgrade:
   bot_minisign_ok: "✅ Minisign signature verified"
 
 help:
+  text: |
+    Available commands:
+
+      /help                - Show this help
+      /start               - Welcome and introduction
+      /menu                - Show the main menu
+      /auth <code>         - TOTP authentication
+      /setsecurityfile     - Set the security file (re-authenticate first)
   matrix_text: |
     Available commands (no prefix, send directly):
 

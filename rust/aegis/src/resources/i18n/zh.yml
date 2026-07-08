@@ -557,6 +557,14 @@ upgrade:
   bot_minisign_ok: "✅ Minisign 签名验证通过"
 
 help:
+  text: |
+    可用命令：
+
+      /help                - 显示此帮助
+      /start               - 欢迎与简介
+      /menu                - 显示主菜单
+      /auth <code>         - TOTP 身份验证
+      /setsecurityfile     - 设置安全文件（需先重新验证）
   matrix_text: |
     可用命令（无前缀，直接发送）:
 
