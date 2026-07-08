@@ -1,5 +1,7 @@
 use crate::adapters::common::routing::is_sensitive;
-use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+use crate::adapters::common::{
+    BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use matrix_sdk::attachment::AttachmentConfig;
@@ -109,5 +111,38 @@ impl BotAdapter for MatrixAdapter {
             .map_err(|e| anyhow::anyhow!("Invalid event ID: {}", e))?;
         self.room.redact(&event_id, None, None).await?;
         Ok(())
+    }
+
+    async fn answer_callback(
+        &self,
+        _target: &TargetId,
+        _callback_id: &str,
+        _text: Option<String>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn download_file(&self, file_id: &str) -> Result<Vec<u8>> {
+        use matrix_sdk::media::MediaRequestParameters;
+        use matrix_sdk::ruma::OwnedMxcUri;
+        use matrix_sdk::ruma::events::room::MediaSource;
+        let client = self.room.client();
+        let mxc = OwnedMxcUri::from(file_id.to_string());
+        let request = MediaRequestParameters {
+            source: MediaSource::Plain(mxc),
+            format: matrix_sdk::media::MediaFormat::File,
+        };
+        let data = client.media().get_media_content(&request, false).await?;
+        Ok(data)
+    }
+
+    fn capabilities(&self) -> PlatformCapabilities {
+        PlatformCapabilities {
+            can_edit_message: true,
+            can_delete_message: true,
+            has_inline_keyboard: false,
+            has_slash_commands: false,
+            has_file_transfer: true,
+        }
     }
 }

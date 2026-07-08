@@ -29,7 +29,6 @@ use aegis::core::system::SystemMonitor;
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::upgrade::UPGRADE_FLAG_FILE;
 use anyhow::{Context, Result};
-use handlers::menu;
 use obfstr::obfstr;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -214,14 +213,15 @@ async fn handle_command(
                     .await?;
                 return Ok(());
             }
-            menu::send_main_menu(bot, msg.chat.id).await?;
+            let target = TargetId(msg.chat.id.0.to_string());
+            aegis::shared::handlers::menu::send_main_menu(&*state.adapter, &target)
+                .await
+                .map_err(|e| teloxide::RequestError::from(std::io::Error::other(e.to_string())))?;
         }
     }
 
     Ok(())
 }
-
-const MAX_INPUT_LENGTH: usize = 4096;
 
 async fn save_config(state: &Arc<AppState>) -> Result<()> {
     let config_dir = config_dir();

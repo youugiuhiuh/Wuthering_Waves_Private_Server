@@ -23,6 +23,7 @@ pub fn format_duration_human(secs: u64) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -30,6 +31,7 @@ pub fn escape_html(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+#[allow(dead_code)]
 pub fn validate_hash_prefix(prefix: &str) -> anyhow::Result<&str> {
     if prefix.is_empty() {
         anyhow::bail!("hash 前缀不能为空");
@@ -43,6 +45,7 @@ pub fn validate_hash_prefix(prefix: &str) -> anyhow::Result<&str> {
     Ok(prefix)
 }
 
+#[allow(dead_code)]
 pub fn validate_idx(idx: usize, max: usize, field_name: &str) -> anyhow::Result<()> {
     if idx >= max {
         anyhow::bail!(

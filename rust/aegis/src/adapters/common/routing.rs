@@ -1,4 +1,6 @@
-use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+use crate::adapters::common::{
+    BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -56,6 +58,25 @@ impl BotAdapter for RoutingAdapter {
 
     async fn delete_message(&self, target: &TargetId, msg_id: &MessageId) -> Result<()> {
         self.primary.delete_message(target, msg_id).await
+    }
+
+    async fn answer_callback(
+        &self,
+        target: &TargetId,
+        callback_id: &str,
+        text: Option<String>,
+    ) -> Result<()> {
+        self.primary
+            .answer_callback(target, callback_id, text)
+            .await
+    }
+
+    async fn download_file(&self, file_id: &str) -> Result<Vec<u8>> {
+        self.primary.download_file(file_id).await
+    }
+
+    fn capabilities(&self) -> PlatformCapabilities {
+        self.primary.capabilities()
     }
 }
 
