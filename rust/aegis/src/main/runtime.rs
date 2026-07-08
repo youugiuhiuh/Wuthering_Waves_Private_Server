@@ -7,6 +7,8 @@ use aegis::shared::types::*;
 use anyhow::Result;
 use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::Room as MatrixRoom;
+use matrix_sdk::ruma::events::room::MediaSource;
+use matrix_sdk::ruma::events::room::message::MessageType;
 use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::prelude::*;
 use teloxide::types::{CallbackQuery, ChatId, Message};
@@ -119,23 +121,41 @@ pub async fn run(
                     }
                     let text = event.content.body().trim().to_string();
 
-                    let event = if let Some(cmd) =
-                        aegis::adapters::matrix::commands::parse_to_bot_command(&text)
-                    {
-                        BotEvent::Command(CommandEvent {
-                            adapter: adapter.clone(),
-                            target: target.clone(),
-                            user_id,
-                            command: cmd,
-                        })
+                    fn extract_media_info(
+                        source: &MediaSource,
+                        filename: &str,
+                    ) -> (Option<String>, Option<String>) {
+                        let fid = match source {
+                            MediaSource::Plain(url) => Some(url.to_string()),
+                            MediaSource::Encrypted(_) => None,
+                        };
+                        let fname = Some(filename.to_string());
+                        (fid, fname)
+                    }
+
+                    let (file_id, file_name) = match &event.content.msgtype {
+                        MessageType::Audio(c) => extract_media_info(&c.source, c.filename()),
+                        MessageType::File(c) => extract_media_info(&c.source, c.filename()),
+                        MessageType::Image(c) => extract_media_info(&c.source, c.filename()),
+                        MessageType::Video(c) => extract_media_info(&c.source, c.filename()),
+                        _ => (None, None),
+                    };
+
+                    let event = if let Some(ev) = aegis::adapters::matrix::commands::parse_to_event(
+                        &text,
+                        adapter.clone(),
+                        &target,
+                        user_id,
+                    ) {
+                        ev
                     } else {
                         BotEvent::Message(MessageEvent {
                             adapter: adapter.clone(),
                             target: target.clone(),
                             user_id,
                             text: Some(text),
-                            file_id: None,
-                            file_name: None,
+                            file_id,
+                            file_name,
                             reply_to_text: None,
                         })
                     };
@@ -191,11 +211,13 @@ pub async fn run(
                         msg.photo()
                             .and_then(|p| p.last().map(|ph| ph.file.id.clone()))
                     }),
-                    file_name: msg.document().and_then(|d| d.file_name.clone()).or_else(|| {
-                        msg.photo().map(|_| {
-                            rust_i18n::t!("destruct.image_label").to_string()
-                        })
-                    }),
+                    file_name: msg
+                        .document()
+                        .and_then(|d| d.file_name.clone())
+                        .or_else(|| {
+                            msg.photo()
+                                .map(|_| rust_i18n::t!("destruct.image_label").to_string())
+                        }),
                     reply_to_text: msg
                         .reply_to_message()
                         .and_then(|r| r.text().map(|s| s.to_string())),
