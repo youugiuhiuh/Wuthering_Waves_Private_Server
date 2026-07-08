@@ -1,53 +1,48 @@
-# Task 4 Report: Migrate Menu Handler to Shared Layer
+# Task 4 Report: Create shared/commands.rs — unified command handlers
 
 ## Status: ✅ Complete
 
-## Changes Made
+## Commit
+- **d6aa6598aefd1c870e744086b2e5c8682772a599** — feat(aegis): add unified command handlers
 
-### 1. Created `src/shared/handlers/menu.rs`
-Shared handler with adapter-agnostic business logic:
-- `send_main_menu(adapter: &dyn BotAdapter, target: &TargetId)` — sends the main menu
-- `handle(event: &CallbackEvent) -> HandlerResult` — handles all menu callback data patterns (m_main, m_ops_center, m_settings, m_net_opt, m_security, m_sys_cmd, m_mon, m_usr, m_danger, m_session_timeout, set_timeout:, a_wwps_core_menu, a_wwps_box_menu, a_wwps_box_restart, a_wwps_box_status, a_wwps_core_latest, a_wwps_core_tags, wwps_core_tag:, a_geo_menu, a_wwps_core_menu, a_wwps_box_menu)
+## What was implemented
+- Created `src/shared/commands.rs` with `pub async fn handle(cmd: CommandEvent, state: &AppState) -> anyhow::Result<()>` dispatching all `BotCommand` variants (Help, Start, Auth, Menu, SetSecurityFile).
+- Added `pub(crate) mod commands;` to `src/shared/mod.rs`.
+- Added `help.text:` i18n key to `en.yml`, `ja.yml`, `zh.yml` (mirrored from `help.matrix_text`).
+- Added 7 unit tests in `commands.rs` using a local `MockAdapter` + `NoopExecutor`.
 
-Key conversion patterns applied:
-- `teloxide::Bot` → `&dyn BotAdapter`
-- `ChatId` → `&TargetId`
-- `InlineKeyboardButton::callback(t, d)` → `InlineButton { text, data }`
-- `InlineKeyboardMarkup::new(rows)` → `Markup { buttons }`
-- `bot.edit_message_text(...).parse_mode().reply_markup()` → `adapter.edit_message(target, msg_id, MessageContent { text, markup })`
-- `bot.send_message(...).parse_mode().reply_markup()` → `adapter.send_message(target, MessageContent { text, markup })`
-- `bot.answer_callback_query(id).text(t)` → `adapter.answer_callback(target, &callback_id, Some(t))`
-- `ResponseResult<()>` → `anyhow::Result<()>` / `HandlerResult`
-- `ParseMode::Html` removed (format-agnostic)
+## Deviation from the verified signature note (IMPORTANT)
+The task brief stated `process_auth_code` takes `state: &Arc<AppState>` and instructed:
+```rust
+let s = Arc::new(state.clone());
+auth::process_auth_code(..., &s, ...)
+```
+This is **not compilable in this codebase** because `AppState` is **not `Clone`** (it contains `Arc<dyn BotAdapter>`, `Arc<dyn SelfDestructExecutor>`, and several `tokio::sync::Mutex` fields — none of which support `Clone`). The brief's wrap pattern assumed `AppState: Clone`, which does not hold here.
 
-### 2. Updated `src/shared/types.rs`
-Added `session_timeout_secs: u64` to `CallbackEvent` for the menu handler to read current timeout.
+Resolution (minimal, faithful to intent): changed `process_auth_code`'s 5th parameter from `&Arc<AppState>` to `&AppState` in `src/app/auth.rs`. The function only ever uses `&state` (no internal `Arc::clone`), so no other changes were required. Existing callers (`main.rs`, `adapters/telegram/handlers/message.rs`) pass `&state` where `state: Arc<AppState>` — this **derefs automatically** and remains compatible, so no caller edits were needed. `commands.rs` now passes `state` directly.
 
-### 3. Updated `src/shared/mod.rs`
-- Changed `pub(crate) mod handlers` → `pub mod handlers` (needed by binary crate)
-- Changed `pub(crate) mod types` → `pub mod types`
-
-### 4. Updated `src/shared/handlers/mod.rs`
-- Uncommented `pub(crate) mod menu` → `pub mod menu`
-- Changed menu dispatch branch from `Ok(Some(HandlerAction::Done))` to `Ok(Some(menu::handle(event).await?))`
-
-### 5. Updated `src/adapters/telegram/handlers/menu.rs` (compat wrapper)
-Converted from teloxide-direct implementation to thin compat wrapper:
-- For `set_timeout:*`: persists timeout to state/disk before delegating
-- Constructs `CallbackEvent` from `CallbackContext`
-- Converts `CallbackContext.q.id` → `event.callback_id`, `CallbackContext.msg_id` → `MessageId(string)`, `CallbackContext.chat_id` → `TargetId(string)`
-- Converts shared `HandlerAction` back to telegram `HandlerAction`
-- Delegates to `aegis::shared::handlers::menu::handle(&event)`
-
-### 6. Updated `src/main.rs`
-- Changed `menu::send_main_menu(bot, msg.chat.id)` → `aegis::shared::handlers::menu::send_main_menu(&*state.adapter, &target)` with error conversion
-- Removed unused `use handlers::menu` import
-
-### 7. Updated `src/lib.rs`
-Added `pub(crate) mod utils` to make `format_duration_human` accessible from the shared handler.
+This touches an extra file (`src/app/auth.rs`) beyond the two named in the brief, but it is the only way to satisfy a compilable `handle` given `AppState`'s non-Clone nature. If the `&Arc<AppState>` signature is a hard contract, the alternative is to make `AppState` `Clone` (blocked by async mutexes / trait objects) — not feasible without a larger refactor.
 
 ## Verification
-- `cargo fmt` — clean
-- `cargo check` — clean (only pre-existing unused-code warnings)
-- `cargo test --lib` — 390 passed, 0 failed
-- `cargo test --bin aegis` — 71 passed, 0 failed
+- `cargo fmt` ✅
+- `cargo clippy -- -D warnings` ✅
+- `cargo test` ✅ — **559 tests pass** (504+ baseline preserved; 7 new commands tests added).
+
+## Files changed
+- `rust/aegis/src/shared/commands.rs` (new)
+- `rust/aegis/src/shared/mod.rs` (added module)
+- `rust/aegis/src/app/auth.rs` (param type `&Arc<AppState>` → `&AppState`)
+- `rust/aegis/src/resources/i18n/en.yml`, `ja.yml`, `zh.yml` (added `help.text`)
+
+## New tests
+- `help_sends_help_text`
+- `start_sends_welcome`
+- `auth_calls_process_auth_code`
+- `menu_sends_auth_required_when_not_authorized`
+- `menu_sends_main_menu_when_authorized`
+- `set_security_file_sends_recent_auth_required_when_not_recent`
+- `set_security_file_sends_prompt_when_recently_authenticated`
+
+## Concerns
+1. **Signature deviation**: `process_auth_code` now takes `&AppState` instead of `&Arc<AppState>` as the verified note specified. Functionally equivalent and all callers remain compatible, but if the brief's signature is a hard cross-task contract (e.g. Task 5 dispatch expects `&Arc<AppState>`), coordinate before Task 5 to avoid rework.
+2. `handle` currently has `#[allow(dead_code)]` since it is not yet wired into the dispatch layer (per plan, routing lives in dispatch.rs, a later task).
