@@ -19,3 +19,4 @@ pub enum HandlerAction {
 }
 
 pub type HandlerResult = Result<HandlerAction>;
+pub type DispatchResult = Result<Option<HandlerAction>>;
