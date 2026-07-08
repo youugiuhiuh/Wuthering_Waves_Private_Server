@@ -1,188 +1,134 @@
-### Task 1: Create shared infrastructure + extend BotAdapter
+## Task 1: Extend types.rs with BotEvent, MessageEvent, CommandEvent, BotCommand
 
 **Files:**
-- Create: `src/shared/mod.rs`
-- Create: `src/shared/types.rs`
-- Modify: `src/adapters/common/trait.rs`
-- Modify: `src/adapters/telegram/adapter.rs`
-- Modify: `src/adapters/discord/adapter.rs`
-- Modify: `src/adapters/matrix/adapter.rs`
-- Modify: `src/lib.rs`
+- Modify: `src/shared/types.rs`
+- Modify: `src/shared/mod.rs`
 
 **Interfaces:**
-- Produces: `shared::types::CallbackEvent`, `shared::types::HandlerAction`, `shared::types::HandlerResult`
-- Produces: `BotAdapter::answer_callback()`, `BotAdapter::download_file()`, `BotAdapter::capabilities()`
-- Produces: `PlatformCapabilities` struct + `TELEGRAM/DISCORD/MATRIX` constants
+- Produces: `BotEvent`, `MessageEvent`, `CommandEvent`, `BotCommand` in `aegis::shared::types`
+- Consumes: existing `CallbackEvent`, `TargetId`, `MessageId`, `BotAdapter`
 
-- [ ] **Step 1.1: Add PlatformCapabilities to trait.rs**
-
-```rust
-// src/adapters/common/trait.rs — add after InlineButton
-
-#[derive(Debug, Clone, Copy)]
-pub struct PlatformCapabilities {
-    pub can_edit_message: bool,
-    pub can_delete_message: bool,
-    pub has_inline_keyboard: bool,
-    pub has_slash_commands: bool,
-    pub has_file_transfer: bool,
-}
-
-impl PlatformCapabilities {
-    pub const TELEGRAM: Self = Self {
-        can_edit_message: true,
-        can_delete_message: true,
-        has_inline_keyboard: true,
-        has_slash_commands: true,
-        has_file_transfer: true,
-    };
-}
-```
-
-- [ ] **Step 1.2: Add new methods to BotAdapter trait**
-
-In `trait.rs`, add these methods to the trait with default implementations:
+- [ ] **Step 1.1: Write failing test for BotEvent construction**
 
 ```rust
-#[async_trait]
-pub trait BotAdapter: Send + Sync {
-    // ... existing methods ...
+// In src/shared/types.rs, add test at bottom:
+#[cfg(test)]
+mod event_tests {
+    use super::*;
+    use crate::adapters::common::Markup;
 
-    async fn answer_callback(&self, _target: &TargetId, _callback_id: &str, _text: Option<&str>) -> Result<()> {
-        Ok(())
+    #[test]
+    fn message_event_constructs() {
+        // MessageEvent is a plain struct — verify fields compile
+        let _ = MessageEvent {
+            adapter: std::sync::Arc::new(crate::adapters::common::MockBotAdapter::new()),
+            target: TargetId("123".into()),
+            user_id: 42,
+            text: Some("hello".into()),
+            file_id: None,
+            reply_to_text: None,
+        };
     }
 
-    async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
-        anyhow::bail!("platform does not support file download")
+    #[test]
+    fn command_event_constructs() {
+        let _ = CommandEvent {
+            adapter: std::sync::Arc::new(crate::adapters::common::MockBotAdapter::new()),
+            target: TargetId("123".into()),
+            user_id: 42,
+            command: BotCommand::Help,
+        };
     }
 
-    fn capabilities(&self) -> PlatformCapabilities;
-}
-```
-
-- [ ] **Step 1.3: Add mock methods to mockall**
-
-In `trait.rs`, the `#[mockall::automock]` attribute is on the trait. Add to the mock config:
-
-```rust
-#[mockall::automock]
-#[async_trait]
-pub trait BotAdapter: Send + Sync {
-    // ...
-    async fn answer_callback(&self, target: &TargetId, callback_id: &str, text: Option<&str>) -> Result<()>;
-    async fn download_file(&self, file_id: &str) -> Result<Vec<u8>>;
-    fn capabilities(&self) -> PlatformCapabilities;
-}
-```
-
-Note: mockall derives `Expectation` for the new methods automatically.
-
-- [ ] **Step 1.4: Implement capabilities in TelegramAdapter**
-
-```rust
-// src/adapters/telegram/adapter.rs — add method to impl BotAdapter for TelegramAdapter
-
-fn capabilities(&self) -> PlatformCapabilities {
-    PlatformCapabilities::TELEGRAM
-}
-```
-
-Also add `answer_callback` implementation for Telegram:
-
-```rust
-async fn answer_callback(&self, _target: &TargetId, callback_id: &str, text: Option<&str>) -> Result<()> {
-    let mut answer = self.bot.answer_callback_query(callback_id);
-    if let Some(t) = text {
-        answer = answer.text(t);
-    }
-    answer.await?;
-    Ok(())
-}
-```
-
-- [ ] **Step 1.5: Implement capabilities in DiscordAdapter**
-
-```rust
-// src/adapters/discord/adapter.rs
-
-fn capabilities(&self) -> PlatformCapabilities {
-    PlatformCapabilities {
-        can_edit_message: true,
-        can_delete_message: true,
-        has_inline_keyboard: true,
-        has_slash_commands: true,
-        has_file_transfer: false,
+    #[test]
+    fn bot_command_auth_carries_code() {
+        let cmd = BotCommand::Auth { code: "123456".into() };
+        assert!(matches!(cmd, BotCommand::Auth { ref code } if code == "123456"));
     }
 }
 ```
 
-- [ ] **Step 1.6: Implement capabilities in MatrixAdapter**
+- [ ] **Step 1.2: Run test to verify it fails**
+
+Run: `cd rust/aegis && cargo test shared::types::event_tests -- --nocapture 2>&1 | tail -10`
+Expected: FAIL — `MessageEvent`, `CommandEvent`, `BotCommand` not defined
+
+- [ ] **Step 1.3: Add types to types.rs**
 
 ```rust
-// src/adapters/matrix/adapter.rs
+// src/shared/types.rs — add after existing types
 
-fn capabilities(&self) -> PlatformCapabilities {
-    PlatformCapabilities {
-        can_edit_message: true,
-        can_delete_message: true,
-        has_inline_keyboard: false,
-        has_slash_commands: false,
-        has_file_transfer: true,
+pub enum BotEvent {
+    Message(MessageEvent),
+    Callback(CallbackEvent),
+    Command(CommandEvent),
+}
+
+impl BotEvent {
+    pub fn user_id(&self) -> i64 {
+        match self {
+            BotEvent::Message(m) => m.user_id,
+            BotEvent::Callback(c) => c.user_id.parse().unwrap_or(0),
+            BotEvent::Command(c) => c.user_id,
+        }
+    }
+
+    pub fn adapter(&self) -> &Arc<dyn BotAdapter> {
+        match self {
+            BotEvent::Message(m) => &m.adapter,
+            BotEvent::Callback(c) => &c.adapter,
+            BotEvent::Command(c) => &c.adapter,
+        }
+    }
+
+    pub fn target(&self) -> &TargetId {
+        match self {
+            BotEvent::Message(m) => &m.target,
+            BotEvent::Callback(c) => &c.target,
+            BotEvent::Command(c) => &c.target,
+        }
     }
 }
-```
 
-- [ ] **Step 1.7: Create src/shared/mod.rs**
-
-```rust
-pub(crate) mod types;
-pub(crate) mod handlers;
-```
-
-- [ ] **Step 1.8: Create src/shared/types.rs**
-
-```rust
-use std::sync::Arc;
-use crate::adapters::common::{BotAdapter, MessageId, TargetId};
-use anyhow::Result;
-
-pub struct CallbackEvent {
+pub struct MessageEvent {
     pub adapter: Arc<dyn BotAdapter>,
     pub target: TargetId,
-    pub user_id: String,
-    pub msg_id: MessageId,
-    pub data: String,
-    pub callback_id: String,
+    pub user_id: i64,
+    pub text: Option<String>,
+    pub file_id: Option<String>,
+    pub reply_to_text: Option<String>,
 }
 
-pub enum HandlerAction {
-    Done,
-    Redirect(String),
+pub struct CommandEvent {
+    pub adapter: Arc<dyn BotAdapter>,
+    pub target: TargetId,
+    pub user_id: i64,
+    pub command: BotCommand,
 }
 
-pub type HandlerResult = Result<HandlerAction>;
+pub enum BotCommand {
+    Help,
+    Start,
+    Menu,
+    Auth { code: String },
+    SetSecurityFile,
+}
 ```
 
-- [ ] **Step 1.9: Update lib.rs**
+- [ ] **Step 1.4: Run test to verify it passes**
 
-```rust
-pub mod adapters;
-pub mod core;
-pub(crate) mod shared;  // match visibility in existing codebase
-```
+Run: `cd rust/aegis && cargo test shared::types::event_tests -- --nocapture 2>&1 | tail -10`
+Expected: PASS — 3 tests
 
-- [ ] **Step 1.10: Run tests**
+- [ ] **Step 1.5: Run full suite + lint**
+
+Run: `cd rust/aegis && cargo fmt && cargo clippy -- -D warnings && cargo test 2>&1 | grep "^test result:"`
+Expected: All pass, 0 failures
+
+- [ ] **Step 1.6: Commit**
 
 ```bash
-cd rust/aegis && cargo test 2>&1 | tail -20
-```
-
-Expected: all existing tests pass.
-
-- [ ] **Step 1.11: Commit**
-
-```bash
-git add -A && git commit -m "feat(aegis): add shared infrastructure and extend BotAdapter trait"
+git add -A && git commit -m "feat(aegis): add BotEvent, MessageEvent, CommandEvent, BotCommand types"
 ```
 
 ---

@@ -1,49 +1,31 @@
-# Task 1 Report: Shared Module Infrastructure & BotAdapter Trait Extension
+# Task 1 Report: Extend types.rs with BotEvent, MessageEvent, CommandEvent, BotCommand
 
-## What was implemented
+## Status: DONE
 
-1. **`src/shared/mod.rs`** — Module declaration with `pub mod types` and re-export
-2. **`src/shared/types.rs`** — `PlatformCapabilities` struct with `Default` derive, `telegram()`, `discord()`, `matrix()` constants
-3. **`src/lib.rs`** — Added `pub mod shared;`
-4. **`src/adapters/common/trait.rs`** — Imported `PlatformCapabilities`, added 3 new methods:
-   - `answer_callback(callback_id, text)` — default impl returns `Ok(())`
-   - `download_file(file_id)` — required, returns `Result<Vec<u8>>`
-   - `capabilities()` — required, returns `PlatformCapabilities`
-5. **TelegramAdapter**: Implemented all 3 — `answer_callback` uses teloxide's `answer_callback_query`, `download_file` uses `get_file` + `download_file`, `capabilities` returns `PlatformCapabilities::telegram()`
-6. **DiscordAdapter**: `answer_callback` no-op, `download_file` uses `reqwest::get`, `capabilities` returns `PlatformCapabilities::discord()`
-7. **MatrixAdapter**: `answer_callback` no-op, `download_file` uses matrix-sdk's `media().get_media_content()`, `capabilities` returns `PlatformCapabilities::matrix()`
-8. **RoutingAdapter**: Delegated all 3 to `self.primary`
-9. **Test stubs**: Updated 3 test-only `BotAdapter` impls (scheduler `TestAdapter`, destruct_flow `MockAdapter`, state `MockAdapter`)
+## Summary
+Added four new unified event types to `src/shared/types.rs`:
+- `BotEvent` enum (`Message`, `Callback`, `Command`) with `user_id()`, `adapter()`, `target()` accessors
+- `MessageEvent` struct
+- `CommandEvent` struct
+- `BotCommand` enum (`Help`, `Start`, `Menu`, `Auth { code }`, `SetSecurityFile`)
 
-## Testing
+`src/shared/mod.rs` already declared `pub mod types;`, so no change was needed there.
 
-- `cargo fmt` ✓
-- `cargo clippy -- -D warnings` ✓ (0 warnings)
-- `cargo test` ✓ (446 tests: 375 lib + 71 bin + integration; 0 failed, 1 pre-existing ignore)
+## TDD Flow
+1. **Step 1.1** — Added failing test module `event_tests` at bottom of `types.rs`.
+   - Per the lint note, removed the unused `use crate::adapters::common::Markup;` import from the brief's test code so `cargo clippy -- -D warnings` stays clean.
+2. **Step 1.2** — Ran `cargo test ... event_tests`: FAILED with `cannot find type BotCommand/BotEvent/CommandEvent` (expected).
+3. **Step 1.3** — Added the four types exactly as specified.
+4. **Step 1.4** — `cargo test --lib shared::types::event_tests`: 3 passed.
+5. **Step 1.5** — `cargo fmt && cargo clippy -- -D warnings`: clean. `cargo test`: all suites pass (507 tests: 393 lib + 67 + 1 + 2 + 1 + 1 + 1 + 6 + 1 + 3 + 21 + 10 = 507 ≥ 504).
+6. **Step 1.6** — Committed.
 
-## Files changed
+## Commit
+- `2aacff95` feat(aegis): add BotEvent, MessageEvent, CommandEvent, BotCommand types
+  - 1 file changed, 92 insertions(+)
 
-| File | Change |
-|------|--------|
-| `src/shared/mod.rs` | **Created** |
-| `src/shared/types.rs` | **Created** |
-| `src/lib.rs` | Added `pub mod shared` |
-| `src/adapters/common/trait.rs` | Added import + 3 methods |
-| `src/adapters/common/routing.rs` | Delegated 3 methods |
-| `src/adapters/telegram/adapter.rs` | Implemented 3 methods |
-| `src/adapters/discord/adapter.rs` | Implemented 3 methods |
-| `src/adapters/matrix/adapter.rs` | Implemented 3 methods |
-| `src/app/destruct_flow.rs` | Added stubs to test MockAdapter |
-| `src/app/state.rs` | Added stubs to test MockAdapter |
-| `src/core/system/scheduler/mod.rs` | Added stubs to test TestAdapter |
-
-## Self-review findings
-
-- **Design choice**: `answer_callback` has a default `Ok(())` so mockall won't generate `expect_answer_callback` — correct per requirements. `capabilities` and `download_file` are required and will be auto-mocked.
-- **Matrix `download_file`**: Uses `room.client()` to access the media API. For encrypted files, decryption happens automatically via matrix-sdk.
-- **Discord `download_file`**: Uses `reqwest::get` directly on the file URL — no serenity-specific API needed.
-- **No breaking changes**: All existing tests pass without modification to their mock expectations (new methods are never called in existing test code).
-
-## Concerns
-
-None.
+## Notes / Concerns
+- The brief's `git add -A` would have also staged the task brief file (`.superpowers/sdd/task-1-brief.md`). I committed only `src/shared/types.rs` to keep the commit scoped as intended.
+- The brief did not actually require any change to `src/shared/mod.rs` (module already declared).
+- The struct fields use `Arc<dyn BotAdapter>`; `BotAdapter` is `Send + Sync`, so this compiles cleanly — no concerns.
+- All shared-layer code uses the `BotAdapter` trait only; no platform-specific types introduced.
