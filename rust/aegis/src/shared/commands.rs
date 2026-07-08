@@ -89,6 +89,9 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
                     },
                 )
                 .await?;
+            state
+                .start_security_file_input(cmd.target.0.clone(), std::time::Instant::now())
+                .await;
         }
     }
     Ok(())
@@ -274,5 +277,69 @@ mod tests {
         let sent = adapter.sent.lock().unwrap();
         assert_eq!(sent.len(), 1);
         assert!(sent[0].len() > 0);
+    }
+
+    struct TestAdapter;
+    #[async_trait]
+    impl BotAdapter for TestAdapter {
+        fn platform(&self) -> Platform {
+            Platform::Telegram
+        }
+        async fn send_message(&self, _t: &TargetId, _c: MessageContent) -> AnyResult<MessageId> {
+            Ok(MessageId("0".into()))
+        }
+        async fn edit_message(
+            &self,
+            _t: &TargetId,
+            _m: &MessageId,
+            _c: MessageContent,
+        ) -> AnyResult<()> {
+            Ok(())
+        }
+        async fn delete_message(&self, _t: &TargetId, _m: &MessageId) -> AnyResult<()> {
+            Ok(())
+        }
+        async fn download_file(&self, _f: &str) -> AnyResult<Vec<u8>> {
+            Ok(vec![])
+        }
+        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
+            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        }
+    }
+
+    struct TestExecutor;
+    impl SelfDestructExecutor for TestExecutor {
+        fn execute(&self) -> BoxFuture<'static, AnyResult<()>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    use crate::shared::types::TimeoutStatus;
+
+    #[tokio::test]
+    async fn set_security_file_starts_pending_input() {
+        let secret = TotpManager::generate_new_secret();
+        let state = Arc::new(AppState::new(
+            42,
+            TotpManager::new(&secrecy::SecretString::from(secret)).unwrap(),
+            Arc::new(TestExecutor),
+            None,
+            600,
+            Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
+        ));
+        state.record_auth_success(42, Instant::now()).await;
+        let cmd = CommandEvent {
+            adapter: Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
+            target: TargetId("42".into()),
+            user_id: 42,
+            command: BotCommand::SetSecurityFile,
+        };
+        handle(cmd, &state).await.unwrap();
+        assert_eq!(
+            state
+                .take_security_file_input_status("42", Duration::from_secs(180))
+                .await,
+            TimeoutStatus::Active
+        );
     }
 }
