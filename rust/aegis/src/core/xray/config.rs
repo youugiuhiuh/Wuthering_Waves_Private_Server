@@ -213,7 +213,7 @@ impl ConfigManager {
             "security": "reality",
             "realitySettings": {
                 "show": false,
-                "dest": format!("{}:443", sni),
+                "target": format!("{}:443", sni),
                 "xver": 0,
                 "serverNames": [sni],
                 "privateKey": priv_key,
@@ -651,7 +651,7 @@ mod tests {
         // 验证关键参数
         assert_eq!(vless["settings"]["clients"][0]["id"], "test-uuid");
         assert_eq!(
-            vless["streamSettings"]["realitySettings"]["dest"],
+            vless["streamSettings"]["realitySettings"]["target"],
             "example.com:443"
         );
         assert_eq!(
