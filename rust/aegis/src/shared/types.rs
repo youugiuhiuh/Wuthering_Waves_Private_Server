@@ -28,3 +28,95 @@ pub enum HandlerAction {
 
 pub type HandlerResult = Result<HandlerAction>;
 pub type DispatchResult = Result<Option<HandlerAction>>;
+
+pub enum BotEvent {
+    Message(MessageEvent),
+    Callback(CallbackEvent),
+    Command(CommandEvent),
+}
+
+impl BotEvent {
+    pub fn user_id(&self) -> i64 {
+        match self {
+            BotEvent::Message(m) => m.user_id,
+            BotEvent::Callback(c) => c.user_id.parse().unwrap_or(0),
+            BotEvent::Command(c) => c.user_id,
+        }
+    }
+
+    pub fn adapter(&self) -> &Arc<dyn BotAdapter> {
+        match self {
+            BotEvent::Message(m) => &m.adapter,
+            BotEvent::Callback(c) => &c.adapter,
+            BotEvent::Command(c) => &c.adapter,
+        }
+    }
+
+    pub fn target(&self) -> &TargetId {
+        match self {
+            BotEvent::Message(m) => &m.target,
+            BotEvent::Callback(c) => &c.target,
+            BotEvent::Command(c) => &c.target,
+        }
+    }
+}
+
+pub struct MessageEvent {
+    pub adapter: Arc<dyn BotAdapter>,
+    pub target: TargetId,
+    pub user_id: i64,
+    pub text: Option<String>,
+    pub file_id: Option<String>,
+    pub reply_to_text: Option<String>,
+}
+
+pub struct CommandEvent {
+    pub adapter: Arc<dyn BotAdapter>,
+    pub target: TargetId,
+    pub user_id: i64,
+    pub command: BotCommand,
+}
+
+pub enum BotCommand {
+    Help,
+    Start,
+    Menu,
+    Auth { code: String },
+    SetSecurityFile,
+}
+
+#[cfg(test)]
+mod event_tests {
+    use super::*;
+
+    #[test]
+    fn message_event_constructs() {
+        // MessageEvent is a plain struct — verify fields compile
+        let _ = MessageEvent {
+            adapter: std::sync::Arc::new(crate::adapters::common::MockBotAdapter::new()),
+            target: TargetId("123".into()),
+            user_id: 42,
+            text: Some("hello".into()),
+            file_id: None,
+            reply_to_text: None,
+        };
+    }
+
+    #[test]
+    fn command_event_constructs() {
+        let _ = CommandEvent {
+            adapter: std::sync::Arc::new(crate::adapters::common::MockBotAdapter::new()),
+            target: TargetId("123".into()),
+            user_id: 42,
+            command: BotCommand::Help,
+        };
+    }
+
+    #[test]
+    fn bot_command_auth_carries_code() {
+        let cmd = BotCommand::Auth {
+            code: "123456".into(),
+        };
+        assert!(matches!(cmd, BotCommand::Auth { ref code } if code == "123456"));
+    }
+}
