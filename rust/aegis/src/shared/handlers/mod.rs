@@ -7,6 +7,7 @@ pub(crate) mod callback;
 // pub(crate) mod schedule;
 // pub(crate) mod singbox;
 // pub(crate) mod warp;
+// pub(crate) mod xray;
 
 use crate::shared::types::{CallbackEvent, DispatchResult, HandlerAction};
 
@@ -51,7 +52,8 @@ pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
         || data.starts_with("cfg_")
         || data.starts_with("m_pq_")
     {
-        return Ok(Some(callback::handle(event).await?));
+        // Task 9 will replace with xray::handle(event).await
+        return Ok(Some(HandlerAction::Done));
     }
     if matches!(
         data,
