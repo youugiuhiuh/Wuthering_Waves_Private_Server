@@ -237,7 +237,9 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
 
                 match re_action {
                     DestructMessageAction::FileVerified { ref hash_short } => {
-                        let file_display = msg.file_name.as_ref()
+                        let file_display = msg
+                            .file_name
+                            .as_ref()
                             .map(|n| format!("{} | {}", n, hash_short))
                             .unwrap_or_else(|| hash_short.clone());
                         if state
@@ -299,6 +301,83 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
                         },
                     )
                     .await?;
+            }
+        }
+        (DestructStep::AwaitConfirm, _) => {
+            if let Some(ref text) = msg.text {
+                let t = text.trim().to_lowercase();
+                if t == "confirm" || t == "確認" || t == "yes" || state.verify_totp(text.trim()) {
+                    if state
+                        .advance_destruct_step(
+                            &chat_id_str,
+                            DestructStep::AwaitConfirm,
+                            DestructStep::AwaitFinalConfirm,
+                            Instant::now(),
+                        )
+                        .await
+                    {
+                        adapter
+                            .send_message(
+                                target,
+                                MessageContent {
+                                    text: t!("destruct.title_4").into(),
+                                    markup: None,
+                                },
+                            )
+                            .await?;
+                    } else {
+                        adapter
+                            .send_message(
+                                target,
+                                MessageContent {
+                                    text: t!("destruct.state_invalid").into(),
+                                    markup: None,
+                                },
+                            )
+                            .await?;
+                    }
+                } else if t == "cancel" || t == "取消" || t == "no" {
+                    state.cancel_destruct(&chat_id_str).await;
+                    adapter
+                        .send_message(
+                            target,
+                            MessageContent {
+                                text: t!("destruct.cancelled").into(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                }
+            }
+        }
+        (DestructStep::AwaitFinalConfirm, _) => {
+            if let Some(ref text) = msg.text {
+                let t = text.trim().to_lowercase();
+                if t == "confirm" || t == "確認" || t == "yes" || state.verify_totp(text.trim()) {
+                    adapter
+                        .send_message(
+                            target,
+                            MessageContent {
+                                text: t!("destruct.final_exec").into(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                    let executor = state.self_destruct_executor();
+                    aegis::core::security::self_destruct::trigger(executor);
+                    state.cancel_destruct(&chat_id_str).await;
+                } else if t == "cancel" || t == "取消" || t == "no" {
+                    state.cancel_destruct(&chat_id_str).await;
+                    adapter
+                        .send_message(
+                            target,
+                            MessageContent {
+                                text: t!("destruct.cancelled").into(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                }
             }
         }
         _ => {}
@@ -686,6 +765,97 @@ mod tests {
         assert_eq!(outcome, FlowOutcome::Handled);
         let snap = state.destruct_snapshot("42").await.unwrap();
         assert_eq!(snap.step, DestructStep::AwaitConfirm);
+    }
+
+    #[tokio::test]
+    async fn confirm_text_triggers_destruct_at_final_confirm() {
+        let secret = TotpManager::generate_new_secret();
+        let state = make_test_state(&secret).await;
+        state.begin_destruct("42".into(), Instant::now()).await;
+        state
+            .advance_destruct_step(
+                "42",
+                DestructStep::AwaitFirstTotp,
+                DestructStep::AwaitConfirm,
+                Instant::now(),
+            )
+            .await;
+        state
+            .advance_destruct_step(
+                "42",
+                DestructStep::AwaitConfirm,
+                DestructStep::AwaitFinalConfirm,
+                Instant::now(),
+            )
+            .await;
+        let totp = state.generate_current_totp().unwrap();
+        let msg = MessageEvent {
+            adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
+            target: TargetId("42".into()),
+            user_id: 42,
+            text: Some(totp),
+            file_id: None,
+            file_name: None,
+            reply_to_text: None,
+        };
+        let outcome = intercept_message(&msg, &state).await.unwrap();
+        assert_eq!(outcome, FlowOutcome::Handled);
+        assert!(state.destruct_snapshot("42").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn confirm_text_advances_await_confirm_to_final() {
+        let secret = TotpManager::generate_new_secret();
+        let state = make_test_state(&secret).await;
+        state.begin_destruct("42".into(), Instant::now()).await;
+        state
+            .advance_destruct_step(
+                "42",
+                DestructStep::AwaitFirstTotp,
+                DestructStep::AwaitConfirm,
+                Instant::now(),
+            )
+            .await;
+        let msg = MessageEvent {
+            adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
+            target: TargetId("42".into()),
+            user_id: 42,
+            text: Some("confirm".into()),
+            file_id: None,
+            file_name: None,
+            reply_to_text: None,
+        };
+        let outcome = intercept_message(&msg, &state).await.unwrap();
+        assert_eq!(outcome, FlowOutcome::Handled);
+        let snap = state.destruct_snapshot("42").await.unwrap();
+        assert_eq!(snap.step, DestructStep::AwaitFinalConfirm);
+    }
+
+    #[tokio::test]
+    async fn confirm_text_cancels_destruct_on_no() {
+        let secret = TotpManager::generate_new_secret();
+        let state = make_test_state(&secret).await;
+        state.begin_destruct("42".into(), Instant::now()).await;
+        state
+            .advance_destruct_step(
+                "42",
+                DestructStep::AwaitFirstTotp,
+                DestructStep::AwaitConfirm,
+                Instant::now(),
+            )
+            .await;
+        let msg = MessageEvent {
+            adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
+            target: TargetId("42".into()),
+            user_id: 42,
+            text: Some("cancel".into()),
+            file_id: None,
+            file_name: None,
+            reply_to_text: None,
+        };
+        let outcome = intercept_message(&msg, &state).await.unwrap();
+        assert_eq!(outcome, FlowOutcome::Handled);
+        assert!(state.destruct_snapshot("42").await.is_none());
     }
 
     #[tokio::test]

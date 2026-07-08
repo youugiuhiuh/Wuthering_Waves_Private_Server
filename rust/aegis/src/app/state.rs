@@ -79,6 +79,7 @@ pub struct AppState {
     self_destruct_key_hash: Mutex<Option<String>>,
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
+    pending_security_file: Mutex<HashMap<String, Instant>>,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
     lang_configured: Mutex<bool>,
@@ -104,6 +105,7 @@ impl AppState {
             self_destruct_key_hash: Mutex::new(self_destruct_key_hash),
             pending_warp_inputs: Mutex::new(HashMap::new()),
             pending_schedule_inputs: Mutex::new(HashMap::new()),
+            pending_security_file: Mutex::new(HashMap::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
             lang: Mutex::new(Lang::Zh),
             lang_configured: Mutex::new(false),
@@ -441,6 +443,23 @@ impl AppState {
         let mut inputs = self.pending_schedule_inputs.lock().await;
         inputs.get_mut(chat_id).map(f)
     }
+
+    pub async fn start_security_file_input(&self, chat_id: String, now: Instant) {
+        self.pending_security_file.lock().await.insert(chat_id, now);
+    }
+
+    pub async fn take_security_file_input_status(
+        &self,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> TimeoutStatus {
+        let mut map = self.pending_security_file.lock().await;
+        match map.remove(chat_id) {
+            Some(started) if started.elapsed() < timeout => TimeoutStatus::Active,
+            Some(_) => TimeoutStatus::Expired,
+            None => TimeoutStatus::NotTracked,
+        }
+    }
 }
 
 #[async_trait]
@@ -726,5 +745,43 @@ mod tests {
         let state = make_state();
         let snapshot = state.destruct_snapshot("999").await;
         assert!(snapshot.is_none());
+    }
+
+    #[tokio::test]
+    async fn security_file_start_sets_pending() {
+        let state = make_state();
+        state
+            .start_security_file_input("42".into(), Instant::now())
+            .await;
+        assert_eq!(
+            state
+                .take_security_file_input_status("42", Duration::from_secs(60))
+                .await,
+            TimeoutStatus::Active
+        );
+    }
+
+    #[tokio::test]
+    async fn security_file_take_after_timeout_returns_expired() {
+        let state = make_state();
+        let past = Instant::now() - Duration::from_secs(120);
+        state.start_security_file_input("42".into(), past).await;
+        assert_eq!(
+            state
+                .take_security_file_input_status("42", Duration::from_secs(60))
+                .await,
+            TimeoutStatus::Expired
+        );
+    }
+
+    #[tokio::test]
+    async fn security_file_take_when_not_started_returns_not_tracked() {
+        let state = make_state();
+        assert_eq!(
+            state
+                .take_security_file_input_status("99", Duration::from_secs(60))
+                .await,
+            TimeoutStatus::NotTracked
+        );
     }
 }
