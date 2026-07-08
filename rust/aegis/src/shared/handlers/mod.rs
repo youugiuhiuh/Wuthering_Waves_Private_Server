@@ -1,7 +1,7 @@
 pub(crate) mod callback;
+pub mod menu;
 // Additional handler modules will be added by Tasks 4–11:
 // pub(crate) mod log;
-// pub(crate) mod menu;
 // pub(crate) mod message;
 // pub(crate) mod ops;
 // pub(crate) mod schedule;
@@ -77,7 +77,7 @@ pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
     ) || data.starts_with("set_timeout:")
         || data.starts_with("wwps_core_tag:")
     {
-        return Ok(Some(HandlerAction::Done));
+        return Ok(Some(menu::handle(event).await?));
     }
 
     Ok(None)

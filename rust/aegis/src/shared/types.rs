@@ -11,6 +11,7 @@ pub struct CallbackEvent {
     pub msg_id: MessageId,
     pub data: String,
     pub callback_id: String,
+    pub session_timeout_secs: u64,
 }
 
 pub enum HandlerAction {
