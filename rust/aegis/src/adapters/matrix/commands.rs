@@ -257,23 +257,66 @@ pub fn parse_to_event(
         return Some(event("m_xray_mgmt"));
     }
 
-    // singbox install shortcut
+    // singbox install shortcut and subcommands
     if let Some(cmd) = text_lower.strip_prefix("sb ") {
-        return match cmd {
-            "install" | "singbox install" => Some(event("sb_install")),
-            _ => Some(event("m_singbox_mgmt")),
-        };
+        return Some(match cmd {
+            "install" | "singbox install" => event("sb_install"),
+            cmd if cmd.starts_with("add h2 ") => {
+                let params = cmd.strip_prefix("add h2 ").unwrap();
+                let parts: Vec<&str> = params.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    event(&format!("sb_h2_ip:{},{}", parts[0], parts[1]))
+                } else {
+                    event("m_singbox_mgmt")
+                }
+            }
+            cmd if cmd.starts_with("add tu ") => {
+                let params = cmd.strip_prefix("add tu ").unwrap();
+                let parts: Vec<&str> = params.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    event(&format!("sb_tu_ip:{},{}", parts[0], parts[1]))
+                } else {
+                    event("m_singbox_mgmt")
+                }
+            }
+            cmd if cmd.starts_with("del ") || cmd.starts_with("delete ") => {
+                let name = cmd
+                    .strip_prefix("del ")
+                    .or_else(|| cmd.strip_prefix("delete "))
+                    .unwrap()
+                    .trim();
+                event(&format!("sb_del_cfg:{}", name))
+            }
+            _ => event("m_singbox_mgmt"),
+        });
     }
     if text_lower == "singbox" || text_lower == "sb" {
         return Some(event("m_singbox_mgmt"));
     }
 
-    // schedule — show menu
+    // schedule — show menu or handle subcommands
     if text_lower.starts_with("schedule ")
         || text_lower == "schedule"
         || text_lower.starts_with("sched ")
         || text_lower == "sched"
     {
+        // schedule add <template>
+        if let Some(template) = text_lower
+            .strip_prefix("schedule add ")
+            .or_else(|| text_lower.strip_prefix("sched add "))
+        {
+            return Some(event(&format!("s_add:{}", template)));
+        }
+        // schedule del <idx>
+        if let Some(idx) = text_lower
+            .strip_prefix("schedule del ")
+            .or_else(|| text_lower.strip_prefix("sched del "))
+            .or_else(|| text_lower.strip_prefix("schedule delete "))
+            .or_else(|| text_lower.strip_prefix("sched delete "))
+        {
+            return Some(event(&format!("s_del:{}", idx)));
+        }
+        // fallback: menu
         return Some(event("m_sched"));
     }
 
@@ -540,6 +583,202 @@ mod parse_to_event_tests {
         assert!(matches!(
             result,
             Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_xray_mgmt"
+        ));
+    }
+
+    #[test]
+    fn parse_sb_install_returns_sb_install() {
+        let result = parse_to_event(
+            "sb install",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "sb_install"
+        ));
+    }
+
+    #[test]
+    fn parse_sb_add_h2_returns_sb_h2_ip() {
+        let result = parse_to_event(
+            "sb add h2 example.com 5",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "sb_h2_ip:example.com,5"
+        ));
+    }
+
+    #[test]
+    fn parse_sb_add_tu_returns_sb_tu_ip() {
+        let result = parse_to_event(
+            "sb add tu example.com 3",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "sb_tu_ip:example.com,3"
+        ));
+    }
+
+    #[test]
+    fn parse_sb_del_returns_sb_del_cfg() {
+        let result = parse_to_event(
+            "sb del myconfig",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "sb_del_cfg:myconfig"
+        ));
+    }
+
+    #[test]
+    fn parse_sb_unknown_returns_menu() {
+        let result = parse_to_event(
+            "sb status",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_singbox_mgmt"
+        ));
+    }
+
+    #[test]
+    fn parse_singbox_bare_returns_menu() {
+        let result = parse_to_event(
+            "singbox",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_singbox_mgmt"
+        ));
+    }
+
+    #[test]
+    fn parse_schedule_add_returns_s_add() {
+        let result = parse_to_event(
+            "schedule add mytemplate",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "s_add:mytemplate"
+        ));
+    }
+
+    #[test]
+    fn parse_sched_add_returns_s_add() {
+        let result = parse_to_event(
+            "sched add mytemplate",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "s_add:mytemplate"
+        ));
+    }
+
+    #[test]
+    fn parse_schedule_del_returns_s_del() {
+        let result = parse_to_event(
+            "schedule del 3",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "s_del:3"
+        ));
+    }
+
+    #[test]
+    fn parse_sched_del_returns_s_del() {
+        let result = parse_to_event(
+            "sched del 3",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "s_del:3"
+        ));
+    }
+
+    #[test]
+    fn parse_schedule_delete_returns_s_del() {
+        let result = parse_to_event(
+            "schedule delete 3",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "s_del:3"
+        ));
+    }
+
+    #[test]
+    fn parse_schedule_list_returns_menu() {
+        let result = parse_to_event(
+            "schedule list",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_sched"
+        ));
+    }
+
+    #[test]
+    fn parse_schedule_bare_returns_menu() {
+        let result = parse_to_event(
+            "schedule",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_sched"
+        ));
+    }
+
+    #[test]
+    fn parse_sched_bare_returns_menu() {
+        let result = parse_to_event(
+            "sched",
+            test_adapter(),
+            &TargetId("!r:localhost".into()),
+            42,
+        );
+        assert!(matches!(
+            result,
+            Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_sched"
         ));
     }
 }
