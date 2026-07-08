@@ -344,7 +344,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
     let adapter = cb.adapter.as_ref();
     let target = &cb.target;
     let chat_id_str = target.0.clone();
-    let user_id = target.0.parse::<i64>().unwrap_or(0);
+    let user_id = cb.user_id.parse::<i64>().unwrap_or(0);
     match cb.data.as_str() {
         "a_destroy_ask" => {
             if !state.is_authorized(user_id).await {
