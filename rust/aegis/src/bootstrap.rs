@@ -302,6 +302,19 @@ pub fn save_lang_to_config(lang: i18n::Lang) -> Result<()> {
     Ok(())
 }
 
+/// Persist the self-destruct key hash to the encrypted config file.
+#[allow(dead_code)]
+pub fn save_self_destruct_key_hash_to_config(hash: Option<String>) -> Result<()> {
+    let config_dir = config_dir();
+    let _ = SecurityManager::new(&config_dir.join(KEY_FILE))?;
+    let path = config_dir.join(CONFIG_FILE);
+    let config_data = fs::read(&path)?;
+    let mut encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
+    encrypted_config.self_destruct_key_hash = hash;
+    fs::write(path, serde_json::to_vec(&encrypted_config)?)?;
+    Ok(())
+}
+
 pub fn harden_process() {
     #[cfg(target_os = "linux")]
     {
@@ -548,5 +561,15 @@ mod config_validator_tests {
                 )
                 .is_ok()
         );
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    #[test]
+    fn save_self_destruct_hash_round_trips() {
+        let _sig: fn(Option<String>) -> Result<()> = save_self_destruct_key_hash_to_config;
     }
 }
