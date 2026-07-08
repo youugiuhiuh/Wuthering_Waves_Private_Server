@@ -163,7 +163,7 @@ fn sync_reality_pq_pub_on_setup() {
     }
 }
 
-pub(crate) struct MatrixSetupConfig {
+pub struct MatrixSetupConfig {
     homeserver: String,
     username: String,
     password: String,
@@ -315,6 +315,7 @@ pub fn harden_process() {
 
 pub struct ConfigValidator;
 
+#[allow(clippy::new_without_default)]
 impl ConfigValidator {
     pub fn new() -> Self {
         Self

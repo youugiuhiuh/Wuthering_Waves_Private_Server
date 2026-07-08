@@ -25,7 +25,7 @@ pub enum DestructStep {
     AwaitFinalConfirm,
 }
 
-#[expect(dead_code)]
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScheduleFrequency {
     Daily,
@@ -54,7 +54,7 @@ pub struct FailedRecord {
     pub lock_level: usize,
 }
 
-#[expect(dead_code)]
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ScheduleInputState {
     pub updated_at: Instant,
@@ -415,7 +415,7 @@ impl AppState {
         self.pending_schedule_inputs.lock().await.remove(chat_id);
     }
 
-    #[expect(dead_code)]
+    #[allow(dead_code)]
     pub async fn insert_schedule_input(&self, chat_id: String, input: ScheduleInputState) {
         self.pending_schedule_inputs
             .lock()
@@ -423,7 +423,7 @@ impl AppState {
             .insert(chat_id, input);
     }
 
-    #[expect(dead_code)]
+    #[allow(dead_code)]
     pub async fn schedule_input_snapshot(&self, chat_id: &str) -> Option<ScheduleInputState> {
         self.pending_schedule_inputs
             .lock()
@@ -432,7 +432,7 @@ impl AppState {
             .cloned()
     }
 
-    #[expect(dead_code)]
+    #[allow(dead_code)]
     pub async fn with_schedule_input<R>(
         &self,
         chat_id: &str,
