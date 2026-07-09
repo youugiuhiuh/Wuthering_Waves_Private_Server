@@ -1,104 +1,71 @@
-## Task 1: state.rs — Add pending_security_file state
+### Task 1: `PlatformCapabilities::DISCORD` const + `DiscordAdapter::capabilities()`
 
 **Files:**
-- Modify: `src/app/state.rs`
+- Modify: `src/adapters/common/trait.rs` — add const
+- Modify: `src/adapters/discord/adapter.rs` — use const in `capabilities()`
+- Test: inline `#[cfg(test)]` in adapter.rs
 
 **Interfaces:**
-- Consumes: existing `AppState` with `Mutex<HashMap<String, Instant>>` pattern (see `pending_warp_inputs`)
-- Produces: `AppState::start_security_file_input(chat_id: String, now: Instant)`, `AppState::take_security_file_input_status(chat_id: &str, timeout: Duration) -> TimeoutStatus`
+- Consumes: `PlatformCapabilities::TELEGRAM` (existing pattern, line ~46)
+- Produces: `PlatformCapabilities::DISCORD` const, used by `DiscordAdapter::capabilities()`
 
-- [ ] **Step 1.1: Write failing test**
+- [ ] **Step 1: Write failing test in adapter.rs**
 
 ```rust
 #[cfg(test)]
-mod security_file_tests {
-    use super::*;
-    use std::time::Duration;
+mod tests {
+    use crate::adapters::common::PlatformCapabilities;
 
-    #[tokio::test]
-    async fn start_sets_pending() {
-        let state = make_test_state();
-        state.start_security_file_input("42".into(), Instant::now()).await;
-        assert_eq!(
-            state.take_security_file_input_status("42", Duration::from_secs(60)).await,
-            TimeoutStatus::Active
-        );
-    }
-
-    #[tokio::test]
-    async fn take_after_timeout_returns_expired() {
-        let state = make_test_state();
-        let past = Instant::now() - Duration::from_secs(120);
-        state.start_security_file_input("42".into(), past).await;
-        assert_eq!(
-            state.take_security_file_input_status("42", Duration::from_secs(60)).await,
-            TimeoutStatus::Expired
-        );
-    }
-
-    #[tokio::test]
-    async fn take_when_not_started_returns_not_tracked() {
-        let state = make_test_state();
-        assert_eq!(
-            state.take_security_file_input_status("99", Duration::from_secs(60)).await,
-            TimeoutStatus::NotTracked
-        );
+    #[test]
+    fn discord_capabilities_matches_expected() {
+        let caps = PlatformCapabilities::DISCORD;
+        assert!(caps.can_edit_message);
+        assert!(caps.can_delete_message);
+        assert!(!caps.has_file_transfer);
     }
 }
 ```
 
-- [ ] **Step 1.2: Run test to verify it fails**
-
-Run: `cargo test security_file_tests -- --nocapture 2>&1 | tail -10`
-Expected: FAIL — functions not defined on AppState
-
-- [ ] **Step 1.3: Add state + methods to AppState**
-
-Add field after existing `pending_schedule_inputs`:
-```rust
-pending_security_file: Mutex<HashMap<String, Instant>>,
-```
-
-Initialize in the constructor:
-```rust
-pending_security_file: Mutex::new(HashMap::new()),
-```
-
-Add methods:
-```rust
-pub async fn start_security_file_input(&self, chat_id: String, now: Instant) {
-    self.pending_security_file.lock().await.insert(chat_id, now);
-}
-
-pub async fn take_security_file_input_status(
-    &self,
-    chat_id: &str,
-    timeout: Duration,
-) -> TimeoutStatus {
-    let mut map = self.pending_security_file.lock().await;
-    match map.remove(chat_id) {
-        Some(started) if started.elapsed() < timeout => TimeoutStatus::Active,
-        Some(_) => TimeoutStatus::Expired,
-        None => TimeoutStatus::NotTracked,
-    }
-}
-```
-
-- [ ] **Step 1.4: Run test to verify it passes**
-
-Run: `cargo test security_file_tests -- --nocapture 2>&1 | tail -10`
-Expected: PASS — 3 tests
-
-- [ ] **Step 1.5: Run full suite + lint**
-
-Run: `cargo fmt && cargo clippy -- -D warnings && cargo test 2>&1 | grep "^test result:"`
-Expected: All pass, 0 failures
-
-- [ ] **Step 1.6: Commit**
+- [ ] **Step 2: Run to verify it fails**
 
 ```bash
-git add src/app/state.rs
-git commit -m "feat(aegis): add pending_security_file state for security-file upload flow"
+cargo test discord_capabilities -- --ignored
+```
+Expected: compile error — `DISCORD` not defined on `PlatformCapabilities`
+
+- [ ] **Step 3: Add const to `src/adapters/common/trait.rs` after the existing `TELEGRAM` const (line ~52)**
+
+```rust
+pub const DISCORD: Self = Self {
+    can_edit_message: true,
+    can_delete_message: true,
+    has_inline_keyboard: true,
+    has_slash_commands: true,
+    has_file_transfer: false,
+};
+```
+
+- [ ] **Step 4: Replace `DiscordAdapter::capabilities()` (lines 89-97 of adapter.rs)**
+
+Change from manual struct to:
+```rust
+fn capabilities(&self) -> PlatformCapabilities {
+    PlatformCapabilities::DISCORD
+}
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+cargo test discord_capabilities -v
+```
+Expected: PASS
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/adapters/common/trait.rs src/adapters/discord/adapter.rs
+git commit -m "feat(aegis): add PlatformCapabilities::DISCORD const"
 ```
 
 ---

@@ -4,6 +4,7 @@ use aegis::adapters::common::{MessageId, TargetId};
 use aegis::core::i18n;
 use aegis::shared::dispatch_event;
 use aegis::shared::types::*;
+use anyhow::Context;
 use anyhow::Result;
 use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::Room as MatrixRoom;
@@ -55,6 +56,7 @@ pub async fn run(
     matrix_handle: Option<super::matrix::MatrixHandle>,
     enable_telegram: bool,
     enable_matrix: bool,
+    discord_raw: Option<super::discord::DiscordRawHandle>,
     token: String,
     admin_id: i64,
 ) -> Result<(), anyhow::Error> {
@@ -85,6 +87,62 @@ pub async fn run(
 
         if let Err(e) = aegis::core::system::operations::Operations::set_apt_daily_timer().await {
             log::warn!("覆盖 apt-daily timer 失败: {}", e);
+        }
+    }
+
+    // ── Discord 网关 ──
+    if let Some(raw) = discord_raw {
+        let adapter_for_init = raw.adapter.clone();
+        let target_for_init = TargetId(raw.admin_channel.to_string());
+        tokio::spawn(async move {
+            if let Err(e) = aegis::core::system::scheduler::start_scheduler(
+                adapter_for_init.clone(),
+                target_for_init.clone(),
+            )
+            .await
+            {
+                log::error!("❌ 初始化调度器失败: {}", e);
+            }
+            tokio::join!(
+                async {
+                    let _ =
+                        crate::notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
+                },
+                async {
+                    let _ = crate::notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init)
+                        .await;
+                },
+                async {
+                    let _ = crate::notify_online(&*adapter_for_init, &target_for_init).await;
+                },
+            );
+        });
+
+        let (mut client, _, _) = super::discord::build_handle(raw, state.clone())
+            .await
+            .context("构建 Discord 客户端失败")?;
+
+        // Discord-only: keep process alive via CancellationToken
+        if !enable_telegram && !enable_matrix {
+            let token = CancellationToken::new();
+            let token_clone = token.clone();
+            tokio::spawn(async move {
+                tokio::signal::ctrl_c().await.ok();
+                log::info!("收到关闭信号，正在优雅关闭...");
+                token.cancel();
+            });
+            tokio::spawn(async move {
+                if let Err(e) = client.start().await {
+                    log::error!("Discord 网关错误: {}", e);
+                }
+            });
+            token_clone.cancelled().await;
+        } else {
+            tokio::spawn(async move {
+                if let Err(e) = client.start().await {
+                    log::error!("Discord 网关错误: {}", e);
+                }
+            });
         }
     }
 

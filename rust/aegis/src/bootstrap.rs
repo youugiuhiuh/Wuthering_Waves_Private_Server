@@ -43,6 +43,10 @@ pub struct EncryptedConfig {
     #[serde(default)]
     pub matrix_store_passphrase: Option<Vec<u8>>,
     #[serde(default)]
+    pub discord_token: Option<Vec<u8>>,
+    #[serde(default)]
+    pub discord_admin_id: Option<Vec<u8>>,
+    #[serde(default)]
     pub lang: Option<String>,
 }
 
@@ -61,6 +65,10 @@ struct SetupInput {
     matrix_room_id: Option<String>,
     #[serde(default)]
     matrix_store_passphrase: Option<String>,
+    #[serde(default)]
+    discord_token: Option<String>,
+    #[serde(default)]
+    discord_admin_id: Option<String>,
 }
 
 impl Drop for EncryptedConfig {
@@ -81,6 +89,12 @@ impl Drop for EncryptedConfig {
             v.zeroize();
         }
         if let Some(v) = &mut self.matrix_store_passphrase {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.discord_token {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.discord_admin_id {
             v.zeroize();
         }
     }
@@ -178,6 +192,8 @@ pub async fn run_setup(
     admin_id: &str,
     totp_secret: &str,
     matrix: Option<MatrixSetupConfig>,
+    discord_token: Option<&str>,
+    discord_admin_id: Option<&str>,
 ) -> Result<()> {
     let token = token.trim();
     let admin_id = admin_id.trim();
@@ -204,6 +220,13 @@ pub async fn run_setup(
         (None, None, None, None, None)
     };
 
+    let discord_token = discord_token
+        .map(|t| security.encrypt(t.as_bytes()))
+        .transpose()?;
+    let discord_admin_id = discord_admin_id
+        .map(|t| security.encrypt(t.as_bytes()))
+        .transpose()?;
+
     let encrypted_config = EncryptedConfig {
         token: security.encrypt(token.as_bytes())?,
         admin_id: security.encrypt(admin_id.as_bytes())?,
@@ -214,6 +237,8 @@ pub async fn run_setup(
         matrix_password,
         matrix_room_id,
         matrix_store_passphrase,
+        discord_token,
+        discord_admin_id,
         lang: None,
     };
     fs::write(
@@ -266,7 +291,18 @@ pub async fn run_setup_from_stdin() -> Result<()> {
         }
     };
 
-    run_setup(&input.token, &input.admin_id, &input.totp_secret, matrix).await
+    let discord_token = input.discord_token.as_deref();
+    let discord_admin_id = input.discord_admin_id.as_deref();
+
+    run_setup(
+        &input.token,
+        &input.admin_id,
+        &input.totp_secret,
+        matrix,
+        discord_token,
+        discord_admin_id,
+    )
+    .await
 }
 
 pub async fn verify_integrity() -> Result<()> {
@@ -571,5 +607,27 @@ mod config_tests {
     #[test]
     fn save_self_destruct_hash_compiles() {
         let _sig: fn(Option<String>) -> Result<()> = save_self_destruct_key_hash_to_config;
+    }
+
+    #[test]
+    fn discord_config_fields_round_trip() {
+        let config = EncryptedConfig {
+            token: b"t".to_vec(),
+            admin_id: b"a".to_vec(),
+            totp_secret: b"s".to_vec(),
+            self_destruct_key_hash: None,
+            matrix_homeserver: None,
+            matrix_username: None,
+            matrix_password: None,
+            matrix_room_id: None,
+            matrix_store_passphrase: None,
+            lang: None,
+            discord_token: Some(b"dt".to_vec()),
+            discord_admin_id: Some(b"da".to_vec()),
+        };
+        let json = serde_json::to_vec(&config).unwrap();
+        let deserialized: EncryptedConfig = serde_json::from_slice(&json).unwrap();
+        assert_eq!(deserialized.discord_token, Some(b"dt".to_vec()));
+        assert_eq!(deserialized.discord_admin_id, Some(b"da".to_vec()));
     }
 }

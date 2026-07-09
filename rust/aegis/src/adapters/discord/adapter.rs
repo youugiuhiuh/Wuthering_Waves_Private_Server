@@ -87,13 +87,20 @@ impl BotAdapter for DiscordAdapter {
     }
 
     fn capabilities(&self) -> PlatformCapabilities {
-        PlatformCapabilities {
-            can_edit_message: true,
-            can_delete_message: true,
-            has_inline_keyboard: true,
-            has_slash_commands: true,
-            has_file_transfer: false,
-        }
+        PlatformCapabilities::DISCORD
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::adapters::common::PlatformCapabilities;
+
+    #[test]
+    fn discord_capabilities_matches_expected() {
+        let caps = PlatformCapabilities::DISCORD;
+        assert!(caps.can_edit_message);
+        assert!(caps.can_delete_message);
+        assert!(!caps.has_file_transfer);
     }
 }
 

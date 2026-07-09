@@ -50,6 +50,14 @@ impl PlatformCapabilities {
         has_slash_commands: true,
         has_file_transfer: true,
     };
+
+    pub const DISCORD: Self = Self {
+        can_edit_message: true,
+        can_delete_message: true,
+        has_inline_keyboard: true,
+        has_slash_commands: true,
+        has_file_transfer: false,
+    };
 }
 
 #[mockall::automock]

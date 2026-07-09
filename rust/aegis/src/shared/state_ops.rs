@@ -98,6 +98,7 @@ mod tests {
     fn make_state() -> AppState {
         AppState::new(
             42,
+            None,
             TotpManager::new(&secrecy::SecretString::from(
                 TotpManager::generate_new_secret(),
             ))
