@@ -109,9 +109,8 @@ pub async fn run(
                         crate::notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
                 },
                 async {
-                    let _ =
-                        crate::notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init)
-                            .await;
+                    let _ = crate::notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init)
+                        .await;
                 },
                 async {
                     let _ = crate::notify_online(&*adapter_for_init, &target_for_init).await;
@@ -119,10 +118,9 @@ pub async fn run(
             );
         });
 
-        let (mut client, _, _) =
-            super::discord::build_handle(raw, state.clone())
-                .await
-                .context("构建 Discord 客户端失败")?;
+        let (mut client, _, _) = super::discord::build_handle(raw, state.clone())
+            .await
+            .context("构建 Discord 客户端失败")?;
 
         // Discord-only: keep process alive via CancellationToken
         if !enable_telegram && !enable_matrix {

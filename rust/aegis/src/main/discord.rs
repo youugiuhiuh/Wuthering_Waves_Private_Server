@@ -49,30 +49,31 @@ fn parse_slash(name: &str, code: Option<&str>) -> Option<BotCommand> {
 #[allow(dead_code)]
 pub fn has_discord_config(enc: &EncryptedConfig, args: &[String]) -> bool {
     let explicit = args.iter().any(|a| a == "--discord" || a == "--all");
-    explicit
-        || (enc.discord_token.is_some() && enc.discord_admin_id.is_some())
+    explicit || (enc.discord_token.is_some() && enc.discord_admin_id.is_some())
 }
 
 #[allow(dead_code)]
 pub async fn register_slash_commands(http: &Http) -> Result<()> {
     use serenity::all::CreateCommandOption;
-    Command::set_global_commands(http, vec![
-        CreateCommand::new("help").description("Show help"),
-        CreateCommand::new("start").description("Start bot"),
-        CreateCommand::new("menu").description("Show admin menu"),
-        CreateCommand::new("auth")
-            .description("Verify TOTP code")
-            .add_option(
-                CreateCommandOption::new(
-                    serenity::all::CommandOptionType::String,
-                    "code",
-                    "6-digit TOTP code",
-                )
-                .required(true),
-            ),
-        CreateCommand::new("setsecurityfile")
-            .description("Set destruct verification file"),
-    ])
+    Command::set_global_commands(
+        http,
+        vec![
+            CreateCommand::new("help").description("Show help"),
+            CreateCommand::new("start").description("Start bot"),
+            CreateCommand::new("menu").description("Show admin menu"),
+            CreateCommand::new("auth")
+                .description("Verify TOTP code")
+                .add_option(
+                    CreateCommandOption::new(
+                        serenity::all::CommandOptionType::String,
+                        "code",
+                        "6-digit TOTP code",
+                    )
+                    .required(true),
+                ),
+            CreateCommand::new("setsecurityfile").description("Set destruct verification file"),
+        ],
+    )
     .await?;
     Ok(())
 }
@@ -84,8 +85,7 @@ pub async fn connect_discord(
     _config_dir: &Path,
 ) -> Result<DiscordRawHandle> {
     let decrypt = |field: &Option<Vec<u8>>| -> Result<String> {
-        let vec = security
-            .decrypt(field.as_ref().with_context(|| "缺少 Discord 配置项")?)?;
+        let vec = security.decrypt(field.as_ref().with_context(|| "缺少 Discord 配置项")?)?;
         Ok(String::from_utf8(vec.expose_secret().to_vec())
             .map_err(|e| anyhow::anyhow!("Discord 字段包含无效的 UTF-8: {}", e))?
             .trim()
@@ -117,10 +117,7 @@ pub async fn connect_discord(
 /// Build a (Client, ChannelId, Adapter) tuple from a RawHandle + AppState.
 /// Called in runtime.rs where AppState exists.
 #[allow(dead_code)]
-pub async fn build_handle(
-    raw: DiscordRawHandle,
-    state: Arc<AppState>,
-) -> Result<DiscordHandle> {
+pub async fn build_handle(raw: DiscordRawHandle, state: Arc<AppState>) -> Result<DiscordHandle> {
     let intents = GatewayIntents::DIRECT_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
     let handler = DiscordHandler {
         state,
@@ -180,9 +177,7 @@ impl EventHandler for DiscordHandler {
                 if let Some(command) = parse_slash(name, code) {
                     let event = BotEvent::Command(CommandEvent {
                         adapter: self.adapter.clone(),
-                        target: aegis::adapters::common::TargetId(
-                            cmd.channel_id.to_string(),
-                        ),
+                        target: aegis::adapters::common::TargetId(cmd.channel_id.to_string()),
                         user_id: cmd.user.id.get() as i64,
                         command,
                     });
@@ -196,9 +191,7 @@ impl EventHandler for DiscordHandler {
                 let msg = &comp.message;
                 let event = BotEvent::Callback(CallbackEvent {
                     adapter: self.adapter.clone(),
-                    target: aegis::adapters::common::TargetId(
-                        msg.channel_id.to_string(),
-                    ),
+                    target: aegis::adapters::common::TargetId(msg.channel_id.to_string()),
                     user_id: comp.user.id.get().to_string(),
                     msg_id: aegis::adapters::common::MessageId(msg.id.to_string()),
                     data: comp.data.custom_id.clone(),
