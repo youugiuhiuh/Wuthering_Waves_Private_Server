@@ -296,7 +296,7 @@ func readSecureInputStr(prompt string) string {
 	return s
 }
 
-func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, matrixRoom string, matrixPass, matrixStorePassphrase []byte, discordToken, discordAdminID string) []byte {
+func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, matrixRoom string, matrixPass, matrixStorePassphrase []byte, discordToken, discordAdminID, matrixRecoveryKey string) []byte {
 	payload := make([]byte, 0, len(token)+len(adminID)+len(totpSecret)+64)
 	payload = append(payload, '{')
 	payload = append(payload, []byte(`"token":`)...)
@@ -343,6 +343,12 @@ func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, 
 		payload = append(payload, ',')
 		payload = append(payload, []byte(`"discord_admin_id":`)...)
 		payload = appendJSONEscaped(payload, []byte(discordAdminID))
+	}
+
+	if matrixRecoveryKey != "" {
+		payload = append(payload, ',')
+		payload = append(payload, []byte(`"matrix_recovery_key":`)...)
+		payload = appendJSONEscaped(payload, []byte(matrixRecoveryKey))
 	}
 
 	payload = append(payload, '}')
@@ -819,6 +825,7 @@ type setupConfig struct {
 	MatrixStorePassphrase string
 	DiscordToken          string
 	DiscordAdminID        string
+	MatrixRecoveryKey     string
 }
 
 func parseKeyVal(data []byte) (*setupConfig, error) {
@@ -857,6 +864,8 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 			cfg.DiscordToken = val
 		case "discord_admin_id":
 			cfg.DiscordAdminID = val
+		case "matrix_recovery_key":
+			cfg.MatrixRecoveryKey = val
 		default:
 			printYellow(i18n.T("keyval.unknown_field", key))
 		}
@@ -892,7 +901,7 @@ func installFromKeyVal() {
 	payload := buildSetupPayload(
 		[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
 		cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), []byte(cfg.MatrixStorePassphrase),
-		cfg.DiscordToken, cfg.DiscordAdminID,
+		cfg.DiscordToken, cfg.DiscordAdminID, cfg.MatrixRecoveryKey,
 	)
 
 	runAegisSetup(destPath, payload)
@@ -978,7 +987,7 @@ func firstTimeSetup(binaryPath string) {
 	fmt.Print(i18n.T("firsttime.matrix_prompt_yn"))
 	setupMatrix, _ := readLine()
 
-	var matrixHS, matrixUser, matrixRoom string
+	var matrixHS, matrixUser, matrixRoom, matrixRecoveryKey string
 	var matrixPassEnclave *memguard.Enclave
 
 	if setupMatrix == "y" || setupMatrix == "Y" {
@@ -1005,6 +1014,12 @@ func firstTimeSetup(binaryPath string) {
 		printYellow(i18n.T("firsttime.matrix_room_format"))
 		printYellow(i18n.T("firsttime.matrix_room_warn"))
 		matrixRoom = readSecureInputStr(i18n.T("firsttime.matrix_room_prompt"))
+
+		// ── Matrix Recovery Key ──
+		printYellow(i18n.T("firsttime.matrix_recovery_title"))
+		printYellow(i18n.T("firsttime.matrix_recovery_desc1"))
+		printYellow(i18n.T("firsttime.matrix_recovery_desc2"))
+		matrixRecoveryKey = readSecureInputStr(i18n.T("firsttime.matrix_recovery_prompt"))
 	}
 
 	// ── Discord section ──
@@ -1049,7 +1064,7 @@ func firstTimeSetup(binaryPath string) {
 	setupPayload := buildSetupPayload(
 		bTokenBuf.Bytes(), aIDBuf.Bytes(), tSecretBuf.Bytes(),
 		matrixHS, matrixUser, matrixRoom, mPassBytes, []byte(matrixStorePassphrase),
-		discordToken, discordAdminID,
+		discordToken, discordAdminID, matrixRecoveryKey,
 	)
 	defer zeroBytes(setupPayload)
 

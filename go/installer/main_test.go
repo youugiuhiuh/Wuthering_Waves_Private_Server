@@ -86,7 +86,7 @@ func TestBuildSetupPayload(t *testing.T) {
 	t.Run("without matrix", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
-			"", "", "", nil, nil, "", "",
+			"", "", "", nil, nil, "", "", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -103,7 +103,7 @@ func TestBuildSetupPayload(t *testing.T) {
 	t.Run("with matrix", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
-			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", []byte("pass123"), nil, "", "",
+			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", []byte("pass123"), nil, "", "", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -126,7 +126,7 @@ func TestBuildSetupPayload(t *testing.T) {
 	t.Run("partial matrix fields", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
-			"https://matrix.org", "", "", nil, nil, "", "",
+			"https://matrix.org", "", "", nil, nil, "", "", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -144,7 +144,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
 			"", "", "", nil, nil,
-			"MTIzLmFiYw", "123456789",
+			"MTIzLmFiYw", "123456789", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -161,7 +161,7 @@ func TestBuildSetupPayload(t *testing.T) {
 	t.Run("without discord fields", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
-			"", "", "", nil, nil, "", "",
+			"", "", "", nil, nil, "", "", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -172,6 +172,35 @@ func TestBuildSetupPayload(t *testing.T) {
 		}
 		if parsed["discord_admin_id"] != nil {
 			t.Error("不应包含 discord_admin_id")
+		}
+	})
+
+	t.Run("with matrix recovery key", func(t *testing.T) {
+		payload := buildSetupPayload(
+			[]byte("t"), []byte("1"), []byte("S"),
+			"", "", "", nil, nil,
+			"", "", "matrix-recovery-key-value",
+		)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		if parsed["matrix_recovery_key"] != "matrix-recovery-key-value" {
+			t.Errorf("matrix_recovery_key = %v, want matrix-recovery-key-value", parsed["matrix_recovery_key"])
+		}
+	})
+
+	t.Run("without matrix recovery key", func(t *testing.T) {
+		payload := buildSetupPayload(
+			[]byte("t"), []byte("1"), []byte("S"),
+			"", "", "", nil, nil, "", "", "",
+		)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		if parsed["matrix_recovery_key"] != nil {
+			t.Error("不应包含 matrix_recovery_key")
 		}
 	})
 }
@@ -302,7 +331,7 @@ func TestParseKeyVal(t *testing.T) {
 		}
 		payload := buildSetupPayload(
 			[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
-			cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), nil, "", "",
+			cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), nil, "", "", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -321,6 +350,17 @@ func TestParseKeyVal(t *testing.T) {
 		}
 		if cfg.DiscordAdminID != "123456789" {
 			t.Errorf("DiscordAdminID = %q, want 123456789", cfg.DiscordAdminID)
+		}
+	})
+
+	t.Run("with matrix recovery key", func(t *testing.T) {
+		data := []byte("token=t\nadmin_id=1\nmatrix_recovery_key=my-recovery-key\n")
+		cfg, err := parseKeyVal(data)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.MatrixRecoveryKey != "my-recovery-key" {
+			t.Errorf("MatrixRecoveryKey = %q, want my-recovery-key", cfg.MatrixRecoveryKey)
 		}
 	})
 }
