@@ -41,7 +41,7 @@ fn render_markup_buttons(base: String, markup: &Markup) -> String {
         }
     }
     if !lines.is_empty() {
-        body.push_str("\n\n📋 **可用操作:**\n");
+        body.push_str(&rust_i18n::t!("matrix.markup_header"));
         body.push_str(&lines.join("\n"));
     }
     body

@@ -569,7 +569,7 @@ mod config_tests {
     use super::*;
 
     #[test]
-    fn save_self_destruct_hash_round_trips() {
+    fn save_self_destruct_hash_compiles() {
         let _sig: fn(Option<String>) -> Result<()> = save_self_destruct_key_hash_to_config;
     }
 }

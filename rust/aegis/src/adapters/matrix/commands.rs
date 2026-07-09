@@ -259,9 +259,12 @@ pub fn parse_to_event(
     }
 
     // singbox install shortcut and subcommands
+    if text_lower == "singbox install" {
+        return Some(event("sb_install"));
+    }
     if let Some(cmd) = text_lower.strip_prefix("sb ") {
         return Some(match cmd {
-            "install" | "singbox install" => event("sb_install"),
+            "install" => event("sb_install"),
             cmd if cmd.starts_with("add h2 ") => {
                 let params = cmd.strip_prefix("add h2 ").unwrap();
                 let parts: Vec<&str> = params.split_whitespace().collect();

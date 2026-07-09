@@ -573,3 +573,6 @@ help:
       warp uninstall      - Uninstall WARP
 
       destruct            - Self-destruct
+
+matrix:
+  markup_header: "📋 **Available operations:**\n"

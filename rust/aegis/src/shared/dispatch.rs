@@ -139,57 +139,55 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
     }
 
     let file_timeout = Duration::from_secs(180);
-    if state
-        .take_security_file_input_status(&msg.target.0, file_timeout)
-        .await
-        == TimeoutStatus::Active
+    if let Some(ref fid) = msg.file_id
+        && state
+            .take_security_file_input_status(&msg.target.0, file_timeout)
+            .await
+            == TimeoutStatus::Active
     {
-        if let Some(ref fid) = msg.file_id {
-            const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
-            let content = msg.adapter.download_file(fid).await?;
-            if content.len() as u64 > MAX_FILE_SIZE {
-                msg.adapter
-                    .send_message(
-                        &msg.target,
-                        MessageContent {
-                            text: rust_i18n::t!(
-                                "bot_commands.file_too_big",
-                                "0" => content.len() as u64,
-                                "1" => MAX_FILE_SIZE
-                            )
-                            .into(),
-                            markup: None,
-                        },
-                    )
-                    .await?;
-                return Ok(());
-            }
-            let hash = hex::encode(sha2::Sha256::digest(&content));
-            state.set_self_destruct_key_hash(Some(hash.clone())).await;
-            if let Err(e) =
-                crate::bootstrap::save_self_destruct_key_hash_to_config(Some(hash.clone()))
-            {
-                log::error!("保存安全文件雜湊失敗: {}", e);
-            }
-            let file_display = msg
-                .file_name
-                .as_ref()
-                .map(|n| format!("{} | {}", n, &hash[..8]))
-                .unwrap_or_else(|| hash[..8].to_string());
+        const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+        let content = msg.adapter.download_file(fid).await?;
+        if content.len() as u64 > MAX_FILE_SIZE {
             msg.adapter
                 .send_message(
                     &msg.target,
                     MessageContent {
                         text: rust_i18n::t!(
-                            "bot_commands.security_file_set",
-                            "0" => file_display
+                            "bot_commands.file_too_big",
+                            "0" => content.len() as u64,
+                            "1" => MAX_FILE_SIZE
                         )
                         .into(),
                         markup: None,
                     },
                 )
                 .await?;
+            return Ok(());
         }
+        let hash = hex::encode(sha2::Sha256::digest(&content));
+        state.set_self_destruct_key_hash(Some(hash.clone())).await;
+        if let Err(e) = crate::bootstrap::save_self_destruct_key_hash_to_config(Some(hash.clone()))
+        {
+            log::error!("保存安全文件雜湊失敗: {}", e);
+        }
+        let file_display = msg
+            .file_name
+            .as_ref()
+            .map(|n| format!("{} | {}", n, &hash[..8]))
+            .unwrap_or_else(|| hash[..8].to_string());
+        msg.adapter
+            .send_message(
+                &msg.target,
+                MessageContent {
+                    text: rust_i18n::t!(
+                        "bot_commands.security_file_set",
+                        "0" => file_display
+                    )
+                    .into(),
+                    markup: None,
+                },
+            )
+            .await?;
         return Ok(());
     }
 
