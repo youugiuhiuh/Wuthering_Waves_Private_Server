@@ -20,6 +20,8 @@ pub struct DecryptedConfig {
     pub discord_token: Option<String>,
     #[expect(dead_code)]
     pub discord_admin_id: Option<i64>,
+    #[expect(dead_code)]
+    pub matrix_recovery_key: Option<String>,
     pub encrypted_config: EncryptedConfig,
 }
 
@@ -91,6 +93,20 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
         }
         None => None,
     };
+    let matrix_recovery_key = match &encrypted_config.matrix_recovery_key {
+        Some(v) => {
+            let vec = security
+                .decrypt(v)
+                .context("解密 matrix_recovery_key 失败")?;
+            Some(
+                String::from_utf8(vec.expose_secret().to_vec())
+                    .map_err(|e| anyhow::anyhow!("matrix_recovery_key 包含无效的 UTF-8: {}", e))?
+                    .trim()
+                    .to_string(),
+            )
+        }
+        None => None,
+    };
 
     let validator = ConfigValidator::new();
     if let Err(e) = validator.validate_decrypted_config(
@@ -115,6 +131,7 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
                 totp_secret,
                 discord_token,
                 discord_admin_id,
+                matrix_recovery_key,
                 encrypted_config,
             },
             totp_manager,
