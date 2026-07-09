@@ -86,7 +86,7 @@ func TestBuildSetupPayload(t *testing.T) {
 	t.Run("without matrix", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
-			"", "", "", nil, nil,
+			"", "", "", nil, nil, "", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -103,7 +103,7 @@ func TestBuildSetupPayload(t *testing.T) {
 	t.Run("with matrix", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
-			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", []byte("pass123"), nil,
+			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", []byte("pass123"), nil, "", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -126,7 +126,7 @@ func TestBuildSetupPayload(t *testing.T) {
 	t.Run("partial matrix fields", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
-			"https://matrix.org", "", "", nil, nil,
+			"https://matrix.org", "", "", nil, nil, "", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -137,6 +137,41 @@ func TestBuildSetupPayload(t *testing.T) {
 		}
 		if parsed["matrix_username"] != nil {
 			t.Error("不应包含 matrix_username")
+		}
+	})
+
+	t.Run("with discord fields", func(t *testing.T) {
+		payload := buildSetupPayload(
+			[]byte("t"), []byte("1"), []byte("S"),
+			"", "", "", nil, nil,
+			"MTIzLmFiYw", "123456789",
+		)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		if parsed["discord_token"] != "MTIzLmFiYw" {
+			t.Errorf("discord_token = %v, want MTIzLmFiYw", parsed["discord_token"])
+		}
+		if parsed["discord_admin_id"] != "123456789" {
+			t.Errorf("discord_admin_id = %v, want 123456789", parsed["discord_admin_id"])
+		}
+	})
+
+	t.Run("without discord fields", func(t *testing.T) {
+		payload := buildSetupPayload(
+			[]byte("t"), []byte("1"), []byte("S"),
+			"", "", "", nil, nil, "", "",
+		)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		if parsed["discord_token"] != nil {
+			t.Error("不应包含 discord_token")
+		}
+		if parsed["discord_admin_id"] != nil {
+			t.Error("不应包含 discord_admin_id")
 		}
 	})
 }
@@ -267,11 +302,25 @@ func TestParseKeyVal(t *testing.T) {
 		}
 		payload := buildSetupPayload(
 			[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
-			cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), nil,
+			cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), nil, "", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
 			t.Fatalf("payload should be valid JSON: %v", err)
+		}
+	})
+
+	t.Run("with discord fields", func(t *testing.T) {
+		data := []byte("token=t\nadmin_id=1\ndiscord_token=MTIzLmFiYw\ndiscord_admin_id=123456789\n")
+		cfg, err := parseKeyVal(data)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.DiscordToken != "MTIzLmFiYw" {
+			t.Errorf("DiscordToken = %q, want MTIzLmFiYw", cfg.DiscordToken)
+		}
+		if cfg.DiscordAdminID != "123456789" {
+			t.Errorf("DiscordAdminID = %q, want 123456789", cfg.DiscordAdminID)
 		}
 	})
 }

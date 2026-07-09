@@ -296,7 +296,7 @@ func readSecureInputStr(prompt string) string {
 	return s
 }
 
-func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, matrixRoom string, matrixPass, matrixStorePassphrase []byte) []byte {
+func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, matrixRoom string, matrixPass, matrixStorePassphrase []byte, discordToken, discordAdminID string) []byte {
 	payload := make([]byte, 0, len(token)+len(adminID)+len(totpSecret)+64)
 	payload = append(payload, '{')
 	payload = append(payload, []byte(`"token":`)...)
@@ -332,6 +332,17 @@ func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, 
 		payload = append(payload, ',')
 		payload = append(payload, []byte(`"matrix_store_passphrase":`)...)
 		payload = appendJSONEscaped(payload, matrixStorePassphrase)
+	}
+
+	if discordToken != "" {
+		payload = append(payload, ',')
+		payload = append(payload, []byte(`"discord_token":`)...)
+		payload = appendJSONEscaped(payload, []byte(discordToken))
+	}
+	if discordAdminID != "" {
+		payload = append(payload, ',')
+		payload = append(payload, []byte(`"discord_admin_id":`)...)
+		payload = appendJSONEscaped(payload, []byte(discordAdminID))
 	}
 
 	payload = append(payload, '}')
@@ -806,6 +817,8 @@ type setupConfig struct {
 	MatrixPassword        string
 	MatrixRoom            string
 	MatrixStorePassphrase string
+	DiscordToken          string
+	DiscordAdminID        string
 }
 
 func parseKeyVal(data []byte) (*setupConfig, error) {
@@ -840,6 +853,10 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 			cfg.MatrixRoom = val
 		case "matrix_store_passphrase":
 			cfg.MatrixStorePassphrase = val
+		case "discord_token":
+			cfg.DiscordToken = val
+		case "discord_admin_id":
+			cfg.DiscordAdminID = val
 		default:
 			printYellow(i18n.T("keyval.unknown_field", key))
 		}
@@ -875,6 +892,7 @@ func installFromKeyVal() {
 	payload := buildSetupPayload(
 		[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
 		cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), []byte(cfg.MatrixStorePassphrase),
+		cfg.DiscordToken, cfg.DiscordAdminID,
 	)
 
 	runAegisSetup(destPath, payload)
@@ -989,6 +1007,32 @@ func firstTimeSetup(binaryPath string) {
 		matrixRoom = readSecureInputStr(i18n.T("firsttime.matrix_room_prompt"))
 	}
 
+	// ── Discord section ──
+	printSkyBlue(i18n.T("firsttime.discord_section"))
+	printYellow(i18n.T("firsttime.discord_desc1"))
+	printYellow(i18n.T("firsttime.discord_desc2"))
+	fmt.Print(i18n.T("firsttime.discord_prompt_yn"))
+	setupDiscord, _ := readLine()
+
+	var discordToken, discordAdminID string
+
+	if setupDiscord == "y" || setupDiscord == "Y" {
+		printYellow(i18n.T("firsttime.discord_token_title"))
+		printYellow(i18n.T("firsttime.discord_token_help_step1"))
+		printYellow(i18n.T("firsttime.discord_token_help_step2"))
+		printYellow(i18n.T("firsttime.discord_token_help_format"))
+		discordToken = readSecureInputStr(i18n.T("firsttime.discord_token_prompt"))
+
+		printYellow(i18n.T("firsttime.discord_admin_title"))
+		printYellow(i18n.T("firsttime.discord_admin_help_step1"))
+		printYellow(i18n.T("firsttime.discord_admin_help_step2"))
+		printYellow(i18n.T("firsttime.discord_admin_help_format"))
+		discordAdminID = readSecureInputStr(i18n.T("firsttime.discord_admin_prompt"))
+
+		printYellow(i18n.T("firsttime.discord_intent_warning"))
+		printYellow(i18n.T("firsttime.discord_guild_warning"))
+	}
+
 	bTokenBuf, _ := botTokenEnclave.Open()
 	aIDBuf, _ := adminIDEnclave.Open()
 	tSecretBuf, _ := totpSecretEnclave.Open()
@@ -1005,6 +1049,7 @@ func firstTimeSetup(binaryPath string) {
 	setupPayload := buildSetupPayload(
 		bTokenBuf.Bytes(), aIDBuf.Bytes(), tSecretBuf.Bytes(),
 		matrixHS, matrixUser, matrixRoom, mPassBytes, []byte(matrixStorePassphrase),
+		discordToken, discordAdminID,
 	)
 	defer zeroBytes(setupPayload)
 
