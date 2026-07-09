@@ -224,6 +224,7 @@ mod tests {
             discord_token: None,
             discord_admin_id: None,
             lang: None,
+            matrix_recovery_key: None,
         }
     }
 

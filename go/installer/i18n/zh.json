@@ -109,6 +109,10 @@
   "firsttime.matrix_room_format": "   格式如: !abc123:matrix.org",
   "firsttime.matrix_room_warn": "   注意: 包含开头的感叹号和域名",
   "firsttime.matrix_room_prompt": "请输入 Matrix 房间 ID: ",
+  "firsttime.matrix_recovery_title": "\n\u26a1 Matrix 恢复密钥",
+  "firsttime.matrix_recovery_desc1": "   用于在重启时解密 Matrix 会话数据。",
+  "firsttime.matrix_recovery_desc2": "   如丢失，将无法重新连接 Matrix，需要重新配置。",
+  "firsttime.matrix_recovery_prompt": "请输入 Matrix 恢复密钥: ",
 
   "firsttime.discord_section": "\n========== Discord Bot 部署（可选）==========",
   "firsttime.discord_desc1": "💡 Discord 可作为独立平台运行（--discord 启动）。",

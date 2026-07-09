@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
@@ -48,6 +48,8 @@ pub struct EncryptedConfig {
     pub discord_admin_id: Option<Vec<u8>>,
     #[serde(default)]
     pub lang: Option<String>,
+    #[serde(default)]
+    pub matrix_recovery_key: Option<Vec<u8>>,
 }
 
 #[derive(serde::Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -69,6 +71,8 @@ struct SetupInput {
     discord_token: Option<String>,
     #[serde(default)]
     discord_admin_id: Option<String>,
+    #[serde(default)]
+    matrix_recovery_key: Option<String>,
 }
 
 impl Drop for EncryptedConfig {
@@ -95,6 +99,9 @@ impl Drop for EncryptedConfig {
             v.zeroize();
         }
         if let Some(v) = &mut self.discord_admin_id {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.matrix_recovery_key {
             v.zeroize();
         }
     }
@@ -194,6 +201,7 @@ pub async fn run_setup(
     matrix: Option<MatrixSetupConfig>,
     discord_token: Option<&str>,
     discord_admin_id: Option<&str>,
+    matrix_recovery_key: Option<&str>,
 ) -> Result<()> {
     let token = token.trim();
     let admin_id = admin_id.trim();
@@ -227,6 +235,10 @@ pub async fn run_setup(
         .map(|t| security.encrypt(t.as_bytes()))
         .transpose()?;
 
+    let matrix_recovery_key = matrix_recovery_key
+        .map(|k| security.encrypt(k.as_bytes()))
+        .transpose()?;
+
     let encrypted_config = EncryptedConfig {
         token: security.encrypt(token.as_bytes())?,
         admin_id: security.encrypt(admin_id.as_bytes())?,
@@ -240,6 +252,7 @@ pub async fn run_setup(
         discord_token,
         discord_admin_id,
         lang: None,
+        matrix_recovery_key,
     };
     fs::write(
         config_dir.join(CONFIG_FILE),
@@ -293,6 +306,7 @@ pub async fn run_setup_from_stdin() -> Result<()> {
 
     let discord_token = input.discord_token.as_deref();
     let discord_admin_id = input.discord_admin_id.as_deref();
+    let matrix_recovery_key = input.matrix_recovery_key.as_deref();
 
     run_setup(
         &input.token,
@@ -301,6 +315,7 @@ pub async fn run_setup_from_stdin() -> Result<()> {
         matrix,
         discord_token,
         discord_admin_id,
+        matrix_recovery_key,
     )
     .await
 }
@@ -348,6 +363,29 @@ pub fn save_self_destruct_key_hash_to_config(hash: Option<String>) -> Result<()>
     let mut encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
     encrypted_config.self_destruct_key_hash = hash;
     fs::write(path, serde_json::to_vec(&encrypted_config)?)?;
+    Ok(())
+}
+
+/// Atomically clear matrix_recovery_key from the encrypted config file.
+/// Writes to a tmp file, fsyncs, then renames — same-filesystem atomic.
+pub fn clear_matrix_recovery_key(config_dir: &Path) -> Result<()> {
+    use std::fs::File;
+    use std::io::Write;
+
+    let config_path = config_dir.join(CONFIG_FILE);
+    let data = fs::read(&config_path).context("读取 config.enc 失败")?;
+    let mut enc: EncryptedConfig = serde_json::from_slice(&data).context("解析 config.enc 失败")?;
+    enc.matrix_recovery_key = None;
+    let new_data = serde_json::to_vec(&enc).context("序列化 config.enc 失败")?;
+
+    let tmp_path = config_path.with_extension("enc.tmp");
+    {
+        let mut f = File::create(&tmp_path).context("创建临时文件失败")?;
+        f.write_all(&new_data).context("写入临时文件失败")?;
+        f.sync_all().context("fsync 临时文件失败")?;
+    }
+    fs::rename(&tmp_path, &config_path).context("rename config.enc 失败")?;
+    println!("✅ 恢复密钥已从配置中清除（用完即焚）");
     Ok(())
 }
 
@@ -624,6 +662,7 @@ mod config_tests {
             lang: None,
             discord_token: Some(b"dt".to_vec()),
             discord_admin_id: Some(b"da".to_vec()),
+            matrix_recovery_key: None,
         };
         let json = serde_json::to_vec(&config).unwrap();
         let deserialized: EncryptedConfig = serde_json::from_slice(&json).unwrap();

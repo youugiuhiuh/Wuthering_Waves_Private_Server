@@ -12,6 +12,7 @@ use matrix_sdk::{
     ruma::api::client::uiaa::{AuthData, MatrixUserIdentifier, Password, UserIdentifier},
 };
 use secrecy::ExposeSecret;
+use secrecy::SecretString;
 
 use crate::bootstrap::EncryptedConfig;
 
@@ -102,6 +103,55 @@ pub async fn connect_matrix(
         .wait_for_e2ee_initialization_tasks()
         .await;
 
+    // P1.5: Apply recovery key if cross-signing is incomplete
+    {
+        let status = client.encryption().cross_signing_status().await;
+        if status.is_some_and(|s| s.is_complete()) {
+            println!("✅ 交叉签名状态完整");
+        } else {
+            println!("⚠ 交叉签名状态不完整，尝试恢复密钥导入");
+            let rk_encrypted = encrypted_config.matrix_recovery_key.as_ref().context(
+                "远端已有交叉签名身份，本设备缺少私钥。请在配置中提供 matrix_recovery_key",
+            )?;
+            let rk_decrypted = security
+                .decrypt(rk_encrypted)
+                .context("解密 matrix_recovery_key 失败")?;
+            let rk_str = String::from_utf8(rk_decrypted.expose_secret().to_vec())
+                .map_err(|e| anyhow::anyhow!("matrix_recovery_key 包含无效的 UTF-8: {}", e))?
+                .trim()
+                .to_string();
+            let rk = SecretString::from(rk_str);
+
+            let recovery = client.encryption().recovery();
+            match recovery.recover(rk.expose_secret()).await {
+                Ok(_) => {}
+                Err(matrix_sdk::encryption::recovery::RecoveryError::BackupExistsOnServer) => {
+                    recovery.recover_and_fix_backup(rk.expose_secret()).await?;
+                    println!("✅ 恢复密钥 + 修复 backup 成功");
+                }
+                Err(e) => anyhow::bail!("恢复密钥导入失败: {e}"),
+            }
+
+            let status = client
+                .encryption()
+                .cross_signing_status()
+                .await
+                .context("recover 后 cross_signing_status 返回 None")?;
+            anyhow::ensure!(
+                status.is_complete(),
+                "恢复密钥导入后交叉签名状态仍不完整: master={}, self={}, user={}",
+                status.has_master,
+                status.has_self_signing,
+                status.has_user_signing,
+            );
+            println!("✅ 恢复密钥导入成功，设备已加入信任链");
+
+            // 用完即焚 — atomic clear
+            crate::bootstrap::clear_matrix_recovery_key(config_dir)?;
+            // rk (SecretString) zeroize happens on drop
+        }
+    }
+
     client.sync_once(SyncSettings::default()).await?;
 
     let room_id: matrix_sdk::ruma::OwnedRoomId = matrix_room_id_str.parse()?;
@@ -146,6 +196,7 @@ mod tests {
             discord_token: None,
             discord_admin_id: None,
             lang: None,
+            matrix_recovery_key: None,
         }
     }
 
@@ -164,6 +215,7 @@ mod tests {
             discord_token: None,
             discord_admin_id: None,
             lang: None,
+            matrix_recovery_key: None,
         };
         assert!(has_matrix_config(&config, &[]));
     }
@@ -201,6 +253,7 @@ mod tests {
             discord_token: None,
             discord_admin_id: None,
             lang: None,
+            matrix_recovery_key: None,
         };
         assert!(!has_matrix_config(&config, &[]));
     }

@@ -1,71 +1,20 @@
-### Task 1: `PlatformCapabilities::DISCORD` const + `DiscordAdapter::capabilities()`
+### Task 1: bootstrap.rs — EncryptedConfig/SetupInput/Drop/run_setup + atomic clear helper
 
 **Files:**
-- Modify: `src/adapters/common/trait.rs` — add const
-- Modify: `src/adapters/discord/adapter.rs` — use const in `capabilities()`
-- Test: inline `#[cfg(test)]` in adapter.rs
+- Modify: `src/bootstrap.rs`
 
 **Interfaces:**
-- Consumes: `PlatformCapabilities::TELEGRAM` (existing pattern, line ~46)
-- Produces: `PlatformCapabilities::DISCORD` const, used by `DiscordAdapter::capabilities()`
+- Produces: `matrix_recovery_key: Option<Vec<u8>>` on `EncryptedConfig`
+- Produces: `matrix_recovery_key: Option<String>` on `SetupInput`
+- Produces: `pub fn clear_matrix_recovery_key(config_dir: &Path) -> Result<()>`
 
-- [ ] **Step 1: Write failing test in adapter.rs**
+Steps (exact code in plan file, each change is 1-3 lines following existing pattern):
 
-```rust
-#[cfg(test)]
-mod tests {
-    use crate::adapters::common::PlatformCapabilities;
+1. Add `matrix_recovery_key: Option<Vec<u8>>` to `EncryptedConfig` (with `#[serde(default)]`)
+2. Add `matrix_recovery_key: Option<String>` to `SetupInput` (with `#[serde(default)]`)
+3. Add `if let Some(v) = &mut self.matrix_recovery_key { v.zeroize(); }` to Drop impl
+4. In `run_setup()`: add `matrix_recovery_key: Option<&str>` param, encrypt, add to EncryptedConfig
+5. In `run_setup_from_stdin()`: pass `input.matrix_recovery_key.as_deref()` to run_setup
+6. Add `clear_matrix_recovery_key()` function: read config.enc → set field to None → write tmp + fsync + rename
 
-    #[test]
-    fn discord_capabilities_matches_expected() {
-        let caps = PlatformCapabilities::DISCORD;
-        assert!(caps.can_edit_message);
-        assert!(caps.can_delete_message);
-        assert!(!caps.has_file_transfer);
-    }
-}
-```
-
-- [ ] **Step 2: Run to verify it fails**
-
-```bash
-cargo test discord_capabilities -- --ignored
-```
-Expected: compile error — `DISCORD` not defined on `PlatformCapabilities`
-
-- [ ] **Step 3: Add const to `src/adapters/common/trait.rs` after the existing `TELEGRAM` const (line ~52)**
-
-```rust
-pub const DISCORD: Self = Self {
-    can_edit_message: true,
-    can_delete_message: true,
-    has_inline_keyboard: true,
-    has_slash_commands: true,
-    has_file_transfer: false,
-};
-```
-
-- [ ] **Step 4: Replace `DiscordAdapter::capabilities()` (lines 89-97 of adapter.rs)**
-
-Change from manual struct to:
-```rust
-fn capabilities(&self) -> PlatformCapabilities {
-    PlatformCapabilities::DISCORD
-}
-```
-
-- [ ] **Step 5: Run tests to verify they pass**
-
-```bash
-cargo test discord_capabilities -v
-```
-Expected: PASS
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/adapters/common/trait.rs src/adapters/discord/adapter.rs
-git commit -m "feat(aegis): add PlatformCapabilities::DISCORD const"
-```
-
----
+Run `cargo check && cargo test` before commit.
