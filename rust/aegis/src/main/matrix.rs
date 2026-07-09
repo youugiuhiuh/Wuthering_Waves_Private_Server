@@ -143,6 +143,8 @@ mod tests {
             matrix_password: None,
             matrix_room_id: None,
             matrix_store_passphrase: None,
+            discord_token: None,
+            discord_admin_id: None,
             lang: None,
         }
     }
@@ -159,6 +161,8 @@ mod tests {
             matrix_password: Some(vec![1]),
             matrix_room_id: Some(vec![1]),
             matrix_store_passphrase: None,
+            discord_token: None,
+            discord_admin_id: None,
             lang: None,
         };
         assert!(has_matrix_config(&config, &[]));
@@ -194,6 +198,8 @@ mod tests {
             matrix_password: None,
             matrix_room_id: None,
             matrix_store_passphrase: None,
+            discord_token: None,
+            discord_admin_id: None,
             lang: None,
         };
         assert!(!has_matrix_config(&config, &[]));
