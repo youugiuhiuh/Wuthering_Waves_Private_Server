@@ -11,8 +11,8 @@ use matrix_sdk::{
     config::SyncSettings,
     ruma::api::client::uiaa::{AuthData, MatrixUserIdentifier, Password, UserIdentifier},
 };
-use secrecy::SecretString;
 use secrecy::ExposeSecret;
+use secrecy::SecretString;
 
 use crate::bootstrap::EncryptedConfig;
 
@@ -106,14 +106,13 @@ pub async fn connect_matrix(
     // P1.5: Apply recovery key if cross-signing is incomplete
     {
         let status = client.encryption().cross_signing_status().await;
-        if status.map_or(false, |s| s.is_complete()) {
+        if status.is_some_and(|s| s.is_complete()) {
             println!("✅ 交叉签名状态完整");
         } else {
             println!("⚠ 交叉签名状态不完整，尝试恢复密钥导入");
-            let rk_encrypted = encrypted_config
-                .matrix_recovery_key
-                .as_ref()
-                .context("远端已有交叉签名身份，本设备缺少私钥。请在配置中提供 matrix_recovery_key")?;
+            let rk_encrypted = encrypted_config.matrix_recovery_key.as_ref().context(
+                "远端已有交叉签名身份，本设备缺少私钥。请在配置中提供 matrix_recovery_key",
+            )?;
             let rk_decrypted = security
                 .decrypt(rk_encrypted)
                 .context("解密 matrix_recovery_key 失败")?;
@@ -127,9 +126,7 @@ pub async fn connect_matrix(
             match recovery.recover(rk.expose_secret()).await {
                 Ok(_) => {}
                 Err(matrix_sdk::encryption::recovery::RecoveryError::BackupExistsOnServer) => {
-                    recovery
-                        .recover_and_fix_backup(rk.expose_secret())
-                        .await?;
+                    recovery.recover_and_fix_backup(rk.expose_secret()).await?;
                     println!("✅ 恢复密钥 + 修复 backup 成功");
                 }
                 Err(e) => anyhow::bail!("恢复密钥导入失败: {e}"),
