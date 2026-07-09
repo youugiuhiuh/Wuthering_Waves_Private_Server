@@ -368,7 +368,6 @@ pub fn save_self_destruct_key_hash_to_config(hash: Option<String>) -> Result<()>
 
 /// Atomically clear matrix_recovery_key from the encrypted config file.
 /// Writes to a tmp file, fsyncs, then renames — same-filesystem atomic.
-#[allow(dead_code)]
 pub fn clear_matrix_recovery_key(config_dir: &Path) -> Result<()> {
     use std::fs::File;
     use std::io::Write;
