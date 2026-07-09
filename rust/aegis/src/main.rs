@@ -39,9 +39,12 @@ async fn main() -> Result<()> {
 
     // CLI 模式检测（初始; auto-detect 补充在 encrypted_config 加载后）
     let use_matrix = args.iter().any(|a| a == "--matrix");
+    let use_discord = args.iter().any(|a| a == "--discord");
     let use_all = args.iter().any(|a| a == "--all");
-    let mut enable_matrix = use_matrix || use_all;
-    let enable_telegram = !use_matrix || use_all;
+    let enable_discord = use_discord;
+    // Discord standalone: --discord disables telegram and matrix; --all does NOT include discord
+    let mut enable_matrix = (use_matrix || use_all) && !enable_discord;
+    let enable_telegram = (!use_matrix && !use_discord) || use_all;
 
     let (app_config, security) = main::config::load_and_validate()?;
 
@@ -64,17 +67,34 @@ async fn main() -> Result<()> {
         None
     };
 
-    let adapter = main::adapter::build_adapter(
-        &app_config.decrypted.token,
-        enable_telegram,
-        enable_matrix,
-        &matrix_handle,
-    )
-    .await?;
+    let discord_raw = if enable_discord {
+        Some(
+            main::discord::connect_discord(
+                &security,
+                &app_config.decrypted.encrypted_config,
+                &config_dir(),
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+
+    let adapter = if let Some(ref raw) = discord_raw {
+        raw.adapter.clone()
+    } else {
+        main::adapter::build_adapter(
+            &app_config.decrypted.token,
+            enable_telegram,
+            enable_matrix,
+            &matrix_handle,
+        )
+        .await?
+    };
 
     let state = Arc::new(AppState::new(
         app_config.decrypted.admin_id,
-        None,
+        discord_raw.as_ref().map(|r| r.admin_id as i64),
         app_config.totp_manager,
         production_executor(),
         app_config
@@ -91,6 +111,7 @@ async fn main() -> Result<()> {
         matrix_handle,
         enable_telegram,
         enable_matrix,
+        discord_raw,
         app_config.decrypted.token,
         app_config.decrypted.admin_id,
     )
