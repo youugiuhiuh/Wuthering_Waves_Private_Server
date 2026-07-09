@@ -51,7 +51,7 @@ pub async fn execute_cli_mode(mode: CliMode) -> Result<()> {
             token,
             admin_id,
             totp_secret,
-        } => run_setup(&token, &admin_id, &totp_secret, None, None, None).await,
+        } => run_setup(&token, &admin_id, &totp_secret, None, None, None, None).await,
         CliMode::SetupStdin => run_setup_from_stdin().await,
     }
 }

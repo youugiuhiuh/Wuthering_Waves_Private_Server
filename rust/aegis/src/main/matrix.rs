@@ -146,6 +146,7 @@ mod tests {
             discord_token: None,
             discord_admin_id: None,
             lang: None,
+            matrix_recovery_key: None,
         }
     }
 
@@ -164,6 +165,7 @@ mod tests {
             discord_token: None,
             discord_admin_id: None,
             lang: None,
+            matrix_recovery_key: None,
         };
         assert!(has_matrix_config(&config, &[]));
     }
@@ -201,6 +203,7 @@ mod tests {
             discord_token: None,
             discord_admin_id: None,
             lang: None,
+            matrix_recovery_key: None,
         };
         assert!(!has_matrix_config(&config, &[]));
     }
