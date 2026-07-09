@@ -78,6 +78,7 @@ pub struct CommandEvent {
     pub command: BotCommand,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BotCommand {
     Help,
     Start,
