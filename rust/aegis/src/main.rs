@@ -74,6 +74,7 @@ async fn main() -> Result<()> {
 
     let state = Arc::new(AppState::new(
         app_config.decrypted.admin_id,
+        None,
         app_config.totp_manager,
         production_executor(),
         app_config

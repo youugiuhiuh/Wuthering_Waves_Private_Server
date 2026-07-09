@@ -71,6 +71,7 @@ pub struct AppState {
     #[allow(dead_code)]
     pub adapter: Arc<dyn BotAdapter>,
     admin_id: i64,
+    discord_admin_id: Option<i64>,
     totp_manager: TotpManager,
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
     sessions: Mutex<HashMap<i64, Instant>>,
@@ -88,6 +89,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         admin_id: i64,
+        discord_admin_id: Option<i64>,
         totp_manager: TotpManager,
         self_destruct_executor: Arc<dyn SelfDestructExecutor>,
         self_destruct_key_hash: Option<String>,
@@ -97,6 +99,7 @@ impl AppState {
         Self {
             adapter,
             admin_id,
+            discord_admin_id,
             totp_manager,
             self_destruct_executor,
             sessions: Mutex::new(HashMap::new()),
@@ -118,7 +121,7 @@ impl AppState {
     }
 
     pub fn is_admin_user(&self, user_id: i64) -> bool {
-        user_id == self.admin_id
+        user_id == self.admin_id || self.discord_admin_id == Some(user_id)
     }
 
     pub fn verify_totp(&self, code: &str) -> bool {
@@ -533,6 +536,7 @@ mod tests {
     fn make_state() -> AppState {
         AppState::new(
             42,
+            None,
             TotpManager::new(&secrecy::SecretString::from(
                 TotpManager::generate_new_secret(),
             ))
@@ -783,5 +787,23 @@ mod tests {
                 .await,
             TimeoutStatus::NotTracked
         );
+    }
+
+    #[tokio::test]
+    async fn discord_admin_id_is_recognized_as_admin() {
+        let state = AppState::new(
+            42,
+            Some(999),
+            TotpManager::new(&secrecy::SecretString::from(
+                TotpManager::generate_new_secret(),
+            ))
+            .unwrap(),
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            Arc::new(MockAdapter),
+        );
+        assert!(state.is_admin_user(999));
+        assert!(!state.is_admin_user(888));
     }
 }

@@ -653,6 +653,7 @@ mod tests {
     async fn make_test_state(totp_secret: &str) -> AppState {
         let state = AppState::new(
             42,
+            None,
             TotpManager::new(&SecretString::from(totp_secret.to_string())).unwrap(),
             Arc::new(TestExecutor),
             None,

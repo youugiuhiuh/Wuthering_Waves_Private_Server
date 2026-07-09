@@ -16,6 +16,10 @@ pub struct DecryptedConfig {
     pub admin_id: i64,
     #[expect(dead_code)]
     pub totp_secret: String,
+    #[expect(dead_code)]
+    pub discord_token: Option<String>,
+    #[expect(dead_code)]
+    pub discord_admin_id: Option<i64>,
     pub encrypted_config: EncryptedConfig,
 }
 
@@ -64,6 +68,30 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
         .parse()
         .context("无效的 admin_id 格式 (应为 i64)")?;
 
+    let discord_token = match &encrypted_config.discord_token {
+        Some(v) => {
+            let vec = security.decrypt(v).context("解密 discord_token 失败")?;
+            Some(
+                String::from_utf8(vec.expose_secret().to_vec())
+                    .map_err(|e| anyhow::anyhow!("discord_token 包含无效的 UTF-8: {}", e))?
+                    .trim()
+                    .to_string(),
+            )
+        }
+        None => None,
+    };
+    let discord_admin_id = match &encrypted_config.discord_admin_id {
+        Some(v) => {
+            let vec = security.decrypt(v).context("解密 discord_admin_id 失败")?;
+            let s = String::from_utf8(vec.expose_secret().to_vec())
+                .map_err(|e| anyhow::anyhow!("discord_admin_id 包含无效的 UTF-8: {}", e))?
+                .trim()
+                .to_string();
+            Some(s.parse::<i64>().context("discord_admin_id 应为整数")?)
+        }
+        None => None,
+    };
+
     let validator = ConfigValidator::new();
     if let Err(e) = validator.validate_decrypted_config(
         &token,
@@ -85,6 +113,8 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
                 token,
                 admin_id,
                 totp_secret,
+                discord_token,
+                discord_admin_id,
                 encrypted_config,
             },
             totp_manager,
