@@ -167,12 +167,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ResultTable(results: _vm.results),
 
             // Download (desktop only)
-            if (isDesktop && !_vm.running && _vm.results.isNotEmpty)
+            if (!_vm.running && _vm.results.isNotEmpty)
               ResultDownloadCard(
                 loading: _vm.downloadLoading,
                 progress: _vm.downloadProgress,
                 savedPath: _vm.downloadPath,
-                onDownload: _vm.downloadResults,
+                onDownload: _vm.exportResults,
                 onOpenFolder: () {},
               ),
             const SizedBox(height: 80),

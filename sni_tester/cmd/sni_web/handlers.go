@@ -55,27 +55,40 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	var params struct {
-		Workers int    `json:"workers"`
-		DNS     string `json:"dns"`
-		TTL     int    `json:"ttl"`
-		Force   bool   `json:"force"`
-		Reset   bool   `json:"reset"`
+		MaxConcurrent int    `json:"max_concurrent"`
+		DNS           string `json:"dns"`
+		TTLDays       int    `json:"ttl_days"`
+		ForceRetest   bool   `json:"force_retest"`
+		ResetHistory  bool   `json:"reset_history"`
+		DebugMode     bool   `json:"debug_mode"`
+		MaxLines      int    `json:"max_lines"`
+		AutoShutdown  bool   `json:"auto_shutdown"`
+		GeoProxy      string `json:"geo_proxy"`
+		TimeoutSec    int    `json:"timeout_sec"`
 	}
 	json.NewDecoder(r.Body).Decode(&params)
 
 	cfg := s.cfg
-	if params.Workers > 0 {
-		cfg.FixedWorkers = params.Workers
+	if params.MaxConcurrent > 0 {
+		cfg.FixedWorkers = params.MaxConcurrent
 	}
 	if params.DNS != "" {
 		cfg.DNSAddr = params.DNS
 		cfg.UseBuiltinDNS = false
 	}
-	if params.TTL > 0 {
-		cfg.TTLDays = params.TTL
+	if params.TTLDays > 0 {
+		cfg.TTLDays = params.TTLDays
 	}
-	cfg.ForceRetry = params.Force
-	cfg.ResetAll = params.Reset
+	cfg.ForceRetry = params.ForceRetest
+	cfg.ResetAll = params.ResetHistory
+	cfg.Debug = params.DebugMode
+	if params.MaxLines > 0 {
+		cfg.MaxLines = params.MaxLines
+	}
+	cfg.Shutdown = params.AutoShutdown
+	if params.GeoProxy != "" {
+		cfg.GeoProxy = params.GeoProxy
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel

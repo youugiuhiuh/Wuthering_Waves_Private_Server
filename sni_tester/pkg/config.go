@@ -20,6 +20,8 @@ type Config struct {
 	GeoASNFile    string
 	BadgerDBDir   string
 	OutputDir     string
+	Shutdown      bool
+	GeoProxy      string
 }
 
 // DefaultConfig returns default configuration

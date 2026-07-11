@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../../data/models/models.dart';
 import '../../../../data/services/api_client.dart';
+import '../../../../data/services/notification_service.dart';
 import '../../../../data/services/preferences_service.dart';
 import '../views/widgets/app_mode_card.dart';
 
@@ -283,6 +284,11 @@ class HomeViewModel extends ChangeNotifier {
 
   Future<void> startTest(StartParams params) async {
     try {
+      final file = File(params.domainsFile);
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        await api.uploadContent(content);
+      }
       await api.startTest(params);
       _running = true;
       _results = [];
@@ -290,6 +296,7 @@ class HomeViewModel extends ChangeNotifier {
       _error = null;
       notifyListeners();
       _connectSSE();
+      NotificationService.start();
     } catch (e) {
       _error = 'Start failed: $e';
       notifyListeners();
@@ -313,8 +320,10 @@ class HomeViewModel extends ChangeNotifier {
       (event) {
         _stats = event.stats;
         _results = [event, ..._results].take(200).toList();
+        NotificationService.updateProgress(_stats.done, _stats.total);
         if (_stats.done >= _stats.total && _stats.total > 0) {
           _running = false;
+          NotificationService.complete(_stats.success, _stats.fail);
           notifyListeners();
         }
         _error = null;
@@ -343,6 +352,27 @@ class HomeViewModel extends ChangeNotifier {
       _downloadPath = path;
     } catch (e) {
       _error = 'Download failed: $e';
+    }
+    _downloadLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> exportResults() async {
+    _downloadLoading = true;
+    _downloadProgress = null;
+    notifyListeners();
+    try {
+      final data = await api.downloadResult();
+      final dir = Directory('/storage/emulated/0/Download');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final path = '${dir.path}/sni_results_$ts.zip';
+      await File(path).writeAsBytes(data);
+      _downloadPath = path;
+    } catch (e) {
+      _error = 'Export failed: $e';
     }
     _downloadLoading = false;
     notifyListeners();
