@@ -33,3 +33,6 @@ success_history.db
 
 # Local docs (not for version control)
 docs/kcp-mask-censorship-analysis.md
+
+.superpowers
+docs/superpowers
