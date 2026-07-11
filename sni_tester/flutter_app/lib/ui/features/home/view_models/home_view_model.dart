@@ -105,7 +105,7 @@ class HomeViewModel extends ChangeNotifier {
     _connMode = prefs.remoteConfig.mode;
     _remoteHost = prefs.remoteConfig.host;
     _remotePort = prefs.remoteConfig.port;
-    if (_connMode == ConnMode.local) {
+    if (_connMode == ConnMode.local || _phoneMode == PhoneMode.local) {
       try {
         await api.startBackend();
       } catch (e) {
@@ -177,7 +177,26 @@ class HomeViewModel extends ChangeNotifier {
 
   void setPhoneMode(PhoneMode mode) {
     _phoneMode = mode;
+    if (mode == PhoneMode.local) {
+      _startLocalBackend();
+    } else {
+      _setDisconnected();
+    }
     notifyListeners();
+  }
+
+  Future<void> _startLocalBackend() async {
+    _connState = ConnectionState.connecting;
+    notifyListeners();
+    try {
+      await api.startBackend();
+      _setConnected('Local');
+      await refreshStatus();
+    } catch (e) {
+      _connState = ConnectionState.error;
+      _connError = e.toString();
+      notifyListeners();
+    }
   }
 
   Future<void> connect() async {
