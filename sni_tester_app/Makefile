@@ -7,10 +7,11 @@ JNILIBS_DIR := android/app/src/main/jniLibs/arm64-v8a
 .PHONY: android-assets android-build android-deploy linux-assets linux-build linux-run clean
 
 android-assets:
-	mkdir -p $(JNILIBS_DIR)
+	mkdir -p $(JNILIBS_DIR) assets
 	CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC=$(NDK_CC) \
 		go build -C $(SNI_DIR) -buildmode=c-shared \
 		-o $(CURDIR)/$(JNILIBS_DIR)/libsni_web.so ./cmd/sni_web/
+	touch assets/sni_web
 
 android-build: android-assets
 	JAVA_HOME=$(JAVA_HOME) $(FLUTTER) build apk --release
