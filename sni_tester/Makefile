@@ -1,5 +1,9 @@
 BINARY=sni_web
 OUTPUT_DIR=sni_output
+NDK := $(HOME)/Android/Sdk/ndk/28.2.13676358
+CC := $(NDK)/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
+FLUTTER := /home/fe/.local/share/mise/installs/flutter/latest/bin/flutter
+JAVA_HOME := /home/fe/.local/share/mise/installs/java/21.0.2
 
 .PHONY: phone-deploy phone-pull clean flutter-assets flutter-build flutter-deploy linux-build linux-run
 
@@ -15,11 +19,15 @@ phone-deploy: $(BINARY)
 $(BINARY):
 	GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -o $(BINARY) ./cmd/sni_web/
 
-# Bundle Go binary into Flutter assets
+# Bundle Go shared library into Flutter jniLibs (Android)
 flutter-assets:
-	GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -o flutter_app/assets/sni_web ./cmd/sni_web/
 	mkdir -p flutter_app/android/app/src/main/jniLibs/arm64-v8a/
-	cp flutter_app/assets/sni_web flutter_app/android/app/src/main/jniLibs/arm64-v8a/libsni_web.so
+	CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC=$(CC) \
+		go build -buildmode=c-shared -o flutter_app/android/app/src/main/jniLibs/arm64-v8a/libsni_web.so ./cmd/sni_web/
+
+# Also build desktop executable
+linux-assets:
+	go build -o flutter_app/assets/sni_web ./cmd/sni_web/
 
 phone-pull:
 	mkdir -p ../rust/aegis/src/resources/sni/
@@ -27,24 +35,22 @@ phone-pull:
 	@echo "Results pulled. Run 'cargo build' in rust/aegis to embed."
 
 flutter-build: flutter-assets
-	cd flutter_app && flutter build apk --release
+	cd flutter_app && JAVA_HOME=$(JAVA_HOME) $(FLUTTER) build apk --release
 
 flutter-deploy: flutter-build
 	@echo "Deploying APK..."
-	adb install flutter_app/build/app/outputs/flutter-apk/app-release.apk
+	adb install -r flutter_app/build/app/outputs/flutter-apk/app-release.apk
 
 # Linux desktop build with bundled Go binary
-linux-build:
-	go build -o flutter_app/assets/sni_web ./cmd/sni_web/
-	cd flutter_app && flutter build linux --release
+linux-build: linux-assets
+	cd flutter_app && $(FLUTTER) build linux --release
 
 linux-run:
-	cd flutter_app && flutter run -d linux
+	cd flutter_app && $(FLUTTER) run -d linux
 
 # Run Flutter desktop with Go backend auto-built
-flutter-linux-run:
-	go build -o flutter_app/assets/sni_web ./cmd/sni_web/
-	cd flutter_app && flutter run -d linux
+flutter-linux-run: linux-assets
+	cd flutter_app && $(FLUTTER) run -d linux
 
 clean:
 	rm -f $(BINARY)

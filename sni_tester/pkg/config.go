@@ -195,8 +195,45 @@ const (
 	GeoDBURL           = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-Country.mmdb"
 	GeoASNFile         = "GeoLite2-ASN.mmdb"
 	GeoASNURL          = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-ASN.mmdb"
+	GeoDBGitHubPath    = "/P3TERX/GeoLite.mmdb/releases/latest/download/"
 	BadgerDBDir        = "badger_db"
 )
+
+var GeoDBMirrors = []string{
+	"https://gh.h233.eu.org/https://github.com",
+	"https://rapidgit.jjda.de5.net/https://github.com",
+	"https://gh.ddlc.top/https://github.com",
+	"https://gh-proxy.org/https://github.com",
+	"https://cdn.gh-proxy.org/https://github.com",
+	"https://edgeone.gh-proxy.org/https://github.com",
+	"https://cors.isteed.cc/github.com",
+	"https://ghproxy.it/https://github.com",
+	"https://github.boki.moe/https://github.com",
+	"https://gh.jasonzeng.dev/https://github.com",
+	"https://gh.monlor.com/https://github.com",
+	"https://github.tbedu.top/https://github.com",
+	"https://github.geekery.cn/https://github.com",
+	"https://github.ednovas.xyz/https://github.com",
+	"https://ghfile.geekertao.top/https://github.com",
+	"https://ghp.keleyaa.com/https://github.com",
+	"https://gh.chjina.com/https://github.com",
+	"https://ghpxy.hwinzniej.top/https://github.com",
+	"https://cdn.crashmc.com/https://github.com",
+	"https://git.yylx.win/https://github.com",
+	"https://gitproxy.mrhjx.cn/https://github.com",
+	"https://ghproxy.cxkpro.top/https://github.com",
+	"https://gh.xxooo.cf/https://github.com",
+	"https://gh.idayer.com/https://github.com",
+	"https://raw.ihtw.moe/github.com",
+	"https://gh.zwy.one/https://github.com",
+	"https://ghproxy.monkeyray.net/https://github.com",
+	"https://ghproxy.net/https://github.com",
+	"https://ghfast.top/https://github.com",
+	"https://wget.la/https://github.com",
+	"https://hk.gh-proxy.org/https://github.com",
+	"gitclone.com",
+	"githubfast.com",
+}
 
 // BadgerDB GC config
 const (

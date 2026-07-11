@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,12 +76,12 @@ func PrepareGeoDBs(geoFile, asnFile, proxyURL string) error {
 	}
 
 	if needCountry {
-		if err := downloadFile(geoFile, GeoDBURL, proxyURL); err != nil {
+		if err := downloadWithMirrors(geoFile, GeoDBURL, proxyURL); err != nil {
 			return fmt.Errorf("failed to download GeoLite2-Country: %w", err)
 		}
 	}
 	if needASN {
-		if err := downloadFile(asnFile, GeoASNURL, proxyURL); err != nil {
+		if err := downloadWithMirrors(asnFile, GeoASNURL, proxyURL); err != nil {
 			return fmt.Errorf("failed to download GeoLite2-ASN: %w", err)
 		}
 	}
@@ -88,7 +89,25 @@ func PrepareGeoDBs(geoFile, asnFile, proxyURL string) error {
 	return nil
 }
 
-func downloadFile(filePath, urlStr, proxyString string) error {
+func downloadWithMirrors(filePath, primaryURL, proxyString string) error {
+	filename := filepath.Base(primaryURL)
+	// Try mirrors first
+	for _, mirror := range GeoDBMirrors {
+		base := mirror
+		if !strings.HasPrefix(base, "http") {
+			base = "https://" + base
+		}
+		base = strings.TrimRight(base, "/")
+		mirrorURL := base + GeoDBGitHubPath + filename
+		if err := tryDownload(filePath, mirrorURL, proxyString); err == nil {
+			return nil
+		}
+	}
+	// Fallback to original URL
+	return tryDownload(filePath, primaryURL, proxyString)
+}
+
+func tryDownload(filePath, urlStr, proxyString string) error {
 	transport := &http.Transport{}
 	if proxyString != "" {
 		pu, err := url.Parse(proxyString)

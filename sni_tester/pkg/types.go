@@ -66,19 +66,22 @@ type TLSResult struct {
 }
 
 type ProgressEvent struct {
-	Type     string
-	Domain   string
-	Success  bool
-	Country  string
-	IP       string
-	Info     string
-	Progress float64
-	Stats    Stats
+	Type     string  `json:"type"`
+	Domain   string  `json:"domain"`
+	Success  bool    `json:"success"`
+	Country  string  `json:"country"`
+	IP       string  `json:"ip"`
+	Info     string  `json:"error"`
+	Progress float64 `json:"progress"`
+	Stats    Stats   `json:"stats"`
 }
 
 type Stats struct {
-	Total, Success, Failed, Skipped int
-	RatePerSec                      float64
+	Total     int     `json:"total"`
+	Success   int     `json:"success"`
+	Failed    int     `json:"fail"`
+	Skipped   int     `json:"skipped"`
+	RatePerSec float64 `json:"rate_per_sec"`
 }
 
 type Result struct {
