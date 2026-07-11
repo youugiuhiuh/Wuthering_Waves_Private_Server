@@ -7,11 +7,12 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.example.sni_tester/foreground"
+    private val CHANNEL_FOREGROUND = "com.example.sni_tester/foreground"
+    private val CHANNEL_NATIVE = "com.example.sni_tester/native"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, _ ->
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_FOREGROUND).setMethodCallHandler { call, _ ->
             when (call.method) {
                 "startForeground" -> {
                     val intent = Intent(this, SniForegroundService::class.java).apply {
@@ -32,6 +33,13 @@ class MainActivity : FlutterActivity() {
                     }
                     startServiceCompat(intent)
                 }
+            }
+        }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NATIVE).setMethodCallHandler { call, result ->
+            if (call.method == "getNativeLibDir") {
+                result.success(applicationContext.applicationInfo.nativeLibraryDir)
+            } else {
+                result.notImplemented()
             }
         }
     }

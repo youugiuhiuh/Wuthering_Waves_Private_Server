@@ -18,6 +18,8 @@ $(BINARY):
 # Bundle Go binary into Flutter assets
 flutter-assets:
 	GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -o flutter_app/assets/sni_web ./cmd/sni_web/
+	mkdir -p flutter_app/android/app/src/main/jniLibs/arm64-v8a/
+	cp flutter_app/assets/sni_web flutter_app/android/app/src/main/jniLibs/arm64-v8a/libsni_web.so
 
 phone-pull:
 	mkdir -p ../rust/aegis/src/resources/sni/

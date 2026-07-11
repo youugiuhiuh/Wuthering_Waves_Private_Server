@@ -36,16 +36,34 @@ class ApiClient {
   }
 
   Future<void> _startLocalBinary() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final binaryPath = '${dir.path}/sni_web';
-    final file = File(binaryPath);
-    if (!file.existsSync()) {
-      final data = await rootBundle.load('assets/sni_web');
-      await file.writeAsBytes(data.buffer.asUint8List());
-      await Process.run('chmod', ['+x', binaryPath]);
+    String binaryPath;
+    String outputDir;
+
+    try {
+      const channel = MethodChannel('com.example.sni_tester/native');
+      final nativeLibDir = await channel.invokeMethod<String>('getNativeLibDir');
+      if (nativeLibDir != null) {
+        binaryPath = '$nativeLibDir/libsni_web.so';
+        outputDir = '$nativeLibDir/sni_output';
+        if (await File(binaryPath).exists()) {
+          await Process.run('chmod', ['+x', binaryPath]);
+        }
+      } else {
+        throw 'no native lib dir';
+      }
+    } catch (_) {
+      final dir = await getApplicationDocumentsDirectory();
+      binaryPath = '${dir.path}/sni_web';
+      outputDir = '${dir.path}/sni_output';
+      final file = File(binaryPath);
+      if (!file.existsSync()) {
+        final data = await rootBundle.load('assets/sni_web');
+        await file.writeAsBytes(data.buffer.asUint8List());
+        await Process.run('chmod', ['+x', binaryPath]);
+      }
     }
     _backendProcess = await Process.start(binaryPath, [],
-        environment: {EnvKeys.outputDir: '${dir.path}/sni_output'});
+        environment: {EnvKeys.outputDir: outputDir});
     _backendProcess!.stderr
         .transform(utf8.decoder)
         .listen((line) => stderr.writeln('[sni_web] $line'));
