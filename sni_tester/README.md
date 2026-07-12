@@ -1,107 +1,72 @@
-# SNI 测试工具
+# SNI Tester — Go 引擎
 
-高性能并发 SNI 测试工具，为 Wuthering Waves Private Server 设计。
+高性能并发 SNI 测试引擎，为 Wuthering Waves Private Server 设计。
 
-支持三种运行模式：
-- **CLI** — PC 命令行直接运行
-- **Web API** — 纯 API 服务 (端口 18080)，供 Flutter 客户端或 `curl` 调用
-- **Flutter** — 跨平台桌面/移动端 GUI (内嵌 Go 后端)
+## 运行模式
+
+- **CLI** — 命令行直接运行
+- **Web API** — HTTP API 服务 (端口 18080)
+- **ADB 部署** — 推送到 Android 设备作为独立服务
 
 ## 快速开始
 
-### CLI 模式
-
 ```bash
+# CLI 模式
 go build -o sni_tester ./cmd/sni_tester/
 ./sni_tester -f domains.txt
-```
 
-### Flutter Linux 桌面
-
-```bash
-make linux-run
-```
-
-### Flutter Android
-
-```bash
-make flutter-deploy     # 构建 + 安装到手机
-```
-
-### Web API 模式 (调试用)
-
-```bash
-GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -o sni_web ./cmd/sni_web/
-adb push sni_web /data/local/tmp/
-adb shell "cd /data/local/tmp && ./sni_web" &
+# Web API 模式 (Android 设备)
+make phone-deploy
 adb forward tcp:18080 tcp:18080
 curl http://localhost:18080/api/health
 ```
+
+## Flutter App
+
+GUI 客户端在独立项目 [`sni_tester_app/`](../sni_tester_app/)，通过 FFI 加载本引擎编译的 `libsni_web.so`。
+
+```bash
+cd ../sni_tester_app
+make android-deploy
+```
+
+## Makefile
+
+| 目标 | 说明 |
+|------|------|
+| `make build` | 构建 Android arm64 二进制 |
+| `make phone-deploy` | 推送 + 在 Android 设备运行 |
+| `make phone-pull` | 拉取测试结果 |
+| `make clean` | 清理构建产物 |
 
 ## API 端点
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/health` | 健康检查 (status/uptime/version) |
+| GET | `/api/health` | 健康检查 |
 | GET | `/api/status` | 当前状态与统计 |
-| POST | `/api/start` | 开始测试 (body: servers_file, domains_file, timeout_sec, max_concurrent) |
+| POST | `/api/start` | 开始测试 |
 | POST | `/api/stop` | 停止测试 |
-| GET | `/api/progress` | SSE 实时进度推送 |
-| GET | `/api/download` | 下载结果 (.pb 文件) |
+| GET | `/api/progress` | SSE 实时进度 |
+| GET | `/api/download` | 下载结果 |
 | POST | `/api/upload` | 上传域名文件 |
+| GET | `/api/files` | 文件列表 |
+| DELETE | `/api/files` | 删除文件 |
 
-## 构建
-
-```bash
-# 原生 Android arm64 二进制
-make sni_web
-
-# Flutter Android APK (自动打包 Go 二进制)
-make flutter-build
-
-# Flutter Linux 桌面版
-make linux-build
-
-# 推送到手机运行 (纯 Web API，无 Flutter)
-make phone-deploy
-```
-
-## 参数说明 (CLI 模式)
+## CLI 参数
 
 | 参数 | 说明 |
 |------|------|
-| `-f` | (必填) 待测试域名文件路径 |
-| `-dns` | DNS 服务器 (不填则自动 DoH→DoT→UDP) |
-| `-w` | 固定并发 Worker 数 |
+| `-f` | (必填) 域名文件 |
+| `-dns` | DNS 服务器 |
+| `-w` | 并发 Worker 数 |
 | `-debug` | 调试模式 |
 | `-p` | GeoIP 下载代理 |
-| `-ttl` | 失败记录记忆天数 (默认 7) |
+| `-ttl` | 失败记录记忆天数 |
 | `-max` | 仅处理前 N 行 |
-| `-force` | 强制重测跳过记录 |
+| `-force` | 强制重测 |
 | `-reset` | 清除历史 |
-| `-shutdown` | 测试后自动关机 |
-
-## Flutter 架构
-
-```
-flutter_app/
-├── lib/
-│   ├── data/
-│   │   ├── models/         # Stats, ProgressEvent, StatusResponse, StartParams
-│   │   └── services/       # ApiClient (HTTP + SSE + 自动解压 Go 二进制)
-│   ├── ui/
-│   │   ├── core/           # AppTheme (Material 3, 系统主题)
-│   │   └── features/home/
-│   │       ├── view_models/  # HomeViewModel (ChangeNotifier)
-│   │       └── views/        # HomeScreen + 4 个 Widget
-│   └── main.dart
-├── assets/
-│   └── sni_web             # Go 后端二进制 (自动打包)
-└── test/
-    └── models_test.dart
-```
-
-Flutter 启动时自动从 asset 提取 `sni_web` 到应用目录并执行，通过 `http://localhost:18080` 通信。
+| `-shutdown` | 测试后退出 |
 
 ## 项目结构
 
@@ -109,16 +74,16 @@ Flutter 启动时自动从 asset 提取 `sni_web` 到应用目录并执行，通
 sni_tester/
 ├── cmd/
 │   ├── sni_tester/main.go    # CLI 入口
-│   └── sni_web/              # API 服务器
-│       ├── main.go           # CORS, /api/health, 端口 18080
-│       └── handlers.go       # SSE, start, stop, status, download, upload
-├── pkg/                      # 核心库
-│   ├── types.go / config.go / dns.go / tls.go
+│   └── sni_web/              # API 服务器 + CGO 导出
+│       ├── main.go
+│       ├── handlers.go
+│       └── export.go         # FFI 导出 (StartServer/StopServer)
+├── pkg/
+│   ├── config.go / types.go / dns.go / tls.go
 │   ├── geo.go / storage.go / protobuf.go / engine.go
-├── flutter_app/              # Flutter 跨平台 GUI
-├── proto/sni.proto
-├── Makefile                  # build/deploy/run 一键命令
-└── go.mod
+├── go.mod / go.sum
+├── Makefile
+└── README.md
 ```
 
 ## DNS 引擎

@@ -56,6 +56,9 @@ class HomeViewModel extends ChangeNotifier {
   List<ProgressEvent> _results = [];
   String? _error;
   StreamSubscription<ProgressEvent>? _sseSub;
+  Timer? _notifyTimer;
+  bool _notifyPending = false;
+  static const _maxResults = 50;
 
   Stats get stats => _stats;
   String get status => _status;
@@ -338,21 +341,35 @@ class HomeViewModel extends ChangeNotifier {
     _sseSub = stream.listen(
       (event) {
         _stats = event.stats;
-        _results = [event, ..._results].take(200).toList();
+        _results.insert(0, event);
+        if (_results.length > _maxResults) _results.removeLast();
         NotificationService.updateProgress(_stats.done, _stats.total);
         if (_stats.done >= _stats.total && _stats.total > 0) {
           _running = false;
           NotificationService.complete(_stats.success, _stats.fail);
+          _notifyTimer?.cancel();
+          _notifyPending = false;
           notifyListeners();
+          return;
         }
         _error = null;
-        notifyListeners();
+        _scheduleNotify();
       },
       onError: (e) {
         _error = 'SSE: $e';
         notifyListeners();
       },
     );
+  }
+
+  void _scheduleNotify() {
+    if (_notifyPending) return;
+    _notifyPending = true;
+    _notifyTimer?.cancel();
+    _notifyTimer = Timer(const Duration(milliseconds: 100), () {
+      _notifyPending = false;
+      notifyListeners();
+    });
   }
 
   // --- Download ---
@@ -399,6 +416,7 @@ class HomeViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _notifyTimer?.cancel();
     _sseSub?.cancel();
     api.dispose();
     super.dispose();

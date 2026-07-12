@@ -31,15 +31,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _vm = widget.viewModel;
-    _vm.addListener(_onVmChanged);
     _vm.init();
   }
 
-  void _onVmChanged() => setState(() {});
-
   @override
   void dispose() {
-    _vm.removeListener(_onVmChanged);
     super.dispose();
   }
 
@@ -49,19 +45,22 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('SNI Tester'),
         actions: [
-          if (_vm.running)
-            IconButton(
-              icon: const Icon(Icons.stop),
-              tooltip: 'Stop',
-              onPressed: () => _vm.stopTest(),
-            ),
+          ListenableBuilder(
+            listenable: _vm,
+            builder: (_, __) => _vm.running
+                ? IconButton(
+                    icon: const Icon(Icons.stop),
+                    tooltip: 'Stop',
+                    onPressed: () => _vm.stopTest(),
+                  )
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Connection / Mode card
             if (isDesktop)
               ConnectionCard(
                 mode: _vm.connMode,
@@ -84,7 +83,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             const SizedBox(height: 12),
 
-            // File selection
             if (isDesktop && _vm.connMode != ConnMode.local && _vm.isConnected)
               RemoteFileCard(
                 files: _vm.remoteFiles,
@@ -103,7 +101,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             const SizedBox(height: 12),
 
-            // Settings
             SettingsCard(
               timeoutSec: _vm.timeoutSec,
               maxConcurrent: _vm.maxConcurrent,
@@ -118,7 +115,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Advanced (desktop only)
             if (isDesktop)
               AdvancedSettingsCard(
                 aimdEnabled: _vm.aimdEnabled,
@@ -136,45 +132,54 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             const SizedBox(height: 12),
 
-            // Progress
-            ProgressSection(
-              running: _vm.running,
-              stats: _vm.stats,
-              error: _vm.error,
-            ),
-            const SizedBox(height: 12),
-
-            // Start button
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton.icon(
-                onPressed: _vm.canStart
-                    ? () => _vm.startTest(StartParams(
-                          serversFile: _serversFile ?? '',
-                          domainsFile: _domainsFile ?? '',
-                          timeoutSec: _vm.timeoutSec,
-                          maxConcurrent: _vm.maxConcurrent,
-                        ))
-                    : null,
-                icon: Icon(_vm.running ? Icons.hourglass_top : Icons.play_arrow),
-                label: Text(_vm.running ? 'Running...' : 'Start Test'),
+            ListenableBuilder(
+              listenable: _vm,
+              builder: (_, __) => ProgressSection(
+                running: _vm.running,
+                stats: _vm.stats,
+                error: _vm.error,
               ),
             ),
             const SizedBox(height: 12),
 
-            // Results table
-            ResultTable(results: _vm.results),
-
-            // Download (desktop only)
-            if (!_vm.running && _vm.results.isNotEmpty)
-              ResultDownloadCard(
-                loading: _vm.downloadLoading,
-                progress: _vm.downloadProgress,
-                savedPath: _vm.downloadPath,
-                onDownload: _vm.exportResults,
-                onOpenFolder: () {},
+            ListenableBuilder(
+              listenable: _vm,
+              builder: (_, __) => SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton.icon(
+                  onPressed: _vm.canStart
+                      ? () => _vm.startTest(StartParams(
+                            serversFile: _serversFile ?? '',
+                            domainsFile: _domainsFile ?? '',
+                            timeoutSec: _vm.timeoutSec,
+                            maxConcurrent: _vm.maxConcurrent,
+                          ))
+                      : null,
+                  icon: Icon(_vm.running ? Icons.hourglass_top : Icons.play_arrow),
+                  label: Text(_vm.running ? 'Running...' : 'Start Test'),
+                ),
               ),
+            ),
+            const SizedBox(height: 12),
+
+            ListenableBuilder(
+              listenable: _vm,
+              builder: (_, __) => ResultTable(results: _vm.results),
+            ),
+
+            ListenableBuilder(
+              listenable: _vm,
+              builder: (_, __) => !_vm.running && _vm.results.isNotEmpty
+                  ? ResultDownloadCard(
+                      loading: _vm.downloadLoading,
+                      progress: _vm.downloadProgress,
+                      savedPath: _vm.downloadPath,
+                      onDownload: _vm.exportResults,
+                      onOpenFolder: () {},
+                    )
+                  : const SizedBox.shrink(),
+            ),
             const SizedBox(height: 80),
           ],
         ),

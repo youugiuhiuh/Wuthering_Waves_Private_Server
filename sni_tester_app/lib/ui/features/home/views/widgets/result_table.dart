@@ -15,10 +15,8 @@ class ResultTable extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Center(
-            child: Text(
-              'No results yet',
-              style: TextStyle(color: theme.colorScheme.outline),
-            ),
+            child: Text('No results yet',
+                style: TextStyle(color: theme.colorScheme.outline)),
           ),
         ),
       );
@@ -32,42 +30,54 @@ class ResultTable extends StatelessWidget {
             Text('Results (${results.length})',
                 style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                columnSpacing: 12,
-                dataRowMinHeight: 32,
-                dataRowMaxHeight: 40,
-                headingRowHeight: 36,
-                columns: const [
-                  DataColumn(label: Text('Server', style: TextStyle(fontWeight: FontWeight.w600))),
-                  DataColumn(label: Text('Domain', style: TextStyle(fontWeight: FontWeight.w600))),
-                  DataColumn(label: Text('Result', style: TextStyle(fontWeight: FontWeight.w600))),
-                  DataColumn(label: Text('RT', style: TextStyle(fontWeight: FontWeight.w600)), numeric: true),
-                  DataColumn(label: Text('Country', style: TextStyle(fontWeight: FontWeight.w600))),
-                ],
-                rows: results.take(100).map((r) {
-                  final ok = r.success;
-                  return DataRow(cells: [
-                    DataCell(Text(r.server, style: const TextStyle(fontSize: 12))),
-                    DataCell(Text(r.domain, style: const TextStyle(fontSize: 12))),
-                    DataCell(Icon(
-                      ok ? Icons.check_circle : Icons.cancel,
-                      color: ok ? Colors.green : Colors.red,
-                      size: 16,
-                    )),
-                    DataCell(Text(
-                      r.responseMs != null ? '${r.responseMs!.toStringAsFixed(0)}ms' : '-',
-                      style: const TextStyle(fontSize: 12),
-                    )),
-                    DataCell(Text(r.country ?? '-', style: const TextStyle(fontSize: 12))),
-                  ]);
-                }).toList(),
+            SizedBox(
+              height: 280,
+              child: ListView.builder(
+                itemCount: results.length,
+                itemExtent: 28,
+                itemBuilder: (_, i) => _ResultRow(event: results[i]),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ResultRow extends StatelessWidget {
+  final ProgressEvent event;
+  const _ResultRow({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    final ok = event.success;
+    return Row(
+      children: [
+        Icon(
+          ok ? Icons.check_circle : Icons.cancel,
+          color: ok ? Colors.green : Colors.red,
+          size: 16,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            event.domain,
+            style: const TextStyle(fontSize: 12),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (event.country != null && event.country!.isNotEmpty)
+          Text(event.country!, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        if (event.responseMs != null) ...[
+          const SizedBox(width: 4),
+          Text(
+            '${event.responseMs!.toStringAsFixed(0)}ms',
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+        ],
+      ],
     );
   }
 }

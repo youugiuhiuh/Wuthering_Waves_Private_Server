@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/models.dart';
+import 'native_bridge.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -19,6 +20,7 @@ class ApiClient {
   String baseUrl;
   final http.Client _http = http.Client();
   Process? _backendProcess;
+  NativeBridge? _nativeBridge;
   bool _hasStartedLocal = false;
 
   ApiClient({this.baseUrl = 'http://localhost:18080'});
@@ -36,37 +38,30 @@ class ApiClient {
   }
 
   Future<void> _startLocalBinary() async {
-    String binaryPath;
-    String outputDir;
-
-    try {
-      const channel = MethodChannel('com.example.sni_tester/native');
-      final nativeLibDir = await channel.invokeMethod<String>('getNativeLibDir');
-      if (nativeLibDir != null) {
-        binaryPath = '$nativeLibDir/libsni_web.so';
-        outputDir = '$nativeLibDir/sni_output';
-        if (await File(binaryPath).exists()) {
-          await Process.run('chmod', ['+x', binaryPath]);
-        }
-      } else {
-        throw 'no native lib dir';
-      }
-    } catch (_) {
+    if (Platform.isAndroid) {
       final dir = await getApplicationDocumentsDirectory();
-      binaryPath = '${dir.path}/sni_web';
-      outputDir = '${dir.path}/sni_output';
+      final outputDir = '${dir.path}/sni_output';
+      _nativeBridge = NativeBridge();
+      final result = _nativeBridge!.startServer(dir.path, outputDir);
+      if (result != 0) {
+        throw ApiException('Native server start failed: $result');
+      }
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      final binaryPath = '${dir.path}/sni_web';
+      final outputDir = '${dir.path}/sni_output';
       final file = File(binaryPath);
       if (!file.existsSync()) {
         final data = await rootBundle.load('assets/sni_web');
         await file.writeAsBytes(data.buffer.asUint8List());
         await Process.run('chmod', ['+x', binaryPath]);
       }
+      _backendProcess = await Process.start(binaryPath, [],
+          environment: {EnvKeys.outputDir: outputDir});
+      _backendProcess!.stderr
+          .transform(utf8.decoder)
+          .listen((line) => stderr.writeln('[sni_web] $line'));
     }
-    _backendProcess = await Process.start(binaryPath, [],
-        environment: {EnvKeys.outputDir: outputDir});
-    _backendProcess!.stderr
-        .transform(utf8.decoder)
-        .listen((line) => stderr.writeln('[sni_web] $line'));
     _hasStartedLocal = true;
     for (var i = 0; i < 50; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
@@ -76,12 +71,16 @@ class ApiClient {
   }
 
   Future<void> stopBackend() async {
-    if (_hasStartedLocal) {
+    if (!_hasStartedLocal) return;
+    if (_nativeBridge != null) {
+      _nativeBridge!.stopServer();
+      _nativeBridge = null;
+    } else {
       _backendProcess?.kill();
       await _backendProcess?.exitCode;
       _backendProcess = null;
-      _hasStartedLocal = false;
     }
+    _hasStartedLocal = false;
   }
 
   Future<bool> _isRunning() async {
