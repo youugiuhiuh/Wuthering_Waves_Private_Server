@@ -2,9 +2,11 @@ import 'package:flutter/services.dart';
 
 class NotificationService {
   static const _channel = MethodChannel('com.example.sni_tester/foreground');
+  static const _permChannel = MethodChannel('com.example.sni_tester/permission');
 
   static Future<void> start() async {
     try {
+      await _permChannel.invokeMethod('requestNotification');
       await _channel.invokeMethod('startForeground');
     } catch (_) {}
   }
