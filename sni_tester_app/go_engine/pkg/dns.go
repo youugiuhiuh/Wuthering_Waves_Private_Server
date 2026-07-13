@@ -19,9 +19,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// DNS caching
-var DnsCache sync.Map
-var DnsPrefetchCache sync.Map
 var DnsPrefetchQueue = make(chan string, 500)
 
 // DNSRateLimiter controls DNS query rate

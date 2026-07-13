@@ -77,16 +77,15 @@ type ProgressEvent struct {
 }
 
 type Stats struct {
-	Total     int     `json:"total"`
-	Success   int     `json:"success"`
-	Failed    int     `json:"fail"`
-	Skipped   int     `json:"skipped"`
+	Total      int     `json:"total"`
+	Success    int     `json:"success"`
+	Failed     int     `json:"fail"`
+	Skipped    int     `json:"skipped"`
 	RatePerSec float64 `json:"rate_per_sec"`
 }
 
 type Result struct {
-	DomainResults []DomainResult
-	Stats         Stats
+	Stats Stats
 }
 
 type ProgressCallback func(event ProgressEvent)

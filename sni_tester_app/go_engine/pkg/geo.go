@@ -9,18 +9,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/oschwald/geoip2-golang"
 )
 
-var countryCache sync.Map
-var asnResultCache sync.Map
+var countryCache = NewLRU[string, string](100000)
+var asnResultCache = NewLRU[string, ASNResult](100000)
 
 func GetCachedCountry(ip string, geoDB *geoip2.Reader) string {
-	if cached, ok := countryCache.Load(ip); ok {
-		return cached.(string)
+	if cached, ok := countryCache.Get(ip); ok {
+		return cached
 	}
 
 	countryCode := "UNKNOWN"
@@ -33,18 +32,18 @@ func GetCachedCountry(ip string, geoDB *geoip2.Reader) string {
 		}
 	}
 
-	countryCache.Store(ip, countryCode)
+	countryCache.Set(ip, countryCode)
 	return countryCode
 }
 
 func GetCachedASN(ip string, asnDB *geoip2.Reader) (ASNResult, error) {
-	if cached, ok := asnResultCache.Load(ip); ok {
-		return cached.(ASNResult), nil
+	if cached, ok := asnResultCache.Get(ip); ok {
+		return cached, nil
 	}
 
 	asn, org := GetASN(net.ParseIP(ip), asnDB)
 	result := ASNResult{ASN: asn, Org: org}
-	asnResultCache.Store(ip, result)
+	asnResultCache.Set(ip, result)
 	return result, nil
 }
 
