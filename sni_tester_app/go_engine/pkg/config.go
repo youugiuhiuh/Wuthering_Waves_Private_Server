@@ -197,6 +197,7 @@ const (
 	GeoASNURL          = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-ASN.mmdb"
 	GeoDBGitHubPath    = "/P3TERX/GeoLite.mmdb/releases/latest/download/"
 	BadgerDBDir        = "badger_db"
+	BatchSaveSize      = 10000
 )
 
 var GeoDBMirrors = []string{

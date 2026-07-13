@@ -181,8 +181,8 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 	var stats Stats
 	stats.Total = total
 	countryDomains := make(map[string][]string)
-	var failedDomains []string
-	var resultList []DomainResult
+	var failedBatch []string
+	var batchCount int
 
 	done := make(chan struct{})
 	go func() {
@@ -191,19 +191,20 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 			if r.success {
 				countryDomains[r.country] = append(countryDomains[r.country], r.domain)
 				stats.Success++
+				batchCount++
+				if batchCount >= BatchSaveSize {
+					SaveBatch(e.cfg.OutputDir, countryDomains, e.storage.DB())
+					countryDomains = make(map[string][]string)
+					batchCount = 0
+				}
 			} else {
-				failedDomains = append(failedDomains, r.domain)
+				failedBatch = append(failedBatch, r.domain)
 				stats.Failed++
+				if len(failedBatch) >= BatchSaveSize {
+					e.storage.AppendFailureHistory(failedBatch)
+					failedBatch = nil
+				}
 			}
-			resultList = append(resultList, DomainResult{
-				Domain:  r.domain,
-				Success: r.success,
-				IP:      r.ip,
-				Country: r.country,
-				ASN:     r.asn,
-				Org:     r.org,
-				Info:    r.info,
-			})
 
 			if cb != nil {
 				cb(ProgressEvent{
@@ -224,17 +225,14 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 	close(results)
 	<-done
 
-	if !e.cfg.Debug {
+	if len(countryDomains) > 0 {
 		SaveBatch(e.cfg.OutputDir, countryDomains, e.storage.DB())
-		if len(failedDomains) > 0 {
-			e.storage.AppendFailureHistory(failedDomains)
-		}
+	}
+	if !e.cfg.Debug && len(failedBatch) > 0 {
+		e.storage.AppendFailureHistory(failedBatch)
 	}
 
-	return &Result{
-		DomainResults: resultList,
-		Stats:         stats,
-	}, nil
+	return &Result{Stats: stats}, nil
 }
 
 func (e *Engine) processDomain(ctx context.Context, domain string) jobResult {
