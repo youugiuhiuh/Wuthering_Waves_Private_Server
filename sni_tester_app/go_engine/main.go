@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"sni_tester/pkg"
-	"sni_tester/webserver"
+	"go_engine/pkg"
+	"go_engine/webserver"
 )
 
 var (
