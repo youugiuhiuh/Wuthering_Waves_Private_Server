@@ -8,13 +8,12 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	utls "github.com/refraction-networking/utls"
 )
 
-var tlsCache sync.Map
+var tlsCache = NewLRU[string, *TLSResult](50000)
 
 func randIndex(n int) int {
 	if n <= 1 {
@@ -156,11 +155,11 @@ func CheckH3Support(domain string, targetIP string) bool {
 
 func GetCachedTLS(domain, ip string, tlsTimeout time.Duration, needTLS13 bool) *TLSResult {
 	cacheKey := domain + ":" + ip
-	if cached, ok := tlsCache.Load(cacheKey); ok {
-		return cached.(*TLSResult)
+	if cached, ok := tlsCache.Get(cacheKey); ok {
+		return cached
 	}
 
 	result, _ := PerformTLSHandshake(domain, ip, tlsTimeout, needTLS13)
-	tlsCache.Store(cacheKey, result)
+	tlsCache.Set(cacheKey, result)
 	return result
 }
