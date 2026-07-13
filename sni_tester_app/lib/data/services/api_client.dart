@@ -234,14 +234,15 @@ class ApiClient {
     }
   }
 
-  Future<List<int>> downloadResult() async {
-    final res = await _http
-        .get(Uri.parse('$baseUrl/api/download'))
-        .timeout(const Duration(seconds: 30));
-    if (res.statusCode != 200) {
-      throw ApiException('Download failed: ${res.statusCode}');
+  Future<String> downloadResult(String savePath) async {
+    final request = http.Request('GET', Uri.parse('$baseUrl/api/download'));
+    final response = await _http.send(request).timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw ApiException('Download failed: ${response.statusCode}');
     }
-    return res.bodyBytes.toList();
+    final file = File(savePath);
+    await response.stream.pipe(file.openWrite());
+    return savePath;
   }
 
   void dispose() {

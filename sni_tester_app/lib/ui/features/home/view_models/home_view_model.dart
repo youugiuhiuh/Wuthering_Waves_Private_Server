@@ -378,13 +378,12 @@ class HomeViewModel extends ChangeNotifier {
     _downloadProgress = null;
     notifyListeners();
     try {
-      final data = await api.downloadResult();
       final dir = Directory(
           '${(await getApplicationDocumentsDirectory()).path}/sni_tester_results');
       if (!dir.existsSync()) dir.createSync(recursive: true);
       final ts = DateTime.now().millisecondsSinceEpoch;
       final path = '${dir.path}/results_$ts.pb';
-      await File(path).writeAsBytes(data);
+      await api.downloadResult(path);
       _downloadPath = path;
     } catch (e) {
       _error = 'Download failed: $e';
@@ -398,14 +397,13 @@ class HomeViewModel extends ChangeNotifier {
     _downloadProgress = null;
     notifyListeners();
     try {
-      final data = await api.downloadResult();
       final dir = Directory('/storage/emulated/0/Download');
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }
       final ts = DateTime.now().millisecondsSinceEpoch;
       final path = '${dir.path}/sni_results_$ts.zip';
-      await File(path).writeAsBytes(data);
+      await api.downloadResult(path);
       _downloadPath = path;
     } catch (e) {
       _error = 'Export failed: $e';
