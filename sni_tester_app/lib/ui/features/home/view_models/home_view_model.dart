@@ -306,10 +306,8 @@ class HomeViewModel extends ChangeNotifier {
 
   Future<void> startTest(StartParams params) async {
     try {
-      final file = File(params.domainsFile);
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        await api.uploadContent(content);
+      if (params.domainsFile.isNotEmpty) {
+        await api.uploadFileByPath(params.domainsFile);
       }
       await api.startTest(params);
       _running = true;

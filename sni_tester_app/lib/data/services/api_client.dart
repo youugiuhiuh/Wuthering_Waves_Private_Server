@@ -234,6 +234,16 @@ class ApiClient {
     }
   }
 
+  Future<void> uploadFileByPath(String localPath) async {
+    final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/upload'));
+    request.files.add(await http.MultipartFile.fromPath('file', localPath));
+    final streamed = await request.send().timeout(const Duration(seconds: 60));
+    if (streamed.statusCode != 200) {
+      final body = await streamed.stream.bytesToString();
+      throw ApiException('Upload failed: ${streamed.statusCode} $body');
+    }
+  }
+
   Future<String> downloadResult(String savePath) async {
     final request = http.Request('GET', Uri.parse('$baseUrl/api/download'));
     final response = await _http.send(request).timeout(const Duration(seconds: 30));
