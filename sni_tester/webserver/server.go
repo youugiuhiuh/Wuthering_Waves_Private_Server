@@ -1,4 +1,4 @@
-package main
+package webserver
 
 import (
 	"archive/zip"
@@ -19,6 +19,8 @@ import (
 	"sni_tester/pkg"
 )
 
+var StartTime = time.Now()
+
 type Server struct {
 	engine      *pkg.Engine
 	cfg         pkg.Config
@@ -30,7 +32,48 @@ type Server struct {
 	inputText   string
 }
 
-func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
+func NewServer(engine *pkg.Engine, cfg pkg.Config) *Server {
+	return &Server{
+		engine:      engine,
+		cfg:         cfg,
+		subscribers: make(map[chan pkg.ProgressEvent]struct{}),
+	}
+}
+
+func Cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(204)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func NewMux(srv *Server) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "ok",
+			"uptime":  time.Since(StartTime).String(),
+			"version": "1.0",
+		})
+	})
+	mux.HandleFunc("GET /api/progress", srv.HandleSSE)
+	mux.HandleFunc("POST /api/start", srv.HandleStart)
+	mux.HandleFunc("POST /api/stop", srv.HandleStop)
+	mux.HandleFunc("GET /api/status", srv.HandleStatus)
+	mux.HandleFunc("GET /api/download", srv.HandleDownload)
+	mux.HandleFunc("POST /api/upload", srv.HandleUpload)
+	mux.HandleFunc("GET /api/files", srv.HandleListFiles)
+	mux.HandleFunc("DELETE /api/files", srv.HandleDeleteFile)
+	return mux
+}
+
+func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(256 << 20); err != nil {
 		log.Printf("ParseMultipartForm error: %v", err)
 		http.Error(w, "upload parse failed", 400)
@@ -49,7 +92,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleStart(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	if s.running {
 		s.mu.Unlock()
@@ -106,6 +149,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 			domains = append(domains, d)
 		}
 	}
+	s.inputText = ""
 
 	go func() {
 		result, err := s.engine.Run(ctx, domains, func(ev pkg.ProgressEvent) {
@@ -124,7 +168,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
 }
 
-func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleStop(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	if s.cancel != nil {
 		s.cancel()
@@ -134,7 +178,7 @@ func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
 }
 
-func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	running := s.running
 	results := s.results
@@ -147,7 +191,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	if _, err := os.Stat(s.cfg.OutputDir); os.IsNotExist(err) {
 		http.Error(w, "no results available", 404)
 		return
@@ -193,7 +237,7 @@ func (s *Server) broadcast(event pkg.ProgressEvent) {
 	}
 }
 
-func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)

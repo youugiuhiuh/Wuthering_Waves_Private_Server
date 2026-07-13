@@ -9,8 +9,8 @@ JNILIBS_DIR := android/app/src/main/jniLibs/arm64-v8a
 android-assets:
 	mkdir -p $(JNILIBS_DIR) assets
 	CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC=$(NDK_CC) \
-		go build -C $(SNI_DIR) -buildmode=c-shared \
-		-o $(CURDIR)/$(JNILIBS_DIR)/libsni_web.so ./cmd/sni_web/
+		go build -C go_engine -buildmode=c-shared \
+		-o $(CURDIR)/$(JNILIBS_DIR)/libsni_web.so .
 	touch assets/sni_web
 
 android-build: android-assets
@@ -21,6 +21,7 @@ android-deploy: android-build
 	adb install -r build/app/outputs/flutter-apk/app-release.apk
 
 linux-assets:
+	mkdir -p assets
 	go build -C $(SNI_DIR) -o $(CURDIR)/assets/sni_web ./cmd/sni_web/
 
 linux-build: linux-assets
