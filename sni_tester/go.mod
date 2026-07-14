@@ -3,12 +3,11 @@ module sni_tester
 go 1.26.4
 
 require (
-	github.com/dgraph-io/badger/v4 v4.9.2
+	github.com/dgraph-io/badger/v4 v4.9.4
 	github.com/miekg/dns v1.1.72
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/schollz/progressbar/v3 v3.19.0
-	golang.org/x/net v0.56.0
 	golang.org/x/time v0.15.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -31,6 +30,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/mod v0.31.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
