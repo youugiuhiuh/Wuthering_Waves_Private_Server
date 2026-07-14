@@ -142,8 +142,13 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 				}
 
 				var domain string
+				var ok bool
 				select {
-				case domain = <-jobs:
+				case domain, ok = <-jobs:
+					if !ok {
+						workerSem <- struct{}{}
+						return
+					}
 				case <-ctx.Done():
 					workerSem <- struct{}{}
 					return
