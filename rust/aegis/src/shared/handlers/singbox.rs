@@ -731,34 +731,21 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
 
         "sb_del_all_exec" => {
-            match SingBoxConfigManager::delete_all_configurations().await {
-                Ok(count) => {
-                    event
-                        .adapter
-                        .answer_callback(
-                            &event.target,
-                            &event.callback_id,
-                            Some(
-                                t!(
-                                    "menu.singbox_del_success_all",
-                                    "0" => count.to_string()
-                                )
-                                .into_owned(),
-                            ),
+            let count = SingBoxConfigManager::delete_all_configurations().await?;
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(
+                        t!(
+                            "menu.singbox_del_success_all",
+                            "0" => count.to_string()
                         )
-                        .await?;
-                }
-                Err(e) => {
-                    event
-                        .adapter
-                        .answer_callback(
-                            &event.target,
-                            &event.callback_id,
-                            Some(t!("menu.singbox_del_fail", "0" => e.to_string()).into_owned()),
-                        )
-                        .await?;
-                }
-            }
+                        .into_owned(),
+                    ),
+                )
+                .await?;
             Ok(HandlerAction::Redirect("sb_del_cfg".to_string()))
         }
 
@@ -805,40 +792,26 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
 
         d if d.starts_with("sb_del_exec_count:") => {
-            let n: usize = d
+            let count = d
                 .strip_prefix("sb_del_exec_count:")
                 .unwrap_or("0")
-                .parse()
-                .unwrap_or(0);
+                .parse::<usize>()?;
+            let deleted = SingBoxConfigManager::delete_by_count(count).await?;
 
-            match SingBoxConfigManager::delete_by_count(n).await {
-                Ok(deleted) => {
-                    event
-                        .adapter
-                        .answer_callback(
-                            &event.target,
-                            &event.callback_id,
-                            Some(
-                                t!(
-                                    "menu.singbox_del_success_count",
-                                    "0" => deleted.to_string()
-                                )
-                                .into_owned(),
-                            ),
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(
+                        t!(
+                            "menu.singbox_del_success_count",
+                            "0" => deleted.to_string()
                         )
-                        .await?;
-                }
-                Err(e) => {
-                    event
-                        .adapter
-                        .answer_callback(
-                            &event.target,
-                            &event.callback_id,
-                            Some(t!("menu.singbox_del_fail", "0" => e.to_string()).into_owned()),
-                        )
-                        .await?;
-                }
-            }
+                        .into_owned(),
+                    ),
+                )
+                .await?;
             Ok(HandlerAction::Redirect("sb_del_cfg".to_string()))
         }
 
@@ -947,5 +920,48 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
 
         _ => Ok(HandlerAction::Done),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+
+    #[test]
+    fn test_sb_del_all_exec_matches() {
+        let data = "sb_del_all_exec";
+        assert!(data == "sb_del_all_exec");
+    }
+
+    #[test]
+    fn test_sb_del_exec_count_parsing() {
+        let data = "sb_del_exec_count:42";
+        let count: usize = data
+            .strip_prefix("sb_del_exec_count:")
+            .unwrap_or("0")
+            .parse()
+            .unwrap();
+        assert_eq!(count, 42);
+    }
+
+    #[test]
+    fn test_sb_del_exec_count_parse_prefix_only() {
+        let data = "sb_del_exec_count:";
+        let count: usize = data
+            .strip_prefix("sb_del_exec_count:")
+            .unwrap_or("0")
+            .parse()
+            .unwrap_or(0);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_sb_del_exec_count_parse_invalid() {
+        let data = "sb_del_exec_count:abc";
+        let result = data
+            .strip_prefix("sb_del_exec_count:")
+            .unwrap_or("0")
+            .parse::<usize>();
+        assert!(result.is_err());
     }
 }

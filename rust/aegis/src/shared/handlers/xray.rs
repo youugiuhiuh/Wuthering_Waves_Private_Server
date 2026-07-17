@@ -13,8 +13,6 @@ use crate::core::xray::{ConfigManager, KcpMask, Proto};
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use crate::utils;
 use rust_i18n::t;
-use std::fs;
-
 // ── Helpers ──────────────────────────────────────────────────────────
 
 async fn show_reality_batch_prompt(
@@ -610,42 +608,24 @@ async fn handle_cfg_del_all_confirm(event: &CallbackEvent) -> HandlerResult {
     Ok(HandlerAction::Done)
 }
 
+fn parse_bulk_filter(filter: &str) -> anyhow::Result<Option<Proto>> {
+    match filter {
+        "all" => Ok(None),
+        "reality" => Ok(Some(Proto::Vision)),
+        "xhttp" => Ok(Some(Proto::XHTTP)),
+        "kcp" => Ok(Some(Proto::Kcp)),
+        value => anyhow::bail!("unknown Xray bulk-delete filter: {value}"),
+    }
+}
+
 async fn handle_cfg_del_all_exec(event: &CallbackEvent) -> HandlerResult {
-    let data = event.data.as_str();
-    let filter = data.strip_prefix("cfg_del_all_exec:").unwrap_or("all");
-    let count = if filter == "all" {
-        ConfigManager::delete_all_configurations()
-            .await
-            .unwrap_or(0)
-    } else {
-        let proto = match filter {
-            "reality" => Proto::Vision,
-            "xhttp" => Proto::XHTTP,
-            "kcp" => Proto::Kcp,
-            _ => {
-                event
-                    .adapter
-                    .answer_callback(
-                        &event.target,
-                        &event.callback_id,
-                        Some(t!("xray.del_unknown_filter").into_owned()),
-                    )
-                    .await?;
-                return Ok(HandlerAction::Redirect("m_del_cfg".to_string()));
-            }
-        };
-        let files = ConfigManager::list_inbound_files_by_proto(proto)
-            .await
-            .unwrap_or_default();
-        let count = files.len();
-        for f in &files {
-            let _ = fs::remove_file(f);
-        }
-        if count > 0 {
-            let _ = MaintenanceManager::reload_core().await;
-        }
-        count
-    };
+    let filter = event
+        .data
+        .strip_prefix("cfg_del_all_exec:")
+        .unwrap_or("all");
+    let filter = parse_bulk_filter(filter)?;
+    let count = ConfigManager::delete_all_configurations(filter).await?;
+
     event
         .adapter
         .answer_callback(
@@ -654,7 +634,6 @@ async fn handle_cfg_del_all_exec(event: &CallbackEvent) -> HandlerResult {
             Some(t!("xray.del_success_all", "0" => count).into_owned()),
         )
         .await?;
-
     Ok(HandlerAction::Redirect("m_del_cfg".to_string()))
 }
 
@@ -712,57 +691,23 @@ async fn handle_cfg_del_count(event: &CallbackEvent) -> HandlerResult {
 }
 
 async fn handle_cfg_del_exec_count(event: &CallbackEvent) -> HandlerResult {
-    let data = event.data.as_str();
-    let parts: Vec<&str> = data.split(':').collect();
-    let filter = parts.get(1).unwrap_or(&"all");
-    let n: usize = parts.get(2).unwrap_or(&"0").parse().unwrap_or(0);
+    let parts: Vec<&str> = event.data.split(':').collect();
+    let filter_name = parts.get(1).copied().unwrap_or("all");
+    let count = parts.get(2).copied().unwrap_or("0").parse::<usize>()?;
+    let filter = parse_bulk_filter(filter_name)?;
+    let deleted = ConfigManager::delete_configurations_by_count(filter, count).await?;
 
-    let files = if *filter == "all" {
-        ConfigManager::list_all_inbound_files()
-            .await
-            .unwrap_or_default()
-    } else {
-        let proto = match *filter {
-            "reality" => Proto::Vision,
-            "xhttp" => Proto::XHTTP,
-            "kcp" => Proto::Kcp,
-            _ => Proto::Vision,
-        };
-        ConfigManager::list_inbound_files_by_proto(proto)
-            .await
-            .unwrap_or_default()
-    };
-
-    let mut file_with_time = Vec::new();
-    for f in files {
-        if let Ok(meta) = std::fs::metadata(&f)
-            && let Ok(time) = meta.modified()
-        {
-            file_with_time.push((f, time));
-        }
-    }
-    file_with_time.sort_by_key(|a| a.1);
-
-    let to_delete = file_with_time.iter().take(n);
-    let mut deleted_count = 0;
-    for (f, _) in to_delete {
-        if fs::remove_file(f).is_ok() {
-            deleted_count += 1;
-        }
-    }
-    if deleted_count > 0 {
-        let _ = MaintenanceManager::reload_core().await;
-    }
     event
         .adapter
         .answer_callback(
             &event.target,
             &event.callback_id,
-            Some(t!("xray.del_success_count", "0" => deleted_count).into_owned()),
+            Some(t!("xray.del_success_count", "0" => deleted).into_owned()),
         )
         .await?;
-
-    Ok(HandlerAction::Redirect(format!("cfg_del_count:{}", filter)))
+    Ok(HandlerAction::Redirect(format!(
+        "cfg_del_count:{filter_name}"
+    )))
 }
 
 // ── delete_select ────────────────────────────────────────────────────
@@ -2361,5 +2306,23 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         d if d.starts_with("routing_toggle:") => handle_routing_toggle(event).await,
 
         _ => Ok(HandlerAction::Done),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bulk_filter_parser_accepts_supported_filters() {
+        assert_eq!(parse_bulk_filter("all").unwrap(), None);
+        assert_eq!(parse_bulk_filter("reality").unwrap(), Some(Proto::Vision));
+        assert_eq!(parse_bulk_filter("xhttp").unwrap(), Some(Proto::XHTTP));
+        assert_eq!(parse_bulk_filter("kcp").unwrap(), Some(Proto::Kcp));
+    }
+
+    #[test]
+    fn bulk_filter_parser_rejects_unknown_filter() {
+        assert!(parse_bulk_filter("unknown").is_err());
     }
 }
