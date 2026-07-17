@@ -86,7 +86,7 @@ impl SingBoxConfigManager {
         }
     }
 
-    async fn extract_main_port_from_config(path: &str) -> Result<u16> {
+    async fn extract_main_port_from_config(path: &Path) -> Result<u16> {
         let content = fs::read_to_string(path).await?;
         let json: Value = serde_json::from_str(&content)?;
 
@@ -154,7 +154,7 @@ impl SingBoxConfigManager {
     }
 
     pub async fn delete_specific_configuration(path: &str) -> Result<()> {
-        let main_port = Self::extract_main_port_from_config(path).await?;
+        let main_port = Self::extract_main_port_from_config(Path::new(path)).await?;
         let hop_range = (main_port + 1, main_port + 99);
 
         fs::remove_file(path).await.context("删除配置文件失败")?;
@@ -177,7 +177,7 @@ impl SingBoxConfigManager {
     async fn prepare_for_bulk_delete(path: &Path) -> Result<()> {
         let path_text = path.to_string_lossy();
         if path_text.contains("hysteria2") || path_text.contains("hysteria") {
-            let main_port = Self::extract_main_port_from_config(&path_text).await?;
+            let main_port = Self::extract_main_port_from_config(path).await?;
             Self::cleanup_specific_hysteria2_rules(main_port, (main_port + 1, main_port + 99))
                 .await?;
         }
