@@ -2,7 +2,6 @@ use std::error::Error;
 use std::fmt;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum DispatchError {
     Internal { source: anyhow::Error },
 }
