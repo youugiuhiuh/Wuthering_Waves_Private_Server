@@ -5,6 +5,7 @@ use sha2::Digest;
 
 use crate::adapters::common::MessageContent;
 use crate::app::auth;
+use crate::shared::error::DispatchError;
 use crate::app::state::AppState;
 use crate::shared::handlers::message::{self, MessageAction};
 use crate::shared::types::{
@@ -12,7 +13,7 @@ use crate::shared::types::{
 };
 use crate::shared::{commands, destruct, handlers, state_ops};
 
-pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<()> {
+pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<(), DispatchError> {
     // 1. Destruct flow interception (checks timeout, handles in-progress destruct)
     match &event {
         BotEvent::Message(msg) => {

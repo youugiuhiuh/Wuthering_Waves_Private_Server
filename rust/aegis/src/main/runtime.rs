@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use aegis::adapters::common::{MessageId, TargetId};
 use aegis::core::i18n;
+use aegis::shared::boundary::{EventContext, handle_dispatch_result};
 use aegis::shared::dispatch_event;
 use aegis::shared::types::*;
 use anyhow::Context;
@@ -217,7 +218,9 @@ pub async fn run(
                             reply_to_text: None,
                         })
                     };
-                    let _ = dispatch_event(event, &state).await;
+                    let ctx = EventContext::from_event(&event);
+                    let result = dispatch_event(event, &state).await;
+                    handle_dispatch_result(&state, &ctx, result).await;
                 }
             },
         );
@@ -240,16 +243,15 @@ pub async fn run(
             cmd: TeloxideCommand,
             state: Arc<AppState>,
         ) -> Result<(), teloxide::RequestError> {
-            let _ = dispatch_event(
-                BotEvent::Command(CommandEvent {
-                    adapter: state.adapter.clone(),
-                    target: TargetId(msg.chat.id.0.to_string()),
-                    user_id: msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0),
-                    command: teloxide_to_bot(cmd),
-                }),
-                &state,
-            )
-            .await;
+            let event = BotEvent::Command(CommandEvent {
+                adapter: state.adapter.clone(),
+                target: TargetId(msg.chat.id.0.to_string()),
+                user_id: msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0),
+                command: teloxide_to_bot(cmd),
+            });
+            let ctx = EventContext::from_event(&event);
+            let result = dispatch_event(event, &state).await;
+            handle_dispatch_result(&state, &ctx, result).await;
             Ok(())
         }
 
@@ -259,30 +261,29 @@ pub async fn run(
             state: Arc<AppState>,
         ) -> Result<(), teloxide::RequestError> {
             let user_id = msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
-            let _ = dispatch_event(
-                BotEvent::Message(MessageEvent {
-                    adapter: state.adapter.clone(),
-                    target: TargetId(msg.chat.id.0.to_string()),
-                    user_id,
-                    text: msg.text().map(|s| s.to_string()),
-                    file_id: msg.document().map(|d| d.file.id.clone()).or_else(|| {
-                        msg.photo()
-                            .and_then(|p| p.last().map(|ph| ph.file.id.clone()))
-                    }),
-                    file_name: msg
-                        .document()
-                        .and_then(|d| d.file_name.clone())
-                        .or_else(|| {
-                            msg.photo()
-                                .map(|_| rust_i18n::t!("destruct.image_label").to_string())
-                        }),
-                    reply_to_text: msg
-                        .reply_to_message()
-                        .and_then(|r| r.text().map(|s| s.to_string())),
+            let event = BotEvent::Message(MessageEvent {
+                adapter: state.adapter.clone(),
+                target: TargetId(msg.chat.id.0.to_string()),
+                user_id,
+                text: msg.text().map(|s| s.to_string()),
+                file_id: msg.document().map(|d| d.file.id.clone()).or_else(|| {
+                    msg.photo()
+                        .and_then(|p| p.last().map(|ph| ph.file.id.clone()))
                 }),
-                &state,
-            )
-            .await;
+                file_name: msg
+                    .document()
+                    .and_then(|d| d.file_name.clone())
+                    .or_else(|| {
+                        msg.photo()
+                            .map(|_| rust_i18n::t!("destruct.image_label").to_string())
+                    }),
+                reply_to_text: msg
+                    .reply_to_message()
+                    .and_then(|r| r.text().map(|s| s.to_string())),
+            });
+            let ctx = EventContext::from_event(&event);
+            let result = dispatch_event(event, &state).await;
+            handle_dispatch_result(&state, &ctx, result).await;
             Ok(())
         }
 
@@ -293,19 +294,18 @@ pub async fn run(
         ) -> Result<(), teloxide::RequestError> {
             let chat_id = q.message.as_ref().map(|m| m.chat().id).unwrap_or(ChatId(0));
             let msg_id = q.message.as_ref().map(|m| m.id()).unwrap_or_default();
-            let _ = dispatch_event(
-                BotEvent::Callback(CallbackEvent {
-                    adapter: state.adapter.clone(),
-                    target: TargetId(chat_id.0.to_string()),
-                    user_id: q.from.id.0.to_string(),
-                    msg_id: MessageId(msg_id.0.to_string()),
-                    data: q.data.clone().unwrap_or_default(),
-                    callback_id: q.id.clone(),
-                    session_timeout_secs: state.session_timeout_secs().await,
-                }),
-                &state,
-            )
-            .await;
+            let event = BotEvent::Callback(CallbackEvent {
+                adapter: state.adapter.clone(),
+                target: TargetId(chat_id.0.to_string()),
+                user_id: q.from.id.0.to_string(),
+                msg_id: MessageId(msg_id.0.to_string()),
+                data: q.data.clone().unwrap_or_default(),
+                callback_id: q.id.clone(),
+                session_timeout_secs: state.session_timeout_secs().await,
+            });
+            let ctx = EventContext::from_event(&event);
+            let result = dispatch_event(event, &state).await;
+            handle_dispatch_result(&state, &ctx, result).await;
             Ok(())
         }
 

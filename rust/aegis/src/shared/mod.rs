@@ -1,7 +1,7 @@
 pub(crate) mod commands;
 pub(crate) mod destruct;
 pub(crate) mod dispatch;
-pub(crate) mod boundary;
+pub mod boundary;
 pub(crate) mod error;
 pub use dispatch::dispatch_event;
 pub mod handlers;
