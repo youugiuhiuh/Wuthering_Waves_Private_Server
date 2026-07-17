@@ -225,6 +225,7 @@ impl ConfigManager {
                 "xver": 0,
                 "serverNames": [sni],
                 "privateKey": priv_key,
+                "minClientVer": "1.0.0",
                 "shortIds": ["", short_id]
             }
         });
@@ -565,8 +566,7 @@ impl ConfigManager {
         let files = Self::bulk_candidates(filter)
             .await
             .map_err(|source| BulkDeleteError::discovery("xray bulk delete", source))?;
-        Self::delete_files_with_reload(files, Some(count), MaintenanceManager::reload_core)
-            .await
+        Self::delete_files_with_reload(files, Some(count), MaintenanceManager::reload_core).await
     }
 
     pub async fn delete_specific_configuration(path: &str) -> Result<()> {
@@ -827,6 +827,11 @@ mod tests {
         assert_eq!(
             vless["streamSettings"]["realitySettings"]["serverNames"][0],
             "example.com"
+        );
+
+        assert_eq!(
+            vless["streamSettings"]["realitySettings"]["minClientVer"],
+            "1.0.0"
         );
     }
 
