@@ -7,6 +7,7 @@ pub mod i18n;
 
 pub mod cmd_action;
 pub mod cmd_async;
+pub mod config_delete;
 pub mod crypto;
 pub mod error;
 pub mod network;
