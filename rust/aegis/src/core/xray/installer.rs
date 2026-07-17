@@ -527,8 +527,6 @@ pub async fn install_wwps_core(arch: CpuArch) -> Result<()> {
         .context("创建 wwps-core 临时目录失败")?;
 
     let config = WwpsCoreUpgradeConfig::new(
-        "XTLS",
-        "Xray-core",
         "wwps-core",
         install_dir.clone(),
         backup_dir,

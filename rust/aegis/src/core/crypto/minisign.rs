@@ -50,9 +50,9 @@ pub fn verify_minisign(
 }
 
 pub fn parse_trusted_comment(comment: &str) -> Result<(String, String)> {
-    let parts: Vec<&str> = comment.splitn(2, ':').collect();
+    let parts: Vec<&str> = comment.split(':').collect();
     if parts.len() != 2 {
-        return Err(anyhow!("无效的可信注释格式: {}", comment));
+        return Err(anyhow!("无效的可信注释格式"));
     }
     Ok((parts[0].to_string(), parts[1].to_string()))
 }
@@ -79,9 +79,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_trusted_comment_multi_colon() {
-        let (ver, name) = parse_trusted_comment("v1.0.0:file:extra").unwrap();
-        assert_eq!(ver, "v1.0.0");
-        assert_eq!(name, "file:extra");
+    fn test_parse_trusted_comment_rejects_extra_fields() {
+        assert!(parse_trusted_comment("v1.0.0:file:extra").is_err());
     }
 }
