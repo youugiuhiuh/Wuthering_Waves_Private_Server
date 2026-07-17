@@ -12,7 +12,6 @@ use crate::shared::types::{
 };
 use crate::shared::{commands, destruct, handlers, state_ops};
 
-#[allow(dead_code)]
 pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<()> {
     // 1. Destruct flow interception (checks timeout, handles in-progress destruct)
     match &event {
