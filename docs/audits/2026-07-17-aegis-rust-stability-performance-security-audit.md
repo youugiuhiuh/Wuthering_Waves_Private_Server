@@ -179,7 +179,7 @@ Sing-box installer hardening requires a separate effort.
 
 ### 4. GitHub token disclosure and SSRF through release URLs [AEGIS-004]
 
-**Severity:** High  
+**Severity:** High
 **Locations:**
 
 - `rust/aegis/src/core/network/release_api.rs` (new client factories)
@@ -247,6 +247,32 @@ backoff, consumed-counter replay protection, recent reauthentication, and
 principal-bound authorization for every callback.
 
 ## P1 Stability Findings
+
+### 0. Xray version selection is blocked by API path validation [AEGIS-013]
+
+**Severity:** High
+**Locations:**
+
+- `rust/aegis/src/core/network/release_api.rs:100-145`
+- `rust/aegis/src/core/system/core_upgrade.rs:180-196`
+- `rust/aegis/src/shared/handlers/menu.rs:581`
+
+The GitHub-only updater hardening correctly rejects query delimiters embedded
+in an API path. Xray's version selector nevertheless passes
+`releases?per_page={limit}` as that path, so opening the version list fails
+deterministically with `GitHub API 路径包含不安全的字符` before any release is
+selected.
+
+**Root cause:** The request boundary does not distinguish a validated path from
+structured query parameters, while `fetch_recent_tags` concatenates both into
+one string.
+
+**Remediation:** Keep rejecting `?` in API paths. Add query parameters only via
+`reqwest::RequestBuilder::query`, retain the fixed `api.github.com` origin and
+API-only token policy, and add regression tests for encoded query values and
+the Xray recent-release path.
+
+**Status: NOT ADDRESSED** — confirmed after the GitHub-only updater merge.
 
 ### 1. Timed-out commands may survive
 
@@ -415,19 +441,21 @@ latest-value progress.
 
 ## Recommended Verification Work
 
-1. Test identical numeric IDs across all platforms and identical Matrix
+1. Verify Xray version listing sends `per_page` as a structured query parameter
+   while paths containing `?` remain rejected.
+2. Test identical numeric IDs across all platforms and identical Matrix
    localparts on different homeservers.
-2. Reject missing, unavailable, invalid, wrong-version, and wrong-architecture
+3. Reject missing, unavailable, invalid, wrong-version, and wrong-architecture
    signatures.
-3. Run malicious tar/zip and `/tmp` symlink tests only in an isolated VM or
+4. Run malicious tar/zip and `/tmp` symlink tests only in an isolated VM or
    container.
-4. Verify timed-out command PIDs and descendants are killed and reaped.
-5. Stress 100 concurrent port allocations and concurrent configuration writes.
-6. Benchmark SNI selection with batch sizes 1, 10, and 50.
-7. Benchmark TLS probing at concurrency 1, 4, 8, and 16.
-8. Measure upload and upgrade RSS using 10, 100, and 500 MiB streams.
-9. Run `cargo audit` or OSV checks in controlled CI.
-10. Inspect the deployed systemd unit for `UMask`, `PrivateTmp`,
+5. Verify timed-out command PIDs and descendants are killed and reaped.
+6. Stress 100 concurrent port allocations and concurrent configuration writes.
+7. Benchmark SNI selection with batch sizes 1, 10, and 50.
+8. Benchmark TLS probing at concurrency 1, 4, 8, and 16.
+9. Measure upload and upgrade RSS using 10, 100, and 500 MiB streams.
+10. Run `cargo audit` or OSV checks in controlled CI.
+11. Inspect the deployed systemd unit for `UMask`, `PrivateTmp`,
     `ProtectSystem`, `NoNewPrivileges`, capabilities, and service user.
 
 ## Explicit Limitations
