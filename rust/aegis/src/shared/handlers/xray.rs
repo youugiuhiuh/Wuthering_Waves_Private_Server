@@ -614,7 +614,7 @@ fn parse_bulk_filter(filter: &str) -> anyhow::Result<Option<Proto>> {
         "reality" => Ok(Some(Proto::Vision)),
         "xhttp" => Ok(Some(Proto::XHTTP)),
         "kcp" => Ok(Some(Proto::Kcp)),
-        value => anyhow::bail!("unknown Xray bulk-delete filter: {value}"),
+        value => anyhow::bail!("未知 Xray 批量删除过滤器: {value}"),
     }
 }
 
