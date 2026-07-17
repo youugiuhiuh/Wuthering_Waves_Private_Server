@@ -925,7 +925,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+
 
     #[test]
     fn test_sb_del_all_exec_matches() {

@@ -555,7 +555,7 @@ impl ConfigManager {
         let files = Self::bulk_candidates(filter)
             .await
             .map_err(|source| BulkDeleteError::discovery("xray bulk delete", source))?;
-        Self::delete_files_with_reload(files, None, || MaintenanceManager::reload_core()).await
+        Self::delete_files_with_reload(files, None, MaintenanceManager::reload_core).await
     }
 
     pub async fn delete_configurations_by_count(
@@ -565,7 +565,7 @@ impl ConfigManager {
         let files = Self::bulk_candidates(filter)
             .await
             .map_err(|source| BulkDeleteError::discovery("xray bulk delete", source))?;
-        Self::delete_files_with_reload(files, Some(count), || MaintenanceManager::reload_core())
+        Self::delete_files_with_reload(files, Some(count), MaintenanceManager::reload_core)
             .await
     }
 

@@ -240,14 +240,14 @@ impl SingBoxConfigManager {
         let files = Self::list_all_inbound_files()
             .await
             .map_err(|source| BulkDeleteError::discovery("sing-box bulk delete", source))?;
-        Self::delete_files_with_reload(files, None, || Self::reload_service()).await
+        Self::delete_files_with_reload(files, None, Self::reload_service).await
     }
 
     pub async fn delete_by_count(count: usize) -> BulkDeleteResult {
         let files = Self::list_all_inbound_files()
             .await
             .map_err(|source| BulkDeleteError::discovery("sing-box bulk delete", source))?;
-        Self::delete_files_with_reload(files, Some(count), || Self::reload_service()).await
+        Self::delete_files_with_reload(files, Some(count), Self::reload_service).await
     }
 
     pub async fn get_config_count() -> Result<usize> {
