@@ -26,6 +26,11 @@ pub struct FileDeleteFailure {
     pub source: anyhow::Error,
 }
 
+/// Error type for bulk configuration deletions.
+///
+/// The `Display` output contains internal filesystem paths and underlying
+/// error sources intended for server logs only. It must never be rendered to
+/// users.
 #[derive(Debug)]
 pub enum BulkDeleteError {
     Discovery {
@@ -34,6 +39,8 @@ pub enum BulkDeleteError {
     },
     Incomplete {
         operation: &'static str,
+        /// Requested deletion count. Candidate inspection failures can be
+        /// recorded in addition to this count.
         target: usize,
         deleted: usize,
         failures: Vec<FileDeleteFailure>,
@@ -85,7 +92,7 @@ impl fmt::Display for BulkDeleteError {
             } => {
                 write!(
                     f,
-                    "{operation} incomplete: target={target}, deleted={deleted}, failed={}",
+                    "{operation} incomplete: requested_deletions={target}, deleted={deleted}, candidate_failures={}",
                     failures.len()
                 )?;
                 for failure in failures {
@@ -215,6 +222,22 @@ mod tests {
         assert!(display.contains("/tmp/missing.json"));
         assert!(display.contains("remove failed"));
         assert!(display.contains("reload failed"));
+    }
+
+    #[test]
+    fn incomplete_display_uses_log_only_labels() {
+        let mut tracker = BulkDeleteTracker::new("xray bulk delete", 1);
+        tracker.record_deleted();
+        tracker.record_failure(
+            PathBuf::from("/tmp/candidate.json"),
+            DeleteStage::Inspect,
+            anyhow!("inspect failed"),
+        );
+
+        let error = tracker.finish(None).unwrap_err();
+        let display = error.to_string();
+        assert!(display.contains("requested_deletions=1"));
+        assert!(display.contains("candidate_failures=1"));
     }
 
     #[test]
