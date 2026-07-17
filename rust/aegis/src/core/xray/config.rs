@@ -217,6 +217,7 @@ impl ConfigManager {
                 "xver": 0,
                 "serverNames": [sni],
                 "privateKey": priv_key,
+                "minClientVer": "1.0.0",
                 "shortIds": ["", short_id]
             }
         });
@@ -657,6 +658,11 @@ mod tests {
         assert_eq!(
             vless["streamSettings"]["realitySettings"]["serverNames"][0],
             "example.com"
+        );
+
+        assert_eq!(
+            vless["streamSettings"]["realitySettings"]["minClientVer"],
+            "1.0.0"
         );
     }
 
