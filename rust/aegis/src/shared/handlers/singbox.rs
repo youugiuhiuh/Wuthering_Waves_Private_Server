@@ -5,6 +5,7 @@ use tokio::time::{Duration, sleep};
 use crate::adapters::common::{
     BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId,
 };
+use crate::core::config_delete::BulkDeleteResult;
 use crate::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use crate::core::system::SystemMonitor;
 use crate::core::types::{BatchCreationResult, IpVersion};
@@ -731,7 +732,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
 
         "sb_del_all_exec" => {
-            let count = SingBoxConfigManager::delete_all_configurations().await?;
+            let count =
+                propagate_bulk_delete(SingBoxConfigManager::delete_all_configurations().await)?;
             event
                 .adapter
                 .answer_callback(
@@ -792,11 +794,9 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
 
         d if d.starts_with("sb_del_exec_count:") => {
-            let count = d
-                .strip_prefix("sb_del_exec_count:")
-                .unwrap_or("0")
-                .parse::<usize>()?;
-            let deleted = SingBoxConfigManager::delete_by_count(count).await?;
+            let count = parse_bulk_delete_count(d)?;
+            let deleted =
+                propagate_bulk_delete(SingBoxConfigManager::delete_by_count(count).await)?;
 
             event
                 .adapter
@@ -923,45 +923,43 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
     }
 }
 
+fn parse_bulk_delete_count(data: &str) -> anyhow::Result<usize> {
+    Ok(data
+        .strip_prefix("sb_del_exec_count:")
+        .unwrap_or("0")
+        .parse::<usize>()?)
+}
+
+fn propagate_bulk_delete(result: BulkDeleteResult) -> anyhow::Result<usize> {
+    result.map_err(Into::into)
+}
+
 #[cfg(test)]
 mod tests {
-
-
-    #[test]
-    fn test_sb_del_all_exec_matches() {
-        let data = "sb_del_all_exec";
-        assert!(data == "sb_del_all_exec");
-    }
+    use super::*;
+    use crate::core::config_delete::BulkDeleteError;
 
     #[test]
     fn test_sb_del_exec_count_parsing() {
-        let data = "sb_del_exec_count:42";
-        let count: usize = data
-            .strip_prefix("sb_del_exec_count:")
-            .unwrap_or("0")
-            .parse()
-            .unwrap();
+        let count =
+            parse_bulk_delete_count("sb_del_exec_count:42").expect("valid bulk delete count");
         assert_eq!(count, 42);
     }
 
     #[test]
     fn test_sb_del_exec_count_parse_prefix_only() {
-        let data = "sb_del_exec_count:";
-        let count: usize = data
-            .strip_prefix("sb_del_exec_count:")
-            .unwrap_or("0")
-            .parse()
-            .unwrap_or(0);
-        assert_eq!(count, 0);
+        assert!(parse_bulk_delete_count("sb_del_exec_count:").is_err());
     }
 
     #[test]
     fn test_sb_del_exec_count_parse_invalid() {
-        let data = "sb_del_exec_count:abc";
-        let result = data
-            .strip_prefix("sb_del_exec_count:")
-            .unwrap_or("0")
-            .parse::<usize>();
-        assert!(result.is_err());
+        assert!(parse_bulk_delete_count("sb_del_exec_count:abc").is_err());
+    }
+
+    #[test]
+    fn test_propagate_bulk_delete_preserves_typed_error() {
+        let error = BulkDeleteError::discovery("sing-box bulk delete", anyhow::anyhow!("read dir"));
+        let error = propagate_bulk_delete(Err(error)).expect_err("core error must propagate");
+        assert!(error.downcast_ref::<BulkDeleteError>().is_some());
     }
 }
