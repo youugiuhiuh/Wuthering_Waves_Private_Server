@@ -8,7 +8,13 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use serde_json::{Value, json};
 use sha2::Digest;
+use std::future::Future;
+use std::path::{Path, PathBuf};
 use tokio::fs;
+
+use crate::core::config_delete::{
+    BulkDeleteError, BulkDeleteResult, BulkDeleteTracker, DeleteStage,
+};
 
 pub struct SingBoxConfigManager;
 
@@ -19,15 +25,18 @@ impl SingBoxConfigManager {
 
     pub async fn list_all_inbound_files() -> Result<Vec<String>> {
         let mut out = Vec::new();
-        if let Ok(mut rd) = fs::read_dir(singbox::CONF_DIR).await {
-            while let Ok(Some(entry)) = rd.next_entry().await {
-                if let Some(name) = entry.file_name().to_str()
-                    && name.ends_with(".json")
-                    && !name.starts_with("00_")
-                    && !name.starts_with("01_")
-                {
-                    out.push(entry.path().to_string_lossy().to_string());
-                }
+        let mut rd = match fs::read_dir(singbox::CONF_DIR).await {
+            Ok(rd) => rd,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+            Err(error) => return Err(error.into()),
+        };
+        while let Some(entry) = rd.next_entry().await? {
+            if let Some(name) = entry.file_name().to_str()
+                && name.ends_with(".json")
+                && !name.starts_with("00_")
+                && !name.starts_with("01_")
+            {
+                out.push(entry.path().to_string_lossy().to_string());
             }
         }
         Ok(out)
@@ -165,60 +174,80 @@ impl SingBoxConfigManager {
         Ok(())
     }
 
-    pub async fn delete_all_configurations() -> Result<usize> {
-        let files = Self::list_all_inbound_files().await?;
-        let count = files.len();
-
-        for file in &files {
-            if (file.contains("hysteria2") || file.contains("hysteria"))
-                && let Ok(main_port) = Self::extract_main_port_from_config(file).await
-            {
-                let hop_range = (main_port + 1, main_port + 99);
-                Self::cleanup_specific_hysteria2_rules(main_port, hop_range).await?;
-            }
-
-            let _ = fs::remove_file(file).await;
+    async fn prepare_for_bulk_delete(path: &Path) -> Result<()> {
+        let path_text = path.to_string_lossy();
+        if path_text.contains("hysteria2") || path_text.contains("hysteria") {
+            let main_port = Self::extract_main_port_from_config(&path_text).await?;
+            Self::cleanup_specific_hysteria2_rules(main_port, (main_port + 1, main_port + 99))
+                .await?;
         }
-
-        if count > 0 {
-            Self::reload_service().await?;
-        }
-        Ok(count)
+        Ok(())
     }
 
-    pub async fn delete_by_count(count: usize) -> Result<usize> {
-        let files = Self::list_all_inbound_files().await?;
+    async fn delete_files_with_reload<F, Fut>(
+        files: Vec<String>,
+        limit: Option<usize>,
+        reload: F,
+    ) -> BulkDeleteResult
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = anyhow::Result<()>>,
+    {
+        const OPERATION: &str = "sing-box bulk delete";
+        let target = limit.map_or(files.len(), |count| count.min(files.len()));
+        let mut tracker = BulkDeleteTracker::new(OPERATION, target);
+        let selected: Vec<PathBuf> = if let Some(count) = limit {
+            let mut sortable = Vec::new();
+            for file in files {
+                let path = PathBuf::from(file);
+                match fs::metadata(&path)
+                    .await
+                    .and_then(|metadata| metadata.modified())
+                {
+                    Ok(modified) => sortable.push((path, modified)),
+                    Err(source) => tracker.record_failure(path, DeleteStage::Inspect, source),
+                }
+            }
+            sortable.sort_by_key(|(_, modified)| *modified);
+            sortable
+                .into_iter()
+                .take(count)
+                .map(|(path, _)| path)
+                .collect()
+        } else {
+            files.into_iter().map(PathBuf::from).collect()
+        };
 
-        if files.is_empty() {
-            return Ok(0);
-        }
-
-        let mut sorted_files: Vec<(std::path::PathBuf, std::time::SystemTime)> = Vec::new();
-        for file in &files {
-            let path = std::path::PathBuf::from(file);
-            if let Ok(metadata) = tokio::fs::metadata(&path).await
-                && let Ok(modified) = metadata.modified()
-            {
-                sorted_files.push((path, modified));
+        for path in selected {
+            if let Err(source) = Self::prepare_for_bulk_delete(&path).await {
+                tracker.record_failure(path, DeleteStage::Prepare, source);
+                continue;
+            }
+            match fs::remove_file(&path).await {
+                Ok(()) => tracker.record_deleted(),
+                Err(source) => tracker.record_failure(path, DeleteStage::Remove, source),
             }
         }
+        let reload_error = if tracker.deleted() > 0 {
+            reload().await.err()
+        } else {
+            None
+        };
+        tracker.finish(reload_error)
+    }
 
-        sorted_files.sort_by_key(|a| a.1);
+    pub async fn delete_all_configurations() -> BulkDeleteResult {
+        let files = Self::list_all_inbound_files()
+            .await
+            .map_err(|source| BulkDeleteError::discovery("sing-box bulk delete", source))?;
+        Self::delete_files_with_reload(files, None, || Self::reload_service()).await
+    }
 
-        let delete_count = count.min(sorted_files.len());
-        let mut deleted = 0;
-
-        for (path, _) in sorted_files.iter().take(delete_count) {
-            if fs::remove_file(path).await.is_ok() {
-                deleted += 1;
-            }
-        }
-
-        if deleted > 0 {
-            Self::reload_service().await?;
-        }
-
-        Ok(deleted)
+    pub async fn delete_by_count(count: usize) -> BulkDeleteResult {
+        let files = Self::list_all_inbound_files()
+            .await
+            .map_err(|source| BulkDeleteError::discovery("sing-box bulk delete", source))?;
+        Self::delete_files_with_reload(files, Some(count), || Self::reload_service()).await
     }
 
     pub async fn get_config_count() -> Result<usize> {
@@ -494,8 +523,11 @@ impl SingBoxConfigManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::config_delete::DeleteStage;
     use crate::core::singbox::hysteria2::Hysteria2Config;
     use crate::core::singbox::tuic::TUICConfig;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn test_singbox_is_installed_returns_bool() {
@@ -605,6 +637,71 @@ mod tests {
         // 第二次调用（应该幂等）
         let result = tokio::fs::write(&base_path, "test").await;
         assert!(result.is_ok(), "幂等性检查：文件已存在时应该可覆盖");
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_keeps_malformed_hysteria_file_and_continues() {
+        let dir = tempdir().unwrap();
+        let hysteria = dir.path().join("hysteria2_bad.json");
+        let ordinary = dir.path().join("vless.json");
+        tokio::fs::write(&hysteria, "not-json").await.unwrap();
+        tokio::fs::write(&ordinary, "{}").await.unwrap();
+        let reloads = AtomicUsize::new(0);
+
+        let result = SingBoxConfigManager::delete_files_with_reload(
+            vec![
+                hysteria.to_string_lossy().into_owned(),
+                ordinary.to_string_lossy().into_owned(),
+            ],
+            None,
+            || async {
+                reloads.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await;
+
+        let error = result.unwrap_err();
+        assert_eq!(error.deleted(), 1);
+        assert_eq!(error.failures()[0].stage, DeleteStage::Prepare);
+        assert!(hysteria.exists());
+        assert!(!ordinary.exists());
+        assert_eq!(reloads.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_empty_input_does_not_reload() {
+        let reloads = AtomicUsize::new(0);
+        let result = SingBoxConfigManager::delete_files_with_reload(Vec::new(), None, || async {
+            reloads.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        })
+        .await;
+
+        assert_eq!(result.unwrap(), 0);
+        assert_eq!(reloads.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_by_count_records_inspect_failure() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("missing.json");
+        let ordinary = dir.path().join("vless.json");
+        tokio::fs::write(&ordinary, "{}").await.unwrap();
+
+        let result = SingBoxConfigManager::delete_files_with_reload(
+            vec![
+                missing.to_string_lossy().into_owned(),
+                ordinary.to_string_lossy().into_owned(),
+            ],
+            Some(1),
+            || async { Ok(()) },
+        )
+        .await;
+
+        let error = result.unwrap_err();
+        assert_eq!(error.deleted(), 1);
+        assert_eq!(error.failures()[0].stage, DeleteStage::Inspect);
     }
 }
 
