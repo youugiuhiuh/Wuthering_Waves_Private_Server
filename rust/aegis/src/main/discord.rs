@@ -4,6 +4,7 @@ use std::sync::Arc;
 use aegis::adapters::common::BotAdapter;
 use aegis::adapters::discord::DiscordAdapter;
 use aegis::app::state::AppState;
+use aegis::shared::boundary::{EventContext, handle_dispatch_result};
 use aegis::shared::dispatch_event;
 use aegis::shared::types::*;
 use anyhow::{Context, Result};
@@ -162,11 +163,13 @@ impl EventHandler for DiscordHandler {
             file_name,
             reply_to_text: None,
         });
-        let _ = dispatch_event(event, &self.state).await;
+        let ctx = EventContext::from_event(&event);
+        let result = dispatch_event(event, &self.state).await;
+        handle_dispatch_result(&self.state, &ctx, result).await;
     }
 
     async fn interaction_create(&self, ctx: SerenityCtx, interaction: Interaction) {
-        let _ = match interaction {
+        match interaction {
             Interaction::Command(ref cmd) => {
                 let _ = cmd.defer(&ctx.http).await;
                 let name = cmd.data.name.as_str();
@@ -181,9 +184,9 @@ impl EventHandler for DiscordHandler {
                         user_id: cmd.user.id.get() as i64,
                         command,
                     });
-                    dispatch_event(event, &self.state).await
-                } else {
-                    Ok(())
+                    let ctx = EventContext::from_event(&event);
+                    let result = dispatch_event(event, &self.state).await;
+                    handle_dispatch_result(&self.state, &ctx, result).await;
                 }
             }
             Interaction::Component(ref comp) => {
@@ -198,9 +201,11 @@ impl EventHandler for DiscordHandler {
                     callback_id: String::new(),
                     session_timeout_secs: self.state.session_timeout_secs().await,
                 });
-                dispatch_event(event, &self.state).await
+                let ctx = EventContext::from_event(&event);
+                let result = dispatch_event(event, &self.state).await;
+                handle_dispatch_result(&self.state, &ctx, result).await;
             }
-            _ => Ok(()),
+            _ => {}
         };
     }
 }
