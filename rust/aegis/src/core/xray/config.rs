@@ -3,11 +3,17 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde_json::{Value, json};
+use std::future::Future;
+use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
 
 use crate::core::cmd_async::run_cmd_output;
+use crate::core::config_delete::{
+    BulkDeleteError, BulkDeleteResult, BulkDeleteTracker, DeleteStage,
+};
 use crate::core::paths::xray;
+use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::types::{BatchCreationResult, IpVersion};
 use crate::core::xray::routing::{ROUTING_RULES, RoutingManager};
 
@@ -46,18 +52,20 @@ impl ConfigManager {
 
     pub async fn list_all_inbound_files() -> Result<Vec<String>> {
         let mut out = Vec::new();
+        let mut rd = match fs::read_dir(xray::CONF_DIR).await {
+            Ok(rd) => rd,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+            Err(error) => return Err(error.into()),
+        };
 
-        if let Ok(mut rd) = fs::read_dir(xray::CONF_DIR).await {
-            while let Ok(Some(entry)) = rd.next_entry().await {
-                if let Some(name) = entry.file_name().to_str()
-                    && name.ends_with("_inbounds.json")
-                    && !name.starts_with("00_")
-                {
-                    out.push(entry.path().to_string_lossy().to_string());
-                }
+        while let Some(entry) = rd.next_entry().await? {
+            if let Some(name) = entry.file_name().to_str()
+                && name.ends_with("_inbounds.json")
+                && !name.starts_with("00_")
+            {
+                out.push(entry.path().to_string_lossy().to_string());
             }
         }
-
         Ok(out)
     }
 
@@ -486,47 +494,79 @@ impl ConfigManager {
         Ok(backup_path)
     }
 
-    pub async fn delete_all_configurations() -> Result<usize> {
-        let files = Self::list_all_inbound_files().await?;
-        let count = files.len();
-        for file in &files {
-            let _ = fs::remove_file(file).await;
+    async fn delete_files_with_reload<F, Fut>(
+        files: Vec<String>,
+        limit: Option<usize>,
+        reload: F,
+    ) -> BulkDeleteResult
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = anyhow::Result<()>>,
+    {
+        const OPERATION: &str = "xray bulk delete";
+        let target = limit.map_or(files.len(), |count| count.min(files.len()));
+        let mut tracker = BulkDeleteTracker::new(OPERATION, target);
+
+        let selected: Vec<PathBuf> = if let Some(count) = limit {
+            let mut sortable = Vec::new();
+            for file in files {
+                let path = PathBuf::from(file);
+                match fs::metadata(&path)
+                    .await
+                    .and_then(|metadata| metadata.modified())
+                {
+                    Ok(modified) => sortable.push((path, modified)),
+                    Err(source) => tracker.record_failure(path, DeleteStage::Inspect, source),
+                }
+            }
+            sortable.sort_by_key(|(_, modified)| *modified);
+            sortable
+                .into_iter()
+                .take(count)
+                .map(|(path, _)| path)
+                .collect()
+        } else {
+            files.into_iter().map(PathBuf::from).collect()
+        };
+
+        for path in selected {
+            match fs::remove_file(&path).await {
+                Ok(()) => tracker.record_deleted(),
+                Err(source) => tracker.record_failure(path, DeleteStage::Remove, source),
+            }
         }
-        if count > 0 {
-            crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
-        }
-        Ok(count)
+
+        let reload_error = if tracker.deleted() > 0 {
+            reload().await.err()
+        } else {
+            None
+        };
+        tracker.finish(reload_error)
     }
 
-    pub async fn delete_configurations_by_count(count: usize) -> Result<usize> {
-        let files = Self::list_all_inbound_files().await?;
-        if files.is_empty() {
-            return Ok(0);
+    async fn bulk_candidates(filter: Option<Proto>) -> Result<Vec<String>> {
+        match filter {
+            Some(proto) => Self::list_inbound_files_by_proto(proto).await,
+            None => Self::list_all_inbound_files().await,
         }
+    }
 
-        // 按修改时间排序（从旧到新）
-        let mut file_with_time = Vec::new();
-        for f in files {
-            if let Ok(meta) = std::fs::metadata(&f)
-                && let Ok(time) = meta.modified()
-            {
-                file_with_time.push((f, time));
-            }
-        }
-        file_with_time.sort_by_key(|a| a.1);
+    pub async fn delete_all_configurations(filter: Option<Proto>) -> BulkDeleteResult {
+        let files = Self::bulk_candidates(filter)
+            .await
+            .map_err(|source| BulkDeleteError::discovery("xray bulk delete", source))?;
+        Self::delete_files_with_reload(files, None, || MaintenanceManager::reload_core()).await
+    }
 
-        let to_delete = file_with_time.iter().take(count);
-        let mut deleted_count = 0;
-        for (f, _) in to_delete {
-            if fs::remove_file(f).await.is_ok() {
-                deleted_count += 1;
-            }
-        }
-
-        if deleted_count > 0 {
-            crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
-        }
-        Ok(deleted_count)
+    pub async fn delete_configurations_by_count(
+        filter: Option<Proto>,
+        count: usize,
+    ) -> BulkDeleteResult {
+        let files = Self::bulk_candidates(filter)
+            .await
+            .map_err(|source| BulkDeleteError::discovery("xray bulk delete", source))?;
+        Self::delete_files_with_reload(files, Some(count), || MaintenanceManager::reload_core())
+            .await
     }
 
     pub async fn delete_specific_configuration(path: &str) -> Result<()> {
@@ -606,10 +646,140 @@ pub(crate) async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::super::kcp_mask::KcpMask;
     use super::*;
     use anyhow::anyhow;
     use percent_encoding::percent_decode_str;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn bulk_delete_continues_after_remove_failure_and_reloads_once() {
+        let dir = tempdir().unwrap();
+        let first = dir.path().join("first_inbounds.json");
+        let last = dir.path().join("last_inbounds.json");
+        tokio::fs::write(&first, "{}").await.unwrap();
+        tokio::fs::write(&last, "{}").await.unwrap();
+        let reloads = AtomicUsize::new(0);
+
+        let result = ConfigManager::delete_files_with_reload(
+            vec![
+                first.to_string_lossy().into_owned(),
+                first.to_string_lossy().into_owned(),
+                last.to_string_lossy().into_owned(),
+            ],
+            None,
+            || async {
+                reloads.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await;
+
+        let error = result.unwrap_err();
+        assert_eq!(error.deleted(), 2);
+        assert_eq!(error.failures().len(), 1);
+        assert_eq!(error.failures()[0].stage, DeleteStage::Remove);
+        assert_eq!(reloads.load(Ordering::SeqCst), 1);
+        assert!(!last.exists());
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_success_returns_exact_removed_count() {
+        let dir = tempdir().unwrap();
+        let first = dir.path().join("first_inbounds.json");
+        let second = dir.path().join("second_inbounds.json");
+        tokio::fs::write(&first, "{}").await.unwrap();
+        tokio::fs::write(&second, "{}").await.unwrap();
+        let reloads = AtomicUsize::new(0);
+
+        let deleted = ConfigManager::delete_files_with_reload(
+            vec![
+                first.to_string_lossy().into_owned(),
+                second.to_string_lossy().into_owned(),
+            ],
+            None,
+            || async {
+                reloads.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(deleted, 2);
+        assert_eq!(reloads.load(Ordering::SeqCst), 1);
+        assert!(!first.exists());
+        assert!(!second.exists());
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_by_count_records_inspect_failure_and_deletes_sortable_files() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("missing_inbounds.json");
+        let first = dir.path().join("first_inbounds.json");
+        let second = dir.path().join("second_inbounds.json");
+        tokio::fs::write(&first, "{}").await.unwrap();
+        tokio::fs::write(&second, "{}").await.unwrap();
+
+        let result = ConfigManager::delete_files_with_reload(
+            vec![
+                missing.to_string_lossy().into_owned(),
+                first.to_string_lossy().into_owned(),
+                second.to_string_lossy().into_owned(),
+            ],
+            Some(2),
+            || async { Ok(()) },
+        )
+        .await;
+
+        let error = result.unwrap_err();
+        assert_eq!(error.deleted(), 2);
+        assert_eq!(error.failures()[0].stage, DeleteStage::Inspect);
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_does_not_reload_when_nothing_was_removed() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("missing_inbounds.json");
+        let reloads = AtomicUsize::new(0);
+
+        let result = ConfigManager::delete_files_with_reload(
+            vec![missing.to_string_lossy().into_owned()],
+            None,
+            || async {
+                reloads.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(reloads.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn bulk_delete_retains_remove_and_reload_failures() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("one_inbounds.json");
+        tokio::fs::write(&file, "{}").await.unwrap();
+
+        let result = ConfigManager::delete_files_with_reload(
+            vec![
+                file.to_string_lossy().into_owned(),
+                file.to_string_lossy().into_owned(),
+            ],
+            None,
+            || async { anyhow::bail!("reload failed") },
+        )
+        .await;
+
+        let error = result.unwrap_err();
+        assert_eq!(error.deleted(), 1);
+        assert_eq!(error.failures().len(), 1);
+        assert!(error.reload_error().is_some());
+    }
 
     #[test]
     fn test_build_reality_vless_inbound_architecture() {

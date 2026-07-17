@@ -614,7 +614,7 @@ async fn handle_cfg_del_all_exec(event: &CallbackEvent) -> HandlerResult {
     let data = event.data.as_str();
     let filter = data.strip_prefix("cfg_del_all_exec:").unwrap_or("all");
     let count = if filter == "all" {
-        ConfigManager::delete_all_configurations()
+        ConfigManager::delete_all_configurations(None)
             .await
             .unwrap_or(0)
     } else {
