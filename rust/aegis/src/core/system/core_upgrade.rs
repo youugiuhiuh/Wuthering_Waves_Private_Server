@@ -1,16 +1,14 @@
 use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::cmd_async::run_cmd_status;
-use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
 use crate::core::network::release_api::{
-    ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors,
-    find_minisig_asset, parse_digest, parse_sha256_manifest,
+    ReleaseResponse, build_asset_request, fetch_github_json, find_named_asset, github_api_client,
+    github_asset_client, parse_digest, parse_xray_sha256_dgst,
 };
 use crate::core::paths::xray;
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use futures_util::StreamExt;
-use reqwest::header::{ACCEPT, HeaderMap, HeaderValue, USER_AGENT};
 use rust_i18n::t;
 use sha2::{Digest, Sha256};
 use std::env;
@@ -23,30 +21,18 @@ use tokio::io::AsyncWriteExt;
 use tokio::task;
 use zip::ZipArchive;
 
-const WWPS_CORE_DEFAULT_OWNER: &str = xray::DEFAULT_OWNER;
-const WWPS_CORE_DEFAULT_REPO: &str = xray::DEFAULT_REPO;
+const XRAY_RELEASE_OWNER: &str = "XTLS";
+const XRAY_RELEASE_REPO: &str = "Xray-core";
 const WWPS_CORE_DEFAULT_SERVICE: &str = xray::DEFAULT_SERVICE;
 const WWPS_CORE_DEFAULT_INSTALL_DIR: &str = xray::DIR;
 const WWPS_CORE_DEFAULT_TEMP_DIR: &str = xray::DEFAULT_TEMP_DIR;
 const WWPS_CORE_DEFAULT_BACKUP_PREFIX: &str = xray::DEFAULT_BACKUP_PREFIX;
 
-/// wwps-core Release API 根地址列表（含 /repos），按顺序尝试
-fn wwps_core_release_api_bases() -> Vec<String> {
-    if let Ok(s) = env::var("WWPS_CORE_RELEASE_MIRRORS") {
-        let bases: Vec<String> = s
-            .split(',')
-            .map(|x| x.trim().trim_end_matches('/').to_string())
-            .filter(|x| !x.is_empty())
-            .collect();
-        if !bases.is_empty() {
-            return bases;
-        }
+fn xray_release_path(tag: Option<&str>) -> String {
+    match tag {
+        Some(tag) => format!("repos/{XRAY_RELEASE_OWNER}/{XRAY_RELEASE_REPO}/releases/tags/{tag}"),
+        None => format!("repos/{XRAY_RELEASE_OWNER}/{XRAY_RELEASE_REPO}/releases/latest"),
     }
-    vec![
-        "https://api.github.com/repos".to_string(),
-        "https://codeberg.org/api/v1/repos".to_string(),
-        "https://gitea.com/api/v1/repos".to_string(),
-    ]
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,8 +64,6 @@ impl CpuArch {
 
 #[derive(Debug, Clone)]
 pub struct WwpsCoreUpgradeConfig {
-    pub owner: String,
-    pub repo: String,
     pub service_name: String,
     pub install_dir: PathBuf,
     pub backup_dir: PathBuf,
@@ -90,24 +74,22 @@ pub struct WwpsCoreUpgradeConfig {
 #[derive(Debug, Clone)]
 pub struct WwpsCoreReleaseInfo {
     pub tag_name: String,
+    pub asset_name: String,
     pub download_url: String,
-    pub sha256: String,
+    pub api_sha256: String,
+    pub dgst_sha256: String,
     pub size: Option<u64>,
-    pub minisig_url: Option<String>,
 }
 
 pub struct WwpsCoreUpgradeManager {
     config: Arc<WwpsCoreUpgradeConfig>,
-    client: reqwest::Client,
+    api_client: reqwest::Client,
+    asset_client: reqwest::Client,
     github_token: Option<String>,
 }
 
-const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
-
 impl WwpsCoreUpgradeConfig {
     pub fn new(
-        owner: impl Into<String>,
-        repo: impl Into<String>,
         service_name: impl Into<String>,
         install_dir: PathBuf,
         backup_dir: PathBuf,
@@ -115,8 +97,6 @@ impl WwpsCoreUpgradeConfig {
         arch: CpuArch,
     ) -> Self {
         Self {
-            owner: owner.into(),
-            repo: repo.into(),
             service_name: service_name.into(),
             install_dir,
             backup_dir,
@@ -126,10 +106,6 @@ impl WwpsCoreUpgradeConfig {
     }
 
     pub fn from_env() -> Result<Self> {
-        let owner = env::var("WWPS_CORE_RELEASE_OWNER")
-            .unwrap_or_else(|_| WWPS_CORE_DEFAULT_OWNER.to_string());
-        let repo = env::var("WWPS_CORE_RELEASE_REPO")
-            .unwrap_or_else(|_| WWPS_CORE_DEFAULT_REPO.to_string());
         let service_name = env::var("WWPS_CORE_SERVICE_NAME")
             .unwrap_or_else(|_| WWPS_CORE_DEFAULT_SERVICE.to_string());
 
@@ -148,8 +124,6 @@ impl WwpsCoreUpgradeConfig {
         let arch = CpuArch::detect()?;
 
         Ok(Self::new(
-            owner,
-            repo,
             service_name,
             install_dir,
             backup_dir,
@@ -195,16 +169,11 @@ impl WwpsCoreUpgradeConfig {
 
 impl WwpsCoreUpgradeManager {
     pub fn new(config: WwpsCoreUpgradeConfig) -> Result<Self> {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
-            .build()
-            .context("构建 HTTP 客户端失败")?;
-        let token = env::var("GITHUB_TOKEN").ok().filter(|v| !v.is_empty());
-
         Ok(Self {
             config: Arc::new(config),
-            client,
-            github_token: token,
+            api_client: github_api_client(Duration::from_secs(60))?,
+            asset_client: github_asset_client(Duration::from_secs(60))?,
+            github_token: env::var("GITHUB_TOKEN").ok().filter(|v| !v.is_empty()),
         })
     }
 
@@ -213,16 +182,11 @@ impl WwpsCoreUpgradeManager {
             return Ok(vec![]);
         }
 
-        let config = &self.config;
-        let path = format!(
-            "{}/{}/releases?per_page={}",
-            config.owner, config.repo, limit
-        );
-        let bases = wwps_core_release_api_bases();
+        let path =
+            format!("repos/{XRAY_RELEASE_OWNER}/{XRAY_RELEASE_REPO}/releases?per_page={limit}");
 
         let releases: Vec<ReleaseResponse> =
-            fetch_json_from_mirrors(&self.client, &bases, &path, self.github_token.as_deref())
-                .await?;
+            fetch_github_json(&self.api_client, &path, self.github_token.as_deref()).await?;
 
         Ok(releases
             .into_iter()
@@ -232,53 +196,52 @@ impl WwpsCoreUpgradeManager {
     }
 
     pub async fn fetch_release(&self, tag: Option<&str>) -> Result<WwpsCoreReleaseInfo> {
-        let config = &self.config;
-        let path = if let Some(t) = tag {
-            format!("{}/{}/releases/tags/{}", config.owner, config.repo, t)
-        } else {
-            format!("{}/{}/releases/latest", config.owner, config.repo)
-        };
-        let bases = wwps_core_release_api_bases();
+        let release: ReleaseResponse = fetch_github_json(
+            &self.api_client,
+            &xray_release_path(tag),
+            self.github_token.as_deref(),
+        )
+        .await?;
 
-        let release: ReleaseResponse =
-            fetch_json_from_mirrors(&self.client, &bases, &path, self.github_token.as_deref())
-                .await?;
-
-        let asset_name = format!("{}.zip", config.arch.asset_basename());
-        let asset = match release.assets.iter().find(|a| a.name == asset_name) {
-            Some(a) => a,
-            None => {
-                anyhow::bail!("未在 Release 中找到资产 {}", asset_name);
-            }
-        };
-
-        let download_url = asset.download_url().to_string();
+        let asset_name = format!("{}.zip", self.config.arch.asset_basename());
+        let dgst_name = format!("{asset_name}.dgst");
+        let asset = find_named_asset(&release.assets, &asset_name)
+            .ok_or_else(|| anyhow!("Release 缺少固定 Xray 资产"))?;
+        let dgst_asset = find_named_asset(&release.assets, &dgst_name)
+            .ok_or_else(|| anyhow!("Release 缺少 Xray .dgst"))?;
+        let download_url = asset.download_url();
         if download_url.is_empty() {
-            anyhow::bail!("Release 资产无下载地址");
+            anyhow::bail!("Xray 资产缺少 browser_download_url");
         }
-
-        let sha256 = if let Some(digest) = asset.digest.as_deref() {
-            parse_digest(digest).ok_or_else(|| anyhow!("无法解析 digest 字段"))?
-        } else if let Some(hash) = self
-            .download_sha256_manifest(&release.assets, &asset.name)
-            .await?
-        {
-            hash
-        } else if let Some(body) = release.body.as_deref() {
-            extract_sha256_from_body(body).ok_or_else(|| anyhow!("Release 中缺少 SHA256 信息"))?
-        } else {
-            anyhow::bail!("Release 中缺少 SHA256 信息");
-        };
-
-        let minisig_url =
-            find_minisig_asset(&release.assets, &asset.name).map(|a| a.download_url().to_string());
+        let dgst_url = dgst_asset.download_url();
+        if dgst_url.is_empty() {
+            anyhow::bail!("Xray .dgst 缺少 browser_download_url");
+        }
+        let api_sha256 = parse_digest(
+            asset
+                .digest
+                .as_deref()
+                .ok_or_else(|| anyhow!("Xray 资产缺少 API digest"))?,
+        )
+        .ok_or_else(|| anyhow!("Xray API digest 格式无效"))?;
+        let dgst_text = build_asset_request(&self.asset_client, dgst_url)?
+            .send()
+            .await
+            .context("下载 Xray .dgst 失败")?
+            .error_for_status()
+            .context("Xray .dgst 返回错误状态")?
+            .text()
+            .await
+            .context("读取 Xray .dgst 失败")?;
+        let dgst_sha256 = parse_xray_sha256_dgst(&dgst_text)?;
 
         Ok(WwpsCoreReleaseInfo {
             tag_name: release.tag_name,
-            download_url,
-            sha256,
+            asset_name,
+            download_url: download_url.into(),
+            api_sha256,
+            dgst_sha256,
             size: asset.size,
-            minisig_url,
         })
     }
 
@@ -299,19 +262,18 @@ impl WwpsCoreUpgradeManager {
             .await
             .context("创建临时目录失败")?;
 
-        let response = self
-            .build_request(&release.download_url)
+        let response = build_asset_request(&self.asset_client, &release.download_url)?
             .send()
             .await
-            .context("下载 wwps-core Release 失败")?
+            .context("下载 Xray Release 失败")?
             .error_for_status()
-            .context("wwps-core Release 下载返回错误状态")?;
+            .context("Xray Release 下载返回错误状态")?;
 
         let total_size = response.content_length();
         let mut stream = response.bytes_stream();
         let mut file = fs::File::create(&temp_file)
             .await
-            .context("创建 wwps-core 临时包失败")?;
+            .context("创建 Xray 临时包失败")?;
         let mut writer = tokio::io::BufWriter::new(&mut file);
         let mut hasher = Sha256::new();
 
@@ -327,7 +289,7 @@ impl WwpsCoreUpgradeManager {
             writer
                 .write_all(&chunk)
                 .await
-                .context("写入 wwps-core 临时包失败")?;
+                .context("写入 Xray 临时包失败")?;
             downloaded += chunk.len() as u64;
 
             if let (Some(adapter), Some(target), Some(msg_id)) = (adapter, target, msg_id)
@@ -354,59 +316,12 @@ impl WwpsCoreUpgradeManager {
             }
         }
 
-        writer.flush().await.context("刷新 wwps-core 临时包失败")?;
+        writer.flush().await.context("刷新 Xray 临时包失败")?;
         drop(writer);
-        file.sync_all().await.context("同步 wwps-core 包失败")?;
+        file.sync_all().await.context("同步 Xray 包失败")?;
 
         let actual_hash = hex::encode(hasher.finalize());
-        if actual_hash != release.sha256 {
-            fs::remove_file(&temp_file).await.ok();
-            anyhow::bail!(
-                "wwps-core 包 SHA256 校验失败，期望: {} 实际: {}",
-                release.sha256,
-                actual_hash
-            );
-        }
-
-        // Minisign verification
-        if let Some(sig_url) = &release.minisig_url {
-            let sig_bytes = self
-                .build_request(sig_url)
-                .send()
-                .await
-                .context("下载 Minisign 签名文件失败")?
-                .error_for_status()
-                .context("Minisign 签名文件下载失败")?
-                .bytes()
-                .await
-                .context("读取 Minisign 签名文件失败")?;
-
-            let sig_str =
-                std::str::from_utf8(&sig_bytes).context("Minisign 签名不是有效的 UTF-8")?;
-            let download_data =
-                std::fs::read(&temp_file).context("读取下载文件用于 Minisign 验证失败")?;
-            let info = minisign::verify_minisign(&download_data, sig_str, MINISIGN_PUBLIC_KEYS)
-                .map_err(|e| anyhow!("Minisign 验证失败: {}", e))?;
-
-            let (got_version, got_asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
-            if !got_version.contains(&release.tag_name) {
-                fs::remove_file(&temp_file).await.ok();
-                anyhow::bail!(
-                    "Minisign 版本不匹配: 期望包含 {}, 实际 {}",
-                    release.tag_name,
-                    got_version
-                );
-            }
-            let expected_asset_name = format!("{}.zip", self.config.arch.asset_basename());
-            if got_asset != expected_asset_name {
-                fs::remove_file(&temp_file).await.ok();
-                anyhow::bail!(
-                    "Minisign 文件名不匹配: 期望 {}, 实际 {}",
-                    expected_asset_name,
-                    got_asset
-                );
-            }
-        }
+        verify_xray_archive(&temp_file, &actual_hash, release).await?;
 
         Ok(temp_file)
     }
@@ -578,7 +493,7 @@ impl WwpsCoreUpgradeManager {
             "upgrade.core_download_info",
             "0" => release.tag_name.as_str(),
             "1" => size_str.as_str(),
-            "2" => release.sha256.as_str()
+            "2" => release.api_sha256.as_str()
         )
         .to_string();
         let _ = adapter
@@ -667,50 +582,25 @@ impl WwpsCoreUpgradeManager {
 
         Ok(())
     }
+}
 
-    async fn download_sha256_manifest(
-        &self,
-        assets: &[ReleaseAsset],
-        target_asset: &str,
-    ) -> Result<Option<String>> {
-        let manifest = assets.iter().find(|asset| {
-            asset.name.ends_with(".sha256")
-                || asset.name.ends_with(".sha256.txt")
-                || asset.name.ends_with(".sha256sum")
-        });
-
-        let Some(manifest_asset) = manifest else {
-            return Ok(None);
-        };
-
-        let text = self
-            .build_request(manifest_asset.download_url())
-            .send()
-            .await
-            .context("下载 SHA256 清单失败")?
-            .error_for_status()
-            .context("SHA256 清单返回错误状态")?
-            .text()
-            .await
-            .context("读取 SHA256 清单失败")?;
-
-        Ok(parse_sha256_manifest(&text, target_asset))
+fn verify_xray_hashes(actual: &str, api: &str, dgst: &str) -> Result<()> {
+    if actual != api || actual != dgst {
+        anyhow::bail!("Xray SHA256 校验失败");
     }
+    Ok(())
+}
 
-    fn build_request(&self, url: &str) -> reqwest::RequestBuilder {
-        let mut headers = HeaderMap::new();
-        headers.insert(USER_AGENT, HeaderValue::from_static(USER_AGENT_VALUE));
-        headers.insert(
-            ACCEPT,
-            HeaderValue::from_static("application/vnd.github+json"),
-        );
-        let builder = self.client.get(url).headers(headers);
-        if let Some(token) = &self.github_token {
-            builder.bearer_auth(token)
-        } else {
-            builder
-        }
+async fn verify_xray_archive(
+    path: &Path,
+    actual: &str,
+    release: &WwpsCoreReleaseInfo,
+) -> Result<()> {
+    let result = verify_xray_hashes(actual, &release.api_sha256, &release.dgst_sha256);
+    if result.is_err() {
+        fs::remove_file(path).await.ok();
     }
+    result
 }
 
 #[cfg(test)]
@@ -718,19 +608,63 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    fn with_clear_env<F, R>(env_var: &str, f: F) -> R
-    where
-        F: FnOnce() -> R,
-    {
-        let old = std::env::var(env_var).ok();
-        if old.is_some() {
-            unsafe { std::env::remove_var(env_var) };
-        }
-        let result = f();
-        if let Some(val) = old {
-            unsafe { std::env::set_var(env_var, val) };
-        }
-        result
+    #[test]
+    fn xray_release_identity_is_fixed() {
+        assert_eq!(XRAY_RELEASE_OWNER, "XTLS");
+        assert_eq!(XRAY_RELEASE_REPO, "Xray-core");
+        assert_eq!(
+            xray_release_path(None),
+            "repos/XTLS/Xray-core/releases/latest"
+        );
+        assert_eq!(
+            xray_release_path(Some("v26.3.27")),
+            "repos/XTLS/Xray-core/releases/tags/v26.3.27"
+        );
+    }
+
+    #[test]
+    fn xray_hashes_require_three_way_equality() {
+        let hash = "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae";
+        verify_xray_hashes(hash, hash, hash).unwrap();
+        assert!(verify_xray_hashes(&"0".repeat(64), hash, hash).is_err());
+        assert!(verify_xray_hashes(hash, &"0".repeat(64), hash).is_err());
+        assert!(verify_xray_hashes(hash, hash, &"0".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn config_has_no_remote_repository_fields() {
+        let tmp = tempdir().unwrap();
+        let config = WwpsCoreUpgradeConfig::new(
+            "wwps-core",
+            tmp.path().join("install"),
+            tmp.path().join("backup"),
+            tmp.path().join("temp"),
+            CpuArch::Amd64,
+        );
+        assert_eq!(config.service_name, "wwps-core");
+    }
+
+    #[tokio::test]
+    async fn failed_xray_digest_verification_removes_temporary_archive() {
+        let temp = tempdir().unwrap();
+        let archive = temp.path().join("xray.zip");
+        tokio::fs::write(&archive, b"archive").await.unwrap();
+        let release = WwpsCoreReleaseInfo {
+            tag_name: "v26.3.27".into(),
+            asset_name: "Xray-linux-64.zip".into(),
+            download_url:
+                "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip"
+                    .into(),
+            api_sha256: "1".repeat(64),
+            dgst_sha256: "1".repeat(64),
+            size: None,
+        };
+        assert!(
+            verify_xray_archive(&archive, &"0".repeat(64), &release)
+                .await
+                .is_err()
+        );
+        assert!(!archive.exists());
     }
 
     #[test]
@@ -750,8 +684,6 @@ mod tests {
         let temp_dir = tmp.path().join("temp");
 
         let config = WwpsCoreUpgradeConfig::new(
-            "owner",
-            "repo",
             "wwps-core",
             install_dir,
             backup_dir,
@@ -771,8 +703,6 @@ mod tests {
         let temp_dir = tmp.path().join("temp");
 
         let config = WwpsCoreUpgradeConfig::new(
-            "owner",
-            "repo",
             "wwps-core",
             install_dir,
             backup_dir,
@@ -804,62 +734,5 @@ mod tests {
     fn test_cpu_arch_asset_basename() {
         assert_eq!(CpuArch::Amd64.asset_basename(), "Xray-linux-64");
         assert_eq!(CpuArch::Arm64.asset_basename(), "Xray-linux-arm64-v8a");
-    }
-
-    #[test]
-    fn test_wwps_core_release_api_bases_default() {
-        let result = with_clear_env("WWPS_CORE_RELEASE_MIRRORS", wwps_core_release_api_bases);
-        assert_eq!(
-            result,
-            vec![
-                "https://api.github.com/repos".to_string(),
-                "https://codeberg.org/api/v1/repos".to_string(),
-                "https://gitea.com/api/v1/repos".to_string(),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_wwps_core_release_api_bases_env_override() {
-        let original = std::env::var("WWPS_CORE_RELEASE_MIRRORS").ok();
-        // SAFETY:
-        // Called during single-threaded test execution, no concurrent env access.
-        // Setting WWPS_CORE_RELEASE_MIRRORS for this test case; cleaned up at end.
-        unsafe {
-            std::env::set_var(
-                "WWPS_CORE_RELEASE_MIRRORS",
-                "https://mirror1.example.com,https://mirror2.example.com",
-            )
-        };
-        let bases = wwps_core_release_api_bases();
-        assert_eq!(bases.len(), 2);
-        assert_eq!(bases[0], "https://mirror1.example.com");
-        assert_eq!(bases[1], "https://mirror2.example.com");
-        if let Some(val) = original {
-            // SAFETY:
-            // Called during single-threaded test execution, no concurrent env access.
-            // Restoring the original env var value; this runs after all reads are complete.
-            unsafe { std::env::set_var("WWPS_CORE_RELEASE_MIRRORS", val) };
-        } else {
-            // SAFETY:
-            // Called during single-threaded test execution, no concurrent env access.
-            // Cleaning up the env var after the test; no other thread reads it.
-            unsafe { std::env::remove_var("WWPS_CORE_RELEASE_MIRRORS") };
-        }
-    }
-
-    #[test]
-    fn test_wwps_core_release_api_bases_trailing_slash_stripped() {
-        let result = with_clear_env("WWPS_CORE_RELEASE_MIRRORS", || {
-            unsafe {
-                std::env::set_var(
-                    "WWPS_CORE_RELEASE_MIRRORS",
-                    "https://mirror.example.com/,https://other.example.com/repos/",
-                );
-            }
-            wwps_core_release_api_bases()
-        });
-        assert_eq!(result[0], "https://mirror.example.com");
-        assert_eq!(result[1], "https://other.example.com/repos");
     }
 }
