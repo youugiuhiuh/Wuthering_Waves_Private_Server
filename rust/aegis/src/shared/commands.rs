@@ -35,11 +35,10 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
                 .await?;
         }
         BotCommand::Auth { code } => {
-            let uid = cmd.principal.subject.parse::<i64>().unwrap_or(0);
             let _ = auth::process_auth_code(
                 &*cmd.adapter,
                 &cmd.target,
-                uid,
+                &cmd.principal,
                 &code,
                 state,
                 5,
@@ -54,10 +53,7 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
             .await;
         }
         BotCommand::Menu => {
-            if !state
-                .is_authorized(cmd.principal.subject.parse::<i64>().unwrap_or(0))
-                .await
-            {
+            if !state.is_authorized(&cmd.principal).await {
                 cmd.adapter
                     .send_message(
                         &cmd.target,
@@ -72,10 +68,7 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
             crate::shared::handlers::menu::send_main_menu(&*cmd.adapter, &cmd.target).await?;
         }
         BotCommand::SetSecurityFile => {
-            if !state
-                .is_recently_authenticated(cmd.principal.subject.parse::<i64>().unwrap_or(0))
-                .await
-            {
+            if !state.is_recently_authenticated(&cmd.principal).await {
                 cmd.adapter
                     .send_message(
                         &cmd.target,
@@ -247,7 +240,9 @@ mod tests {
     async fn menu_sends_main_menu_when_authorized() {
         let adapter = Arc::new(MockAdapter::default());
         let state = make_state();
-        state.record_auth_success(42, Instant::now()).await;
+        state
+            .record_auth_success(&Principal::telegram(42), Instant::now())
+            .await;
         handle(make_cmd(adapter.clone(), BotCommand::Menu), &state)
             .await
             .unwrap();
@@ -277,7 +272,9 @@ mod tests {
     async fn set_security_file_sends_prompt_when_recently_authenticated() {
         let adapter = Arc::new(MockAdapter::default());
         let state = make_state();
-        state.record_auth_success(42, Instant::now()).await;
+        state
+            .record_auth_success(&Principal::telegram(42), Instant::now())
+            .await;
         handle(
             make_cmd(adapter.clone(), BotCommand::SetSecurityFile),
             &state,
@@ -338,7 +335,9 @@ mod tests {
             600,
             Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
         ));
-        state.record_auth_success(42, Instant::now()).await;
+        state
+            .record_auth_success(&Principal::telegram(42), Instant::now())
+            .await;
         let cmd = CommandEvent {
             adapter: Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),
