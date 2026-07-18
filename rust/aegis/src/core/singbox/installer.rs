@@ -175,12 +175,15 @@ impl SingBoxInstaller {
             .await
             .context("创建配置目录失败")?;
 
-        let temp_dir = "/tmp/sing-box-install";
-        fs::create_dir_all(temp_dir).await?;
+        let temp = tempfile::Builder::new()
+            .prefix("singbox-install-")
+            .tempdir()
+            .context("创建临时目录失败")?;
+        let temp_dir = temp.path();
 
         let archive_path =
-            download_verified_archive(&api_client, &release, temp_dir.as_ref()).await?;
-        let candidate = extract_candidate(&archive_path, temp_dir.as_ref(), &release)?;
+            download_verified_archive(&api_client, &release, temp_dir).await?;
+        let candidate = extract_candidate(&archive_path, temp_dir, &release)?;
         Self::deploy_candidate(&candidate, &release, Path::new(singbox::BIN)).await?;
 
         let old_service_path = "/etc/systemd/system/sing-box.service";
@@ -201,7 +204,8 @@ impl SingBoxInstaller {
 
         Self::create_service().await?;
 
-        let _ = fs::remove_dir_all(temp_dir).await;
+        // TempDir auto-cleans on drop — no explicit remove_dir_all needed
+        let _ = temp;
 
         Ok(())
     }
