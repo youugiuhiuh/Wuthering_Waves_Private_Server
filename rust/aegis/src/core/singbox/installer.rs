@@ -2,9 +2,80 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use tokio::fs;
 
+use crate::core::network::release_api::{
+    ReleaseResponse, fetch_github_json, find_named_asset, parse_digest,
+};
 use crate::core::paths::singbox;
 
 pub struct SingBoxInstaller;
+
+const OWNER: &str = "SagerNet";
+const REPO: &str = "sing-box";
+const MAX_ARCHIVE_BYTES: u64 = 128 * 1024 * 1024;
+#[allow(dead_code)]
+const MAX_EXPANDED_BYTES: u64 = 256 * 1024 * 1024;
+
+fn release_path() -> String {
+    format!("repos/{OWNER}/{REPO}/releases/latest")
+}
+
+fn asset_name(version: &str, arch: &str) -> String {
+    format!("sing-box-{version}-linux-{arch}.tar.gz")
+}
+
+pub struct SingBoxRelease {
+    pub tag: String,
+    pub version: String,
+    pub asset_name: String,
+    pub download_url: String,
+    pub sha256: Option<String>,
+    pub size: Option<u64>,
+}
+
+impl SingBoxRelease {
+    pub fn from_release_response(release: &ReleaseResponse, arch: &str) -> Result<Self> {
+        if release.tag_name.is_empty() {
+            anyhow::bail!("Release tag_name is empty");
+        }
+        let version = release.tag_name.trim_start_matches('v').to_string();
+        let expected_asset = asset_name(&version, arch);
+
+        let asset = find_named_asset(&release.assets, &expected_asset)
+            .ok_or_else(|| anyhow::anyhow!("Asset not found: {expected_asset}"))?;
+
+        let download_url = asset.download_url().to_string();
+        if download_url.is_empty() {
+            anyhow::bail!("Asset browser_download_url is empty");
+        }
+
+        let size = asset
+            .size
+            .ok_or_else(|| anyhow::anyhow!("Asset size is missing"))?;
+        if size > MAX_ARCHIVE_BYTES {
+            anyhow::bail!("Asset size {size} exceeds max {MAX_ARCHIVE_BYTES}");
+        }
+
+        let sha256 = asset.digest.as_deref().and_then(parse_digest);
+
+        Ok(SingBoxRelease {
+            tag: release.tag_name.clone(),
+            version,
+            asset_name: expected_asset,
+            download_url,
+            sha256,
+            size: Some(size),
+        })
+    }
+}
+
+pub async fn fetch_release(
+    api_client: &reqwest::Client,
+    token: Option<&str>,
+    arch: &str,
+) -> Result<SingBoxRelease> {
+    let release = fetch_github_json::<ReleaseResponse>(api_client, &release_path(), token).await?;
+    SingBoxRelease::from_release_response(&release, arch)
+}
 
 impl SingBoxInstaller {
     pub async fn is_installed() -> bool {
@@ -238,6 +309,101 @@ WantedBy=multi-user.target
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn singbox_asset_identity_is_exact() {
+        assert_eq!(release_path(), "repos/SagerNet/sing-box/releases/latest");
+        assert_eq!(
+            asset_name("1.13.14", "amd64"),
+            "sing-box-1.13.14-linux-amd64.tar.gz"
+        );
+    }
+
+    #[test]
+    fn singbox_constants_are_correct() {
+        assert_eq!(OWNER, "SagerNet");
+        assert_eq!(REPO, "sing-box");
+        assert_eq!(MAX_ARCHIVE_BYTES, 128 * 1024 * 1024);
+        assert_eq!(MAX_EXPANDED_BYTES, 256 * 1024 * 1024);
+    }
+
+    #[test]
+    fn singbox_release_from_response() {
+        let json = r#"{
+            "tag_name": "v1.14.0",
+            "assets": [{
+                "name": "sing-box-1.14.0-linux-amd64.tar.gz",
+                "browser_download_url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.0/sing-box-1.14.0-linux-amd64.tar.gz",
+                "size": 12345678,
+                "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }]
+        }"#;
+        let release: ReleaseResponse = serde_json::from_str(json).unwrap();
+        let sb = SingBoxRelease::from_release_response(&release, "amd64").unwrap();
+        assert_eq!(sb.tag, "v1.14.0");
+        assert_eq!(sb.version, "1.14.0");
+        assert_eq!(sb.asset_name, "sing-box-1.14.0-linux-amd64.tar.gz");
+        assert_eq!(
+            sb.download_url,
+            "https://github.com/SagerNet/sing-box/releases/download/v1.14.0/sing-box-1.14.0-linux-amd64.tar.gz"
+        );
+        assert_eq!(
+            sb.sha256,
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into())
+        );
+        assert_eq!(sb.size, Some(12345678));
+    }
+
+    #[test]
+    fn singbox_release_rejects_missing_asset() {
+        let json = r#"{"tag_name": "v1.14.0", "assets": []}"#;
+        let release: ReleaseResponse = serde_json::from_str(json).unwrap();
+        assert!(SingBoxRelease::from_release_response(&release, "amd64").is_err());
+    }
+
+    #[test]
+    fn singbox_release_rejects_empty_download_url() {
+        let json = r#"{
+            "tag_name": "v1.14.0",
+            "assets": [{
+                "name": "sing-box-1.14.0-linux-amd64.tar.gz",
+                "browser_download_url": "",
+                "size": 12345678
+            }]
+        }"#;
+        let release: ReleaseResponse = serde_json::from_str(json).unwrap();
+        assert!(SingBoxRelease::from_release_response(&release, "amd64").is_err());
+    }
+
+    #[test]
+    fn singbox_release_rejects_missing_size() {
+        let json = r#"{
+            "tag_name": "v1.14.0",
+            "assets": [{
+                "name": "sing-box-1.14.0-linux-amd64.tar.gz",
+                "browser_download_url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.0/sing-box-1.14.0-linux-amd64.tar.gz"
+            }]
+        }"#;
+        let release: ReleaseResponse = serde_json::from_str(json).unwrap();
+        assert!(SingBoxRelease::from_release_response(&release, "amd64").is_err());
+    }
+
+    #[test]
+    fn singbox_release_rejects_size_exceeds_max() {
+        let json = format!(
+            r#"{{
+                "tag_name": "v1.14.0",
+                "assets": [{{
+                    "name": "sing-box-1.14.0-linux-amd64.tar.gz",
+                    "browser_download_url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.0/sing-box-1.14.0-linux-amd64.tar.gz",
+                    "size": {}
+                }}]
+            }}"#,
+            MAX_ARCHIVE_BYTES + 1
+        );
+        let release: ReleaseResponse = serde_json::from_str(&json).unwrap();
+        assert!(SingBoxRelease::from_release_response(&release, "amd64").is_err());
+    }
 
     #[test]
     fn test_detect_arch_x86_64() {
