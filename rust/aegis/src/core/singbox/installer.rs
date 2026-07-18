@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 use crate::core::network::release_api::{
@@ -75,6 +75,87 @@ pub async fn fetch_release(
 ) -> Result<SingBoxRelease> {
     let release = fetch_github_json::<ReleaseResponse>(api_client, &release_path(), token).await?;
     SingBoxRelease::from_release_response(&release, arch)
+}
+
+pub async fn download_verified_archive(
+    client: &reqwest::Client,
+    release: &SingBoxRelease,
+    dir: &Path,
+) -> Result<PathBuf> {
+    use futures_util::StreamExt;
+    use sha2::Digest;
+    use tokio::io::AsyncWriteExt;
+
+    let response = client
+        .get(&release.download_url)
+        .send()
+        .await
+        .context("Sing-box download request failed")?
+        .error_for_status()
+        .context("Sing-box download returned error status")?;
+
+    let declared = response
+        .content_length()
+        .context("Sing-box response missing Content-Length")?;
+    let expected_size = release.size.unwrap_or(0);
+    if declared != expected_size || declared > MAX_ARCHIVE_BYTES {
+        anyhow::bail!(
+            "Sing-box archive declared size {declared} does not match expected size {expected_size} or exceeds limit {MAX_ARCHIVE_BYTES}"
+        );
+    }
+
+    let archive_path = dir.join("sing-box.tar.gz");
+    let mut file = fs::File::create(&archive_path).await?;
+
+    let mut stream = response.bytes_stream();
+    let mut hasher = sha2::Sha256::new();
+    let mut downloaded = 0u64;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.context("Sing-box download chunk error")?;
+        downloaded = downloaded
+            .checked_add(chunk.len() as u64)
+            .context("Sing-box download size overflow")?;
+        if downloaded > MAX_ARCHIVE_BYTES {
+            anyhow::bail!("Sing-box archive exceeds stream limit");
+        }
+        hasher.update(&chunk);
+        file.write_all(&chunk)
+            .await
+            .context("Sing-box archive write failed")?;
+    }
+
+    file.sync_all()
+        .await
+        .context("Sing-box archive sync failed")?;
+
+    if downloaded != expected_size {
+        anyhow::bail!(
+            "Sing-box archive size mismatch: expected {expected_size}, downloaded {downloaded}"
+        );
+    }
+
+    if let Some(ref expected_sha256) = release.sha256 {
+        let actual = hex::encode(hasher.finalize());
+        if actual != *expected_sha256 {
+            anyhow::bail!("Sing-box SHA256 mismatch: expected {expected_sha256}, got {actual}");
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&archive_path)
+            .await
+            .context("Sing-box archive metadata failed")?
+            .permissions();
+        perms.set_mode(0o600);
+        fs::set_permissions(&archive_path, perms)
+            .await
+            .context("Sing-box archive chmod failed")?;
+    }
+
+    Ok(archive_path)
 }
 
 impl SingBoxInstaller {
@@ -309,6 +390,115 @@ WantedBy=multi-user.target
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::Digest;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn make_release(url: &str, size: u64, sha256: &str) -> SingBoxRelease {
+        SingBoxRelease {
+            tag: "v1.14.0".into(),
+            version: "1.14.0".into(),
+            asset_name: "sing-box-1.14.0-linux-amd64.tar.gz".into(),
+            download_url: url.into(),
+            sha256: Some(sha256.into()),
+            size: Some(size),
+        }
+    }
+
+    async fn mock_server(body: &[u8]) -> (MockServer, String) {
+        let srv = MockServer::start().await;
+        let url = format!("{}/archive", srv.uri());
+        let tmpl =
+            ResponseTemplate::new(200).set_body_raw(body.to_vec(), "application/octet-stream");
+        Mock::given(method("GET"))
+            .and(path("/archive"))
+            .respond_with(tmpl)
+            .mount(&srv)
+            .await;
+        (srv, url)
+    }
+
+    #[tokio::test]
+    async fn test_download_verified_archive_success() {
+        let content = b"hello sing-box archive data";
+        let hash = hex::encode(sha2::Sha256::digest(content));
+        let (_srv, url) = mock_server(content).await;
+        let release = make_release(&url, content.len() as u64, &hash);
+        let dir = tempfile::Builder::new()
+            .prefix("sbtest-")
+            .tempdir()
+            .unwrap();
+
+        let archive = download_verified_archive(&reqwest::Client::new(), &release, dir.path())
+            .await
+            .expect("download should succeed");
+        assert_eq!(archive.file_name().unwrap(), "sing-box.tar.gz");
+        assert_eq!(tokio::fs::read(&archive).await.unwrap(), content);
+    }
+
+    #[tokio::test]
+    async fn test_download_rejects_metadata_size_mismatch() {
+        let content = b"data";
+        let hash = hex::encode(sha2::Sha256::digest(content));
+        let (_srv, url) = mock_server(content).await;
+        let release = make_release(&url, 9999, &hash);
+        let dir = tempfile::Builder::new()
+            .prefix("sbtest-")
+            .tempdir()
+            .unwrap();
+
+        let err = download_verified_archive(&reqwest::Client::new(), &release, dir.path())
+            .await
+            .expect_err("should reject size metadata mismatch");
+        assert!(
+            err.to_string().contains("size") || err.to_string().contains("expected"),
+            "got: {err}"
+        );
+        // ponytail: old binary (installed sing-box) is never touched by a temp-dir download
+    }
+
+    #[tokio::test]
+    async fn test_download_rejects_hash_mismatch() {
+        let content = b"real data";
+        let wrong_hash = hex::encode(sha2::Sha256::digest(b"different data"));
+        let (_srv, url) = mock_server(content).await;
+        let release = make_release(&url, content.len() as u64, &wrong_hash);
+        let dir = tempfile::Builder::new()
+            .prefix("sbtest-")
+            .tempdir()
+            .unwrap();
+
+        let err = download_verified_archive(&reqwest::Client::new(), &release, dir.path())
+            .await
+            .expect_err("should reject hash mismatch");
+        assert!(err.to_string().contains("SHA256"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_download_sets_file_mode_0600() {
+        let content = b"mode check data";
+        let hash = hex::encode(sha2::Sha256::digest(content));
+        let (_srv, url) = mock_server(content).await;
+        let release = make_release(&url, content.len() as u64, &hash);
+        let dir = tempfile::Builder::new()
+            .prefix("sbtest-")
+            .tempdir()
+            .unwrap();
+
+        let archive = download_verified_archive(&reqwest::Client::new(), &release, dir.path())
+            .await
+            .expect("download should succeed");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = tokio::fs::metadata(&archive).await.unwrap();
+            let mode = meta.permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "expected 0600 mode, got {:#o}", mode);
+        }
+        #[cfg(not(unix))]
+        let _ = archive;
+    }
 
     #[test]
     fn singbox_asset_identity_is_exact() {
