@@ -164,10 +164,11 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
             return Ok(());
         }
         let hash = hex::encode(sha2::Sha256::digest(&content));
-        state.set_self_destruct_key_hash(Some(hash.clone())).await;
         if let Err(e) = crate::bootstrap::save_self_destruct_key_hash_to_config(Some(hash.clone()))
         {
             log::error!("保存安全文件雜湊失敗: {}", e);
+        } else {
+            state.set_self_destruct_key_hash(Some(hash.clone())).await;
         }
         let file_display = msg
             .file_name

@@ -641,6 +641,7 @@ mod config_validator_tests {
 #[cfg(test)]
 mod config_tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
 
     #[test]
@@ -719,5 +720,67 @@ mod config_tests {
         let config: EncryptedConfig = serde_json::from_slice(&data).unwrap();
         assert_eq!(config.lang, Some("en".to_string()));
         assert_eq!(config.self_destruct_key_hash, Some("a".repeat(64)));
+    }
+
+    #[test]
+    fn update_config_rejects_corrupt_input() {
+        let dir = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
+        }
+        let _ = std::fs::set_permissions(dir.path(), PermissionsExt::from_mode(0o700));
+        let key = [0u8; 32];
+        fs::write(dir.path().join(".key"), key).unwrap();
+        fs::write(dir.path().join("config.enc"), b"not valid json").unwrap();
+        let result = save_lang_to_config(i18n::Lang::En);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn update_config_rejects_missing_file() {
+        let dir = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
+        }
+        let _ = std::fs::set_permissions(dir.path(), PermissionsExt::from_mode(0o700));
+        let key = [0u8; 32];
+        fs::write(dir.path().join(".key"), key).unwrap();
+        let result = save_lang_to_config(i18n::Lang::En);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn write_failure_preserves_old_content() {
+        let dir = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
+        }
+        let _ = std::fs::set_permissions(dir.path(), PermissionsExt::from_mode(0o700));
+        let config_dir = dir.path();
+        let key = [0u8; 32];
+        fs::write(config_dir.join(".key"), key).unwrap();
+        let original = EncryptedConfig {
+            token: b"original_token".to_vec(),
+            admin_id: b"12345".to_vec(),
+            totp_secret: b"secret".to_vec(),
+            self_destruct_key_hash: None,
+            matrix_homeserver: None,
+            matrix_username: None,
+            matrix_password: None,
+            matrix_room_id: None,
+            matrix_store_passphrase: None,
+            lang: Some("zh".to_string()),
+            discord_token: None,
+            discord_admin_id: None,
+            matrix_recovery_key: None,
+        };
+        let original_bytes = serde_json::to_vec(&original).unwrap();
+        fs::write(config_dir.join("config.enc"), &original_bytes).unwrap();
+        std::fs::set_permissions(config_dir, PermissionsExt::from_mode(0o500)).unwrap();
+        let result = save_lang_to_config(i18n::Lang::En);
+        assert!(result.is_err());
+        std::fs::set_permissions(config_dir, PermissionsExt::from_mode(0o700)).unwrap();
+        let data = fs::read(config_dir.join("config.enc")).unwrap();
+        assert_eq!(data, original_bytes);
     }
 }
