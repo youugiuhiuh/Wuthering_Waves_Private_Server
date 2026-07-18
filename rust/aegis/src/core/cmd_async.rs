@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use std::io;
 use std::process::ExitStatus;
+use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -67,18 +69,69 @@ pub async fn run_cmd_output(
     args: &[&str],
     timeout_duration: Duration,
 ) -> Result<(ExitStatus, String, String)> {
-    let mut cmd = Command::new(program);
-    cmd.args(args);
-
-    let output = timeout(timeout_duration, cmd.output())
-        .await
-        .context("命令执行超时")?
+    let mut child = Command::new(program)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .context("命令启动失败")?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let child_pid = child.id().unwrap_or(0);
 
-    Ok((output.status, stdout, stderr))
+    #[cfg(target_os = "linux")]
+    let _ = set_process_group(child_pid);
+
+    let mut child_stdout = child.stdout.take().context("无法获取 stdout 流")?;
+    let mut child_stderr = child.stderr.take().context("无法获取 stderr 流")?;
+
+    let out_buf = Arc::new(Mutex::new(Vec::new()));
+    let err_buf = Arc::new(Mutex::new(Vec::new()));
+
+    let read_out = {
+        let buf = out_buf.clone();
+        tokio::spawn(async move {
+            let mut tmp = Vec::new();
+            child_stdout.read_to_end(&mut tmp).await.ok();
+            *buf.lock().unwrap() = tmp;
+        })
+    };
+    let read_err = {
+        let buf = err_buf.clone();
+        tokio::spawn(async move {
+            let mut tmp = Vec::new();
+            child_stderr.read_to_end(&mut tmp).await.ok();
+            *buf.lock().unwrap() = tmp;
+        })
+    };
+
+    match tokio::time::timeout(timeout_duration, child.wait()).await {
+        Ok(Ok(status)) => {
+            let _ = read_out.await;
+            let _ = read_err.await;
+            let out = out_buf.lock().unwrap();
+            let err = err_buf.lock().unwrap();
+            Ok((
+                status,
+                String::from_utf8_lossy(&out).to_string(),
+                String::from_utf8_lossy(&err).to_string(),
+            ))
+        }
+        Ok(Err(e)) => Err(e).context("等待命令执行失败"),
+        Err(_elapsed) => {
+            #[cfg(target_os = "linux")]
+            let _ = kill_process_group(child_pid);
+            #[cfg(not(target_os = "linux"))]
+            let _ = child.start_kill();
+
+            let _ = child.wait().await;
+            let _ = read_out.await;
+            let _ = read_err.await;
+
+            let err = err_buf.lock().unwrap();
+            let tail = bounded_tail(&err, MAX_DIAG_BYTES);
+            anyhow::bail!("命令执行超时 (pid={child_pid}): {tail}")
+        }
+    }
 }
 
 /// Run a command, ignoring stdout/stderr, returning status only.
@@ -207,6 +260,36 @@ mod tests {
     async fn run_cmd_output_nonexistent_command_fails() {
         let result = run_cmd_output("nonexistent_command_xyz", &[], Duration::from_secs(1)).await;
         assert!(result.is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn test_run_cmd_output_timeout_kills_descendants() {
+        let pid_file = "/tmp/aegis-test-run-cmd-pid";
+        let _ = std::fs::remove_file(pid_file);
+        let result = run_cmd_output(
+            "sh",
+            &["-c", &format!("echo $$ > {pid_file}; sleep 30")],
+            Duration::from_millis(500),
+        )
+        .await;
+        assert!(result.is_err());
+        let err_str = result.unwrap_err().to_string();
+        assert!(
+            err_str.contains("超时"),
+            "expected timeout error, got: {err_str}"
+        );
+        // The child process group should have been killed
+        if let Ok(pid_str) = std::fs::read_to_string(pid_file) {
+            if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                let proc_path = format!("/proc/{pid}");
+                assert!(
+                    !std::path::Path::new(&proc_path).exists(),
+                    "child process {pid} still alive after timeout + kill"
+                );
+            }
+        }
+        let _ = std::fs::remove_file(pid_file);
     }
 
     #[tokio::test]
