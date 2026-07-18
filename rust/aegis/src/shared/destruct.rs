@@ -334,18 +334,33 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
             if let Some(ref text) = msg.text {
                 let t = text.trim().to_lowercase();
                 if t == "confirm" || t == "確認" || t == "yes" || state.verify_totp(text.trim()) {
-                    adapter
-                        .send_message(
-                            target,
-                            MessageContent {
-                                text: t!("destruct.final_exec").into(),
-                                markup: None,
-                            },
-                        )
-                        .await?;
                     let executor = state.self_destruct_executor();
-                    aegis::core::security::self_destruct::trigger(executor);
-                    state.cancel_destruct(&key).await;
+                    if state.claim_execution(&key, None, now).await {
+                        adapter
+                            .send_message(
+                                target,
+                                MessageContent {
+                                    text: t!("destruct.final_exec").into(),
+                                    markup: None,
+                                },
+                            )
+                            .await?;
+                        let success =
+                            aegis::core::security::self_destruct::execute_supervised(executor)
+                                .await
+                                .is_ok();
+                        state.complete_execution(&key, success).await;
+                    } else {
+                        adapter
+                            .send_message(
+                                target,
+                                MessageContent {
+                                    text: t!("destruct.state_invalid").into(),
+                                    markup: None,
+                                },
+                            )
+                            .await?;
+                    }
                 } else if t == "cancel" || t == "取消" || t == "no" {
                     state.cancel_destruct(&key).await;
                     adapter
@@ -549,9 +564,14 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
                         },
                     )
                     .await?;
-                let executor = state.self_destruct_executor();
-                aegis::core::security::self_destruct::trigger(executor);
-                state.cancel_destruct(&key).await;
+                if state.claim_execution(&key, None, Instant::now()).await {
+                    let executor = state.self_destruct_executor();
+                    let success =
+                        aegis::core::security::self_destruct::execute_supervised(executor)
+                            .await
+                            .is_ok();
+                    state.complete_execution(&key, success).await;
+                }
             } else {
                 adapter
                     .answer_callback(
@@ -799,7 +819,8 @@ mod tests {
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
-        assert!(state.destruct_snapshot(&test_key()).await.is_none());
+        let snap = state.destruct_snapshot(&test_key()).await.unwrap();
+        assert_eq!(snap.status, DestructStatus::Succeeded);
     }
 
     #[tokio::test]

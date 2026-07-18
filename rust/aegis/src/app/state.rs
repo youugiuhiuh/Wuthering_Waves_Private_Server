@@ -397,6 +397,44 @@ impl AppState {
         destructs.get_mut(key).map(f)
     }
 
+    pub async fn has_self_destruct_key(&self) -> bool {
+        self.self_destruct_key_hash.lock().await.is_some()
+    }
+
+    pub async fn claim_execution(
+        &self,
+        key: &DestructKey,
+        nonce: Option<&[u8; 32]>,
+        now: Instant,
+    ) -> bool {
+        let mut flows = self.pending_destructs.lock().await;
+        let Some(flow) = flows.get_mut(key) else {
+            return false;
+        };
+        if flow.deadline <= now || flow.status != DestructStatus::AwaitFinalConfirm {
+            return false;
+        }
+        match (flow.final_nonce.as_ref(), nonce) {
+            (Some(expected), Some(given)) if expected == given => {}
+            (None, None) => {} // text flow without nonce
+            _ => return false,
+        }
+        flow.final_nonce = None;
+        flow.status = DestructStatus::Executing;
+        true
+    }
+
+    pub async fn complete_execution(&self, key: &DestructKey, success: bool) {
+        let mut flows = self.pending_destructs.lock().await;
+        if let Some(flow) = flows.get_mut(key) {
+            flow.status = if success {
+                DestructStatus::Succeeded
+            } else {
+                DestructStatus::Failed
+            };
+        }
+    }
+
     pub async fn start_warp_input(&self, chat_id: String, now: Instant) {
         self.pending_warp_inputs.lock().await.insert(chat_id, now);
     }
