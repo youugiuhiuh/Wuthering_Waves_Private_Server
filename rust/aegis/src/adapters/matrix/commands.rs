@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use aegis::adapters::common::{BotAdapter, MessageId, TargetId};
+use aegis::adapters::common::{BotAdapter, MessageId, Principal, TargetId};
 use aegis::shared::types::{BotCommand, BotEvent, CallbackEvent, CommandEvent};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -173,7 +173,7 @@ pub fn parse_to_event(
     text: &str,
     adapter: Arc<dyn BotAdapter>,
     target: &TargetId,
-    user_id: i64,
+    principal: &Principal,
 ) -> Option<BotEvent> {
     let text = text.trim();
 
@@ -182,19 +182,20 @@ pub fn parse_to_event(
         return Some(BotEvent::Command(CommandEvent {
             adapter,
             target: target.clone(),
-            user_id,
+            principal: principal.clone(),
             command: cmd,
         }));
     }
 
     let text_lower = text.to_lowercase();
     let target = target.clone();
+    let principal = principal.clone();
 
     let event = |data: &str| -> BotEvent {
         BotEvent::Callback(CallbackEvent {
             adapter,
             target,
-            user_id: user_id.to_string(),
+            principal,
             msg_id: MessageId("0".into()),
             data: data.to_string(),
             callback_id: format!("synth:{}", data),
@@ -391,7 +392,7 @@ mod tests {
 mod parse_to_event_tests {
     use super::*;
     use aegis::adapters::common::{
-        BotAdapter, MockBotAdapter, Platform, PlatformCapabilities, TargetId,
+        BotAdapter, MockBotAdapter, Platform, PlatformCapabilities, Principal, TargetId,
     };
     use std::sync::Arc;
 
@@ -408,13 +409,17 @@ mod parse_to_event_tests {
         Arc::new(m)
     }
 
+    fn test_principal() -> Principal {
+        Principal::telegram(42)
+    }
+
     #[test]
     fn parse_help_returns_command() {
         let result = parse_to_event(
             "/help",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -431,7 +436,7 @@ mod parse_to_event_tests {
             "ops reload",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -445,7 +450,7 @@ mod parse_to_event_tests {
             "warp status",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -459,7 +464,7 @@ mod parse_to_event_tests {
             "destruct",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -473,7 +478,7 @@ mod parse_to_event_tests {
             "xray status",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -487,7 +492,7 @@ mod parse_to_event_tests {
             "schedule list",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -501,7 +506,7 @@ mod parse_to_event_tests {
             "some random text",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(result.is_none());
     }
@@ -512,7 +517,7 @@ mod parse_to_event_tests {
             "xray add reality 5 1.2.3.4",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -526,7 +531,7 @@ mod parse_to_event_tests {
             "xray del myconfig",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -540,7 +545,7 @@ mod parse_to_event_tests {
             "xray delete myconfig",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -554,7 +559,7 @@ mod parse_to_event_tests {
             "xray routing",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -568,7 +573,7 @@ mod parse_to_event_tests {
             "xray pq status",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -582,7 +587,7 @@ mod parse_to_event_tests {
             "xray status",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -596,7 +601,7 @@ mod parse_to_event_tests {
             "sb install",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -610,7 +615,7 @@ mod parse_to_event_tests {
             "sb add h2 example.com 5",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -624,7 +629,7 @@ mod parse_to_event_tests {
             "sb add tu example.com 3",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -638,7 +643,7 @@ mod parse_to_event_tests {
             "sb del myconfig",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -652,7 +657,7 @@ mod parse_to_event_tests {
             "sb status",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -666,7 +671,7 @@ mod parse_to_event_tests {
             "singbox",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -680,7 +685,7 @@ mod parse_to_event_tests {
             "schedule add mytemplate",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -694,7 +699,7 @@ mod parse_to_event_tests {
             "sched add mytemplate",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -708,7 +713,7 @@ mod parse_to_event_tests {
             "schedule del 3",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -722,7 +727,7 @@ mod parse_to_event_tests {
             "sched del 3",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -736,7 +741,7 @@ mod parse_to_event_tests {
             "schedule delete 3",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -750,7 +755,7 @@ mod parse_to_event_tests {
             "schedule list",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -764,7 +769,7 @@ mod parse_to_event_tests {
             "schedule",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,
@@ -778,7 +783,7 @@ mod parse_to_event_tests {
             "sched",
             test_adapter(),
             &TargetId("!r:localhost".into()),
-            42,
+            &test_principal(),
         );
         assert!(matches!(
             result,

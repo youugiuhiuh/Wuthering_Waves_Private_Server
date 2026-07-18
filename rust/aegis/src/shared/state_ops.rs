@@ -78,7 +78,7 @@ async fn handle_lang(cb: &CallbackEvent, state: &AppState) -> Option<String> {
 mod tests {
     use super::*;
 
-    use crate::adapters::common::{BotAdapter, MessageId, MockBotAdapter, TargetId};
+    use crate::adapters::common::{BotAdapter, MessageId, MockBotAdapter, Principal, TargetId};
     use crate::app::state::AppState;
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
@@ -116,7 +116,7 @@ mod tests {
         let event = CallbackEvent {
             adapter: Arc::new(MockBotAdapter::new()) as Arc<dyn BotAdapter>,
             target: TargetId("123".into()),
-            user_id: "42".into(),
+            principal: Principal::telegram(42),
             msg_id: MessageId("1".into()),
             data: "set_timeout:3600".into(),
             callback_id: "cb1".into(),

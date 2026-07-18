@@ -118,11 +118,12 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
         && let Some(ref text) = msg.text
     {
         let code = text.trim();
-        if is_totp_code(code) && !state.is_authorized(msg.user_id).await {
+        let uid = msg.principal.subject.parse::<i64>().unwrap_or(0);
+        if is_totp_code(code) && !state.is_authorized(uid).await {
             let _ = auth::process_auth_code(
                 &*msg.adapter,
                 &msg.target,
-                msg.user_id,
+                uid,
                 code,
                 state,
                 5,
@@ -198,7 +199,9 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
 mod dispatch_security_file_tests {
     use super::*;
 
-    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use crate::adapters::common::{
+        BotAdapter, MessageContent, MessageId, Platform, Principal, TargetId,
+    };
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
     use crate::shared::types::MessageEvent;
@@ -267,7 +270,7 @@ mod dispatch_security_file_tests {
         let msg = MessageEvent {
             adapter: Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             text: None,
             file_id: Some("test-file".into()),
             file_name: Some("test.txt".into()),
@@ -283,7 +286,9 @@ mod dispatch_security_file_tests {
 mod tests {
     use super::*;
 
-    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use crate::adapters::common::{
+        BotAdapter, MessageContent, MessageId, Platform, Principal, TargetId,
+    };
     use crate::app::state::{AppState, DestructStep};
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
@@ -361,7 +366,7 @@ mod tests {
         BotEvent::Command(CommandEvent {
             adapter,
             target: TargetId("123".into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             command,
         })
     }
@@ -370,7 +375,7 @@ mod tests {
         BotEvent::Callback(CallbackEvent {
             adapter,
             target: TargetId("123".into()),
-            user_id: "42".into(),
+            principal: Principal::telegram(42),
             msg_id: MessageId("1".into()),
             data: data.into(),
             callback_id: "cb1".into(),
@@ -382,7 +387,7 @@ mod tests {
         BotEvent::Message(MessageEvent {
             adapter,
             target: TargetId(target.into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             text,
             file_id: None,
             file_name: None,

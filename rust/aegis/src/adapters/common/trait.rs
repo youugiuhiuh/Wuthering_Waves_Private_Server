@@ -26,11 +26,59 @@ pub struct InlineButton {
     pub data: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Platform {
     Telegram,
     Discord,
     Matrix,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct Principal {
+    pub platform: Platform,
+    pub subject: String,
+}
+
+impl Principal {
+    pub fn new(platform: Platform, subject: impl Into<String>) -> anyhow::Result<Self> {
+        let subject = subject.into();
+        let valid = match platform {
+            Platform::Telegram | Platform::Discord => subject
+                .parse::<u64>()
+                .map(|n| n.to_string() == subject)
+                .unwrap_or(false),
+            Platform::Matrix => {
+                !subject.chars().any(char::is_whitespace)
+                    && subject.starts_with('@')
+                    && subject
+                        .split_once(':')
+                        .is_some_and(|(u, h)| u.len() > 1 && !h.is_empty() && !h.contains(':'))
+            }
+        };
+        if !valid {
+            anyhow::bail!("invalid principal subject for platform");
+        }
+        Ok(Self { platform, subject })
+    }
+
+    pub fn telegram(id: u64) -> Self {
+        Self {
+            platform: Platform::Telegram,
+            subject: id.to_string(),
+        }
+    }
+
+    pub fn discord(id: u64) -> Self {
+        Self {
+            platform: Platform::Discord,
+            subject: id.to_string(),
+        }
+    }
+
+    pub fn matrix(id: &str) -> anyhow::Result<Self> {
+        Self::new(Platform::Matrix, id)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
