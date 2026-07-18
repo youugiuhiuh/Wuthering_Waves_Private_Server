@@ -380,13 +380,11 @@ pub fn save_self_destruct_key_hash_to_config(hash: Option<String>) -> Result<()>
 }
 
 /// Atomically clear matrix_recovery_key from the encrypted config file.
-pub fn clear_matrix_recovery_key(config_dir: &Path) -> Result<()> {
-    let config_path = config_dir.join(CONFIG_FILE);
-    let data = fs::read(&config_path).context("读取 config.enc 失败")?;
-    let mut enc: EncryptedConfig = serde_json::from_slice(&data).context("解析 config.enc 失败")?;
-    enc.matrix_recovery_key = None;
-    let new_data = serde_json::to_vec(&enc).context("序列化 config.enc 失败")?;
-    atomic_write_sensitive(&config_path, &new_data)?;
+pub fn clear_matrix_recovery_key() -> Result<()> {
+    update_config(|config| {
+        config.matrix_recovery_key = None;
+        Ok(())
+    })?;
     println!("✅ 恢复密钥已从配置中清除（用完即焚）");
     Ok(())
 }
