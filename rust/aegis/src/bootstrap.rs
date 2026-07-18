@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
+use std::sync::{LazyLock, Mutex};
+
 use aegis::core::i18n;
 use aegis::core::paths::xray::{BIN, PQ_PUB_PATH, PQ_SEED_PATH};
 use aegis::core::security::SecurityManager;
@@ -335,6 +337,29 @@ pub async fn verify_integrity() -> Result<()> {
     Ok(())
 }
 
+static CONFIG_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+/// Apply a mutation to the encrypted config file under a lock.
+/// The mutation function receives `&mut EncryptedConfig` and should modify it.
+/// On success the complete value is validated and atomically written.
+fn update_config<F>(f: F) -> Result<()>
+where
+    F: FnOnce(&mut EncryptedConfig) -> Result<()>,
+{
+    let _lock = CONFIG_MUTEX.lock().unwrap();
+    let config_dir = config_dir();
+    let path = config_dir.join(CONFIG_FILE);
+    let data = fs::read(&path).context("读取 config.enc 失败")?;
+    let mut config: EncryptedConfig =
+        serde_json::from_slice(&data).context("解析 config.enc 失败")?;
+    f(&mut config)?;
+    atomic_write_sensitive(
+        &path,
+        &serde_json::to_vec(&config).context("序列化 config.enc 失败")?,
+    )?;
+    Ok(())
+}
+
 /// Persist the chosen language to the encrypted config file.
 #[allow(dead_code)]
 pub fn save_lang_to_config(lang: i18n::Lang) -> Result<()> {
@@ -625,6 +650,7 @@ mod config_validator_tests {
 #[cfg(test)]
 mod config_tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn save_self_destruct_hash_compiles() {
@@ -652,5 +678,55 @@ mod config_tests {
         let deserialized: EncryptedConfig = serde_json::from_slice(&json).unwrap();
         assert_eq!(deserialized.discord_token, Some(b"dt".to_vec()));
         assert_eq!(deserialized.discord_admin_id, Some(b"da".to_vec()));
+    }
+
+    #[test]
+    fn concurrent_mutations_preserve_both_updates() {
+        let dir = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
+        }
+        // atomic_write_sensitive requires 0o700 on the parent directory
+        let _ = std::fs::set_permissions(dir.path(), std::os::unix::fs::PermissionsExt::from_mode(0o700));
+        let config_dir = dir.path();
+        let key = [0u8; 32];
+        fs::write(config_dir.join(".key"), key).unwrap();
+        let init = EncryptedConfig {
+            token: b"t".to_vec(),
+            admin_id: b"0".to_vec(),
+            totp_secret: b"s".to_vec(),
+            self_destruct_key_hash: None,
+            matrix_homeserver: None,
+            matrix_username: None,
+            matrix_password: None,
+            matrix_room_id: None,
+            matrix_store_passphrase: None,
+            lang: None,
+            discord_token: None,
+            discord_admin_id: None,
+            matrix_recovery_key: None,
+        };
+        fs::write(
+            config_dir.join("config.enc"),
+            serde_json::to_vec(&init).unwrap(),
+        )
+        .unwrap();
+
+        let t1 = std::thread::spawn(|| {
+            save_lang_to_config(i18n::Lang::En).unwrap();
+        });
+        let t2 = std::thread::spawn(|| {
+            save_self_destruct_key_hash_to_config(Some("a".repeat(64))).unwrap();
+        });
+        t1.join().unwrap();
+        t2.join().unwrap();
+
+        let data = fs::read(config_dir.join("config.enc")).unwrap();
+        let config: EncryptedConfig = serde_json::from_slice(&data).unwrap();
+        assert_eq!(config.lang, Some("en".to_string()));
+        assert_eq!(
+            config.self_destruct_key_hash,
+            Some("a".repeat(64))
+        );
     }
 }
