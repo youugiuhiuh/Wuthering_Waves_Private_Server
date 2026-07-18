@@ -371,6 +371,32 @@ mod tests {
         assert!(result.contains("ab"));
     }
 
+    #[test]
+    fn test_bounded_tail_limit_zero() {
+        assert_eq!(bounded_tail(b"hello", 0), "");
+    }
+
+    #[test]
+    fn test_bounded_tail_non_utf8_mid_cut() {
+        // 0xc3 0xa9 is "é". Cutting at limit=3: last 3 bytes are \xa9 c d.
+        // \xa9 alone is invalid → lossy yields "�cd".
+        let buf = b"ab\xc3\xa9cd";
+        let result = bounded_tail(buf, 3);
+        assert_eq!(result, "�cd", "expected lossy tail '�cd', got: {result:?}");
+    }
+
+    #[test]
+    fn test_bounded_tail_multi_byte_span_boundary() {
+        // 2-byte UTF-8 char "\u{00e9}" = [0xc3, 0xa9]; limit=7 takes last 7 bytes.
+        // Byte index 7 = \xa9 (continuation byte without lead) → "� world"
+        let buf = b"hello \xc3\xa9 world";
+        let result = bounded_tail(buf, 7);
+        assert_eq!(
+            result, "� world",
+            "expected lossy '� world', got: {result:?}"
+        );
+    }
+
     // --- set_process_group ---
 
     #[cfg(target_os = "linux")]
