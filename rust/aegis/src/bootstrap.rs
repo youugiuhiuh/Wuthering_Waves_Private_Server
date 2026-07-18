@@ -732,8 +732,10 @@ mod config_tests {
         let key = [0u8; 32];
         fs::write(dir.path().join(".key"), key).unwrap();
         fs::write(dir.path().join("config.enc"), b"not valid json").unwrap();
+        let path = dir.path().join("config.enc");
         let result = save_lang_to_config(i18n::Lang::En);
         assert!(result.is_err());
+        assert!(fs::read(&path).unwrap() == b"not valid json");
     }
 
     #[test]
@@ -745,8 +747,10 @@ mod config_tests {
         let _ = std::fs::set_permissions(dir.path(), PermissionsExt::from_mode(0o700));
         let key = [0u8; 32];
         fs::write(dir.path().join(".key"), key).unwrap();
+        let path = dir.path().join("config.enc");
         let result = save_lang_to_config(i18n::Lang::En);
         assert!(result.is_err());
+        assert!(!path.exists());
     }
 
     #[test]
