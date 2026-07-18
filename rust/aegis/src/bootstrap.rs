@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
+use std::ffi::OsStr;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -9,6 +10,9 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 use aegis::core::i18n;
 use aegis::core::paths::xray::{BIN, PQ_PUB_PATH, PQ_SEED_PATH};
 use aegis::core::security::SecurityManager;
+use aegis::core::security::secure_fs::{
+    atomic_write_at, atomic_write_sensitive, open_dir, open_private_dir,
+};
 
 pub const CONFIG_DIR: &str = "/etc/wwps/aegis";
 
@@ -134,10 +138,10 @@ impl BotSettings {
     #[allow(dead_code)]
     pub fn save(&self) -> Result<()> {
         let dir = config_dir();
-        fs::create_dir_all(&dir)?;
-        fs::write(
-            dir.join(BOT_SETTINGS_FILE),
-            serde_json::to_string_pretty(self)?,
+        open_private_dir(&dir)?;
+        atomic_write_sensitive(
+            &dir.join(BOT_SETTINGS_FILE),
+            serde_json::to_string_pretty(self)?.as_bytes(),
         )?;
         Ok(())
     }
@@ -167,12 +171,11 @@ pub fn generate_reality_pq_keys_sync() -> Result<()> {
         .and_then(|l| l.strip_prefix("Verify:").map(|s| s.trim().to_string()))
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow::anyhow!("mldsa65 输出未包含 Verify"))?;
-    let dir = PathBuf::from("/etc/wwps");
-    if !dir.exists() {
-        fs::create_dir_all(&dir).context("创建 /etc/wwps 失败")?;
-    }
-    fs::write(PQ_SEED_PATH, seed.as_bytes()).context("写入 reality_pq.seed 失败")?;
-    fs::write(PQ_PUB_PATH, verify.as_bytes()).context("写入 reality_pq.pub 失败")?;
+    let dir = open_dir(Path::new("/etc/wwps")).context("打开 /etc/wwps 失败")?;
+    atomic_write_at(&dir, OsStr::new("reality_pq.seed"), seed.as_bytes())
+        .context("写入 reality_pq.seed 失败")?;
+    atomic_write_at(&dir, OsStr::new("reality_pq.pub"), verify.as_bytes())
+        .context("写入 reality_pq.pub 失败")?;
     Ok(())
 }
 
@@ -207,7 +210,7 @@ pub async fn run_setup(
     let admin_id = admin_id.trim();
     let totp_secret = totp_secret.trim();
     let config_dir = config_dir();
-    fs::create_dir_all(&config_dir)?;
+    open_private_dir(&config_dir)?;
     let security = SecurityManager::new(&config_dir.join(KEY_FILE))?;
 
     let (
@@ -254,18 +257,10 @@ pub async fn run_setup(
         lang: None,
         matrix_recovery_key,
     };
-    fs::write(
-        config_dir.join(CONFIG_FILE),
-        serde_json::to_vec(&encrypted_config)?,
+    atomic_write_sensitive(
+        &config_dir.join(CONFIG_FILE),
+        &serde_json::to_vec(&encrypted_config)?,
     )?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(
-            config_dir.join(CONFIG_FILE),
-            fs::Permissions::from_mode(0o600),
-        )?;
-    }
     // 管理初始化时同步 PQ 公钥到默认路径（若通过环境变量提供且尚未写入）。
     sync_reality_pq_pub_on_setup();
     println!("✅ Setup completed successfully.");
@@ -349,7 +344,7 @@ pub fn save_lang_to_config(lang: i18n::Lang) -> Result<()> {
     let config_data = fs::read(&path)?;
     let mut encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
     encrypted_config.lang = Some(lang.as_str().to_string());
-    fs::write(path, serde_json::to_vec(&encrypted_config)?)?;
+    atomic_write_sensitive(&path, &serde_json::to_vec(&encrypted_config)?)?;
     Ok(())
 }
 
@@ -362,29 +357,18 @@ pub fn save_self_destruct_key_hash_to_config(hash: Option<String>) -> Result<()>
     let config_data = fs::read(&path)?;
     let mut encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
     encrypted_config.self_destruct_key_hash = hash;
-    fs::write(path, serde_json::to_vec(&encrypted_config)?)?;
+    atomic_write_sensitive(&path, &serde_json::to_vec(&encrypted_config)?)?;
     Ok(())
 }
 
 /// Atomically clear matrix_recovery_key from the encrypted config file.
-/// Writes to a tmp file, fsyncs, then renames — same-filesystem atomic.
 pub fn clear_matrix_recovery_key(config_dir: &Path) -> Result<()> {
-    use std::fs::File;
-    use std::io::Write;
-
     let config_path = config_dir.join(CONFIG_FILE);
     let data = fs::read(&config_path).context("读取 config.enc 失败")?;
     let mut enc: EncryptedConfig = serde_json::from_slice(&data).context("解析 config.enc 失败")?;
     enc.matrix_recovery_key = None;
     let new_data = serde_json::to_vec(&enc).context("序列化 config.enc 失败")?;
-
-    let tmp_path = config_path.with_extension("enc.tmp");
-    {
-        let mut f = File::create(&tmp_path).context("创建临时文件失败")?;
-        f.write_all(&new_data).context("写入临时文件失败")?;
-        f.sync_all().context("fsync 临时文件失败")?;
-    }
-    fs::rename(&tmp_path, &config_path).context("rename config.enc 失败")?;
+    atomic_write_sensitive(&config_path, &new_data)?;
     println!("✅ 恢复密钥已从配置中清除（用完即焚）");
     Ok(())
 }

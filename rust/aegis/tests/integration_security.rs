@@ -5,11 +5,21 @@
 use aegis::core::security::SecurityManager;
 use secrecy::ExposeSecret;
 use std::fs;
+use std::os::unix::fs::DirBuilderExt;
+
+fn aegis_key(dir: &tempfile::TempDir) -> std::path::PathBuf {
+    let aegis = dir.path().join("aegis");
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&aegis)
+        .unwrap();
+    aegis.join(".key")
+}
 
 #[test]
 fn security_manager_creates_key_and_encrypt_decrypt_roundtrip() {
     let dir = tempfile::tempdir().unwrap();
-    let key_path = dir.path().join(".key");
+    let key_path = aegis_key(&dir);
     assert!(!key_path.exists());
 
     let security = SecurityManager::new(&key_path).unwrap();
@@ -27,7 +37,7 @@ fn security_manager_creates_key_and_encrypt_decrypt_roundtrip() {
 #[test]
 fn security_manager_same_key_decrypts_encrypted_data() {
     let dir = tempfile::tempdir().unwrap();
-    let key_path = dir.path().join(".key");
+    let key_path = aegis_key(&dir);
 
     let security1 = SecurityManager::new(&key_path).unwrap();
     let encrypted = security1.encrypt(b"same_key").unwrap();
@@ -41,7 +51,7 @@ fn security_manager_same_key_decrypts_encrypted_data() {
 #[test]
 fn encrypt_decrypt_roundtrip_varied_sizes() {
     let dir = tempfile::tempdir().unwrap();
-    let key_path = dir.path().join(".key");
+    let key_path = aegis_key(&dir);
     let security = SecurityManager::new(&key_path).unwrap();
 
     let test_data: Vec<Vec<u8>> = vec![
@@ -68,7 +78,7 @@ fn encrypt_decrypt_roundtrip_varied_sizes() {
 #[test]
 fn encrypt_produces_different_output_each_time() {
     let dir = tempfile::tempdir().unwrap();
-    let key_path = dir.path().join(".key");
+    let key_path = aegis_key(&dir);
     let security = SecurityManager::new(&key_path).unwrap();
     let plain = b"deterministic input";
 
@@ -90,7 +100,7 @@ fn encrypt_produces_different_output_each_time() {
 #[test]
 fn decrypt_tampered_ciphertext_returns_error() {
     let dir = tempfile::tempdir().unwrap();
-    let key_path = dir.path().join(".key");
+    let key_path = aegis_key(&dir);
     let security = SecurityManager::new(&key_path).unwrap();
     let plain = b"tamper test";
 
@@ -105,8 +115,13 @@ fn decrypt_tampered_ciphertext_returns_error() {
 #[test]
 fn decrypt_wrong_key_returns_error() {
     let dir = tempfile::tempdir().unwrap();
-    let security1 = SecurityManager::new(&dir.path().join(".key1")).unwrap();
-    let security2 = SecurityManager::new(&dir.path().join(".key2")).unwrap();
+    let d1 = dir.path().join("key1");
+    let d2 = dir.path().join("key2");
+    std::fs::DirBuilder::new().mode(0o700).create(&d1).unwrap();
+    std::fs::DirBuilder::new().mode(0o700).create(&d2).unwrap();
+
+    let security1 = SecurityManager::new(&d1.join(".key")).unwrap();
+    let security2 = SecurityManager::new(&d2.join(".key")).unwrap();
 
     let encrypted = security1.encrypt(b"secret").unwrap();
     let result = security2.decrypt(&encrypted);

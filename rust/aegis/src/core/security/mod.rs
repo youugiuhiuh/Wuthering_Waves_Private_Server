@@ -4,6 +4,7 @@ pub mod fail2ban;
 pub mod firewall;
 pub mod firewall_scanner;
 pub mod firewalld;
+pub mod secure_fs;
 pub mod self_destruct;
 pub mod tls_probe;
 pub mod ufw;
