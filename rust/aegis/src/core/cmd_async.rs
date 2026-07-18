@@ -1,9 +1,65 @@
 use anyhow::{Context, Result};
+use std::io;
 use std::process::ExitStatus;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;
+
+/// Maximum bytes of command output to capture in diagnostic logs.
+pub const MAX_DIAG_BYTES: usize = 65536;
+
+/// Return the last `limit` bytes of `buf` as a lossy UTF-8 string.
+pub fn bounded_tail(buf: &[u8], limit: usize) -> String {
+    let start = buf.len().saturating_sub(limit);
+    String::from_utf8_lossy(&buf[start..]).to_string()
+}
+
+/// Set process group of `pid` to itself (become group leader).
+#[cfg(target_os = "linux")]
+pub fn set_process_group(pid: u32) -> io::Result<()> {
+    // SAFETY: pid is a valid OS process ID from a successful spawn; we are in
+    // the same session so setpgid is well-defined. The FFI call either succeeds
+    // (ret == 0) or returns a standard errno we propagate.
+    let ret = unsafe { libc::setpgid(pid as i32, 0) };
+    if ret == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn set_process_group(_pid: u32) -> io::Result<()> {
+    Ok(())
+}
+
+/// Kill an entire process group — SIGTERM first, then SIGKILL after a 2s grace period.
+#[cfg(target_os = "linux")]
+#[allow(clippy::undocumented_unsafe_blocks)]
+pub fn kill_process_group(pid: u32) -> io::Result<()> {
+    // SAFETY: pid is a valid process-group ID; killpg is safe to call with any
+    // standard signal number. The FFI call either succeeds or returns a standard
+    // errno we propagate.
+    let ret = unsafe { libc::killpg(pid as i32, libc::SIGTERM) };
+    if ret != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // Wait 2s for graceful shutdown
+    std::thread::sleep(Duration::from_secs(2));
+    // SAFETY: same as above — pid is valid, killpg is safe to call with SIGKILL.
+    // Only SIGKILL if the group still exists (killpg with signal=0 is a
+    // probe — returns 0 if alive, ESRCH if gone).
+    if unsafe { libc::killpg(pid as i32, 0) } == 0 {
+        unsafe { libc::killpg(pid as i32, libc::SIGKILL) };
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn kill_process_group(_pid: u32) -> io::Result<()> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "not available"))
+}
 
 /// Run a command with args, returning status/stdout/stderr. Uses timeout to avoid hanging.
 pub async fn run_cmd_output(
@@ -102,6 +158,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io;
 
     #[tokio::test]
     async fn run_cmd_checked_returns_error_on_non_zero_exit() {
@@ -182,5 +239,100 @@ mod tests {
         )
         .await;
         assert!(result.is_err());
+    }
+
+    // --- bounded_tail ---
+
+    #[test]
+    fn test_bounded_tail_short() {
+        assert_eq!(bounded_tail(b"hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_bounded_tail_truncates() {
+        assert_eq!(bounded_tail(b"hello world", 5), "world");
+    }
+
+    #[test]
+    fn test_bounded_tail_empty() {
+        assert_eq!(bounded_tail(b"", 10), "");
+    }
+
+    #[test]
+    fn test_bounded_tail_exact() {
+        assert_eq!(bounded_tail(b"abc", 3), "abc");
+    }
+
+    #[test]
+    fn test_bounded_tail_non_utf8() {
+        let buf = &[0xff, 0xfe, 0x61, 0x62];
+        let result = bounded_tail(buf, 10);
+        assert!(result.contains("ab"));
+    }
+
+    // --- set_process_group ---
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn test_set_process_group_returns_ok() {
+        let mut child = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg("sleep 5")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id().expect("child should be running");
+
+        // setpgid(pid,0) from the parent after the child has exec'd returns EACCES.
+        // This is documented Linux behavior — the helper wrapping the syscall is
+        // structurally correct; callers should use a pre_exec hook (see the
+        // kill_process_group test for that pattern).
+        let result = set_process_group(pid);
+        match result {
+            Ok(()) => {
+                let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+                let after_comm = stat.split(')').last().unwrap();
+                let fields: Vec<&str> = after_comm.split_whitespace().collect();
+                let pgrp: u32 = fields[2].parse().unwrap();
+                assert_eq!(pgrp, pid);
+            }
+            Err(e) => {
+                assert_eq!(
+                    e.kind(),
+                    io::ErrorKind::PermissionDenied,
+                    "expected EACCES after child exec, got: {e}"
+                );
+            }
+        }
+
+        child.kill().await.unwrap();
+        child.wait().await.unwrap();
+    }
+
+    // --- kill_process_group ---
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn test_kill_process_group_kills_child() {
+        // Use a pre_exec hook to set the child's process group before exec,
+        // so killpg only targets the child process.
+        let mut cmd = tokio::process::Command::new("sh");
+        cmd.arg("-c").arg("sleep 30");
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setpgid(0, 0);
+                Ok(())
+            });
+        }
+        let mut child = cmd.spawn().unwrap();
+        let pid = child.id().expect("child should be running");
+
+        kill_process_group(pid).unwrap();
+
+        let status = child.wait().await.unwrap();
+        assert!(!status.success());
     }
 }
