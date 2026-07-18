@@ -35,26 +35,17 @@ pub fn set_process_group(_pid: u32) -> io::Result<()> {
     Ok(())
 }
 
-/// Kill an entire process group — SIGTERM first, then SIGKILL after a 2s grace period.
+/// Kill an entire process group with SIGKILL.
 #[cfg(target_os = "linux")]
-#[allow(clippy::undocumented_unsafe_blocks)]
 pub fn kill_process_group(pid: u32) -> io::Result<()> {
-    // SAFETY: pid is a valid process-group ID; killpg is safe to call with any
-    // standard signal number. The FFI call either succeeds or returns a standard
-    // errno we propagate.
-    let ret = unsafe { libc::killpg(pid as i32, libc::SIGTERM) };
-    if ret != 0 {
-        return Err(io::Error::last_os_error());
+    // SAFETY: pid is a valid process-group ID; killpg with SIGKILL is safe to
+    // call. The FFI call either succeeds or returns a standard errno.
+    let ret = unsafe { libc::killpg(pid as i32, libc::SIGKILL) };
+    if ret == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
     }
-    // Wait 2s for graceful shutdown
-    std::thread::sleep(Duration::from_secs(2));
-    // SAFETY: same as above — pid is valid, killpg is safe to call with SIGKILL.
-    // Only SIGKILL if the group still exists (killpg with signal=0 is a
-    // probe — returns 0 if alive, ESRCH if gone).
-    if unsafe { libc::killpg(pid as i32, 0) } == 0 {
-        unsafe { libc::killpg(pid as i32, libc::SIGKILL) };
-    }
-    Ok(())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -117,18 +108,19 @@ pub async fn run_cmd_output(
         }
         Ok(Err(e)) => Err(e).context("等待命令执行失败"),
         Err(_elapsed) => {
+            let _ = child.start_kill(); // safety net: works on all platforms
             #[cfg(target_os = "linux")]
             let _ = kill_process_group(child_pid);
-            #[cfg(not(target_os = "linux"))]
-            let _ = child.start_kill();
 
-            let _ = child.wait().await;
             let _ = read_out.await;
             let _ = read_err.await;
+            let _ = child.wait().await;
 
+            let out = out_buf.lock().unwrap();
             let err = err_buf.lock().unwrap();
-            let tail = bounded_tail(&err, MAX_DIAG_BYTES);
-            anyhow::bail!("命令执行超时 (pid={child_pid}): {tail}")
+            let out_tail = bounded_tail(&out, MAX_DIAG_BYTES);
+            let err_tail = bounded_tail(&err, MAX_DIAG_BYTES);
+            anyhow::bail!("命令执行超时 (pid={child_pid})\nstdout: {out_tail}\nstderr: {err_tail}")
         }
     }
 }
@@ -211,16 +203,15 @@ where
         .is_err();
 
     if timed_out {
+        let _ = child.start_kill(); // safety net: works on all platforms
         #[cfg(target_os = "linux")]
         let _ = kill_process_group(child_pid);
-        #[cfg(not(target_os = "linux"))]
-        let _ = child.start_kill();
     }
 
     let status = child.wait().await.context("等待命令执行失败")?;
 
     if timed_out {
-        anyhow::bail!("命令执行超时")
+        anyhow::bail!("命令执行超时 (pid={child_pid})")
     } else {
         Ok(status)
     }
@@ -359,23 +350,28 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_cmd_output_timeout_bounded_diag_tail() {
-        // Produce >64 KiB of output, then sleep past the timeout.
+        // Produce >64 KiB on stderr, then sleep past the timeout.
         // The error message should contain at most MAX_DIAG_BYTES of either stream.
         let result = run_cmd_output(
             "sh",
             &[
                 "-c",
-                "dd if=/dev/zero bs=1024 count=100 2>/dev/null; echo '---MARKER---'; sleep 10",
+                "dd if=/dev/zero bs=1024 count=100 2>&1; echo '---MARKER---' >&2; sleep 10",
             ],
             Duration::from_millis(500),
         )
         .await;
         let err = result.unwrap_err();
         let msg = format!("{err:#}");
+        // Each stream tail is capped at MAX_DIAG_BYTES; combined message may have two.
         assert!(
-            msg.len() <= MAX_DIAG_BYTES,
-            "error message {} bytes exceeds limit {MAX_DIAG_BYTES}",
+            msg.len() <= MAX_DIAG_BYTES * 2 + 200,
+            "error message {} bytes exceeds reasonable bound",
             msg.len(),
+        );
+        assert!(
+            msg.contains("MARKER"),
+            "expected 'MARKER' in diagnostic, got: {msg:?}"
         );
     }
 
