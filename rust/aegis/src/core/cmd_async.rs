@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
-use tokio::time::timeout;
 
 /// Maximum bytes of command output to capture in diagnostic logs.
 pub const MAX_DIAG_BYTES: usize = 65536;
@@ -174,10 +173,15 @@ where
 {
     let mut child = Command::new(program)
         .args(args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .context("无法启动流式命令")?;
+
+    let child_pid = child.id().unwrap_or(0);
+
+    #[cfg(target_os = "linux")]
+    let _ = set_process_group(child_pid);
 
     let stdout = child.stdout.take().context("无法获取 stdout 流")?;
     let stderr = child.stderr.take().context("无法获取 stderr 流")?;
@@ -185,7 +189,7 @@ where
     let mut stdout_reader = BufReader::new(stdout).lines();
     let mut stderr_reader = BufReader::new(stderr).lines();
 
-    let execution = async {
+    let read_loop = async {
         loop {
             tokio::select! {
                 line = stdout_reader.next_line() => {
@@ -200,12 +204,26 @@ where
                 }
             }
         }
-        child.wait().await.context("等待命令执行失败")
     };
 
-    timeout(timeout_duration, execution)
+    let timed_out = tokio::time::timeout(timeout_duration, read_loop)
         .await
-        .context("命令执行超时")?
+        .is_err();
+
+    if timed_out {
+        #[cfg(target_os = "linux")]
+        let _ = kill_process_group(child_pid);
+        #[cfg(not(target_os = "linux"))]
+        let _ = child.start_kill();
+    }
+
+    let status = child.wait().await.context("等待命令执行失败")?;
+
+    if timed_out {
+        anyhow::bail!("命令执行超时")
+    } else {
+        Ok(status)
+    }
 }
 
 #[cfg(test)]
