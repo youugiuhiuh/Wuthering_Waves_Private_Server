@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use aegis::adapters::common::BotAdapter;
+use aegis::adapters::common::{BotAdapter, Platform, Principal};
 use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::system::scheduler::task_types::TaskType;
@@ -74,8 +74,8 @@ pub struct AppState {
     discord_admin_id: Option<i64>,
     totp_manager: TotpManager,
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
-    sessions: Mutex<HashMap<i64, Instant>>,
-    failed_attempts: Mutex<HashMap<i64, FailedRecord>>,
+    sessions: Mutex<HashMap<String, Instant>>,
+    failed_attempts: Mutex<HashMap<String, FailedRecord>>,
     pending_destructs: Mutex<HashMap<String, DestructState>>,
     self_destruct_key_hash: Mutex<Option<String>>,
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
@@ -120,8 +120,18 @@ impl AppState {
         self.admin_id
     }
 
-    pub fn is_admin_user(&self, user_id: i64) -> bool {
-        user_id == self.admin_id || self.discord_admin_id == Some(user_id)
+    pub fn is_admin_user(&self, principal: &Principal) -> bool {
+        let uid: i64 = match principal.platform {
+            Platform::Matrix => principal
+                .subject
+                .trim_start_matches('@')
+                .split(':')
+                .next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0),
+            _ => principal.subject.parse().unwrap_or(0),
+        };
+        uid == self.admin_id || self.discord_admin_id == Some(uid)
     }
 
     pub fn verify_totp(&self, code: &str) -> bool {
@@ -133,27 +143,27 @@ impl AppState {
         self.totp_manager.generate_current()
     }
 
-    pub async fn is_authorized(&self, user_id: i64) -> bool {
-        if !self.is_admin_user(user_id) {
+    pub async fn is_authorized(&self, principal: &Principal) -> bool {
+        if !self.is_admin_user(principal) {
             return false;
         }
 
         let timeout = self.session_timeout_secs().await;
         let sessions = self.sessions.lock().await;
         sessions
-            .get(&user_id)
+            .get(&principal.key())
             .map(|t| is_session_valid(t, timeout))
             .unwrap_or(false)
     }
 
-    pub async fn is_recently_authenticated(&self, user_id: i64) -> bool {
-        if !self.is_admin_user(user_id) {
+    pub async fn is_recently_authenticated(&self, principal: &Principal) -> bool {
+        if !self.is_admin_user(principal) {
             return false;
         }
 
         let sessions = self.sessions.lock().await;
         sessions
-            .get(&user_id)
+            .get(&principal.key())
             .map(|t| is_session_valid(t, RECENT_AUTH_WINDOW_SECS))
             .unwrap_or(false)
     }
@@ -195,22 +205,24 @@ impl AppState {
         self.self_destruct_key_hash.lock().await.clone()
     }
 
-    pub async fn record_auth_success(&self, user_id: i64, now: Instant) -> u64 {
-        self.sessions.lock().await.insert(user_id, now);
-        self.failed_attempts.lock().await.remove(&user_id);
+    pub async fn record_auth_success(&self, principal: &Principal, now: Instant) -> u64 {
+        let key = principal.key();
+        self.sessions.lock().await.insert(key.clone(), now);
+        self.failed_attempts.lock().await.remove(&key);
         self.session_timeout_secs().await
     }
 
     pub async fn record_auth_failure(
         &self,
-        user_id: i64,
+        principal: &Principal,
         now: Instant,
         max_attempts: u32,
         failure_window: Duration,
         lockout_durations: &[Duration],
     ) -> AuthFailureOutcome {
+        let key = principal.key();
         let mut fails = self.failed_attempts.lock().await;
-        let rec = fails.entry(user_id).or_insert(FailedRecord {
+        let rec = fails.entry(key).or_insert(FailedRecord {
             count: 0,
             first_fail: now,
             cooldown_until: None,
@@ -250,9 +262,14 @@ impl AppState {
         }
     }
 
-    pub async fn auth_cooldown_remaining(&self, user_id: i64, now: Instant) -> Option<Duration> {
+    pub async fn auth_cooldown_remaining(
+        &self,
+        principal: &Principal,
+        now: Instant,
+    ) -> Option<Duration> {
+        let key = principal.key();
         let mut fails = self.failed_attempts.lock().await;
-        let rec = fails.get_mut(&user_id)?;
+        let rec = fails.get_mut(&key)?;
         let until = rec.cooldown_until?;
         if until > now {
             Some(until - now)
@@ -548,11 +565,15 @@ mod tests {
         )
     }
 
+    fn p(uid: i64) -> Principal {
+        Principal::telegram(uid as u64)
+    }
+
     #[tokio::test]
     async fn authorization_success_creates_valid_session() {
         let state = make_state();
-        state.record_auth_success(42, Instant::now()).await;
-        assert!(state.is_authorized(42).await);
+        state.record_auth_success(&p(42), Instant::now()).await;
+        assert!(state.is_authorized(&p(42)).await);
     }
 
     #[tokio::test]
@@ -564,7 +585,7 @@ mod tests {
         for _ in 0..5 {
             outcome = Some(
                 state
-                    .record_auth_failure(42, now, 5, Duration::from_secs(600), &lockouts)
+                    .record_auth_failure(&p(42), now, 5, Duration::from_secs(600), &lockouts)
                     .await,
             );
         }
@@ -624,21 +645,21 @@ mod tests {
     #[tokio::test]
     async fn is_authorized_returns_false_for_non_admin() {
         let state = make_state();
-        assert!(!state.is_authorized(999).await);
+        assert!(!state.is_authorized(&p(999)).await);
     }
 
     #[tokio::test]
     async fn is_authorized_returns_false_for_expired_session() {
         let state = make_state();
         let past = Instant::now() - Duration::from_secs(601);
-        state.record_auth_success(42, past).await;
-        assert!(!state.is_authorized(42).await);
+        state.record_auth_success(&p(42), past).await;
+        assert!(!state.is_authorized(&p(42)).await);
     }
 
     #[tokio::test]
     async fn auth_cooldown_remaining_returns_none_when_not_locked() {
         let state = make_state();
-        let remaining = state.auth_cooldown_remaining(42, Instant::now()).await;
+        let remaining = state.auth_cooldown_remaining(&p(42), Instant::now()).await;
         assert!(remaining.is_none());
     }
 
@@ -649,10 +670,10 @@ mod tests {
         let lockouts = [Duration::from_secs(60)];
         for _ in 0..5 {
             state
-                .record_auth_failure(42, now, 5, Duration::from_secs(600), &lockouts)
+                .record_auth_failure(&p(42), now, 5, Duration::from_secs(600), &lockouts)
                 .await;
         }
-        let remaining = state.auth_cooldown_remaining(42, now).await;
+        let remaining = state.auth_cooldown_remaining(&p(42), now).await;
         assert!(remaining.is_some());
         assert!(remaining.unwrap().as_secs() <= 60);
     }
@@ -723,14 +744,14 @@ mod tests {
         let now = Instant::now();
         let lockouts = [Duration::from_secs(60)];
         state
-            .record_auth_failure(42, now, 5, Duration::from_secs(600), &lockouts)
+            .record_auth_failure(&p(42), now, 5, Duration::from_secs(600), &lockouts)
             .await;
         state
-            .record_auth_failure(42, now, 5, Duration::from_secs(600), &lockouts)
+            .record_auth_failure(&p(42), now, 5, Duration::from_secs(600), &lockouts)
             .await;
         let far_future = now + Duration::from_secs(601);
         let outcome = state
-            .record_auth_failure(42, far_future, 5, Duration::from_secs(600), &lockouts)
+            .record_auth_failure(&p(42), far_future, 5, Duration::from_secs(600), &lockouts)
             .await;
         if let AuthFailureOutcome::Invalid { attempts, .. } = outcome {
             assert_eq!(attempts, 1);
@@ -803,7 +824,7 @@ mod tests {
             600,
             Arc::new(MockAdapter),
         );
-        assert!(state.is_admin_user(999));
-        assert!(!state.is_admin_user(888));
+        assert!(state.is_admin_user(&Principal::discord(999)));
+        assert!(!state.is_admin_user(&Principal::discord(888)));
     }
 }

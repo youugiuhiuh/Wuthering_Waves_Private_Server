@@ -1,6 +1,8 @@
 use std::time::{Duration, Instant};
 
-use aegis::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
+use aegis::adapters::common::{
+    BotAdapter, InlineButton, Markup, MessageContent, Principal, TargetId,
+};
 use anyhow::Result;
 use rust_i18n::t;
 
@@ -10,14 +12,14 @@ use crate::app::state::{AppState, AuthFailureOutcome};
 pub async fn process_auth_code(
     adapter: &dyn BotAdapter,
     target: &TargetId,
-    user_id: i64,
+    principal: &Principal,
     code: &str,
     state: &AppState,
     max_attempts: u32,
     failure_window: Duration,
     lockout_durations: &[Duration],
 ) -> Result<bool> {
-    if !state.is_admin_user(user_id) {
+    if !state.is_admin_user(principal) {
         adapter
             .send_message(
                 target,
@@ -31,7 +33,7 @@ pub async fn process_auth_code(
     }
 
     let now = Instant::now();
-    if let Some(remaining) = state.auth_cooldown_remaining(user_id, now).await {
+    if let Some(remaining) = state.auth_cooldown_remaining(principal, now).await {
         adapter
             .send_message(
                 target,
@@ -45,7 +47,7 @@ pub async fn process_auth_code(
     }
 
     if state.verify_totp(code) {
-        let timeout = state.record_auth_success(user_id, now).await;
+        let timeout = state.record_auth_success(principal, now).await;
         let success_text =
             t!("auth.success", "0" => crate::utils::format_duration_human(timeout)).to_string();
         if !state.is_lang_configured().await {
@@ -91,7 +93,7 @@ pub async fn process_auth_code(
 
     match state
         .record_auth_failure(
-            user_id,
+            principal,
             now,
             max_attempts,
             failure_window,

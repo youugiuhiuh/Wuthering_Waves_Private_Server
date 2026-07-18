@@ -145,8 +145,8 @@ impl EventHandler for DiscordHandler {
         if msg.channel_id != self.admin_channel {
             return;
         }
-        let user_id = msg.author.id.get() as i64;
-        if !self.state.is_admin_user(user_id) {
+        let principal = Principal::discord(msg.author.id.get());
+        if !self.state.is_admin_user(&principal) {
             return;
         }
         let text = Some(msg.content).filter(|s| !s.is_empty());

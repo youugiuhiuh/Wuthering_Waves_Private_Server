@@ -71,8 +71,7 @@ pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<(), Dis
 
 #[allow(dead_code)]
 async fn check_auth(event: &BotEvent, state: &AppState) -> bool {
-    let user_id = event.user_id();
-    if !state.is_admin_user(user_id) {
+    if !state.is_admin_user(event.principal()) {
         return false;
     }
     match event {
@@ -88,13 +87,13 @@ async fn check_auth(event: &BotEvent, state: &AppState) -> bool {
             // TOTP codes allowed when not authorized (login attempt)
             if let Some(ref text) = msg.text
                 && is_totp_code(text)
-                && !state.is_authorized(user_id).await
+                && !state.is_authorized(event.principal()).await
             {
                 return true;
             }
-            state.is_authorized(user_id).await
+            state.is_authorized(event.principal()).await
         }
-        _ => state.is_authorized(user_id).await,
+        _ => state.is_authorized(event.principal()).await,
     }
 }
 
@@ -118,12 +117,11 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
         && let Some(ref text) = msg.text
     {
         let code = text.trim();
-        let uid = msg.principal.subject.parse::<i64>().unwrap_or(0);
-        if is_totp_code(code) && !state.is_authorized(uid).await {
+        if is_totp_code(code) && !state.is_authorized(&msg.principal).await {
             let _ = auth::process_auth_code(
                 &*msg.adapter,
                 &msg.target,
-                uid,
+                &msg.principal,
                 code,
                 state,
                 5,
@@ -262,7 +260,9 @@ mod dispatch_security_file_tests {
             600,
             Arc::new(TestAdapter),
         ));
-        state.record_auth_success(42, Instant::now()).await;
+        state
+            .record_auth_success(&Principal::telegram(42), Instant::now())
+            .await;
         state
             .start_security_file_input("42".into(), Instant::now())
             .await;
@@ -411,7 +411,9 @@ mod tests {
     async fn callback_runs_state_ops_and_handlers_dispatch() {
         let adapter = Arc::new(MockAdapter::default());
         let state = make_state();
-        state.record_auth_success(42, Instant::now()).await;
+        state
+            .record_auth_success(&Principal::telegram(42), Instant::now())
+            .await;
         dispatch_event(callback_event(adapter.clone(), "m_main"), &state)
             .await
             .unwrap();
@@ -426,7 +428,9 @@ mod tests {
     async fn message_in_destruct_state_is_handled_by_destruct() {
         let adapter = Arc::new(MockAdapter::default());
         let state = make_state();
-        state.record_auth_success(42, Instant::now()).await;
+        state
+            .record_auth_success(&Principal::telegram(42), Instant::now())
+            .await;
         state.begin_destruct("42".to_string(), Instant::now()).await;
         let totp = state.generate_current_totp().unwrap();
         dispatch_event(message_event(adapter.clone(), "42", Some(totp)), &state)
@@ -456,13 +460,13 @@ mod tests {
         let adapter = Arc::new(MockAdapter::default());
         let state = make_state();
         // not authorized initially
-        assert!(!state.is_authorized(42).await);
+        assert!(!state.is_authorized(&Principal::telegram(42)).await);
         let code = state.generate_current_totp().unwrap();
         dispatch_event(message_event(adapter.clone(), "123", Some(code)), &state)
             .await
             .unwrap();
         assert!(
-            state.is_authorized(42).await,
+            state.is_authorized(&Principal::telegram(42)).await,
             "valid TOTP code should authorize the user"
         );
     }

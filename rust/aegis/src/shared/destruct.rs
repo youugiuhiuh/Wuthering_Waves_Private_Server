@@ -111,10 +111,7 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
         TimeoutStatus::Active => {}
     }
 
-    if !state
-        .is_authorized(msg.principal.subject.parse::<i64>().unwrap_or(0))
-        .await
-    {
+    if !state.is_authorized(&msg.principal).await {
         adapter
             .send_message(
                 target,
@@ -426,10 +423,9 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
     let adapter = cb.adapter.as_ref();
     let target = &cb.target;
     let chat_id_str = target.0.clone();
-    let user_id = cb.principal.subject.parse::<i64>().unwrap_or(0);
     match cb.data.as_str() {
         "a_destroy_ask" => {
-            if !state.is_authorized(user_id).await {
+            if !state.is_authorized(&cb.principal).await {
                 adapter
                     .answer_callback(
                         target,
@@ -495,7 +491,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
             Ok(FlowOutcome::Handled)
         }
         "a_destroy_confirm" => {
-            if !state.is_authorized(user_id).await {
+            if !state.is_authorized(&cb.principal).await {
                 adapter
                     .answer_callback(
                         target,
@@ -542,7 +538,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
             Ok(FlowOutcome::Handled)
         }
         "a_destroy_final" => {
-            if !state.is_authorized(user_id).await {
+            if !state.is_authorized(&cb.principal).await {
                 adapter
                     .answer_callback(
                         target,
@@ -665,7 +661,9 @@ mod tests {
             600,
             Arc::new(MockAdapter),
         );
-        state.record_auth_success(42, Instant::now()).await;
+        state
+            .record_auth_success(&Principal::telegram(42), Instant::now())
+            .await;
         state
     }
 

@@ -79,6 +79,10 @@ impl Principal {
     pub fn matrix(id: &str) -> anyhow::Result<Self> {
         Self::new(Platform::Matrix, id)
     }
+
+    pub fn key(&self) -> String {
+        format!("{:?}:{}", self.platform, self.subject)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

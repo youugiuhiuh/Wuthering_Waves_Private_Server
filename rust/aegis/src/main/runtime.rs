@@ -151,14 +151,6 @@ pub async fn run(
     if let Some((client, room, matrix_adapter)) = matrix_handle {
         let target = TargetId(room.room_id().to_string());
 
-        fn parse_user_id(s: &str) -> i64 {
-            s.trim_start_matches('@')
-                .split(':')
-                .next()
-                .and_then(|n| n.parse().ok())
-                .unwrap_or(0)
-        }
-
         let matrix_state = state.clone();
         let matrix_adapter_sync = matrix_adapter;
         let matrix_target = target.clone();
@@ -172,10 +164,6 @@ pub async fn run(
                 let target = matrix_target.clone();
                 async move {
                     if room.room_id().as_str() != target.0.as_str() {
-                        return;
-                    }
-                    let user_id = parse_user_id(event.sender.as_str());
-                    if !state.is_admin_user(user_id) {
                         return;
                     }
                     let text = event.content.body().trim().to_string();
@@ -203,6 +191,9 @@ pub async fn run(
                     let principal = Principal::matrix(event.sender.as_str()).unwrap_or_else(|_| {
                         Principal::new(Platform::Matrix, "unknown:localhost").unwrap()
                     });
+                    if !state.is_admin_user(&principal) {
+                        return;
+                    }
                     let event = if let Some(ev) = aegis::adapters::matrix::commands::parse_to_event(
                         &text,
                         adapter.clone(),
