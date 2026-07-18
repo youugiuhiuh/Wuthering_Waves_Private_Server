@@ -12,7 +12,6 @@ pub struct SingBoxInstaller;
 const OWNER: &str = "SagerNet";
 const REPO: &str = "sing-box";
 const MAX_ARCHIVE_BYTES: u64 = 128 * 1024 * 1024;
-#[allow(dead_code)]
 const MAX_EXPANDED_BYTES: u64 = 256 * 1024 * 1024;
 
 fn release_path() -> String {
@@ -164,6 +163,26 @@ impl SingBoxInstaller {
     }
 
     pub async fn install() -> Result<()> {
+        let arch = Self::detect_arch()?;
+
+        let api_client = reqwest::Client::new();
+        let release = fetch_release(&api_client, None, arch).await?;
+
+        fs::create_dir_all(singbox::DIR)
+            .await
+            .context("创建安装目录失败")?;
+        fs::create_dir_all(singbox::CONF_DIR)
+            .await
+            .context("创建配置目录失败")?;
+
+        let temp_dir = "/tmp/sing-box-install";
+        fs::create_dir_all(temp_dir).await?;
+
+        let archive_path =
+            download_verified_archive(&api_client, &release, temp_dir.as_ref()).await?;
+        let candidate = extract_candidate(&archive_path, temp_dir.as_ref(), &release)?;
+        Self::deploy_candidate(&candidate, &release, Path::new(singbox::BIN)).await?;
+
         let old_service_path = "/etc/systemd/system/sing-box.service";
         if tokio::fs::try_exists(old_service_path)
             .await
@@ -180,46 +199,42 @@ impl SingBoxInstaller {
                 .await;
         }
 
-        let arch = Self::detect_arch()?;
-
-        let version = Self::fetch_latest_version().await?;
-        let download_url = format!(
-            "https://github.com/SagerNet/sing-box/releases/download/v{}/sing-box-{}-linux-{}.tar.gz",
-            version, version, arch
-        );
-
-        fs::create_dir_all(singbox::DIR)
-            .await
-            .context("创建安装目录失败")?;
-        fs::create_dir_all(singbox::CONF_DIR)
-            .await
-            .context("创建配置目录失败")?;
-
-        let temp_dir = "/tmp/sing-box-install";
-        fs::create_dir_all(temp_dir).await?;
-
-        let archive_path = format!("{}/sing-box.tar.gz", temp_dir);
-        Self::download_file(&download_url, &archive_path).await?;
-
-        Self::extract_archive(&archive_path, temp_dir).await?;
-
-        let bin_path = format!("{}/sing-box-{}-linux-{}/sing-box", temp_dir, version, arch);
-        fs::copy(&bin_path, singbox::BIN)
-            .await
-            .context("复制二进制文件失败")?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(singbox::BIN).await?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(singbox::BIN, perms).await?;
-        }
-
         Self::create_service().await?;
 
         let _ = fs::remove_dir_all(temp_dir).await;
 
+        Ok(())
+    }
+
+    async fn deploy_candidate(
+        candidate: &Path,
+        release: &SingBoxRelease,
+        dest: &Path,
+    ) -> Result<()> {
+        let output = tokio::process::Command::new(candidate)
+            .arg("version")
+            .output()
+            .await
+            .context("failed to execute sing-box version")?;
+        let reported = parse_singbox_version(&output.stdout)?;
+        if !output.status.success() || reported != release.version {
+            anyhow::bail!("Sing-box candidate version mismatch");
+        }
+
+        let staged = dest.with_extension("new");
+        fs::copy(candidate, &staged)
+            .await
+            .context("failed to stage candidate")?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755)).await?;
+        }
+        let file = std::fs::File::open(&staged)?;
+        file.sync_all()?;
+        fs::rename(&staged, dest)
+            .await
+            .context("failed to rename candidate into place")?;
         Ok(())
     }
 
@@ -272,54 +287,6 @@ impl SingBoxInstaller {
             "armv7l" => Ok("armv7"),
             _ => anyhow::bail!("不支持的架构: {}", arch),
         }
-    }
-
-    async fn fetch_latest_version() -> Result<String> {
-        let output = tokio::process::Command::new("curl")
-            .args([
-                "-s",
-                "https://api.github.com/repos/SagerNet/sing-box/releases/latest",
-            ])
-            .output()
-            .await
-            .context("获取版本信息失败")?;
-
-        let json: serde_json::Value =
-            serde_json::from_slice(&output.stdout).context("解析版本信息失败")?;
-
-        let tag_name = json["tag_name"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("未找到版本标签"))?;
-
-        Ok(tag_name.trim_start_matches('v').to_string())
-    }
-
-    async fn download_file(url: &str, path: &str) -> Result<()> {
-        let output = tokio::process::Command::new("curl")
-            .args(["-L", "-o", path, url])
-            .output()
-            .await
-            .context("下载文件失败")?;
-
-        if !output.status.success() {
-            anyhow::bail!("下载失败: {}", String::from_utf8_lossy(&output.stderr));
-        }
-
-        Ok(())
-    }
-
-    async fn extract_archive(archive: &str, dest: &str) -> Result<()> {
-        let output = tokio::process::Command::new("tar")
-            .args(["-xzf", archive, "-C", dest])
-            .output()
-            .await
-            .context("解压文件失败")?;
-
-        if !output.status.success() {
-            anyhow::bail!("解压失败: {}", String::from_utf8_lossy(&output.stderr));
-        }
-
-        Ok(())
     }
 
     async fn create_service() -> Result<()> {
@@ -385,6 +352,15 @@ WantedBy=multi-user.target
 
         Ok(())
     }
+}
+
+pub fn parse_singbox_version(stdout: &[u8]) -> Result<String> {
+    let text = std::str::from_utf8(stdout).context("sing-box version output is not valid UTF-8")?;
+    let version_token = text
+        .split_whitespace()
+        .find(|w| w.starts_with(|c: char| c.is_ascii_digit()) && w.contains('.'))
+        .ok_or_else(|| anyhow::anyhow!("no semver token found in sing-box version output"))?;
+    Ok(version_token.to_string())
 }
 
 pub fn extract_candidate(
@@ -1026,5 +1002,172 @@ mod tests {
         std::fs::write(&archive, &data).unwrap();
         let err = extract_candidate(&archive, dir.path(), &release).unwrap_err();
         assert!(err.to_string().contains("not found"), "got: {err}");
+    }
+
+    // -- task 4: version gate and atomic install tests --
+
+    fn create_fake_candidate(dir: &Path, version: &str) -> PathBuf {
+        let path = dir.join("fake-sing-box");
+        std::fs::write(
+            &path,
+            format!("#!/bin/sh\necho 'sing-box version {version}'\n"),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn test_parse_singbox_version_success() {
+        assert_eq!(
+            parse_singbox_version(b"sing-box version 1.14.0\n").unwrap(),
+            "1.14.0"
+        );
+    }
+
+    #[test]
+    fn test_parse_singbox_version_carriage_return() {
+        assert_eq!(
+            parse_singbox_version(b"sing-box version 1.14.0\r\n").unwrap(),
+            "1.14.0"
+        );
+    }
+
+    #[test]
+    fn test_parse_singbox_version_additional_text() {
+        assert_eq!(
+            parse_singbox_version(b"sing-box version 1.14.0 (build 20240101)\n").unwrap(),
+            "1.14.0"
+        );
+    }
+
+    #[test]
+    fn test_parse_singbox_version_empty() {
+        let err = parse_singbox_version(b"").unwrap_err();
+        assert!(err.to_string().contains("no semver"), "got: {err}");
+    }
+
+    #[test]
+    fn test_parse_singbox_version_no_version_token() {
+        let err = parse_singbox_version(b"sing-box version\n").unwrap_err();
+        assert!(err.to_string().contains("no semver"), "got: {err}");
+    }
+
+    #[test]
+    fn test_parse_singbox_version_garbage() {
+        let err = parse_singbox_version(b"!!!\n").unwrap_err();
+        assert!(err.to_string().contains("no semver"), "got: {err}");
+    }
+
+    #[test]
+    fn test_parse_singbox_version_not_utf8() {
+        let err = parse_singbox_version(b"\xff\xfe").unwrap_err();
+        assert!(err.to_string().contains("UTF-8"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_deploy_candidate_accepts_matching_version() {
+        let dir = tempfile::Builder::new()
+            .prefix("sbtest-")
+            .tempdir()
+            .unwrap();
+        let candidate = create_fake_candidate(dir.path(), "1.14.0");
+        let target = dir.path().join("wwps-box");
+        std::fs::write(&target, b"old content").unwrap();
+
+        let release = test_release();
+        SingBoxInstaller::deploy_candidate(&candidate, &release, &target)
+            .await
+            .expect("deploy should succeed");
+
+        let content = std::fs::read(&target).unwrap();
+        assert!(
+            String::from_utf8_lossy(&content).contains("1.14.0"),
+            "target should contain candidate content"
+        );
+
+        let staged = dir.path().join("wwps-box.new");
+        assert!(
+            !staged.exists(),
+            "staged file should be removed after rename"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_deploy_candidate_rejects_version_mismatch() {
+        let dir = tempfile::Builder::new()
+            .prefix("sbtest-")
+            .tempdir()
+            .unwrap();
+        let candidate = create_fake_candidate(dir.path(), "9.99.99");
+        let target = dir.path().join("wwps-box");
+        let old = b"unalterable binary content";
+        std::fs::write(&target, old).unwrap();
+
+        let release = test_release();
+        let err = SingBoxInstaller::deploy_candidate(&candidate, &release, &target)
+            .await
+            .expect_err("should reject version mismatch");
+        assert!(
+            err.to_string().contains("mismatch")
+                || (err.to_string().contains("expected") && err.to_string().contains("got")),
+            "got: {err}"
+        );
+
+        assert_eq!(std::fs::read(&target).unwrap(), old, "old binary preserved");
+    }
+
+    #[tokio::test]
+    async fn test_deploy_candidate_rejects_execution_failure() {
+        let dir = tempfile::Builder::new()
+            .prefix("sbtest-")
+            .tempdir()
+            .unwrap();
+        let candidate = dir.path().join("fake-sing-box");
+        std::fs::write(&candidate, "#!/bin/sh\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(
+            &candidate,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+
+        let target = dir.path().join("wwps-box");
+        let old = b"preserved binary";
+        std::fs::write(&target, old).unwrap();
+
+        let release = test_release();
+        let err = SingBoxInstaller::deploy_candidate(&candidate, &release, &target)
+            .await
+            .expect_err("should reject execution failure");
+        assert!(
+            err.to_string().contains("version") || err.to_string().contains("mismatch"),
+            "got: {err}"
+        );
+
+        assert_eq!(std::fs::read(&target).unwrap(), old, "old binary preserved");
+    }
+
+    #[tokio::test]
+    async fn test_deploy_candidate_rejects_rename_failure() {
+        let dir = tempfile::Builder::new()
+            .prefix("sbtest-")
+            .tempdir()
+            .unwrap();
+        let candidate = create_fake_candidate(dir.path(), "1.14.0");
+        let target = dir.path().join("wwps-box");
+        std::fs::create_dir(&target).unwrap();
+
+        let release = test_release();
+        SingBoxInstaller::deploy_candidate(&candidate, &release, &target)
+            .await
+            .expect_err("rename should fail when target is a directory");
+
+        assert!(target.is_dir(), "target should remain a directory");
+
+        let staged = dir.path().join("wwps-box.new");
+        let _ = std::fs::remove_file(&staged);
     }
 }
