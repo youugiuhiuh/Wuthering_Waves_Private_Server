@@ -129,12 +129,17 @@ pub fn build_github_api_request(
     Ok(request)
 }
 
-pub async fn fetch_github_json<T: DeserializeOwned>(
+pub fn build_github_api_query_request(
     client: &reqwest::Client,
     api_path: &str,
+    query: &[(&str, &str)],
     token: Option<&str>,
-) -> Result<T> {
-    build_github_api_request(client, api_path, token)?
+) -> Result<reqwest::RequestBuilder> {
+    Ok(build_github_api_request(client, api_path, token)?.query(query))
+}
+
+async fn send_github_json<T: DeserializeOwned>(request: reqwest::RequestBuilder) -> Result<T> {
+    request
         .send()
         .await
         .context("GitHub API request failed")?
@@ -143,6 +148,26 @@ pub async fn fetch_github_json<T: DeserializeOwned>(
         .json::<T>()
         .await
         .context("Failed to parse GitHub API response")
+}
+
+pub async fn fetch_github_json_with_query<T: DeserializeOwned>(
+    client: &reqwest::Client,
+    api_path: &str,
+    query: &[(&str, &str)],
+    token: Option<&str>,
+) -> Result<T> {
+    send_github_json(build_github_api_query_request(
+        client, api_path, query, token,
+    )?)
+    .await
+}
+
+pub async fn fetch_github_json<T: DeserializeOwned>(
+    client: &reqwest::Client,
+    api_path: &str,
+    token: Option<&str>,
+) -> Result<T> {
+    send_github_json(build_github_api_request(client, api_path, token)?).await
 }
 
 fn normalized_sha256(value: &str) -> Option<String> {
@@ -207,8 +232,9 @@ fn parse_xray_dgst(input: &str) -> Result<XrayDgst> {
                 if sha2_256.is_some() {
                     anyhow::bail!(".dgst 重复 SHA2-256");
                 }
-                sha2_256 = Some(normalized_sha256(value)
-                    .ok_or_else(|| anyhow!(".dgst SHA2-256 格式无效"))?);
+                sha2_256 = Some(
+                    normalized_sha256(value).ok_or_else(|| anyhow!(".dgst SHA2-256 格式无效"))?,
+                );
             }
             "SHA2-512" => {
                 if sha2_512.is_some() {
@@ -382,7 +408,9 @@ mod tests {
     fn rejects_xray_dgst_missing_fields() {
         let hash = "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae";
         assert!(parse_xray_sha256_dgst(&format!("SHA2-256= {hash}\n")).is_err());
-        assert!(parse_xray_sha256_dgst("SHA1= b55b06e74e89083b9cedfdecf0d68b579cd2af72\n").is_err());
+        assert!(
+            parse_xray_sha256_dgst("SHA1= b55b06e74e89083b9cedfdecf0d68b579cd2af72\n").is_err()
+        );
     }
 
     #[test]
@@ -408,6 +436,46 @@ mod tests {
              SHA2-512= e8bc40a0687cac184bbe4b5c1f047e69064ccedc489fb25e208889ae287bbf8736dff16b108d68fc00dc33edc8bb53502e47a9698a277f4f51b67b83d899e518\n"
         );
         assert!(parse_xray_sha256_dgst(&wrong).is_err());
+    }
+
+    #[test]
+    fn github_api_query_is_structured_and_percent_encoded() {
+        let client = github_api_client(Duration::from_secs(1)).unwrap();
+        let request = build_github_api_query_request(
+            &client,
+            "repos/XTLS/Xray-core/releases",
+            &[("per_page", "5&unexpected=true")],
+            Some("secret"),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+
+        assert_eq!(
+            request.url().as_str(),
+            "https://api.github.com/repos/XTLS/Xray-core/releases?per_page=5%26unexpected%3Dtrue"
+        );
+        assert_eq!(
+            request
+                .headers()
+                .get(reqwest::header::AUTHORIZATION)
+                .unwrap(),
+            "Bearer secret"
+        );
+    }
+
+    #[test]
+    fn github_api_query_does_not_relax_path_validation() {
+        let client = github_api_client(Duration::from_secs(1)).unwrap();
+        assert!(
+            build_github_api_query_request(
+                &client,
+                "repos/XTLS/Xray-core/releases?per_page=5",
+                &[],
+                None,
+            )
+            .is_err()
+        );
     }
 
     #[test]

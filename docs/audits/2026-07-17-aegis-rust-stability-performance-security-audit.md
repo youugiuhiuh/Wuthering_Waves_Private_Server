@@ -272,7 +272,24 @@ one string.
 API-only token policy, and add regression tests for encoded query values and
 the Xray recent-release path.
 
-**Status: NOT ADDRESSED** — confirmed after the GitHub-only updater merge.
+**Status: ADDRESSED**
+
+**Closure evidence:**
+
+- `build_github_api_query_request` delegates path validation to
+  `build_github_api_request`, then appends query via `RequestBuilder::query`.
+- `fetch_github_json_with_query` sends via the same `send_github_json` path as
+  `fetch_github_json`.
+- `xray_releases_path` returns `repos/XTLS/Xray-core/releases` (no query).
+- `fetch_recent_tags` passes `per_page` as a structured `[(&str, &str)]` slice.
+- Tests added:
+  - `github_api_query_is_structured_and_percent_encoded` — verifies reqwest
+    percent-encodes malicious input in query values.
+  - `github_api_query_does_not_relax_path_validation` — verifies `?` in the
+    path is still rejected.
+  - `xray_recent_releases_path_contains_no_query` — verifies the Xray
+    release-list path is query-free.
+- All 526 unit tests pass (0 failures).
 
 ### 1. Timed-out commands may survive
 
