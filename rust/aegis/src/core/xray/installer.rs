@@ -1,10 +1,11 @@
 use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::paths::{warp as warp_paths, xray};
+use crate::core::security::secure_fs::{atomic_write_at_async, open_dir};
 use crate::core::system::core_upgrade::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
 use crate::core::system::maintenance::MaintenanceManager;
 use anyhow::{Context, Result, anyhow};
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs;
 use tokio::process::Command;
@@ -33,9 +34,16 @@ impl WarpInstaller {
             .context("Failed to register WARP account")?;
 
         // 2. Save Account Config
-        let account_path = warp_paths::ACCOUNT_FILE;
         let content = serde_json::to_string_pretty(&config)?;
-        fs::write(account_path, content).await?;
+        let dir = tokio::task::spawn_blocking(|| open_dir(Path::new("/etc/wwps/wwps-core")))
+            .await
+            .context("open /etc/wwps/wwps-core")??;
+        atomic_write_at_async(
+            dir,
+            std::ffi::OsString::from("warp_account.json"),
+            content.into_bytes(),
+        )
+        .await?;
 
         // 3. Update core routing config
         crate::core::xray::config::ConfigManager::update_warp_routing_rules(

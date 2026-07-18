@@ -158,6 +158,56 @@ fn sync_directory(dir: &File) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::undocumented_unsafe_blocks)]
+pub fn open_dir(path: &Path) -> Result<File> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) => {
+            if !meta.file_type().is_dir() {
+                anyhow::bail!("not a directory: {}", path.display());
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            anyhow::bail!("directory does not exist: {}", path.display());
+        }
+        Err(e) => return Err(e.into()),
+    }
+    let dir = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .with_context(|| format!("open directory {}", path.display()))?;
+    let meta = dir.metadata()?;
+    let uid = unsafe { libc::geteuid() };
+    if meta.st_uid() != uid {
+        anyhow::bail!("directory not owned by current user: {}", path.display());
+    }
+    Ok(dir)
+}
+
+pub fn atomic_write_at(dir: &File, name: &OsStr, bytes: &[u8]) -> Result<()> {
+    validate_at(dir, name)?;
+    let temp = unique_temp_name(name);
+    let result = (|| -> Result<()> {
+        let mut file = create_new_at(dir, &temp, 0o600)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        validate_at(dir, name)?;
+        rename_at(dir, &temp, dir, name)?;
+        sync_directory(dir)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = unlink_at(dir, &temp);
+    }
+    result
+}
+
+pub async fn atomic_write_at_async(dir: File, name: OsString, bytes: Vec<u8>) -> Result<()> {
+    tokio::task::spawn_blocking(move || atomic_write_at(&dir, &name, &bytes))
+        .await
+        .context("blocking write task panicked")?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,5 +302,80 @@ mod tests {
         assert_eq!(fs::read(&path).unwrap(), b"first");
         atomic_write_sensitive(&path, b"second").unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"second");
+    }
+
+    #[test]
+    fn open_dir_rejects_symlink() {
+        let real = unique_dir();
+        fs::create_dir(&real).unwrap();
+        let link = unique_dir();
+        symlink(&real, &link).unwrap();
+        let err = open_dir(&link).unwrap_err();
+        // symlink_metadata sees the symlink → not a directory
+        assert!(
+            err.to_string().contains("not a directory"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn open_dir_rejects_file() {
+        let root = unique_dir();
+        fs::create_dir(&root).unwrap();
+        let file = root.join("not-a-dir");
+        fs::write(&file, b"x").unwrap();
+        let err = open_dir(&file).unwrap_err();
+        assert!(err.to_string().contains("not a directory"));
+    }
+
+    #[test]
+    fn atomic_write_at_creates_file_0600() {
+        let dir = unique_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let dfd = open_dir(&dir).unwrap();
+        let name = OsStr::new("secret.bin");
+        atomic_write_at(&dfd, name, b"my-data").unwrap();
+        let path = dir.join(name);
+        let meta = fs::symlink_metadata(&path).unwrap();
+        assert_eq!(meta.st_mode() & 0o777, 0o600);
+        assert_eq!(fs::read(&path).unwrap(), b"my-data");
+    }
+
+    #[test]
+    fn atomic_write_at_rejects_symlink_target() {
+        let dir = unique_dir();
+        fs::create_dir(&dir).unwrap();
+        let dfd = open_dir(&dir).unwrap();
+        let link = dir.join("target");
+        symlink("/dev/null", &link).unwrap();
+        let err = atomic_write_at(&dfd, OsStr::new("target"), b"data").unwrap_err();
+        assert!(err.to_string().contains("symlink"));
+    }
+
+    #[test]
+    fn atomic_write_at_replaces_content() {
+        let dir = unique_dir();
+        fs::create_dir(&dir).unwrap();
+        let dfd = open_dir(&dir).unwrap();
+        let name = OsStr::new("secret.bin");
+        atomic_write_at(&dfd, name, b"first").unwrap();
+        let path = dir.join(name);
+        assert_eq!(fs::read(&path).unwrap(), b"first");
+        atomic_write_at(&dfd, name, b"second").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"second");
+    }
+
+    #[tokio::test]
+    async fn atomic_write_at_async_writes_content() {
+        let dir = unique_dir();
+        fs::create_dir(&dir).unwrap();
+        let dfd = open_dir(&dir).unwrap();
+        let name = OsString::from("secret.bin");
+        let bytes = b"async-data".to_vec();
+        atomic_write_at_async(dfd, name.clone(), bytes)
+            .await
+            .unwrap();
+        let path = dir.join(&name);
+        assert_eq!(fs::read(&path).unwrap(), b"async-data");
     }
 }

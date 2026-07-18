@@ -7,9 +7,14 @@ use std::process::Command;
 #[test]
 fn cli_fails_with_stderr_about_key_missing_when_config_enc_exists_without_key() {
     let dir = tempfile::tempdir().unwrap();
-    let config_dir = dir.path();
+    let config_dir = dir.path().join("aegis");
+    std::fs::create_dir(&config_dir).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
     let config_enc = config_dir.join("config.enc");
-    std::fs::create_dir_all(config_dir).unwrap();
     // 仅写入 config.enc，不创建 .key；内容可为任意合法 JSON（进程在读取前就会 bail）
     std::fs::write(&config_enc, b"{}").unwrap();
 

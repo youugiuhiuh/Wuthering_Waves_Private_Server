@@ -5,7 +5,7 @@ use std::process::Command;
 #[test]
 fn cli_setup_success_stdout_is_single_line_with_success_message() {
     let dir = tempfile::tempdir().unwrap();
-    let config_dir = dir.path();
+    let config_dir = dir.path().join("aegis");
     let bin = env!("CARGO_BIN_EXE_aegis");
     let totp_secret = "JBSWY3DPEHPK3PXP"; // 合法 base32，至少 16 位
 

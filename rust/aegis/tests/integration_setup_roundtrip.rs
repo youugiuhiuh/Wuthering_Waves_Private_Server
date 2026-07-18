@@ -21,13 +21,13 @@ struct EncryptedConfig {
 #[test]
 fn setup_roundtrip_decrypt_and_totp_manager_succeeds() {
     let dir = tempfile::tempdir().unwrap();
-    let config_dir = dir.path();
+    let config_dir = dir.path().join("aegis");
     let bin = env!("CARGO_BIN_EXE_aegis");
     let totp_secret = TotpManager::generate_new_secret();
 
     // 使用 aegis --setup 写入 config.enc + .key
     let out = std::process::Command::new(bin)
-        .env("AEGIS_CONFIG_DIR", config_dir)
+        .env("AEGIS_CONFIG_DIR", &config_dir)
         .args(["--setup", "dummy_token", "123456", totp_secret.as_str()])
         .output()
         .expect("执行 aegis --setup 失败");

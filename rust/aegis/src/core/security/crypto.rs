@@ -8,6 +8,8 @@ use obfstr::obfstr;
 use rand::{RngCore, rngs::OsRng};
 use secrecy::SecretVec;
 use std::fs::{self, OpenOptions};
+
+use super::secure_fs::{atomic_write_sensitive, open_private_dir};
 use std::io::Write;
 use std::path::Path;
 use zeroize::Zeroizing;
@@ -24,15 +26,9 @@ impl SecurityManager {
             let mut key = [0u8; 32];
             OsRng.fill_bytes(&mut key);
             if let Some(parent) = key_path.parent() {
-                fs::create_dir_all(parent)?;
+                open_private_dir(parent)?;
             }
-            fs::write(key_path, key)?;
-            // Set restrictive permissions (root only)
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(key_path, fs::Permissions::from_mode(0o600))?;
-            }
+            atomic_write_sensitive(key_path, &key)?;
         }
 
         let key_data = fs::read(key_path)?;
@@ -185,10 +181,14 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    fn key_path(temp: &TempDir) -> std::path::PathBuf {
+        temp.path().join("aegis").join("key")
+    }
+
     #[test]
     fn test_security_new_creates_key_file() {
         let temp = TempDir::new().unwrap();
-        let key_path = temp.path().join("key");
+        let key_path = key_path(&temp);
 
         let result = SecurityManager::new(&key_path);
 
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn test_security_new_loads_existing_key() {
         let temp = TempDir::new().unwrap();
-        let key_path = temp.path().join("key");
+        let key_path = key_path(&temp);
 
         // Create first manager
         let _sm1 = SecurityManager::new(&key_path).unwrap();
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt_roundtrip() {
         let temp = TempDir::new().unwrap();
-        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+        let sm = SecurityManager::new(&key_path(&temp)).unwrap();
 
         let plaintext = b"test data";
         let encrypted = sm.encrypt(plaintext).unwrap();
@@ -225,7 +225,7 @@ mod tests {
     #[test]
     fn test_encrypt_empty_data() {
         let temp = TempDir::new().unwrap();
-        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+        let sm = SecurityManager::new(&key_path(&temp)).unwrap();
 
         let encrypted = sm.encrypt(b"").unwrap();
 
@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn test_decrypt_invalid_length() {
         let temp = TempDir::new().unwrap();
-        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+        let sm = SecurityManager::new(&key_path(&temp)).unwrap();
 
         // Data too short (< 12 bytes for nonce)
         let result = sm.decrypt(&[0u8; 11]);
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn test_decrypt_corrupt_data() {
         let temp = TempDir::new().unwrap();
-        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+        let sm = SecurityManager::new(&key_path(&temp)).unwrap();
 
         let mut encrypted = sm.encrypt(b"test").unwrap();
         // Corrupt the ciphertext (after nonce)

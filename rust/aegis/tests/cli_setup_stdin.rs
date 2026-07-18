@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 #[test]
 fn cli_setup_stdin_creates_key_and_config_enc() {
     let dir = tempfile::tempdir().unwrap();
-    let config_dir = dir.path();
+    let config_dir = dir.path().join("aegis");
     let key_path = config_dir.join(".key");
     let config_path = config_dir.join("config.enc");
 

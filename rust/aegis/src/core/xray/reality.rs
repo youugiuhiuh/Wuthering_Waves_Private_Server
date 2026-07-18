@@ -101,8 +101,6 @@ impl ConfigManager {
     }
 
     pub async fn generate_reality_pq_keys() -> Result<()> {
-        const PQ_SEED_PATH: &str = "/etc/wwps/reality_pq.seed";
-        const PQ_PUB_PATH: &str = "/etc/wwps/reality_pq.pub";
         let stdout = match run_wwps_core_cmd(&["mldsa65"]).await {
             Ok(out) => out,
             Err(_) => {
@@ -127,26 +125,20 @@ impl ConfigManager {
         if seed.is_empty() || verify.is_empty() {
             anyhow::bail!("❌ mldsa65 输出 Seed/Verify 为空");
         }
-        let dir = Path::new(PQ_SEED_PATH)
-            .parent()
-            .unwrap_or(Path::new("/etc/wwps"));
-        if !dir.exists() {
-            tokio::fs::create_dir_all(dir)
-                .await
-                .context("创建 /etc/wwps 失败")?;
-        }
-        tokio::try_join!(
-            async {
-                fs::write(PQ_SEED_PATH, seed.as_bytes())
-                    .await
-                    .context("写入 reality_pq.seed 失败")
-            },
-            async {
-                fs::write(PQ_PUB_PATH, verify.as_bytes())
-                    .await
-                    .context("写入 reality_pq.pub 失败")
-            },
-        )?;
+        let seed_bytes = seed.clone().into_bytes();
+        let verify_bytes = verify.clone().into_bytes();
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            use aegis::core::security::secure_fs::{atomic_write_at, open_dir};
+            use std::ffi::OsStr;
+            let dir = open_dir(Path::new("/etc/wwps")).context("打开 /etc/wwps 失败")?;
+            atomic_write_at(&dir, OsStr::new("reality_pq.seed"), &seed_bytes)
+                .context("写入 reality_pq.seed 失败")?;
+            atomic_write_at(&dir, OsStr::new("reality_pq.pub"), &verify_bytes)
+                .context("写入 reality_pq.pub 失败")?;
+            Ok(())
+        })
+        .await
+        .context("blocking reality pq write panicked")??;
         Ok(())
     }
 

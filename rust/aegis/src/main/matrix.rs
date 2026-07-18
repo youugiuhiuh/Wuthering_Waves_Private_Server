@@ -5,6 +5,7 @@ use std::sync::Arc;
 use aegis::adapters::common::BotAdapter;
 use aegis::adapters::matrix::MatrixAdapter;
 use aegis::core::security::SecurityManager;
+use aegis::core::security::secure_fs::atomic_write_sensitive;
 use anyhow::{Context, Result};
 use matrix_sdk::{
     Client as MatrixClient, Room, RoomState,
@@ -76,7 +77,7 @@ pub async fn connect_matrix(
         // Save session for future restarts
         if let Some(session) = client.matrix_auth().session() {
             let session_json = serde_json::to_string(&session)?;
-            fs::write(&session_path, session_json)?;
+            atomic_write_sensitive(&session_path, session_json.as_bytes())?;
             println!("✅ Matrix 会话已保存");
         }
     }
