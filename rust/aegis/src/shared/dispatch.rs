@@ -286,10 +286,11 @@ mod dispatch_security_file_tests {
 mod tests {
     use super::*;
 
+    use crate::adapters::common::DestructKey;
     use crate::adapters::common::{
         BotAdapter, MessageContent, MessageId, Platform, Principal, TargetId,
     };
-    use crate::app::state::{AppState, DestructStep};
+    use crate::app::state::{AppState, DestructStatus};
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
     use crate::shared::types::{BotCommand, BotEvent, CallbackEvent, CommandEvent, MessageEvent};
@@ -362,6 +363,18 @@ mod tests {
         )
     }
 
+    fn make_state_with_key_hash() -> AppState {
+        AppState::new(
+            42,
+            None,
+            TotpManager::new(&SecretString::from(TotpManager::generate_new_secret())).unwrap(),
+            Arc::new(NoopExecutor),
+            Some("test-hash".to_string()),
+            600,
+            Arc::new(MockAdapter::default()),
+        )
+    }
+
     fn command_event(adapter: Arc<MockAdapter>, command: BotCommand) -> BotEvent {
         BotEvent::Command(CommandEvent {
             adapter,
@@ -427,17 +440,21 @@ mod tests {
     #[tokio::test]
     async fn message_in_destruct_state_is_handled_by_destruct() {
         let adapter = Arc::new(MockAdapter::default());
-        let state = make_state();
+        let state = make_state_with_key_hash();
         state
             .record_auth_success(&Principal::telegram(42), Instant::now())
             .await;
-        state.begin_destruct("42".to_string(), Instant::now()).await;
+        let key = DestructKey {
+            principal: Principal::telegram(42),
+            target: TargetId("42".into()),
+        };
+        state.begin_destruct(&key, Instant::now()).await.unwrap();
         let totp = state.generate_current_totp().unwrap();
         dispatch_event(message_event(adapter.clone(), "42", Some(totp)), &state)
             .await
             .unwrap();
-        let snap = state.destruct_snapshot("42").await.unwrap();
-        assert_eq!(snap.step, DestructStep::AwaitConfirm);
+        let snap = state.destruct_snapshot(&key).await.unwrap();
+        assert_eq!(snap.status, DestructStatus::AwaitFirstConfirm);
     }
 
     #[tokio::test]
