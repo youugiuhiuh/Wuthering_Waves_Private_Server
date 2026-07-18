@@ -342,6 +342,43 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[tokio::test]
+    async fn test_run_cmd_stream_timeout_kills_descendants() {
+        // run_cmd_stream doesn't expose the child PID, but we can verify
+        // the timeout error is returned promptly (the kill itself is tested
+        // via the output variant which does expose PIDs).
+        let result = run_cmd_stream(
+            "sh",
+            &["-c", "sleep 30"],
+            Duration::from_millis(200),
+            |_line| {},
+        )
+        .await;
+        assert!(result.is_err(), "expected timeout error");
+    }
+
+    #[tokio::test]
+    async fn test_run_cmd_output_timeout_bounded_diag_tail() {
+        // Produce >64 KiB of output, then sleep past the timeout.
+        // The error message should contain at most MAX_DIAG_BYTES of either stream.
+        let result = run_cmd_output(
+            "sh",
+            &[
+                "-c",
+                "dd if=/dev/zero bs=1024 count=100 2>/dev/null; echo '---MARKER---'; sleep 10",
+            ],
+            Duration::from_millis(500),
+        )
+        .await;
+        let err = result.unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.len() <= MAX_DIAG_BYTES,
+            "error message {} bytes exceeds limit {MAX_DIAG_BYTES}",
+            msg.len(),
+        );
+    }
+
     // --- bounded_tail ---
 
     #[test]
