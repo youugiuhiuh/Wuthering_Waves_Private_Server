@@ -348,6 +348,7 @@ where
 {
     let _lock = CONFIG_MUTEX.lock().unwrap();
     let config_dir = config_dir();
+    let _ = SecurityManager::new(&config_dir.join(KEY_FILE))?;
     let path = config_dir.join(CONFIG_FILE);
     let data = fs::read(&path).context("读取 config.enc 失败")?;
     let mut config: EncryptedConfig =
@@ -363,27 +364,19 @@ where
 /// Persist the chosen language to the encrypted config file.
 #[allow(dead_code)]
 pub fn save_lang_to_config(lang: i18n::Lang) -> Result<()> {
-    let config_dir = config_dir();
-    let _ = SecurityManager::new(&config_dir.join(KEY_FILE))?;
-    let path = config_dir.join(CONFIG_FILE);
-    let config_data = fs::read(&path)?;
-    let mut encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
-    encrypted_config.lang = Some(lang.as_str().to_string());
-    atomic_write_sensitive(&path, &serde_json::to_vec(&encrypted_config)?)?;
-    Ok(())
+    update_config(|config| {
+        config.lang = Some(lang.as_str().to_string());
+        Ok(())
+    })
 }
 
 /// Persist the self-destruct key hash to the encrypted config file.
 #[allow(dead_code)]
 pub fn save_self_destruct_key_hash_to_config(hash: Option<String>) -> Result<()> {
-    let config_dir = config_dir();
-    let _ = SecurityManager::new(&config_dir.join(KEY_FILE))?;
-    let path = config_dir.join(CONFIG_FILE);
-    let config_data = fs::read(&path)?;
-    let mut encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
-    encrypted_config.self_destruct_key_hash = hash;
-    atomic_write_sensitive(&path, &serde_json::to_vec(&encrypted_config)?)?;
-    Ok(())
+    update_config(|config| {
+        config.self_destruct_key_hash = hash;
+        Ok(())
+    })
 }
 
 /// Atomically clear matrix_recovery_key from the encrypted config file.
@@ -687,7 +680,10 @@ mod config_tests {
             std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
         }
         // atomic_write_sensitive requires 0o700 on the parent directory
-        let _ = std::fs::set_permissions(dir.path(), std::os::unix::fs::PermissionsExt::from_mode(0o700));
+        let _ = std::fs::set_permissions(
+            dir.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        );
         let config_dir = dir.path();
         let key = [0u8; 32];
         fs::write(config_dir.join(".key"), key).unwrap();
@@ -724,9 +720,6 @@ mod config_tests {
         let data = fs::read(config_dir.join("config.enc")).unwrap();
         let config: EncryptedConfig = serde_json::from_slice(&data).unwrap();
         assert_eq!(config.lang, Some("en".to_string()));
-        assert_eq!(
-            config.self_destruct_key_hash,
-            Some("a".repeat(64))
-        );
+        assert_eq!(config.self_destruct_key_hash, Some("a".repeat(64)));
     }
 }
