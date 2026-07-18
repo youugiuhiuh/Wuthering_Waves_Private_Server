@@ -78,6 +78,19 @@ pub async fn process_destruct_message(
     }
 }
 
+async fn authorize_flow(state: &AppState, key: &DestructKey, now: Instant) -> Result<()> {
+    if state.self_destruct_key_hash().await.is_none() {
+        anyhow::bail!("self-destruct security file is not configured");
+    }
+    if !state.is_admin_user(&key.principal) || !state.is_authorized(&key.principal).await {
+        anyhow::bail!("self-destruct authorization required");
+    }
+    state
+        .ensure_destruct_active(key, now)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))
+}
+
 fn btn(text: &str, data: &str) -> InlineButton {
     InlineButton {
         text: text.to_string(),
@@ -96,36 +109,10 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
         principal: msg.principal.clone(),
         target: msg.target.clone(),
     };
-    let snapshot = state.destruct_snapshot(&key).await;
-    match snapshot {
-        Some(s) if s.deadline <= Instant::now() => {
-            state.cancel_destruct(&key).await;
-            adapter
-                .send_message(
-                    target,
-                    MessageContent {
-                        text: t!("destruct.timeout").into(),
-                        markup: None,
-                    },
-                )
-                .await?;
-            return Ok(FlowOutcome::Handled);
-        }
-        Some(_) => {}
-        None => return Ok(FlowOutcome::NotHandled),
-    }
+    let now = Instant::now();
 
-    if !state.is_authorized(&msg.principal).await {
-        adapter
-            .send_message(
-                target,
-                MessageContent {
-                    text: t!("auth.expired").into(),
-                    markup: None,
-                },
-            )
-            .await?;
-        return Ok(FlowOutcome::Handled);
+    if authorize_flow(state, &key, now).await.is_err() {
+        return Ok(FlowOutcome::NotHandled);
     }
 
     let Some(destruct_state) = state.destruct_snapshot(&key).await else {
@@ -486,7 +473,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
             Ok(FlowOutcome::Handled)
         }
         "a_destroy_confirm" => {
-            if !state.is_authorized(&cb.principal).await {
+            if authorize_flow(state, &key, Instant::now()).await.is_err() {
                 adapter
                     .answer_callback(
                         target,
@@ -532,7 +519,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
             Ok(FlowOutcome::Handled)
         }
         "a_destroy_final" => {
-            if !state.is_authorized(&cb.principal).await {
+            if authorize_flow(state, &key, Instant::now()).await.is_err() {
                 adapter
                     .answer_callback(
                         target,
