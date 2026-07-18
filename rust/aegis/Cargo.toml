@@ -64,10 +64,13 @@ mime = "0.3.17"
 rust-i18n = "4.1"
 minisign-verify = "0.2.5"
 mockall = "0.14" # Needed at runtime for binary-crate tests (MockBotAdapter shared across lib/bin)
+flate2 = { version = "1.1.9", default-features = false, features = ["zlib", "rust_backend"] }
+tar = "0.4.46"
 
 [dev-dependencies]
 env_logger = "0.11.8"
 serial_test = "3.5.0"
+wiremock = "0.6"
 
 [build-dependencies]
 prost-build = "0.14"
