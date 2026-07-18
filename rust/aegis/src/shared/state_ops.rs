@@ -51,9 +51,10 @@ async fn handle_lang(cb: &CallbackEvent, state: &AppState) -> Option<String> {
         _ => return None,
     };
     i18n::set_lang(lang);
-    state.set_lang(lang).await;
     if let Err(e) = crate::bootstrap::save_lang_to_config(lang) {
         log::error!("保存语言配置失败: {}", e);
+    } else {
+        state.set_lang(lang).await;
     }
     state.mark_lang_configured().await;
     i18n::mark_lang_configured();

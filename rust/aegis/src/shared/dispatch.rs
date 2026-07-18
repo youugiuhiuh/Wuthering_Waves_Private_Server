@@ -164,10 +164,11 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
             return Ok(());
         }
         let hash = hex::encode(sha2::Sha256::digest(&content));
-        state.set_self_destruct_key_hash(Some(hash.clone())).await;
         if let Err(e) = crate::bootstrap::save_self_destruct_key_hash_to_config(Some(hash.clone()))
         {
             log::error!("保存安全文件雜湊失敗: {}", e);
+        } else {
+            state.set_self_destruct_key_hash(Some(hash.clone())).await;
         }
         let file_display = msg
             .file_name
@@ -208,6 +209,41 @@ mod dispatch_security_file_tests {
     use futures_util::future::BoxFuture;
     use std::sync::Arc;
     use std::time::Instant;
+    use tempfile::TempDir;
+
+    fn setup_test_config() -> TempDir {
+        let dir = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
+        }
+        let _ = std::fs::set_permissions(
+            dir.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        );
+        let key = [0u8; 32];
+        std::fs::write(dir.path().join(".key"), key).unwrap();
+        let init = crate::bootstrap::EncryptedConfig {
+            token: b"t".to_vec(),
+            admin_id: b"0".to_vec(),
+            totp_secret: b"s".to_vec(),
+            self_destruct_key_hash: None,
+            matrix_homeserver: None,
+            matrix_username: None,
+            matrix_password: None,
+            matrix_room_id: None,
+            matrix_store_passphrase: None,
+            lang: None,
+            discord_token: None,
+            discord_admin_id: None,
+            matrix_recovery_key: None,
+        };
+        std::fs::write(
+            dir.path().join("config.enc"),
+            serde_json::to_vec(&init).unwrap(),
+        )
+        .unwrap();
+        dir
+    }
 
     struct TestAdapter;
     #[async_trait]
@@ -250,6 +286,7 @@ mod dispatch_security_file_tests {
 
     #[tokio::test]
     async fn file_captured_when_pending_sets_hash() {
+        let _dir = setup_test_config();
         let secret = TotpManager::generate_new_secret();
         let state = Arc::new(AppState::new(
             42,

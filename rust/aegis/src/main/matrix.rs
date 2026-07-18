@@ -148,7 +148,7 @@ pub async fn connect_matrix(
             println!("✅ 恢复密钥导入成功，设备已加入信任链");
 
             // 用完即焚 — atomic clear
-            crate::bootstrap::clear_matrix_recovery_key(config_dir)?;
+            crate::bootstrap::clear_matrix_recovery_key()?;
             // rk (SecretString) zeroize happens on drop
         }
     }
