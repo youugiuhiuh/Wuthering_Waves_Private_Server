@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -81,6 +81,7 @@ pub struct AppState {
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
     pending_security_file: Mutex<HashMap<String, Instant>>,
+    consumed_counters: Mutex<HashSet<u64>>,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
     lang_configured: Mutex<bool>,
@@ -109,6 +110,7 @@ impl AppState {
             pending_warp_inputs: Mutex::new(HashMap::new()),
             pending_schedule_inputs: Mutex::new(HashMap::new()),
             pending_security_file: Mutex::new(HashMap::new()),
+            consumed_counters: Mutex::new(HashSet::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
             lang: Mutex::new(Lang::Zh),
             lang_configured: Mutex::new(false),
@@ -464,6 +466,21 @@ impl AppState {
         inputs.get_mut(chat_id).map(f)
     }
 
+    pub async fn consume_totp_counter(
+        &self,
+        counter: u64,
+        now: u64,
+        skew_window: u64,
+    ) -> anyhow::Result<()> {
+        let mut counters = self.consumed_counters.lock().await;
+        let threshold = (now / 30).saturating_sub(skew_window);
+        counters.retain(|&c| c >= threshold);
+        if !counters.insert(counter) {
+            anyhow::bail!("counter {} already consumed", counter);
+        }
+        Ok(())
+    }
+
     pub async fn start_security_file_input(&self, chat_id: String, now: Instant) {
         self.pending_security_file.lock().await.insert(chat_id, now);
     }
@@ -807,6 +824,46 @@ mod tests {
                 .take_security_file_input_status("99", Duration::from_secs(60))
                 .await,
             TimeoutStatus::NotTracked
+        );
+    }
+
+    #[tokio::test]
+    async fn consume_totp_counter_accepts_new_counter() {
+        let state = make_state();
+        let now = 1_800_000_000u64;
+        let counter = now / 30;
+        assert!(state.consume_totp_counter(counter, now, 1).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn consume_totp_counter_rejects_duplicate() {
+        let state = make_state();
+        let now = 1_800_000_000u64;
+        let counter = now / 30;
+        state.consume_totp_counter(counter, now, 1).await.unwrap();
+        assert!(state.consume_totp_counter(counter, now, 1).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn consume_totp_counter_prunes_old_counters() {
+        let state = make_state();
+        let now = 1_800_000_000u64;
+        let old_counter = now / 30 - 10;
+        let current_counter = now / 30;
+
+        state
+            .consume_totp_counter(old_counter, now, 1)
+            .await
+            .unwrap();
+        state
+            .consume_totp_counter(current_counter, now, 1)
+            .await
+            .unwrap();
+        assert!(
+            state
+                .consume_totp_counter(old_counter, now, 1)
+                .await
+                .is_ok()
         );
     }
 

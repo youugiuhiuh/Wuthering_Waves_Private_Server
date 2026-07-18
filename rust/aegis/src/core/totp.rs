@@ -34,6 +34,13 @@ impl TotpManager {
         self.totp.generate_current()
     }
 
+    pub fn verify_counter(&self, token: &str, unix_secs: u64) -> Option<u64> {
+        let current = unix_secs / 30;
+        [current.saturating_sub(1), current, current + 1]
+            .into_iter()
+            .find(|&counter| self.totp.generate(counter * 30) == token)
+    }
+
     pub fn generate_new_secret() -> String {
         Secret::generate_secret().to_encoded().to_string()
     }
@@ -116,6 +123,49 @@ mod tests {
         let secret = TotpManager::generate_new_secret();
         let manager = TotpManager::new(&secrecy::SecretString::from(secret)).unwrap();
         assert!(!manager.verify("000000"));
+    }
+
+    #[test]
+    fn verify_counter_returns_matching_counter() {
+        let encoded = TotpManager::generate_new_secret();
+        let manager = TotpManager::new(&secrecy::SecretString::from(encoded.clone())).unwrap();
+        let now = 1_800_000_000;
+        let token = manager.totp.generate(now);
+        assert_eq!(manager.verify_counter(&token, now), Some(now / 30));
+    }
+
+    #[test]
+    fn verify_counter_accepts_adjacent_skew() {
+        let encoded = TotpManager::generate_new_secret();
+        let manager = TotpManager::new(&secrecy::SecretString::from(encoded.clone())).unwrap();
+        let now = 1_800_000_000;
+        let token_early = manager.totp.generate(now - 30);
+        assert_eq!(
+            manager.verify_counter(&token_early, now),
+            Some(now / 30 - 1)
+        );
+        let token_late = manager.totp.generate(now + 30);
+        assert_eq!(manager.verify_counter(&token_late, now), Some(now / 30 + 1));
+    }
+
+    #[test]
+    fn verify_counter_rejects_invalid_token() {
+        let manager = TotpManager::new(&secrecy::SecretString::from(
+            TotpManager::generate_new_secret(),
+        ))
+        .unwrap();
+        assert_eq!(manager.verify_counter("000000", 1_800_000_000), None);
+    }
+
+    #[test]
+    fn verify_counter_rejects_token_outside_skew_window() {
+        let encoded = TotpManager::generate_new_secret();
+        let manager = TotpManager::new(&secrecy::SecretString::from(encoded.clone())).unwrap();
+        let now = 1_800_000_000;
+        let token_early = manager.totp.generate(now - 60);
+        assert_eq!(manager.verify_counter(&token_early, now), None);
+        let token_late = manager.totp.generate(now + 60);
+        assert_eq!(manager.verify_counter(&token_late, now), None);
     }
 
     #[test]
