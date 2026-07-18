@@ -35,10 +35,11 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
                 .await?;
         }
         BotCommand::Auth { code } => {
+            let uid = cmd.principal.subject.parse::<i64>().unwrap_or(0);
             let _ = auth::process_auth_code(
                 &*cmd.adapter,
                 &cmd.target,
-                cmd.user_id,
+                uid,
                 &code,
                 state,
                 5,
@@ -53,7 +54,10 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
             .await;
         }
         BotCommand::Menu => {
-            if !state.is_authorized(cmd.user_id).await {
+            if !state
+                .is_authorized(cmd.principal.subject.parse::<i64>().unwrap_or(0))
+                .await
+            {
                 cmd.adapter
                     .send_message(
                         &cmd.target,
@@ -68,7 +72,10 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
             crate::shared::handlers::menu::send_main_menu(&*cmd.adapter, &cmd.target).await?;
         }
         BotCommand::SetSecurityFile => {
-            if !state.is_recently_authenticated(cmd.user_id).await {
+            if !state
+                .is_recently_authenticated(cmd.principal.subject.parse::<i64>().unwrap_or(0))
+                .await
+            {
                 cmd.adapter
                     .send_message(
                         &cmd.target,
@@ -100,7 +107,9 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use crate::adapters::common::{
+        BotAdapter, MessageContent, MessageId, Platform, Principal, TargetId,
+    };
     use crate::core::totp::TotpManager;
     use async_trait::async_trait;
     use std::sync::Arc;
@@ -174,7 +183,7 @@ mod tests {
         CommandEvent {
             adapter,
             target: TargetId("123".into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             command,
         }
     }
@@ -333,7 +342,7 @@ mod tests {
         let cmd = CommandEvent {
             adapter: Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             command: BotCommand::SetSecurityFile,
         };
         handle(cmd, &state).await.unwrap();

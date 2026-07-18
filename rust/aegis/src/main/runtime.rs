@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use aegis::adapters::common::{MessageId, TargetId};
+use aegis::adapters::common::{MessageId, Platform, Principal, TargetId};
 use aegis::core::i18n;
 use aegis::shared::boundary::{EventContext, handle_dispatch_result};
 use aegis::shared::dispatch_event;
@@ -200,18 +200,21 @@ pub async fn run(
                         _ => (None, None),
                     };
 
+                    let principal = Principal::matrix(event.sender.as_str()).unwrap_or_else(|_| {
+                        Principal::new(Platform::Matrix, "unknown:localhost").unwrap()
+                    });
                     let event = if let Some(ev) = aegis::adapters::matrix::commands::parse_to_event(
                         &text,
                         adapter.clone(),
                         &target,
-                        user_id,
+                        &principal,
                     ) {
                         ev
                     } else {
                         BotEvent::Message(MessageEvent {
                             adapter: adapter.clone(),
                             target: target.clone(),
-                            user_id,
+                            principal,
                             text: Some(text),
                             file_id,
                             file_name,
@@ -243,10 +246,11 @@ pub async fn run(
             cmd: TeloxideCommand,
             state: Arc<AppState>,
         ) -> Result<(), teloxide::RequestError> {
+            let id = msg.from.as_ref().map(|f| f.id.0).unwrap_or(0);
             let event = BotEvent::Command(CommandEvent {
                 adapter: state.adapter.clone(),
                 target: TargetId(msg.chat.id.0.to_string()),
-                user_id: msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0),
+                principal: Principal::telegram(id),
                 command: teloxide_to_bot(cmd),
             });
             let ctx = EventContext::from_event(&event);
@@ -260,11 +264,11 @@ pub async fn run(
             msg: Message,
             state: Arc<AppState>,
         ) -> Result<(), teloxide::RequestError> {
-            let user_id = msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
+            let id = msg.from.as_ref().map(|f| f.id.0).unwrap_or(0);
             let event = BotEvent::Message(MessageEvent {
                 adapter: state.adapter.clone(),
                 target: TargetId(msg.chat.id.0.to_string()),
-                user_id,
+                principal: Principal::telegram(id),
                 text: msg.text().map(|s| s.to_string()),
                 file_id: msg.document().map(|d| d.file.id.clone()).or_else(|| {
                     msg.photo()
@@ -297,7 +301,7 @@ pub async fn run(
             let event = BotEvent::Callback(CallbackEvent {
                 adapter: state.adapter.clone(),
                 target: TargetId(chat_id.0.to_string()),
-                user_id: q.from.id.0.to_string(),
+                principal: Principal::telegram(q.from.id.0),
                 msg_id: MessageId(msg_id.0.to_string()),
                 data: q.data.clone().unwrap_or_default(),
                 callback_id: q.id.clone(),

@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use aegis::adapters::common::BotAdapter;
+use aegis::adapters::common::{BotAdapter, Principal};
 use aegis::adapters::discord::DiscordAdapter;
 use aegis::app::state::AppState;
 use aegis::shared::boundary::{EventContext, handle_dispatch_result};
@@ -157,7 +157,7 @@ impl EventHandler for DiscordHandler {
         let event = BotEvent::Message(MessageEvent {
             adapter: self.adapter.clone(),
             target: aegis::adapters::common::TargetId(self.admin_channel.to_string()),
-            user_id,
+            principal: Principal::discord(msg.author.id.get()),
             text,
             file_id,
             file_name,
@@ -181,7 +181,7 @@ impl EventHandler for DiscordHandler {
                     let event = BotEvent::Command(CommandEvent {
                         adapter: self.adapter.clone(),
                         target: aegis::adapters::common::TargetId(cmd.channel_id.to_string()),
-                        user_id: cmd.user.id.get() as i64,
+                        principal: Principal::discord(cmd.user.id.get()),
                         command,
                     });
                     let ctx = EventContext::from_event(&event);
@@ -195,7 +195,7 @@ impl EventHandler for DiscordHandler {
                 let event = BotEvent::Callback(CallbackEvent {
                     adapter: self.adapter.clone(),
                     target: aegis::adapters::common::TargetId(msg.channel_id.to_string()),
-                    user_id: comp.user.id.get().to_string(),
+                    principal: Principal::discord(comp.user.id.get()),
                     msg_id: aegis::adapters::common::MessageId(msg.id.to_string()),
                     data: comp.data.custom_id.clone(),
                     callback_id: String::new(),

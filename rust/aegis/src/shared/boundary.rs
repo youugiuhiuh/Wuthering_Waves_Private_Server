@@ -15,15 +15,15 @@ pub struct EventContext {
 
 impl EventContext {
     pub fn from_event(event: &BotEvent) -> Self {
-        let (kind, user_id) = match event {
-            BotEvent::Message(m) => ("message", m.user_id),
-            BotEvent::Command(c) => ("command", c.user_id),
-            BotEvent::Callback(c) => ("callback", c.user_id.parse().unwrap_or(0)),
+        let kind = match event {
+            BotEvent::Message(_) => "message",
+            BotEvent::Command(_) => "command",
+            BotEvent::Callback(_) => "callback",
         };
         Self {
             kind,
             platform: event.adapter().platform(),
-            user_id,
+            user_id: event.user_id(),
             target: event.target().0.clone(),
         }
     }
@@ -77,7 +77,9 @@ pub async fn handle_dispatch_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use crate::adapters::common::{
+        BotAdapter, MessageContent, MessageId, Platform, Principal, TargetId,
+    };
     use crate::app::state::AppState;
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
@@ -184,7 +186,7 @@ mod tests {
         BotEvent::Message(MessageEvent {
             adapter,
             target: TargetId("test-123".into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             text: Some("hello".into()),
             file_id: None,
             file_name: None,
@@ -215,7 +217,7 @@ mod tests {
         let event = BotEvent::Command(CommandEvent {
             adapter,
             target: TargetId("r".into()),
-            user_id: 1,
+            principal: Principal::matrix("@u:r").unwrap(),
             command: crate::shared::types::BotCommand::Help,
         });
         let ctx = EventContext::from_event(&event);
@@ -232,7 +234,7 @@ mod tests {
         let event = BotEvent::Callback(CallbackEvent {
             adapter,
             target: TargetId("c".into()),
-            user_id: "7".into(),
+            principal: Principal::discord(7),
             msg_id: MessageId("m".into()),
             data: "cb_data".into(),
             callback_id: "cb1".into(),

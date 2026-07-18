@@ -111,7 +111,10 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
         TimeoutStatus::Active => {}
     }
 
-    if !state.is_authorized(msg.user_id).await {
+    if !state
+        .is_authorized(msg.principal.subject.parse::<i64>().unwrap_or(0))
+        .await
+    {
         adapter
             .send_message(
                 target,
@@ -423,7 +426,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
     let adapter = cb.adapter.as_ref();
     let target = &cb.target;
     let chat_id_str = target.0.clone();
-    let user_id = cb.user_id.parse::<i64>().unwrap_or(0);
+    let user_id = cb.principal.subject.parse::<i64>().unwrap_or(0);
     match cb.data.as_str() {
         "a_destroy_ask" => {
             if !state.is_authorized(user_id).await {
@@ -601,7 +604,9 @@ pub async fn intercept_callback(cb: &CallbackEvent, state: &AppState) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use aegis::adapters::common::{
+        BotAdapter, MessageContent, MessageId, Platform, Principal, TargetId,
+    };
     use aegis::core::security::self_destruct::SelfDestructExecutor;
     use aegis::core::totp::TotpManager;
     use async_trait::async_trait;
@@ -716,7 +721,7 @@ mod tests {
         CallbackEvent {
             adapter: Arc::new(MockAdapter),
             target: TargetId("42".into()),
-            user_id: "42".into(),
+            principal: Principal::telegram(42),
             msg_id: MessageId("0".into()),
             data: data.into(),
             callback_id: "q1".into(),
@@ -756,7 +761,7 @@ mod tests {
         let msg = MessageEvent {
             adapter: Arc::new(MockAdapter),
             target: TargetId("42".into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             text: Some(totp),
             file_id: None,
             file_name: None,
@@ -793,7 +798,7 @@ mod tests {
         let msg = MessageEvent {
             adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             text: Some(totp),
             file_id: None,
             file_name: None,
@@ -820,7 +825,7 @@ mod tests {
         let msg = MessageEvent {
             adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             text: Some("confirm".into()),
             file_id: None,
             file_name: None,
@@ -848,7 +853,7 @@ mod tests {
         let msg = MessageEvent {
             adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             text: Some("cancel".into()),
             file_id: None,
             file_name: None,
@@ -866,7 +871,7 @@ mod tests {
         let msg = MessageEvent {
             adapter: Arc::new(MockAdapter),
             target: TargetId("99".into()),
-            user_id: 42,
+            principal: Principal::telegram(42),
             text: Some("hi".into()),
             file_id: None,
             file_name: None,
