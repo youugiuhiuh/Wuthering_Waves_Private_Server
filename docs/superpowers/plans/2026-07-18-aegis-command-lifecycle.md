@@ -31,7 +31,7 @@
 
 - [ ] **Step 1: Add failing test for `set_process_group`**
 - [ ] **Step 2: Run test — RED**
-- [ ] **Step 3: Implement helpers** — ~30 lines total
+- [ ] **Step 3: Implement helpers** — ~20 lines
 - [ ] **Step 4: Run test — GREEN**
 - [ ] **Step 5: Commit** `git add src/core/cmd_async.rs && git commit -m "feat: process-group helpers for cmd_async"`
 
