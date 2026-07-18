@@ -181,8 +181,7 @@ impl SingBoxInstaller {
             .context("创建临时目录失败")?;
         let temp_dir = temp.path();
 
-        let archive_path =
-            download_verified_archive(&api_client, &release, temp_dir).await?;
+        let archive_path = download_verified_archive(&api_client, &release, temp_dir).await?;
         let candidate = extract_candidate(&archive_path, temp_dir, &release)?;
         Self::deploy_candidate(&candidate, &release, Path::new(singbox::BIN)).await?;
 

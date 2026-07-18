@@ -3,7 +3,7 @@ use crate::core::i18n::Lang;
 use anyhow::Result;
 use async_trait::async_trait;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TargetId(pub String);
 
 #[derive(Debug, Clone)]
@@ -83,6 +83,12 @@ impl Principal {
     pub fn key(&self) -> String {
         format!("{:?}:{}", self.platform, self.subject)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DestructKey {
+    pub principal: Principal,
+    pub target: TargetId,
 }
 
 #[derive(Debug, Clone, Copy)]

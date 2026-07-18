@@ -255,7 +255,10 @@ mod tests {
             calls: calls.clone(),
         });
 
-        aegis::core::security::self_destruct::trigger(executor);
+        let calls_clone = calls.clone();
+        tokio::task::spawn(async move {
+            let _ = aegis::core::security::self_destruct::execute_supervised(executor).await;
+        });
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);

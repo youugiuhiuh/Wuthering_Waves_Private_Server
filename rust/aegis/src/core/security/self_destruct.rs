@@ -1,7 +1,6 @@
 use anyhow::Result;
 use futures_util::future::BoxFuture;
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::core::system::maintenance::MaintenanceManager;
 
@@ -21,13 +20,8 @@ pub fn production_executor() -> Arc<dyn SelfDestructExecutor> {
     Arc::new(ProductionSelfDestructExecutor)
 }
 
-pub fn trigger(executor: Arc<dyn SelfDestructExecutor>) {
-    tokio::task::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        if let Err(err) = executor.execute().await {
-            eprintln!("Self destruct failed: {}", err);
-        }
-    });
+pub async fn execute_supervised(executor: Arc<dyn SelfDestructExecutor>) -> Result<()> {
+    executor.execute().await
 }
 
 #[cfg(test)]
@@ -56,24 +50,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_trigger_calls_executor() {
+    async fn test_execute_supervised_returns_ok() {
         let mut mock = MockExecutorMock::new();
         mock.expect_execute()
             .times(1)
             .returning(|| Box::pin(async { Ok(()) }));
 
-        trigger(Arc::new(mock));
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        let result = execute_supervised(Arc::new(mock)).await;
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
-    async fn test_trigger_handles_executor_error() {
+    async fn test_execute_supervised_propagates_error() {
         let mut mock = MockExecutorMock::new();
         mock.expect_execute()
             .times(1)
             .returning(|| Box::pin(async { Err(anyhow::anyhow!("test error")) }));
 
-        trigger(Arc::new(mock));
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        let result = execute_supervised(Arc::new(mock)).await;
+        assert!(result.is_err());
     }
 }

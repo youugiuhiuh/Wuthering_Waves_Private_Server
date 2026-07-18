@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use aegis::adapters::common::{BotAdapter, Platform, Principal};
+use aegis::adapters::common::{BotAdapter, DestructKey, Platform, Principal};
 use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::system::scheduler::task_types::TaskType;
@@ -16,13 +16,31 @@ use aegis::shared::types::TimeoutStatus;
 const RECENT_AUTH_WINDOW_SECS: u64 = 5 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(clippy::enum_variant_names)]
-pub enum DestructStep {
+pub enum DestructStatus {
     AwaitFirstTotp,
-    AwaitConfirm,
+    AwaitFirstConfirm,
     AwaitSecondTotp,
     AwaitSecurityFile,
     AwaitFinalConfirm,
+    Cancelled,
+    Expired,
+    Locked,
+    Executing,
+    Succeeded,
+    Failed,
+}
+
+impl DestructStatus {
+    pub fn is_active(&self) -> bool {
+        matches!(
+            self,
+            DestructStatus::AwaitFirstTotp
+                | DestructStatus::AwaitFirstConfirm
+                | DestructStatus::AwaitSecondTotp
+                | DestructStatus::AwaitSecurityFile
+                | DestructStatus::AwaitFinalConfirm
+        )
+    }
 }
 
 #[allow(dead_code)]
@@ -40,10 +58,17 @@ pub enum AuthFailureOutcome {
 
 #[derive(Debug, Clone)]
 pub struct DestructState {
-    pub step: DestructStep,
-    pub first_totp: String,
-    pub second_totp: String,
-    pub last_action_time: Instant,
+    pub status: DestructStatus,
+    pub deadline: Instant,
+    pub failed_attempts: u8,
+    pub accepted_counters: Vec<u64>,
+    pub final_nonce: Option<[u8; 32]>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DestructFailure {
+    Delay(Duration),
+    Locked,
 }
 
 #[derive(Debug, Clone)]
@@ -76,11 +101,12 @@ pub struct AppState {
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
     sessions: Mutex<HashMap<String, Instant>>,
     failed_attempts: Mutex<HashMap<String, FailedRecord>>,
-    pending_destructs: Mutex<HashMap<String, DestructState>>,
+    pending_destructs: Mutex<HashMap<DestructKey, DestructState>>,
     self_destruct_key_hash: Mutex<Option<String>>,
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
     pending_security_file: Mutex<HashMap<String, Instant>>,
+    consumed_counters: Mutex<HashSet<u64>>,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
     lang_configured: Mutex<bool>,
@@ -109,6 +135,7 @@ impl AppState {
             pending_warp_inputs: Mutex::new(HashMap::new()),
             pending_schedule_inputs: Mutex::new(HashMap::new()),
             pending_security_file: Mutex::new(HashMap::new()),
+            consumed_counters: Mutex::new(HashSet::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
             lang: Mutex::new(Lang::Zh),
             lang_configured: Mutex::new(false),
@@ -279,58 +306,79 @@ impl AppState {
         }
     }
 
-    pub async fn begin_destruct(&self, chat_id: String, now: Instant) {
+    pub async fn begin_destruct(&self, key: &DestructKey, now: Instant) -> Result<(), String> {
+        let hash = self.self_destruct_key_hash.lock().await;
+        if hash.is_none() {
+            return Err("self-destruct key not configured".to_string());
+        }
+        drop(hash);
+
         self.pending_destructs.lock().await.insert(
-            chat_id,
+            key.clone(),
             DestructState {
-                step: DestructStep::AwaitFirstTotp,
-                first_totp: String::new(),
-                second_totp: String::new(),
-                last_action_time: now,
+                status: DestructStatus::AwaitFirstTotp,
+                deadline: now + Duration::from_secs(300),
+                failed_attempts: 0,
+                accepted_counters: Vec::new(),
+                final_nonce: None,
             },
         );
+        Ok(())
     }
 
-    pub async fn cancel_destruct(&self, chat_id: &str) -> bool {
-        self.pending_destructs
-            .lock()
-            .await
-            .remove(chat_id)
-            .is_some()
+    pub async fn cancel_destruct(&self, key: &DestructKey) -> bool {
+        self.pending_destructs.lock().await.remove(key).is_some()
     }
 
-    pub async fn destruct_snapshot(&self, chat_id: &str) -> Option<DestructState> {
-        self.pending_destructs.lock().await.get(chat_id).cloned()
+    pub async fn destruct_snapshot(&self, key: &DestructKey) -> Option<DestructState> {
+        self.pending_destructs.lock().await.get(key).cloned()
     }
 
-    pub async fn touch_destruct(
+    pub async fn ensure_destruct_active(
         &self,
-        chat_id: &str,
+        key: &DestructKey,
         now: Instant,
-        timeout: Duration,
-    ) -> TimeoutStatus {
+    ) -> Result<(), String> {
+        let destructs = self.pending_destructs.lock().await;
+        let state = destructs
+            .get(key)
+            .ok_or_else(|| "no pending destruct".to_string())?;
+        if !state.status.is_active() {
+            return Err("destruct not in active state".to_string());
+        }
+        if state.deadline <= now {
+            return Err("destruct deadline expired".to_string());
+        }
+        Ok(())
+    }
+
+    pub async fn record_destruct_failure(&self, key: &DestructKey) -> Result<(), DestructFailure> {
         let mut destructs = self.pending_destructs.lock().await;
-        match destructs.get_mut(chat_id) {
-            Some(state) if state.last_action_time.elapsed() > timeout => TimeoutStatus::Expired,
-            Some(state) => {
-                state.last_action_time = now;
-                TimeoutStatus::Active
+        let state = destructs.get_mut(key).ok_or(DestructFailure::Locked)?;
+
+        match state.failed_attempts {
+            0..=2 => {
+                state.failed_attempts += 1;
+                Err(DestructFailure::Delay(Duration::from_secs(
+                    1 << (state.failed_attempts - 1),
+                )))
             }
-            None => TimeoutStatus::NotTracked,
+            _ => {
+                state.status = DestructStatus::Locked;
+                Err(DestructFailure::Locked)
+            }
         }
     }
 
     pub async fn advance_destruct_step(
         &self,
-        chat_id: &str,
-        expected: DestructStep,
-        next: DestructStep,
-        now: Instant,
+        key: &DestructKey,
+        expected: DestructStatus,
+        next: DestructStatus,
     ) -> bool {
-        self.with_destruct(chat_id, |state| {
-            if state.step == expected {
-                state.step = next;
-                state.last_action_time = now;
+        self.with_destruct(key, |state| {
+            if state.status == expected {
+                state.status = next;
                 true
             } else {
                 false
@@ -338,77 +386,53 @@ impl AppState {
         })
         .await
         .unwrap_or(false)
-    }
-
-    pub async fn confirm_first_destruct_totp(
-        &self,
-        chat_id: &str,
-        code: &str,
-        now: Instant,
-    ) -> bool {
-        self.with_destruct(chat_id, |state| {
-            if state.step == DestructStep::AwaitFirstTotp {
-                state.step = DestructStep::AwaitConfirm;
-                state.first_totp = code.to_string();
-                state.last_action_time = now;
-                true
-            } else {
-                false
-            }
-        })
-        .await
-        .unwrap_or(false)
-    }
-
-    pub async fn confirm_second_destruct_totp(
-        &self,
-        chat_id: &str,
-        code: &str,
-        now: Instant,
-    ) -> Result<bool, String> {
-        let snapshot = self.destruct_snapshot(chat_id).await;
-        let Some(snapshot) = snapshot else {
-            return Ok(false);
-        };
-        if snapshot.step != DestructStep::AwaitSecondTotp {
-            return Ok(false);
-        }
-        if snapshot.first_totp == code {
-            return Err(snapshot.first_totp);
-        }
-
-        Ok(self
-            .with_destruct(chat_id, |state| {
-                if state.step == DestructStep::AwaitSecondTotp {
-                    state.step = DestructStep::AwaitSecurityFile;
-                    state.second_totp = code.to_string();
-                    state.last_action_time = now;
-                    true
-                } else {
-                    false
-                }
-            })
-            .await
-            .unwrap_or(false))
-    }
-
-    pub async fn mark_destruct_file_verified(&self, chat_id: &str, now: Instant) -> bool {
-        self.advance_destruct_step(
-            chat_id,
-            DestructStep::AwaitSecurityFile,
-            DestructStep::AwaitFinalConfirm,
-            now,
-        )
-        .await
     }
 
     pub async fn with_destruct<R>(
         &self,
-        chat_id: &str,
+        key: &DestructKey,
         f: impl FnOnce(&mut DestructState) -> R,
     ) -> Option<R> {
         let mut destructs = self.pending_destructs.lock().await;
-        destructs.get_mut(chat_id).map(f)
+        destructs.get_mut(key).map(f)
+    }
+
+    pub async fn has_self_destruct_key(&self) -> bool {
+        self.self_destruct_key_hash.lock().await.is_some()
+    }
+
+    pub async fn claim_execution(
+        &self,
+        key: &DestructKey,
+        nonce: Option<&[u8; 32]>,
+        now: Instant,
+    ) -> bool {
+        let mut flows = self.pending_destructs.lock().await;
+        let Some(flow) = flows.get_mut(key) else {
+            return false;
+        };
+        if flow.deadline <= now || flow.status != DestructStatus::AwaitFinalConfirm {
+            return false;
+        }
+        match (flow.final_nonce.as_ref(), nonce) {
+            (Some(expected), Some(given)) if expected == given => {}
+            (None, None) => {} // text flow without nonce
+            _ => return false,
+        }
+        flow.final_nonce = None;
+        flow.status = DestructStatus::Executing;
+        true
+    }
+
+    pub async fn complete_execution(&self, key: &DestructKey, success: bool) {
+        let mut flows = self.pending_destructs.lock().await;
+        if let Some(flow) = flows.get_mut(key) {
+            flow.status = if success {
+                DestructStatus::Succeeded
+            } else {
+                DestructStatus::Failed
+            };
+        }
     }
 
     pub async fn start_warp_input(&self, chat_id: String, now: Instant) {
@@ -462,6 +486,21 @@ impl AppState {
     ) -> Option<R> {
         let mut inputs = self.pending_schedule_inputs.lock().await;
         inputs.get_mut(chat_id).map(f)
+    }
+
+    pub async fn consume_totp_counter(
+        &self,
+        counter: u64,
+        now: u64,
+        skew_window: u64,
+    ) -> anyhow::Result<()> {
+        let mut counters = self.consumed_counters.lock().await;
+        let threshold = (now / 30).saturating_sub(skew_window);
+        counters.retain(|&c| c >= threshold);
+        if !counters.insert(counter) {
+            anyhow::bail!("counter {} already consumed", counter);
+        }
+        Ok(())
     }
 
     pub async fn start_security_file_input(&self, chat_id: String, now: Instant) {
@@ -565,6 +604,21 @@ mod tests {
         )
     }
 
+    fn make_state_with_key_hash() -> AppState {
+        AppState::new(
+            42,
+            None,
+            TotpManager::new(&secrecy::SecretString::from(
+                TotpManager::generate_new_secret(),
+            ))
+            .unwrap(),
+            Arc::new(NoopExecutor),
+            Some("test-hash".to_string()),
+            600,
+            Arc::new(MockAdapter),
+        )
+    }
+
     fn p(uid: i64) -> Principal {
         Principal::telegram(uid as u64)
     }
@@ -599,46 +653,65 @@ mod tests {
 
     #[tokio::test]
     async fn destruct_step_transitions_validate_expected_flow() {
-        let state = make_state();
-        let chat_id = "1".to_string();
+        let state = make_state_with_key_hash();
+        let key = DestructKey {
+            principal: p(1),
+            target: TargetId("1".into()),
+        };
         let now = Instant::now();
-        state.begin_destruct(chat_id.clone(), now).await;
-        assert!(
-            state
-                .confirm_first_destruct_totp(&chat_id, "111111", now)
-                .await
-        );
+        state.begin_destruct(&key, now).await.unwrap();
         assert!(
             state
                 .advance_destruct_step(
-                    &chat_id,
-                    DestructStep::AwaitConfirm,
-                    DestructStep::AwaitSecondTotp,
-                    now,
+                    &key,
+                    DestructStatus::AwaitFirstTotp,
+                    DestructStatus::AwaitFirstConfirm,
                 )
                 .await
         );
         assert!(
             state
-                .confirm_second_destruct_totp(&chat_id, "222222", now)
+                .advance_destruct_step(
+                    &key,
+                    DestructStatus::AwaitFirstConfirm,
+                    DestructStatus::AwaitSecondTotp,
+                )
                 .await
-                .unwrap()
         );
-        assert!(state.mark_destruct_file_verified(&chat_id, now).await);
+        assert!(
+            state
+                .advance_destruct_step(
+                    &key,
+                    DestructStatus::AwaitSecondTotp,
+                    DestructStatus::AwaitSecurityFile,
+                )
+                .await
+        );
+        assert!(
+            state
+                .advance_destruct_step(
+                    &key,
+                    DestructStatus::AwaitSecurityFile,
+                    DestructStatus::AwaitFinalConfirm,
+                )
+                .await
+        );
     }
 
     #[tokio::test]
     async fn destruct_timeout_is_detected() {
-        let state = make_state();
-        let chat_id = "2".to_string();
-        state
-            .begin_destruct(chat_id.clone(), Instant::now() - Duration::from_secs(61))
-            .await;
-        assert_eq!(
+        let state = make_state_with_key_hash();
+        let key = DestructKey {
+            principal: p(1),
+            target: TargetId("2".into()),
+        };
+        let past = Instant::now() - Duration::from_secs(301);
+        state.begin_destruct(&key, past).await.unwrap();
+        assert!(
             state
-                .touch_destruct(&chat_id, Instant::now(), Duration::from_secs(60))
-                .await,
-            TimeoutStatus::Expired
+                .ensure_destruct_active(&key, Instant::now())
+                .await
+                .is_err()
         );
     }
 
@@ -713,16 +786,23 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_destruct_returns_true_when_exists() {
-        let state = make_state();
-        let chat_id = "5".to_string();
-        state.begin_destruct(chat_id.clone(), Instant::now()).await;
-        assert!(state.cancel_destruct(&chat_id).await);
+        let state = make_state_with_key_hash();
+        let key = DestructKey {
+            principal: p(1),
+            target: TargetId("5".into()),
+        };
+        state.begin_destruct(&key, Instant::now()).await.unwrap();
+        assert!(state.cancel_destruct(&key).await);
     }
 
     #[tokio::test]
     async fn cancel_destruct_returns_false_when_not_exists() {
-        let state = make_state();
-        assert!(!state.cancel_destruct("999").await);
+        let state = make_state_with_key_hash();
+        let key = DestructKey {
+            principal: p(999),
+            target: TargetId("999".into()),
+        };
+        assert!(!state.cancel_destruct(&key).await);
     }
 
     #[tokio::test]
@@ -766,9 +846,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn destruct_snapshot_returns_none_for_unknown_chat() {
-        let state = make_state();
-        let snapshot = state.destruct_snapshot("999").await;
+    async fn destruct_snapshot_returns_none_for_unknown_key() {
+        let state = make_state_with_key_hash();
+        let key = DestructKey {
+            principal: p(999),
+            target: TargetId("999".into()),
+        };
+        let snapshot = state.destruct_snapshot(&key).await;
         assert!(snapshot.is_none());
     }
 
@@ -811,6 +895,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn consume_totp_counter_accepts_new_counter() {
+        let state = make_state();
+        let now = 1_800_000_000u64;
+        let counter = now / 30;
+        assert!(state.consume_totp_counter(counter, now, 1).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn consume_totp_counter_rejects_duplicate() {
+        let state = make_state();
+        let now = 1_800_000_000u64;
+        let counter = now / 30;
+        state.consume_totp_counter(counter, now, 1).await.unwrap();
+        assert!(state.consume_totp_counter(counter, now, 1).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn consume_totp_counter_prunes_old_counters() {
+        let state = make_state();
+        let now = 1_800_000_000u64;
+        let old_counter = now / 30 - 10;
+        let current_counter = now / 30;
+
+        state
+            .consume_totp_counter(old_counter, now, 1)
+            .await
+            .unwrap();
+        state
+            .consume_totp_counter(current_counter, now, 1)
+            .await
+            .unwrap();
+        assert!(
+            state
+                .consume_totp_counter(old_counter, now, 1)
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
     async fn discord_admin_id_is_recognized_as_admin() {
         let state = AppState::new(
             42,
@@ -826,5 +950,118 @@ mod tests {
         );
         assert!(state.is_admin_user(&Principal::discord(999)));
         assert!(!state.is_admin_user(&Principal::discord(888)));
+    }
+
+    #[tokio::test]
+    async fn destruct_key_identity_distinguishes_principal_and_target() {
+        let key1 = DestructKey {
+            principal: p(1),
+            target: TargetId("a".into()),
+        };
+        let key2 = DestructKey {
+            principal: p(2),
+            target: TargetId("a".into()),
+        };
+        let key3 = DestructKey {
+            principal: p(1),
+            target: TargetId("b".into()),
+        };
+        let key4 = DestructKey {
+            principal: p(1),
+            target: TargetId("a".into()),
+        };
+        assert_ne!(key1, key2);
+        assert_ne!(key1, key3);
+        assert_eq!(key1, key4);
+    }
+
+    #[tokio::test]
+    async fn begin_destruct_sets_300s_deadline() {
+        let state = make_state_with_key_hash();
+        let key = DestructKey {
+            principal: p(1),
+            target: TargetId("deadline1".into()),
+        };
+        let now = Instant::now();
+        state.begin_destruct(&key, now).await.unwrap();
+        let snap = state.destruct_snapshot(&key).await.unwrap();
+        assert_eq!(snap.deadline, now + Duration::from_secs(300));
+    }
+
+    #[tokio::test]
+    async fn no_destruct_transition_changes_deadline() {
+        let state = make_state_with_key_hash();
+        let key = DestructKey {
+            principal: p(1),
+            target: TargetId("deadline2".into()),
+        };
+        let now = Instant::now();
+        state.begin_destruct(&key, now).await.unwrap();
+        let deadline = state.destruct_snapshot(&key).await.unwrap().deadline;
+        state
+            .advance_destruct_step(
+                &key,
+                DestructStatus::AwaitFirstTotp,
+                DestructStatus::AwaitFirstConfirm,
+            )
+            .await;
+        assert_eq!(
+            state.destruct_snapshot(&key).await.unwrap().deadline,
+            deadline
+        );
+        state
+            .advance_destruct_step(
+                &key,
+                DestructStatus::AwaitFirstConfirm,
+                DestructStatus::AwaitSecondTotp,
+            )
+            .await;
+        assert_eq!(
+            state.destruct_snapshot(&key).await.unwrap().deadline,
+            deadline
+        );
+    }
+
+    #[tokio::test]
+    async fn begin_destruct_rejects_when_no_key_hash() {
+        let state = make_state();
+        let key = DestructKey {
+            principal: p(1),
+            target: TargetId("nokey".into()),
+        };
+        assert!(state.begin_destruct(&key, Instant::now()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn destruct_failure_delays_escalate() {
+        let state = make_state_with_key_hash();
+        let key = DestructKey {
+            principal: p(1),
+            target: TargetId("fail".into()),
+        };
+        state.begin_destruct(&key, Instant::now()).await.unwrap();
+        let r1 = state.record_destruct_failure(&key).await;
+        assert!(r1.is_err());
+        assert_eq!(
+            r1.unwrap_err(),
+            DestructFailure::Delay(Duration::from_secs(1))
+        );
+        let r2 = state.record_destruct_failure(&key).await;
+        assert!(r2.is_err());
+        assert_eq!(
+            r2.unwrap_err(),
+            DestructFailure::Delay(Duration::from_secs(2))
+        );
+        let r3 = state.record_destruct_failure(&key).await;
+        assert!(r3.is_err());
+        assert_eq!(
+            r3.unwrap_err(),
+            DestructFailure::Delay(Duration::from_secs(4))
+        );
+        let r4 = state.record_destruct_failure(&key).await;
+        assert!(r4.is_err());
+        assert_eq!(r4.unwrap_err(), DestructFailure::Locked);
+        let snap = state.destruct_snapshot(&key).await.unwrap();
+        assert_eq!(snap.status, DestructStatus::Locked);
     }
 }
