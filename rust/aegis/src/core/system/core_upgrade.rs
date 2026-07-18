@@ -1,8 +1,8 @@
 use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::cmd_async::run_cmd_status;
 use crate::core::network::release_api::{
-    ReleaseResponse, build_asset_request, fetch_github_json, find_named_asset, github_api_client,
-    github_asset_client, parse_digest, parse_xray_sha256_dgst,
+    ReleaseResponse, build_asset_request, fetch_github_json, fetch_github_json_with_query,
+    find_named_asset, github_api_client, github_asset_client, parse_digest, parse_xray_sha256_dgst,
 };
 use crate::core::paths::xray;
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
@@ -33,6 +33,10 @@ fn xray_release_path(tag: Option<&str>) -> String {
         Some(tag) => format!("repos/{XRAY_RELEASE_OWNER}/{XRAY_RELEASE_REPO}/releases/tags/{tag}"),
         None => format!("repos/{XRAY_RELEASE_OWNER}/{XRAY_RELEASE_REPO}/releases/latest"),
     }
+}
+
+fn xray_releases_path() -> String {
+    format!("repos/{XRAY_RELEASE_OWNER}/{XRAY_RELEASE_REPO}/releases")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,11 +186,16 @@ impl WwpsCoreUpgradeManager {
             return Ok(vec![]);
         }
 
-        let path =
-            format!("repos/{XRAY_RELEASE_OWNER}/{XRAY_RELEASE_REPO}/releases?per_page={limit}");
-
-        let releases: Vec<ReleaseResponse> =
-            fetch_github_json(&self.api_client, &path, self.github_token.as_deref()).await?;
+        let path = xray_releases_path();
+        let per_page = limit.to_string();
+        let query = [("per_page", per_page.as_str())];
+        let releases: Vec<ReleaseResponse> = fetch_github_json_with_query(
+            &self.api_client,
+            &path,
+            &query,
+            self.github_token.as_deref(),
+        )
+        .await?;
 
         Ok(releases
             .into_iter()
@@ -607,6 +616,13 @@ async fn verify_xray_archive(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn xray_recent_releases_path_contains_no_query() {
+        let path = xray_releases_path();
+        assert_eq!(path, "repos/XTLS/Xray-core/releases");
+        assert!(!path.contains('?'));
+    }
 
     #[test]
     fn xray_release_identity_is_fixed() {

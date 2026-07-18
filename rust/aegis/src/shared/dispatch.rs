@@ -5,8 +5,8 @@ use sha2::Digest;
 
 use crate::adapters::common::MessageContent;
 use crate::app::auth;
-use crate::shared::error::DispatchError;
 use crate::app::state::AppState;
+use crate::shared::error::DispatchError;
 use crate::shared::handlers::message::{self, MessageAction};
 use crate::shared::types::{
     BotCommand, BotEvent, CallbackEvent, CommandEvent, HandlerAction, MessageEvent, TimeoutStatus,

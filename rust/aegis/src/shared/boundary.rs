@@ -115,7 +115,11 @@ mod tests {
         ) -> anyhow::Result<()> {
             Ok(())
         }
-        async fn delete_message(&self, _target: &TargetId, _msg_id: &MessageId) -> anyhow::Result<()> {
+        async fn delete_message(
+            &self,
+            _target: &TargetId,
+            _msg_id: &MessageId,
+        ) -> anyhow::Result<()> {
             Ok(())
         }
         fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
@@ -145,7 +149,11 @@ mod tests {
         ) -> anyhow::Result<()> {
             Ok(())
         }
-        async fn delete_message(&self, _target: &TargetId, _msg_id: &MessageId) -> anyhow::Result<()> {
+        async fn delete_message(
+            &self,
+            _target: &TargetId,
+            _msg_id: &MessageId,
+        ) -> anyhow::Result<()> {
             Ok(())
         }
         fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
