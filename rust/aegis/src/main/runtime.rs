@@ -227,8 +227,6 @@ pub async fn run(
                             target: target.clone(),
                             principal,
                             text: Some(text),
-                            file_id: None,
-                            file_name: None,
                             attachment,
                             reply_to_text: None,
                         })
@@ -298,8 +296,6 @@ pub async fn run(
                 target: TargetId(msg.chat.id.0.to_string()),
                 principal: Principal::telegram(id),
                 text: msg.text().map(|s| s.to_string()),
-                file_id: None,
-                file_name: None,
                 attachment,
                 reply_to_text: msg
                     .reply_to_message()

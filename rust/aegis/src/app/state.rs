@@ -581,9 +581,6 @@ mod tests {
         async fn delete_message(&self, _target: &TargetId, _msg_id: &MessageId) -> Result<()> {
             Ok(())
         }
-        async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
-            Ok(Vec::new())
-        }
         fn capabilities(&self) -> aegis::adapters::common::PlatformCapabilities {
             aegis::adapters::common::PlatformCapabilities::TELEGRAM
         }

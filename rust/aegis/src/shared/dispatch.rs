@@ -1,9 +1,8 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use sha2::Digest;
 
-use crate::adapters::common::MessageContent;
+use crate::adapters::common::{AttachmentError, MessageContent};
 use crate::app::auth;
 use crate::app::state::AppState;
 use crate::shared::error::DispatchError;
@@ -108,7 +107,7 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
         &*msg.adapter,
         &msg.target,
         msg.text.as_deref(),
-        msg.file_id.is_some(),
+        msg.attachment.is_some(),
         state,
     )
     .await?;
@@ -138,52 +137,52 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
     }
 
     let file_timeout = Duration::from_secs(180);
-    if let Some(ref fid) = msg.file_id
+    if let Some(ref attachment) = msg.attachment
         && state
             .take_security_file_input_status(&msg.target.0, file_timeout)
             .await
             == TimeoutStatus::Active
     {
-        const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
-        let content = msg.adapter.download_file(fid).await?;
-        if content.len() as u64 > MAX_FILE_SIZE {
-            msg.adapter
-                .send_message(
-                    &msg.target,
-                    MessageContent {
-                        text: rust_i18n::t!(
-                            "bot_commands.file_too_big",
-                            "0" => content.len() as u64,
-                            "1" => MAX_FILE_SIZE
-                        )
-                        .into(),
-                        markup: None,
-                    },
-                )
-                .await?;
-            return Ok(());
-        }
-        let hash = hex::encode(sha2::Sha256::digest(&content));
-        if let Err(e) = crate::bootstrap::save_self_destruct_key_hash_to_config(Some(hash.clone()))
+        let verified = match msg.adapter.download_attachment(attachment, None).await {
+            Ok(verified) => verified,
+            Err(AttachmentError::MetadataTooLarge) | Err(AttachmentError::TooLarge { .. }) => {
+                msg.adapter
+                    .send_message(
+                        &msg.target,
+                        MessageContent {
+                            text: rust_i18n::t!(
+                                "bot_commands.file_too_big",
+                                "0" => crate::adapters::common::MAX_ATTACHMENT_BYTES + 1,
+                                "1" => crate::adapters::common::MAX_ATTACHMENT_BYTES
+                            )
+                            .into(),
+                            markup: None,
+                        },
+                    )
+                    .await?;
+                return Ok(());
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let hash = verified.sha256_hex();
+        if let Err(error) =
+            crate::bootstrap::save_self_destruct_key_hash_to_config(Some(hash.clone()))
         {
-            log::error!("保存安全文件雜湊失敗: {}", e);
+            log::error!("保存安全文件雜湊失敗: {}", error);
         } else {
-            state.set_self_destruct_key_hash(Some(hash.clone())).await;
+            state.set_self_destruct_key_hash(Some(hash)).await;
         }
-        let file_display = msg
+        let file_display = attachment
             .file_name
             .as_ref()
-            .map(|n| format!("{} | {}", n, &hash[..8]))
-            .unwrap_or_else(|| hash[..8].to_string());
+            .map(|name| format!("{} | {}", name, verified.hash_prefix()))
+            .unwrap_or_else(|| verified.hash_prefix());
         msg.adapter
             .send_message(
                 &msg.target,
                 MessageContent {
-                    text: rust_i18n::t!(
-                        "bot_commands.security_file_set",
-                        "0" => file_display
-                    )
-                    .into(),
+                    text: rust_i18n::t!("bot_commands.security_file_set", "0" => file_display)
+                        .into(),
                     markup: None,
                 },
             )
@@ -199,7 +198,8 @@ mod dispatch_security_file_tests {
     use super::*;
 
     use crate::adapters::common::{
-        BotAdapter, MessageContent, MessageId, Platform, Principal, TargetId,
+        Attachment, AttachmentError, BotAdapter, MessageContent, MessageId, Platform, Principal,
+        TargetId, VerifiedAttachment,
     };
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
@@ -207,6 +207,7 @@ mod dispatch_security_file_tests {
 
     use async_trait::async_trait;
     use futures_util::future::BoxFuture;
+    use sha2::Digest;
     use std::sync::Arc;
     use std::time::Instant;
     use tempfile::TempDir;
@@ -269,8 +270,15 @@ mod dispatch_security_file_tests {
         async fn delete_message(&self, _t: &TargetId, _m: &MessageId) -> anyhow::Result<()> {
             Ok(())
         }
-        async fn download_file(&self, fid: &str) -> anyhow::Result<Vec<u8>> {
-            Ok(fid.as_bytes().to_vec())
+        async fn download_attachment(
+            &self,
+            attachment: &Attachment,
+            expected_sha256: Option<[u8; 32]>,
+        ) -> std::result::Result<VerifiedAttachment, AttachmentError> {
+            assert!(expected_sha256.is_none());
+            Ok(VerifiedAttachment::from_test_bytes(
+                attachment.file_id.as_bytes(),
+            ))
         }
         fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
             crate::adapters::common::PlatformCapabilities::TELEGRAM
@@ -309,14 +317,18 @@ mod dispatch_security_file_tests {
             target: TargetId("42".into()),
             principal: Principal::telegram(42),
             text: None,
-            file_id: Some("test-file".into()),
-            file_name: Some("test.txt".into()),
-            attachment: None,
+            attachment: Some(Attachment {
+                file_id: "test-file".into(),
+                file_name: Some("test.txt".into()),
+                declared_size: None,
+            }),
             reply_to_text: None,
         };
         handle_message(msg, &state).await.unwrap();
-        let hash = state.self_destruct_key_hash().await;
-        assert!(hash.is_some(), "hash should be set after file capture");
+        assert_eq!(
+            state.self_destruct_key_hash().await,
+            Some(hex::encode(sha2::Sha256::digest(b"test-file")))
+        );
     }
 }
 
@@ -372,9 +384,6 @@ mod tests {
             _msg_id: &MessageId,
         ) -> anyhow::Result<()> {
             Ok(())
-        }
-        async fn download_file(&self, _file_id: &str) -> anyhow::Result<Vec<u8>> {
-            Ok(Vec::new())
         }
         fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
             crate::adapters::common::PlatformCapabilities::TELEGRAM
@@ -440,8 +449,6 @@ mod tests {
             target: TargetId(target.into()),
             principal: Principal::telegram(42),
             text,
-            file_id: None,
-            file_name: None,
             attachment: None,
             reply_to_text: None,
         })

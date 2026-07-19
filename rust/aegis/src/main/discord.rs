@@ -160,8 +160,6 @@ impl EventHandler for DiscordHandler {
             target: aegis::adapters::common::TargetId(self.admin_channel.to_string()),
             principal: Principal::discord(msg.author.id.get()),
             text,
-            file_id: None,
-            file_name: None,
             attachment,
             reply_to_text: None,
         });

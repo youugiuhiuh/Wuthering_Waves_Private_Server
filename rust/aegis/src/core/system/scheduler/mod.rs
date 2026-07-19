@@ -448,9 +448,6 @@ mod tests {
             ) -> Result<()> {
                 Ok(())
             }
-            async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
-                Ok(Vec::new())
-            }
             fn capabilities(&self) -> PlatformCapabilities {
                 PlatformCapabilities::TELEGRAM
             }

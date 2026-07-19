@@ -149,9 +149,6 @@ mod tests {
         async fn delete_message(&self, _target: &TargetId, _msg_id: &MessageId) -> AnyResult<()> {
             Ok(())
         }
-        async fn download_file(&self, _file_id: &str) -> AnyResult<Vec<u8>> {
-            Ok(Vec::new())
-        }
         fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
             crate::adapters::common::PlatformCapabilities::TELEGRAM
         }
@@ -305,9 +302,6 @@ mod tests {
         }
         async fn delete_message(&self, _t: &TargetId, _m: &MessageId) -> AnyResult<()> {
             Ok(())
-        }
-        async fn download_file(&self, _f: &str) -> AnyResult<Vec<u8>> {
-            Ok(vec![])
         }
         fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
             crate::adapters::common::PlatformCapabilities::TELEGRAM

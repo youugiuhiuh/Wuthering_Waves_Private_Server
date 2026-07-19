@@ -75,8 +75,6 @@ pub struct MessageEvent {
     pub target: TargetId,
     pub principal: Principal,
     pub text: Option<String>,
-    pub file_id: Option<String>,
-    pub file_name: Option<String>,
     pub attachment: Option<Attachment>,
     pub reply_to_text: Option<String>,
 }
@@ -146,8 +144,6 @@ mod event_tests {
             target: TargetId("123".into()),
             principal: Principal::telegram(42),
             text: None,
-            file_id: None,
-            file_name: None,
             attachment: Some(Attachment {
                 file_id: "opaque".into(),
                 file_name: Some("security.bin".into()),
@@ -165,8 +161,6 @@ mod event_tests {
             target: TargetId("123".into()),
             principal: Principal::telegram(42),
             text: Some("hello".into()),
-            file_id: None,
-            file_name: None,
             attachment: None,
             reply_to_text: None,
         };

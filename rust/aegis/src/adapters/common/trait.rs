@@ -149,10 +149,6 @@ pub trait BotAdapter: Send + Sync {
         Err(AttachmentError::Unsupported)
     }
 
-    async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
-        anyhow::bail!("platform does not support file download")
-    }
-
     /// Apply OS-level locale/system settings for a chosen language.
     /// Default no-op; only the Telegram adapter performs system operations.
     async fn set_system_locale(&self, _lang: Lang) -> Result<()> {

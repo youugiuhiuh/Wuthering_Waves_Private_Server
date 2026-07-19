@@ -2,9 +2,10 @@ use std::time::Instant;
 
 use anyhow::Result;
 use rust_i18n::t;
-use sha2::Digest;
 
-use aegis::adapters::common::{DestructKey, InlineButton, Markup, MessageContent};
+use aegis::adapters::common::{
+    AttachmentError, DestructKey, InlineButton, Markup, MessageContent, parse_sha256_hex,
+};
 use aegis::shared::types::{CallbackEvent, MessageEvent};
 
 use crate::app::state::{AppState, DestructStatus};
@@ -37,7 +38,7 @@ pub async fn process_destruct_message(
     step: DestructStatus,
     state: &AppState,
     self_destruct_key_hash: Option<&str>,
-    file_content: Option<&[u8]>,
+    file_sha256: Option<&str>,
 ) -> DestructMessageAction {
     match step {
         DestructStatus::AwaitFirstTotp => match text {
@@ -53,17 +54,15 @@ pub async fn process_destruct_message(
             None => DestructMessageAction::Noop,
         },
         DestructStatus::AwaitSecurityFile => {
-            if let Some(content) = file_content {
-                let hash = hex::encode(sha2::Sha256::digest(content));
+            if let Some(hash) = file_sha256 {
                 match self_destruct_key_hash {
-                    Some(correct) if hash == correct => {
-                        let hash_short = if hash.len() > 12 {
-                            format!("{}...{}", &hash[..8], &hash[hash.len() - 4..])
+                    Some(correct) if hash == correct => DestructMessageAction::FileVerified {
+                        hash_short: if hash.len() == 64 {
+                            format!("{}..{}", &hash[..8], &hash[60..])
                         } else {
-                            hash.clone()
-                        };
-                        DestructMessageAction::FileVerified { hash_short }
-                    }
+                            return DestructMessageAction::FileMismatch;
+                        },
+                    },
                     Some(_) => DestructMessageAction::FileMismatch,
                     None => DestructMessageAction::NoSecurityKey,
                 }
@@ -200,24 +199,41 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
                 .await?;
         }
         (DestructStatus::AwaitSecurityFile, DestructMessageAction::AwaitingFile) => {
-            if let Some(fid) = msg.file_id.as_ref() {
-                let content = adapter.download_file(fid).await?;
+            if let Some(attachment) = msg.attachment.as_ref() {
+                let configured = state.self_destruct_key_hash().await;
+                let action = match configured.as_deref() {
+                    None => DestructMessageAction::NoSecurityKey,
+                    Some(hash) => {
+                        let expected = parse_sha256_hex(hash)?;
+                        match adapter
+                            .download_attachment(attachment, Some(expected))
+                            .await
+                        {
+                            Ok(verified) => {
+                                let actual = verified.sha256_hex();
+                                process_destruct_message(
+                                    None,
+                                    DestructStatus::AwaitSecurityFile,
+                                    state,
+                                    Some(hash),
+                                    Some(&actual),
+                                )
+                                .await
+                            }
+                            Err(AttachmentError::DigestMismatch) => {
+                                DestructMessageAction::FileMismatch
+                            }
+                            Err(error) => return Err(error.into()),
+                        }
+                    }
+                };
 
-                let re_action = process_destruct_message(
-                    None,
-                    DestructStatus::AwaitSecurityFile,
-                    state,
-                    state.self_destruct_key_hash().await.as_deref(),
-                    Some(&content),
-                )
-                .await;
-
-                match re_action {
+                match action {
                     DestructMessageAction::FileVerified { ref hash_short } => {
-                        let file_display = msg
+                        let file_display = attachment
                             .file_name
                             .as_ref()
-                            .map(|n| format!("{} | {}", n, hash_short))
+                            .map(|name| format!("{} | {}", name, hash_short))
                             .unwrap_or_else(|| hash_short.clone());
                         if state
                             .advance_destruct_step(
@@ -602,13 +618,15 @@ pub async fn intercept_callback(cb: &CallbackEvent, state: &AppState) -> Result<
 mod tests {
     use super::*;
     use aegis::adapters::common::{
-        BotAdapter, DestructKey, MessageContent, MessageId, Platform, Principal, TargetId,
+        Attachment, AttachmentError, BotAdapter, DestructKey, MessageContent, MessageId, Platform,
+        Principal, TargetId, VerifiedAttachment,
     };
     use aegis::core::security::self_destruct::SelfDestructExecutor;
     use aegis::core::totp::TotpManager;
     use async_trait::async_trait;
     use futures_util::future::BoxFuture;
     use secrecy::SecretString;
+    use sha2::Digest;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -637,8 +655,13 @@ mod tests {
         async fn delete_message(&self, _target: &TargetId, _msg_id: &MessageId) -> Result<()> {
             Ok(())
         }
-        async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
-            Ok(Vec::new())
+        async fn download_attachment(
+            &self,
+            _attachment: &Attachment,
+            expected_sha256: Option<[u8; 32]>,
+        ) -> std::result::Result<VerifiedAttachment, AttachmentError> {
+            assert_eq!(expected_sha256, Some([0; 32]));
+            Err(AttachmentError::DigestMismatch)
         }
         fn capabilities(&self) -> aegis::adapters::common::PlatformCapabilities {
             aegis::adapters::common::PlatformCapabilities::TELEGRAM
@@ -665,7 +688,7 @@ mod tests {
             None,
             TotpManager::new(&SecretString::from(totp_secret.to_string())).unwrap(),
             Arc::new(TestExecutor),
-            Some("test-hash".to_string()),
+            Some("00".repeat(32)),
             600,
             Arc::new(MockAdapter),
         );
@@ -708,8 +731,7 @@ mod tests {
 
     #[tokio::test]
     async fn security_file_match_returns_file_verified() {
-        let content = b"test security file content";
-        let hash = hex::encode(sha2::Sha256::digest(content));
+        let hash = hex::encode(sha2::Sha256::digest(b"test security file content"));
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
         let action = process_destruct_message(
@@ -717,7 +739,7 @@ mod tests {
             DestructStatus::AwaitSecurityFile,
             &state,
             Some(&hash),
-            Some(content.as_slice()),
+            Some(&hash),
         )
         .await;
         assert!(matches!(action, DestructMessageAction::FileVerified { .. }));
@@ -775,8 +797,6 @@ mod tests {
             target: TargetId("42".into()),
             principal: Principal::telegram(42),
             text: Some(totp),
-            file_id: None,
-            file_name: None,
             attachment: None,
             reply_to_text: None,
         };
@@ -814,8 +834,6 @@ mod tests {
             target: TargetId("42".into()),
             principal: Principal::telegram(42),
             text: Some(totp),
-            file_id: None,
-            file_name: None,
             attachment: None,
             reply_to_text: None,
         };
@@ -845,8 +863,6 @@ mod tests {
             target: TargetId("42".into()),
             principal: Principal::telegram(42),
             text: Some("confirm".into()),
-            file_id: None,
-            file_name: None,
             attachment: None,
             reply_to_text: None,
         };
@@ -876,8 +892,6 @@ mod tests {
             target: TargetId("42".into()),
             principal: Principal::telegram(42),
             text: Some("cancel".into()),
-            file_id: None,
-            file_name: None,
             attachment: None,
             reply_to_text: None,
         };
@@ -895,12 +909,68 @@ mod tests {
             target: TargetId("99".into()),
             principal: Principal::telegram(42),
             text: Some("hi".into()),
-            file_id: None,
-            file_name: None,
             attachment: None,
             reply_to_text: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::NotHandled);
+    }
+
+    #[tokio::test]
+    async fn mismatched_bounded_digest_does_not_advance_self_destruct() {
+        let secret = TotpManager::generate_new_secret();
+        let state = make_test_state(&secret).await;
+        state
+            .begin_destruct(&test_key(), Instant::now())
+            .await
+            .unwrap();
+        assert!(
+            state
+                .advance_destruct_step(
+                    &test_key(),
+                    DestructStatus::AwaitFirstTotp,
+                    DestructStatus::AwaitFirstConfirm,
+                )
+                .await
+        );
+        assert!(
+            state
+                .advance_destruct_step(
+                    &test_key(),
+                    DestructStatus::AwaitFirstConfirm,
+                    DestructStatus::AwaitSecondTotp,
+                )
+                .await
+        );
+        assert!(
+            state
+                .advance_destruct_step(
+                    &test_key(),
+                    DestructStatus::AwaitSecondTotp,
+                    DestructStatus::AwaitSecurityFile,
+                )
+                .await
+        );
+        let message = MessageEvent {
+            adapter: Arc::new(MockAdapter),
+            target: TargetId("42".into()),
+            principal: Principal::telegram(42),
+            text: None,
+            attachment: Some(Attachment {
+                file_id: "opaque".into(),
+                file_name: Some("security.bin".into()),
+                declared_size: None,
+            }),
+            reply_to_text: None,
+        };
+
+        assert_eq!(
+            intercept_message(&message, &state).await.unwrap(),
+            FlowOutcome::Handled
+        );
+        assert_eq!(
+            state.destruct_snapshot(&test_key()).await.unwrap().status,
+            DestructStatus::AwaitSecurityFile
+        );
     }
 }

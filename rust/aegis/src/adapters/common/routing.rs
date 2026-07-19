@@ -82,10 +82,6 @@ impl BotAdapter for RoutingAdapter {
             .await
     }
 
-    async fn download_file(&self, file_id: &str) -> Result<Vec<u8>> {
-        self.primary.download_file(file_id).await
-    }
-
     fn capabilities(&self) -> PlatformCapabilities {
         self.primary.capabilities()
     }
