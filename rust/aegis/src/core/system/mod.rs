@@ -5,6 +5,7 @@ pub mod monitor;
 pub mod operations;
 pub mod scheduler;
 pub mod upgrade;
+pub mod upgrade_observer;
 pub mod upgrade_transaction;
 
 pub use core_upgrade::{
@@ -14,4 +15,4 @@ pub use log_audit::LogAudit;
 pub use maintenance::MaintenanceManager;
 pub use monitor::SystemMonitor;
 pub use operations::Operations;
-pub use upgrade::{ReleaseArtifact, UPGRADE_FLAG_FILE, UpgradeManager};
+pub use upgrade::{ReleaseArtifact, UpgradeManager};
