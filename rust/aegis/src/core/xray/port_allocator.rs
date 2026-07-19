@@ -1,5 +1,6 @@
 use crate::core::paths::{singbox, xray};
 use crate::core::security::firewall_scanner::FirewallScanner;
+use crate::core::security::secure_fs::{atomic_write_at_async, open_dir};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -65,12 +66,19 @@ async fn load_port_alloc(path: &Path) -> Result<PortAllocData> {
 }
 
 async fn save_port_alloc(path: &Path, data: &PortAllocData) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).await?;
-    }
-    let content = serde_json::to_string_pretty(data)?;
-    fs::write(path, content).await?;
-    Ok(())
+    let parent = path.parent().context("端口分配文件没有父目录")?;
+    fs::create_dir_all(parent)
+        .await
+        .with_context(|| format!("创建端口分配目录失败: {}", parent.display()))?;
+    let name = path
+        .file_name()
+        .context("端口分配文件没有文件名")?
+        .to_os_string();
+    let bytes = serde_json::to_vec_pretty(data).context("序列化端口分配数据失败")?;
+    let dir = open_dir(parent)?;
+    atomic_write_at_async(dir, name, bytes)
+        .await
+        .context("原子写入端口分配数据失败")
 }
 
 pub struct PortAllocator;
@@ -255,6 +263,7 @@ impl PortAllocator {
 mod tests {
     use super::*;
     use std::fs as std_fs;
+    use std::os::unix::fs::symlink;
     use tempfile::TempDir;
 
     fn test_paths(root: &Path) -> AllocatorPaths {
@@ -438,5 +447,43 @@ mod tests {
             .collect();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].start, 20000);
+    }
+
+    #[tokio::test]
+    async fn allocation_persists_one_complete_json_document() {
+        let temp = TempDir::new().unwrap();
+        let paths = test_paths(temp.path());
+
+        let allocated = PortAllocator::allocate_hysteria2_with(&paths)
+            .await
+            .unwrap();
+        let persisted: PortAllocData =
+            serde_json::from_slice(&std_fs::read(&paths.state_file).unwrap()).unwrap();
+
+        assert_eq!(persisted.locked_ranges.len(), 1);
+        assert_eq!(persisted.locked_ranges[0].start, allocated.0);
+        assert_eq!(persisted.locked_ranges[0].end, allocated.1.1);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn persistence_failure_returns_no_allocation_and_preserves_old_state() {
+        let temp = TempDir::new().unwrap();
+        let paths = test_paths(temp.path());
+        let authoritative = temp.path().join("authoritative.json");
+        let old = serde_json::to_vec(&PortAllocData::default()).unwrap();
+        std_fs::write(&authoritative, &old).unwrap();
+        symlink(&authoritative, &paths.state_file).unwrap();
+
+        let result = PortAllocator::allocate_hysteria2_with(&paths).await;
+
+        assert!(result.is_err());
+        assert_eq!(std_fs::read(&authoritative).unwrap(), old);
+        assert!(
+            std_fs::symlink_metadata(&paths.state_file)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 }
