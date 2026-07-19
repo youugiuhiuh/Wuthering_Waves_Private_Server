@@ -196,6 +196,8 @@ impl SingBoxInstaller {
     }
 
     pub async fn install() -> Result<()> {
+        let _flight = SINGBOX_INSTALL.try_enter()?;
+
         let arch = Self::detect_arch()?;
 
         let api_client = reqwest::Client::new();
@@ -213,8 +215,6 @@ impl SingBoxInstaller {
             .tempdir()
             .context("创建临时目录失败")?;
         let temp_dir = temp.path();
-
-        let _flight = SINGBOX_INSTALL.try_enter()?;
 
         let archive_path = download_verified_archive(&api_client, &release, temp_dir).await?;
         let candidate = extract_candidate(&archive_path, temp_dir, &release)?;

@@ -296,7 +296,7 @@ pub async fn observe(nonce: String, parent_pid: u32) -> Result<()> {
             error: None,
         },
         Err(operation) => {
-            remove_if_exists(Path::new(ACK_FILE)).await?;
+            let _ = remove_if_exists(Path::new(ACK_FILE)).await;
             let rollback = async {
                 rollback_binary(&published).await?;
                 record.phase = UpgradePhase::Rollback;
