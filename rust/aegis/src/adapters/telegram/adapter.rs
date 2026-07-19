@@ -154,6 +154,19 @@ impl BotAdapter for TelegramAdapter {
     }
 }
 
+fn convert_markup(markup: &Markup) -> InlineKeyboardMarkup {
+    let rows: Vec<Vec<InlineKeyboardButton>> = markup
+        .buttons
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|btn| InlineKeyboardButton::callback(&btn.text, &btn.data))
+                .collect()
+        })
+        .collect();
+    InlineKeyboardMarkup::new(rows)
+}
+
 #[cfg(test)]
 mod attachment_tests {
     use super::*;
@@ -164,7 +177,6 @@ mod attachment_tests {
     #[tokio::test]
     async fn telegram_rejects_stream_at_common_limit_without_declared_size() {
         let server = MockServer::start().await;
-        // Teloxide uses stringify!($Method) for P::NAME → "GetFile" (PascalCase)
         Mock::given(method("POST"))
             .and(path("/botTOKEN/GetFile"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -209,17 +221,4 @@ mod attachment_tests {
             }
         );
     }
-}
-
-fn convert_markup(markup: &Markup) -> InlineKeyboardMarkup {
-    let rows: Vec<Vec<InlineKeyboardButton>> = markup
-        .buttons
-        .iter()
-        .map(|row| {
-            row.iter()
-                .map(|btn| InlineKeyboardButton::callback(&btn.text, &btn.data))
-                .collect()
-        })
-        .collect();
-    InlineKeyboardMarkup::new(rows)
 }

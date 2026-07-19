@@ -108,6 +108,24 @@ impl BotAdapter for DiscordAdapter {
     }
 }
 
+fn convert_markup_discord(markup: &Markup) -> Vec<serenity::all::CreateActionRow> {
+    markup
+        .buttons
+        .iter()
+        .map(|row| {
+            let buttons: Vec<serenity::all::CreateButton> = row
+                .iter()
+                .map(|btn| {
+                    serenity::all::CreateButton::new(&btn.data)
+                        .label(&btn.text)
+                        .style(serenity::all::ButtonStyle::Primary)
+                })
+                .collect();
+            serenity::all::CreateActionRow::Buttons(buttons)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,22 +173,4 @@ mod tests {
             }
         );
     }
-}
-
-fn convert_markup_discord(markup: &Markup) -> Vec<serenity::all::CreateActionRow> {
-    markup
-        .buttons
-        .iter()
-        .map(|row| {
-            let buttons: Vec<serenity::all::CreateButton> = row
-                .iter()
-                .map(|btn| {
-                    serenity::all::CreateButton::new(&btn.data)
-                        .label(&btn.text)
-                        .style(serenity::all::ButtonStyle::Primary)
-                })
-                .collect();
-            serenity::all::CreateActionRow::Buttons(buttons)
-        })
-        .collect()
 }

@@ -28,8 +28,6 @@ pub async fn execute_supervised(executor: Arc<dyn SelfDestructExecutor>) -> Resu
 mod tests {
     use super::*;
     use mockall::mock;
-    use std::time::Duration;
-
     mock! {
         pub ExecutorMock {}
         impl SelfDestructExecutor for ExecutorMock {
