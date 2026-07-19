@@ -21,7 +21,6 @@ const HOP_SIZE: u16 = 100;
 #[derive(Clone)]
 struct AllocatorPaths {
     state_file: PathBuf,
-    #[allow(dead_code)]
     lock_file: PathBuf,
     xray_conf_dir: PathBuf,
     singbox_conf_dir: PathBuf,
