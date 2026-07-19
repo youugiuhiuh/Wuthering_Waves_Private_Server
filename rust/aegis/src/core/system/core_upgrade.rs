@@ -542,6 +542,8 @@ impl WwpsCoreUpgradeManager {
         adapter: &dyn BotAdapter,
         target: &TargetId,
     ) -> Result<()> {
+        let _flight = WWPS_CORE_UPGRADE.try_enter()?;
+
         let status_msg_id = adapter
             .send_message(
                 target,
@@ -551,8 +553,6 @@ impl WwpsCoreUpgradeManager {
                 },
             )
             .await?;
-
-        let _flight = WWPS_CORE_UPGRADE.try_enter()?;
 
         let config = WwpsCoreUpgradeConfig::from_env()?;
         config.validate()?;
