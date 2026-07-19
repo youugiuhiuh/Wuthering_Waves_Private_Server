@@ -4,10 +4,12 @@ use crate::core::security::secure_fs::{atomic_write_at_async, open_dir};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::fs::{File, OpenOptions};
+use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-#[cfg(test)]
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::fs;
 
 const PORT_ALLOC_FILE: &str = "/etc/wwps/.port_alloc";
@@ -84,6 +86,43 @@ async fn save_port_alloc(path: &Path, data: &PortAllocData) -> Result<()> {
 
 static PORT_ALLOC_MUTEX: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));
+
+const LOCK_TIMEOUT: Duration = Duration::from_secs(2);
+const LOCK_RETRY: Duration = Duration::from_millis(25);
+
+#[allow(clippy::undocumented_unsafe_blocks)]
+async fn acquire_advisory_lock(path: &Path, timeout: Duration) -> Result<File> {
+    let parent = path.parent().context("端口分配锁文件没有父目录")?;
+    fs::create_dir_all(parent)
+        .await
+        .with_context(|| format!("创建端口分配锁目录失败: {}", parent.display()))?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .mode(0o600)
+        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+        .open(path)
+        .with_context(|| format!("打开端口分配锁失败: {}", path.display()))?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(file);
+        }
+        let error = std::io::Error::last_os_error();
+        let would_block = matches!(
+            error.raw_os_error(),
+            Some(code) if code == libc::EWOULDBLOCK || code == libc::EAGAIN
+        );
+        if !would_block {
+            return Err(error).with_context(|| format!("获取端口分配锁失败: {}", path.display()));
+        }
+        if Instant::now() >= deadline {
+            anyhow::bail!("等待端口分配锁超时: {} ({timeout:?})", path.display());
+        }
+        tokio::time::sleep(LOCK_RETRY).await;
+    }
+}
 
 pub struct PortAllocator;
 
@@ -182,6 +221,7 @@ impl PortAllocator {
 
     async fn get_locked_ranges_with(paths: &AllocatorPaths) -> Result<Vec<(u16, u16)>> {
         let _process_guard = PORT_ALLOC_MUTEX.lock().await;
+        let _file_guard = acquire_advisory_lock(&paths.lock_file, LOCK_TIMEOUT).await?;
         Ok(load_port_alloc(&paths.state_file)
             .await?
             .locked_ranges
@@ -196,6 +236,7 @@ impl PortAllocator {
 
     async fn is_port_in_locked_range_with(paths: &AllocatorPaths, port: u16) -> Result<bool> {
         let _process_guard = PORT_ALLOC_MUTEX.lock().await;
+        let _file_guard = acquire_advisory_lock(&paths.lock_file, LOCK_TIMEOUT).await?;
         Ok(load_port_alloc(&paths.state_file)
             .await?
             .locked_ranges
@@ -209,6 +250,7 @@ impl PortAllocator {
 
     async fn allocate_hysteria2_with(paths: &AllocatorPaths) -> Result<(u16, (u16, u16))> {
         let _process_guard = PORT_ALLOC_MUTEX.lock().await;
+        let _file_guard = acquire_advisory_lock(&paths.lock_file, LOCK_TIMEOUT).await?;
         let mut data = load_port_alloc(&paths.state_file).await?;
         let occupied = Self::scan_all_occupied_ports(paths, &data).await?;
         let main_port = Self::find_consecutive_range(&occupied, HOP_SIZE)?;
@@ -241,6 +283,7 @@ impl PortAllocator {
 
     async fn release_hysteria2_range_with(paths: &AllocatorPaths, main_port: u16) -> Result<()> {
         let _process_guard = PORT_ALLOC_MUTEX.lock().await;
+        let _file_guard = acquire_advisory_lock(&paths.lock_file, LOCK_TIMEOUT).await?;
         let mut data = load_port_alloc(&paths.state_file).await?;
         let before = data.locked_ranges.len();
         data.locked_ranges
@@ -260,6 +303,7 @@ impl PortAllocator {
 
     async fn get_hysteria2_range_with(paths: &AllocatorPaths) -> Result<Option<(u16, (u16, u16))>> {
         let _process_guard = PORT_ALLOC_MUTEX.lock().await;
+        let _file_guard = acquire_advisory_lock(&paths.lock_file, LOCK_TIMEOUT).await?;
         Ok(load_port_alloc(&paths.state_file)
             .await?
             .locked_ranges
@@ -274,6 +318,7 @@ mod tests {
     use super::*;
     use std::collections::HashSet as StdHashSet;
     use std::fs as std_fs;
+    use std::fs::OpenOptions as StdOpenOptions;
     use std::os::unix::fs::symlink;
     use std::sync::{Arc, Barrier};
     use tempfile::TempDir;
@@ -499,6 +544,30 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn advisory_lock_timeout_is_bounded_and_actionable() {
+        let temp = TempDir::new().unwrap();
+        let paths = test_paths(temp.path());
+        let holder = StdOpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .mode(0o600)
+            .open(&paths.lock_file)
+            .unwrap();
+        // SAFETY: `holder` owns a valid file descriptor for the duration of the call.
+        assert_eq!(unsafe { libc::flock(holder.as_raw_fd(), libc::LOCK_EX) }, 0);
+
+        let error = acquire_advisory_lock(&paths.lock_file, Duration::from_millis(50))
+            .await
+            .unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains(paths.lock_file.to_str().unwrap()));
+        assert!(message.contains("50ms"));
+    }
+
     #[test]
     fn concurrent_threads_allocate_distinct_ranges() {
         let temp = TempDir::new().unwrap();
@@ -531,5 +600,62 @@ mod tests {
         let persisted: PortAllocData =
             serde_json::from_slice(&std_fs::read(&paths.state_file).unwrap()).unwrap();
         assert_eq!(persisted.locked_ranges.len(), 8);
+    }
+
+    const PROCESS_ROOT_ENV: &str = "AEGIS_PORT_ALLOC_PROCESS_TEST_ROOT";
+    const PROCESS_HELPER_NAME: &str =
+        "core::xray::port_allocator::tests::process_allocation_helper";
+
+    #[tokio::test]
+    #[ignore]
+    async fn process_allocation_helper() {
+        let root = PathBuf::from(std::env::var(PROCESS_ROOT_ENV).unwrap());
+        let mut paths = test_paths(&root);
+        paths.after_load_delay = Duration::from_millis(200);
+        PortAllocator::allocate_hysteria2_with(&paths)
+            .await
+            .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn separate_processes_allocate_distinct_ranges() {
+        let temp = TempDir::new().unwrap();
+        let paths = test_paths(temp.path());
+        let test_binary = std::env::current_exe().unwrap();
+        let spawn = || {
+            std::process::Command::new(&test_binary)
+                .arg(PROCESS_HELPER_NAME)
+                .arg("--exact")
+                .arg("--ignored")
+                .arg("--nocapture")
+                .env(PROCESS_ROOT_ENV, temp.path())
+                .spawn()
+                .unwrap()
+        };
+        let first = spawn();
+        let second = spawn();
+        let first = first.wait_with_output().unwrap();
+        let second = second.wait_with_output().unwrap();
+
+        assert!(
+            first.status.success(),
+            "first child failed: {}",
+            String::from_utf8_lossy(&first.stderr)
+        );
+        assert!(
+            second.status.success(),
+            "second child failed: {}",
+            String::from_utf8_lossy(&second.stderr)
+        );
+        let persisted: PortAllocData =
+            serde_json::from_slice(&std_fs::read(&paths.state_file).unwrap()).unwrap();
+        let starts: StdHashSet<_> = persisted
+            .locked_ranges
+            .iter()
+            .map(|range| range.start)
+            .collect();
+        assert_eq!(persisted.locked_ranges.len(), 2);
+        assert_eq!(starts.len(), 2);
     }
 }
