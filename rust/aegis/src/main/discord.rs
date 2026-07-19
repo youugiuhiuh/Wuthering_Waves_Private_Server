@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use aegis::adapters::common::{BotAdapter, Principal};
+use aegis::adapters::common::{Attachment, BotAdapter, Principal};
 use aegis::adapters::discord::DiscordAdapter;
 use aegis::app::state::AppState;
 use aegis::shared::boundary::{EventContext, handle_dispatch_result};
@@ -150,17 +150,19 @@ impl EventHandler for DiscordHandler {
             return;
         }
         let text = Some(msg.content).filter(|s| !s.is_empty());
-        let (file_id, file_name) = match msg.attachments.first() {
-            Some(a) => (Some(a.url.to_string()), Some(a.filename.clone())),
-            None => (None, None),
-        };
+        let attachment = msg.attachments.first().map(|attachment| Attachment {
+            file_id: attachment.url.to_string(),
+            file_name: Some(attachment.filename.clone()),
+            declared_size: Some(u64::from(attachment.size)),
+        });
         let event = BotEvent::Message(MessageEvent {
             adapter: self.adapter.clone(),
             target: aegis::adapters::common::TargetId(self.admin_channel.to_string()),
             principal: Principal::discord(msg.author.id.get()),
             text,
-            file_id,
-            file_name,
+            file_id: None,
+            file_name: None,
+            attachment,
             reply_to_text: None,
         });
         let ctx = EventContext::from_event(&event);

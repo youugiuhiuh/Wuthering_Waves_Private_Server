@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use aegis::adapters::common::{MessageId, Platform, Principal, TargetId};
+use aegis::adapters::common::{Attachment, MessageId, Platform, Principal, TargetId};
 use aegis::core::i18n;
 use aegis::shared::boundary::{EventContext, handle_dispatch_result};
 use aegis::shared::dispatch_event;
@@ -50,6 +50,10 @@ fn teloxide_to_bot(cmd: TeloxideCommand) -> BotCommand {
         TeloxideCommand::Auth(code) => BotCommand::Auth { code },
         TeloxideCommand::SetSecurityFile => BotCommand::SetSecurityFile,
     }
+}
+
+fn telegram_declared_size(size: u32) -> Option<u64> {
+    (size != u32::MAX).then_some(u64::from(size))
 }
 
 pub async fn run(
@@ -164,24 +168,44 @@ pub async fn run(
                     }
                     let text = event.content.body().trim().to_string();
 
-                    fn extract_media_info(
+                    fn matrix_attachment(
                         source: &MediaSource,
                         filename: &str,
-                    ) -> (Option<String>, Option<String>) {
-                        let fid = match source {
-                            MediaSource::Plain(url) => Some(url.to_string()),
-                            MediaSource::Encrypted(info) => Some(info.url.to_string()),
+                        declared_size: Option<u64>,
+                    ) -> Attachment {
+                        let file_id = match source {
+                            MediaSource::Plain(url) => url.to_string(),
+                            MediaSource::Encrypted(info) => info.url.to_string(),
                         };
-                        let fname = Some(filename.to_string());
-                        (fid, fname)
+                        Attachment {
+                            file_id,
+                            file_name: Some(filename.to_string()),
+                            declared_size,
+                        }
                     }
 
-                    let (file_id, file_name) = match &event.content.msgtype {
-                        MessageType::Audio(c) => extract_media_info(&c.source, c.filename()),
-                        MessageType::File(c) => extract_media_info(&c.source, c.filename()),
-                        MessageType::Image(c) => extract_media_info(&c.source, c.filename()),
-                        MessageType::Video(c) => extract_media_info(&c.source, c.filename()),
-                        _ => (None, None),
+                    let attachment = match &event.content.msgtype {
+                        MessageType::Audio(c) => Some(matrix_attachment(
+                            &c.source,
+                            c.filename(),
+                            c.info.as_ref().and_then(|info| info.size.map(u64::from)),
+                        )),
+                        MessageType::File(c) => Some(matrix_attachment(
+                            &c.source,
+                            c.filename(),
+                            c.info.as_ref().and_then(|info| info.size.map(u64::from)),
+                        )),
+                        MessageType::Image(c) => Some(matrix_attachment(
+                            &c.source,
+                            c.filename(),
+                            c.info.as_ref().and_then(|info| info.size.map(u64::from)),
+                        )),
+                        MessageType::Video(c) => Some(matrix_attachment(
+                            &c.source,
+                            c.filename(),
+                            c.info.as_ref().and_then(|info| info.size.map(u64::from)),
+                        )),
+                        _ => None,
                     };
 
                     let principal = Principal::matrix(event.sender.as_str()).unwrap_or_else(|_| {
@@ -203,8 +227,9 @@ pub async fn run(
                             target: target.clone(),
                             principal,
                             text: Some(text),
-                            file_id,
-                            file_name,
+                            file_id: None,
+                            file_name: None,
+                            attachment,
                             reply_to_text: None,
                         })
                     };
@@ -252,22 +277,30 @@ pub async fn run(
             state: Arc<AppState>,
         ) -> Result<(), teloxide::RequestError> {
             let id = msg.from.as_ref().map(|f| f.id.0).unwrap_or(0);
+            let attachment = msg
+                .document()
+                .map(|document| Attachment {
+                    file_id: document.file.id.clone(),
+                    file_name: document.file_name.clone(),
+                    declared_size: telegram_declared_size(document.file.size),
+                })
+                .or_else(|| {
+                    msg.photo().and_then(|photos| {
+                        photos.last().map(|photo| Attachment {
+                            file_id: photo.file.id.clone(),
+                            file_name: Some(rust_i18n::t!("destruct.image_label").to_string()),
+                            declared_size: telegram_declared_size(photo.file.size),
+                        })
+                    })
+                });
             let event = BotEvent::Message(MessageEvent {
                 adapter: state.adapter.clone(),
                 target: TargetId(msg.chat.id.0.to_string()),
                 principal: Principal::telegram(id),
                 text: msg.text().map(|s| s.to_string()),
-                file_id: msg.document().map(|d| d.file.id.clone()).or_else(|| {
-                    msg.photo()
-                        .and_then(|p| p.last().map(|ph| ph.file.id.clone()))
-                }),
-                file_name: msg
-                    .document()
-                    .and_then(|d| d.file_name.clone())
-                    .or_else(|| {
-                        msg.photo()
-                            .map(|_| rust_i18n::t!("destruct.image_label").to_string())
-                    }),
+                file_id: None,
+                file_name: None,
+                attachment,
                 reply_to_text: msg
                     .reply_to_message()
                     .and_then(|r| r.text().map(|s| s.to_string())),
@@ -380,4 +413,15 @@ pub async fn run(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod attachment_metadata_tests {
+    use super::telegram_declared_size;
+
+    #[test]
+    fn telegram_missing_size_fallback_stays_untrusted() {
+        assert_eq!(telegram_declared_size(u32::MAX), None);
+        assert_eq!(telegram_declared_size(42), Some(42));
+    }
 }

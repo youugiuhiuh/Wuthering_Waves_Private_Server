@@ -777,6 +777,7 @@ mod tests {
             text: Some(totp),
             file_id: None,
             file_name: None,
+            attachment: None,
             reply_to_text: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
@@ -815,6 +816,7 @@ mod tests {
             text: Some(totp),
             file_id: None,
             file_name: None,
+            attachment: None,
             reply_to_text: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
@@ -845,6 +847,7 @@ mod tests {
             text: Some("confirm".into()),
             file_id: None,
             file_name: None,
+            attachment: None,
             reply_to_text: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
@@ -875,6 +878,7 @@ mod tests {
             text: Some("cancel".into()),
             file_id: None,
             file_name: None,
+            attachment: None,
             reply_to_text: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
@@ -893,6 +897,7 @@ mod tests {
             text: Some("hi".into()),
             file_id: None,
             file_name: None,
+            attachment: None,
             reply_to_text: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();

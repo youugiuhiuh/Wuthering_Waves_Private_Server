@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::adapters::common::{BotAdapter, MessageId, Principal, TargetId};
+use crate::adapters::common::{Attachment, BotAdapter, MessageId, Principal, TargetId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeoutStatus {
@@ -77,6 +77,7 @@ pub struct MessageEvent {
     pub text: Option<String>,
     pub file_id: Option<String>,
     pub file_name: Option<String>,
+    pub attachment: Option<Attachment>,
     pub reply_to_text: Option<String>,
 }
 
@@ -136,6 +137,26 @@ mod principal_tests {
 #[cfg(test)]
 mod event_tests {
     use super::*;
+    use crate::adapters::common::Attachment;
+
+    #[test]
+    fn message_event_carries_atomic_attachment_metadata() {
+        let event = MessageEvent {
+            adapter: std::sync::Arc::new(crate::adapters::common::MockBotAdapter::new()),
+            target: TargetId("123".into()),
+            principal: Principal::telegram(42),
+            text: None,
+            file_id: None,
+            file_name: None,
+            attachment: Some(Attachment {
+                file_id: "opaque".into(),
+                file_name: Some("security.bin".into()),
+                declared_size: Some(4),
+            }),
+            reply_to_text: None,
+        };
+        assert_eq!(event.attachment.unwrap().declared_size, Some(4));
+    }
 
     #[test]
     fn message_event_constructs() {
@@ -146,6 +167,7 @@ mod event_tests {
             text: Some("hello".into()),
             file_id: None,
             file_name: None,
+            attachment: None,
             reply_to_text: None,
         };
     }

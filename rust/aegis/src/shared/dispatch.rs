@@ -311,6 +311,7 @@ mod dispatch_security_file_tests {
             text: None,
             file_id: Some("test-file".into()),
             file_name: Some("test.txt".into()),
+            attachment: None,
             reply_to_text: None,
         };
         handle_message(msg, &state).await.unwrap();
@@ -441,6 +442,7 @@ mod tests {
             text,
             file_id: None,
             file_name: None,
+            attachment: None,
             reply_to_text: None,
         })
     }

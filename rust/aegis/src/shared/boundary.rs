@@ -190,6 +190,7 @@ mod tests {
             text: Some("hello".into()),
             file_id: None,
             file_name: None,
+            attachment: None,
             reply_to_text: None,
         })
     }
