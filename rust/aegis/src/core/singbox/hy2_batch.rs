@@ -50,7 +50,7 @@ impl SingBoxConfigManager {
             } else {
                 let port = loop {
                     let p = StdRng::from_entropy().gen_range(10000..60000);
-                    if PortAllocator::is_port_in_locked_range(p).await {
+                    if PortAllocator::is_port_in_locked_range(p).await? {
                         continue;
                     }
                     if MaintenanceManager::is_port_available(p).await {

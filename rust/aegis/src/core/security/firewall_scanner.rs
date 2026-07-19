@@ -162,22 +162,20 @@ impl FirewallScanner {
         Ok(port.unwrap_or(22))
     }
 
-    /// 扫描目录下的所有 .json 文件提取端口
     pub async fn scan_dir_for_ports<P: AsRef<Path>>(dir: P) -> Result<HashSet<u16>> {
         let mut ports = HashSet::new();
         let dir = dir.as_ref();
-        if !fs::try_exists(dir).await.unwrap_or(false) {
+        if !fs::try_exists(dir).await? {
             return Ok(ports);
         }
 
         let mut entries = fs::read_dir(dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if path.is_file()
+            if entry.file_type().await?.is_file()
                 && path.extension().is_some_and(|ext| ext == "json")
-                && let Ok(file_ports) = Self::extract_ports_from_file(&path).await
             {
-                ports.extend(file_ports);
+                ports.extend(Self::extract_ports_from_file(&path).await?);
             }
         }
         Ok(ports)

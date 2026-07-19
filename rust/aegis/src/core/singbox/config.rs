@@ -161,13 +161,13 @@ impl SingBoxConfigManager {
 
         Self::cleanup_specific_hysteria2_rules(main_port, hop_range).await?;
 
-        let _ = PortAllocator::release_hysteria2_range(main_port).await;
+        PortAllocator::release_hysteria2_range(main_port).await?;
 
         let remaining = Self::list_all_inbound_files().await?;
         let has_hysteria2 = remaining.iter().any(|f| f.contains("hysteria2"));
 
         if !has_hysteria2 {
-            let _ = PortAllocator::release_hysteria2_range(main_port).await;
+            PortAllocator::release_hysteria2_range(main_port).await?;
         }
 
         Self::reload_service().await?;
@@ -262,7 +262,7 @@ impl SingBoxConfigManager {
         // 检测 IPv6
         let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
 
-        if let Some((main_port, hop_range)) = PortAllocator::get_hysteria2_range().await {
+        if let Some((main_port, hop_range)) = PortAllocator::get_hysteria2_range().await? {
             // 清理 IPv4 规则（总是）
             let _ = Command::new("iptables")
                 .args([

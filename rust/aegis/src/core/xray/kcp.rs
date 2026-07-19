@@ -115,7 +115,7 @@ impl ConfigManager {
             let port = loop {
                 let p = rng.gen_range(10000..60000);
                 if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
-                    .await
+                    .await?
                 {
                     continue;
                 }
