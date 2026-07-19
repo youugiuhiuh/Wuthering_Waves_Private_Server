@@ -1,5 +1,6 @@
 use crate::adapters::common::{
-    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+    Attachment, AttachmentError, BotAdapter, MAX_ATTACHMENT_BYTES, Markup, MessageContent,
+    MessageId, Platform, PlatformCapabilities, TargetId, VerifiedAttachment, consume_stream,
 };
 use crate::core::i18n;
 use crate::core::i18n::Lang;
@@ -7,6 +8,7 @@ use crate::core::system::operations::Operations;
 use crate::core::system::scheduler::{ScheduledTask, TaskType, get_manager};
 use anyhow::Result;
 use async_trait::async_trait;
+use futures_util::StreamExt;
 use teloxide::net::Download;
 use teloxide::prelude::*;
 use teloxide::types::{ChatId, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode};
@@ -86,11 +88,32 @@ impl BotAdapter for TelegramAdapter {
         Ok(())
     }
 
-    async fn download_file(&self, file_id: &str) -> Result<Vec<u8>> {
-        let file = self.bot.get_file(file_id).await?;
-        let mut buf = Vec::with_capacity(file.size as usize);
-        self.bot.download_file(&file.path, &mut buf).await?;
-        Ok(buf)
+    async fn download_attachment(
+        &self,
+        attachment: &Attachment,
+        expected_sha256: Option<[u8; 32]>,
+    ) -> std::result::Result<VerifiedAttachment, AttachmentError> {
+        consume_stream(attachment, expected_sha256, || async {
+            let file = self
+                .bot
+                .get_file(&attachment.file_id)
+                .await
+                .map_err(|_| AttachmentError::Transport)?;
+            if file.size != u32::MAX && u64::from(file.size) > MAX_ATTACHMENT_BYTES {
+                return Err(AttachmentError::MetadataTooLarge);
+            }
+            if let (Some(declared), size) = (attachment.declared_size, file.size)
+                && size != u32::MAX
+                && declared != u64::from(size)
+            {
+                return Err(AttachmentError::MetadataMismatch);
+            }
+            Ok(self
+                .bot
+                .download_file_stream(&file.path)
+                .map(|chunk| chunk.map_err(|_| AttachmentError::Transport)))
+        })
+        .await
     }
 
     async fn set_system_locale(&self, lang: Lang) -> Result<()> {
@@ -128,6 +151,63 @@ impl BotAdapter for TelegramAdapter {
 
     fn capabilities(&self) -> PlatformCapabilities {
         PlatformCapabilities::TELEGRAM
+    }
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::*;
+    use crate::adapters::common::{Attachment, AttachmentError, MAX_ATTACHMENT_BYTES};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn telegram_rejects_stream_at_common_limit_without_declared_size() {
+        let server = MockServer::start().await;
+        // Teloxide uses stringify!($Method) for P::NAME → "GetFile" (PascalCase)
+        Mock::given(method("POST"))
+            .and(path("/botTOKEN/GetFile"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": {
+                    "file_id": "opaque",
+                    "file_unique_id": "unique",
+                    "file_size": MAX_ATTACHMENT_BYTES,
+                    "file_path": "security.bin"
+                }
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/file/botTOKEN/security.bin"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![
+                0;
+                (MAX_ATTACHMENT_BYTES + 1)
+                    as usize
+            ]))
+            .mount(&server)
+            .await;
+
+        let bot = Bot::new("TOKEN").set_api_url(server.uri().parse().unwrap());
+        let adapter = TelegramAdapter::new(bot);
+        let error = adapter
+            .download_attachment(
+                &Attachment {
+                    file_id: "opaque".into(),
+                    file_name: Some("security.bin".into()),
+                    declared_size: None,
+                },
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error,
+            AttachmentError::TooLarge {
+                observed: MAX_ATTACHMENT_BYTES + 1,
+                max: MAX_ATTACHMENT_BYTES,
+            }
+        );
     }
 }
 

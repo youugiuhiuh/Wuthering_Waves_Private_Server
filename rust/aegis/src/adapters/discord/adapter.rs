@@ -1,8 +1,10 @@
 use crate::adapters::common::{
-    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+    Attachment, AttachmentError, BotAdapter, Markup, MessageContent, MessageId, Platform,
+    PlatformCapabilities, TargetId, VerifiedAttachment, consume_stream,
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use futures_util::stream;
 use serenity::all::{ChannelId, MessageId as SerenityMessageId};
 use serenity::http::Http;
 use std::sync::Arc;
@@ -80,10 +82,25 @@ impl BotAdapter for DiscordAdapter {
         Ok(())
     }
 
-    async fn download_file(&self, file_id: &str) -> Result<Vec<u8>> {
-        let response = reqwest::get(file_id).await?;
-        let bytes = response.bytes().await?;
-        Ok(bytes.to_vec())
+    async fn download_attachment(
+        &self,
+        attachment: &Attachment,
+        expected_sha256: Option<[u8; 32]>,
+    ) -> std::result::Result<VerifiedAttachment, AttachmentError> {
+        consume_stream(attachment, expected_sha256, || async {
+            let response = reqwest::get(&attachment.file_id)
+                .await
+                .and_then(reqwest::Response::error_for_status)
+                .map_err(|_| AttachmentError::Transport)?;
+            Ok(stream::try_unfold(response, |mut response| async move {
+                response
+                    .chunk()
+                    .await
+                    .map(|chunk| chunk.map(|bytes| (bytes, response)))
+                    .map_err(|_| AttachmentError::Transport)
+            }))
+        })
+        .await
     }
 
     fn capabilities(&self) -> PlatformCapabilities {
@@ -93,7 +110,10 @@ impl BotAdapter for DiscordAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::common::PlatformCapabilities;
+    use super::*;
+    use crate::adapters::common::{Attachment, AttachmentError, MAX_ATTACHMENT_BYTES};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn discord_capabilities_matches_expected() {
@@ -101,6 +121,39 @@ mod tests {
         assert!(caps.can_edit_message);
         assert!(caps.can_delete_message);
         assert!(!caps.has_file_transfer);
+    }
+
+    #[tokio::test]
+    async fn discord_rejects_stream_at_common_limit_with_forged_size() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/security.bin"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![
+                0;
+                (MAX_ATTACHMENT_BYTES + 1)
+                    as usize
+            ]))
+            .mount(&server)
+            .await;
+        let adapter = DiscordAdapter::new(Arc::new(Http::new("TOKEN")));
+        let error = adapter
+            .download_attachment(
+                &Attachment {
+                    file_id: format!("{}/security.bin", server.uri()),
+                    file_name: Some("security.bin".into()),
+                    declared_size: Some(1),
+                },
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error,
+            AttachmentError::TooLarge {
+                observed: MAX_ATTACHMENT_BYTES + 1,
+                max: MAX_ATTACHMENT_BYTES,
+            }
+        );
     }
 }
 
