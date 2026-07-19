@@ -5,6 +5,7 @@ pub mod monitor;
 pub mod operations;
 pub mod scheduler;
 pub mod upgrade;
+pub mod upgrade_transaction;
 
 pub use core_upgrade::{
     CpuArch, WwpsCoreReleaseInfo, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager,
