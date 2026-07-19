@@ -1,5 +1,6 @@
 use crate::adapters::common::{
-    BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+    Attachment, AttachmentError, BotAdapter, MessageContent, MessageId, Platform,
+    PlatformCapabilities, TargetId, VerifiedAttachment,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -68,6 +69,16 @@ impl BotAdapter for RoutingAdapter {
     ) -> Result<()> {
         self.primary
             .answer_callback(target, callback_id, text)
+            .await
+    }
+
+    async fn download_attachment(
+        &self,
+        attachment: &Attachment,
+        expected_sha256: Option<[u8; 32]>,
+    ) -> std::result::Result<VerifiedAttachment, AttachmentError> {
+        self.primary
+            .download_attachment(attachment, expected_sha256)
             .await
     }
 
