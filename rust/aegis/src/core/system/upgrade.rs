@@ -1,7 +1,6 @@
 use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
-use obfstr::obfstr;
 use rust_i18n::t;
 use sha2::{Digest, Sha256};
 use std::env;
@@ -9,17 +8,19 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
-use tokio::task;
-use tokio::time::sleep;
 
 use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
 use crate::core::network::release_api::{
     ReleaseResponse, build_asset_request, fetch_github_json, find_named_asset, github_api_client,
     github_asset_client, parse_digest,
 };
+use crate::core::system::upgrade_observer::{cancel_observer, prepare_observer};
+use crate::core::system::upgrade_transaction::{
+    SingleFlight, publish_binary, stage_binary, stage_path,
+};
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
 
-pub use crate::core::paths::maintenance::UPGRADE_FLAG_FILE;
+static AEGIS_UPGRADE: SingleFlight = SingleFlight::new("aegis");
 
 const AEGIS_RELEASE_OWNER: &str = "youugiuhiuh";
 const AEGIS_RELEASE_REPO: &str = "Wuthering_Waves_Private_Server";
@@ -56,6 +57,7 @@ impl UpgradeManager {
     }
 
     pub async fn run(self, adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
+        let _flight = AEGIS_UPGRADE.try_enter()?;
         let progress_msg_id = adapter
             .send_message(
                 target,
@@ -351,42 +353,27 @@ impl UpgradeManager {
             )
             .await;
 
-        let update_path_owned = update_path.to_path_buf();
-        task::spawn_blocking(move || self_replace::self_replace(&update_path_owned))
-            .await
-            .context("等待替换任务失败")??;
-
-        fs::remove_file(&update_path)
-            .await
-            .context("清理解压文件失败")
-            .ok();
-
-        self.write_upgrade_flag(&artifact.tag_name).await?;
-
-        adapter
-            .send_message(
-                target,
-                MessageContent {
-                    text: t!("upgrade.bot_updated", "0" => artifact.tag_name.as_str()).to_string(),
-                    markup: None,
-                },
-            )
-            .await?;
-
-        sleep(Duration::from_secs(2)).await;
-        std::process::exit(0);
-    }
-
-    pub async fn write_upgrade_flag(&self, version: &str) -> Result<()> {
-        let flag_path = obfstr!("/etc/wwps/aegis/upgrade.flag").to_string();
-        if let Some(parent) = Path::new(&flag_path).parent() {
-            fs::create_dir_all(parent)
-                .await
-                .context(obfstr!("创建升级标记目录失败").to_string())?;
+        let destination = std::env::current_exe().context("无法获取当前可执行文件路径")?;
+        let staged = stage_binary(update_path, &destination).await?;
+        if let Err(error) = fs::remove_file(update_path).await {
+            let _ = fs::remove_file(&staged).await;
+            return Err(error).context("清理下载更新文件失败");
         }
-        fs::write(&flag_path, version)
-            .await
-            .context(obfstr!("写入升级标记文件失败").to_string())
+        let record = match prepare_observer(&artifact.tag_name, target, &destination).await {
+            Ok(record) => record,
+            Err(error) => {
+                let _ = fs::remove_file(&staged).await;
+                return Err(error);
+            }
+        };
+        if let Err(error) = publish_binary(&staged, &destination).await {
+            cancel_observer(&record).await;
+            let _ = fs::remove_file(stage_path(&destination)?).await;
+            return Err(error);
+        }
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        std::process::exit(0);
     }
 }
 
@@ -513,6 +500,19 @@ mod tests {
             !path.exists(),
             "temporary update file should be removed on failure"
         );
+    }
+
+    #[test]
+    fn aegis_upgrade_is_single_flight() {
+        let first = AEGIS_UPGRADE.try_enter().unwrap();
+        let error = AEGIS_UPGRADE.try_enter().unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("aegis upgrade already in progress")
+        );
+        drop(first);
+        AEGIS_UPGRADE.try_enter().unwrap();
     }
 
     #[test]

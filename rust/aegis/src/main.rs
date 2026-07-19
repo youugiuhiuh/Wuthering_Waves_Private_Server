@@ -15,7 +15,7 @@ use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::self_destruct::production_executor;
 use aegis::core::system::SystemMonitor;
 use aegis::core::system::maintenance::MaintenanceManager;
-use aegis::core::system::upgrade::UPGRADE_FLAG_FILE;
+
 use anyhow::Result;
 use std::fs;
 use std::path::Path;
@@ -92,6 +92,8 @@ async fn main() -> Result<()> {
         .await?
     };
 
+    aegis::core::system::upgrade_observer::post_exec_checkpoint(adapter.as_ref()).await?;
+
     let state = Arc::new(AppState::new(
         app_config.decrypted.admin_id,
         discord_raw.as_ref().map(|r| r.admin_id as i64),
@@ -151,36 +153,6 @@ async fn notify_online(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()
             },
         )
         .await;
-    Ok(())
-}
-
-async fn notify_upgrade_success(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
-    let flag_path = Path::new(UPGRADE_FLAG_FILE);
-    if !flag_path.exists() {
-        return Ok(());
-    }
-
-    let version_raw = fs::read_to_string(flag_path).unwrap_or_default();
-    let version = version_raw.trim();
-    if let Err(e) = fs::remove_file(flag_path) {
-        eprintln!("[WARN] 无法删除升级标记文件: {}", e);
-    }
-
-    let message = if version.is_empty() {
-        rust_i18n::t!("system.upgrade_done_no_version")
-    } else {
-        rust_i18n::t!("system.upgrade_success", "0" => version)
-    };
-
-    adapter
-        .send_message(
-            target,
-            MessageContent {
-                text: message.into_owned(),
-                markup: None,
-            },
-        )
-        .await?;
     Ok(())
 }
 

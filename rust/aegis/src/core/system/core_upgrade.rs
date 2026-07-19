@@ -13,6 +13,7 @@ use rust_i18n::t;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs::{File as StdFile, OpenOptions};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -21,12 +22,21 @@ use tokio::io::AsyncWriteExt;
 use tokio::task;
 use zip::ZipArchive;
 
+use crate::core::system::upgrade_transaction::{
+    PublishedBinary, SingleFlight, activate_or_rollback, publish_binary, stage_binary,
+};
+
 const XRAY_RELEASE_OWNER: &str = "XTLS";
 const XRAY_RELEASE_REPO: &str = "Xray-core";
 const WWPS_CORE_DEFAULT_SERVICE: &str = xray::DEFAULT_SERVICE;
 const WWPS_CORE_DEFAULT_INSTALL_DIR: &str = xray::DIR;
 const WWPS_CORE_DEFAULT_TEMP_DIR: &str = xray::DEFAULT_TEMP_DIR;
 const WWPS_CORE_DEFAULT_BACKUP_PREFIX: &str = xray::DEFAULT_BACKUP_PREFIX;
+
+static WWPS_CORE_UPGRADE: SingleFlight = SingleFlight::new("wwps-core");
+const HEALTH_ATTEMPTS: usize = 10;
+const HEALTH_INTERVAL: Duration = Duration::from_secs(1);
+const HEALTH_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn xray_release_path(tag: Option<&str>) -> String {
     match tag {
@@ -64,6 +74,67 @@ impl CpuArch {
             CpuArch::Arm64 => "Xray-linux-arm64-v8a",
         }
     }
+}
+
+struct TempPathGuard {
+    path: PathBuf,
+    is_dir: bool,
+    armed: bool,
+}
+
+impl TempPathGuard {
+    fn file(path: PathBuf) -> Self {
+        Self {
+            path,
+            is_dir: false,
+            armed: true,
+        }
+    }
+
+    fn directory(path: PathBuf) -> Self {
+        Self {
+            path,
+            is_dir: true,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for TempPathGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        if self.is_dir {
+            let _ = std::fs::remove_dir_all(&self.path);
+        } else {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+async fn bounded_health<F, Fut>(mut probe: F) -> Result<()>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<()>>,
+{
+    let mut last = None;
+    for attempt in 0..HEALTH_ATTEMPTS {
+        match probe().await {
+            Ok(()) => return Ok(()),
+            Err(error) => last = Some(error),
+        }
+        if attempt + 1 < HEALTH_ATTEMPTS {
+            tokio::time::sleep(HEALTH_INTERVAL).await;
+        }
+    }
+    Err(last.context("health probe did not run")?).context(format!(
+        "wwps-core service unhealthy after {HEALTH_ATTEMPTS} attempts"
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -266,6 +337,7 @@ impl WwpsCoreUpgradeManager {
             release.tag_name,
             Utc::now().timestamp()
         ));
+        let mut temp_cleanup = TempPathGuard::file(temp_file.clone());
 
         fs::create_dir_all(&self.config.temp_dir)
             .await
@@ -332,6 +404,7 @@ impl WwpsCoreUpgradeManager {
         let actual_hash = hex::encode(hasher.finalize());
         verify_xray_archive(&temp_file, &actual_hash, release).await?;
 
+        temp_cleanup.disarm();
         Ok(temp_file)
     }
 
@@ -343,6 +416,7 @@ impl WwpsCoreUpgradeManager {
         fs::create_dir_all(&target)
             .await
             .context("创建解压目录失败")?;
+        let mut target_cleanup = TempPathGuard::directory(target.clone());
 
         let archive_path = archive_path.to_owned();
         let target_clone = target.clone();
@@ -358,6 +432,7 @@ impl WwpsCoreUpgradeManager {
         .await
         .context("等待解压任务失败")??;
 
+        target_cleanup.disarm();
         Ok(target)
     }
 
@@ -393,34 +468,14 @@ impl WwpsCoreUpgradeManager {
         Ok(backup_path)
     }
 
-    pub async fn replace_core(&self, unpack_dir: &Path) -> Result<()> {
+    pub async fn deploy_core(&self, unpack_dir: &Path) -> Result<PublishedBinary> {
         let new_core = unpack_dir.join("xray");
         if !new_core.exists() {
             anyhow::bail!("解压目录中未找到 xray 可执行文件");
         }
-
-        let target_core = self.config.install_dir.join("wwps-core.new");
-        fs::copy(&new_core, &target_core)
-            .await
-            .context("拷贝新核心失败")?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let metadata = fs::metadata(&target_core).await?;
-            let mut perms = metadata.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&target_core, perms)
-                .await
-                .context("设置 wwps-core 可执行权限失败")?;
-        }
-
-        let final_target = self.config.install_dir.join("wwps-core");
-        fs::rename(&target_core, &final_target)
-            .await
-            .context("替换 wwps-core 核心失败")?;
-
-        Ok(())
+        let destination = self.config.install_dir.join("wwps-core");
+        let staged = stage_binary(&new_core, &destination).await?;
+        publish_binary(&staged, &destination).await
     }
 
     pub async fn restart_service(&self) -> Result<()> {
@@ -438,15 +493,35 @@ impl WwpsCoreUpgradeManager {
 
     pub async fn verify_service_active(&self) -> Result<()> {
         let unit = format!("{}.service", self.config.service_name);
-        let status = run_cmd_status("systemctl", &["is-active", &unit], Duration::from_secs(15))
+        bounded_health(|| async {
+            let status = run_cmd_status(
+                "systemctl",
+                &["is-active", "--quiet", &unit],
+                HEALTH_COMMAND_TIMEOUT,
+            )
             .await
             .context("执行 systemctl is-active 失败")?;
+            if status.success() {
+                Ok(())
+            } else {
+                anyhow::bail!("{} 未在运行", unit)
+            }
+        })
+        .await
+    }
 
-        if status.success() {
-            Ok(())
-        } else {
-            anyhow::bail!("{} 未在运行", unit);
+    async fn restore_prior_runtime(&self, had_original: bool) -> Result<()> {
+        if !had_original {
+            anyhow::bail!("wwps-core rollback has no prior binary");
         }
+        self.restart_service().await
+    }
+
+    async fn verify_restored_runtime(&self, had_original: bool) -> Result<()> {
+        if !had_original {
+            anyhow::bail!("wwps-core rollback has no prior runtime");
+        }
+        self.verify_service_active().await
     }
 
     pub async fn cleanup_paths(&self, paths: &[PathBuf]) {
@@ -467,6 +542,8 @@ impl WwpsCoreUpgradeManager {
         adapter: &dyn BotAdapter,
         target: &TargetId,
     ) -> Result<()> {
+        let _flight = WWPS_CORE_UPGRADE.try_enter()?;
+
         let status_msg_id = adapter
             .send_message(
                 target,
@@ -530,7 +607,15 @@ impl WwpsCoreUpgradeManager {
                 },
             )
             .await;
-        let unpack_dir = manager.extract_archive(&archive_path).await?;
+        let unpack_dir = match manager.extract_archive(&archive_path).await {
+            Ok(path) => path,
+            Err(error) => {
+                manager
+                    .cleanup_paths(std::slice::from_ref(&archive_path))
+                    .await;
+                return Err(error);
+            }
+        };
 
         let _ = adapter
             .edit_message(
@@ -542,7 +627,13 @@ impl WwpsCoreUpgradeManager {
                 },
             )
             .await;
-        let backup_path = manager.backup_current_core().await?;
+        let archival_backup = match manager.backup_current_core().await {
+            Ok(path) => path,
+            Err(error) => {
+                manager.cleanup_paths(&[archive_path, unpack_dir]).await;
+                return Err(error);
+            }
+        };
 
         let _ = adapter
             .edit_message(
@@ -554,7 +645,15 @@ impl WwpsCoreUpgradeManager {
                 },
             )
             .await;
-        manager.replace_core(&unpack_dir).await?;
+        let published = match manager.deploy_core(&unpack_dir).await {
+            Ok(value) => value,
+            Err(error) => {
+                manager
+                    .cleanup_paths(&[archive_path, unpack_dir, archival_backup])
+                    .await;
+                return Err(error);
+            }
+        };
 
         let _ = adapter
             .edit_message(
@@ -566,13 +665,21 @@ impl WwpsCoreUpgradeManager {
                 },
             )
             .await;
-
-        manager.restart_service().await?;
-        manager.verify_service_active().await?;
-
-        manager
-            .cleanup_paths(&[archive_path.clone(), unpack_dir.clone()])
-            .await;
+        let activation = activate_or_rollback(
+            &published,
+            || manager.restart_service(),
+            || manager.verify_service_active(),
+            |had_original| manager.restore_prior_runtime(had_original),
+            |had_original| manager.verify_restored_runtime(had_original),
+        )
+        .await;
+        manager.cleanup_paths(&[archive_path, unpack_dir]).await;
+        if let Err(error) = activation {
+            manager
+                .cleanup_paths(std::slice::from_ref(&archival_backup))
+                .await;
+            return Err(error);
+        }
 
         adapter
             .send_message(
@@ -581,14 +688,13 @@ impl WwpsCoreUpgradeManager {
                     text: t!(
                         "upgrade.core_updated",
                         "0" => release.tag_name.as_str(),
-                        "1" => backup_path.display().to_string().as_str()
+                        "1" => archival_backup.display().to_string().as_str()
                     )
                     .to_string(),
                     markup: None,
                 },
             )
             .await?;
-
         Ok(())
     }
 }
@@ -615,6 +721,7 @@ async fn verify_xray_archive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::system::upgrade_transaction::rollback_binary;
     use tempfile::tempdir;
 
     #[test]
@@ -750,5 +857,77 @@ mod tests {
     fn test_cpu_arch_asset_basename() {
         assert_eq!(CpuArch::Amd64.asset_basename(), "Xray-linux-64");
         assert_eq!(CpuArch::Arm64.asset_basename(), "Xray-linux-arm64-v8a");
+    }
+
+    fn test_manager(install: &Path, root: &Path) -> WwpsCoreUpgradeManager {
+        WwpsCoreUpgradeManager::new(WwpsCoreUpgradeConfig::new(
+            "wwps-core",
+            install.to_owned(),
+            root.join("unused-backup"),
+            root.join("temp"),
+            CpuArch::Amd64,
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn wwps_core_upgrade_is_single_flight() {
+        let first = WWPS_CORE_UPGRADE.try_enter().unwrap();
+        let error = WWPS_CORE_UPGRADE.try_enter().unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("wwps-core upgrade already in progress")
+        );
+        drop(first);
+        WWPS_CORE_UPGRADE.try_enter().unwrap();
+    }
+
+    #[tokio::test]
+    async fn wwps_core_health_is_bounded() {
+        let error = bounded_health(|| async { anyhow::bail!("inactive") })
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("after 10 attempts"));
+    }
+
+    #[tokio::test]
+    async fn deploy_core_keeps_backup_beside_binary_until_health_commit() {
+        let tmp = tempdir().unwrap();
+        let install = tmp.path().join("install");
+        let unpack = tmp.path().join("unpack");
+        tokio::fs::create_dir_all(&install).await.unwrap();
+        tokio::fs::create_dir_all(&unpack).await.unwrap();
+        tokio::fs::write(install.join("wwps-core"), b"old")
+            .await
+            .unwrap();
+        tokio::fs::write(unpack.join("xray"), b"new").await.unwrap();
+        let manager = test_manager(&install, tmp.path());
+        let published = manager.deploy_core(&unpack).await.unwrap();
+        assert_eq!(published.backup.parent(), Some(install.as_path()));
+        assert_eq!(tokio::fs::read(&published.backup).await.unwrap(), b"old");
+        rollback_binary(&published).await.unwrap();
+        assert_eq!(
+            tokio::fs::read(install.join("wwps-core")).await.unwrap(),
+            b"old"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_extract_removes_partial_unpack_directory() {
+        let tmp = tempdir().unwrap();
+        let install = tmp.path().join("install");
+        tokio::fs::create_dir_all(&install).await.unwrap();
+        let manager = test_manager(&install, tmp.path());
+        tokio::fs::create_dir_all(&manager.config.temp_dir)
+            .await
+            .unwrap();
+        let invalid = tmp.path().join("invalid.zip");
+        tokio::fs::write(&invalid, b"not a zip").await.unwrap();
+        assert!(manager.extract_archive(&invalid).await.is_err());
+        assert_eq!(
+            std::fs::read_dir(&manager.config.temp_dir).unwrap().count(),
+            0
+        );
     }
 }
