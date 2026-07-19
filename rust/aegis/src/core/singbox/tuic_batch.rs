@@ -47,7 +47,7 @@ impl SingBoxConfigManager {
                 loop {
                     let p = StdRng::from_entropy().gen_range(10000..60000);
                     if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
-                        .await
+                        .await?
                     {
                         continue;
                     }

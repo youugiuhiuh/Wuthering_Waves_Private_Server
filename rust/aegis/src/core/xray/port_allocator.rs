@@ -3,15 +3,40 @@ use crate::core::security::firewall_scanner::FirewallScanner;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::time::Duration;
 use tokio::fs;
 
 const PORT_ALLOC_FILE: &str = "/etc/wwps/.port_alloc";
+const PORT_ALLOC_LOCK_FILE: &str = "/etc/wwps/.port_alloc.lock";
 const XRAY_PORT_MIN: u16 = 10000;
 const XRAY_PORT_MAX: u16 = 60000;
 const HOP_SIZE: u16 = 100;
 
-const WWPS_BOX_CONF_DIR: &str = "/etc/wwps/wwps-box/conf";
+#[derive(Clone)]
+struct AllocatorPaths {
+    state_file: PathBuf,
+    #[allow(dead_code)]
+    lock_file: PathBuf,
+    xray_conf_dir: PathBuf,
+    singbox_conf_dir: PathBuf,
+    #[cfg(test)]
+    after_load_delay: Duration,
+}
+
+impl AllocatorPaths {
+    fn production() -> Self {
+        Self {
+            state_file: PathBuf::from(PORT_ALLOC_FILE),
+            lock_file: PathBuf::from(PORT_ALLOC_LOCK_FILE),
+            xray_conf_dir: PathBuf::from(xray::CONF_DIR),
+            singbox_conf_dir: PathBuf::from(singbox::CONF_DIR),
+            #[cfg(test)]
+            after_load_delay: Duration::ZERO,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PortAllocData {
@@ -29,23 +54,22 @@ pub struct LockedRange {
     pub created_at: i64,
 }
 
-async fn load_port_alloc() -> Result<PortAllocData> {
-    let path = PathBuf::from(PORT_ALLOC_FILE);
-    if !path.exists() {
+async fn load_port_alloc(path: &Path) -> Result<PortAllocData> {
+    if !fs::try_exists(path).await? {
         return Ok(PortAllocData::default());
     }
-    let content = fs::read_to_string(&path).await?;
-    let data: PortAllocData = serde_json::from_str(&content).context("解析端口分配数据失败")?;
-    Ok(data)
+    let content = fs::read_to_string(path)
+        .await
+        .with_context(|| format!("读取端口分配数据失败: {}", path.display()))?;
+    serde_json::from_str(&content).context("解析端口分配数据失败")
 }
 
-async fn save_port_alloc(data: &PortAllocData) -> Result<()> {
-    let path = PathBuf::from(PORT_ALLOC_FILE);
+async fn save_port_alloc(path: &Path, data: &PortAllocData) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await?;
     }
     let content = serde_json::to_string_pretty(data)?;
-    fs::write(&path, content).await?;
+    fs::write(path, content).await?;
     Ok(())
 }
 
@@ -53,66 +77,55 @@ pub struct PortAllocator;
 
 impl PortAllocator {
     pub async fn check_hysteria2_limit() -> Result<bool> {
-        let conf_dir = PathBuf::from(WWPS_BOX_CONF_DIR);
-        if !conf_dir.exists() {
+        let conf_dir = PathBuf::from(singbox::CONF_DIR);
+        if !fs::try_exists(&conf_dir).await? {
             return Ok(true);
         }
-
         let mut count = 0;
         let mut entries = fs::read_dir(&conf_dir).await?;
-
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            if let Some(name) = entry.file_name().to_str()
-                && name.ends_with(".json")
+        while let Some(entry) = entries.next_entry().await? {
+            let name = entry.file_name();
+            if entry.file_type().await?.is_file()
+                && name.to_string_lossy().ends_with(".json")
+                && fs::read_to_string(entry.path())
+                    .await?
+                    .contains("hysteria2")
             {
-                let path = entry.path();
-                if let Ok(content) = fs::read_to_string(&path).await
-                    && content.contains("hysteria2")
-                {
-                    count += 1;
-                }
+                count += 1;
             }
         }
-
         Ok(count < 50)
     }
 
-    async fn scan_all_occupied_ports() -> Result<HashSet<u16>> {
-        let mut occupied = HashSet::new();
+    async fn scan_all_occupied_ports(
+        paths: &AllocatorPaths,
+        data: &PortAllocData,
+    ) -> Result<HashSet<u16>> {
+        let mut occupied = HashSet::from([22, 80, 443]);
+        occupied.extend(
+            FirewallScanner::scan_dir_for_ports(&paths.xray_conf_dir)
+                .await
+                .context("扫描 Xray 配置端口失败")?,
+        );
 
-        occupied.insert(22);
-        occupied.insert(80);
-        occupied.insert(443);
-
-        if let Ok(ports) = FirewallScanner::scan_dir_for_ports(xray::CONF_DIR).await {
-            occupied.extend(ports);
-        }
-
-        if let Ok(entries) = fs::read_dir(&singbox::CONF_DIR).await {
-            let mut dir = entries;
-            while let Ok(Some(entry)) = dir.next_entry().await {
-                if let Some(name) = entry.file_name().to_str()
+        if fs::try_exists(&paths.singbox_conf_dir).await? {
+            let mut entries = fs::read_dir(&paths.singbox_conf_dir).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if entry.file_type().await?.is_file()
                     && name.ends_with(".json")
                     && !name.starts_with("00_")
                 {
-                    let path = entry.path();
-                    if let Ok(content) = fs::read_to_string(&path).await
-                        && let Ok(ports) = Self::extract_ports_from_json(&content)
-                    {
-                        occupied.extend(ports);
-                    }
+                    let content = fs::read_to_string(entry.path()).await?;
+                    occupied.extend(PortAllocator::extract_ports_from_json(&content)?);
                 }
             }
         }
 
-        if let Ok(data) = load_port_alloc().await {
-            for range in &data.locked_ranges {
-                for port in range.start..=range.end {
-                    occupied.insert(port);
-                }
-            }
+        for range in &data.locked_ranges {
+            occupied.extend(range.start..=range.end);
         }
-
         Ok(occupied)
     }
 
@@ -151,85 +164,154 @@ impl PortAllocator {
         Ok(ports)
     }
 
-    pub async fn get_locked_ranges() -> Vec<(u16, u16)> {
-        let data = load_port_alloc().await.unwrap_or_default();
-        data.locked_ranges
-            .iter()
-            .map(|r| (r.start, r.end))
-            .collect()
+    pub async fn get_locked_ranges() -> Result<Vec<(u16, u16)>> {
+        Self::get_locked_ranges_with(&AllocatorPaths::production()).await
     }
 
-    pub async fn is_port_in_locked_range(port: u16) -> bool {
-        let ranges = Self::get_locked_ranges().await;
-        ranges
+    async fn get_locked_ranges_with(paths: &AllocatorPaths) -> Result<Vec<(u16, u16)>> {
+        Ok(load_port_alloc(&paths.state_file)
+            .await?
+            .locked_ranges
             .iter()
-            .any(|(start, end)| port >= *start && port <= *end)
+            .map(|range| (range.start, range.end))
+            .collect())
+    }
+
+    pub async fn is_port_in_locked_range(port: u16) -> Result<bool> {
+        Self::is_port_in_locked_range_with(&AllocatorPaths::production(), port).await
+    }
+
+    async fn is_port_in_locked_range_with(paths: &AllocatorPaths, port: u16) -> Result<bool> {
+        Ok(Self::get_locked_ranges_with(paths)
+            .await?
+            .iter()
+            .any(|(start, end)| port >= *start && port <= *end))
     }
 
     pub async fn allocate_hysteria2() -> Result<(u16, (u16, u16))> {
-        let occupied = Self::scan_all_occupied_ports().await?;
-        let main_port = Self::find_consecutive_range(&occupied, HOP_SIZE)?;
-        let hop_end = main_port + 99;
+        Self::allocate_hysteria2_with(&AllocatorPaths::production()).await
+    }
 
-        let now = std::time::SystemTime::now()
+    async fn allocate_hysteria2_with(paths: &AllocatorPaths) -> Result<(u16, (u16, u16))> {
+        let mut data = load_port_alloc(&paths.state_file).await?;
+        let occupied = Self::scan_all_occupied_ports(paths, &data).await?;
+        let main_port = Self::find_consecutive_range(&occupied, HOP_SIZE)?;
+        let hop_end = main_port + HOP_SIZE - 1;
+        #[cfg(test)]
+        tokio::time::sleep(paths.after_load_delay).await;
+        let created_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
+            .context("系统时间早于 UNIX epoch")?
             .as_secs() as i64;
-        let mut data = load_port_alloc().await.unwrap_or_default();
         data.locked_ranges.push(LockedRange {
             start: main_port,
             end: hop_end,
             protocol: "hysteria2".to_string(),
-            created_at: now,
+            created_at,
         });
-        save_port_alloc(&data).await?;
-
+        save_port_alloc(&paths.state_file, &data).await?;
         log::info!(
             "Hysteria2 端口分配: 主端口 {}, 跳跃范围 {}-{}",
             main_port,
             main_port + 1,
             hop_end
         );
-
         Ok((main_port, (main_port + 1, hop_end)))
     }
 
     pub async fn release_hysteria2_range(main_port: u16) -> Result<()> {
-        let mut data = load_port_alloc().await.unwrap_or_default();
+        Self::release_hysteria2_range_with(&AllocatorPaths::production(), main_port).await
+    }
+
+    async fn release_hysteria2_range_with(paths: &AllocatorPaths, main_port: u16) -> Result<()> {
+        let mut data = load_port_alloc(&paths.state_file).await?;
         let before = data.locked_ranges.len();
         data.locked_ranges
-            .retain(|r| !(r.protocol == "hysteria2" && r.start == main_port));
-
+            .retain(|range| !(range.protocol == "hysteria2" && range.start == main_port));
         if data.locked_ranges.len() < before {
-            save_port_alloc(&data).await?;
+            save_port_alloc(&paths.state_file, &data).await?;
             log::info!("Hysteria2 端口范围已释放: 主端口 {}", main_port);
         } else {
-            log::warn!(
-                "Hysteria2 端口范围未找到: 主端口 {} (可能已被释放)",
-                main_port
-            );
+            log::warn!("Hysteria2 端口范围未找到: 主端口 {}", main_port);
         }
-
         Ok(())
     }
 
-    pub async fn get_hysteria2_range() -> Option<(u16, (u16, u16))> {
-        let data = load_port_alloc().await.unwrap_or_default();
-        data.locked_ranges
+    pub async fn get_hysteria2_range() -> Result<Option<(u16, (u16, u16))>> {
+        Self::get_hysteria2_range_with(&AllocatorPaths::production()).await
+    }
+
+    async fn get_hysteria2_range_with(paths: &AllocatorPaths) -> Result<Option<(u16, (u16, u16))>> {
+        Ok(load_port_alloc(&paths.state_file)
+            .await?
+            .locked_ranges
             .iter()
-            .find(|r| r.protocol == "hysteria2")
-            .map(|r| {
-                let main_port = r.start;
-                let hop_start = main_port + 1;
-                let hop_end = r.end;
-                (main_port, (hop_start, hop_end))
-            })
+            .find(|range| range.protocol == "hysteria2")
+            .map(|range| (range.start, (range.start + 1, range.end))))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs as std_fs;
+    use tempfile::TempDir;
+
+    fn test_paths(root: &Path) -> AllocatorPaths {
+        let xray_conf_dir = root.join("xray");
+        let singbox_conf_dir = root.join("singbox");
+        std_fs::create_dir_all(&xray_conf_dir).unwrap();
+        std_fs::create_dir_all(&singbox_conf_dir).unwrap();
+        AllocatorPaths {
+            state_file: root.join(".port_alloc"),
+            lock_file: root.join(".port_alloc.lock"),
+            xray_conf_dir,
+            singbox_conf_dir,
+            #[cfg(test)]
+            after_load_delay: Duration::ZERO,
+        }
+    }
+
+    #[tokio::test]
+    async fn corrupt_state_fails_closed_and_is_unchanged() {
+        let temp = TempDir::new().unwrap();
+        let paths = test_paths(temp.path());
+        std_fs::write(&paths.state_file, b"not-json").unwrap();
+
+        let ranges = PortAllocator::get_locked_ranges_with(&paths).await;
+        let contains = PortAllocator::is_port_in_locked_range_with(&paths, 10000).await;
+        let hysteria2 = PortAllocator::get_hysteria2_range_with(&paths).await;
+        let release = PortAllocator::release_hysteria2_range_with(&paths, 10000).await;
+
+        assert!(ranges.is_err());
+        assert!(contains.is_err());
+        assert!(hysteria2.is_err());
+        assert!(release.is_err());
+        assert_eq!(std_fs::read(&paths.state_file).unwrap(), b"not-json");
+    }
+
+    #[tokio::test]
+    async fn unreadable_state_fails_closed() {
+        let temp = TempDir::new().unwrap();
+        let paths = test_paths(temp.path());
+        std_fs::create_dir(&paths.state_file).unwrap();
+
+        let result = PortAllocator::get_hysteria2_range_with(&paths).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn xray_scan_read_error_is_propagated() {
+        let temp = TempDir::new().unwrap();
+        let paths = test_paths(temp.path());
+        std_fs::write(paths.xray_conf_dir.join("broken.json"), [0xff]).unwrap();
+
+        let result = PortAllocator::allocate_hysteria2_with(&paths).await;
+
+        assert!(result.is_err());
+        assert!(!paths.state_file.exists());
+    }
 
     #[test]
     fn test_locked_range_serialization() {
