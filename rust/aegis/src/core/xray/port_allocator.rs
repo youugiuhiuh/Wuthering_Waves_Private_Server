@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 #[cfg(test)]
 use std::time::Duration;
 use tokio::fs;
@@ -80,6 +81,9 @@ async fn save_port_alloc(path: &Path, data: &PortAllocData) -> Result<()> {
         .await
         .context("原子写入端口分配数据失败")
 }
+
+static PORT_ALLOC_MUTEX: LazyLock<tokio::sync::Mutex<()>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 pub struct PortAllocator;
 
@@ -177,6 +181,7 @@ impl PortAllocator {
     }
 
     async fn get_locked_ranges_with(paths: &AllocatorPaths) -> Result<Vec<(u16, u16)>> {
+        let _process_guard = PORT_ALLOC_MUTEX.lock().await;
         Ok(load_port_alloc(&paths.state_file)
             .await?
             .locked_ranges
@@ -190,10 +195,12 @@ impl PortAllocator {
     }
 
     async fn is_port_in_locked_range_with(paths: &AllocatorPaths, port: u16) -> Result<bool> {
-        Ok(Self::get_locked_ranges_with(paths)
+        let _process_guard = PORT_ALLOC_MUTEX.lock().await;
+        Ok(load_port_alloc(&paths.state_file)
             .await?
+            .locked_ranges
             .iter()
-            .any(|(start, end)| port >= *start && port <= *end))
+            .any(|range| port >= range.start && port <= range.end))
     }
 
     pub async fn allocate_hysteria2() -> Result<(u16, (u16, u16))> {
@@ -201,6 +208,7 @@ impl PortAllocator {
     }
 
     async fn allocate_hysteria2_with(paths: &AllocatorPaths) -> Result<(u16, (u16, u16))> {
+        let _process_guard = PORT_ALLOC_MUTEX.lock().await;
         let mut data = load_port_alloc(&paths.state_file).await?;
         let occupied = Self::scan_all_occupied_ports(paths, &data).await?;
         let main_port = Self::find_consecutive_range(&occupied, HOP_SIZE)?;
@@ -232,6 +240,7 @@ impl PortAllocator {
     }
 
     async fn release_hysteria2_range_with(paths: &AllocatorPaths, main_port: u16) -> Result<()> {
+        let _process_guard = PORT_ALLOC_MUTEX.lock().await;
         let mut data = load_port_alloc(&paths.state_file).await?;
         let before = data.locked_ranges.len();
         data.locked_ranges
@@ -250,6 +259,7 @@ impl PortAllocator {
     }
 
     async fn get_hysteria2_range_with(paths: &AllocatorPaths) -> Result<Option<(u16, (u16, u16))>> {
+        let _process_guard = PORT_ALLOC_MUTEX.lock().await;
         Ok(load_port_alloc(&paths.state_file)
             .await?
             .locked_ranges
@@ -262,8 +272,10 @@ impl PortAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet as StdHashSet;
     use std::fs as std_fs;
     use std::os::unix::fs::symlink;
+    use std::sync::{Arc, Barrier};
     use tempfile::TempDir;
 
     fn test_paths(root: &Path) -> AllocatorPaths {
@@ -485,5 +497,39 @@ mod tests {
                 .file_type()
                 .is_symlink()
         );
+    }
+
+    #[test]
+    fn concurrent_threads_allocate_distinct_ranges() {
+        let temp = TempDir::new().unwrap();
+        let mut paths = test_paths(temp.path());
+        paths.after_load_delay = Duration::from_millis(100);
+        let paths = Arc::new(paths);
+        let barrier = Arc::new(Barrier::new(8));
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let paths = Arc::clone(&paths);
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .unwrap()
+                        .block_on(PortAllocator::allocate_hysteria2_with(&paths))
+                        .unwrap()
+                        .0
+                })
+            })
+            .collect();
+        let ports: Vec<_> = threads
+            .into_iter()
+            .map(|thread| thread.join().unwrap())
+            .collect();
+
+        assert_eq!(ports.iter().copied().collect::<StdHashSet<_>>().len(), 8);
+        let persisted: PortAllocData =
+            serde_json::from_slice(&std_fs::read(&paths.state_file).unwrap()).unwrap();
+        assert_eq!(persisted.locked_ranges.len(), 8);
     }
 }
