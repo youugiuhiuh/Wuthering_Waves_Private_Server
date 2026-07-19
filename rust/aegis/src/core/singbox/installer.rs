@@ -1,11 +1,17 @@
 use anyhow::{Context, Result};
+use std::future::Future;
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 use tokio::fs;
 
+use crate::core::cmd_async::{run_cmd_checked, run_cmd_status};
 use crate::core::network::release_api::{
     ReleaseResponse, fetch_github_json, find_named_asset, parse_digest,
 };
 use crate::core::paths::singbox;
+use crate::core::system::upgrade_transaction::{
+    SingleFlight, activate_or_rollback, publish_binary, stage_binary,
+};
 
 pub struct SingBoxInstaller;
 
@@ -13,6 +19,12 @@ const OWNER: &str = "SagerNet";
 const REPO: &str = "sing-box";
 const MAX_ARCHIVE_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_EXPANDED_BYTES: u64 = 256 * 1024 * 1024;
+
+static SINGBOX_INSTALL: SingleFlight = SingleFlight::new("sing-box");
+const SERVICE: &str = "wwps-box.service";
+const HEALTH_ATTEMPTS: usize = 10;
+const HEALTH_INTERVAL: Duration = Duration::from_secs(1);
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn release_path() -> String {
     format!("repos/{OWNER}/{REPO}/releases/latest")
@@ -157,6 +169,27 @@ pub async fn download_verified_archive(
     Ok(archive_path)
 }
 
+async fn bounded_health<F, Fut>(mut probe: F) -> Result<()>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<()>>,
+{
+    let mut last = None;
+    for attempt in 0..HEALTH_ATTEMPTS {
+        match probe().await {
+            Ok(()) => return Ok(()),
+            Err(error) => last = Some(error),
+        }
+        if attempt + 1 < HEALTH_ATTEMPTS {
+            tokio::time::sleep(HEALTH_INTERVAL).await;
+        }
+    }
+    let last = last.context("health probe did not run")?;
+    Err(last).context(format!(
+        "sing-box service unhealthy after {HEALTH_ATTEMPTS} attempts"
+    ))
+}
+
 impl SingBoxInstaller {
     pub async fn is_installed() -> bool {
         fs::try_exists(singbox::BIN).await.unwrap_or(false)
@@ -181,27 +214,22 @@ impl SingBoxInstaller {
             .context("创建临时目录失败")?;
         let temp_dir = temp.path();
 
+        let _flight = SINGBOX_INSTALL.try_enter()?;
+
         let archive_path = download_verified_archive(&api_client, &release, temp_dir).await?;
         let candidate = extract_candidate(&archive_path, temp_dir, &release)?;
-        Self::deploy_candidate(&candidate, &release, Path::new(singbox::BIN)).await?;
+        let published =
+            Self::deploy_candidate(&candidate, &release, Path::new(singbox::BIN)).await?;
+        activate_or_rollback(
+            &published,
+            Self::activate_service,
+            Self::verify_service_active,
+            Self::restore_service,
+            Self::verify_prior_runtime,
+        )
+        .await?;
 
-        let old_service_path = "/etc/systemd/system/sing-box.service";
-        if tokio::fs::try_exists(old_service_path)
-            .await
-            .unwrap_or(false)
-        {
-            let _ = tokio::process::Command::new("systemctl")
-                .args(["stop", "sing-box"])
-                .output()
-                .await;
-            let _ = tokio::fs::remove_file(old_service_path).await;
-            let _ = tokio::process::Command::new("systemctl")
-                .args(["daemon-reload"])
-                .output()
-                .await;
-        }
-
-        Self::create_service().await?;
+        Self::cleanup_legacy_service().await?;
 
         // TempDir auto-cleans on drop — no explicit remove_dir_all needed
         let _ = temp;
@@ -213,7 +241,7 @@ impl SingBoxInstaller {
         candidate: &Path,
         release: &SingBoxRelease,
         dest: &Path,
-    ) -> Result<()> {
+    ) -> Result<crate::core::system::upgrade_transaction::PublishedBinary> {
         let output = tokio::process::Command::new(candidate)
             .arg("version")
             .output()
@@ -224,25 +252,12 @@ impl SingBoxInstaller {
             anyhow::bail!("Sing-box candidate version mismatch");
         }
 
-        let staged = dest.with_extension("new");
-        fs::copy(candidate, &staged)
-            .await
-            .context("failed to stage candidate")?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755)).await?;
-        }
-        let file = std::fs::File::open(&staged)?;
-        file.sync_all()?;
-        fs::rename(&staged, dest)
-            .await
-            .context("failed to rename candidate into place")?;
-        Ok(())
+        let staged = stage_binary(candidate, dest).await?;
+        publish_binary(&staged, dest).await
     }
 
     pub async fn uninstall() -> Result<()> {
-        Self::stop_service().await?;
+        let _ = run_cmd_checked("systemctl", &["stop", SERVICE], COMMAND_TIMEOUT).await;
 
         let _ = fs::remove_file("/etc/systemd/system/wwps-box.service").await;
         let _ = fs::remove_dir_all(singbox::DIR).await;
@@ -251,7 +266,8 @@ impl SingBoxInstaller {
     }
 
     pub async fn restart_service() -> Result<()> {
-        Self::reload_service().await
+        run_cmd_checked("systemctl", &["restart", SERVICE], COMMAND_TIMEOUT).await?;
+        Self::verify_service_active().await
     }
 
     pub async fn status() -> Result<String> {
@@ -292,11 +308,10 @@ impl SingBoxInstaller {
         }
     }
 
-    async fn create_service() -> Result<()> {
+    async fn write_service_file() -> Result<()> {
         if !Path::new("/run/systemd/system").exists() {
-            return Ok(());
+            anyhow::bail!("systemd is required for transactional Sing-box activation");
         }
-
         let service_content = r#"[Unit]
 Description=WWPS-Box Service
 After=network.target
@@ -311,48 +326,85 @@ LimitNOFILE=51200
 [Install]
 WantedBy=multi-user.target
 "#;
-
         fs::write("/etc/systemd/system/wwps-box.service", service_content)
             .await
-            .context("创建服务文件失败")?;
-
-        if let Err(e) = crate::core::singbox::SingBoxConfigManager::ensure_base_config().await {
-            log::warn!("创建基础配置失败: {}", e);
-        }
-
-        tokio::process::Command::new("systemctl")
-            .args(["daemon-reload"])
-            .output()
-            .await?;
-
-        tokio::process::Command::new("systemctl")
-            .args(["enable", "--now", "wwps-box"])
-            .output()
-            .await?;
-
-        Ok(())
+            .context("创建服务文件失败")
     }
 
-    async fn stop_service() -> Result<()> {
-        let _ = tokio::process::Command::new("systemctl")
-            .args(["stop", "wwps-box"])
-            .output()
-            .await;
-
-        Ok(())
-    }
-
-    async fn reload_service() -> Result<()> {
-        let output = tokio::process::Command::new("systemctl")
-            .args(["restart", "wwps-box"])
-            .output()
+    async fn activate_service() -> Result<()> {
+        Self::write_service_file().await?;
+        crate::core::singbox::SingBoxConfigManager::ensure_base_config()
             .await
-            .context("重启服务失败")?;
+            .context("创建基础配置失败")?;
+        run_cmd_checked("systemctl", &["daemon-reload"], COMMAND_TIMEOUT).await?;
+        run_cmd_checked("systemctl", &["enable", SERVICE], COMMAND_TIMEOUT).await?;
+        run_cmd_checked("systemctl", &["restart", SERVICE], COMMAND_TIMEOUT).await?;
+        Ok(())
+    }
 
-        if !output.status.success() {
-            anyhow::bail!("重启服务失败: {}", String::from_utf8_lossy(&output.stderr));
+    async fn restore_service(had_original: bool) -> Result<()> {
+        if had_original {
+            run_cmd_checked("systemctl", &["restart", SERVICE], COMMAND_TIMEOUT).await?;
+        } else {
+            run_cmd_checked("systemctl", &["stop", SERVICE], COMMAND_TIMEOUT).await?;
+            run_cmd_checked("systemctl", &["disable", SERVICE], COMMAND_TIMEOUT).await?;
+            fs::remove_file("/etc/systemd/system/wwps-box.service")
+                .await
+                .context("remove first-install service during rollback")?;
+            run_cmd_checked("systemctl", &["daemon-reload"], COMMAND_TIMEOUT).await?;
         }
+        Ok(())
+    }
 
+    async fn verify_service_active() -> Result<()> {
+        bounded_health(|| async {
+            let status = run_cmd_status(
+                "systemctl",
+                &["is-active", "--quiet", SERVICE],
+                COMMAND_TIMEOUT,
+            )
+            .await?;
+            if status.success() {
+                Ok(())
+            } else {
+                anyhow::bail!("{SERVICE} is inactive")
+            }
+        })
+        .await
+    }
+
+    async fn verify_prior_runtime(had_original: bool) -> Result<()> {
+        if had_original {
+            Self::verify_service_active().await
+        } else {
+            let status = run_cmd_status(
+                "systemctl",
+                &["is-active", "--quiet", SERVICE],
+                COMMAND_TIMEOUT,
+            )
+            .await?;
+            if status.success() {
+                anyhow::bail!("first-install rollback left {SERVICE} active")
+            }
+            Ok(())
+        }
+    }
+
+    async fn cleanup_legacy_service() -> Result<()> {
+        let old_service_path = Path::new("/etc/systemd/system/sing-box.service");
+        if !fs::try_exists(old_service_path).await? {
+            return Ok(());
+        }
+        run_cmd_checked(
+            "systemctl",
+            &["disable", "--now", "sing-box.service"],
+            COMMAND_TIMEOUT,
+        )
+        .await?;
+        fs::remove_file(old_service_path)
+            .await
+            .context("remove legacy sing-box service")?;
+        run_cmd_checked("systemctl", &["daemon-reload"], COMMAND_TIMEOUT).await?;
         Ok(())
     }
 }
@@ -1081,21 +1133,18 @@ mod tests {
         std::fs::write(&target, b"old content").unwrap();
 
         let release = test_release();
-        SingBoxInstaller::deploy_candidate(&candidate, &release, &target)
+        let published = SingBoxInstaller::deploy_candidate(&candidate, &release, &target)
             .await
             .expect("deploy should succeed");
-
-        let content = std::fs::read(&target).unwrap();
-        assert!(
-            String::from_utf8_lossy(&content).contains("1.14.0"),
-            "target should contain candidate content"
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            std::fs::read(&candidate).unwrap()
         );
-
-        let staged = dir.path().join("wwps-box.new");
-        assert!(
-            !staged.exists(),
-            "staged file should be removed after rename"
-        );
+        assert_eq!(std::fs::read(&published.backup).unwrap(), b"old content");
+        crate::core::system::upgrade_transaction::commit_binary(&published)
+            .await
+            .unwrap();
+        assert!(!published.backup.exists());
     }
 
     #[tokio::test]
@@ -1172,5 +1221,44 @@ mod tests {
 
         let staged = dir.path().join("wwps-box.new");
         let _ = std::fs::remove_file(&staged);
+    }
+
+    #[test]
+    fn singbox_install_is_single_flight() {
+        let first = SINGBOX_INSTALL.try_enter().unwrap();
+        let error = SINGBOX_INSTALL.try_enter().unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("sing-box upgrade already in progress")
+        );
+        drop(first);
+        SINGBOX_INSTALL.try_enter().unwrap();
+    }
+
+    #[tokio::test]
+    async fn singbox_health_retries_until_active() {
+        let attempts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let probe_attempts = attempts.clone();
+        bounded_health(move || {
+            let attempt = probe_attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async move {
+                if attempt < 2 {
+                    anyhow::bail!("inactive")
+                }
+                Ok(())
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn singbox_health_is_bounded() {
+        let error = bounded_health(|| async { anyhow::bail!("inactive") })
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("after 10 attempts"));
     }
 }
