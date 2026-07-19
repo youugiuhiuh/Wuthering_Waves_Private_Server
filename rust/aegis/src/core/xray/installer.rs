@@ -545,7 +545,7 @@ pub async fn install_wwps_core(arch: CpuArch) -> Result<()> {
     let release = manager.fetch_release(None).await?;
     let archive = manager.download_release(&release, None, None, None).await?;
     let unpack = manager.extract_archive(&archive).await?;
-    manager.replace_core(&unpack).await?;
+    manager.deploy_core(&unpack).await?;
     manager
         .cleanup_paths(&[archive.clone(), unpack.clone()])
         .await;
