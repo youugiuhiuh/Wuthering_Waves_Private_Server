@@ -1,6 +1,7 @@
 use crate::adapters::common::routing::is_sensitive;
 use crate::adapters::common::{
-    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+    Attachment, AttachmentError, BotAdapter, Markup, MessageContent, MessageId, Platform,
+    PlatformCapabilities, TargetId, VerifiedAttachment, consume_matrix_buffer,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -8,6 +9,7 @@ use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::room::Room;
 use matrix_sdk::ruma::OwnedEventId;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+use std::future::Future;
 
 /// Matrix adapter: sends messages to a single Matrix room.
 ///
@@ -81,7 +83,30 @@ mod tests {
 
 #[cfg(test)]
 mod matrix_adapter_tests {
-    use crate::adapters::common::{InlineButton, Markup};
+    use crate::adapters::common::{
+        Attachment, AttachmentError, InlineButton, MAX_ATTACHMENT_BYTES, Markup,
+    };
+
+    #[tokio::test]
+    async fn matrix_sdk_buffer_uses_the_common_ten_mib_limit() {
+        let attachment = Attachment {
+            file_id: "mxc://example.org/security".into(),
+            file_name: Some("security.bin".into()),
+            declared_size: None,
+        };
+        let error = super::download_matrix_with(&attachment, None, async {
+            Ok(vec![0; (MAX_ATTACHMENT_BYTES + 1) as usize])
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            error,
+            AttachmentError::TooLarge {
+                observed: MAX_ATTACHMENT_BYTES + 1,
+                max: MAX_ATTACHMENT_BYTES,
+            }
+        );
+    }
 
     #[test]
     fn send_message_with_markup_appends_command_list() {
@@ -118,6 +143,17 @@ mod matrix_adapter_tests {
         let result = super::render_markup_buttons("plain".into(), &Markup { buttons: vec![] });
         assert_eq!(result, "plain");
     }
+}
+
+async fn download_matrix_with<Fut>(
+    attachment: &Attachment,
+    expected_sha256: Option<[u8; 32]>,
+    fetch: Fut,
+) -> std::result::Result<VerifiedAttachment, AttachmentError>
+where
+    Fut: Future<Output = std::result::Result<Vec<u8>, AttachmentError>> + Send,
+{
+    consume_matrix_buffer(attachment, expected_sha256, fetch).await
 }
 
 #[async_trait]
@@ -187,18 +223,28 @@ impl BotAdapter for MatrixAdapter {
         Ok(())
     }
 
-    async fn download_file(&self, file_id: &str) -> Result<Vec<u8>> {
+    async fn download_attachment(
+        &self,
+        attachment: &Attachment,
+        expected_sha256: Option<[u8; 32]>,
+    ) -> std::result::Result<VerifiedAttachment, AttachmentError> {
         use matrix_sdk::media::MediaRequestParameters;
         use matrix_sdk::ruma::OwnedMxcUri;
         use matrix_sdk::ruma::events::room::MediaSource;
+
         let client = self.room.client();
-        let mxc = OwnedMxcUri::from(file_id.to_string());
         let request = MediaRequestParameters {
-            source: MediaSource::Plain(mxc),
+            source: MediaSource::Plain(OwnedMxcUri::from(attachment.file_id.clone())),
             format: matrix_sdk::media::MediaFormat::File,
         };
-        let data = client.media().get_media_content(&request, false).await?;
-        Ok(data)
+        download_matrix_with(attachment, expected_sha256, async move {
+            client
+                .media()
+                .get_media_content(&request, false)
+                .await
+                .map_err(|_| AttachmentError::Transport)
+        })
+        .await
     }
 
     fn capabilities(&self) -> PlatformCapabilities {
