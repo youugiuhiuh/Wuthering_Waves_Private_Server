@@ -17,13 +17,14 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_FOREGROUND).setMethodCallHandler { call, _ ->
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_FOREGROUND).setMethodCallHandler { call, result ->
             when (call.method) {
                 "startForeground" -> {
                     val intent = Intent(this, SniForegroundService::class.java).apply {
                         putExtra("status", "SNI 測試中...")
                     }
                     startServiceCompat(intent)
+                    result.success(null)
                 }
                 "updateProgress" -> {
                     val intent = Intent(this, SniForegroundService::class.java).apply {
@@ -31,13 +32,16 @@ class MainActivity : FlutterActivity() {
                         putExtra("status", call.argument<String>("status") ?: "SNI 測試中...")
                     }
                     startServiceCompat(intent)
+                    result.success(null)
                 }
                 "stopForeground" -> {
                     val intent = Intent(this, SniForegroundService::class.java).apply {
                         putExtra("finalStatus", call.argument<String>("finalStatus") ?: "測試完成")
                     }
                     startServiceCompat(intent)
+                    result.success(null)
                 }
+                else -> result.notImplemented()
             }
         }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NATIVE).setMethodCallHandler { call, result ->
