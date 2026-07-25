@@ -33,6 +33,22 @@ const (
 	serviceFile = "/etc/systemd/system/wwps-aegis.service"
 )
 
+var uninstallServices = []string{"wwps-aegis", "wwps-core", "wwps-box"}
+
+var uninstallPaths = []string{
+	"/etc/systemd/system/wwps-aegis.service",
+	"/etc/systemd/system/wwps-core.service",
+	"/etc/systemd/system/wwps-box.service",
+	"/etc/init.d/wwps-core",
+	"/etc/wwps",
+	"/tmp/wwps-core-installer",
+	"/tmp/wwps-core-upgrade",
+	"/tmp/sing-box-install",
+	"/etc/sysctl.d/90-wwps-bbr3-optimize.conf",
+	"/etc/systemd/system/apt-daily-upgrade.timer.d/aegis-timezone.conf",
+	"/etc/systemd/system/apt-daily.timer.d/aegis-timezone.conf",
+}
+
 type releaseRepo struct {
 	Owner string
 	Name  string
@@ -198,22 +214,9 @@ func checkArch() string {
 
 // ======================== 命令执行 ===========================
 
-func runCmd(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
 func runCmdSilent(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	return cmd.Run()
-}
-
-func runCmdOutput(name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	out, err := cmd.Output()
-	return strings.TrimSpace(string(out)), err
 }
 
 func runCmdOutputBytes(name string, args ...string) ([]byte, error) {
@@ -1146,11 +1149,17 @@ func uninstallAegis() {
 		return
 	}
 
-	_ = runCmdSilent("systemctl", "stop", serviceName)
-	_ = runCmdSilent("systemctl", "disable", serviceName)
-	_ = os.Remove(serviceFile)
+	for _, service := range uninstallServices {
+		_ = runCmdSilent("systemctl", "stop", service)
+		_ = runCmdSilent("systemctl", "disable", service)
+	}
+	_ = runCmdSilent("rc-service", "wwps-core", "stop")
+	_ = runCmdSilent("rc-update", "del", "wwps-core", "default")
+
+	for _, path := range uninstallPaths {
+		_ = os.RemoveAll(path)
+	}
 	_ = runCmdSilent("systemctl", "daemon-reload")
-	_ = os.RemoveAll(installDir)
 
 	printGreen(i18n.T("uninstall.done"))
 }
