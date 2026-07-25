@@ -3,8 +3,33 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"testing"
 )
+
+func TestUninstallManifestIncludesRustArtifacts(t *testing.T) {
+	wantServices := []string{"wwps-aegis", "wwps-core", "wwps-box"}
+	wantPaths := []string{
+		"/etc/systemd/system/wwps-aegis.service",
+		"/etc/systemd/system/wwps-core.service",
+		"/etc/systemd/system/wwps-box.service",
+		"/etc/init.d/wwps-core",
+		"/etc/wwps",
+		"/tmp/wwps-core-installer",
+		"/tmp/wwps-core-upgrade",
+		"/tmp/sing-box-install",
+		"/etc/sysctl.d/90-wwps-bbr3-optimize.conf",
+		"/etc/systemd/system/apt-daily-upgrade.timer.d/aegis-timezone.conf",
+		"/etc/systemd/system/apt-daily.timer.d/aegis-timezone.conf",
+	}
+
+	if !slices.Equal(uninstallServices, wantServices) {
+		t.Fatalf("uninstallServices = %v, want %v", uninstallServices, wantServices)
+	}
+	if !slices.Equal(uninstallPaths, wantPaths) {
+		t.Fatalf("uninstallPaths = %v, want %v", uninstallPaths, wantPaths)
+	}
+}
 
 func TestExtractBase32Secret(t *testing.T) {
 	tests := []struct {
