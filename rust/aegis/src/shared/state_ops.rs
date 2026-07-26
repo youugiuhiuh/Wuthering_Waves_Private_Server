@@ -1,6 +1,9 @@
 use crate::app::state::AppState;
 use crate::bootstrap::BotSettings;
 use crate::core::i18n;
+use crate::core::subscription::config::{CertificateMode, SubscriptionConfig};
+use crate::core::subscription::runtime::subscription_runtime;
+use crate::shared::handlers::subscription::SubscriptionInput;
 use crate::shared::types::CallbackEvent;
 
 use std::time::Instant;
@@ -24,6 +27,27 @@ pub async fn intercept(cb: &CallbackEvent, state: &AppState) -> Option<String> {
             .await;
     }
 
+    if data == "sub_mode_domain" || data == "sub_mode_ip" {
+        arm_subscription_input(
+            state,
+            &cb.target.0,
+            if data == "sub_mode_domain" {
+                SubscriptionInput::Domain
+            } else {
+                SubscriptionInput::Ip
+            },
+        )
+        .await;
+    }
+
+    if data == "sub_set_ipv6" {
+        arm_subscription_input(state, &cb.target.0, SubscriptionInput::Ipv6San).await;
+    }
+
+    if data == "sub_set_port" {
+        arm_subscription_input(state, &cb.target.0, SubscriptionInput::Port).await;
+    }
+
     None
 }
 
@@ -41,6 +65,42 @@ async fn handle_set_timeout(cb: &CallbackEvent, state: &AppState) {
     if let Err(e) = settings.save() {
         log::error!("保存会话设置失败: {}", e);
     }
+}
+
+async fn arm_subscription_input(state: &AppState, chat_id: &str, input: SubscriptionInput) {
+    let config = match subscription_runtime() {
+        Some(runtime) => {
+            let status = runtime.status().await;
+            let cert_mode = if status.public_host.parse::<std::net::IpAddr>().is_ok() {
+                CertificateMode::Ip
+            } else {
+                CertificateMode::Domain
+            };
+            SubscriptionConfig {
+                enabled: status.enabled,
+                port: if status.port == 0 { 443 } else { status.port },
+                public_host: status.public_host,
+                ipv6_san: None,
+                token_hash: status.masked_token,
+                certificate_mode: cert_mode,
+                cert_path: std::path::PathBuf::new(),
+                key_path: std::path::PathBuf::new(),
+            }
+        }
+        None => SubscriptionConfig {
+            enabled: false,
+            port: 443,
+            public_host: String::new(),
+            ipv6_san: None,
+            token_hash: String::new(),
+            certificate_mode: CertificateMode::Domain,
+            cert_path: std::path::PathBuf::new(),
+            key_path: std::path::PathBuf::new(),
+        },
+    };
+    state
+        .begin_subscription_input(chat_id.to_string(), input, config, Instant::now())
+        .await;
 }
 
 async fn handle_lang(cb: &CallbackEvent, state: &AppState) -> Option<String> {

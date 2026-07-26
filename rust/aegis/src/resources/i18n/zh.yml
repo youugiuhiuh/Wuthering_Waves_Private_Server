@@ -88,6 +88,7 @@ menu:
   wwps_core_btn: "🛰️ wwps-core 管理"
   singbox_mgmt_btn: "📦 Sing-box 管理"
   warp_btn: "🌩 WARP 分流管理"
+  subscription: "🔐 订阅设置"
 
 auth:
   expired: "🚫 会话已过期，请发送 6 位 TOTP 验证码重新认证"
@@ -602,3 +603,54 @@ help:
 
 matrix:
   markup_header: "📋 **可用操作:**\n"
+
+subscription:
+  title: "订阅设置"
+  status: "状态"
+  enabled_status: "🟢 已启用"
+  disabled_status: "🔴 已禁用"
+  enable: "🟢 启用"
+  disable: "🔴 禁用"
+  not_init: "订阅系统未初始化，请检查服务器日志。"
+  not_set: "（未设置）"
+  mode_label: "证书模式"
+  mode_domain: "域名"
+  mode_ip: "IP"
+  host_label: "公网主机"
+  port_label: "端口"
+  masked_token_label: "令牌"
+  cert_label: "证书"
+  cert_valid: "✅ 已安装"
+  cert_none: "⚠️ 无"
+  cert_reissuing: "🔄 正在重新签发证书..."
+  cert_fail: "❌ 证书重新签发失败: %{0}"
+  last_error: "⚠️ 最近错误:"
+  refresh: "🔄 刷新"
+  set_domain: "设置域名"
+  set_ip: "设置 IP"
+  set_ipv6_san: "设置 IPv6 SAN"
+  set_port: "设置端口"
+  regenerate_token_btn: "🔄 重新生成令牌"
+  reissue_cert_btn: "🔐 重新签发证书"
+  toggle_success: "✅ 订阅已切换"
+  toggle_fail: "❌ 切换失败: %{0}"
+  input_domain_prompt: "✏️ 请输入域名（例如 sub.example.com）:"
+  input_ip_prompt: "✏️ 请输入公网 IP 地址（例如 1.2.3.4）:"
+  input_ipv6_san_prompt: "✏️ 请输入 IPv6 SAN（输入 '-' 清空）:"
+  input_port_prompt: "✏️ 请输入端口号（1024-65535）:"
+  input_timeout_hint: "（输入 60 秒后超时）"
+  input_timeout: "⏳ 输入已超时（60 秒），已取消。"
+  input_empty: "⚠️ 空输入，请重试或使用 /menu。"
+  invalid_input: "⚠️ 输入无效，请重试。"
+  invalid_ip: "⚠️ IP 地址格式无效。"
+  invalid_ipv6: "⚠️ IPv6 地址格式无效。"
+  invalid_port: "⚠️ 端口号无效（1-65535）。"
+  invalid_port_80: "⚠️ 端口 80 预留给 ACME，请使用其他端口。"
+  config_updated: "✅ 订阅配置已更新。"
+  config_fail: "❌ 配置失败: %{0}"
+  token_regenerated_msg: |
+    ✅ 令牌已重新生成。
+    Standard: %{0}
+    Clash: %{1}
+  token_regenerated_cb: "✅ 令牌重新生成成功"
+  token_fail: "❌ 令牌重新生成失败: %{0}"

@@ -78,6 +78,7 @@ menu:
   wwps_core_btn: "🛰️ wwps-core 管理"
   singbox_mgmt_btn: "📦 Sing-box 管理"
   warp_btn: "🌩 WARP ルーティング"
+  subscription: "🔐 サブスクリプション"
 
 auth:
   expired: "🚫 セッションの有効期限が切れました。6桁のTOTPコードを送信して再認証してください。"
@@ -576,3 +577,54 @@ help:
 
 matrix:
   markup_header: "📋 **利用可能な操作:**\n"
+
+subscription:
+  title: "サブスクリプション設定"
+  status: "状態"
+  enabled_status: "🟢 有効"
+  disabled_status: "🔴 無効"
+  enable: "🟢 有効化"
+  disable: "🔴 無効化"
+  not_init: "サブスクリプションシステムが初期化されていません。サーバーログを確認してください。"
+  not_set: "（未設定）"
+  mode_label: "証明書モード"
+  mode_domain: "ドメイン"
+  mode_ip: "IP"
+  host_label: "公開ホスト"
+  port_label: "ポート"
+  masked_token_label: "トークン"
+  cert_label: "証明書"
+  cert_valid: "✅ インストール済み"
+  cert_none: "⚠️ なし"
+  cert_reissuing: "🔄 証明書を再発行中..."
+  cert_fail: "❌ 証明書の再発行に失敗しました: %{0}"
+  last_error: "⚠️ 最後のエラー:"
+  refresh: "🔄 更新"
+  set_domain: "ドメイン設定"
+  set_ip: "IP 設定"
+  set_ipv6_san: "IPv6 SAN 設定"
+  set_port: "ポート設定"
+  regenerate_token_btn: "🔄 トークン再生成"
+  reissue_cert_btn: "🔐 証明書再発行"
+  toggle_success: "✅ サブスクリプション切り替え完了"
+  toggle_fail: "❌ 切り替え失敗: %{0}"
+  input_domain_prompt: "✏️ ドメイン名を入力してください（例: sub.example.com）:"
+  input_ip_prompt: "✏️ 公開IPアドレスを入力してください（例: 1.2.3.4）:"
+  input_ipv6_san_prompt: "✏️ IPv6 SANを入力してください（'-' でクリア）:"
+  input_port_prompt: "✏️ ポート番号を入力してください（1024-65535）:"
+  input_timeout_hint: "（入力は60秒でタイムアウトします）"
+  input_timeout: "⏳ 入力がタイムアウトしました（60秒）。キャンセルされました。"
+  input_empty: "⚠️ 空の入力です。再試行するか /menu を使用してください。"
+  invalid_input: "⚠️ 無効な入力です。再試行してください。"
+  invalid_ip: "⚠️ IPアドレスの形式が無効です。"
+  invalid_ipv6: "⚠️ IPv6アドレスの形式が無効です。"
+  invalid_port: "⚠️ ポート番号が無効です（1-65535）。"
+  invalid_port_80: "⚠️ ポート80はACME用に予約されています。別のポートを使用してください。"
+  config_updated: "✅ サブスクリプション設定が更新されました。"
+  config_fail: "❌ 設定に失敗しました: %{0}"
+  token_regenerated_msg: |
+    ✅ トークンが再生成されました。
+    Standard: %{0}
+    Clash: %{1}
+  token_regenerated_cb: "✅ トークンが正常に再生成されました"
+  token_fail: "❌ トークンの再生成に失敗しました: %{0}"

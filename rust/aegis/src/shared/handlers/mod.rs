@@ -5,6 +5,7 @@ pub mod message;
 pub mod ops;
 pub mod schedule;
 pub mod singbox;
+pub mod subscription;
 pub mod warp;
 pub mod xray;
 
@@ -31,6 +32,9 @@ pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
         || data.starts_with("s_del:")
     {
         return Ok(Some(schedule::handle(event).await?));
+    }
+    if data == "m_subscription" || data.starts_with("sub_") {
+        return Ok(Some(subscription::handle(event).await?));
     }
     if data.starts_with("a_bbr3")
         || data == "a_fw"

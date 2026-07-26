@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use rust_i18n::t;
 
 use crate::adapters::common::{BotAdapter, MessageContent, TargetId};
+use crate::core::subscription::config::SubscriptionConfig;
 use crate::core::xray::config::ConfigManager;
 use crate::shared::types::TimeoutStatus;
 
@@ -19,6 +20,19 @@ pub trait MessageState: Send + Sync {
     async fn schedule_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus;
     async fn remove_schedule_input(&self, chat_id: &str);
     async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus;
+    async fn subscription_input_timeout_status(
+        &self,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> TimeoutStatus;
+    async fn cancel_subscription_input(&self, chat_id: &str);
+    async fn take_subscription_input(
+        &self,
+        chat_id: &str,
+    ) -> Option<(
+        crate::shared::handlers::subscription::SubscriptionInput,
+        SubscriptionConfig,
+    )>;
 }
 
 pub async fn handle_message(
@@ -145,6 +159,34 @@ pub async fn handle_message(
                             .await?;
                     }
                 }
+            }
+            return Ok(MessageAction::Handled);
+        }
+        TimeoutStatus::NotTracked => {}
+    }
+
+    // Subscription input check
+    match state
+        .subscription_input_timeout_status(target_str, Duration::from_secs(60))
+        .await
+    {
+        TimeoutStatus::Expired => {
+            state.cancel_subscription_input(target_str).await;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!("subscription.input_timeout").to_string(),
+                        markup: None,
+                    },
+                )
+                .await?;
+            return Ok(MessageAction::Handled);
+        }
+        TimeoutStatus::Active => {
+            if text.is_some() || has_file {
+                // Intercept — actual processing happens in dispatch.rs
+                return Ok(MessageAction::Handled);
             }
             return Ok(MessageAction::Handled);
         }

@@ -181,6 +181,10 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                         text: t!("schedule.add_task").into(),
                         data: "m_sched".into(),
                     }],
+                    vec![InlineButton {
+                        text: t!("menu.subscription").into(),
+                        data: "m_subscription".into(),
+                    }],
                     vec![
                         InlineButton {
                             text: t!("schedule.geo_update_now").into(),

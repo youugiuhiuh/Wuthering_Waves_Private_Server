@@ -81,6 +81,16 @@ pub struct AppState {
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
     pending_security_file: Mutex<HashMap<String, Instant>>,
+    pending_subscription_inputs: Mutex<
+        HashMap<
+            String,
+            (
+                aegis::shared::handlers::subscription::SubscriptionInput,
+                aegis::core::subscription::config::SubscriptionConfig,
+                Instant,
+            ),
+        >,
+    >,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
     lang_configured: Mutex<bool>,
@@ -109,6 +119,7 @@ impl AppState {
             pending_warp_inputs: Mutex::new(HashMap::new()),
             pending_schedule_inputs: Mutex::new(HashMap::new()),
             pending_security_file: Mutex::new(HashMap::new()),
+            pending_subscription_inputs: Mutex::new(HashMap::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
             lang: Mutex::new(Lang::Zh),
             lang_configured: Mutex::new(false),
@@ -463,6 +474,73 @@ impl AppState {
             None => TimeoutStatus::NotTracked,
         }
     }
+
+    pub async fn begin_subscription_input(
+        &self,
+        chat_id: String,
+        input: aegis::shared::handlers::subscription::SubscriptionInput,
+        config: aegis::core::subscription::config::SubscriptionConfig,
+        now: Instant,
+    ) {
+        self.pending_subscription_inputs
+            .lock()
+            .await
+            .insert(chat_id, (input, config, now));
+    }
+
+    pub async fn cancel_subscription_input(&self, chat_id: &str) -> bool {
+        self.pending_subscription_inputs
+            .lock()
+            .await
+            .remove(chat_id)
+            .is_some()
+    }
+
+    pub async fn has_pending_subscription_input(&self, chat_id: &str) -> bool {
+        self.pending_subscription_inputs
+            .lock()
+            .await
+            .contains_key(chat_id)
+    }
+
+    pub async fn subscription_input_timeout_status(
+        &self,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> TimeoutStatus {
+        let map = self.pending_subscription_inputs.lock().await;
+        match map.get(chat_id) {
+            Some((_, _, started)) if started.elapsed() > timeout => TimeoutStatus::Expired,
+            Some(_) => TimeoutStatus::Active,
+            None => TimeoutStatus::NotTracked,
+        }
+    }
+
+    pub async fn subscription_input_snapshot(
+        &self,
+        chat_id: &str,
+    ) -> Option<(
+        aegis::shared::handlers::subscription::SubscriptionInput,
+        aegis::core::subscription::config::SubscriptionConfig,
+    )> {
+        let map = self.pending_subscription_inputs.lock().await;
+        map.get(chat_id)
+            .map(|(input, config, _)| (input.clone(), config.clone()))
+    }
+
+    pub async fn take_subscription_input(
+        &self,
+        chat_id: &str,
+    ) -> Option<(
+        aegis::shared::handlers::subscription::SubscriptionInput,
+        aegis::core::subscription::config::SubscriptionConfig,
+    )> {
+        self.pending_subscription_inputs
+            .lock()
+            .await
+            .remove(chat_id)
+            .map(|(input, config, _)| (input, config))
+    }
 }
 
 #[async_trait]
@@ -477,6 +555,29 @@ impl MessageState for AppState {
 
     async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
         self.take_warp_input_status(chat_id, timeout).await
+    }
+
+    async fn cancel_subscription_input(&self, chat_id: &str) {
+        self.cancel_subscription_input(chat_id).await;
+    }
+
+    async fn subscription_input_timeout_status(
+        &self,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> TimeoutStatus {
+        self.subscription_input_timeout_status(chat_id, timeout)
+            .await
+    }
+
+    async fn take_subscription_input(
+        &self,
+        chat_id: &str,
+    ) -> Option<(
+        aegis::shared::handlers::subscription::SubscriptionInput,
+        aegis::core::subscription::config::SubscriptionConfig,
+    )> {
+        self.take_subscription_input(chat_id).await
     }
 }
 
@@ -805,5 +906,94 @@ mod tests {
         );
         assert!(state.is_admin_user(999));
         assert!(!state.is_admin_user(888));
+    }
+
+    // ---- Subscription input state tests ----
+
+    #[tokio::test]
+    async fn subscription_input_begin_and_snapshot() {
+        let state = make_state();
+        let chat_id = "sub-1".to_string();
+        let input = aegis::shared::handlers::subscription::SubscriptionInput::Domain;
+        let config =
+            aegis::core::subscription::config::SubscriptionConfig::new_disabled("ab".repeat(32));
+        state
+            .begin_subscription_input(
+                chat_id.clone(),
+                input.clone(),
+                config.clone(),
+                Instant::now(),
+            )
+            .await;
+        let snapshot = state.subscription_input_snapshot(&chat_id).await;
+        assert!(snapshot.is_some());
+        let (got_input, _got_config) = snapshot.unwrap();
+        assert_eq!(got_input, input);
+    }
+
+    #[tokio::test]
+    async fn subscription_input_cancel_removes_entry() {
+        let state = make_state();
+        let chat_id = "sub-2".to_string();
+        let input = aegis::shared::handlers::subscription::SubscriptionInput::Port;
+        let config =
+            aegis::core::subscription::config::SubscriptionConfig::new_disabled("cd".repeat(32));
+        state
+            .begin_subscription_input(chat_id.clone(), input, config, Instant::now())
+            .await;
+        assert!(state.cancel_subscription_input(&chat_id).await);
+        let snapshot = state.subscription_input_snapshot(&chat_id).await;
+        assert!(snapshot.is_none());
+    }
+
+    #[tokio::test]
+    async fn subscription_input_not_tracked_when_not_started() {
+        let state = make_state();
+        let status = state
+            .subscription_input_timeout_status("sub-3", Duration::from_secs(60))
+            .await;
+        assert_eq!(status, TimeoutStatus::NotTracked);
+    }
+
+    #[tokio::test]
+    async fn subscription_input_active_within_timeout() {
+        let state = make_state();
+        let chat_id = "sub-4".to_string();
+        let input = aegis::shared::handlers::subscription::SubscriptionInput::Ip;
+        let config =
+            aegis::core::subscription::config::SubscriptionConfig::new_disabled("ef".repeat(32));
+        state
+            .begin_subscription_input(chat_id.clone(), input, config, Instant::now())
+            .await;
+        let snap = state.subscription_input_snapshot(&chat_id).await;
+        assert!(snap.is_some());
+        assert_eq!(
+            state
+                .subscription_input_timeout_status(&chat_id, Duration::from_secs(60))
+                .await,
+            TimeoutStatus::Active
+        );
+        let taken = state.take_subscription_input(&chat_id).await;
+        assert!(taken.is_some());
+        assert!(state.subscription_input_snapshot(&chat_id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn subscription_input_expired_after_timeout() {
+        let state = make_state();
+        let chat_id = "sub-5".to_string();
+        let input = aegis::shared::handlers::subscription::SubscriptionInput::Domain;
+        let config =
+            aegis::core::subscription::config::SubscriptionConfig::new_disabled("fe".repeat(32));
+        let past = Instant::now() - Duration::from_secs(120);
+        state
+            .begin_subscription_input(chat_id.clone(), input, config, past)
+            .await;
+        assert_eq!(
+            state
+                .subscription_input_timeout_status(&chat_id, Duration::from_secs(60))
+                .await,
+            TimeoutStatus::Expired
+        );
     }
 }

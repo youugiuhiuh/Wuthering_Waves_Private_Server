@@ -8,6 +8,7 @@ use crate::app::auth;
 use crate::app::state::AppState;
 use crate::shared::error::DispatchError;
 use crate::shared::handlers::message::{self, MessageAction};
+use crate::shared::handlers::subscription;
 use crate::shared::types::{
     BotCommand, BotEvent, CallbackEvent, CommandEvent, HandlerAction, MessageEvent, TimeoutStatus,
 };
@@ -113,6 +114,36 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
         state,
     )
     .await?;
+
+    // Subscription typed input processing
+    if let Some(ref text) = msg.text
+        && state
+            .subscription_input_timeout_status(
+                &msg.target.0,
+                subscription::SUBSCRIPTION_INPUT_TIMEOUT,
+            )
+            .await
+            == TimeoutStatus::Active
+        && let Some((input_type, config)) = state.take_subscription_input(&msg.target.0).await
+    {
+        let adapter = msg.adapter.clone();
+        let target = msg.target.clone();
+        let text = text.clone();
+        tokio::spawn(async move {
+            if let Err(e) = subscription::process_typed_input(
+                adapter.as_ref(),
+                &target,
+                input_type,
+                config,
+                &text,
+            )
+            .await
+            {
+                log::error!("Subscription input processing failed: {e}");
+            }
+        });
+        return Ok(());
+    }
 
     if let MessageAction::NeedsDestruct = action
         && let Some(ref text) = msg.text
