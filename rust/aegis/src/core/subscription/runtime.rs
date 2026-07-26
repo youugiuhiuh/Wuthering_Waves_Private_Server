@@ -88,6 +88,9 @@ pub trait RuntimeOps: Send + Sync {
     ) -> Result<Box<dyn CertificatePromotion>>;
     async fn open_port(&self, port: u16) -> Result<bool>;
     async fn close_port(&self, port: u16) -> Result<()>;
+    async fn discard_certificate(&self, _staged: &ValidatedCertificate) -> Result<()> {
+        Ok(())
+    }
     async fn start_listener(
         &self,
         bind: SocketAddr,
@@ -169,6 +172,30 @@ impl RuntimeOps for ProductionRuntimeOps {
         FirewallManager::remove_port(port).await
     }
 
+    async fn discard_certificate(&self, staged: &ValidatedCertificate) -> Result<()> {
+        *self.pending.lock().await = None;
+        let mut failures = Vec::new();
+        if remove_file_if_present(&staged.cert_path).is_err() {
+            failures.push("staged certificate");
+        }
+        if remove_file_if_present(&staged.key_path).is_err() {
+            failures.push("staged private key");
+        }
+        if let Some(parent) = staged.cert_path.parent() {
+            match std::fs::remove_dir(parent) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => {}
+                Err(_) => failures.push("staging directory"),
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(operation_error("certificate discard", &failures))
+        }
+    }
+
     async fn start_listener(
         &self,
         bind: SocketAddr,
@@ -241,13 +268,22 @@ pub fn subscription_runtime() -> Option<Arc<SubscriptionRuntime>> {
 
 impl SubscriptionRuntime {
     pub fn new(paths: SubscriptionPaths, ops: Arc<dyn RuntimeOps>) -> Arc<Self> {
-        let runtime = Arc::new(Self {
+        SUBSCRIPTION_RUNTIME
+            .get_or_init(|| Self::build(paths, ops))
+            .clone()
+    }
+
+    #[doc(hidden)]
+    pub fn new_isolated_for_test(paths: SubscriptionPaths, ops: Arc<dyn RuntimeOps>) -> Arc<Self> {
+        Self::build(paths, ops)
+    }
+
+    fn build(paths: SubscriptionPaths, ops: Arc<dyn RuntimeOps>) -> Arc<Self> {
+        Arc::new(Self {
             paths,
             ops,
             state: Mutex::new(RuntimeState::default()),
-        });
-        let _ = SUBSCRIPTION_RUNTIME.set(runtime.clone());
-        runtime
+        })
     }
 
     pub async fn start_from_disk(self: &Arc<Self>) -> Result<()> {
@@ -275,6 +311,7 @@ impl SubscriptionRuntime {
         }
         candidate.validate()?;
         let mut state = self.state.lock().await;
+        state.last_error = None;
         let same_socket = state.listener.is_some()
             && state
                 .config
@@ -285,7 +322,7 @@ impl SubscriptionRuntime {
         } else {
             self.apply_new_socket(&mut state, candidate).await
         };
-        if result.is_err() {
+        if result.is_err() && state.last_error.is_none() {
             state.last_error = Some("subscription update failed".into());
         }
         result
@@ -296,33 +333,79 @@ impl SubscriptionRuntime {
         state: &mut RuntimeState,
         candidate: SubscriptionConfig,
     ) -> Result<()> {
-        let staged = self.ops.stage_certificate(&candidate).await?;
-        let promotion = self.ops.promote_certificate(&staged).await?;
+        let staged = self
+            .ops
+            .stage_certificate(&candidate)
+            .await
+            .map_err(|_| operation_error("certificate stage", &[]))?;
+        let Some(config_tx) = active_config_sender(state) else {
+            let cleanup = discard_staged(self.ops.as_ref(), &staged).await;
+            return Err(operation_error("config publication", &cleanup));
+        };
+        let promotion = match self.ops.promote_certificate(&staged).await {
+            Ok(promotion) => promotion,
+            Err(_) => {
+                let cleanup = discard_staged(self.ops.as_ref(), &staged).await;
+                return Err(operation_error("certificate promotion", &cleanup));
+            }
+        };
         let live = live_certificate(&candidate, staged.not_after);
         let listener = state.listener.as_deref().context("listener is missing")?;
-        if let Err(error) = listener.reload_tls(&live) {
-            rollback_and_reload(promotion, listener, state).await?;
-            return Err(error.context("failed to reload subscription TLS"));
+        if listener.reload_tls(&live).is_err() {
+            let mut cleanup = rollback_and_reload(promotion, listener, state).await;
+            if !cleanup.is_empty() {
+                cleanup.extend(deactivate_running(self.ops.as_ref(), state).await);
+            }
+            return Err(operation_error("TLS reload", &cleanup));
         }
-        if let Err(error) = self.ops.probe_listener(listener, &candidate).await {
-            rollback_and_reload(promotion, listener, state).await?;
-            return Err(error.context("failed to probe subscription listener"));
+        if self.ops.probe_listener(listener, &candidate).await.is_err() {
+            let mut cleanup = rollback_and_reload(promotion, listener, state).await;
+            if !cleanup.is_empty() {
+                cleanup.extend(deactivate_running(self.ops.as_ref(), state).await);
+            }
+            return Err(operation_error("listener probe", &cleanup));
         }
-        if let Err(error) = self
+        if self
             .ops
             .save_config(&candidate, &self.paths.config_file)
             .await
+            .is_err()
         {
-            rollback_and_reload(promotion, listener, state).await?;
-            return Err(error.context("failed to save subscription config"));
+            let mut cleanup = rollback_and_reload(promotion, listener, state).await;
+            if !cleanup.is_empty() {
+                cleanup.extend(deactivate_running(self.ops.as_ref(), state).await);
+            }
+            return Err(operation_error("config save", &cleanup));
         }
-        if let Some(config_tx) = &state.config_tx {
-            config_tx.send_replace(Arc::new(candidate.clone()));
+        if config_tx.send(Arc::new(candidate.clone())).is_err() {
+            let mut cleanup = Vec::new();
+            if self
+                .ops
+                .save_config(
+                    state.config.as_ref().expect("running config is present"),
+                    &self.paths.config_file,
+                )
+                .await
+                .is_err()
+            {
+                cleanup.push("config restore");
+            }
+            cleanup.extend(rollback_and_reload(promotion, listener, state).await);
+            if cleanup
+                .iter()
+                .any(|failure| matches!(*failure, "certificate rollback" | "old TLS reload"))
+            {
+                cleanup.extend(deactivate_running(self.ops.as_ref(), state).await);
+            }
+            return Err(operation_error("config publication", &cleanup));
         }
         state.config = Some(candidate);
         state.certificate_not_after = Some(staged.not_after);
-        state.last_error = None;
-        promotion.commit().await
+        let mut cleanup = Vec::new();
+        if promotion.commit().await.is_err() {
+            cleanup.push("certificate finalization");
+        }
+        finish_committed(state, cleanup)
     }
 
     async fn apply_new_socket(
@@ -330,8 +413,18 @@ impl SubscriptionRuntime {
         state: &mut RuntimeState,
         candidate: SubscriptionConfig,
     ) -> Result<()> {
-        let staged = self.ops.stage_certificate(&candidate).await?;
-        let opened = self.ops.open_port(candidate.port).await?;
+        let staged = self
+            .ops
+            .stage_certificate(&candidate)
+            .await
+            .map_err(|_| operation_error("certificate stage", &[]))?;
+        let opened = match self.ops.open_port(candidate.port).await {
+            Ok(opened) => opened,
+            Err(_) => {
+                let cleanup = discard_staged(self.ops.as_ref(), &staged).await;
+                return Err(operation_error("firewall open", &cleanup));
+            }
+        };
         let (config_tx, _) = watch::channel(Arc::new(candidate.clone()));
         let source = SubscriptionSource {
             config_rx: config_tx.subscribe(),
@@ -341,63 +434,121 @@ impl SubscriptionRuntime {
         let bind = SocketAddr::new(self.paths.bind_ip, candidate.port);
         let listener = match self.ops.start_listener(bind, &staged, source).await {
             Ok(listener) => listener,
-            Err(error) => {
-                if opened {
-                    self.ops.close_port(candidate.port).await?;
-                }
-                return Err(error.context("failed to start subscription listener"));
+            Err(_) => {
+                let cleanup = cleanup_staged_transition(
+                    self.ops.as_ref(),
+                    None,
+                    candidate.port,
+                    opened,
+                    &staged,
+                )
+                .await;
+                return Err(operation_error("listener start", &cleanup));
             }
         };
-        if let Err(error) = self.ops.probe_listener(listener.as_ref(), &candidate).await {
-            let stopped = listener.shutdown().await;
-            let closed = close_if_opened(self.ops.as_ref(), candidate.port, opened).await;
-            stopped?;
-            closed?;
-            return Err(error.context("failed to probe subscription listener"));
+        if self
+            .ops
+            .probe_listener(listener.as_ref(), &candidate)
+            .await
+            .is_err()
+        {
+            let cleanup = cleanup_staged_transition(
+                self.ops.as_ref(),
+                Some(listener),
+                candidate.port,
+                opened,
+                &staged,
+            )
+            .await;
+            return Err(operation_error("listener probe", &cleanup));
+        }
+        if config_tx.receiver_count() == 0 {
+            let cleanup = cleanup_staged_transition(
+                self.ops.as_ref(),
+                Some(listener),
+                candidate.port,
+                opened,
+                &staged,
+            )
+            .await;
+            return Err(operation_error("config publication", &cleanup));
         }
         let promotion = match self.ops.promote_certificate(&staged).await {
             Ok(promotion) => promotion,
-            Err(error) => {
-                let stopped = listener.shutdown().await;
-                let closed = close_if_opened(self.ops.as_ref(), candidate.port, opened).await;
-                stopped?;
-                closed?;
-                return Err(error.context("failed to promote subscription certificate"));
+            Err(_) => {
+                let cleanup = cleanup_staged_transition(
+                    self.ops.as_ref(),
+                    Some(listener),
+                    candidate.port,
+                    opened,
+                    &staged,
+                )
+                .await;
+                return Err(operation_error("certificate promotion", &cleanup));
             }
         };
-        if let Err(error) = self
+        if self
             .ops
             .save_config(&candidate, &self.paths.config_file)
             .await
+            .is_err()
         {
-            let rolled_back = promotion.rollback().await;
-            let stopped = listener.shutdown().await;
-            let closed = close_if_opened(self.ops.as_ref(), candidate.port, opened).await;
-            rolled_back?;
-            stopped?;
-            closed?;
-            return Err(error.context("failed to save subscription config"));
+            let cleanup = cleanup_promoted_transition(
+                self.ops.as_ref(),
+                promotion,
+                listener,
+                candidate.port,
+                opened,
+            )
+            .await;
+            return Err(operation_error("config save", &cleanup));
+        }
+        if config_tx.send(Arc::new(candidate.clone())).is_err() {
+            let old_config = state.config.clone();
+            let mut cleanup = Vec::new();
+            if let Some(old_config) = &old_config
+                && self
+                    .ops
+                    .save_config(old_config, &self.paths.config_file)
+                    .await
+                    .is_err()
+            {
+                cleanup.push("config restore");
+            }
+            cleanup.extend(
+                cleanup_promoted_transition(
+                    self.ops.as_ref(),
+                    promotion,
+                    listener,
+                    candidate.port,
+                    opened,
+                )
+                .await,
+            );
+            return Err(operation_error("config publication", &cleanup));
         }
 
-        config_tx.send_replace(Arc::new(candidate.clone()));
-        let committed = promotion.commit().await;
         let old_listener = state.listener.replace(listener);
         let old_port = state.config.as_ref().map(|config| config.port);
-        state.config = Some(candidate.clone());
+        state.config = Some(candidate);
         state.config_tx = Some(config_tx);
         state.certificate_not_after = Some(staged.not_after);
-        state.last_error = None;
-        let stopped = match old_listener {
-            Some(listener) => listener.shutdown().await,
-            None => Ok(()),
-        };
-        let closed = match old_port.filter(|port| *port != candidate.port) {
-            Some(port) => self.ops.close_port(port).await,
-            None => Ok(()),
-        };
-        committed?;
-        stopped?;
-        closed
+        let mut cleanup = Vec::new();
+        if promotion.commit().await.is_err() {
+            cleanup.push("certificate finalization");
+        }
+        if let Some(listener) = old_listener
+            && listener.shutdown().await.is_err()
+        {
+            cleanup.push("listener retirement");
+        }
+        if let Some(port) =
+            old_port.filter(|port| Some(*port) != state.config.as_ref().map(|c| c.port))
+            && self.ops.close_port(port).await.is_err()
+        {
+            cleanup.push("firewall retirement");
+        }
+        finish_committed(state, cleanup)
     }
 
     pub async fn disable(self: &Arc<Self>) -> Result<()> {
@@ -417,30 +568,33 @@ impl SubscriptionRuntime {
         }
         let mut disabled = current.clone();
         disabled.enabled = false;
-        if let Err(error) = self
+        if self
             .ops
             .save_config(&disabled, &self.paths.config_file)
             .await
+            .is_err()
         {
             state.last_error = Some("subscription disable failed".into());
-            return Err(error.context("failed to save disabled subscription config"));
+            return Err(operation_error("disable config save", &[]));
         }
         if let Some(config_tx) = &state.config_tx {
-            config_tx.send_replace(Arc::new(disabled.clone()));
+            let _ = config_tx.send(Arc::new(disabled.clone()));
         }
         let listener = state.listener.take();
         let port = current.port;
         state.config = Some(disabled);
         state.config_tx = None;
         state.certificate_not_after = None;
-        state.last_error = None;
-        let stopped = match listener {
-            Some(listener) => listener.shutdown().await,
-            None => Ok(()),
-        };
-        let closed = self.ops.close_port(port).await;
-        stopped?;
-        closed
+        let mut cleanup = Vec::new();
+        if let Some(listener) = listener
+            && listener.shutdown().await.is_err()
+        {
+            cleanup.push("listener retirement");
+        }
+        if self.ops.close_port(port).await.is_err() {
+            cleanup.push("firewall retirement");
+        }
+        finish_committed(&mut state, cleanup)
     }
 
     pub async fn regenerate_token(self: &Arc<Self>) -> Result<NewSubscriptionUrls> {
@@ -459,16 +613,34 @@ impl SubscriptionRuntime {
         let generated = GeneratedToken::new();
         let mut candidate = current.clone();
         candidate.token_hash = generated.hash().to_owned();
-        if let Err(error) = self
+        let config_tx = if state.listener.is_some() {
+            Some(active_config_sender(&state).context("active config receiver is missing")?)
+        } else {
+            None
+        };
+        if self
             .ops
             .save_config(&candidate, &self.paths.config_file)
             .await
+            .is_err()
         {
             state.last_error = Some("subscription token update failed".into());
-            return Err(error.context("failed to save subscription token"));
+            return Err(operation_error("token config save", &[]));
         }
-        if let Some(config_tx) = &state.config_tx {
-            config_tx.send_replace(Arc::new(candidate.clone()));
+        if let Some(config_tx) = config_tx
+            && config_tx.send(Arc::new(candidate.clone())).is_err()
+        {
+            let mut cleanup = Vec::new();
+            if self
+                .ops
+                .save_config(current, &self.paths.config_file)
+                .await
+                .is_err()
+            {
+                cleanup.push("config restore");
+            }
+            state.last_error = Some("subscription token update failed".into());
+            return Err(operation_error("token publication", &cleanup));
         }
         let standard = format!("{}/sub/{}", candidate.public_base_url(), generated.raw());
         let clash = format!("{standard}/clash");
@@ -478,17 +650,27 @@ impl SubscriptionRuntime {
     }
 
     pub async fn reissue_certificate(self: &Arc<Self>) -> Result<()> {
-        let config = self
-            .state
-            .lock()
+        let runtime = self.clone();
+        tokio::spawn(async move { runtime.reissue_inner().await })
             .await
+            .context("subscription reissue task failed")?
+    }
+
+    async fn reissue_inner(&self) -> Result<()> {
+        let mut state = self.state.lock().await;
+        state.last_error = None;
+        let config = state
             .config
             .clone()
             .context("subscription is not configured")?;
         if !config.enabled {
             bail!("subscription is disabled");
         }
-        self.apply(config).await
+        let result = self.apply_same_socket(&mut state, config).await;
+        if result.is_err() && state.last_error.is_none() {
+            state.last_error = Some("subscription update failed".into());
+        }
+        result
     }
 
     pub async fn status(&self) -> SubscriptionStatus {
@@ -529,25 +711,129 @@ impl SubscriptionRuntime {
             .filter(|config| config.enabled)
             .map(|config| config.port);
         state.config_tx = None;
-        let stopped = match listener {
-            Some(listener) => listener.shutdown().await,
-            None => Ok(()),
-        };
-        let closed = match port {
-            Some(port) => self.ops.close_port(port).await,
-            None => Ok(()),
-        };
-        stopped?;
-        closed
+        let mut failures = Vec::new();
+        if let Some(listener) = listener
+            && listener.shutdown().await.is_err()
+        {
+            failures.push("listener shutdown");
+        }
+        if let Some(port) = port
+            && self.ops.close_port(port).await.is_err()
+        {
+            failures.push("firewall close");
+        }
+        if failures.is_empty() {
+            state.last_error = None;
+            Ok(())
+        } else {
+            let error = operation_error("shutdown", &failures);
+            state.last_error = Some(error.to_string());
+            Err(error)
+        }
     }
 }
 
-async fn close_if_opened(ops: &dyn RuntimeOps, port: u16, opened: bool) -> Result<()> {
-    if opened {
-        ops.close_port(port).await
+fn active_config_sender(state: &RuntimeState) -> Option<watch::Sender<Arc<SubscriptionConfig>>> {
+    state
+        .listener
+        .as_ref()
+        .and(state.config_tx.as_ref())
+        .filter(|sender| sender.receiver_count() > 0)
+        .cloned()
+}
+
+fn operation_error(operation: &str, cleanup: &[&str]) -> anyhow::Error {
+    if cleanup.is_empty() {
+        anyhow::anyhow!("subscription {operation} failed")
     } else {
-        Ok(())
+        anyhow::anyhow!(
+            "subscription {operation} failed; cleanup failed: {}",
+            cleanup.join(", ")
+        )
     }
+}
+
+fn finish_committed(state: &mut RuntimeState, cleanup: Vec<&str>) -> Result<()> {
+    if cleanup.is_empty() {
+        state.last_error = None;
+        Ok(())
+    } else {
+        let message = format!(
+            "subscription transition committed; cleanup failed: {}",
+            cleanup.join(", ")
+        );
+        state.last_error = Some(message.clone());
+        Err(anyhow::anyhow!(message))
+    }
+}
+
+async fn discard_staged(ops: &dyn RuntimeOps, staged: &ValidatedCertificate) -> Vec<&'static str> {
+    if ops.discard_certificate(staged).await.is_err() {
+        vec!["certificate discard"]
+    } else {
+        Vec::new()
+    }
+}
+
+async fn cleanup_staged_transition(
+    ops: &dyn RuntimeOps,
+    listener: Option<Box<dyn ManagedListener>>,
+    port: u16,
+    opened: bool,
+    staged: &ValidatedCertificate,
+) -> Vec<&'static str> {
+    let mut failures = Vec::new();
+    if let Some(listener) = listener
+        && listener.shutdown().await.is_err()
+    {
+        failures.push("listener cleanup");
+    }
+    if opened && ops.close_port(port).await.is_err() {
+        failures.push("firewall cleanup");
+    }
+    if ops.discard_certificate(staged).await.is_err() {
+        failures.push("certificate discard");
+    }
+    failures
+}
+
+async fn cleanup_promoted_transition(
+    ops: &dyn RuntimeOps,
+    promotion: Box<dyn CertificatePromotion>,
+    listener: Box<dyn ManagedListener>,
+    port: u16,
+    opened: bool,
+) -> Vec<&'static str> {
+    let mut failures = Vec::new();
+    if promotion.rollback().await.is_err() {
+        failures.push("certificate rollback");
+    }
+    if listener.shutdown().await.is_err() {
+        failures.push("listener cleanup");
+    }
+    if opened && ops.close_port(port).await.is_err() {
+        failures.push("firewall cleanup");
+    }
+    failures
+}
+
+async fn deactivate_running(ops: &dyn RuntimeOps, state: &mut RuntimeState) -> Vec<&'static str> {
+    let listener = state.listener.take();
+    let port = state.config.as_ref().map(|config| config.port);
+    state.config_tx = None;
+    state.certificate_not_after = None;
+    let mut failures = Vec::new();
+    if let Some(listener) = listener
+        && listener.shutdown().await.is_err()
+    {
+        failures.push("listener deactivation");
+    }
+    if let Some(port) = port
+        && ops.close_port(port).await.is_err()
+    {
+        failures.push("firewall deactivation");
+    }
+    failures
 }
 
 fn live_certificate(config: &SubscriptionConfig, not_after: SystemTime) -> ValidatedCertificate {
@@ -575,9 +861,21 @@ async fn rollback_and_reload(
     promotion: Box<dyn CertificatePromotion>,
     listener: &dyn ManagedListener,
     state: &RuntimeState,
-) -> Result<()> {
-    let rolled_back = promotion.rollback().await;
-    let reloaded = reload_previous(listener, state);
-    rolled_back?;
-    reloaded
+) -> Vec<&'static str> {
+    let mut failures = Vec::new();
+    if promotion.rollback().await.is_err() {
+        failures.push("certificate rollback");
+    }
+    if reload_previous(listener, state).is_err() {
+        failures.push("old TLS reload");
+    }
+    failures
+}
+
+fn remove_file_if_present(path: &Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
 }

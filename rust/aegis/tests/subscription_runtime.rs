@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use tempfile::TempDir;
 use tokio::sync::Notify;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 enum Failure {
     Certificate,
     Firewall,
@@ -26,6 +26,14 @@ enum Failure {
     ConfigSave,
     Shutdown,
     Rollback,
+    Promotion,
+    Commit,
+    TlsReload,
+    FirewallClose,
+    Discard,
+    WatchPublish,
+    WatchPublishAfterSave,
+    DelayStage,
 }
 
 #[derive(Default)]
@@ -33,28 +41,68 @@ struct RecordedState {
     actions: Vec<String>,
     firewall: HashSet<u16>,
     listeners: HashSet<u16>,
+    receivers: HashMap<u16, SubscriptionSource>,
     live_certificate: Option<u16>,
-    failure: Option<Failure>,
+    failures: HashSet<Failure>,
 }
 
-#[derive(Clone, Default)]
-struct RecordingOps(Arc<Mutex<RecordedState>>);
+#[derive(Clone)]
+struct RecordingOps {
+    state: Arc<Mutex<RecordedState>>,
+    stage_started: Arc<Notify>,
+    release_stage: Arc<Notify>,
+}
+
+impl Default for RecordingOps {
+    fn default() -> Self {
+        Self {
+            state: Arc::default(),
+            stage_started: Arc::new(Notify::new()),
+            release_stage: Arc::new(Notify::new()),
+        }
+    }
+}
 
 impl RecordingOps {
     fn action(&self, action: impl Into<String>) {
-        self.0.lock().unwrap().actions.push(action.into());
+        self.state.lock().unwrap().actions.push(action.into());
     }
 
     fn actions(&self) -> Vec<String> {
-        self.0.lock().unwrap().actions.clone()
+        self.state.lock().unwrap().actions.clone()
     }
 
     fn clear_actions(&self) {
-        self.0.lock().unwrap().actions.clear();
+        self.state.lock().unwrap().actions.clear();
     }
 
     fn fail(&self, failure: Failure) {
-        self.0.lock().unwrap().failure = Some(failure);
+        self.state.lock().unwrap().failures.insert(failure);
+    }
+
+    fn fail_many(&self, failures: &[Failure]) {
+        self.state
+            .lock()
+            .unwrap()
+            .failures
+            .extend(failures.iter().copied());
+    }
+
+    fn fails(&self, failure: Failure) -> bool {
+        self.state.lock().unwrap().failures.contains(&failure)
+    }
+
+    fn drop_receiver(&self, port: u16) {
+        self.state.lock().unwrap().receivers.remove(&port);
+    }
+
+    fn watched_config(&self, port: u16) -> Option<SubscriptionConfig> {
+        self.state
+            .lock()
+            .unwrap()
+            .receivers
+            .get(&port)
+            .map(|source| (**source.config_rx.borrow()).clone())
     }
 }
 
@@ -71,14 +119,19 @@ impl ManagedListener for RecordingListener {
 
     fn reload_tls(&self, _certificate: &ValidatedCertificate) -> Result<()> {
         self.ops.action(format!("tls:reload:{}", self.port));
+        if self.ops.fails(Failure::TlsReload) {
+            bail!("tls reload secret");
+        }
         Ok(())
     }
 
     async fn shutdown(self: Box<Self>) -> Result<()> {
         self.ops.action(format!("listener:stop:{}", self.port));
-        self.ops.0.lock().unwrap().listeners.remove(&self.port);
-        if self.ops.0.lock().unwrap().failure == Some(Failure::Shutdown) {
-            bail!("shutdown failed");
+        let mut state = self.ops.state.lock().unwrap();
+        state.listeners.remove(&self.port);
+        state.receivers.remove(&self.port);
+        if state.failures.contains(&Failure::Shutdown) {
+            bail!("shutdown secret");
         }
         Ok(())
     }
@@ -174,14 +227,17 @@ impl RuntimeOps for LocalOps {
 impl CertificatePromotion for RecordingPromotion {
     async fn commit(self: Box<Self>) -> Result<()> {
         self.ops.action("certificate:commit");
+        if self.ops.fails(Failure::Commit) {
+            bail!("commit secret");
+        }
         Ok(())
     }
 
     async fn rollback(self: Box<Self>) -> Result<()> {
         self.ops.action("certificate:rollback");
-        self.ops.0.lock().unwrap().live_certificate = self.old;
-        if self.ops.0.lock().unwrap().failure == Some(Failure::Rollback) {
-            bail!("rollback failed");
+        self.ops.state.lock().unwrap().live_certificate = self.old;
+        if self.ops.fails(Failure::Rollback) {
+            bail!("rollback secret");
         }
         Ok(())
     }
@@ -191,8 +247,12 @@ impl CertificatePromotion for RecordingPromotion {
 impl RuntimeOps for RecordingOps {
     async fn stage_certificate(&self, config: &SubscriptionConfig) -> Result<ValidatedCertificate> {
         self.action("certificate:stage");
-        if self.0.lock().unwrap().failure == Some(Failure::Certificate) {
-            bail!("certificate failed");
+        if self.fails(Failure::Certificate) {
+            bail!("certificate secret");
+        }
+        if self.fails(Failure::DelayStage) {
+            self.stage_started.notify_one();
+            self.release_stage.notified().await;
         }
         Ok(ValidatedCertificate {
             cert_path: PathBuf::from(format!("staged-{}.pem", config.port)),
@@ -206,8 +266,11 @@ impl RuntimeOps for RecordingOps {
         staged: &ValidatedCertificate,
     ) -> Result<Box<dyn CertificatePromotion>> {
         self.action("certificate:promote");
+        if self.fails(Failure::Promotion) {
+            bail!("promotion secret");
+        }
         let new = staged_port(staged);
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
         let old = state.live_certificate.replace(new);
         Ok(Box::new(RecordingPromotion {
             ops: self.clone(),
@@ -217,15 +280,26 @@ impl RuntimeOps for RecordingOps {
 
     async fn open_port(&self, port: u16) -> Result<bool> {
         self.action(format!("firewall:open:{port}"));
-        if self.0.lock().unwrap().failure == Some(Failure::Firewall) {
-            bail!("firewall failed");
+        if self.fails(Failure::Firewall) {
+            bail!("firewall secret");
         }
-        Ok(self.0.lock().unwrap().firewall.insert(port))
+        Ok(self.state.lock().unwrap().firewall.insert(port))
     }
 
     async fn close_port(&self, port: u16) -> Result<()> {
         self.action(format!("firewall:close:{port}"));
-        self.0.lock().unwrap().firewall.remove(&port);
+        if self.fails(Failure::FirewallClose) {
+            bail!("firewall close secret");
+        }
+        self.state.lock().unwrap().firewall.remove(&port);
+        Ok(())
+    }
+
+    async fn discard_certificate(&self, _staged: &ValidatedCertificate) -> Result<()> {
+        self.action("certificate:discard");
+        if self.fails(Failure::Discard) {
+            bail!("discard secret");
+        }
         Ok(())
     }
 
@@ -233,13 +307,17 @@ impl RuntimeOps for RecordingOps {
         &self,
         bind: SocketAddr,
         _certificate: &ValidatedCertificate,
-        _source: SubscriptionSource,
+        source: SubscriptionSource,
     ) -> Result<Box<dyn ManagedListener>> {
         self.action(format!("listener:start:{}", bind.port()));
-        if self.0.lock().unwrap().failure == Some(Failure::Bind) {
-            bail!("bind failed");
+        if self.fails(Failure::Bind) {
+            bail!("bind secret");
         }
-        self.0.lock().unwrap().listeners.insert(bind.port());
+        let mut state = self.state.lock().unwrap();
+        state.listeners.insert(bind.port());
+        if !state.failures.contains(&Failure::WatchPublish) {
+            state.receivers.insert(bind.port(), source);
+        }
         Ok(Box::new(RecordingListener {
             port: bind.port(),
             ops: self.clone(),
@@ -252,21 +330,23 @@ impl RuntimeOps for RecordingOps {
         _config: &SubscriptionConfig,
     ) -> Result<()> {
         self.action(format!("listener:probe:{}", listener.local_addr().port()));
-        if self.0.lock().unwrap().failure == Some(Failure::Probe) {
-            bail!("probe failed");
+        if self.fails(Failure::Probe) {
+            bail!("probe secret");
         }
         Ok(())
     }
 
     async fn save_config(&self, config: &SubscriptionConfig, path: &Path) -> Result<()> {
         self.action(format!("config:save:{}", config.port));
-        if matches!(
-            self.0.lock().unwrap().failure,
-            Some(Failure::ConfigSave | Failure::Rollback)
-        ) {
-            bail!("save failed");
+        if self.fails(Failure::ConfigSave) || self.fails(Failure::Rollback) {
+            bail!("save secret");
         }
-        config.save_atomic(path)
+        config.save_atomic(path)?;
+        let mut state = self.state.lock().unwrap();
+        if state.failures.remove(&Failure::WatchPublishAfterSave) {
+            state.receivers.remove(&config.port);
+        }
+        Ok(())
     }
 }
 
@@ -289,7 +369,7 @@ impl RuntimeFixture {
         )
         .with_bind_ip(IpAddr::V4(Ipv4Addr::LOCALHOST));
         let ops = RecordingOps::default();
-        let runtime = SubscriptionRuntime::new(paths, Arc::new(ops.clone()));
+        let runtime = SubscriptionRuntime::new_isolated_for_test(paths, Arc::new(ops.clone()));
         runtime.start_from_disk().await.unwrap();
         ops.clear_actions();
         Self {
@@ -326,6 +406,7 @@ async fn apply_keeps_old_service_until_new_probe_and_commit() {
         ]
     );
     assert_eq!(fixture.saved_config().port, 8443);
+    assert_eq!(fixture.ops.watched_config(8443), Some(new_port_config()));
 }
 
 #[tokio::test]
@@ -341,12 +422,164 @@ async fn certificate_firewall_and_listener_failures_preserve_old_state() {
         fixture.ops.fail(failure);
         assert!(fixture.runtime.apply(new_port_config()).await.is_err());
         assert_eq!(fixture.saved_config(), old_config());
-        let state = fixture.ops.0.lock().unwrap();
+        let state = fixture.ops.state.lock().unwrap();
         assert!(state.listeners.contains(&443), "failure={failure:?}");
         assert!(state.firewall.contains(&443), "failure={failure:?}");
         assert!(!state.firewall.contains(&8443), "failure={failure:?}");
         assert_eq!(state.live_certificate, Some(443), "failure={failure:?}");
     }
+}
+
+#[tokio::test]
+async fn certificate_stage_failure_is_redacted() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail(Failure::Certificate);
+    let error = fixture
+        .runtime
+        .apply(new_port_config())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("certificate stage"));
+    assert!(!error.contains("secret"));
+}
+
+#[tokio::test]
+async fn promotion_failure_discards_stage_and_preserves_old_state() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail(Failure::Promotion);
+    assert!(fixture.runtime.apply(new_port_config()).await.is_err());
+    assert_eq!(fixture.saved_config(), old_config());
+    assert_eq!(
+        fixture.ops.actions(),
+        [
+            "certificate:stage",
+            "firewall:open:8443",
+            "listener:start:8443",
+            "listener:probe:8443",
+            "certificate:promote",
+            "listener:stop:8443",
+            "firewall:close:8443",
+            "certificate:discard",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn missing_new_listener_receiver_aborts_before_promotion_or_save() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail(Failure::WatchPublish);
+    assert!(fixture.runtime.apply(new_port_config()).await.is_err());
+    assert_eq!(fixture.saved_config(), old_config());
+    assert_eq!(
+        fixture.ops.actions(),
+        [
+            "certificate:stage",
+            "firewall:open:8443",
+            "listener:start:8443",
+            "listener:probe:8443",
+            "listener:stop:8443",
+            "firewall:close:8443",
+            "certificate:discard",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn receiver_loss_during_save_restores_old_transaction_state() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail(Failure::WatchPublishAfterSave);
+    let error = fixture
+        .runtime
+        .apply(new_port_config())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("config publication"));
+    assert_eq!(fixture.saved_config(), old_config());
+    assert_eq!(fixture.runtime.status().await.port, 443);
+    assert_eq!(fixture.ops.watched_config(443), Some(old_config()));
+    let state = fixture.ops.state.lock().unwrap();
+    assert!(state.listeners.contains(&443));
+    assert!(!state.listeners.contains(&8443));
+    assert!(!state.firewall.contains(&8443));
+}
+
+#[tokio::test]
+async fn commit_failure_keeps_new_committed_state_and_reports_degraded_cleanup() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail(Failure::Commit);
+    let error = fixture
+        .runtime
+        .apply(new_port_config())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(fixture.saved_config(), new_port_config());
+    assert_eq!(fixture.runtime.status().await.port, 8443);
+    assert_eq!(fixture.ops.watched_config(8443), Some(new_port_config()));
+    assert!(error.contains("committed"));
+    assert!(!error.contains("secret"));
+    let state = fixture.ops.state.lock().unwrap();
+    assert!(state.listeners.contains(&8443));
+    assert!(!state.listeners.contains(&443));
+    assert!(!state.firewall.contains(&443));
+}
+
+#[tokio::test]
+async fn same_socket_commit_failure_keeps_reloaded_committed_state() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail(Failure::Commit);
+    let error = fixture
+        .runtime
+        .reissue_certificate()
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(fixture.saved_config(), old_config());
+    assert!(error.contains("committed"));
+    assert!(
+        !fixture
+            .ops
+            .actions()
+            .contains(&"certificate:rollback".into())
+    );
+    assert_eq!(fixture.runtime.status().await.port, 443);
+}
+
+#[tokio::test]
+async fn firewall_failure_discards_staged_certificate() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail(Failure::Firewall);
+    assert!(fixture.runtime.apply(new_port_config()).await.is_err());
+    assert_eq!(
+        fixture.ops.actions(),
+        [
+            "certificate:stage",
+            "firewall:open:8443",
+            "certificate:discard"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn retirement_failures_keep_new_state_and_attempt_every_cleanup() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture
+        .ops
+        .fail_many(&[Failure::Shutdown, Failure::FirewallClose]);
+    let error = fixture
+        .runtime
+        .apply(new_port_config())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(fixture.saved_config(), new_port_config());
+    assert_eq!(fixture.runtime.status().await.port, 8443);
+    assert!(error.contains("listener retirement"));
+    assert!(error.contains("firewall retirement"));
+    assert!(!error.contains("secret"));
+    assert!(fixture.ops.actions().contains(&"firewall:close:443".into()));
 }
 
 #[tokio::test]
@@ -401,6 +634,89 @@ async fn same_socket_rollback_failure_still_reloads_old_tls() {
             .count(),
         2
     );
+    assert!(!fixture.runtime.status().await.enabled);
+    let state = fixture.ops.state.lock().unwrap();
+    assert!(!state.listeners.contains(&443));
+    assert!(!state.firewall.contains(&443));
+}
+
+#[tokio::test]
+async fn rollback_failure_is_aggregated_under_the_original_save_failure() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture
+        .ops
+        .fail_many(&[Failure::ConfigSave, Failure::Rollback]);
+    let error = fixture
+        .runtime
+        .reissue_certificate()
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("config save"));
+    assert!(error.contains("certificate rollback"));
+    assert!(!error.contains("secret"));
+    assert_eq!(fixture.saved_config(), old_config());
+    assert_eq!(fixture.ops.watched_config(443), None);
+    assert!(!fixture.runtime.status().await.enabled);
+}
+
+#[tokio::test]
+async fn same_socket_tls_reload_failure_rolls_back_and_attempts_old_reload() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail(Failure::TlsReload);
+    let error = fixture
+        .runtime
+        .reissue_certificate()
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(fixture.saved_config(), old_config());
+    assert_eq!(
+        fixture
+            .ops
+            .actions()
+            .iter()
+            .filter(|action| action.as_str() == "tls:reload:443")
+            .count(),
+        2
+    );
+    assert!(!error.contains("secret"));
+}
+
+#[tokio::test]
+async fn dead_existing_listener_receiver_blocks_reissue_and_token_save() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.drop_receiver(443);
+    assert!(fixture.runtime.reissue_certificate().await.is_err());
+    assert!(fixture.runtime.regenerate_token().await.is_err());
+    assert_eq!(fixture.saved_config(), old_config());
+    assert!(!fixture.ops.actions().contains(&"config:save:443".into()));
+}
+
+#[tokio::test]
+async fn cleanup_failures_are_aggregated_without_replacing_primary_or_leaking_secrets() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail_many(&[
+        Failure::Probe,
+        Failure::Shutdown,
+        Failure::FirewallClose,
+        Failure::Discard,
+    ]);
+    let error = fixture
+        .runtime
+        .apply(new_port_config())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("listener probe"));
+    assert!(error.contains("listener cleanup"));
+    assert!(error.contains("firewall cleanup"));
+    assert!(error.contains("certificate discard"));
+    assert!(!error.contains("secret"));
+    let actions = fixture.ops.actions();
+    assert!(actions.contains(&"listener:stop:8443".into()));
+    assert!(actions.contains(&"firewall:close:8443".into()));
+    assert!(actions.contains(&"certificate:discard".into()));
 }
 
 #[tokio::test]
@@ -448,18 +764,116 @@ async fn failed_disable_preserves_running_service() {
     let fixture = RuntimeFixture::running(old_config()).await;
     fixture.ops.fail(Failure::ConfigSave);
     assert!(fixture.runtime.disable().await.is_err());
-    let state = fixture.ops.0.lock().unwrap();
+    let state = fixture.ops.state.lock().unwrap();
     assert!(state.listeners.contains(&443));
     assert!(state.firewall.contains(&443));
     assert!(fixture.saved_config().enabled);
 }
 
 #[tokio::test]
+async fn disable_teardown_failure_keeps_disabled_state_and_aggregates_cleanup() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture
+        .ops
+        .fail_many(&[Failure::Shutdown, Failure::FirewallClose]);
+    let error = fixture.runtime.disable().await.unwrap_err().to_string();
+    assert!(!fixture.saved_config().enabled);
+    assert!(!fixture.runtime.status().await.enabled);
+    assert!(error.contains("committed"));
+    assert!(error.contains("listener retirement"));
+    assert!(error.contains("firewall retirement"));
+    assert!(!error.contains("secret"));
+    assert!(fixture.ops.actions().contains(&"firewall:close:443".into()));
+}
+
+#[tokio::test]
+async fn reissue_holds_serialized_state_until_certificate_transaction_finishes() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail(Failure::DelayStage);
+    let reissue = tokio::spawn({
+        let runtime = fixture.runtime.clone();
+        async move { runtime.reissue_certificate().await }
+    });
+    fixture.ops.stage_started.notified().await;
+    let regenerate = tokio::spawn({
+        let runtime = fixture.runtime.clone();
+        async move { runtime.regenerate_token().await }
+    });
+    tokio::task::yield_now().await;
+    assert!(!reissue.is_finished());
+    assert!(!regenerate.is_finished());
+    fixture.ops.release_stage.notify_one();
+    reissue.await.unwrap().unwrap();
+    regenerate.await.unwrap().unwrap();
+    let actions = fixture.ops.actions();
+    let commit = actions
+        .iter()
+        .position(|action| action == "certificate:commit")
+        .unwrap();
+    let token_save = actions
+        .iter()
+        .rposition(|action| action == "config:save:443")
+        .unwrap();
+    assert!(commit < token_save);
+}
+
+#[tokio::test]
+async fn reissue_holds_serialized_state_until_disable_can_commit() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    fixture.ops.fail(Failure::DelayStage);
+    let reissue = tokio::spawn({
+        let runtime = fixture.runtime.clone();
+        async move { runtime.reissue_certificate().await }
+    });
+    fixture.ops.stage_started.notified().await;
+    let disable = tokio::spawn({
+        let runtime = fixture.runtime.clone();
+        async move { runtime.disable().await }
+    });
+    tokio::task::yield_now().await;
+    assert!(!disable.is_finished());
+    fixture.ops.release_stage.notify_one();
+    reissue.await.unwrap().unwrap();
+    disable.await.unwrap().unwrap();
+    assert!(!fixture.saved_config().enabled);
+    assert!(!fixture.runtime.status().await.enabled);
+}
+
+#[tokio::test]
+async fn process_singleton_returns_established_runtime() {
+    let first_dir = tempfile::tempdir().unwrap();
+    let second_dir = tempfile::tempdir().unwrap();
+    let first = SubscriptionRuntime::new(
+        SubscriptionPaths::new(
+            first_dir.path().join("config.json"),
+            first_dir.path().join("xray"),
+            first_dir.path().join("singbox"),
+        ),
+        Arc::new(RecordingOps::default()),
+    );
+    let second = SubscriptionRuntime::new(
+        SubscriptionPaths::new(
+            second_dir.path().join("config.json"),
+            second_dir.path().join("xray"),
+            second_dir.path().join("singbox"),
+        ),
+        Arc::new(RecordingOps::default()),
+    );
+    assert!(Arc::ptr_eq(&first, &second));
+}
+
+#[tokio::test]
 async fn shutdown_still_closes_firewall_when_listener_reports_failure() {
     let fixture = RuntimeFixture::running(old_config()).await;
-    fixture.ops.fail(Failure::Shutdown);
-    assert!(fixture.runtime.shutdown().await.is_err());
-    assert!(!fixture.ops.0.lock().unwrap().firewall.contains(&443));
+    fixture
+        .ops
+        .fail_many(&[Failure::Shutdown, Failure::FirewallClose]);
+    let error = fixture.runtime.shutdown().await.unwrap_err().to_string();
+    assert!(error.contains("listener shutdown"));
+    assert!(error.contains("firewall close"));
+    assert!(!error.contains("secret"));
+    assert!(fixture.ops.state.lock().unwrap().firewall.contains(&443));
+    assert!(fixture.ops.actions().contains(&"firewall:close:443".into()));
 }
 
 #[tokio::test]
@@ -497,7 +911,7 @@ async fn real_listener_overlaps_during_probe_and_reads_node_changes_per_request(
         probe_started: probe_started.clone(),
         release_probe: release_probe.clone(),
     });
-    let runtime = SubscriptionRuntime::new(
+    let runtime = SubscriptionRuntime::new_isolated_for_test(
         SubscriptionPaths::new(config_path, xray.clone(), singbox)
             .with_bind_ip(IpAddr::V4(Ipv4Addr::LOCALHOST)),
         ops,
@@ -547,6 +961,16 @@ async fn real_listener_overlaps_during_probe_and_reads_node_changes_per_request(
     let third = client.get(&url).send().await.unwrap().text().await.unwrap();
     assert_ne!(first, second);
     assert_ne!(second, third);
+
+    let urls = runtime.regenerate_token().await.unwrap();
+    assert_eq!(
+        client.get(&url).send().await.unwrap().status(),
+        reqwest::StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        client.get(&urls.standard).send().await.unwrap().status(),
+        reqwest::StatusCode::OK
+    );
     runtime.shutdown().await.unwrap();
 }
 
