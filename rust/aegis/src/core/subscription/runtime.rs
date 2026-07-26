@@ -2,7 +2,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, SystemTime},
+    time::SystemTime,
 };
 
 use anyhow::{Context, Result, bail};
@@ -13,7 +13,7 @@ use tokio::sync::{Mutex, watch};
 use super::{
     certificate::{
         CertificateManager, CertificatePromotion, SystemAcmeFirewall, SystemCommandRunner,
-        ValidatedCertificate,
+        ValidatedCertificate, renew_before,
     },
     config::{GeneratedToken, SubscriptionConfig},
     server::{ListenerHandle, SubscriptionSource, TlsFiles, TlsState, probe_https, spawn_listener},
@@ -249,12 +249,12 @@ pub struct NewSubscriptionUrls {
 }
 
 #[derive(Default)]
-struct RuntimeState {
-    config: Option<SubscriptionConfig>,
-    config_tx: Option<watch::Sender<Arc<SubscriptionConfig>>>,
-    listener: Option<Box<dyn ManagedListener>>,
-    certificate_not_after: Option<SystemTime>,
-    last_error: Option<String>,
+pub(crate) struct RuntimeState {
+    pub(crate) config: Option<SubscriptionConfig>,
+    pub(crate) config_tx: Option<watch::Sender<Arc<SubscriptionConfig>>>,
+    pub(crate) listener: Option<Box<dyn ManagedListener>>,
+    pub(crate) certificate_not_after: Option<SystemTime>,
+    pub(crate) last_error: Option<String>,
 }
 
 pub struct SubscriptionRuntime {
@@ -719,10 +719,14 @@ impl SubscriptionRuntime {
         let Some(not_after) = state.certificate_not_after else {
             return Ok(());
         };
+        let Some(config) = state.config.as_ref() else {
+            return Ok(());
+        };
+        let threshold = renew_before(config.certificate_mode);
         let remaining = not_after
             .duration_since(SystemTime::now())
             .unwrap_or_default();
-        if remaining <= Duration::from_secs(30 * 24 * 3600) {
+        if remaining <= threshold {
             drop(state);
             self.reissue_certificate().await
         } else {
@@ -912,5 +916,129 @@ fn remove_file_if_present(path: &Path) -> Result<()> {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::subscription::certificate::renew_before;
+    use crate::core::subscription::config::CertificateMode;
+    use std::time::Duration;
+
+    #[test]
+    fn renew_before_returns_domain_and_ip_thresholds() {
+        assert_eq!(
+            renew_before(CertificateMode::Domain),
+            Duration::from_secs(30 * 24 * 3600)
+        );
+        assert_eq!(
+            renew_before(CertificateMode::Ip),
+            Duration::from_secs(2 * 24 * 3600)
+        );
+    }
+
+    #[tokio::test]
+    async fn renew_if_due_ip_mode_4days_remaining_does_not_renew() {
+        let paths = SubscriptionPaths::new(
+            "test_config.json".into(),
+            "test_xray".into(),
+            "test_singbox".into(),
+        );
+        let ops = Arc::new(MockOps);
+        let runtime = SubscriptionRuntime::new_isolated_for_test(paths, ops);
+        {
+            let mut state = runtime.state.lock().await;
+            state.config = Some(SubscriptionConfig {
+                enabled: true,
+                port: 443,
+                public_host: "203.0.113.10".into(),
+                ipv6_san: None,
+                token_hash: "ab".repeat(32),
+                certificate_mode: CertificateMode::Ip,
+                cert_path: "cert.pem".into(),
+                key_path: "key.pem".into(),
+            });
+            state.certificate_not_after =
+                Some(SystemTime::now() + Duration::from_secs(4 * 24 * 3600));
+        }
+        let result = runtime.renew_if_due().await;
+        assert!(
+            result.is_ok(),
+            "IP mode with 4d remaining should not trigger renewal"
+        );
+    }
+
+    #[tokio::test]
+    async fn renew_if_due_domain_mode_25days_remaining_triggers_renewal() {
+        let paths = SubscriptionPaths::new(
+            "test_config.json".into(),
+            "test_xray".into(),
+            "test_singbox".into(),
+        );
+        let ops = Arc::new(MockOps);
+        let runtime = SubscriptionRuntime::new_isolated_for_test(paths, ops);
+        {
+            let mut state = runtime.state.lock().await;
+            state.config = Some(SubscriptionConfig {
+                enabled: true,
+                port: 443,
+                public_host: "sub.example.com".into(),
+                ipv6_san: None,
+                token_hash: "ab".repeat(32),
+                certificate_mode: CertificateMode::Domain,
+                cert_path: "cert.pem".into(),
+                key_path: "key.pem".into(),
+            });
+            state.certificate_not_after =
+                Some(SystemTime::now() + Duration::from_secs(25 * 24 * 3600));
+        }
+        let result = runtime.renew_if_due().await;
+        assert!(
+            result.is_err(),
+            "Domain mode with 25d remaining should trigger renewal"
+        );
+    }
+
+    use async_trait::async_trait;
+    use std::net::SocketAddr;
+
+    struct MockOps;
+
+    #[async_trait]
+    impl RuntimeOps for MockOps {
+        async fn stage_certificate(
+            &self,
+            _config: &SubscriptionConfig,
+        ) -> Result<ValidatedCertificate> {
+            bail!("mock: certificate staging not supported")
+        }
+        async fn promote_certificate(
+            &self,
+            _staged: &ValidatedCertificate,
+        ) -> Result<Box<dyn CertificatePromotion>> {
+            bail!("mock: certificate promotion not supported")
+        }
+        async fn open_port(&self, _port: u16) -> Result<bool> {
+            bail!("mock: open_port not supported")
+        }
+        async fn close_port(&self, _port: u16) -> Result<()> {
+            bail!("mock: close_port not supported")
+        }
+        async fn start_listener(
+            &self,
+            _bind: SocketAddr,
+            _certificate: &ValidatedCertificate,
+            _source: SubscriptionSource,
+        ) -> Result<Box<dyn ManagedListener>> {
+            bail!("mock: listener start not supported")
+        }
+        async fn probe_listener(
+            &self,
+            _listener: &dyn ManagedListener,
+            _config: &SubscriptionConfig,
+        ) -> Result<()> {
+            bail!("mock: listener probe not supported")
+        }
     }
 }

@@ -651,5 +651,8 @@ subscription:
     ✅ 令牌已重新生成。
     Standard: %{0}
     Clash: %{1}
+    
+    ⚠️ 之前的订阅链接现已失效。
   token_regenerated_cb: "✅ 令牌重新生成成功"
   token_fail: "❌ 令牌重新生成失败: %{0}"
+  operation_failed: "❌ 操作失败。请检查服务器日志。"

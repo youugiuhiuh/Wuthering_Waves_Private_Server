@@ -127,8 +127,11 @@ subscription:
     ✅ Token regenerated.
     Standard: %{0}
     Clash: %{1}
+    
+    ⚠️ Previous subscription URLs are now invalid.
   token_regenerated_cb: "✅ Token regenerated successfully"
   token_fail: "❌ Token regeneration failed: %{0}"
+  operation_failed: "❌ Operation failed. Check server logs for details."
 
 auth:
   expired: "🚫 Session expired. Please send a 6-digit TOTP code to re-authenticate."

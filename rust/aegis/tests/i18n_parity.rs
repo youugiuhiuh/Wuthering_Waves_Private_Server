@@ -144,6 +144,7 @@ fn subscription_keys_present_in_all_locales() {
         "subscription.token_regenerated_msg",
         "subscription.token_regenerated_cb",
         "subscription.token_fail",
+        "subscription.operation_failed",
         "menu.subscription",
     ];
 

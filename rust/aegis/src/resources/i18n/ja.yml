@@ -625,5 +625,8 @@ subscription:
     ✅ トークンが再生成されました。
     Standard: %{0}
     Clash: %{1}
+    
+    ⚠️ 以前のサブスクリプションURLは無効になりました。
   token_regenerated_cb: "✅ トークンが正常に再生成されました"
   token_fail: "❌ トークンの再生成に失敗しました: %{0}"
+  operation_failed: "❌ 操作に失敗しました。サーバーログを確認してください。"

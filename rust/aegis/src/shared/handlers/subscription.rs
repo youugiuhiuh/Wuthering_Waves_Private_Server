@@ -1,5 +1,5 @@
 use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
-use crate::core::subscription::config::{CertificateMode, SubscriptionConfig};
+use crate::core::subscription::config::{CertificateMode, GeneratedToken, SubscriptionConfig};
 use crate::core::subscription::runtime::{SubscriptionStatus, subscription_runtime};
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use rust_i18n::t;
@@ -220,6 +220,26 @@ async fn handle_toggle(event: &CallbackEvent) -> HandlerResult {
             CertificateMode::Domain
         };
         config.enabled = true;
+        if config.token_hash.is_empty() {
+            let generated = GeneratedToken::new();
+            config.token_hash = generated.hash().to_owned();
+            let base = config.public_base_url();
+            let _ = event
+                .adapter
+                .send_message(
+                    &event.target,
+                    MessageContent {
+                        text: t!(
+                            "subscription.token_regenerated_msg",
+                            "0" => format!("{base}/sub/{}", generated.raw()),
+                            "1" => format!("{base}/sub/{}/clash", generated.raw())
+                        )
+                        .into_owned(),
+                        markup: None,
+                    },
+                )
+                .await;
+        }
         runtime.apply(config).await
     };
 
@@ -235,12 +255,13 @@ async fn handle_toggle(event: &CallbackEvent) -> HandlerResult {
                 .await?;
         }
         Err(e) => {
+            log::error!("subscription toggle failed: {e:#}");
             event
                 .adapter
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
-                    Some(t!("subscription.toggle_fail", "0" => e.to_string()).into_owned()),
+                    Some(t!("subscription.operation_failed").into_owned()),
                 )
                 .await?;
         }
@@ -324,12 +345,13 @@ async fn handle_regenerate_token(event: &CallbackEvent) -> HandlerResult {
                 .await?;
         }
         Err(e) => {
+            log::error!("subscription token regeneration failed: {e:#}");
             event
                 .adapter
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
-                    Some(t!("subscription.token_fail", "0" => e.to_string()).into_owned()),
+                    Some(t!("subscription.operation_failed").into_owned()),
                 )
                 .await?;
         }
@@ -363,12 +385,13 @@ async fn handle_reissue_certificate(event: &CallbackEvent) -> HandlerResult {
     match runtime.reissue_certificate().await {
         Ok(()) => {}
         Err(e) => {
+            log::error!("subscription certificate reissue failed: {e:#}");
             event
                 .adapter
                 .send_message(
                     &event.target,
                     MessageContent {
-                        text: t!("subscription.cert_fail", "0" => e.to_string()).into_owned(),
+                        text: t!("subscription.operation_failed").into_owned(),
                         markup: None,
                     },
                 )
@@ -524,11 +547,12 @@ pub async fn process_typed_input(
                 .await?;
         }
         Err(e) => {
+            log::error!("subscription config update failed: {e:#}");
             adapter
                 .send_message(
                     target,
                     MessageContent {
-                        text: t!("subscription.config_fail", "0" => e.to_string()).into_owned(),
+                        text: t!("subscription.operation_failed").into_owned(),
                         markup: None,
                     },
                 )
