@@ -21,6 +21,15 @@ pub mod bot {
     pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/aegis/bbr3_pending.flag";
 }
 
+pub mod subscription {
+    pub const DIR: &str = "/etc/wwps/aegis/subscription";
+    pub const CONFIG_FILE: &str = "/etc/wwps/aegis/subscription/config.json";
+    pub const CERT_DIR: &str = "/etc/wwps/aegis/subscription/certs";
+    pub const LIVE_CERT: &str = "/etc/wwps/aegis/subscription/certs/fullchain.pem";
+    pub const LIVE_KEY: &str = "/etc/wwps/aegis/subscription/certs/key.pem";
+    pub const STAGING_DIR: &str = "/etc/wwps/aegis/subscription/certs/staging";
+}
+
 /// Xray-core 相关路径
 pub mod xray {
     pub const DIR: &str = "/etc/wwps/wwps-core";
