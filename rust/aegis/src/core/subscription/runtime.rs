@@ -2,7 +2,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
     sync::Arc,
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use anyhow::{Context, Result, bail};
@@ -692,6 +692,24 @@ impl SubscriptionRuntime {
                 masked_token: String::new(),
                 last_error: state.last_error.clone(),
             },
+        }
+    }
+
+    pub async fn renew_if_due(self: &Arc<Self>) -> Result<()> {
+        let state = self.state.lock().await;
+        let Some(not_after) = state.certificate_not_after else {
+            return Ok(());
+        };
+        let now = SystemTime::now();
+        if now >= not_after {
+            return Ok(());
+        }
+        let remaining = not_after.duration_since(now).unwrap_or_default();
+        if remaining <= Duration::from_secs(30 * 24 * 3600) {
+            drop(state);
+            self.reissue_certificate().await
+        } else {
+            Ok(())
         }
     }
 

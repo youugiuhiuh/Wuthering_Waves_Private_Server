@@ -91,6 +91,42 @@ pub async fn run(
         }
     }
 
+    // ── 订阅恢复 ──
+    let sub_cancel = CancellationToken::new();
+    let sub_handle = {
+        let sub_cancel = sub_cancel.clone();
+        tokio::spawn(async move {
+            let runtime = {
+                let ops = match aegis::core::subscription::runtime::ProductionRuntimeOps::new() {
+                    Ok(ops) => Arc::new(ops),
+                    Err(_) => return,
+                };
+                aegis::core::subscription::runtime::SubscriptionRuntime::new(
+                    aegis::core::subscription::runtime::SubscriptionPaths::production(),
+                    ops,
+                )
+            };
+            if let Err(error) = runtime.start_from_disk().await {
+                log::warn!("subscription startup recovery failed: {error}");
+            }
+            loop {
+                tokio::select! {
+                    _ = sub_cancel.cancelled() => break,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(12 * 3600)) => {},
+                }
+                if sub_cancel.is_cancelled() {
+                    break;
+                }
+                if let Err(error) = runtime.renew_if_due().await {
+                    log::warn!("subscription renewal failed: {error}");
+                }
+            }
+            if let Err(error) = runtime.shutdown().await {
+                log::warn!("subscription shutdown failed: {error}");
+            }
+        })
+    };
+
     // ── Discord 网关 ──
     if let Some(raw) = discord_raw {
         let adapter_for_init = raw.adapter.clone();
@@ -395,6 +431,10 @@ pub async fn run(
 
         token_clone.cancelled().await;
     }
+
+    // ── 订阅清理 ──
+    sub_cancel.cancel();
+    let _ = sub_handle.await;
 
     Ok(())
 }

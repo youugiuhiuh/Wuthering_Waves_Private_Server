@@ -380,6 +380,32 @@ impl RuntimeFixture {
         }
     }
 
+    async fn saved(config: Option<SubscriptionConfig>) -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("subscription.json");
+        if let Some(ref cfg) = config {
+            cfg.save_atomic(&config_path).unwrap();
+        }
+        let paths = SubscriptionPaths::new(
+            config_path.clone(),
+            dir.path().join("xray"),
+            dir.path().join("singbox"),
+        )
+        .with_bind_ip(IpAddr::V4(Ipv4Addr::LOCALHOST));
+        let ops = RecordingOps::default();
+        let runtime = SubscriptionRuntime::new_isolated_for_test(paths, Arc::new(ops.clone()));
+        Self {
+            _dir: dir,
+            runtime,
+            ops,
+            config_path,
+        }
+    }
+
+    async fn saved_enabled(config: SubscriptionConfig) -> Self {
+        Self::saved(Some(config)).await
+    }
+
     fn saved_config(&self) -> SubscriptionConfig {
         SubscriptionConfig::load_from(&self.config_path)
             .unwrap()
@@ -1032,6 +1058,29 @@ fn reserve_port() -> u16 {
         .local_addr()
         .unwrap()
         .port()
+}
+
+#[tokio::test]
+async fn startup_repairs_enabled_port_and_starts_listener() {
+    let fixture = RuntimeFixture::saved_enabled(old_config()).await;
+    fixture.runtime.start_from_disk().await.unwrap();
+    assert!(fixture.ops.state.lock().unwrap().firewall.contains(&443));
+    assert!(fixture.ops.state.lock().unwrap().listeners.contains(&443));
+}
+
+#[tokio::test]
+async fn startup_with_missing_or_disabled_config_does_nothing() {
+    for saved in [None, Some(disabled_config())] {
+        let fixture = RuntimeFixture::saved(saved).await;
+        fixture.runtime.start_from_disk().await.unwrap();
+        assert!(fixture.ops.actions().is_empty());
+    }
+}
+
+fn disabled_config() -> SubscriptionConfig {
+    let mut c = old_config();
+    c.enabled = false;
+    c
 }
 
 fn localhost(port: u16) -> SocketAddr {

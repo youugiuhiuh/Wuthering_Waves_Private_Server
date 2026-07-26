@@ -478,6 +478,16 @@ impl MaintenanceManager {
         required.extend(singbox_ports);
         required.insert(22); // SSH
 
+        match SubscriptionConfig::load_from(CONFIG_FILE.as_ref()) {
+            Ok(Some(config)) => {
+                required.extend(required_ports_with_subscription(&config));
+            }
+            Err(error) => {
+                log::warn!("subscription config unreadable, skipping firewall sync: {error}");
+            }
+            Ok(None) => {}
+        }
+
         let current = crate::core::security::firewall::FirewallManager::list_allowed_ports()
             .await
             .unwrap_or_default();
@@ -1053,11 +1063,45 @@ async fn current_kernel_version() -> String {
     }
 }
 
+use crate::core::paths::subscription::CONFIG_FILE;
+use crate::core::subscription::config::SubscriptionConfig;
+
+fn required_ports_with_subscription(config: &SubscriptionConfig) -> Vec<u16> {
+    if config.enabled {
+        vec![config.port]
+    } else {
+        vec![]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashSet;
 
+    #[test]
+    fn required_ports_with_subscription_includes_enabled_https_and_never_port_80() {
+        use aegis::core::subscription::config::{CertificateMode, SubscriptionConfig};
+        use std::path::PathBuf;
+
+        let mut enabled = SubscriptionConfig {
+            enabled: true,
+            port: 8443,
+            public_host: "example.com".into(),
+            ipv6_san: None,
+            token_hash: "a".repeat(64),
+            certificate_mode: CertificateMode::Domain,
+            cert_path: PathBuf::from("cert.pem"),
+            key_path: PathBuf::from("key.pem"),
+        };
+        assert!(required_ports_with_subscription(&enabled).contains(&8443));
+        assert!(!required_ports_with_subscription(&enabled).contains(&80));
+
+        enabled.enabled = false;
+        assert!(!required_ports_with_subscription(&enabled).contains(&8443));
+        assert!(!required_ports_with_subscription(&enabled).contains(&443));
+        assert!(!required_ports_with_subscription(&enabled).contains(&80));
+    }
     #[test]
     fn test_has_all_flags_all_present() {
         let flags: HashSet<&str> = vec!["lm", "sse2", "avx", "avx2"].into_iter().collect();
