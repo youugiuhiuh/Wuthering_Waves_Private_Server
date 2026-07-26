@@ -287,6 +287,21 @@ impl SubscriptionRuntime {
         })
     }
 
+    async fn fill_cert_paths(&self, candidate: SubscriptionConfig) -> SubscriptionConfig {
+        let mut candidate = candidate;
+        let state = self.state.lock().await;
+        let current_cert = state.config.as_ref().map(|c| c.cert_path.clone());
+        let current_key = state.config.as_ref().map(|c| c.key_path.clone());
+        drop(state);
+        if candidate.cert_path.as_os_str().is_empty() {
+            candidate.cert_path = current_cert.unwrap_or(paths::subscription::LIVE_CERT.into());
+        }
+        if candidate.key_path.as_os_str().is_empty() {
+            candidate.key_path = current_key.unwrap_or(paths::subscription::LIVE_KEY.into());
+        }
+        candidate
+    }
+
     pub async fn start_from_disk(self: &Arc<Self>) -> Result<()> {
         let Some(config) = SubscriptionConfig::load_from(&self.paths.config_file)? else {
             return Ok(());
@@ -310,6 +325,7 @@ impl SubscriptionRuntime {
         if !candidate.enabled {
             return self.disable_inner().await;
         }
+        let candidate = self.fill_cert_paths(candidate).await;
         candidate.validate()?;
         let mut state = self.state.lock().await;
         state.last_error = None;
