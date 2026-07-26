@@ -49,6 +49,29 @@ pub trait AcmeFirewall: Send + Sync {
     async fn close(&self, port: u16) -> Result<()>;
 }
 
+#[derive(Clone)]
+struct AcmeDownload {
+    status: reqwest::StatusCode,
+    body: Vec<u8>,
+}
+
+#[async_trait]
+trait AcmeDownloader: Send + Sync {
+    async fn get(&self, url: &str) -> Result<AcmeDownload>;
+}
+
+struct HttpsAcmeDownloader;
+
+#[async_trait]
+impl AcmeDownloader for HttpsAcmeDownloader {
+    async fn get(&self, url: &str) -> Result<AcmeDownload> {
+        let response = reqwest::Client::new().get(url).send().await?;
+        let status = response.status();
+        let body = response.bytes().await?.to_vec();
+        Ok(AcmeDownload { status, body })
+    }
+}
+
 #[derive(Debug)]
 pub struct ValidatedCertificate {
     pub cert_path: PathBuf,
@@ -106,44 +129,55 @@ impl AcmeFirewall for SystemAcmeFirewall {
 }
 
 struct FirewallLease<F: AcmeFirewall + 'static> {
-    firewall: Arc<F>,
-    port: u16,
-    armed: bool,
+    release: Option<tokio::sync::oneshot::Sender<()>>,
+    task: Option<tokio::task::JoinHandle<Result<()>>>,
+    _firewall: std::marker::PhantomData<F>,
 }
 
 impl<F: AcmeFirewall + 'static> FirewallLease<F> {
-    fn new(firewall: Arc<F>, port: u16) -> Self {
-        Self {
-            firewall,
-            port,
-            armed: true,
+    async fn acquire(firewall: Arc<F>, port: u16) -> Result<Self> {
+        let (opened_tx, opened_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            if firewall.open(port).await.is_err() {
+                let _ = opened_tx.send(false);
+                return Err(anyhow::anyhow!("failed to open ACME firewall rule"));
+            }
+            let _ = opened_tx.send(true);
+            let _ = release_rx.await;
+            if firewall.close(port).await.is_err() {
+                log::error!("ACME firewall cleanup failed");
+                return Err(anyhow::anyhow!("firewall cleanup failed"));
+            }
+            Ok(())
+        });
+        match opened_rx.await {
+            Ok(true) => Ok(Self {
+                release: Some(release_tx),
+                task: Some(task),
+                _firewall: std::marker::PhantomData,
+            }),
+            Ok(false) | Err(_) => {
+                task.await
+                    .map_err(|_| anyhow::anyhow!("ACME firewall task failed"))??;
+                bail!("failed to open ACME firewall rule")
+            }
         }
     }
 
     async fn close(mut self) -> Result<()> {
-        let result = self.firewall.close(self.port).await;
-        self.armed = false;
-        result.map_err(|_| anyhow::anyhow!("firewall cleanup failed"))
+        self.release.take();
+        self.task
+            .take()
+            .context("ACME firewall task is missing")?
+            .await
+            .map_err(|_| anyhow::anyhow!("ACME firewall task failed"))?
     }
 }
 
 impl<F: AcmeFirewall + 'static> Drop for FirewallLease<F> {
     fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        let firewall = self.firewall.clone();
-        let port = self.port;
-        match tokio::runtime::Handle::try_current() {
-            Ok(handle) => {
-                handle.spawn(async move {
-                    if firewall.close(port).await.is_err() {
-                        log::error!("ACME firewall cleanup failed after cancellation");
-                    }
-                });
-            }
-            Err(_) => log::error!("ACME firewall cleanup unavailable after cancellation"),
-        }
+        self.release.take();
     }
 }
 
@@ -152,6 +186,7 @@ pub struct CertificateManager<R: CommandRunner, F: AcmeFirewall> {
     firewall: Arc<F>,
     acme_sh: PathBuf,
     staging_dir: PathBuf,
+    downloader: Arc<dyn AcmeDownloader>,
 }
 
 impl<R: CommandRunner, F: AcmeFirewall + 'static> CertificateManager<R, F> {
@@ -161,15 +196,24 @@ impl<R: CommandRunner, F: AcmeFirewall + 'static> CertificateManager<R, F> {
             firewall: Arc::new(firewall),
             acme_sh,
             staging_dir,
+            downloader: Arc::new(HttpsAcmeDownloader),
         }
     }
 
+    #[cfg(test)]
+    fn with_downloader(mut self, downloader: Arc<dyn AcmeDownloader>) -> Self {
+        self.downloader = downloader;
+        self
+    }
+
     pub async fn issue(&self, config: &SubscriptionConfig) -> Result<ValidatedCertificate> {
-        let result = self.issue_inner(config).await;
-        if result.is_err() {
-            let _ = remove_real_directory(&self.staging_dir);
+        match self.issue_inner(config).await {
+            Ok(certificate) => Ok(certificate),
+            Err(operation) => match remove_real_directory(&self.staging_dir) {
+                Ok(()) => Err(operation),
+                Err(_) => Err(anyhow::anyhow!("{operation}; staging cleanup failed")),
+            },
         }
-        result
     }
 
     async fn issue_inner(&self, config: &SubscriptionConfig) -> Result<ValidatedCertificate> {
@@ -220,16 +264,7 @@ impl<R: CommandRunner, F: AcmeFirewall + 'static> CertificateManager<R, F> {
         let lease = if already_open {
             None
         } else {
-            let lease = FirewallLease::new(self.firewall.clone(), 80);
-            if self.firewall.open(80).await.is_err() {
-                return match lease.close().await {
-                    Ok(()) => Err(anyhow::anyhow!("failed to open ACME firewall rule")),
-                    Err(_) => Err(anyhow::anyhow!(
-                        "failed to open ACME firewall rule; firewall cleanup failed"
-                    )),
-                };
-            }
-            Some(lease)
+            Some(FirewallLease::acquire(self.firewall.clone(), 80).await?)
         };
         let issued = self
             .run_checked(&self.acme_sh, &issue_args, ISSUE_TIMEOUT, "issuance")
@@ -308,19 +343,15 @@ impl<R: CommandRunner, F: AcmeFirewall + 'static> CertificateManager<R, F> {
         }
         let parent = self.acme_sh.parent().context("invalid acme.sh path")?;
         fs::create_dir_all(parent).context("failed to create acme.sh directory")?;
-        let response = reqwest::Client::new()
+        let response = self
+            .downloader
             .get("https://get.acme.sh")
-            .send()
             .await
             .map_err(|_| anyhow::anyhow!("failed to download acme.sh installer"))?;
-        if !response.status().is_success() {
+        if !response.status.is_success() {
             bail!("failed to download acme.sh installer");
         }
-        let body = response
-            .bytes()
-            .await
-            .map_err(|_| anyhow::anyhow!("failed to read acme.sh installer"))?;
-        self.install_acme_sh(&body).await
+        self.install_acme_sh(&response.body).await
     }
 
     async fn install_acme_sh(&self, body: &[u8]) -> Result<()> {
@@ -877,7 +908,10 @@ mod tests {
         os::unix::fs::PermissionsExt,
         path::{Path, PathBuf},
         process::ExitStatus,
-        sync::{Arc, Mutex},
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicBool, Ordering},
+        },
         time::{Duration, SystemTime},
     };
 
@@ -886,8 +920,8 @@ mod tests {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
 
     use super::{
-        AcmeFirewall, CertificateManager, CommandOutput, CommandRunner, SystemCommandRunner,
-        ValidatedCertificate, renew_before,
+        AcmeDownload, AcmeDownloader, AcmeFirewall, CertificateManager, CommandOutput,
+        CommandRunner, SystemCommandRunner, ValidatedCertificate, renew_before,
     };
     use crate::core::subscription::config::{CertificateMode, SubscriptionConfig};
 
@@ -1052,11 +1086,19 @@ mod tests {
     struct CancellationDuringOpenFirewall {
         actions: Arc<Mutex<Vec<String>>>,
         opened: Arc<tokio::sync::Notify>,
+        complete: Arc<tokio::sync::Notify>,
+        finished: Arc<tokio::sync::Notify>,
+        succeeds: Arc<AtomicBool>,
     }
 
     impl CancellationDuringOpenFirewall {
         fn actions(&self) -> Vec<String> {
             self.actions.lock().unwrap().clone()
+        }
+
+        fn complete(&self, succeeds: bool) {
+            self.succeeds.store(succeeds, Ordering::SeqCst);
+            self.complete.notify_one();
         }
     }
 
@@ -1067,9 +1109,20 @@ mod tests {
         }
 
         async fn open(&self, port: u16) -> Result<()> {
-            self.actions.lock().unwrap().push(format!("open:{port}"));
+            self.actions
+                .lock()
+                .unwrap()
+                .push(format!("open-pending:{port}"));
             self.opened.notify_one();
-            std::future::pending().await
+            self.complete.notified().await;
+            let result = if self.succeeds.load(Ordering::SeqCst) {
+                self.actions.lock().unwrap().push(format!("open:{port}"));
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("open failed"))
+            };
+            self.finished.notify_one();
+            result
         }
 
         async fn close(&self, port: u16) -> Result<()> {
@@ -1119,6 +1172,52 @@ mod tests {
             });
             fs::write(&self.acme_path, "installed")?;
             Ok(success_output())
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordingDownloader {
+        outcome: DownloadOutcome,
+        urls: Arc<Mutex<Vec<String>>>,
+    }
+
+    #[derive(Clone)]
+    enum DownloadOutcome {
+        Response(AcmeDownload),
+        Failure(&'static str),
+    }
+
+    impl RecordingDownloader {
+        fn response(status: reqwest::StatusCode, body: &[u8]) -> Self {
+            Self {
+                outcome: DownloadOutcome::Response(AcmeDownload {
+                    status,
+                    body: body.to_vec(),
+                }),
+                urls: Arc::default(),
+            }
+        }
+
+        fn failure(message: &'static str) -> Self {
+            Self {
+                outcome: DownloadOutcome::Failure(message),
+                urls: Arc::default(),
+            }
+        }
+
+        fn urls(&self) -> Vec<String> {
+            self.urls.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl AcmeDownloader for RecordingDownloader {
+        async fn get(&self, url: &str) -> Result<AcmeDownload> {
+            self.urls.lock().unwrap().push(url.to_owned());
+            match &self.outcome {
+                DownloadOutcome::Response(response) => Ok(response.clone()),
+                DownloadOutcome::Failure(message) => bail!(*message),
+            }
         }
     }
 
@@ -1223,7 +1322,7 @@ mod tests {
         assert_eq!(calls[1].timeout, Duration::from_secs(300));
 
         runner.clear();
-        manager.issue(&ip_config_with_ipv6()).await.unwrap();
+        let ip_certificate = manager.issue(&ip_config_with_ipv6()).await.unwrap();
         let calls = runner.calls();
         assert_eq!(
             calls[0].args,
@@ -1244,7 +1343,21 @@ mod tests {
             ])
         );
         assert_eq!(calls[0].timeout, Duration::from_secs(300));
-        assert_eq!(calls[1].args[3], "203.0.113.10");
+        assert_eq!(calls[1].program, calls[0].program);
+        assert_eq!(
+            calls[1].args,
+            vec![
+                "--install-cert".into(),
+                "--ecc".into(),
+                "-d".into(),
+                "203.0.113.10".into(),
+                "--fullchain-file".into(),
+                ip_certificate.cert_path.as_os_str().to_owned(),
+                "--key-file".into(),
+                ip_certificate.key_path.as_os_str().to_owned(),
+            ]
+        );
+        assert_eq!(calls[1].timeout, Duration::from_secs(300));
     }
 
     #[tokio::test]
@@ -1270,6 +1383,54 @@ mod tests {
         assert_eq!(call.args.len(), 1);
         assert_ne!(call.args[0], "-c");
         assert_eq!(call.timeout, Duration::from_secs(120));
+    }
+
+    #[tokio::test]
+    async fn missing_acme_downloads_exact_https_url_and_installs_response_body() {
+        let root = tempfile::tempdir().unwrap();
+        let acme = root.path().join("acme.sh");
+        let runner = InstallerRunner {
+            acme_path: acme.clone(),
+            call: Arc::default(),
+        };
+        let downloader =
+            RecordingDownloader::response(reqwest::StatusCode::OK, b"#!/bin/sh\nexit 0\n");
+        let manager = CertificateManager::new(
+            runner.clone(),
+            RecordingFirewall::closed(),
+            acme,
+            root.path().join("staging"),
+        )
+        .with_downloader(Arc::new(downloader.clone()));
+        manager.ensure_acme_sh().await.unwrap();
+        assert_eq!(downloader.urls(), ["https://get.acme.sh"]);
+        assert!(runner.call.lock().unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn missing_acme_rejects_http_status_and_redacts_download_failure() {
+        for downloader in [
+            RecordingDownloader::response(
+                reqwest::StatusCode::SERVICE_UNAVAILABLE,
+                b"status-body-secret",
+            ),
+            RecordingDownloader::failure("download-error-secret"),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let runner = RecordingRunner::default();
+            let manager = CertificateManager::new(
+                runner.clone(),
+                RecordingFirewall::closed(),
+                root.path().join("acme.sh"),
+                root.path().join("staging"),
+            )
+            .with_downloader(Arc::new(downloader.clone()));
+            let error = manager.ensure_acme_sh().await.unwrap_err().to_string();
+            assert!(error.contains("download acme.sh installer"));
+            assert!(!error.contains("secret"));
+            assert!(runner.calls().is_empty());
+            assert_eq!(downloader.urls(), ["https://get.acme.sh"]);
+        }
     }
 
     #[tokio::test]
@@ -1328,13 +1489,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancellation_during_firewall_open_still_attempts_cleanup() {
+    async fn cancellation_during_firewall_open_closes_only_after_success() {
         let firewall = CancellationDuringOpenFirewall::default();
         let manager = test_manager(PendingRunner, firewall.clone());
         let task = tokio::spawn(async move { manager.issue(&domain_config()).await });
         firewall.opened.notified().await;
         task.abort();
         let _ = task.await;
+        assert_eq!(firewall.actions(), ["open-pending:80"]);
+        firewall.complete(true);
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
                 if firewall.actions().contains(&"close:80".to_owned()) {
@@ -1345,7 +1508,26 @@ mod tests {
         })
         .await
         .unwrap();
-        assert_eq!(firewall.actions(), ["open:80", "close:80"]);
+        assert_eq!(
+            firewall.actions(),
+            ["open-pending:80", "open:80", "close:80"]
+        );
+    }
+
+    #[tokio::test]
+    async fn cancellation_during_failed_firewall_open_never_closes_rule() {
+        let firewall = CancellationDuringOpenFirewall::default();
+        let manager = test_manager(PendingRunner, firewall.clone());
+        let task = tokio::spawn(async move { manager.issue(&domain_config()).await });
+        firewall.opened.notified().await;
+        task.abort();
+        let _ = task.await;
+        firewall.complete(false);
+        tokio::time::timeout(Duration::from_secs(1), firewall.finished.notified())
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        assert_eq!(firewall.actions(), ["open-pending:80"]);
     }
 
     #[test]
@@ -1502,12 +1684,21 @@ mod tests {
         let key = root.path().join("key.pem");
         fs::write(&cert, TEST_CERT).unwrap();
 
-        fs::write(&key, format!("{TEST_KEY}{PKCS8_KEY}")).unwrap();
-        assert!(manager.validate(&domain_config(), &cert, &key).is_err());
-        fs::write(&key, format!("{TEST_KEY}{RSA_KEY}")).unwrap();
-        assert!(manager.validate(&domain_config(), &cert, &key).is_err());
-        fs::write(&key, format!("{TEST_KEY}{TEST_KEY}")).unwrap();
-        assert!(manager.validate(&domain_config(), &cert, &key).is_err());
+        for keys in [
+            format!("{TEST_KEY}{PKCS8_KEY}"),
+            format!("{TEST_KEY}{RSA_KEY}"),
+            format!("{TEST_KEY}{TEST_KEY}"),
+            format!("{PKCS8_KEY}{PKCS8_KEY}"),
+            format!("{RSA_KEY}{RSA_KEY}"),
+            format!("{PKCS8_KEY}{RSA_KEY}"),
+        ] {
+            fs::write(&key, keys).unwrap();
+            let error = manager
+                .validate(&domain_config(), &cert, &key)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("exactly one private key"));
+        }
     }
 
     #[test]
@@ -1696,6 +1887,34 @@ mod tests {
             .to_string();
         assert!(!error.contains("sub.example.com"));
         assert!(!staging.exists());
+    }
+
+    #[tokio::test]
+    async fn issuance_and_staging_cleanup_failures_are_combined_and_redacted() {
+        let root = tempfile::tempdir().unwrap();
+        let acme = root.path().join("acme.sh");
+        fs::write(&acme, "").unwrap();
+        let staging = root.path().join("certs/staging");
+        let staging_parent = staging.parent().unwrap().to_owned();
+        fs::create_dir(&staging_parent).unwrap();
+        let manager = CertificateManager::new(
+            CleanupFailingRunner {
+                staging_parent: staging_parent.clone(),
+            },
+            RecordingFirewall::closed(),
+            acme,
+            staging.clone(),
+        );
+        let error = manager
+            .issue(&domain_config())
+            .await
+            .unwrap_err()
+            .to_string();
+        fs::set_permissions(&staging_parent, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(error.contains("issuance"));
+        assert!(error.contains("staging cleanup failed"));
+        assert!(!error.contains("process-output-secret"));
+        assert!(!error.contains(&staging.display().to_string()));
     }
 
     #[tokio::test]
@@ -2021,6 +2240,23 @@ mod tests {
     }
 
     struct SensitiveOutputRunner;
+
+    struct CleanupFailingRunner {
+        staging_parent: PathBuf,
+    }
+
+    #[async_trait]
+    impl CommandRunner for CleanupFailingRunner {
+        async fn run(
+            &self,
+            _program: &Path,
+            _args: &[OsString],
+            _timeout: Duration,
+        ) -> Result<CommandOutput> {
+            fs::set_permissions(&self.staging_parent, fs::Permissions::from_mode(0o500))?;
+            bail!("process-output-secret")
+        }
+    }
 
     #[async_trait]
     impl CommandRunner for SensitiveOutputRunner {
