@@ -12,7 +12,7 @@ use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::watch,
-    task::JoinHandle,
+    task::{JoinHandle, JoinSet},
 };
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 use tokio_util::sync::CancellationToken;
@@ -95,32 +95,76 @@ pub async fn spawn_listener(
     let task_cancel = cancel.child_token();
     let mut tls_rx = tls.subscribe();
     let task = tokio::spawn(async move {
+        let mut connections = JoinSet::new();
+        let mut failure = None;
         loop {
-            let (socket, peer) = tokio::select! {
-                _ = task_cancel.cancelled() => return Ok(()),
-                accepted = listener.accept() => accepted.context("subscription listener accept failed")?,
-            };
-            let config = tls_rx.borrow_and_update().clone();
-            let acceptor = TlsAcceptor::from(config);
-            let source = source.clone();
-            tokio::spawn(async move {
-                let Ok(stream) = acceptor.accept(socket).await else {
-                    log::warn!("subscription connection failed peer={peer} category=tls");
-                    return;
-                };
-                let service = service_fn(move |request| {
-                    let source = source.clone();
-                    async move { Ok::<_, Infallible>(handle_request(request, source).await) }
-                });
-                if hyper::server::conn::Http::new()
-                    .http1_only(true)
-                    .serve_connection(stream, service)
-                    .await
-                    .is_err()
-                {
-                    log::warn!("subscription connection failed peer={peer} category=http");
+            tokio::select! {
+                _ = task_cancel.cancelled() => break,
+                joined = connections.join_next(), if !connections.is_empty() => {
+                    if let Some(joined) = joined
+                        && let Err(error) = joined
+                            .context("subscription connection task failed")
+                            .and_then(|result| result)
+                        && failure.is_none()
+                    {
+                        failure = Some(error);
+                    }
                 }
-            });
+                accepted = listener.accept() => {
+                    let (socket, _) = match accepted {
+                        Ok(accepted) => accepted,
+                        Err(error) => {
+                            failure = Some(
+                                anyhow::Error::new(error)
+                                    .context("subscription listener accept failed"),
+                            );
+                            break;
+                        }
+                    };
+                    let config = tls_rx.borrow_and_update().clone();
+                    let acceptor = TlsAcceptor::from(config);
+                    let source = source.clone();
+                    let connection_cancel = task_cancel.clone();
+                    connections.spawn(async move {
+                        let stream = tokio::select! {
+                            _ = connection_cancel.cancelled() => return Ok(()),
+                            accepted = acceptor.accept(socket) => accepted
+                                .context("subscription TLS connection failed")?,
+                        };
+                        let service = service_fn(move |request| {
+                            let source = source.clone();
+                            async move { Ok::<_, Infallible>(handle_request(request, source).await) }
+                        });
+                        let mut http = hyper::server::conn::Http::new();
+                        http.http1_only(true);
+                        let connection = http.serve_connection(stream, service);
+                        tokio::pin!(connection);
+                        let result = tokio::select! {
+                            result = connection.as_mut() => result,
+                            _ = connection_cancel.cancelled() => {
+                                connection.as_mut().graceful_shutdown();
+                                connection.await
+                            }
+                        };
+                        result.context("subscription HTTP connection failed")
+                    });
+                }
+            }
+        }
+        task_cancel.cancel();
+        while let Some(joined) = connections.join_next().await {
+            if let Err(error) = joined
+                .context("subscription connection task failed")
+                .and_then(|result| result)
+                && failure.is_none()
+            {
+                failure = Some(error);
+            }
+        }
+        if let Some(error) = failure {
+            Err(error)
+        } else {
+            Ok(())
         }
     });
     Ok(ListenerHandle {
@@ -346,7 +390,12 @@ mod tests {
     use serde_json::json;
     use sha2::{Digest, Sha256};
     use tempfile::TempDir;
-    use tokio::{io::AsyncWriteExt, net::TcpStream, sync::watch};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpStream,
+        sync::watch,
+        time::{Duration, timeout},
+    };
     use tokio_rustls::client::TlsStream;
 
     use super::{
@@ -489,7 +538,34 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(handle.local_addr, bound_addr);
+        drop(established);
         handle.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn shutdown_waits_until_established_connection_receives_graceful_eof() {
+        let tls = test_tls_state("first.local");
+        let source = fixture_source();
+        let route = format!("/sub/{}", source.raw_token);
+        let handle = spawn_listener(localhost(), tls.state, source.runtime())
+            .await
+            .unwrap();
+        let mut established = open_https(handle.local_addr, "first.local", &tls.ca)
+            .await
+            .unwrap();
+        assert_eq!(
+            request_over_keep_alive(&mut established, &route).await,
+            StatusCode::OK
+        );
+
+        handle.shutdown().await.unwrap();
+
+        let mut byte = [0_u8; 1];
+        let bytes_read = timeout(Duration::from_secs(1), established.read(&mut byte))
+            .await
+            .expect("shutdown returned before signaling the connection")
+            .unwrap();
+        assert_eq!(bytes_read, 0);
     }
 
     #[tokio::test]
