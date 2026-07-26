@@ -51,6 +51,7 @@ struct RecordingOps {
     state: Arc<Mutex<RecordedState>>,
     stage_started: Arc<Notify>,
     release_stage: Arc<Notify>,
+    cert_not_after_override: Arc<Mutex<Option<SystemTime>>>,
 }
 
 impl Default for RecordingOps {
@@ -59,6 +60,7 @@ impl Default for RecordingOps {
             state: Arc::default(),
             stage_started: Arc::new(Notify::new()),
             release_stage: Arc::new(Notify::new()),
+            cert_not_after_override: Arc::default(),
         }
     }
 }
@@ -103,6 +105,10 @@ impl RecordingOps {
             .receivers
             .get(&port)
             .map(|source| (**source.config_rx.borrow()).clone())
+    }
+
+    fn set_cert_not_after(&self, t: SystemTime) {
+        *self.cert_not_after_override.lock().unwrap() = Some(t);
     }
 }
 
@@ -254,10 +260,15 @@ impl RuntimeOps for RecordingOps {
             self.stage_started.notify_one();
             self.release_stage.notified().await;
         }
+        let not_after = self
+            .cert_not_after_override
+            .lock()
+            .unwrap()
+            .unwrap_or(SystemTime::now() + Duration::from_secs(3600));
         Ok(ValidatedCertificate {
             cert_path: PathBuf::from(format!("staged-{}.pem", config.port)),
             key_path: PathBuf::from(format!("staged-{}.key", config.port)),
-            not_after: SystemTime::now() + Duration::from_secs(3600),
+            not_after,
         })
     }
 
@@ -1009,6 +1020,39 @@ fn staged_port(certificate: &ValidatedCertificate) -> u16 {
         .trim_start_matches("staged-")
         .parse()
         .unwrap()
+}
+
+#[tokio::test]
+async fn renew_if_due_triggers_reissue_when_certificate_expired() {
+    let dir = tempfile::tempdir().unwrap();
+    let config_path = dir.path().join("subscription.json");
+    old_config().save_atomic(&config_path).unwrap();
+    let paths = SubscriptionPaths::new(
+        config_path,
+        dir.path().join("xray"),
+        dir.path().join("singbox"),
+    )
+    .with_bind_ip(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    let ops = RecordingOps::default();
+    ops.set_cert_not_after(SystemTime::now() - Duration::from_secs(3600));
+    let runtime = SubscriptionRuntime::new_isolated_for_test(paths, Arc::new(ops.clone()));
+    runtime.start_from_disk().await.unwrap();
+    ops.clear_actions();
+
+    runtime.renew_if_due().await.unwrap();
+
+    let actions = ops.actions();
+    assert!(
+        actions.contains(&"certificate:stage".to_string()),
+        "expired certificate should trigger reissue, got: {actions:?}"
+    );
+}
+
+#[tokio::test]
+async fn renew_if_due_skips_when_no_certificate_set() {
+    let fixture = RuntimeFixture::saved(Some(disabled_config())).await;
+    fixture.runtime.renew_if_due().await.unwrap();
+    assert!(fixture.ops.actions().is_empty());
 }
 
 fn old_config() -> SubscriptionConfig {

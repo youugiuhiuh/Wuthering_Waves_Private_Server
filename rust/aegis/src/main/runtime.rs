@@ -106,16 +106,13 @@ pub async fn run(
                     ops,
                 )
             };
-            if let Err(error) = runtime.start_from_disk().await {
-                log::warn!("subscription startup recovery failed: {error}");
+            if runtime.start_from_disk().await.is_err() {
+                log::warn!("subscription startup recovery failed");
             }
             loop {
                 tokio::select! {
                     _ = sub_cancel.cancelled() => break,
                     _ = tokio::time::sleep(std::time::Duration::from_secs(12 * 3600)) => {},
-                }
-                if sub_cancel.is_cancelled() {
-                    break;
                 }
                 if let Err(error) = runtime.renew_if_due().await {
                     log::warn!("subscription renewal failed: {error}");
@@ -155,9 +152,17 @@ pub async fn run(
             );
         });
 
-        let (mut client, _, _) = super::discord::build_handle(raw, state.clone())
+        let discord_build_result = super::discord::build_handle(raw, state.clone())
             .await
-            .context("构建 Discord 客户端失败")?;
+            .context("构建 Discord 客户端失败");
+        let (mut client, _, _) = match discord_build_result {
+            Ok(handle) => handle,
+            Err(e) => {
+                sub_cancel.cancel();
+                let _ = sub_handle.await;
+                return Err(e);
+            }
+        };
 
         // Discord-only: keep process alive via CancellationToken
         if !enable_telegram && !enable_matrix {

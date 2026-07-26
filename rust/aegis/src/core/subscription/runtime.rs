@@ -700,11 +700,9 @@ impl SubscriptionRuntime {
         let Some(not_after) = state.certificate_not_after else {
             return Ok(());
         };
-        let now = SystemTime::now();
-        if now >= not_after {
-            return Ok(());
-        }
-        let remaining = not_after.duration_since(now).unwrap_or_default();
+        let remaining = not_after
+            .duration_since(SystemTime::now())
+            .unwrap_or_default();
         if remaining <= Duration::from_secs(30 * 24 * 3600) {
             drop(state);
             self.reissue_certificate().await

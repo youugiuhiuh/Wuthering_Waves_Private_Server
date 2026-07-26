@@ -482,8 +482,8 @@ impl MaintenanceManager {
             Ok(Some(config)) => {
                 required.extend(required_ports_with_subscription(&config));
             }
-            Err(error) => {
-                log::warn!("subscription config unreadable, skipping firewall sync: {error}");
+            Err(_) => {
+                log::warn!("subscription config unreadable, skipping firewall sync");
             }
             Ok(None) => {}
         }
