@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use sha2::Digest;
@@ -124,24 +124,37 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
             )
             .await
             == TimeoutStatus::Active
-        && let Some((input_type, config)) = state.take_subscription_input(&msg.target.0).await
     {
-        let adapter = msg.adapter.clone();
-        let target = msg.target.clone();
-        let text = text.clone();
-        tokio::spawn(async move {
-            if let Err(e) = subscription::process_typed_input(
+        // ponytail: snapshot then take — re-arm on invalid so user can retry
+        let target_str = msg.target.0.clone();
+        let snapshot = state.subscription_input_snapshot(&target_str).await;
+        if let Some((input_type, config)) = snapshot {
+            let adapter = msg.adapter.clone();
+            let target = msg.target.clone();
+            let text = text.clone();
+            match subscription::process_typed_input(
                 adapter.as_ref(),
                 &target,
-                input_type,
-                config,
+                input_type.clone(),
+                config.clone(),
                 &text,
             )
             .await
             {
-                log::error!("Subscription input processing failed: {e}");
+                Ok(subscription::InputOutcome::Applied) => {
+                    state.take_subscription_input(&target_str).await;
+                }
+                Ok(subscription::InputOutcome::Invalid) => {
+                    state
+                        .begin_subscription_input(target_str, input_type, config, Instant::now())
+                        .await;
+                }
+                Err(e) => {
+                    state.take_subscription_input(&target_str).await;
+                    log::error!("Subscription input processing failed: {e}");
+                }
             }
-        });
+        }
         return Ok(());
     }
 

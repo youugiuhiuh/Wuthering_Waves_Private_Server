@@ -14,6 +14,12 @@ pub enum SubscriptionInput {
     Port,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputOutcome {
+    Applied,
+    Invalid,
+}
+
 pub const SUBSCRIPTION_INPUT_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub async fn handle(event: &CallbackEvent) -> HandlerResult {
@@ -205,7 +211,7 @@ async fn handle_toggle(event: &CallbackEvent) -> HandlerResult {
     let result = if status.enabled {
         runtime.disable().await
     } else {
-        let mut config = SubscriptionConfig::new_disabled(&status.masked_token);
+        let mut config = SubscriptionConfig::new_disabled(&status.token_hash);
         config.public_host = status.public_host;
         config.port = if status.port == 0 { 443 } else { status.port };
         config.certificate_mode = if host_is_ip {
@@ -379,7 +385,7 @@ pub async fn process_typed_input(
     input_type: SubscriptionInput,
     config: SubscriptionConfig,
     text: &str,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<InputOutcome> {
     let runtime = match subscription_runtime() {
         Some(r) => r,
         None => {
@@ -392,7 +398,7 @@ pub async fn process_typed_input(
                     },
                 )
                 .await?;
-            return Ok(());
+            return Ok(InputOutcome::Invalid);
         }
     };
 
@@ -412,7 +418,7 @@ pub async fn process_typed_input(
                         },
                     )
                     .await?;
-                return Ok(());
+                return Ok(InputOutcome::Invalid);
             }
             candidate.certificate_mode = CertificateMode::Domain;
             candidate.public_host = domain;
@@ -502,8 +508,7 @@ pub async fn process_typed_input(
     };
 
     if !valid {
-        // ponytail: re-arm is handled by caller in dispatch.rs
-        return Ok(());
+        return Ok(InputOutcome::Invalid);
     }
 
     match runtime.apply(candidate).await {
@@ -531,7 +536,7 @@ pub async fn process_typed_input(
         }
     }
 
-    Ok(())
+    Ok(InputOutcome::Applied)
 }
 
 #[cfg(test)]
@@ -548,5 +553,107 @@ mod tests {
         assert_eq!(v6, SubscriptionInput::Ipv6San);
         let p = SubscriptionInput::Port;
         assert_eq!(p, SubscriptionInput::Port);
+    }
+
+    #[tokio::test]
+    async fn process_typed_input_returns_invalid_when_runtime_none() {
+        let adapter = MockSubscriptionAdapter::default();
+        let target = TargetId("test".into());
+        let config = SubscriptionConfig::new_disabled("ab".repeat(32));
+        let outcome = process_typed_input(
+            &adapter,
+            &target,
+            SubscriptionInput::Ip,
+            config,
+            "192.0.2.1",
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome, InputOutcome::Invalid);
+    }
+
+    #[tokio::test]
+    async fn process_typed_input_returns_invalid_for_bad_ip() {
+        let adapter = MockSubscriptionAdapter::default();
+        let target = TargetId("test".into());
+        let config = SubscriptionConfig::new_disabled("ab".repeat(32));
+        let outcome = process_typed_input(
+            &adapter,
+            &target,
+            SubscriptionInput::Ip,
+            config,
+            "not_an_ip",
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome, InputOutcome::Invalid);
+    }
+
+    #[tokio::test]
+    async fn process_typed_input_returns_invalid_for_empty_domain() {
+        let adapter = MockSubscriptionAdapter::default();
+        let target = TargetId("test".into());
+        let config = SubscriptionConfig::new_disabled("ab".repeat(32));
+        let outcome =
+            process_typed_input(&adapter, &target, SubscriptionInput::Domain, config, " ")
+                .await
+                .unwrap();
+        assert_eq!(outcome, InputOutcome::Invalid);
+    }
+
+    #[tokio::test]
+    async fn process_typed_input_returns_invalid_for_port_80() {
+        let adapter = MockSubscriptionAdapter::default();
+        let target = TargetId("test".into());
+        let config = SubscriptionConfig::new_disabled("ab".repeat(32));
+        let outcome = process_typed_input(&adapter, &target, SubscriptionInput::Port, config, "80")
+            .await
+            .unwrap();
+        assert_eq!(outcome, InputOutcome::Invalid);
+    }
+
+    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform};
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct MockSubscriptionAdapter {
+        sent: Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl BotAdapter for MockSubscriptionAdapter {
+        fn platform(&self) -> Platform {
+            Platform::Telegram
+        }
+        async fn send_message(
+            &self,
+            _target: &TargetId,
+            content: MessageContent,
+        ) -> anyhow::Result<MessageId> {
+            self.sent.lock().unwrap().push(content.text);
+            Ok(MessageId("0".into()))
+        }
+        async fn edit_message(
+            &self,
+            _target: &TargetId,
+            _msg_id: &MessageId,
+            _content: MessageContent,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn delete_message(
+            &self,
+            _target: &TargetId,
+            _msg_id: &MessageId,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn download_file(&self, _file_id: &str) -> anyhow::Result<Vec<u8>> {
+            Ok(Vec::new())
+        }
+        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
+            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        }
     }
 }

@@ -996,4 +996,49 @@ mod tests {
             TimeoutStatus::Expired
         );
     }
+
+    #[tokio::test]
+    async fn subscription_input_rearmed_after_invalid_keeps_same_type() {
+        let state = make_state();
+        let chat_id = "sub-6".to_string();
+        let input = aegis::shared::handlers::subscription::SubscriptionInput::Port;
+        let config =
+            aegis::core::subscription::config::SubscriptionConfig::new_disabled("ba".repeat(32));
+        state
+            .begin_subscription_input(
+                chat_id.clone(),
+                input.clone(),
+                config.clone(),
+                Instant::now(),
+            )
+            .await;
+
+        // Simulate snapshot + process (invalid) → re-arm
+        let snap = state.subscription_input_snapshot(&chat_id).await;
+        assert!(snap.is_some(), "should have pending input before process");
+        let (got_input, got_config) = snap.unwrap();
+        assert_eq!(got_input, input);
+
+        // Take to simulate processing attempt
+        let _taken = state.take_subscription_input(&chat_id).await;
+        assert!(state.subscription_input_snapshot(&chat_id).await.is_none());
+
+        // Re-arm with same type (simulates dispatch re-arm on invalid)
+        state
+            .begin_subscription_input(chat_id.clone(), input.clone(), got_config, Instant::now())
+            .await;
+
+        let status = state
+            .subscription_input_timeout_status(&chat_id, Duration::from_secs(60))
+            .await;
+        assert_eq!(
+            status,
+            TimeoutStatus::Active,
+            "should be re-armed after invalid"
+        );
+        let snap2 = state.subscription_input_snapshot(&chat_id).await;
+        assert!(snap2.is_some());
+        let (got_input2, _) = snap2.unwrap();
+        assert_eq!(got_input2, input, "same input type preserved after re-arm");
+    }
 }

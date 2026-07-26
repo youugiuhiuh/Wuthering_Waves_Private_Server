@@ -237,6 +237,7 @@ pub struct SubscriptionStatus {
     pub public_host: String,
     pub port: u16,
     pub certificate_not_after: Option<SystemTime>,
+    pub token_hash: String,
     pub masked_token: String,
     pub last_error: Option<String>,
 }
@@ -681,6 +682,7 @@ impl SubscriptionRuntime {
                 public_host: config.public_host.clone(),
                 port: config.port,
                 certificate_not_after: state.certificate_not_after,
+                token_hash: config.token_hash.clone(),
                 masked_token: config.masked_token(),
                 last_error: state.last_error.clone(),
             },
@@ -689,6 +691,7 @@ impl SubscriptionRuntime {
                 public_host: String::new(),
                 port: 0,
                 certificate_not_after: None,
+                token_hash: String::new(),
                 masked_token: String::new(),
                 last_error: state.last_error.clone(),
             },

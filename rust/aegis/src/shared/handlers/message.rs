@@ -61,6 +61,33 @@ pub async fn handle_message(
 
     let target_str = &target.0;
 
+    // Subscription typed input intercept — must run before schedule/WARP
+    match state
+        .subscription_input_timeout_status(target_str, Duration::from_secs(60))
+        .await
+    {
+        TimeoutStatus::Expired => {
+            state.cancel_subscription_input(target_str).await;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!("subscription.input_timeout").to_string(),
+                        markup: None,
+                    },
+                )
+                .await?;
+            return Ok(MessageAction::Handled);
+        }
+        TimeoutStatus::Active => {
+            if text.is_some() || has_file {
+                return Ok(MessageAction::Handled);
+            }
+            return Ok(MessageAction::Handled);
+        }
+        TimeoutStatus::NotTracked => {}
+    }
+
     // Schedule timeout check
     match state
         .schedule_timeout_status(target_str, Duration::from_secs(180))
@@ -159,34 +186,6 @@ pub async fn handle_message(
                             .await?;
                     }
                 }
-            }
-            return Ok(MessageAction::Handled);
-        }
-        TimeoutStatus::NotTracked => {}
-    }
-
-    // Subscription input check
-    match state
-        .subscription_input_timeout_status(target_str, Duration::from_secs(60))
-        .await
-    {
-        TimeoutStatus::Expired => {
-            state.cancel_subscription_input(target_str).await;
-            adapter
-                .send_message(
-                    target,
-                    MessageContent {
-                        text: t!("subscription.input_timeout").to_string(),
-                        markup: None,
-                    },
-                )
-                .await?;
-            return Ok(MessageAction::Handled);
-        }
-        TimeoutStatus::Active => {
-            if text.is_some() || has_file {
-                // Intercept — actual processing happens in dispatch.rs
-                return Ok(MessageAction::Handled);
             }
             return Ok(MessageAction::Handled);
         }

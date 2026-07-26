@@ -1127,6 +1127,45 @@ fn disabled_config() -> SubscriptionConfig {
     c
 }
 
+#[tokio::test]
+async fn token_hash_preserved_through_disable_and_enable_cycle() {
+    let fixture = RuntimeFixture::running(old_config()).await;
+    let original_hash = fixture.saved_config().token_hash.clone();
+
+    fixture.runtime.disable().await.unwrap();
+    let disabled = fixture.saved_config();
+    assert_eq!(
+        disabled.token_hash, original_hash,
+        "token_hash must survive disable"
+    );
+
+    assert_eq!(
+        fixture.runtime.status().await.token_hash,
+        original_hash,
+        "status must expose the real token_hash, not the masked version"
+    );
+}
+
+#[tokio::test]
+async fn status_token_hash_matches_config_on_disk() {
+    let fixture = RuntimeFixture::saved_enabled(old_config()).await;
+    fixture.runtime.start_from_disk().await.unwrap();
+    let status = fixture.runtime.status().await;
+    let saved = fixture.saved_config();
+    assert_eq!(
+        status.token_hash, saved.token_hash,
+        "status.token_hash must equal the real config hash"
+    );
+    assert_ne!(
+        status.token_hash, status.masked_token,
+        "token_hash must not be the masked display string"
+    );
+    assert!(
+        status.token_hash.len() == 64 && status.token_hash.chars().all(|c| c.is_ascii_hexdigit()),
+        "token_hash must be a 64-char hex digest"
+    );
+}
+
 fn localhost(port: u16) -> SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
 }

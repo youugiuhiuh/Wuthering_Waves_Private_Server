@@ -81,7 +81,7 @@ async fn arm_subscription_input(state: &AppState, chat_id: &str, input: Subscrip
                 port: if status.port == 0 { 443 } else { status.port },
                 public_host: status.public_host,
                 ipv6_san: None,
-                token_hash: status.masked_token,
+                token_hash: status.token_hash,
                 certificate_mode: cert_mode,
                 cert_path: std::path::PathBuf::new(),
                 key_path: std::path::PathBuf::new(),
