@@ -394,6 +394,8 @@ mod tests {
 
     use serde_json::{Value, json};
 
+    use crate::core::singbox::{Hysteria2Config, TUICConfig};
+
     use super::{
         SubscriptionNode, VlessNetwork, load_current_nodes, load_singbox_nodes, load_xray_nodes,
     };
@@ -401,6 +403,11 @@ mod tests {
     const FIXTURE_UUID: &str = "123e4567-e89b-12d3-a456-426614174000";
     const FIXTURE_PRIVATE_KEY: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     const FIXTURE_PUBLIC_KEY: &str = "L-V9o0fNYkMVKNqsX7spBzD_9oSvxM_C7ZCZX1jLO3Q";
+    const FIRST_CERT_FINGERPRINT: &str =
+        "371a16a9aa163d238ebbd46308cf8603e783effde47f7642bde8f059a9522e0a";
+    const SECOND_CERT_FINGERPRINT: &str =
+        "49d4a18e1048735427f4346dfe7ec81a27d67b3eaae03e27fd8ce89d04e55118";
+    const SINGBOX_SECRET: &str = "do-not-leak-singbox-secret";
 
     #[test]
     fn reconstructs_hysteria2_and_tuic_with_certificate_fingerprint() {
@@ -408,11 +415,26 @@ mod tests {
         let cert = write_test_certificate(dir.path());
         write_singbox_fixture(dir.path(), singbox_fixture(&cert));
         let load = load_singbox_nodes(dir.path()).unwrap();
-        assert!(matches!(&load.nodes[0], SubscriptionNode::Hysteria2(n)
-            if n.password == "hy-secret" && n.obfs.as_deref() == Some("salamander")));
-        assert!(matches!(&load.nodes[1], SubscriptionNode::Tuic(n)
-            if n.uuid == "00000000-0000-0000-0000-000000000001"
-            && n.alpn == vec!["h3"] && !n.cert_fingerprint.is_empty()));
+        let SubscriptionNode::Hysteria2(hysteria) = &load.nodes[0] else {
+            panic!("expected Hysteria2 node");
+        };
+        let SubscriptionNode::Tuic(tuic) = &load.nodes[1] else {
+            panic!("expected TUIC node");
+        };
+
+        assert_eq!(hysteria.password, "hy-secret");
+        assert_eq!(hysteria.obfs.as_deref(), Some("salamander"));
+        assert_eq!(tuic.uuid, "00000000-0000-0000-0000-000000000001");
+        assert_eq!(tuic.alpn, ["h3"]);
+        assert_ne!(FIRST_CERT_FINGERPRINT, SECOND_CERT_FINGERPRINT);
+        assert_eq!(hysteria.cert_fingerprint, FIRST_CERT_FINGERPRINT);
+        assert_eq!(tuic.cert_fingerprint, FIRST_CERT_FINGERPRINT);
+        assert!(
+            hysteria
+                .cert_fingerprint
+                .bytes()
+                .all(|byte| { byte.is_ascii_digit() || matches!(byte, b'a'..=b'f') })
+        );
     }
 
     #[test]
@@ -433,6 +455,74 @@ mod tests {
         );
         std::fs::remove_file(file).unwrap();
         assert!(load_current_nodes(xray.path(), singbox.path()).is_err());
+    }
+
+    #[test]
+    fn reports_secret_safe_singbox_diagnostics_while_preserving_valid_sibling() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert = write_test_certificate(dir.path());
+        fs::write(
+            dir.path().join("00-bad.json"),
+            format!(r#"{{"password":"{SINGBOX_SECRET}""#),
+        )
+        .unwrap();
+        let mut malformed = hysteria_inbound(&cert, 443, SINGBOX_SECRET);
+        malformed.as_object_mut().unwrap().remove("users");
+        write_named_singbox_fixture(
+            dir.path(),
+            "01-mixed.json",
+            json!({
+                "inbounds": [
+                    {"type": "socks", "password": SINGBOX_SECRET},
+                    malformed,
+                    tuic_inbound(&cert)
+                ]
+            }),
+        );
+
+        let load = load_singbox_nodes(dir.path()).unwrap();
+
+        assert_eq!((load.nodes.len(), load.skipped), (1, 3));
+        assert!(matches!(load.nodes[0], SubscriptionNode::Tuic(_)));
+        assert_eq!(
+            load.diagnostics(),
+            [
+                "00-bad.json: malformed-json",
+                "01-mixed.json inbound[0]: unsupported",
+                "01-mixed.json inbound[1]: malformed",
+            ]
+        );
+        let diagnostics = load.diagnostics().join("\n");
+        assert!(!diagnostics.contains(SINGBOX_SECRET));
+        assert!(!diagnostics.contains("tuic-secret"));
+    }
+
+    #[test]
+    fn combined_all_invalid_singbox_and_xray_is_rejected() {
+        let xray = tempfile::tempdir().unwrap();
+        let singbox = tempfile::tempdir().unwrap();
+        let cert = write_test_certificate(singbox.path());
+        write_xray_fixture(xray.path(), fixture_with_only_missing_private_key());
+        let mut malformed = hysteria_inbound(&cert, 443, SINGBOX_SECRET);
+        malformed.as_object_mut().unwrap().remove("users");
+        write_singbox_fixture(
+            singbox.path(),
+            json!({
+                "inbounds": [
+                    {"type": "socks", "password": SINGBOX_SECRET},
+                    malformed
+                ]
+            }),
+        );
+
+        let error = load_current_nodes(xray.path(), singbox.path())
+            .err()
+            .unwrap();
+        let diagnostic = format!("{error:#}");
+
+        assert_eq!(diagnostic, "no supported subscription nodes found");
+        assert!(!diagnostic.contains(FIXTURE_PRIVATE_KEY));
+        assert!(!diagnostic.contains(SINGBOX_SECRET));
     }
 
     #[test]
@@ -582,6 +672,25 @@ mod tests {
                 "0A6FMQTinOZcfrl4UUow2MBksR0hixwiPpwzGuHCgv5HqGJX2tLAVcs9pTb2qohZ\n",
                 "Vmpxe3UlznD/1Il+rdcRgs+GFizQkrA40sXUR8QuGRNWOd+ZuQubUO2rvuGuYCaC\n",
                 "prpLW41GkF6eLqrq3lp7YJI=\n",
+                "-----END CERTIFICATE-----\n",
+                "-----BEGIN CERTIFICATE-----\n",
+                "MIIDGzCCAgOgAwIBAgIUcbhqTIi+C/8G2bUTLi8+zV/OsCowDQYJKoZIhvcNAQEL\n",
+                "BQAwHTEbMBkGA1UEAwwSc2Vjb25kLmV4YW1wbGUuY29tMB4XDTI2MDcyNjA0MDI0\n",
+                "N1oXDTM2MDcyMzA0MDI0N1owHTEbMBkGA1UEAwwSc2Vjb25kLmV4YW1wbGUuY29t\n",
+                "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArMtptAtE2iLyB0Pc985C\n",
+                "6tLlcQPuEE03UPSn7FHD+IGjMWwh9e7XRpEPXCpq3xf55BpIbrmWON4Nv4Ioud6O\n",
+                "TM/QBK+UInNZrfGtrPeFlv4WeEw5Yeikk8EUpMebjubfLMHtIyNUQvoJXaBTJ5hP\n",
+                "KX4khbTGqp7r2e9H4kPooJjqGZ/HtBDr7HxQLNX9fYj2NVLbANjdok2Xkf4+3rvL\n",
+                "YZHaKvLlTdlCDCsOmXqQLmG7zwAru7Qfm1jsRZjrkf3GW1Yw2+ud2RXuFnt3XilS\n",
+                "+hjIlYEpbX8rdpgz334Ej00XoXwOErYkYxpYNco19g7m7i63hp+DOBS0nXI89ML7\n",
+                "NwIDAQABo1MwUTAdBgNVHQ4EFgQU3NtgST2n5rDmwycsRZ83tKpf2YMwHwYDVR0j\n",
+                "BBgwFoAU3NtgST2n5rDmwycsRZ83tKpf2YMwDwYDVR0TAQH/BAUwAwEB/zANBgkq\n",
+                "hkiG9w0BAQsFAAOCAQEAl0IkU+Ml7kGl0FGh5htK5JmqaiLIfXe9g0DCAE5H/DZT\n",
+                "jRTWeIqnoiYsU5ecT3yQxZpAKJWReo4KsceMrLoT1zVaA8gVtOIGuwcfQuYhMTTj\n",
+                "TAd9dIQnXEoFmaNtx851ohHTLLi2jR/WPBE0nLK8gEtqpcwo5eB+Mje+gj29AHB4\n",
+                "3KJNIPWXAo3YpF6xdvKnUt/p7Oi/uYIAMUr/2ucEv8WI4tt5+f6kyyaiFyV9ZtWP\n",
+                "BYxzDq+kZlGx7VKSn1pLiA8GW6dGfAvkc2yyinZgyHY41/optN2ULLi0RTHU5ECk\n",
+                "05k9WDrkFw89DGgXh+jLnnhrQdRKmR3s0heROm8EWw==\n",
                 "-----END CERTIFICATE-----\n"
             ),
         )
@@ -590,31 +699,17 @@ mod tests {
     }
 
     fn write_singbox_fixture(dir: &Path, fixture: Value) {
-        fs::write(
-            dir.join("server.json"),
-            serde_json::to_vec(&fixture).unwrap(),
-        )
-        .unwrap();
+        write_named_singbox_fixture(dir, "server.json", fixture);
+    }
+
+    fn write_named_singbox_fixture(dir: &Path, name: &str, fixture: Value) {
+        fs::write(dir.join(name), serde_json::to_vec(&fixture).unwrap()).unwrap();
     }
 
     fn singbox_fixture(cert: &Path) -> Value {
         json!({"inbounds": [
             hysteria_inbound(cert, 443, "hy-secret"),
-            {
-                "type": "tuic",
-                "tag": "tuic",
-                "listen_port": 8443,
-                "users": [{
-                    "uuid": "00000000-0000-0000-0000-000000000001",
-                    "password": "tuic-secret"
-                }],
-                "tls": {
-                    "server_name": "example.com",
-                    "alpn": ["h3"],
-                    "certificate_path": cert
-                },
-                "congestion_control": "bbr"
-            }
+            tuic_inbound(cert)
         ]})
     }
 
@@ -639,18 +734,28 @@ mod tests {
     }
 
     fn hysteria_inbound(cert: &Path, port: u16, password: &str) -> Value {
-        json!({
-            "type": "hysteria2",
-            "tag": password,
-            "listen_port": port,
-            "users": [{"password": password}],
-            "tls": {
-                "server_name": "example.com",
-                "alpn": ["h3"],
-                "certificate_path": cert
-            },
-            "obfs": {"type": "salamander", "password": "obfs-secret"}
-        })
+        let mut inbound = Hysteria2Config::with_obfs(
+            port,
+            password.to_owned(),
+            "example.com".to_owned(),
+            "salamander".to_owned(),
+            "obfs-secret".to_owned(),
+        )
+        .to_inbound_json(password);
+        inbound["tls"]["certificate_path"] = json!(cert);
+        inbound
+    }
+
+    fn tuic_inbound(cert: &Path) -> Value {
+        let mut inbound = TUICConfig::new(
+            8443,
+            "00000000-0000-0000-0000-000000000001".to_owned(),
+            "tuic-secret".to_owned(),
+            "example.com".to_owned(),
+        )
+        .to_inbound_json("tuic");
+        inbound["tls"]["certificate_path"] = json!(cert);
+        inbound
     }
 
     fn node_port(node: &SubscriptionNode) -> u16 {
