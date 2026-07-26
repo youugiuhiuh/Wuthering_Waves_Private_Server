@@ -26,7 +26,7 @@ The subscription configuration stores only operational settings:
 - Enabled state.
 - HTTPS listen port, defaulting to `443`; port `80` is reserved for ACME HTTP-01.
 - Public domain or IP and the selected certificate mode.
-- A SHA-256 hash of one cryptographically random subscription token; the raw token is never persisted.
+- `token_hash`, the SHA-256 hash of one cryptographically random subscription token; no `token` field exists and the raw token is never persisted.
 - Certificate and private-key locations plus non-node certificate metadata needed for renewal.
 
 Every request reads the currently active core configuration and generates the response immediately. Existing valid nodes therefore appear without migration, while later additions, edits, and deletions are reflected on the next request.
@@ -60,7 +60,7 @@ An invalid individual inbound is skipped with a redacted warning. If no valid no
 
 ## HTTP Interface
 
-The stable endpoints are:
+The fixed subscription route prefix is `/sub`. The stable endpoints are:
 
 - `GET https://<host>:<port>/sub/<token>` for the standard Base64 subscription.
 - `GET https://<host>:<port>/sub/<token>/clash` for Clash/Mihomo YAML.
