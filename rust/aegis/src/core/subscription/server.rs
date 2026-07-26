@@ -9,7 +9,7 @@ use hyper::{
 };
 use rustls::{Certificate, PrivateKey, ServerConfig};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::watch,
     task::JoinHandle,
@@ -24,6 +24,7 @@ use super::{
 };
 
 const MAX_URI_LENGTH: usize = 2048;
+const MAX_PROBE_RESPONSE_LENGTH: usize = 64 * 1024;
 
 #[derive(Clone)]
 pub struct TlsFiles {
@@ -135,6 +136,23 @@ pub async fn probe_https(
     server_name: &str,
     cert: &std::path::Path,
 ) -> Result<()> {
+    let mut stream = open_https(addr, server_name, cert).await?;
+    stream
+        .write_all(b"GET / HTTP/1.1\r\nHost: probe\r\nConnection: close\r\n\r\n")
+        .await
+        .context("HTTPS probe request failed")?;
+    let status = read_http_response(&mut stream).await?;
+    if status != StatusCode::NOT_FOUND {
+        bail!("HTTPS probe returned unexpected status");
+    }
+    Ok(())
+}
+
+async fn open_https(
+    addr: SocketAddr,
+    server_name: &str,
+    cert: &std::path::Path,
+) -> Result<tokio_rustls::client::TlsStream<TcpStream>> {
     let certs = read_certificates(cert)?;
     let mut roots = rustls::RootCertStore::empty();
     for cert in certs {
@@ -151,20 +169,50 @@ pub async fn probe_https(
     let stream = TcpStream::connect(addr)
         .await
         .context("HTTPS probe connection failed")?;
-    let mut stream = TlsConnector::from(Arc::new(config))
+    TlsConnector::from(Arc::new(config))
         .connect(name, stream)
         .await
-        .context("HTTPS probe handshake failed")?;
+        .context("HTTPS probe handshake failed")
+}
+
+async fn read_http_response(stream: &mut (impl AsyncRead + Unpin)) -> Result<StatusCode> {
+    let mut response = Vec::new();
+    while !response.ends_with(b"\r\n\r\n") {
+        if response.len() == MAX_PROBE_RESPONSE_LENGTH {
+            bail!("HTTPS probe response exceeded limit");
+        }
+        let mut byte = [0_u8; 1];
+        stream
+            .read_exact(&mut byte)
+            .await
+            .context("HTTPS probe response was incomplete")?;
+        response.push(byte[0]);
+    }
+    let headers = std::str::from_utf8(&response).context("HTTPS probe response was not HTTP")?;
+    let status = headers
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|status| status.parse::<u16>().ok())
+        .and_then(|status| StatusCode::from_u16(status).ok())
+        .context("HTTPS probe response had invalid status")?;
+    let content_length = headers
+        .lines()
+        .find_map(|line| {
+            line.split_once(':')
+                .filter(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+                .and_then(|(_, value)| value.trim().parse::<usize>().ok())
+        })
+        .context("HTTPS probe response omitted content length")?;
+    if content_length > MAX_PROBE_RESPONSE_LENGTH - response.len() {
+        bail!("HTTPS probe response exceeded limit");
+    }
+    let mut body = vec![0_u8; content_length];
     stream
-        .write_all(b"GET / HTTP/1.1\r\nHost: probe\r\nConnection: close\r\n\r\n")
+        .read_exact(&mut body)
         .await
-        .context("HTTPS probe request failed")?;
-    let mut first_byte = [0_u8; 1];
-    stream
-        .read_exact(&mut first_byte)
-        .await
-        .context("HTTPS probe response failed")?;
-    Ok(())
+        .context("HTTPS probe response was incomplete")?;
+    Ok(status)
 }
 
 fn load_tls_config(files: &TlsFiles) -> Result<ServerConfig> {
@@ -298,11 +346,12 @@ mod tests {
     use serde_json::json;
     use sha2::{Digest, Sha256};
     use tempfile::TempDir;
-    use tokio::sync::watch;
+    use tokio::{io::AsyncWriteExt, net::TcpStream, sync::watch};
+    use tokio_rustls::client::TlsStream;
 
     use super::{
-        SubscriptionSource, TlsFiles, TlsState, handle_request, probe_https, redacted_route,
-        spawn_listener,
+        SubscriptionSource, TlsFiles, TlsState, handle_request, open_https, probe_https,
+        read_http_response, redacted_route, spawn_listener,
     };
     use crate::core::subscription::config::SubscriptionConfig;
 
@@ -414,22 +463,100 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accepted_socket_uses_latest_tls_config_without_rebind() {
+    async fn established_connection_survives_tls_reload_and_new_connection_uses_latest_config() {
         let first = test_tls_state("first.local");
-        let handle = spawn_listener(localhost(), first.state, fixture_source().runtime())
+        let source = fixture_source();
+        let route = format!("/sub/{}", source.raw_token);
+        let handle = spawn_listener(localhost(), first.state, source.runtime())
             .await
             .unwrap();
-        probe_https(handle.local_addr, "first.local", &first.ca)
+        let mut established = open_https(handle.local_addr, "first.local", &first.ca)
             .await
             .unwrap();
+        assert_eq!(
+            request_over_keep_alive(&mut established, &route).await,
+            StatusCode::OK
+        );
         let bound_addr = handle.local_addr;
         let second = test_tls_state("second.local");
         handle.tls.reload(second.files()).unwrap();
         assert_eq!(handle.local_addr, bound_addr);
+        assert_eq!(
+            request_over_keep_alive(&mut established, &route).await,
+            StatusCode::OK
+        );
         probe_https(handle.local_addr, "second.local", &second.ca)
             .await
             .unwrap();
+        assert_eq!(handle.local_addr, bound_addr);
         handle.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn malformed_file_preserves_valid_sibling_server_response() {
+        const SECRET: &str = "must-not-leak-node-secret";
+        let source = fixture_source();
+        write_malformed_node_file(source.xray.path(), SECRET);
+        let path = format!("/sub/{}", source.raw_token);
+
+        let response = handle_request(request(Method::GET, &path), source.runtime()).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = String::from_utf8(STANDARD.decode(body).unwrap()).unwrap();
+        assert!(!body.contains(SECRET));
+        assert!(body.ends_with("#first"));
+    }
+
+    #[tokio::test]
+    async fn partially_invalid_file_preserves_valid_sibling_server_response() {
+        const SECRET: &str = "must-not-leak-node-secret";
+        let source = fixture_source();
+        write_partially_invalid_node_file(source.xray.path(), SECRET, true);
+        let path = format!("/sub/{}", source.raw_token);
+
+        let response = handle_request(request(Method::GET, &path), source.runtime()).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = String::from_utf8(STANDARD.decode(body).unwrap()).unwrap();
+        assert!(!body.contains(SECRET));
+        assert!(body.starts_with("vless://"));
+        assert!(body.ends_with("#first"));
+    }
+
+    #[tokio::test]
+    async fn combined_all_invalid_files_return_fixed_secret_safe_server_error() {
+        const SECRET: &str = "must-not-leak-node-secret";
+        let source = fixture_source();
+        write_malformed_node_file(source.xray.path(), SECRET);
+        write_partially_invalid_node_file(source.xray.path(), SECRET, false);
+        let path = format!("/sub/{}", source.raw_token);
+
+        let response = handle_request(request(Method::GET, &path), source.runtime()).await;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        assert_eq!(body, "internal server error");
+        assert!(
+            !body
+                .windows(SECRET.len())
+                .any(|bytes| bytes == SECRET.as_bytes())
+        );
+    }
+
+    #[tokio::test]
+    async fn response_reader_rejects_overflowing_content_length() {
+        let (mut client, mut server) = tokio::io::duplex(256);
+        server
+            .write_all(
+                format!(
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\n\r\n",
+                    usize::MAX
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+
+        assert!(read_http_response(&mut client).await.is_err());
     }
 
     #[tokio::test]
@@ -487,6 +614,40 @@ mod tests {
 
     fn localhost() -> SocketAddr {
         "127.0.0.1:0".parse().unwrap()
+    }
+
+    async fn request_over_keep_alive(stream: &mut TlsStream<TcpStream>, path: &str) -> StatusCode {
+        stream
+            .write_all(
+                format!("GET {path} HTTP/1.1\r\nHost: test\r\nConnection: keep-alive\r\n\r\n")
+                    .as_bytes(),
+            )
+            .await
+            .unwrap();
+        read_http_response(stream).await.unwrap()
+    }
+
+    fn write_malformed_node_file(dir: &Path, secret: &str) {
+        fs::write(
+            dir.join("00-malformed.json"),
+            format!(r#"{{"password":"{secret}""#),
+        )
+        .unwrap();
+    }
+
+    fn write_partially_invalid_node_file(dir: &Path, secret: &str, include_valid: bool) {
+        let valid: serde_json::Value =
+            serde_json::from_slice(&fs::read(dir.join("server.json")).unwrap()).unwrap();
+        fs::remove_file(dir.join("server.json")).unwrap();
+        let mut inbounds = vec![json!({"protocol": "socks", "password": secret})];
+        if include_valid {
+            inbounds.push(valid["inbounds"][0].clone());
+        }
+        fs::write(
+            dir.join("01-partial.json"),
+            serde_json::to_vec(&json!({"inbounds": inbounds})).unwrap(),
+        )
+        .unwrap();
     }
 
     const FIRST_CERT: &str = concat!(
