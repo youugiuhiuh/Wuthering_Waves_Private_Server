@@ -3,6 +3,7 @@ use std::{fs, path::Path};
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,10 +32,28 @@ pub enum VlessNetwork {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hysteria2Node;
+pub struct Hysteria2Node {
+    pub name: String,
+    pub port: u16,
+    pub password: String,
+    pub server_name: String,
+    pub alpn: Vec<String>,
+    pub obfs: Option<String>,
+    pub obfs_password: Option<String>,
+    pub cert_fingerprint: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TuicNode;
+pub struct TuicNode {
+    pub name: String,
+    pub port: u16,
+    pub uuid: String,
+    pub password: String,
+    pub server_name: String,
+    pub alpn: Vec<String>,
+    pub congestion_control: String,
+    pub cert_fingerprint: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeLoad {
@@ -103,6 +122,63 @@ pub fn load_xray_nodes(config_dir: &Path) -> Result<NodeLoad> {
     Ok(load)
 }
 
+pub fn load_singbox_nodes(config_dir: &Path) -> Result<NodeLoad> {
+    let mut paths = fs::read_dir(config_dir)
+        .context("failed to read sing-box config directory")?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "json"))
+        .collect::<Vec<_>>();
+    paths.sort();
+
+    let mut load = NodeLoad {
+        nodes: Vec::new(),
+        skipped: 0,
+        diagnostics: Vec::new(),
+    };
+    for path in paths {
+        let filename = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("<non-utf8>.json");
+        let Ok(raw) = fs::read(&path) else {
+            load.skipped += 1;
+            load.diagnostics.push(format!("{filename}: read-error"));
+            continue;
+        };
+        let Ok(config) = serde_json::from_slice::<Value>(&raw) else {
+            load.skipped += 1;
+            load.diagnostics.push(format!("{filename}: malformed-json"));
+            continue;
+        };
+        let Some(inbounds) = config.get("inbounds").and_then(Value::as_array) else {
+            load.skipped += 1;
+            load.diagnostics.push(format!("{filename}: malformed-json"));
+            continue;
+        };
+        for (index, inbound) in inbounds.iter().enumerate() {
+            match parse_singbox_inbound(inbound) {
+                Ok(node) => load.nodes.push(node),
+                Err(reason) => {
+                    load.skipped += 1;
+                    load.diagnostics
+                        .push(format!("{filename} inbound[{index}]: {}", reason.as_str()));
+                }
+            }
+        }
+    }
+    Ok(load)
+}
+
+pub fn load_current_nodes(xray_dir: &Path, singbox_dir: &Path) -> Result<Vec<SubscriptionNode>> {
+    let mut xray = load_xray_nodes(xray_dir)?;
+    let singbox = load_singbox_nodes(singbox_dir)?;
+    xray.nodes.extend(singbox.nodes);
+    if xray.nodes.is_empty() {
+        return Err(anyhow!("no supported subscription nodes found"));
+    }
+    Ok(xray.nodes)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InboundFailure {
     Unsupported,
@@ -116,6 +192,106 @@ impl InboundFailure {
             Self::Malformed => "malformed",
         }
     }
+}
+
+fn parse_singbox_inbound(inbound: &Value) -> std::result::Result<SubscriptionNode, InboundFailure> {
+    use InboundFailure::{Malformed, Unsupported};
+
+    let kind = inbound
+        .get("type")
+        .and_then(Value::as_str)
+        .ok_or(Malformed)?;
+    if !matches!(kind, "hysteria2" | "tuic") {
+        return Err(Unsupported);
+    }
+    let name = required_string(inbound, "tag")?;
+    let port = inbound
+        .get("listen_port")
+        .and_then(Value::as_u64)
+        .ok_or(Malformed)?
+        .try_into()
+        .map_err(|_| Malformed)?;
+    let user = inbound
+        .get("users")
+        .and_then(Value::as_array)
+        .and_then(|users| users.first())
+        .ok_or(Malformed)?;
+    let (server_name, alpn, cert_fingerprint) = parse_singbox_tls(inbound)?;
+
+    match kind {
+        "hysteria2" => {
+            let (obfs, obfs_password) = match inbound.get("obfs") {
+                Some(obfs) => (
+                    Some(required_string(obfs, "type")?),
+                    Some(required_string(obfs, "password")?),
+                ),
+                None => (None, None),
+            };
+            Ok(SubscriptionNode::Hysteria2(Hysteria2Node {
+                name,
+                port,
+                password: required_string(user, "password")?,
+                server_name,
+                alpn,
+                obfs,
+                obfs_password,
+                cert_fingerprint,
+            }))
+        }
+        "tuic" => Ok(SubscriptionNode::Tuic(TuicNode {
+            name,
+            port,
+            uuid: required_string(user, "uuid")?,
+            password: required_string(user, "password")?,
+            server_name,
+            alpn,
+            congestion_control: required_string(inbound, "congestion_control")?,
+            cert_fingerprint,
+        })),
+        _ => Err(Unsupported),
+    }
+}
+
+fn parse_singbox_tls(
+    inbound: &Value,
+) -> std::result::Result<(String, Vec<String>, String), InboundFailure> {
+    use InboundFailure::Malformed;
+
+    let tls = inbound.get("tls").ok_or(Malformed)?;
+    let alpn = tls
+        .get("alpn")
+        .and_then(Value::as_array)
+        .ok_or(Malformed)?
+        .iter()
+        .map(|value| value.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()
+        .filter(|values| !values.is_empty())
+        .ok_or(Malformed)?;
+    let certificate_path = tls
+        .get("certificate_path")
+        .and_then(Value::as_str)
+        .ok_or(Malformed)?;
+    Ok((
+        required_string(tls, "server_name")?,
+        alpn,
+        certificate_fingerprint(certificate_path)?,
+    ))
+}
+
+fn certificate_fingerprint(path: &str) -> std::result::Result<String, InboundFailure> {
+    let raw = fs::read(path).map_err(|_| InboundFailure::Malformed)?;
+    let certificates =
+        rustls_pemfile::certs(&mut raw.as_slice()).map_err(|_| InboundFailure::Malformed)?;
+    let leaf = certificates.first().ok_or(InboundFailure::Malformed)?;
+    Ok(hex::encode(Sha256::digest(leaf)))
+}
+
+fn required_string(value: &Value, key: &str) -> std::result::Result<String, InboundFailure> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or(InboundFailure::Malformed)
 }
 
 fn parse_reality_inbound(inbound: &Value) -> std::result::Result<VlessRealityNode, InboundFailure> {
@@ -211,15 +387,53 @@ fn parse_reality_inbound(inbound: &Value) -> std::result::Result<VlessRealityNod
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
 
     use serde_json::{Value, json};
 
-    use super::{SubscriptionNode, VlessNetwork, load_xray_nodes};
+    use super::{
+        SubscriptionNode, VlessNetwork, load_current_nodes, load_singbox_nodes, load_xray_nodes,
+    };
 
     const FIXTURE_UUID: &str = "123e4567-e89b-12d3-a456-426614174000";
     const FIXTURE_PRIVATE_KEY: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     const FIXTURE_PUBLIC_KEY: &str = "L-V9o0fNYkMVKNqsX7spBzD_9oSvxM_C7ZCZX1jLO3Q";
+
+    #[test]
+    fn reconstructs_hysteria2_and_tuic_with_certificate_fingerprint() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert = write_test_certificate(dir.path());
+        write_singbox_fixture(dir.path(), singbox_fixture(&cert));
+        let load = load_singbox_nodes(dir.path()).unwrap();
+        assert!(matches!(&load.nodes[0], SubscriptionNode::Hysteria2(n)
+            if n.password == "hy-secret" && n.obfs.as_deref() == Some("salamander")));
+        assert!(matches!(&load.nodes[1], SubscriptionNode::Tuic(n)
+            if n.uuid == "00000000-0000-0000-0000-000000000001"
+            && n.alpn == vec!["h3"] && !n.cert_fingerprint.is_empty()));
+    }
+
+    #[test]
+    fn current_nodes_reflect_file_add_edit_and_delete_without_cache() {
+        let xray = tempfile::tempdir().unwrap();
+        let singbox = tempfile::tempdir().unwrap();
+        let file = write_hysteria_fixture(singbox.path(), 443, "first");
+        assert_eq!(
+            load_current_nodes(xray.path(), singbox.path())
+                .unwrap()
+                .len(),
+            1
+        );
+        write_hysteria_fixture_at(&file, 8443, "second");
+        assert_eq!(
+            node_port(&load_current_nodes(xray.path(), singbox.path()).unwrap()[0]),
+            8443
+        );
+        std::fs::remove_file(file).unwrap();
+        assert!(load_current_nodes(xray.path(), singbox.path()).is_err());
+    }
 
     #[test]
     fn reconstructs_reality_vision_and_xhttp_from_server_json() {
@@ -343,6 +557,108 @@ mod tests {
 
     fn write_xray_fixture(dir: &Path, fixture: Value) {
         write_named_xray_fixture(dir, "server.json", fixture);
+    }
+
+    fn write_test_certificate(dir: &Path) -> PathBuf {
+        let path = dir.join("tls.cer");
+        fs::write(
+            &path,
+            concat!(
+                "-----BEGIN CERTIFICATE-----\n",
+                "MIIDDTCCAfWgAwIBAgIUbGYCXeQEVCMYRMxdIjTw5s+p/4YwDQYJKoZIhvcNAQEL\n",
+                "BQAwFjEUMBIGA1UEAwwLZXhhbXBsZS5jb20wHhcNMjYwNzI2MDM0OTMwWhcNMzYw\n",
+                "NzIzMDM0OTMwWjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcN\n",
+                "AQEBBQADggEPADCCAQoCggEBAKJO6F5pSOVFaSJpLdwjn5lWOTiFBQ1J5YSwfxZw\n",
+                "2Mxw19nsRRVd68ToldVHKcvixqQ7q6tSGdqQtMXhwTmPSWiMcGtLPYhbMn4ms4W0\n",
+                "Lo19i3E380QROSAFaiQZnkHg/Kui4hHSFwC7kkGYCxWVJqY2pKQdyUcEN+cOZkah\n",
+                "asoMw6nsWvrqy1P8kjhiJZiuwmF6I9nTzPMapEDrz0r3CKpOJ/rK5Muplu4BMki4\n",
+                "bQr2D7cgDW65kouVLCAjmRHIVTlkBo+4HjPf3jEBA35DxgioljJtyiPdAMxjzeXy\n",
+                "D2q/VNjhHAKCxOYwppKgvzleYoNID02z54fRQs3uyE2kG5ECAwEAAaNTMFEwHQYD\n",
+                "VR0OBBYEFP7IWR/mwbzk9HSPtwK2K7pKk0LKMB8GA1UdIwQYMBaAFP7IWR/mwbzk\n",
+                "9HSPtwK2K7pKk0LKMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEB\n",
+                "AFHphg/0KuCO/5HwV4HgTZGM+c8KITv/zYv2T5iz3aZV30g+z304c5OIE2weL94N\n",
+                "NpYt2C5oYH17LO8TMMdY7pPmoYM7G+azWMBo4HorGjJqRnH2BdScoiMeqSzkKMJU\n",
+                "W+43Lr7UkSBGiVz8UkAyk1ZoprYkuYzOncbEis6pWs7Wdp3o4/svrTLY07EHIsTL\n",
+                "0A6FMQTinOZcfrl4UUow2MBksR0hixwiPpwzGuHCgv5HqGJX2tLAVcs9pTb2qohZ\n",
+                "Vmpxe3UlznD/1Il+rdcRgs+GFizQkrA40sXUR8QuGRNWOd+ZuQubUO2rvuGuYCaC\n",
+                "prpLW41GkF6eLqrq3lp7YJI=\n",
+                "-----END CERTIFICATE-----\n"
+            ),
+        )
+        .unwrap();
+        path
+    }
+
+    fn write_singbox_fixture(dir: &Path, fixture: Value) {
+        fs::write(
+            dir.join("server.json"),
+            serde_json::to_vec(&fixture).unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn singbox_fixture(cert: &Path) -> Value {
+        json!({"inbounds": [
+            hysteria_inbound(cert, 443, "hy-secret"),
+            {
+                "type": "tuic",
+                "tag": "tuic",
+                "listen_port": 8443,
+                "users": [{
+                    "uuid": "00000000-0000-0000-0000-000000000001",
+                    "password": "tuic-secret"
+                }],
+                "tls": {
+                    "server_name": "example.com",
+                    "alpn": ["h3"],
+                    "certificate_path": cert
+                },
+                "congestion_control": "bbr"
+            }
+        ]})
+    }
+
+    fn write_hysteria_fixture(dir: &Path, port: u16, password: &str) -> PathBuf {
+        let cert = write_test_certificate(dir);
+        let path = dir.join("server.json");
+        write_singbox_fixture(
+            dir,
+            json!({"inbounds": [hysteria_inbound(&cert, port, password)]}),
+        );
+        path
+    }
+
+    fn write_hysteria_fixture_at(path: &Path, port: u16, password: &str) {
+        let cert = path.parent().unwrap().join("tls.cer");
+        fs::write(
+            path,
+            serde_json::to_vec(&json!({"inbounds": [hysteria_inbound(&cert, port, password)]}))
+                .unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn hysteria_inbound(cert: &Path, port: u16, password: &str) -> Value {
+        json!({
+            "type": "hysteria2",
+            "tag": password,
+            "listen_port": port,
+            "users": [{"password": password}],
+            "tls": {
+                "server_name": "example.com",
+                "alpn": ["h3"],
+                "certificate_path": cert
+            },
+            "obfs": {"type": "salamander", "password": "obfs-secret"}
+        })
+    }
+
+    fn node_port(node: &SubscriptionNode) -> u16 {
+        match node {
+            SubscriptionNode::VlessReality(node) => node.port,
+            SubscriptionNode::Hysteria2(node) => node.port,
+            SubscriptionNode::Tuic(node) => node.port,
+        }
     }
 
     fn write_named_xray_fixture(dir: &Path, name: &str, fixture: Value) {
