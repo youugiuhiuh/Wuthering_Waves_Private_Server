@@ -3,7 +3,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{BufReader, Cursor, Write},
     net::IpAddr,
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     process::ExitStatus,
     sync::Arc,
@@ -105,18 +105,60 @@ impl AcmeFirewall for SystemAcmeFirewall {
     }
 }
 
+struct FirewallLease<F: AcmeFirewall + 'static> {
+    firewall: Arc<F>,
+    port: u16,
+    armed: bool,
+}
+
+impl<F: AcmeFirewall + 'static> FirewallLease<F> {
+    fn new(firewall: Arc<F>, port: u16) -> Self {
+        Self {
+            firewall,
+            port,
+            armed: true,
+        }
+    }
+
+    async fn close(mut self) -> Result<()> {
+        let result = self.firewall.close(self.port).await;
+        self.armed = false;
+        result.map_err(|_| anyhow::anyhow!("firewall cleanup failed"))
+    }
+}
+
+impl<F: AcmeFirewall + 'static> Drop for FirewallLease<F> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let firewall = self.firewall.clone();
+        let port = self.port;
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(async move {
+                    if firewall.close(port).await.is_err() {
+                        log::error!("ACME firewall cleanup failed after cancellation");
+                    }
+                });
+            }
+            Err(_) => log::error!("ACME firewall cleanup unavailable after cancellation"),
+        }
+    }
+}
+
 pub struct CertificateManager<R: CommandRunner, F: AcmeFirewall> {
     runner: R,
-    firewall: F,
+    firewall: Arc<F>,
     acme_sh: PathBuf,
     staging_dir: PathBuf,
 }
 
-impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
+impl<R: CommandRunner, F: AcmeFirewall + 'static> CertificateManager<R, F> {
     pub fn new(runner: R, firewall: F, acme_sh: PathBuf, staging_dir: PathBuf) -> Self {
         Self {
             runner,
-            firewall,
+            firewall: Arc::new(firewall),
             acme_sh,
             staging_dir,
         }
@@ -125,17 +167,20 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
     pub async fn issue(&self, config: &SubscriptionConfig) -> Result<ValidatedCertificate> {
         let result = self.issue_inner(config).await;
         if result.is_err() {
-            let _ = fs::remove_dir_all(&self.staging_dir);
+            let _ = remove_real_directory(&self.staging_dir);
         }
         result
     }
 
     async fn issue_inner(&self, config: &SubscriptionConfig) -> Result<ValidatedCertificate> {
         self.ensure_acme_sh().await?;
-        if self.staging_dir.exists() {
-            fs::remove_dir_all(&self.staging_dir).context("failed to reset certificate staging")?;
-        }
-        fs::create_dir_all(&self.staging_dir).context("failed to create certificate staging")?;
+        let staging_parent = self
+            .staging_dir
+            .parent()
+            .context("staging directory has no parent")?;
+        ensure_or_create_real_directory(staging_parent, "staging parent directory")?;
+        remove_real_directory(&self.staging_dir).context("failed to reset certificate staging")?;
+        fs::create_dir(&self.staging_dir).context("failed to create certificate staging")?;
         fs::set_permissions(&self.staging_dir, fs::Permissions::from_mode(0o700))?;
         let cert_path = self.staging_dir.join("fullchain.pem");
         let key_path = self.staging_dir.join("key.pem");
@@ -172,19 +217,33 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
         }
 
         let already_open = self.firewall.is_open(80).await?;
-        if !already_open {
-            self.firewall.open(80).await?;
-        }
+        let lease = if already_open {
+            None
+        } else {
+            let lease = FirewallLease::new(self.firewall.clone(), 80);
+            if self.firewall.open(80).await.is_err() {
+                return match lease.close().await {
+                    Ok(()) => Err(anyhow::anyhow!("failed to open ACME firewall rule")),
+                    Err(_) => Err(anyhow::anyhow!(
+                        "failed to open ACME firewall rule; firewall cleanup failed"
+                    )),
+                };
+            }
+            Some(lease)
+        };
         let issued = self
             .run_checked(&self.acme_sh, &issue_args, ISSUE_TIMEOUT, "issuance")
             .await;
-        let closed = if already_open {
-            Ok(())
-        } else {
-            self.firewall.close(80).await
+        let cleaned = match lease {
+            Some(lease) => lease.close().await,
+            None => Ok(()),
         };
-        issued?;
-        closed.context("failed to restore ACME firewall rule")?;
+        match (issued, cleaned) {
+            (Ok(()), Ok(())) => {}
+            (Err(issue), Ok(())) => return Err(issue),
+            (Ok(()), Err(cleanup)) => return Err(cleanup),
+            (Err(issue), Err(_)) => bail!("{issue}; firewall cleanup failed"),
+        }
 
         let install_args = vec![
             "--install-cert".into(),
@@ -198,8 +257,10 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
         ];
         self.run_checked(&self.acme_sh, &install_args, ISSUE_TIMEOUT, "installation")
             .await?;
+        let validated = self.validate(config, &cert_path, &key_path)?;
+        fs::set_permissions(&cert_path, fs::Permissions::from_mode(0o644))?;
         fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600))?;
-        self.validate(config, &cert_path, &key_path)
+        Ok(validated)
     }
 
     pub async fn renew(
@@ -259,6 +320,11 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
             .bytes()
             .await
             .map_err(|_| anyhow::anyhow!("failed to read acme.sh installer"))?;
+        self.install_acme_sh(&body).await
+    }
+
+    async fn install_acme_sh(&self, body: &[u8]) -> Result<()> {
+        let parent = self.acme_sh.parent().context("invalid acme.sh path")?;
         let installer = parent.join(format!(".installer-{}", std::process::id()));
         let mut file = OpenOptions::new()
             .create_new(true)
@@ -266,7 +332,7 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
             .mode(0o700)
             .open(&installer)
             .context("failed to create acme.sh installer")?;
-        file.write_all(&body)?;
+        file.write_all(body)?;
         file.sync_all()?;
         let result = self
             .run_checked(
@@ -290,6 +356,8 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
         cert_path: &Path,
         key_path: &Path,
     ) -> Result<ValidatedCertificate> {
+        ensure_regular_file(cert_path, "certificate")?;
+        ensure_regular_file(key_path, "private key")?;
         let cert_raw = fs::read(cert_path).context("failed to read certificate chain")?;
         let certs = rustls_pemfile::certs(&mut BufReader::new(cert_raw.as_slice()))
             .context("failed to parse certificate chain")?;
@@ -299,10 +367,14 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
         let key_raw = fs::read(key_path).context("failed to read private key")?;
         let mut keys = rustls_pemfile::pkcs8_private_keys(&mut BufReader::new(key_raw.as_slice()))
             .context("failed to parse private key")?;
-        if keys.is_empty() {
-            keys = rustls_pemfile::rsa_private_keys(&mut BufReader::new(key_raw.as_slice()))
-                .context("failed to parse private key")?;
-        }
+        keys.extend(
+            rustls_pemfile::rsa_private_keys(&mut BufReader::new(key_raw.as_slice()))
+                .context("failed to parse RSA private key")?,
+        );
+        keys.extend(
+            rustls_pemfile::ec_private_keys(&mut BufReader::new(key_raw.as_slice()))
+                .context("failed to parse EC private key")?,
+        );
         if keys.len() != 1 {
             bail!("certificate requires exactly one private key");
         }
@@ -362,6 +434,8 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
         config: &SubscriptionConfig,
         staged: ValidatedCertificate,
     ) -> Result<Box<dyn CertificatePromotion>> {
+        self.validate(config, &staged.cert_path, &staged.key_path)?;
+        self.check_promotion_paths(config, &staged)?;
         let cert_parent = config
             .cert_path
             .parent()
@@ -369,7 +443,6 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
         if config.key_path.parent() != Some(cert_parent) {
             bail!("live certificate and key must share a directory");
         }
-        fs::create_dir_all(cert_parent).context("failed to create certificate directory")?;
         fs::set_permissions(&staged.cert_path, fs::Permissions::from_mode(0o644))?;
         fs::set_permissions(&staged.key_path, fs::Permissions::from_mode(0o600))?;
         sync_file(&staged.cert_path)?;
@@ -411,6 +484,34 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
             .context("failed to restore previous certificate")?;
             return Err(error);
         }
+        let identities = (|| -> Result<_> {
+            Ok((
+                file_identity(&config.cert_path, "live certificate")?,
+                file_identity(&config.key_path, "live private key")?,
+                had_cert
+                    .then(|| file_identity(&previous_cert, "certificate backup"))
+                    .transpose()?,
+                had_key
+                    .then(|| file_identity(&previous_key, "private key backup"))
+                    .transpose()?,
+            ))
+        })();
+        let (cert_identity, key_identity, previous_cert_identity, previous_key_identity) =
+            match identities {
+                Ok(identities) => identities,
+                Err(error) => {
+                    restore_previous(
+                        &config.cert_path,
+                        &config.key_path,
+                        &previous_cert,
+                        &previous_key,
+                        had_cert,
+                        had_key,
+                    )
+                    .context("failed to restore previous certificate")?;
+                    return Err(error);
+                }
+            };
         Ok(Box::new(PromotionGuard {
             cert_path: config.cert_path.clone(),
             key_path: config.key_path.clone(),
@@ -418,7 +519,140 @@ impl<R: CommandRunner, F: AcmeFirewall> CertificateManager<R, F> {
             previous_key,
             had_cert,
             had_key,
+            cert_identity,
+            key_identity,
+            previous_cert_identity,
+            previous_key_identity,
         }))
+    }
+
+    fn check_promotion_paths(
+        &self,
+        config: &SubscriptionConfig,
+        staged: &ValidatedCertificate,
+    ) -> Result<()> {
+        let cert_parent = config
+            .cert_path
+            .parent()
+            .context("live certificate has no parent directory")?;
+        if config.key_path.parent() != Some(cert_parent) {
+            bail!("live certificate and key must share a directory");
+        }
+        if self.staging_dir.parent() != Some(cert_parent)
+            || staged.cert_path.parent() != Some(self.staging_dir.as_path())
+            || staged.key_path.parent() != Some(self.staging_dir.as_path())
+        {
+            bail!("certificate paths escape the configured certificate directory");
+        }
+        ensure_real_directory(cert_parent, "certificate directory")?;
+        ensure_real_directory(&self.staging_dir, "staging directory")?;
+
+        let previous_cert = previous_path(&config.cert_path);
+        let previous_key = previous_path(&config.key_path);
+        let paths = [
+            &config.cert_path,
+            &config.key_path,
+            &previous_cert,
+            &previous_key,
+            &staged.cert_path,
+            &staged.key_path,
+        ];
+        let mut identities = Vec::new();
+        let mut present = [false; 6];
+        for (index, path) in paths.iter().enumerate() {
+            if paths[..index].contains(path) {
+                bail!("certificate paths collide");
+            }
+            if let Some(metadata) = inspect_regular_file(path, "certificate path")? {
+                present[index] = true;
+                let identity = FileIdentity::from(&metadata);
+                if identities.contains(&identity) {
+                    bail!("certificate paths alias the same file");
+                }
+                identities.push(identity);
+            }
+        }
+        if (!present[0] && present[2]) || (!present[1] && present[3]) {
+            bail!("orphaned certificate backup path");
+        }
+        Ok(())
+    }
+}
+
+fn ensure_regular_file(path: &Path, category: &str) -> Result<()> {
+    let metadata =
+        fs::symlink_metadata(path).with_context(|| format!("failed to inspect {category}"))?;
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        bail!("{category} must be a regular file");
+    }
+    Ok(())
+}
+
+fn inspect_regular_file(path: &Path, category: &str) -> Result<Option<fs::Metadata>> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_file() => Ok(Some(metadata)),
+        Ok(_) => bail!("{category} must be a regular file"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("failed to inspect {category}")),
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct FileIdentity {
+    device: u64,
+    inode: u64,
+}
+
+impl From<&fs::Metadata> for FileIdentity {
+    fn from(metadata: &fs::Metadata) -> Self {
+        Self {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+        }
+    }
+}
+
+fn ensure_real_directory(path: &Path, category: &str) -> Result<()> {
+    let metadata =
+        fs::symlink_metadata(path).with_context(|| format!("failed to inspect {category}"))?;
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
+        bail!("{category} must be a real directory");
+    }
+    if fs::canonicalize(path)? != path {
+        bail!("{category} must not contain aliases or symlinks");
+    }
+    Ok(())
+}
+
+fn ensure_or_create_real_directory(path: &Path, category: &str) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => ensure_real_directory(path, category),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let parent = path.parent().context("directory has no parent")?;
+            ensure_or_create_real_directory(parent, category)?;
+            match fs::create_dir(path) {
+                Ok(()) => fs::set_permissions(path, fs::Permissions::from_mode(0o700))?,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error.into()),
+            }
+            ensure_real_directory(path, category)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn remove_real_directory(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() => {
+            if fs::canonicalize(path)? != path {
+                bail!("staging directory must not contain aliases or symlinks");
+            }
+            fs::remove_dir_all(path)?;
+            Ok(())
+        }
+        Ok(_) => bail!("staging directory must be a real directory"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -495,11 +729,16 @@ struct PromotionGuard {
     previous_key: PathBuf,
     had_cert: bool,
     had_key: bool,
+    cert_identity: FileIdentity,
+    key_identity: FileIdentity,
+    previous_cert_identity: Option<FileIdentity>,
+    previous_key_identity: Option<FileIdentity>,
 }
 
 #[async_trait]
 impl CertificatePromotion for PromotionGuard {
     async fn commit(self: Box<Self>) -> Result<()> {
+        self.verify_paths()?;
         if self.had_cert {
             remove_if_exists(&self.previous_cert)?;
         }
@@ -514,6 +753,7 @@ impl CertificatePromotion for PromotionGuard {
     }
 
     async fn rollback(self: Box<Self>) -> Result<()> {
+        self.verify_paths()?;
         restore_previous(
             &self.cert_path,
             &self.key_path,
@@ -523,6 +763,43 @@ impl CertificatePromotion for PromotionGuard {
             self.had_key,
         )
     }
+}
+
+impl PromotionGuard {
+    fn verify_paths(&self) -> Result<()> {
+        verify_identity(
+            &self.cert_path,
+            Some(self.cert_identity),
+            "live certificate",
+        )?;
+        verify_identity(&self.key_path, Some(self.key_identity), "live private key")?;
+        verify_identity(
+            &self.previous_cert,
+            self.previous_cert_identity,
+            "certificate backup",
+        )?;
+        verify_identity(
+            &self.previous_key,
+            self.previous_key_identity,
+            "private key backup",
+        )
+    }
+}
+
+fn file_identity(path: &Path, category: &str) -> Result<FileIdentity> {
+    inspect_regular_file(path, category)?
+        .map(|metadata| FileIdentity::from(&metadata))
+        .with_context(|| format!("{category} is missing"))
+}
+
+fn verify_identity(path: &Path, expected: Option<FileIdentity>, category: &str) -> Result<()> {
+    let actual = inspect_regular_file(path, category)?
+        .as_ref()
+        .map(FileIdentity::from);
+    if actual != expected {
+        bail!("{category} changed during certificate promotion");
+    }
+    Ok(())
 }
 
 fn previous_path(path: &Path) -> PathBuf {
@@ -606,6 +883,7 @@ mod tests {
 
     use anyhow::{Result, bail};
     use async_trait::async_trait;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
 
     use super::{
         AcmeFirewall, CertificateManager, CommandOutput, CommandRunner, SystemCommandRunner,
@@ -613,8 +891,15 @@ mod tests {
     };
     use crate::core::subscription::config::{CertificateMode, SubscriptionConfig};
 
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct RecordedCommand {
+        program: PathBuf,
+        args: Vec<OsString>,
+        timeout: Duration,
+    }
+
     #[derive(Clone, Default)]
-    struct RecordingRunner(Arc<Mutex<Vec<Vec<OsString>>>>);
+    struct RecordingRunner(Arc<Mutex<Vec<RecordedCommand>>>);
 
     impl RecordingRunner {
         fn joined_args(&self) -> String {
@@ -622,7 +907,7 @@ mod tests {
                 .lock()
                 .unwrap()
                 .iter()
-                .flat_map(|args| args.iter())
+                .flat_map(|call| call.args.iter())
                 .map(|arg| arg.to_string_lossy())
                 .collect::<Vec<_>>()
                 .join(" ")
@@ -631,22 +916,34 @@ mod tests {
         fn clear(&self) {
             self.0.lock().unwrap().clear();
         }
+
+        fn calls(&self) -> Vec<RecordedCommand> {
+            self.0.lock().unwrap().clone()
+        }
     }
 
     #[async_trait]
     impl CommandRunner for RecordingRunner {
         async fn run(
             &self,
-            _program: &Path,
+            program: &Path,
             args: &[OsString],
-            _timeout: Duration,
+            timeout: Duration,
         ) -> Result<CommandOutput> {
-            self.0.lock().unwrap().push(args.to_vec());
+            self.0.lock().unwrap().push(RecordedCommand {
+                program: program.to_owned(),
+                args: args.to_vec(),
+                timeout,
+            });
             if let Some(index) = args.iter().position(|arg| arg == "--fullchain-file") {
-                fs::write(PathBuf::from(&args[index + 1]), TEST_CERT)?;
+                let path = PathBuf::from(&args[index + 1]);
+                fs::write(&path, TEST_CERT)?;
+                fs::set_permissions(path, fs::Permissions::from_mode(0o666))?;
             }
             if let Some(index) = args.iter().position(|arg| arg == "--key-file") {
-                fs::write(PathBuf::from(&args[index + 1]), TEST_KEY)?;
+                let path = PathBuf::from(&args[index + 1]);
+                fs::write(&path, TEST_KEY)?;
+                fs::set_permissions(path, fs::Permissions::from_mode(0o666))?;
             }
             Ok(success_output())
         }
@@ -695,6 +992,162 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Default)]
+    struct FailingCloseFirewall(Arc<Mutex<Vec<String>>>);
+
+    impl FailingCloseFirewall {
+        fn actions(&self) -> Vec<String> {
+            self.0.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl AcmeFirewall for FailingCloseFirewall {
+        async fn is_open(&self, _port: u16) -> Result<bool> {
+            Ok(false)
+        }
+
+        async fn open(&self, port: u16) -> Result<()> {
+            self.0.lock().unwrap().push(format!("open:{port}"));
+            Ok(())
+        }
+
+        async fn close(&self, port: u16) -> Result<()> {
+            self.0.lock().unwrap().push(format!("close:{port}"));
+            bail!("cleanup-secret")
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct CancellationFirewall {
+        actions: Arc<Mutex<Vec<String>>>,
+        opened: Arc<tokio::sync::Notify>,
+    }
+
+    impl CancellationFirewall {
+        fn actions(&self) -> Vec<String> {
+            self.actions.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl AcmeFirewall for CancellationFirewall {
+        async fn is_open(&self, _port: u16) -> Result<bool> {
+            Ok(false)
+        }
+
+        async fn open(&self, port: u16) -> Result<()> {
+            self.actions.lock().unwrap().push(format!("open:{port}"));
+            self.opened.notify_one();
+            Ok(())
+        }
+
+        async fn close(&self, port: u16) -> Result<()> {
+            self.actions.lock().unwrap().push(format!("close:{port}"));
+            Ok(())
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct CancellationDuringOpenFirewall {
+        actions: Arc<Mutex<Vec<String>>>,
+        opened: Arc<tokio::sync::Notify>,
+    }
+
+    impl CancellationDuringOpenFirewall {
+        fn actions(&self) -> Vec<String> {
+            self.actions.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl AcmeFirewall for CancellationDuringOpenFirewall {
+        async fn is_open(&self, _port: u16) -> Result<bool> {
+            Ok(false)
+        }
+
+        async fn open(&self, port: u16) -> Result<()> {
+            self.actions.lock().unwrap().push(format!("open:{port}"));
+            self.opened.notify_one();
+            std::future::pending().await
+        }
+
+        async fn close(&self, port: u16) -> Result<()> {
+            self.actions.lock().unwrap().push(format!("close:{port}"));
+            Ok(())
+        }
+    }
+
+    struct PendingRunner;
+
+    #[async_trait]
+    impl CommandRunner for PendingRunner {
+        async fn run(
+            &self,
+            _program: &Path,
+            _args: &[OsString],
+            _timeout: Duration,
+        ) -> Result<CommandOutput> {
+            std::future::pending().await
+        }
+    }
+
+    #[derive(Clone)]
+    struct InstallerRunner {
+        acme_path: PathBuf,
+        call: Arc<Mutex<Option<RecordedCommand>>>,
+    }
+
+    #[async_trait]
+    impl CommandRunner for InstallerRunner {
+        async fn run(
+            &self,
+            program: &Path,
+            args: &[OsString],
+            timeout: Duration,
+        ) -> Result<CommandOutput> {
+            let installer = PathBuf::from(&args[0]);
+            assert_eq!(
+                fs::metadata(&installer)?.permissions().mode() & 0o777,
+                0o700
+            );
+            assert_eq!(fs::read(&installer)?, b"#!/bin/sh\nexit 0\n");
+            *self.call.lock().unwrap() = Some(RecordedCommand {
+                program: program.to_owned(),
+                args: args.to_vec(),
+                timeout,
+            });
+            fs::write(&self.acme_path, "installed")?;
+            Ok(success_output())
+        }
+    }
+
+    struct SymlinkOutputRunner {
+        cert_target: PathBuf,
+        key_target: PathBuf,
+    }
+
+    #[async_trait]
+    impl CommandRunner for SymlinkOutputRunner {
+        async fn run(
+            &self,
+            _program: &Path,
+            args: &[OsString],
+            _timeout: Duration,
+        ) -> Result<CommandOutput> {
+            use std::os::unix::fs::symlink;
+
+            if let Some(index) = args.iter().position(|arg| arg == "--fullchain-file") {
+                symlink(&self.cert_target, PathBuf::from(&args[index + 1]))?;
+            }
+            if let Some(index) = args.iter().position(|arg| arg == "--key-file") {
+                fs::remove_file(PathBuf::from(&args[index + 1]))?;
+                symlink(&self.key_target, PathBuf::from(&args[index + 1]))?;
+            }
+            Ok(success_output())
+        }
+    }
+
     struct FailingRunner;
 
     #[async_trait]
@@ -732,6 +1185,94 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn acme_commands_preserve_exact_program_argument_order_and_timeouts() {
+        let runner = RecordingRunner::default();
+        let manager = test_manager(runner.clone(), RecordingFirewall::closed());
+        let certificate = manager.issue(&domain_config()).await.unwrap();
+        let calls = runner.calls();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].program.file_name().unwrap(), "acme.sh");
+        assert_eq!(
+            calls[0].args,
+            os_args(&[
+                "--server",
+                "letsencrypt",
+                "--issue",
+                "--standalone",
+                "-d",
+                "sub.example.com",
+                "--keylength",
+                "ec-256",
+            ])
+        );
+        assert_eq!(calls[0].timeout, Duration::from_secs(300));
+        assert_eq!(calls[1].program, calls[0].program);
+        assert_eq!(
+            calls[1].args,
+            vec![
+                "--install-cert".into(),
+                "--ecc".into(),
+                "-d".into(),
+                "sub.example.com".into(),
+                "--fullchain-file".into(),
+                certificate.cert_path.as_os_str().to_owned(),
+                "--key-file".into(),
+                certificate.key_path.as_os_str().to_owned(),
+            ]
+        );
+        assert_eq!(calls[1].timeout, Duration::from_secs(300));
+
+        runner.clear();
+        manager.issue(&ip_config_with_ipv6()).await.unwrap();
+        let calls = runner.calls();
+        assert_eq!(
+            calls[0].args,
+            os_args(&[
+                "--server",
+                "letsencrypt",
+                "--issue",
+                "--standalone",
+                "--certificate-profile",
+                "shortlived",
+                "--force",
+                "-d",
+                "203.0.113.10",
+                "--keylength",
+                "ec-256",
+                "-d",
+                "2001:db8::10",
+            ])
+        );
+        assert_eq!(calls[0].timeout, Duration::from_secs(300));
+        assert_eq!(calls[1].args[3], "203.0.113.10");
+    }
+
+    #[tokio::test]
+    async fn installer_uses_direct_sh_argument_and_bounded_timeout() {
+        let root = tempfile::tempdir().unwrap();
+        let acme = root.path().join("acme.sh");
+        let runner = InstallerRunner {
+            acme_path: acme.clone(),
+            call: Arc::default(),
+        };
+        let manager = CertificateManager::new(
+            runner.clone(),
+            RecordingFirewall::closed(),
+            acme,
+            root.path().join("staging"),
+        );
+        manager
+            .install_acme_sh(b"#!/bin/sh\nexit 0\n")
+            .await
+            .unwrap();
+        let call = runner.call.lock().unwrap().clone().unwrap();
+        assert_eq!(call.program, Path::new("sh"));
+        assert_eq!(call.args.len(), 1);
+        assert_ne!(call.args[0], "-c");
+        assert_eq!(call.timeout, Duration::from_secs(120));
+    }
+
+    #[tokio::test]
     async fn acme_closes_only_the_port_80_rule_it_opened_even_on_failure() {
         let initially_closed = RecordingFirewall::closed();
         assert!(
@@ -749,6 +1290,62 @@ mod tests {
                 .is_err()
         );
         assert!(initially_open.actions().is_empty());
+    }
+
+    #[tokio::test]
+    async fn issuance_and_firewall_cleanup_failures_are_both_reported_safely() {
+        let firewall = FailingCloseFirewall::default();
+        let error = test_manager(FailingRunner, firewall.clone())
+            .issue(&domain_config())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("issuance"));
+        assert!(error.contains("firewall cleanup"));
+        assert!(!error.contains("cleanup-secret"));
+        assert_eq!(firewall.actions(), ["open:80", "close:80"]);
+    }
+
+    #[tokio::test]
+    async fn cancellation_still_closes_port_80_rule_owned_by_issue() {
+        let firewall = CancellationFirewall::default();
+        let manager = test_manager(PendingRunner, firewall.clone());
+        let task = tokio::spawn(async move { manager.issue(&domain_config()).await });
+        firewall.opened.notified().await;
+        task.abort();
+        let _ = task.await;
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if firewall.actions().contains(&"close:80".to_owned()) {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(firewall.actions(), ["open:80", "close:80"]);
+    }
+
+    #[tokio::test]
+    async fn cancellation_during_firewall_open_still_attempts_cleanup() {
+        let firewall = CancellationDuringOpenFirewall::default();
+        let manager = test_manager(PendingRunner, firewall.clone());
+        let task = tokio::spawn(async move { manager.issue(&domain_config()).await });
+        firewall.opened.notified().await;
+        task.abort();
+        let _ = task.await;
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if firewall.actions().contains(&"close:80".to_owned()) {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(firewall.actions(), ["open:80", "close:80"]);
     }
 
     #[test]
@@ -770,6 +1367,14 @@ mod tests {
             let certificate = manager.issue(&config).await.unwrap();
             assert!(certificate.not_after > SystemTime::now());
             assert_eq!(
+                fs::metadata(&certificate.cert_path)
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o644
+            );
+            assert_eq!(
                 fs::metadata(certificate.key_path)
                     .unwrap()
                     .permissions()
@@ -788,6 +1393,80 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn issue_rejects_output_symlinks_before_changing_target_modes() {
+        let root = tempfile::tempdir().unwrap();
+        let cert_target = root.path().join("cert-target.pem");
+        let key_target = root.path().join("key-target.pem");
+        fs::write(&cert_target, TEST_CERT).unwrap();
+        fs::write(&key_target, TEST_KEY).unwrap();
+        fs::set_permissions(&cert_target, fs::Permissions::from_mode(0o666)).unwrap();
+        fs::set_permissions(&key_target, fs::Permissions::from_mode(0o666)).unwrap();
+        let runner = SymlinkOutputRunner {
+            cert_target: cert_target.clone(),
+            key_target: key_target.clone(),
+        };
+        assert!(
+            test_manager(runner, RecordingFirewall::closed())
+                .issue(&domain_config())
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            fs::metadata(cert_target).unwrap().permissions().mode() & 0o777,
+            0o666
+        );
+        assert_eq!(
+            fs::metadata(key_target).unwrap().permissions().mode() & 0o777,
+            0o666
+        );
+    }
+
+    #[tokio::test]
+    async fn issue_rejects_staging_directory_symlink_without_removing_it() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("marker"), b"untouched").unwrap();
+        let staging = root.path().join("staging");
+        symlink(&target, &staging).unwrap();
+        let acme = root.path().join("acme.sh");
+        fs::write(&acme, "").unwrap();
+        let manager = CertificateManager::new(
+            RecordingRunner::default(),
+            RecordingFirewall::closed(),
+            acme,
+            staging.clone(),
+        );
+        assert!(manager.issue(&domain_config()).await.is_err());
+        assert!(
+            fs::symlink_metadata(staging)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(fs::read(target.join("marker")).unwrap(), b"untouched");
+    }
+
+    #[tokio::test]
+    async fn issue_securely_creates_missing_staging_parents() {
+        let root = tempfile::tempdir().unwrap();
+        let acme = root.path().join("acme.sh");
+        fs::write(&acme, "").unwrap();
+        let staging = root.path().join("certs/staging");
+        let manager = CertificateManager::new(
+            RecordingRunner::default(),
+            RecordingFirewall::closed(),
+            acme,
+            staging.clone(),
+        );
+        let certificate = manager.issue(&domain_config()).await.unwrap();
+        assert_eq!(certificate.cert_path.parent(), Some(staging.as_path()));
+        assert!(root.path().join("certs").is_dir());
+    }
+
     #[test]
     fn validation_rejects_key_mismatch_and_missing_san() {
         let manager = test_manager(RecordingRunner::default(), RecordingFirewall::closed());
@@ -802,6 +1481,66 @@ mod tests {
         let mut wrong_host = domain_config();
         wrong_host.public_host = "wrong.example.com".into();
         assert!(manager.validate(&wrong_host, &cert, &key).is_err());
+    }
+
+    #[test]
+    fn validation_accepts_acme_sec1_ec_private_key() {
+        let manager = test_manager(RecordingRunner::default(), RecordingFirewall::closed());
+        let root = tempfile::tempdir().unwrap();
+        let cert = root.path().join("cert.pem");
+        let key = root.path().join("key.pem");
+        fs::write(&cert, TEST_CERT).unwrap();
+        fs::write(&key, TEST_KEY).unwrap();
+        manager.validate(&domain_config(), &cert, &key).unwrap();
+    }
+
+    #[test]
+    fn validation_counts_all_private_key_encodings_together() {
+        let manager = test_manager(RecordingRunner::default(), RecordingFirewall::closed());
+        let root = tempfile::tempdir().unwrap();
+        let cert = root.path().join("cert.pem");
+        let key = root.path().join("key.pem");
+        fs::write(&cert, TEST_CERT).unwrap();
+
+        fs::write(&key, format!("{TEST_KEY}{PKCS8_KEY}")).unwrap();
+        assert!(manager.validate(&domain_config(), &cert, &key).is_err());
+        fs::write(&key, format!("{TEST_KEY}{RSA_KEY}")).unwrap();
+        assert!(manager.validate(&domain_config(), &cert, &key).is_err());
+        fs::write(&key, format!("{TEST_KEY}{TEST_KEY}")).unwrap();
+        assert!(manager.validate(&domain_config(), &cert, &key).is_err());
+    }
+
+    #[test]
+    fn validation_rejects_empty_certificate_chain() {
+        let manager = test_manager(RecordingRunner::default(), RecordingFirewall::closed());
+        let root = tempfile::tempdir().unwrap();
+        let cert = root.path().join("cert.pem");
+        let key = root.path().join("key.pem");
+        fs::write(&cert, "").unwrap();
+        fs::write(&key, TEST_KEY).unwrap();
+        assert!(manager.validate(&domain_config(), &cert, &key).is_err());
+    }
+
+    #[test]
+    fn validation_rejects_expired_and_not_yet_valid_certificates() {
+        let manager = test_manager(RecordingRunner::default(), RecordingFirewall::closed());
+        let root = tempfile::tempdir().unwrap();
+        let cert = root.path().join("cert.pem");
+        let key = root.path().join("key.pem");
+        fs::write(&key, TEST_KEY).unwrap();
+
+        fs::write(
+            &cert,
+            certificate_with_validity(b"000101000000Z", b"010101000000Z"),
+        )
+        .unwrap();
+        assert!(manager.validate(&domain_config(), &cert, &key).is_err());
+        fs::write(
+            &cert,
+            certificate_with_validity(b"350101000000Z", b"360101000000Z"),
+        )
+        .unwrap();
+        assert!(manager.validate(&domain_config(), &cert, &key).is_err());
     }
 
     #[tokio::test]
@@ -829,8 +1568,8 @@ mod tests {
 
     #[tokio::test]
     async fn promotion_rollback_restores_live_files_and_permissions() {
-        let manager = test_manager(RecordingRunner::default(), RecordingFirewall::closed());
         let root = tempfile::tempdir().unwrap();
+        let manager = promotion_manager(root.path());
         let mut config = domain_config();
         config.cert_path = root.path().join("fullchain.pem");
         config.key_path = root.path().join("key.pem");
@@ -869,6 +1608,73 @@ mod tests {
         promotion.rollback().await.unwrap();
         assert_eq!(fs::read(&config.cert_path).unwrap(), b"old certificate");
         assert_eq!(fs::read(&config.key_path).unwrap(), b"old key");
+    }
+
+    #[tokio::test]
+    async fn promotion_commit_removes_backups_and_keeps_valid_live_pair() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = promotion_manager(root.path());
+        let mut config = domain_config();
+        config.cert_path = root.path().join("fullchain.pem");
+        config.key_path = root.path().join("key.pem");
+        fs::write(&config.cert_path, b"old certificate").unwrap();
+        fs::write(&config.key_path, b"old key").unwrap();
+        let staging = root.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        let staged_cert = staging.join("fullchain.pem");
+        let staged_key = staging.join("key.pem");
+        fs::write(&staged_cert, TEST_CERT).unwrap();
+        fs::write(&staged_key, TEST_KEY).unwrap();
+        let promotion = manager
+            .promote(&config, validated(staged_cert, staged_key))
+            .await
+            .unwrap();
+        assert!(root.path().join("fullchain.pem.previous").exists());
+        assert!(root.path().join("key.pem.previous").exists());
+        promotion.commit().await.unwrap();
+        assert!(!root.path().join("fullchain.pem.previous").exists());
+        assert!(!root.path().join("key.pem.previous").exists());
+        manager
+            .validate(&config, &config.cert_path, &config.key_path)
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn rollback_rejects_replaced_backup_before_touching_live_files() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let manager = promotion_manager(root.path());
+        let mut config = domain_config();
+        config.cert_path = root.path().join("fullchain.pem");
+        config.key_path = root.path().join("key.pem");
+        fs::write(&config.cert_path, b"old certificate").unwrap();
+        fs::write(&config.key_path, b"old key").unwrap();
+        let staging = root.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        let staged_cert = staging.join("fullchain.pem");
+        let staged_key = staging.join("key.pem");
+        fs::write(&staged_cert, TEST_CERT).unwrap();
+        fs::write(&staged_key, TEST_KEY).unwrap();
+        let promotion = manager
+            .promote(&config, validated(staged_cert, staged_key))
+            .await
+            .unwrap();
+        let previous_cert = root.path().join("fullchain.pem.previous");
+        fs::remove_file(&previous_cert).unwrap();
+        symlink(root.path().join("missing-target"), &previous_cert).unwrap();
+        assert!(promotion.rollback().await.is_err());
+        assert!(config.cert_path.is_file());
+        assert!(config.key_path.is_file());
+        manager
+            .validate(&config, &config.cert_path, &config.key_path)
+            .unwrap();
+        assert!(
+            fs::symlink_metadata(previous_cert)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 
     #[tokio::test]
@@ -918,15 +1724,17 @@ mod tests {
 
     #[tokio::test]
     async fn failed_promotion_restores_previous_live_pair() {
-        let manager = test_manager(RecordingRunner::default(), RecordingFirewall::closed());
         let root = tempfile::tempdir().unwrap();
+        let manager = promotion_manager(root.path());
         let mut config = domain_config();
         config.cert_path = root.path().join("fullchain.pem");
         config.key_path = root.path().join("key.pem");
         fs::write(&config.cert_path, b"old certificate").unwrap();
         fs::write(&config.key_path, b"old key").unwrap();
-        let staged_cert = root.path().join("staged-cert.pem");
-        let staged_key = root.path().join("staged-key.pem");
+        let staging = root.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        let staged_cert = staging.join("fullchain.pem");
+        let staged_key = staging.join("key.pem");
         fs::write(&staged_cert, b"invalid certificate").unwrap();
         fs::write(&staged_key, TEST_KEY).unwrap();
         assert!(
@@ -934,8 +1742,8 @@ mod tests {
                 .promote(
                     &config,
                     ValidatedCertificate {
-                        cert_path: staged_cert,
-                        key_path: staged_key,
+                        cert_path: staged_cert.clone(),
+                        key_path: staged_key.clone(),
                         not_after: SystemTime::now(),
                     },
                 )
@@ -944,9 +1752,192 @@ mod tests {
         );
         assert_eq!(fs::read(&config.cert_path).unwrap(), b"old certificate");
         assert_eq!(fs::read(&config.key_path).unwrap(), b"old key");
+        assert!(staged_cert.exists());
+        assert!(staged_key.exists());
+        assert!(!root.path().join("fullchain.pem.previous").exists());
+        assert!(!root.path().join("key.pem.previous").exists());
     }
 
-    fn test_manager<R: CommandRunner, F: AcmeFirewall>(
+    #[tokio::test]
+    async fn promotion_rejects_path_collisions_before_mutation() {
+        let root = tempfile::tempdir().unwrap();
+        let manager = promotion_manager(root.path());
+        let staging = root.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        let staged_cert = staging.join("fullchain.pem");
+        let staged_key = staging.join("key.pem");
+        fs::write(&staged_cert, TEST_CERT).unwrap();
+        fs::write(&staged_key, TEST_KEY).unwrap();
+        let shared = root.path().join("shared.pem");
+        fs::write(&shared, b"untouched").unwrap();
+        let mut config = domain_config();
+        config.cert_path = shared.clone();
+        config.key_path = shared.clone();
+        let result = manager
+            .promote(&config, validated(staged_cert.clone(), staged_key.clone()))
+            .await;
+        assert!(result.is_err());
+        assert_eq!(fs::read(&shared).unwrap(), b"untouched");
+        assert!(staged_cert.exists());
+        assert!(staged_key.exists());
+
+        config.cert_path = root.path().join("key.pem.previous");
+        config.key_path = root.path().join("key.pem");
+        fs::write(&config.cert_path, b"cert").unwrap();
+        fs::write(&config.key_path, b"key").unwrap();
+        assert!(
+            manager
+                .promote(&config, validated(staged_cert, staged_key))
+                .await
+                .is_err()
+        );
+        assert_eq!(fs::read(&config.cert_path).unwrap(), b"cert");
+        assert_eq!(fs::read(&config.key_path).unwrap(), b"key");
+    }
+
+    #[tokio::test]
+    async fn promotion_rejects_symlinks_and_outside_staging() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let manager = promotion_manager(root.path());
+        let staging = root.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        let real_cert = staging.join("real-cert.pem");
+        let staged_cert = staging.join("fullchain.pem");
+        let staged_key = staging.join("key.pem");
+        fs::write(&real_cert, TEST_CERT).unwrap();
+        symlink(&real_cert, &staged_cert).unwrap();
+        fs::write(&staged_key, TEST_KEY).unwrap();
+        let mut config = domain_config();
+        config.cert_path = root.path().join("fullchain.pem");
+        config.key_path = root.path().join("live-key.pem");
+        fs::write(&config.cert_path, b"old cert").unwrap();
+        fs::write(&config.key_path, b"old key").unwrap();
+        assert!(
+            manager
+                .promote(&config, validated(staged_cert.clone(), staged_key.clone()))
+                .await
+                .is_err()
+        );
+        assert_eq!(fs::read(&config.cert_path).unwrap(), b"old cert");
+        assert!(
+            fs::symlink_metadata(&staged_cert)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+
+        fs::remove_file(&staged_cert).unwrap();
+        let outside = root.path().join("outside-cert.pem");
+        fs::write(&outside, TEST_CERT).unwrap();
+        assert!(
+            manager
+                .promote(&config, validated(outside.clone(), staged_key))
+                .await
+                .is_err()
+        );
+        assert!(outside.exists());
+    }
+
+    #[tokio::test]
+    async fn promotion_rejects_live_and_backup_symlinks_and_hardlink_aliases() {
+        use std::{fs::hard_link, os::unix::fs::symlink};
+
+        let root = tempfile::tempdir().unwrap();
+        let manager = promotion_manager(root.path());
+        let staging = root.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        let staged_cert = staging.join("fullchain.pem");
+        let staged_key = staging.join("key.pem");
+        fs::write(&staged_cert, TEST_CERT).unwrap();
+        fs::write(&staged_key, TEST_KEY).unwrap();
+        let target = root.path().join("target.pem");
+        fs::write(&target, b"old certificate").unwrap();
+        let mut config = domain_config();
+        config.cert_path = root.path().join("fullchain.pem");
+        config.key_path = root.path().join("live-key.pem");
+        symlink(&target, &config.cert_path).unwrap();
+        fs::write(&config.key_path, b"old key").unwrap();
+        assert!(
+            manager
+                .promote(&config, validated(staged_cert.clone(), staged_key.clone()))
+                .await
+                .is_err()
+        );
+        assert!(
+            fs::symlink_metadata(&config.cert_path)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+
+        fs::remove_file(&config.cert_path).unwrap();
+        fs::write(&config.cert_path, b"old certificate").unwrap();
+        let previous_cert = root.path().join("fullchain.pem.previous");
+        symlink(&target, &previous_cert).unwrap();
+        assert!(
+            manager
+                .promote(&config, validated(staged_cert.clone(), staged_key.clone()))
+                .await
+                .is_err()
+        );
+        assert!(
+            fs::symlink_metadata(&previous_cert)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+
+        fs::remove_file(&previous_cert).unwrap();
+        fs::remove_file(&config.cert_path).unwrap();
+        fs::write(&config.cert_path, b"shared old file").unwrap();
+        fs::remove_file(&config.key_path).unwrap();
+        hard_link(&config.cert_path, &config.key_path).unwrap();
+        assert!(
+            manager
+                .promote(&config, validated(staged_cert, staged_key))
+                .await
+                .is_err()
+        );
+        assert_eq!(fs::read(&config.cert_path).unwrap(), b"shared old file");
+    }
+
+    #[tokio::test]
+    async fn promotion_rejects_broken_backup_symlink_without_removing_it() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let manager = promotion_manager(root.path());
+        let staging = root.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        let staged_cert = staging.join("fullchain.pem");
+        let staged_key = staging.join("key.pem");
+        fs::write(&staged_cert, TEST_CERT).unwrap();
+        fs::write(&staged_key, TEST_KEY).unwrap();
+        let mut config = domain_config();
+        config.cert_path = root.path().join("fullchain.pem");
+        config.key_path = root.path().join("key.pem");
+        fs::write(&config.cert_path, b"old cert").unwrap();
+        fs::write(&config.key_path, b"old key").unwrap();
+        let previous = root.path().join("fullchain.pem.previous");
+        symlink(root.path().join("missing"), &previous).unwrap();
+        assert!(
+            manager
+                .promote(&config, validated(staged_cert, staged_key))
+                .await
+                .is_err()
+        );
+        assert!(
+            fs::symlink_metadata(previous)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(fs::read(&config.cert_path).unwrap(), b"old cert");
+    }
+
+    fn test_manager<R: CommandRunner, F: AcmeFirewall + 'static>(
         runner: R,
         firewall: F,
     ) -> CertificateManager<R, F> {
@@ -954,6 +1945,53 @@ mod tests {
         let acme = root.join("acme.sh");
         std::fs::write(&acme, "").unwrap();
         CertificateManager::new(runner, firewall, acme, root.join("staging"))
+    }
+
+    fn promotion_manager(root: &Path) -> CertificateManager<RecordingRunner, RecordingFirewall> {
+        let acme = root.join("acme.sh");
+        fs::write(&acme, "").unwrap();
+        CertificateManager::new(
+            RecordingRunner::default(),
+            RecordingFirewall::closed(),
+            acme,
+            root.join("staging"),
+        )
+    }
+
+    fn validated(cert_path: PathBuf, key_path: PathBuf) -> ValidatedCertificate {
+        ValidatedCertificate {
+            cert_path,
+            key_path,
+            not_after: SystemTime::now() + Duration::from_secs(3600),
+        }
+    }
+
+    fn os_args(args: &[&str]) -> Vec<OsString> {
+        args.iter().map(OsString::from).collect()
+    }
+
+    fn certificate_with_validity(not_before: &[u8; 13], not_after: &[u8; 13]) -> String {
+        let mut certs =
+            rustls_pemfile::certs(&mut std::io::BufReader::new(TEST_CERT.as_bytes())).unwrap();
+        let mut der = certs.remove(0);
+        replace_bytes(&mut der, b"260726054253Z", not_before);
+        replace_bytes(&mut der, b"360723054253Z", not_after);
+        let encoded = STANDARD.encode(der);
+        let body = encoded
+            .as_bytes()
+            .chunks(64)
+            .map(|chunk| std::str::from_utf8(chunk).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("-----BEGIN CERTIFICATE-----\n{body}\n-----END CERTIFICATE-----\n")
+    }
+
+    fn replace_bytes(source: &mut [u8], from: &[u8], to: &[u8]) {
+        let index = source
+            .windows(from.len())
+            .position(|window| window == from)
+            .unwrap();
+        source[index..index + from.len()].copy_from_slice(to);
     }
 
     fn domain_config() -> SubscriptionConfig {
@@ -1008,25 +2046,46 @@ mod tests {
 
     const TEST_CERT: &str = concat!(
         "-----BEGIN CERTIFICATE-----\n",
-        "MIIBfzCCATGgAwIBAgIUbSzWIvN1GUvLYtVlCecKbWD3lBkwBQYDK2VwMBoxGDAW\n",
-        "BgNVBAMMD3N1Yi5leGFtcGxlLmNvbTAeFw0yNjA3MjYwNTE5MTNaFw0zNjA3MjMw\n",
-        "NTE5MTNaMBoxGDAWBgNVBAMMD3N1Yi5leGFtcGxlLmNvbTAqMAUGAytlcAMhAEuM\n",
-        "fEw1ifO+hN7/WIzZaSBR9O5oF9rHiqAjM2LP7DdOo4GIMIGFMB0GA1UdDgQWBBS6\n",
-        "3Qla3AIor00Nv4BX6tJ6QKVj7zAfBgNVHSMEGDAWgBS63Qla3AIor00Nv4BX6tJ6\n",
-        "QKVj7zAPBgNVHRMBAf8EBTADAQH/MDIGA1UdEQQrMCmCD3N1Yi5leGFtcGxlLmNv\n",
-        "bYcEywBxCocQIAENuAAAAAAAAAAAAAAAEDAFBgMrZXADQQBT9seg8DXUgm+Ky+CU\n",
-        "cH6LiKhDmYVu7YdxCKd4VisaSASSTni/sGwMrMfBtpgdt0PEcWGhofMpRc8BB6ZS\n",
-        "I94E\n",
+        "MIIBwDCCAWWgAwIBAgIUZYiat7hpwcskbsobyaEycN3FI0YwCgYIKoZIzj0EAwIw\n",
+        "GjEYMBYGA1UEAwwPc3ViLmV4YW1wbGUuY29tMB4XDTI2MDcyNjA1NDI1M1oXDTM2\n",
+        "MDcyMzA1NDI1M1owGjEYMBYGA1UEAwwPc3ViLmV4YW1wbGUuY29tMFkwEwYHKoZI\n",
+        "zj0CAQYIKoZIzj0DAQcDQgAEj2AOhpo4uXlnE7zCh4fhJJeM8E/KJG2mnyryCNeU\n",
+        "qGBzBpbOkQm0gZcJO9V54nQkpxgN3RncWINJUMJ7GFNQzaOBiDCBhTAdBgNVHQ4E\n",
+        "FgQUySxLgeMPU3unx4JE5o697py83KYwHwYDVR0jBBgwFoAUySxLgeMPU3unx4JE\n",
+        "5o697py83KYwDwYDVR0TAQH/BAUwAwEB/zAyBgNVHREEKzApgg9zdWIuZXhhbXBs\n",
+        "ZS5jb22HBMsAcQqHECABDbgAAAAAAAAAAAAAABAwCgYIKoZIzj0EAwIDSQAwRgIh\n",
+        "AIxXr6v/d9W0zL5LkVGrjAb3uWIFoIVu5Kam3nNiwiNOAiEAqYbvDNrbh/BmYXp6\n",
+        "Na69KLsU7VEoLc+BQp7GiKR9a2c=\n",
         "-----END CERTIFICATE-----\n"
     );
     const TEST_KEY: &str = concat!(
+        "-----BEGIN EC PRIVATE KEY-----\n",
+        "MHcCAQEEIH5iRWHzwLfe90FBzTTD/Wr05IZiiAbnx2rZQGXjGYDOoAoGCCqGSM49\n",
+        "AwEHoUQDQgAEj2AOhpo4uXlnE7zCh4fhJJeM8E/KJG2mnyryCNeUqGBzBpbOkQm0\n",
+        "gZcJO9V54nQkpxgN3RncWINJUMJ7GFNQzQ==\n",
+        "-----END EC PRIVATE KEY-----\n"
+    );
+    const OTHER_KEY: &str = concat!(
+        "-----BEGIN EC PRIVATE KEY-----\n",
+        "MHcCAQEEIB/f2ogdlNty9umcSqm6aGjO//GBjGRGSM03wQElINFroAoGCCqGSM49\n",
+        "AwEHoUQDQgAEDkvNtcrv7S7PNzK5mmMtfPV0AbLppRwNFIFc3gNHi8nZ08fUOJ7S\n",
+        "BcuQdLNmc8b5xJFVNIybWjpMr2zng53oog==\n",
+        "-----END EC PRIVATE KEY-----\n"
+    );
+    const PKCS8_KEY: &str = concat!(
         "-----BEGIN PRIVATE KEY-----\n",
         "MC4CAQAwBQYDK2VwBCIEIOzgRc4h5rLkwez0r/5iady9q7EPnuZTrsHLYyIBGlqH\n",
         "-----END PRIVATE KEY-----\n"
     );
-    const OTHER_KEY: &str = concat!(
-        "-----BEGIN PRIVATE KEY-----\n",
-        "MC4CAQAwBQYDK2VwBCIEIMpW3GLr1b1nyAJI8Eb3j8bQSvKX54MpxPVkeA53GWRs\n",
-        "-----END PRIVATE KEY-----\n"
+    const RSA_KEY: &str = concat!(
+        "-----BEGIN RSA PRIVATE KEY-----\n",
+        "MIIBOQIBAAJBAMO5NnK62Bc/zAENcg0HmIn9V8JUHjAJpzpq4nSqfSDumJFPV5Ve\n",
+        "jTw00rFXhmQq+V84s3NCcWWR7q+X/JZ0ST8CAwEAAQJAfn0KFSdvU8clHmEEHiuU\n",
+        "h0k1GB+oyr7SVkyRQXiVGVw3xSRXqrbsHpsoW6bvbIdNlKT7efHCiwqUYaKCDj8k\n",
+        "sQIhAOag3PMSd9FjD4hrAtsRsvwcM3dUZ3um96+8Bf3TMVQdAiEA2UFUtdMqfDqV\n",
+        "g8Z2QcSRiCXb//x9+Lm/iu1KeyAknAsCIHXo1E2pqXxxquVR4JnjyKBAQsfFbUq4\n",
+        "qHU+KcoFiXi5AiA/u/S36pz6GM2n/N7QaHQxNroVnOLvxr40aWyCNmnHBQIgECZG\n",
+        "CENYDY4KxkEUbsJWmMJKXmnCGGtJ1X7EOQfvvRI=\n",
+        "-----END RSA PRIVATE KEY-----\n"
     );
 }
