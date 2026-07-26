@@ -194,4 +194,27 @@ mod tests {
         assert_eq!(SubscriptionConfig::load_from(&path).unwrap(), Some(config));
         assert!(!path.with_extension("json.tmp").exists());
     }
+
+    #[test]
+    fn public_base_url_formats_domain_ipv4_and_ipv6_hosts() {
+        let mut config = SubscriptionConfig::new_disabled("ab".repeat(32));
+        config.public_host = "example.com".into();
+        assert_eq!(config.public_base_url(), "https://example.com:443");
+
+        config.public_host = "192.0.2.1".into();
+        config.port = 8443;
+        assert_eq!(config.public_base_url(), "https://192.0.2.1:8443");
+
+        config.public_host = "[2001:db8::1]".into();
+        assert_eq!(config.public_base_url(), "https://[2001:db8::1]:8443");
+    }
+
+    #[test]
+    fn masked_token_handles_normal_and_short_hashes() {
+        let mut config = SubscriptionConfig::new_disabled("ab".repeat(32));
+        assert_eq!(config.masked_token(), "abababab...");
+
+        config.token_hash = "abc".into();
+        assert_eq!(config.masked_token(), "abc...");
+    }
 }
