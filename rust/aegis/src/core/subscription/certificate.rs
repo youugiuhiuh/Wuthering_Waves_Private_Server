@@ -187,6 +187,8 @@ pub struct CertificateManager<R: CommandRunner, F: AcmeFirewall> {
     acme_sh: PathBuf,
     staging_dir: PathBuf,
     downloader: Arc<dyn AcmeDownloader>,
+    #[cfg(test)]
+    after_certificate_backup: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl<R: CommandRunner, F: AcmeFirewall + 'static> CertificateManager<R, F> {
@@ -197,12 +199,20 @@ impl<R: CommandRunner, F: AcmeFirewall + 'static> CertificateManager<R, F> {
             acme_sh,
             staging_dir,
             downloader: Arc::new(HttpsAcmeDownloader),
+            #[cfg(test)]
+            after_certificate_backup: None,
         }
     }
 
     #[cfg(test)]
     fn with_downloader(mut self, downloader: Arc<dyn AcmeDownloader>) -> Self {
         self.downloader = downloader;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_after_certificate_backup(mut self, hook: Arc<dyn Fn() + Send + Sync>) -> Self {
+        self.after_certificate_backup = Some(hook);
         self
     }
 
@@ -486,6 +496,10 @@ impl<R: CommandRunner, F: AcmeFirewall + 'static> CertificateManager<R, F> {
             remove_if_exists(&previous_cert)?;
             fs::rename(&config.cert_path, &previous_cert)?;
         }
+        #[cfg(test)]
+        if let Some(hook) = &self.after_certificate_backup {
+            hook();
+        }
         if had_key
             && let Err(error) = remove_if_exists(&previous_key)
                 .and_then(|()| fs::rename(&config.key_path, &previous_key).map_err(Into::into))
@@ -493,6 +507,7 @@ impl<R: CommandRunner, F: AcmeFirewall + 'static> CertificateManager<R, F> {
             if had_cert {
                 fs::rename(&previous_cert, &config.cert_path)
                     .context("failed to restore live certificate")?;
+                sync_directory(cert_parent)?;
             }
             return Err(error);
         }
@@ -1975,6 +1990,47 @@ mod tests {
         assert!(staged_key.exists());
         assert!(!root.path().join("fullchain.pem.previous").exists());
         assert!(!root.path().join("key.pem.previous").exists());
+    }
+
+    #[tokio::test]
+    async fn key_backup_failure_restores_and_syncs_certificate_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let mut config = domain_config();
+        config.cert_path = root.path().join("fullchain.pem");
+        config.key_path = root.path().join("key.pem");
+        fs::write(&config.cert_path, b"old certificate").unwrap();
+        fs::write(&config.key_path, b"old key").unwrap();
+        let staging = root.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        let staged_cert = staging.join("fullchain.pem");
+        let staged_key = staging.join("key.pem");
+        fs::write(&staged_cert, TEST_CERT).unwrap();
+        fs::write(&staged_key, TEST_KEY).unwrap();
+
+        let key_path = config.key_path.clone();
+        let cert_parent = root.path().to_owned();
+        let manager =
+            promotion_manager(root.path()).with_after_certificate_backup(Arc::new(move || {
+                fs::remove_file(&key_path).unwrap();
+                fs::set_permissions(&cert_parent, fs::Permissions::from_mode(0o300)).unwrap();
+            }));
+        let error = manager
+            .promote(&config, validated(staged_cert.clone(), staged_key.clone()))
+            .await
+            .err()
+            .unwrap();
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+
+        assert_eq!(
+            error
+                .downcast_ref::<std::io::Error>()
+                .map(std::io::Error::kind),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+        assert_eq!(fs::read(&config.cert_path).unwrap(), b"old certificate");
+        assert!(!root.path().join("fullchain.pem.previous").exists());
+        assert!(staged_cert.exists());
+        assert!(staged_key.exists());
     }
 
     #[tokio::test]
