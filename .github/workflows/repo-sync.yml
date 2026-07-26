@@ -5,12 +5,6 @@ on:
     branches:
       - main
     tags: ["**"]
-    paths-ignore:
-      - "go/installer/go.mod"
-      - "go/installer/go.sum"
-      - "sni_tester/go.mod"
-      - "sni_tester/go.sum"
-      - "rust/tgbot/Cargo.lock"
 
 jobs:
   mirror-codeberg:
@@ -29,7 +23,7 @@ jobs:
         with:
           host: https://codeberg.org
           owner: kookybullwhip
-          repo: Wuthering_Waves_Private_Server
+          repo: BIP39_Recovery_Flutter
           username: kookybullwhip
           password: ${{ secrets.CODEBERG_TOKEN }}
           create: true
@@ -50,27 +44,6 @@ jobs:
         with:
           host: https://gitlab.com
           owner: egfrthtu-group
-          repo: wuthering_waves_private_server
+          repo: bip39_recovery_flutter
           username: EGfrthtu
           password: ${{ secrets.GITLAB_TOKEN }}
-
-  mirror-forgejo:
-    name: Mirror to Forgejo
-    if: "!contains(github.event.head_commit.message, 'chore(deps)')"
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-
-      - name: Mirror to Forgejo
-        uses: cssnr/mirror-repository-action@v1.2.0
-        with:
-          host: https://v15.next.forgejo.org
-          owner: youugiuhiuh
-          repo: Wuthering_Waves_Private_Server
-          username: youugiuhiuh
-          password: ${{ secrets.FORGEJO_TOKEN }}
-          create: true
