@@ -40,9 +40,14 @@ pub struct TuicNode;
 pub struct NodeLoad {
     pub nodes: Vec<SubscriptionNode>,
     pub skipped: usize,
+    diagnostics: Vec<String>,
 }
 
 impl NodeLoad {
+    pub fn diagnostics(&self) -> &[String] {
+        &self.diagnostics
+    }
+
     pub fn require_nodes(self) -> Result<Self> {
         if self.nodes.is_empty() {
             return Err(anyhow!("no supported subscription nodes found"));
@@ -62,84 +67,143 @@ pub fn load_xray_nodes(config_dir: &Path) -> Result<NodeLoad> {
     let mut load = NodeLoad {
         nodes: Vec::new(),
         skipped: 0,
+        diagnostics: Vec::new(),
     };
     for path in paths {
+        let filename = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("<non-utf8>.json");
         let Ok(raw) = fs::read(&path) else {
             load.skipped += 1;
+            load.diagnostics.push(format!("{filename}: read-error"));
             continue;
         };
         let Ok(config) = serde_json::from_slice::<Value>(&raw) else {
             load.skipped += 1;
+            load.diagnostics.push(format!("{filename}: malformed-json"));
             continue;
         };
         let Some(inbounds) = config.get("inbounds").and_then(Value::as_array) else {
             load.skipped += 1;
+            load.diagnostics.push(format!("{filename}: malformed-json"));
             continue;
         };
-        for inbound in inbounds {
-            if let Some(node) = parse_reality_inbound(inbound) {
-                load.nodes.push(SubscriptionNode::VlessReality(node));
-            } else {
-                load.skipped += 1;
+        for (index, inbound) in inbounds.iter().enumerate() {
+            match parse_reality_inbound(inbound) {
+                Ok(node) => load.nodes.push(SubscriptionNode::VlessReality(node)),
+                Err(reason) => {
+                    load.skipped += 1;
+                    load.diagnostics
+                        .push(format!("{filename} inbound[{index}]: {}", reason.as_str()));
+                }
             }
         }
     }
     Ok(load)
 }
 
-fn parse_reality_inbound(inbound: &Value) -> Option<VlessRealityNode> {
-    if inbound.get("protocol")?.as_str()? != "vless" {
-        return None;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InboundFailure {
+    Unsupported,
+    Malformed,
+}
+
+impl InboundFailure {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Unsupported => "unsupported",
+            Self::Malformed => "malformed",
+        }
     }
-    let stream = inbound.get("streamSettings")?;
-    if stream.get("security")?.as_str()? != "reality" {
-        return None;
+}
+
+fn parse_reality_inbound(inbound: &Value) -> std::result::Result<VlessRealityNode, InboundFailure> {
+    use InboundFailure::Malformed;
+
+    match inbound.get("protocol").and_then(Value::as_str) {
+        Some("vless") => {}
+        Some(_) => return Err(InboundFailure::Unsupported),
+        None => return Err(InboundFailure::Malformed),
+    }
+    let stream = inbound
+        .get("streamSettings")
+        .ok_or(InboundFailure::Malformed)?;
+    match stream.get("security").and_then(Value::as_str) {
+        Some("reality") => {}
+        Some(_) => return Err(InboundFailure::Unsupported),
+        None => return Err(InboundFailure::Malformed),
     }
     let client = inbound
-        .get("settings")?
-        .get("clients")?
-        .as_array()?
-        .first()?;
+        .get("settings")
+        .and_then(|settings| settings.get("clients"))
+        .and_then(Value::as_array)
+        .and_then(|clients| clients.first())
+        .ok_or(Malformed)?;
     let flow = client
         .get("flow")
         .and_then(Value::as_str)
         .map(str::to_owned);
-    let network = match stream.get("network")?.as_str()? {
-        "tcp" if flow.as_deref() == Some("xtls-rprx-vision") => VlessNetwork::Tcp,
-        "xhttp" if flow.is_none() => VlessNetwork::Xhttp {
+    let network = match stream.get("network").and_then(Value::as_str) {
+        Some("tcp") if flow.as_deref() == Some("xtls-rprx-vision") => VlessNetwork::Tcp,
+        Some("xhttp") if flow.is_none() => VlessNetwork::Xhttp {
             path: stream
-                .get("xhttpSettings")?
-                .get("path")?
-                .as_str()?
+                .get("xhttpSettings")
+                .and_then(|settings| settings.get("path"))
+                .and_then(Value::as_str)
+                .ok_or(Malformed)?
                 .to_owned(),
         },
-        _ => return None,
+        Some(_) => return Err(InboundFailure::Unsupported),
+        None => return Err(InboundFailure::Malformed),
     };
-    let reality = stream.get("realitySettings")?;
+    let reality = stream.get("realitySettings").ok_or(Malformed)?;
     let private_key = URL_SAFE_NO_PAD
-        .decode(reality.get("privateKey")?.as_str()?)
-        .ok()?;
-    let private_key: [u8; 32] = private_key.try_into().ok()?;
+        .decode(
+            reality
+                .get("privateKey")
+                .and_then(Value::as_str)
+                .ok_or(Malformed)?,
+        )
+        .map_err(|_| Malformed)?;
+    let private_key: [u8; 32] = private_key.try_into().map_err(|_| Malformed)?;
     let public_key = PublicKey::from(&StaticSecret::from(private_key));
+    let server_name = reality
+        .get("serverNames")
+        .and_then(Value::as_array)
+        .and_then(|names| names.first())
+        .and_then(Value::as_str)
+        .ok_or(Malformed)?;
+    let short_id = reality
+        .get("shortIds")
+        .and_then(Value::as_array)
+        .and_then(|ids| {
+            ids.iter()
+                .filter_map(Value::as_str)
+                .find(|id| !id.is_empty())
+        })
+        .ok_or(Malformed)?;
 
-    Some(VlessRealityNode {
-        name: client.get("email")?.as_str()?.to_owned(),
-        port: inbound.get("port")?.as_u64()?.try_into().ok()?,
-        uuid: client.get("id")?.as_str()?.to_owned(),
-        server_name: reality
-            .get("serverNames")?
-            .as_array()?
-            .first()?
-            .as_str()?
+    Ok(VlessRealityNode {
+        name: client
+            .get("email")
+            .and_then(Value::as_str)
+            .ok_or(Malformed)?
             .to_owned(),
+        port: inbound
+            .get("port")
+            .and_then(Value::as_u64)
+            .ok_or(Malformed)?
+            .try_into()
+            .map_err(|_| Malformed)?,
+        uuid: client
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or(Malformed)?
+            .to_owned(),
+        server_name: server_name.to_owned(),
         public_key: URL_SAFE_NO_PAD.encode(public_key.as_bytes()),
-        short_id: reality
-            .get("shortIds")?
-            .as_array()?
-            .iter()
-            .filter_map(Value::as_str)
-            .find(|id| !id.is_empty())?
-            .to_owned(),
+        short_id: short_id.to_owned(),
         flow,
         network,
     })
@@ -155,6 +219,7 @@ mod tests {
 
     const FIXTURE_UUID: &str = "123e4567-e89b-12d3-a456-426614174000";
     const FIXTURE_PRIVATE_KEY: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const FIXTURE_PUBLIC_KEY: &str = "L-V9o0fNYkMVKNqsX7spBzD_9oSvxM_C7ZCZX1jLO3Q";
 
     #[test]
     fn reconstructs_reality_vision_and_xhttp_from_server_json() {
@@ -164,11 +229,20 @@ mod tests {
         let load = load_xray_nodes(dir.path()).unwrap();
 
         assert_eq!(load.skipped, 0);
-        assert!(matches!(&load.nodes[0], SubscriptionNode::VlessReality(n)
-            if n.network == VlessNetwork::Tcp
-                && n.flow.as_deref() == Some("xtls-rprx-vision")));
+        let SubscriptionNode::VlessReality(vision) = &load.nodes[0] else {
+            panic!("expected Reality node");
+        };
+        assert_eq!(vision.name, "fixture@example.com");
+        assert_eq!(vision.port, 443);
+        assert_eq!(vision.uuid, FIXTURE_UUID);
+        assert_eq!(vision.server_name, "example.com");
+        assert_eq!(vision.public_key, FIXTURE_PUBLIC_KEY);
+        assert_eq!(vision.short_id, "0123456789abcdef");
+        assert_eq!(vision.network, VlessNetwork::Tcp);
+        assert_eq!(vision.flow.as_deref(), Some("xtls-rprx-vision"));
         assert!(matches!(&load.nodes[1], SubscriptionNode::VlessReality(n)
             if matches!(&n.network, VlessNetwork::Xhttp { path } if path == "/assets")));
+        assert!(load.diagnostics().is_empty());
     }
 
     #[test]
@@ -182,23 +256,120 @@ mod tests {
         let load = load_xray_nodes(dir.path()).unwrap();
 
         assert_eq!((load.nodes.len(), load.skipped), (1, 1));
+        assert_eq!(load.diagnostics(), ["server.json inbound[1]: malformed"]);
         write_xray_fixture(dir.path(), fixture_with_only_missing_private_key());
-        let error = load_xray_nodes(dir.path())
-            .unwrap()
-            .require_nodes()
-            .err()
-            .unwrap();
+        let invalid = load_xray_nodes(dir.path()).unwrap();
+        assert_eq!(invalid.diagnostics(), ["server.json inbound[0]: malformed"]);
+        let error = invalid.require_nodes().err().unwrap();
         let diagnostic = format!("{error:#}");
         assert!(!diagnostic.contains(FIXTURE_UUID));
         assert!(!diagnostic.contains(FIXTURE_PRIVATE_KEY));
     }
 
-    fn write_xray_fixture(dir: &Path, fixture: Value) {
+    #[test]
+    fn reports_secret_safe_file_and_inbound_diagnostics_while_loading_valid_siblings() {
+        let dir = tempfile::tempdir().unwrap();
         fs::write(
-            dir.join("server.json"),
-            serde_json::to_vec(&fixture).unwrap(),
+            dir.path().join("00-bad.json"),
+            format!(r#"{{"uuid":"{FIXTURE_UUID}","key":"{FIXTURE_PRIVATE_KEY}""#),
         )
         .unwrap();
+        let mut malformed = reality_inbound("malformed", "tcp", Some("xtls-rprx-vision"), None);
+        malformed["streamSettings"]["realitySettings"]
+            .as_object_mut()
+            .unwrap()
+            .remove("privateKey");
+        write_named_xray_fixture(
+            dir.path(),
+            "01-mixed.json",
+            json!({
+                "inbounds": [
+                    {"protocol": "socks", "password": FIXTURE_PRIVATE_KEY},
+                    malformed,
+                    reality_inbound("valid", "xhttp", None, Some("/assets"))
+                ]
+            }),
+        );
+
+        let load = load_xray_nodes(dir.path()).unwrap();
+
+        assert_eq!((load.nodes.len(), load.skipped), (1, 3));
+        assert_eq!(
+            load.diagnostics(),
+            [
+                "00-bad.json: malformed-json",
+                "01-mixed.json inbound[0]: unsupported",
+                "01-mixed.json inbound[1]: malformed",
+            ]
+        );
+        let diagnostics = load.diagnostics().join("\n");
+        assert!(!diagnostics.contains(FIXTURE_UUID));
+        assert!(!diagnostics.contains(FIXTURE_PRIVATE_KEY));
+    }
+
+    #[test]
+    fn loads_multiple_files_in_filename_order() {
+        let dir = tempfile::tempdir().unwrap();
+        write_named_xray_fixture(dir.path(), "b.json", single_reality_fixture("second"));
+        write_named_xray_fixture(dir.path(), "a.json", single_reality_fixture("first"));
+
+        let load = load_xray_nodes(dir.path()).unwrap();
+        let names = load.nodes.iter().map(node_name).collect::<Vec<_>>();
+
+        assert_eq!(names, ["first", "second"]);
+        assert!(load.diagnostics().is_empty());
+    }
+
+    #[test]
+    fn rescans_live_files_after_add_edit_and_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        write_named_xray_fixture(dir.path(), "active.json", single_reality_fixture("first"));
+        assert_eq!(loaded_names(dir.path()), ["first"]);
+
+        write_named_xray_fixture(dir.path(), "active.json", single_reality_fixture("edited"));
+        assert_eq!(loaded_names(dir.path()), ["edited"]);
+
+        write_named_xray_fixture(dir.path(), "added.json", single_reality_fixture("added"));
+        assert_eq!(loaded_names(dir.path()), ["edited", "added"]);
+
+        fs::remove_file(dir.path().join("active.json")).unwrap();
+        let load = load_xray_nodes(dir.path()).unwrap();
+        assert_eq!(
+            load.nodes.iter().map(node_name).collect::<Vec<_>>(),
+            ["added"]
+        );
+        assert!(load.diagnostics().is_empty());
+    }
+
+    fn write_xray_fixture(dir: &Path, fixture: Value) {
+        write_named_xray_fixture(dir, "server.json", fixture);
+    }
+
+    fn write_named_xray_fixture(dir: &Path, name: &str, fixture: Value) {
+        fs::write(dir.join(name), serde_json::to_vec(&fixture).unwrap()).unwrap();
+    }
+
+    fn single_reality_fixture(name: &str) -> Value {
+        let mut inbound = reality_inbound(name, "tcp", Some("xtls-rprx-vision"), None);
+        inbound["settings"]["clients"][0]["email"] = json!(name);
+        json!({"inbounds": [inbound]})
+    }
+
+    fn node_name(node: &SubscriptionNode) -> &str {
+        match node {
+            SubscriptionNode::VlessReality(node) => &node.name,
+            SubscriptionNode::Hysteria2(_) | SubscriptionNode::Tuic(_) => unreachable!(),
+        }
+    }
+
+    fn loaded_names(dir: &Path) -> Vec<String> {
+        let load = load_xray_nodes(dir).unwrap();
+        assert!(load.diagnostics().is_empty());
+        load.nodes
+            .iter()
+            .map(node_name)
+            .map(str::to_owned)
+            .collect()
     }
 
     fn reality_fixture_with_tcp_and_xhttp() -> Value {
