@@ -1,13 +1,20 @@
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 
 use super::node::{Hysteria2Node, SubscriptionNode, TuicNode, VlessNetwork, VlessRealityNode};
 
+const URI_COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
 pub fn render_base64(nodes: &[SubscriptionNode], host: &str) -> Result<String> {
+    let host = authority_host(host);
     let links = nodes
         .iter()
-        .map(|node| render_link(node, host))
+        .map(|node| render_link(node, &host))
         .collect::<Vec<_>>()
         .join("\n");
     Ok(STANDARD.encode(links))
@@ -34,21 +41,21 @@ fn render_link(node: &SubscriptionNode, host: &str) -> String {
 }
 
 fn render_vless_link(node: &VlessRealityNode, host: &str) -> String {
-    let sni = percent_encode(&node.server_name);
-    let public_key = percent_encode(&node.public_key);
-    let name = percent_encode(&node.name);
+    let uuid = encode_userinfo(&node.uuid);
+    let sni = encode_query_value(&node.server_name);
+    let public_key = encode_query_value(&node.public_key);
+    let short_id = encode_query_value(&node.short_id);
+    let name = encode_fragment(&node.name);
     match &node.network {
         VlessNetwork::Tcp => format!(
-            "vless://{}@{}:{}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={sni}&fp=chrome&pbk={public_key}&sid={}&type=tcp&headerType=none#{name}",
-            node.uuid, host, node.port, node.short_id
+            "vless://{uuid}@{}:{}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=tcp&headerType=none#{name}",
+            host, node.port
         ),
         VlessNetwork::Xhttp { path } => format!(
-            "vless://{}@{}:{}?encryption=none&security=reality&sni={sni}&fp=chrome&pbk={public_key}&sid={}&type=xhttp&path={}&mode=auto#{name}",
-            node.uuid,
+            "vless://{uuid}@{}:{}?encryption=none&security=reality&sni={sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=xhttp&path={}&mode=auto#{name}",
             host,
             node.port,
-            node.short_id,
-            percent_encode(path)
+            encode_query_value(path)
         ),
     }
 }
@@ -56,37 +63,37 @@ fn render_vless_link(node: &VlessRealityNode, host: &str) -> String {
 fn render_hysteria2_link(node: &Hysteria2Node, host: &str) -> String {
     let mut link = format!(
         "hysteria2://{}@{}:{}?sni={}&alpn={}&pinSHA256={}",
-        percent_encode(&node.password),
+        encode_userinfo(&node.password),
         host,
         node.port,
-        percent_encode(&node.server_name),
-        node.alpn.join(","),
-        node.cert_fingerprint
+        encode_query_value(&node.server_name),
+        encode_query_values(&node.alpn),
+        encode_query_value(&node.cert_fingerprint)
     );
     if let (Some(obfs), Some(password)) = (&node.obfs, &node.obfs_password) {
         link.push_str(&format!(
             "&obfs={}&obfs-password={}",
-            percent_encode(obfs),
-            percent_encode(password)
+            encode_query_value(obfs),
+            encode_query_value(password)
         ));
     }
     link.push('#');
-    link.push_str(&percent_encode(&node.name));
+    link.push_str(&encode_fragment(&node.name));
     link
 }
 
 fn render_tuic_link(node: &TuicNode, host: &str) -> String {
     format!(
         "tuic://{}:{}@{}:{}?sni={}&alpn={}&congestion_control={}&pcs={}#{}",
-        node.uuid,
-        percent_encode(&node.password),
+        encode_userinfo(&node.uuid),
+        encode_userinfo(&node.password),
         host,
         node.port,
-        percent_encode(&node.server_name),
-        node.alpn.join(","),
-        node.congestion_control,
-        node.cert_fingerprint,
-        percent_encode(&node.name)
+        encode_query_value(&node.server_name),
+        encode_query_values(&node.alpn),
+        encode_query_value(&node.congestion_control),
+        encode_query_value(&node.cert_fingerprint),
+        encode_fragment(&node.name)
     )
 }
 
@@ -188,8 +195,34 @@ fn render_alpn(alpn: &[String]) -> String {
         .collect()
 }
 
-fn percent_encode(value: &str) -> String {
-    utf8_percent_encode(value, NON_ALPHANUMERIC).to_string()
+fn authority_host(host: &str) -> String {
+    if host.starts_with('[') && host.ends_with(']') {
+        host.to_owned()
+    } else if host.parse::<std::net::Ipv6Addr>().is_ok() {
+        format!("[{host}]")
+    } else {
+        host.to_owned()
+    }
+}
+
+fn encode_userinfo(value: &str) -> String {
+    utf8_percent_encode(value, URI_COMPONENT).to_string()
+}
+
+fn encode_query_value(value: &str) -> String {
+    utf8_percent_encode(value, URI_COMPONENT).to_string()
+}
+
+fn encode_query_values(values: &[String]) -> String {
+    values
+        .iter()
+        .map(|value| encode_query_value(value))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn encode_fragment(value: &str) -> String {
+    utf8_percent_encode(value, URI_COMPONENT).to_string()
 }
 
 fn mihomo_fingerprint(value: &str) -> String {
@@ -213,6 +246,9 @@ fn yaml_quote(value: &str) -> String {
             '\r' => quoted.push_str("\\r"),
             '\n' => quoted.push_str("\\n"),
             '\t' => quoted.push_str("\\t"),
+            character if character <= '\u{1f}' => {
+                quoted.push_str(&format!("\\u{:04X}", character as u32));
+            }
             character => quoted.push(character),
         }
     }
@@ -259,10 +295,74 @@ mod tests {
         assert_eq!(
             text,
             concat!(
-                "vless://123e4567-e89b-12d3-a456-426614174000@203.0.113.10:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=cdn%2Eexample%2Ecom&fp=chrome&pbk=public%2Dkey%5F123&sid=0123456789abcdef&type=tcp&headerType=none#Reality%20Vision\n",
-                "vless://123e4567-e89b-12d3-a456-426614174000@203.0.113.10:8443?encryption=none&security=reality&sni=cdn%2Eexample%2Ecom&fp=chrome&pbk=public%2Dkey%5F123&sid=fedcba9876543210&type=xhttp&path=%2Fassets%2Fupload&mode=auto#Reality%20XHTTP\n",
-                "hysteria2://hy%2Dsecret@203.0.113.10:9443?sni=hy%2Eexample%2Ecom&alpn=h3&pinSHA256=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff&obfs=salamander&obfs-password=obfs%2Dsecret#Hysteria%202\n",
-                "tuic://123e4567-e89b-12d3-a456-426614174000:tuic%2Dsecret@203.0.113.10:10443?sni=tuic%2Eexample%2Ecom&alpn=h3&congestion_control=bbr&pcs=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff#TUIC"
+                "vless://123e4567-e89b-12d3-a456-426614174000@203.0.113.10:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=cdn.example.com&fp=chrome&pbk=public-key_123&sid=0123456789abcdef&type=tcp&headerType=none#Reality%20Vision\n",
+                "vless://123e4567-e89b-12d3-a456-426614174000@203.0.113.10:8443?encryption=none&security=reality&sni=cdn.example.com&fp=chrome&pbk=public-key_123&sid=fedcba9876543210&type=xhttp&path=%2Fassets%2Fupload&mode=auto#Reality%20XHTTP\n",
+                "hysteria2://hy-secret@203.0.113.10:9443?sni=hy.example.com&alpn=h3&pinSHA256=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff&obfs=salamander&obfs-password=obfs-secret#Hysteria%202\n",
+                "tuic://123e4567-e89b-12d3-a456-426614174000:tuic-secret@203.0.113.10:10443?sni=tuic.example.com&alpn=h3&congestion_control=bbr&pcs=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff#TUIC"
+            )
+        );
+    }
+
+    #[test]
+    fn share_links_bracket_ipv6_authorities_for_every_variant() {
+        let text = decode_base64(render_base64(&all_node_variants(), "2001:db8::1").unwrap());
+
+        assert_eq!(text.lines().count(), 4);
+        assert_eq!(text.matches("@[2001:db8::1]:").count(), 4);
+        assert!(!text.contains("@2001:db8::1:"));
+    }
+
+    #[test]
+    fn share_links_encode_each_node_field_for_its_uri_position() {
+        let nodes = vec![
+            SubscriptionNode::VlessReality(VlessRealityNode {
+                name: "vless #/?%".to_owned(),
+                port: 443,
+                uuid: "id:@/?#%".to_owned(),
+                server_name: "sni&=#%".to_owned(),
+                public_key: "pbk&=#%".to_owned(),
+                short_id: "sid&=#%".to_owned(),
+                flow: Some("xtls-rprx-vision".to_owned()),
+                network: VlessNetwork::Tcp,
+            }),
+            SubscriptionNode::Hysteria2(Hysteria2Node {
+                name: "hy #/?%".to_owned(),
+                port: 9443,
+                password: "pw:@/?#%".to_owned(),
+                server_name: "sni&=#%".to_owned(),
+                alpn: vec!["h3".to_owned(), "h2&=#%,".to_owned()],
+                obfs: Some("sala&=#%".to_owned()),
+                obfs_password: Some("obfs:@/?#%".to_owned()),
+                cert_fingerprint: CERT_FINGERPRINT.to_owned(),
+            }),
+            SubscriptionNode::Tuic(TuicNode {
+                name: "tuic #/?%".to_owned(),
+                port: 10443,
+                uuid: "id:@/?#%".to_owned(),
+                password: "pw:@/?#%".to_owned(),
+                server_name: "sni&=#%".to_owned(),
+                alpn: vec!["h3".to_owned(), "h2&=#%,".to_owned()],
+                congestion_control: "bbr&=#%".to_owned(),
+                cert_fingerprint: CERT_FINGERPRINT.to_owned(),
+            }),
+        ];
+        let text = decode_base64(render_base64(&nodes, "example.com").unwrap());
+        let lines = text.lines().collect::<Vec<_>>();
+
+        assert_eq!(
+            lines[0],
+            "vless://id%3A%40%2F%3F%23%25@example.com:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=sni%26%3D%23%25&fp=chrome&pbk=pbk%26%3D%23%25&sid=sid%26%3D%23%25&type=tcp&headerType=none#vless%20%23%2F%3F%25"
+        );
+        assert_eq!(
+            lines[1],
+            format!(
+                "hysteria2://pw%3A%40%2F%3F%23%25@example.com:9443?sni=sni%26%3D%23%25&alpn=h3,h2%26%3D%23%25%2C&pinSHA256={CERT_FINGERPRINT}&obfs=sala%26%3D%23%25&obfs-password=obfs%3A%40%2F%3F%23%25#hy%20%23%2F%3F%25"
+            )
+        );
+        assert_eq!(
+            lines[2],
+            format!(
+                "tuic://id%3A%40%2F%3F%23%25:pw%3A%40%2F%3F%23%25@example.com:10443?sni=sni%26%3D%23%25&alpn=h3,h2%26%3D%23%25%2C&congestion_control=bbr%26%3D%23%25&pcs={CERT_FINGERPRINT}#tuic%20%23%2F%3F%25"
             )
         );
     }
@@ -359,6 +459,55 @@ mod tests {
     }
 
     #[test]
+    fn clash_yaml_escapes_every_c0_control_character() {
+        let controls = (0_u8..=0x1f)
+            .filter(|value| !matches!(value, b'\t' | b'\n' | b'\r'))
+            .map(char::from)
+            .collect::<String>();
+        let node = SubscriptionNode::VlessReality(VlessRealityNode {
+            name: format!("controls:{controls}"),
+            port: 443,
+            uuid: UUID.to_owned(),
+            server_name: "example.com".to_owned(),
+            public_key: "key".to_owned(),
+            short_id: "id".to_owned(),
+            flow: Some("xtls-rprx-vision".to_owned()),
+            network: VlessNetwork::Tcp,
+        });
+
+        let yaml = render_clash(&[node], "example.com").unwrap();
+
+        for control in controls.chars() {
+            assert!(yaml.contains(&format!("\\u{:04X}", control as u32)));
+        }
+        assert!(
+            !yaml
+                .chars()
+                .any(|character| character < ' ' && character != '\n')
+        );
+    }
+
+    #[test]
+    fn hysteria2_without_obfs_omits_optional_yaml_keys() {
+        let node = SubscriptionNode::Hysteria2(Hysteria2Node {
+            name: "Hysteria 2".to_owned(),
+            port: 443,
+            password: "password".to_owned(),
+            server_name: "example.com".to_owned(),
+            alpn: vec!["h3".to_owned()],
+            obfs: None,
+            obfs_password: None,
+            cert_fingerprint: CERT_FINGERPRINT.to_owned(),
+        });
+
+        let yaml = render_clash(&[node], "example.com").unwrap();
+
+        assert!(!yaml.contains("    obfs:"));
+        assert!(!yaml.contains("    obfs-password:"));
+        assert!(yaml.contains("    fingerprint:"));
+    }
+
+    #[test]
     fn clash_yaml_quotes_dynamic_fields_when_plain_yaml_would_be_unsafe() {
         let nodes = vec![
             SubscriptionNode::Hysteria2(Hysteria2Node {
@@ -436,5 +585,9 @@ mod tests {
                 cert_fingerprint: CERT_FINGERPRINT.to_owned(),
             }),
         ]
+    }
+
+    fn decode_base64(encoded: String) -> String {
+        String::from_utf8(STANDARD.decode(encoded).unwrap()).unwrap()
     }
 }
