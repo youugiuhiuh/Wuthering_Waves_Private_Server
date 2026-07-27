@@ -62,7 +62,7 @@ async fn handle_one_click_ip_response(event: &CallbackEvent, data: &str) -> Hand
         .answer_callback(
             &event.target,
             &event.callback_id,
-            Some(format!("Selected: {}", ip_version.label())),
+            Some(t!("ops.deploy_ip_selected", "0" => ip_version.label()).to_string()),
         )
         .await;
 
@@ -105,15 +105,15 @@ async fn resolve_one_click_ip_version(
     let markup = Markup {
         buttons: vec![vec![
             InlineButton {
-                text: "v4 ↑ v6 ↓ (XHTTP)".into(),
+                text: t!("ops.deploy_ip_btn_split4").into(),
                 data: "a_one_click_ip:split4".into(),
             },
             InlineButton {
-                text: "v6 ↑ v4 ↓ (XHTTP)".into(),
+                text: t!("ops.deploy_ip_btn_split6").into(),
                 data: "a_one_click_ip:split6".into(),
             },
             InlineButton {
-                text: "no split (IPv4 only)".into(),
+                text: t!("ops.deploy_ip_btn_v4").into(),
                 data: "a_one_click_ip:v4".into(),
             },
         ]],
