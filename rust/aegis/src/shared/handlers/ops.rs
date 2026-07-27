@@ -637,6 +637,7 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
     let adapter = event.adapter.clone();
     let target = event.target.clone();
     let msg_id = event.msg_id.clone();
+    let msg_id_for_prompt = msg_id.clone();
 
     tokio::spawn(async move {
         let (tx, update_task) =
@@ -689,17 +690,16 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
             }
         }
 
-        let ip_version = {
-            let (v4, v6) = tokio::join!(
-                SystemMonitor::get_public_ip(),
-                SystemMonitor::get_public_ipv6(),
-            );
-            match (&v4, &v6) {
-                (Ok(_), Ok(_)) => IpVersion::SplitStackV4Primary,
-                (Ok(_), Err(_)) => IpVersion::IPv4,
-                (Err(_), Ok(_)) => IpVersion::IPv6,
-                _ => IpVersion::IPv4,
+        let ip_version = if !failed {
+            match resolve_one_click_ip_version(&adapter, &target, &msg_id_for_prompt).await {
+                Ok(v) => v,
+                Err(_) => {
+                    let _ = tx.send(t!("ops.deploy_ip_cancelled").to_string());
+                    return;
+                }
             }
+        } else {
+            IpVersion::IPv4
         };
 
         if !failed {
