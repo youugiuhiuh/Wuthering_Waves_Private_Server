@@ -9,8 +9,8 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 aes-gcm = "0.10"
 secrecy = { version = "0.8", features = ["serde"] }
-zeroize = { version = "1.7", features = ["derive"] }
-totp-rs = { version = "5.5", features = [
+zeroize = { version = "1.9", features = ["derive"] }
+totp-rs = { version = "5.7", features = [
     "serde_support",
     "qr",
     "otpauth",
@@ -26,7 +26,7 @@ libc = "0.2"
 sysinfo = "0.30"
 tokio-cron-scheduler = "0.15.1"
 chrono = { version = "0.4", features = ["serde"] }
-once_cell = "1.18"
+once_cell = "1.21"
 sha2 = "0.11"
 hex = "0.4"
 reqwest = { version = "0.11", default-features = false, features = [
@@ -41,18 +41,18 @@ dashmap = "6"
 
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 regex = "1"
-self-replace = "1.3"
+self-replace = "1.5"
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 zbus = { version = "5", features = ["tokio"] }
 x25519-dalek = { version = "2.0", features = ["static_secrets"] }
-log = "0.4.32"
-rust-embed = "8.11.0"
-obfstr = "0.4.4"
+log = "0.4.33"
+rust-embed = "8.12.0"
+obfstr = "0.4.6"
 goldberg = "0.1.0"
 chrono-tz = "0.10.4"
 prost = "0.14"
 thiserror = "2.0"
-tempfile = "3.8"
+tempfile = "3.27"
 async-trait = "0.1"
 poise = "0.6.2"
 serenity = { version = "0.12.5", default-features = false, features = ["rustls_backend", "http", "builder"] }
@@ -61,12 +61,12 @@ matrix-sdk = { version = "0.18", default-features = false, features = [
     "e2e-encryption",
 ] }
 mime = "0.3.17"
-rust-i18n = "4.1"
+rust-i18n = "4.2"
 minisign-verify = "0.2.5"
 mockall = "0.14" # Needed at runtime for binary-crate tests (MockBotAdapter shared across lib/bin)
 
 [dev-dependencies]
-env_logger = "0.11.8"
+env_logger = "0.11.11"
 serial_test = "3.5.0"
 
 [build-dependencies]
