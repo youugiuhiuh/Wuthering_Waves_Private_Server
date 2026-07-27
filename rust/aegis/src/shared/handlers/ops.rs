@@ -1,4 +1,4 @@
-use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId as AegisMsgId, TargetId};
+use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
 use crate::core::singbox::SingBoxInstaller;
 use crate::core::singbox::config::SingBoxConfigManager;
 
@@ -18,8 +18,7 @@ use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-// ponytail: used in Task 4 (resolve_one_click_ip_version)
-#[allow(dead_code)]
+// ponytail: global state for one-click split-stack prompt callback routing
 static ONE_CLICK_IP_PENDING: LazyLock<Mutex<HashMap<String, oneshot::Sender<IpVersion>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -83,7 +82,6 @@ fn match_ip_version(v4_ok: bool, v6_ok: bool) -> Option<IpVersion> {
 async fn resolve_one_click_ip_version(
     adapter: &Arc<dyn BotAdapter>,
     target: &TargetId,
-    msg_id: &AegisMsgId,
 ) -> anyhow::Result<IpVersion> {
     let (v4, v6) = tokio::join!(
         SystemMonitor::get_public_ip(),
@@ -95,6 +93,13 @@ async fn resolve_one_click_ip_version(
     }
 
     let (tx, mut rx) = oneshot::channel::<IpVersion>();
+
+    // Insert before send_message to avoid TOCTOU: user clicking
+    // the button between message delivery and map insertion.
+    ONE_CLICK_IP_PENDING
+        .lock()
+        .map_err(|_| anyhow::anyhow!("lock poisoned"))?
+        .insert(target.0.clone(), tx);
 
     let markup = Markup {
         buttons: vec![vec![
@@ -113,7 +118,7 @@ async fn resolve_one_click_ip_version(
         ]],
     };
 
-    adapter
+    let res = adapter
         .send_message(
             target,
             MessageContent {
@@ -121,12 +126,14 @@ async fn resolve_one_click_ip_version(
                 markup: Some(markup),
             },
         )
-        .await?;
+        .await;
 
-    ONE_CLICK_IP_PENDING
-        .lock()
-        .map_err(|_| anyhow::anyhow!("lock poisoned"))?
-        .insert(target.0.clone(), tx);
+    if res.is_err() {
+        if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
+            map.remove(&target.0);
+        }
+    }
+    res?;
 
     match tokio::time::timeout(Duration::from_secs(30), &mut rx).await {
         Ok(Ok(version)) => Ok(version),
@@ -637,7 +644,6 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
     let adapter = event.adapter.clone();
     let target = event.target.clone();
     let msg_id = event.msg_id.clone();
-    let msg_id_for_prompt = msg_id.clone();
 
     tokio::spawn(async move {
         let (tx, update_task) =
@@ -691,7 +697,7 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
         }
 
         let ip_version = if !failed {
-            match resolve_one_click_ip_version(&adapter, &target, &msg_id_for_prompt).await {
+            match resolve_one_click_ip_version(&adapter, &target).await {
                 Ok(v) => v,
                 Err(_) => {
                     let _ = tx.send(t!("ops.deploy_ip_cancelled").to_string());
