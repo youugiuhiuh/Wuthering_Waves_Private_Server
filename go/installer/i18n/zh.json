@@ -1,7 +1,7 @@
 {
   "banner.title": "WWPS TG Bot 管理工具",
   "banner.version": "当前版本: %s",
-  "banner.release_mirrors": "Release 源: 默认 GitHub，可设 AEGIS_RELEASE_MIRRORS",
+  "banner.release_mirrors": "Release API: GitHub",
   "banner.release_repo": "Release 仓库: %s",
   "banner.manage_hint": "所有管理功能请通过 Telegram Bot 完成",
 

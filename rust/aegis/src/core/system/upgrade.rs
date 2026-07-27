@@ -21,30 +21,12 @@ use crate::core::network::release_api::{
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
 
 const DEFAULT_RELEASE_REPOSITORIES: &[(&str, &str)] = &[
-    ("NicholasDewar", "Wuthering_Waves_Private_Server"),
     ("youugiuhiuh", "Wuthering_Waves_Private_Server"),
 ];
 const DEFAULT_ASSET_NAME: &str = "aegis";
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
 
-/// Release API 根地址列表（支持 GitHub / Codeberg / Gitea 等兼容 API），按顺序尝试
-fn aegis_release_api_bases() -> Vec<String> {
-    if let Ok(s) = env::var("AEGIS_RELEASE_MIRRORS") {
-        let bases: Vec<String> = s
-            .split(',')
-            .map(|x| x.trim().to_string())
-            .filter(|x| !x.is_empty())
-            .collect();
-        if !bases.is_empty() {
-            return bases;
-        }
-    }
-    vec![
-        "https://api.github.com".to_string(),
-        "https://codeberg.org/api/v1".to_string(),
-        "https://gitea.com/api/v1".to_string(),
-    ]
-}
+const RELEASE_API_BASE: &str = "https://api.github.com";
 
 pub use crate::core::paths::maintenance::UPGRADE_FLAG_FILE;
 
@@ -244,7 +226,7 @@ impl UpgradeManager {
     }
 
     async fn fetch_latest_release(&self) -> Result<ReleaseArtifact> {
-        let bases = aegis_release_api_bases();
+        let bases = vec![RELEASE_API_BASE.to_string()];
         let mut errors = Vec::new();
 
         for repository in &self.repositories {

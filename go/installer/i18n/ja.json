@@ -1,7 +1,7 @@
 {
   "banner.title": "WWPS TG Bot \u7ba1\u7406\u30c4\u30fc\u30eb",
   "banner.version": "\u73fe\u5728\u306e\u30d0\u30fc\u30b8\u30e7\u30f3: %s",
-  "banner.release_mirrors": "Release \u30df\u30e9\u30fc: \u30c7\u30d5\u30a9\u30eb\u30c8 GitHub\u3001AEGIS_RELEASE_MIRRORS \u3067\u8a2d\u5b9a\u53ef\u80fd",
+  "banner.release_mirrors": "Release API: GitHub",
   "banner.release_repo": "Release \u30ea\u30dd\u30b8\u30c8\u30ea: %s",
   "banner.manage_hint": "\u7ba1\u7406\u64cd\u4f5c\u306f\u3059\u3079\u3066 Telegram Bot \u7d4c\u7531\u3067\u884c\u3044\u307e\u3059",
   "dep.checking": "\u30b7\u30b9\u30c6\u30e0\u4f9d\u5b58\u95a2\u4fc2\u3092\u78ba\u8a8d\u4e2d\u2026",

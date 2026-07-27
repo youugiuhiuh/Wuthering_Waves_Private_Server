@@ -17,7 +17,7 @@ sources:
 # secrets:
 #   - your-source-repo-token-uuid
 environment:
-  SOURCE_OWNER: NicholasDewar
+  SOURCE_OWNER: youugiuhiuh
   SOURCE_REPO: Wuthering_Waves_Private_Server
 tasks:
   - resolve-and-sync: |

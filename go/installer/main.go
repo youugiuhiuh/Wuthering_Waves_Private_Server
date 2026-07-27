@@ -55,26 +55,10 @@ type releaseRepo struct {
 }
 
 var defaultReleaseRepositories = []releaseRepo{
-	{Owner: "NicholasDewar", Name: "Wuthering_Waves_Private_Server"},
 	{Owner: "youugiuhiuh", Name: "Wuthering_Waves_Private_Server"},
 }
 
-// releaseAPIBases: 按顺序尝试的 Release API 根地址，可通过 AEGIS_RELEASE_MIRRORS 覆盖。
-var releaseAPIBases = []string{
-	"https://api.github.com",
-}
-
-func init() {
-	if s := os.Getenv("AEGIS_RELEASE_MIRRORS"); s != "" {
-		bases := strings.Split(s, ",")
-		for i := range bases {
-			bases[i] = strings.TrimSpace(bases[i])
-		}
-		if len(bases) > 0 && bases[0] != "" {
-			releaseAPIBases = bases
-		}
-	}
-}
+const releaseAPIBase = "https://api.github.com"
 
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -458,36 +442,33 @@ func getLatestReleaseInfo() (*latestRelease, error) {
 	var errors []string
 	for _, repo := range configuredReleaseRepositories() {
 		apiPath := fmt.Sprintf("/repos/%s/%s/releases/latest", repo.Owner, repo.Name)
-		for _, base := range releaseAPIBases {
-			base = strings.TrimSuffix(base, "/")
-			apiURL := base + apiPath
-			resp, err := client.Get(apiURL)
-			if err != nil {
-				errors = append(errors, fmt.Sprintf("%s/%s via %s: %v", repo.Owner, repo.Name, base, err))
-				continue
-			}
-			if resp.StatusCode != http.StatusOK {
-				resp.Body.Close()
-				errors = append(errors, fmt.Sprintf("%s/%s via %s 返回状态码: %d", repo.Owner, repo.Name, base, resp.StatusCode))
-				continue
-			}
-			body, err := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if err != nil {
-				errors = append(errors, fmt.Sprintf("%s/%s via %s 读取失败: %v", repo.Owner, repo.Name, base, err))
-				continue
-			}
-			var release latestRelease
-			if err := json.Unmarshal(body, &release); err != nil {
-				errors = append(errors, fmt.Sprintf("%s/%s via %s 解析 JSON 失败: %v", repo.Owner, repo.Name, base, err))
-				continue
-			}
-			if release.TagName == "" {
-				errors = append(errors, fmt.Sprintf("%s/%s via %s release 缺少 tag_name", repo.Owner, repo.Name, base))
-				continue
-			}
-			return &release, nil
+		apiURL := releaseAPIBase + apiPath
+		resp, err := client.Get(apiURL)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("%s/%s via %s: %v", repo.Owner, repo.Name, releaseAPIBase, err))
+			continue
 		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			errors = append(errors, fmt.Sprintf("%s/%s via %s 返回状态码: %d", repo.Owner, repo.Name, releaseAPIBase, resp.StatusCode))
+			continue
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("%s/%s via %s 读取失败: %v", repo.Owner, repo.Name, releaseAPIBase, err))
+			continue
+		}
+		var release latestRelease
+		if err := json.Unmarshal(body, &release); err != nil {
+			errors = append(errors, fmt.Sprintf("%s/%s via %s 解析 JSON 失败: %v", repo.Owner, repo.Name, releaseAPIBase, err))
+			continue
+		}
+		if release.TagName == "" {
+			errors = append(errors, fmt.Sprintf("%s/%s via %s release 缺少 tag_name", repo.Owner, repo.Name, releaseAPIBase))
+			continue
+		}
+		return &release, nil
 	}
 	if len(errors) > 0 {
 		return nil, fmt.Errorf("所有 Release 源均失败: %s", strings.Join(errors, " | "))

@@ -1,7 +1,7 @@
 {
   "banner.title": "WWPS TG Bot Management Tool",
   "banner.version": "Version: %s",
-  "banner.release_mirrors": "Release Mirrors: Default GitHub, set via AEGIS_RELEASE_MIRRORS",
+  "banner.release_mirrors": "Release API: GitHub",
   "banner.release_repo": "Release Repository: %s",
   "banner.manage_hint": "All management operations via Telegram Bot",
   "dep.checking": "Checking system dependencies\u2026",
