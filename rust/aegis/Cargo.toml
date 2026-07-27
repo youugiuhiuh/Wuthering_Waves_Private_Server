@@ -1,6 +1,6 @@
 [package]
 name = "aegis"
-version = "3.4.3"
+version = "1.0.0"
 edition = "2024"
 
 [dependencies]
