@@ -15,6 +15,8 @@ pub struct ReleaseResponse {
     pub tag_name: String,
     pub body: Option<String>,
     pub assets: Vec<ReleaseAsset>,
+    #[serde(default)]
+    pub prerelease: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,6 +89,20 @@ pub async fn fetch_json_from_mirrors<T: DeserializeOwned>(
         }
     }
     Err(last_err.unwrap_or_else(|| anyhow!("所有镜像源均失败")))
+}
+
+pub async fn fetch_prerelease(
+    client: &reqwest::Client,
+    bases: &[String],
+    api_path: &str,
+    token: Option<&str>,
+) -> Result<ReleaseResponse> {
+    let releases: Vec<ReleaseResponse> =
+        fetch_json_from_mirrors(client, bases, api_path, token).await?;
+    releases
+        .into_iter()
+        .find(|r| r.prerelease)
+        .ok_or_else(|| anyhow!("No prerelease found"))
 }
 
 pub fn parse_digest(input: &str) -> Option<String> {

@@ -3,7 +3,7 @@ use crate::core::cmd_async::run_cmd_status;
 use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
 use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors,
-    find_minisig_asset, parse_digest, parse_sha256_manifest,
+    fetch_prerelease, find_minisig_asset, parse_digest, parse_sha256_manifest,
 };
 use crate::core::paths::xray;
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
@@ -216,16 +216,16 @@ impl WwpsCoreUpgradeManager {
 
     pub async fn fetch_release(&self, tag: Option<&str>) -> Result<WwpsCoreReleaseInfo> {
         let config = &self.config;
-        let path = if let Some(t) = tag {
-            format!("{}/{}/releases/tags/{}", config.owner, config.repo, t)
-        } else {
-            format!("{}/{}/releases/latest", config.owner, config.repo)
-        };
         let bases = vec![WWPS_CORE_RELEASE_API_BASE.to_string()];
 
-        let release: ReleaseResponse =
+        let release: ReleaseResponse = if let Some(t) = tag {
+            let path = format!("{}/{}/releases/tags/{}", config.owner, config.repo, t);
             fetch_json_from_mirrors(&self.client, &bases, &path, self.github_token.as_deref())
-                .await?;
+                .await?
+        } else {
+            let path = format!("{}/{}/releases?per_page=20", config.owner, config.repo);
+            fetch_prerelease(&self.client, &bases, &path, self.github_token.as_deref()).await?
+        };
 
         let asset_name = format!("{}.zip", config.arch.asset_basename());
         let asset = match release.assets.iter().find(|a| a.name == asset_name) {
