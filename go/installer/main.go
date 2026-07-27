@@ -19,14 +19,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/NicholasDewar/Wuthering_Waves_Private_Server/go/installer/i18n"
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/go/installer/i18n"
 
 	"github.com/awnumar/memguard"
 	"golang.org/x/sys/unix"
 )
 
 const (
-	version     = "1.0.0"
+	version     = "1.0.2"
 	installDir  = "/etc/wwps/aegis"
 	binaryName  = "aegis"
 	serviceName = "wwps-aegis"
