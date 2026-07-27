@@ -13,11 +13,13 @@ use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use rust_i18n::t;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
-use tokio::sync::oneshot;
 use std::time::Duration;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
+// ponytail: used in Task 4 (resolve_one_click_ip_version)
+#[allow(dead_code)]
 static ONE_CLICK_IP_PENDING: LazyLock<Mutex<HashMap<String, oneshot::Sender<IpVersion>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -792,4 +794,38 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
 
 fn send_progress(tx: &UnboundedSender<String>, step: u8, total: u8, msg: impl Into<String>) {
     let _ = tx.send(format!("[{}/{}] {}", step, total, msg.into()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn match_ip_version(v4_ok: bool, v6_ok: bool) -> Option<IpVersion> {
+        match (v4_ok, v6_ok) {
+            (true, true) => None,
+            (true, false) => Some(IpVersion::IPv4),
+            (false, true) => Some(IpVersion::IPv6),
+            (false, false) => Some(IpVersion::IPv4),
+        }
+    }
+
+    #[test]
+    fn test_match_ip_version_v4_only() {
+        assert_eq!(match_ip_version(true, false), Some(IpVersion::IPv4));
+    }
+
+    #[test]
+    fn test_match_ip_version_v6_only() {
+        assert_eq!(match_ip_version(false, true), Some(IpVersion::IPv6));
+    }
+
+    #[test]
+    fn test_match_ip_version_neither() {
+        assert_eq!(match_ip_version(false, false), Some(IpVersion::IPv4));
+    }
+
+    #[test]
+    fn test_match_ip_version_both_triggers_interactive() {
+        assert_eq!(match_ip_version(true, true), None);
+    }
 }
