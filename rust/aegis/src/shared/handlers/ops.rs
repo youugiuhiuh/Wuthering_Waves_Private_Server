@@ -557,7 +557,7 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
                 &tx,
                 2,
                 10,
-                format!("{} - ⏩ 已安装，跳过", t!("ops.deploy_step_xray_init")),
+                t!("ops.deploy_skip", "0" => t!("ops.deploy_step_xray_init")),
             );
         } else if !failed {
             send_progress(&tx, 2, 10, t!("ops.deploy_step_xray_init"));
@@ -612,12 +612,11 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
                         .send_message(
                             &target,
                             MessageContent {
-                                text: format!(
-                                    "✅ XHTTP Reality ({}) 已创建 {} 个配置\n📁 {}",
-                                    ip_version.label(),
-                                    result.created_count,
-                                    result.config_file.as_deref().unwrap_or("?")
-                                ),
+                                text: t!("ops.deploy_created_xhttp",
+                                        "0" => ip_version.label(),
+                                        "1" => result.created_count.to_string(),
+                                        "2" => result.config_file.as_deref().unwrap_or("?"))
+                                .into_owned(),
                                 markup: None,
                             },
                         )
@@ -649,12 +648,11 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
                         .send_message(
                             &target,
                             MessageContent {
-                                text: format!(
-                                    "✅ Reality Vision ({}) 已创建 {} 个配置\n📁 {}",
-                                    ip_version.label(),
-                                    result.created_count,
-                                    result.config_file.as_deref().unwrap_or("?")
-                                ),
+                                text: t!("ops.deploy_created_vision",
+                                        "0" => ip_version.label(),
+                                        "1" => result.created_count.to_string(),
+                                        "2" => result.config_file.as_deref().unwrap_or("?"))
+                                .into_owned(),
                                 markup: None,
                             },
                         )
@@ -677,7 +675,7 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
                 &tx,
                 6,
                 10,
-                format!("{} - ⏩ 已安装，跳过", t!("ops.deploy_step_singbox_init")),
+                t!("ops.deploy_skip", "0" => t!("ops.deploy_step_singbox_init")),
             );
         } else if !failed {
             send_progress(&tx, 6, 10, t!("ops.deploy_step_singbox_init"));
@@ -706,12 +704,11 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
                         .send_message(
                             &target,
                             MessageContent {
-                                text: format!(
-                                    "✅ Hysteria2 ({}) 已创建 {} 个配置\n📁 {}",
-                                    ip_version.label(),
-                                    result.created_count,
-                                    result.config_file.as_deref().unwrap_or("?")
-                                ),
+                                text: t!("ops.deploy_created_h2",
+                                        "0" => ip_version.label(),
+                                        "1" => result.created_count.to_string(),
+                                        "2" => result.config_file.as_deref().unwrap_or("?"))
+                                .into_owned(),
                                 markup: None,
                             },
                         )
@@ -749,11 +746,10 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
                         .send_message(
                             &target,
                             MessageContent {
-                                text: format!(
-                                    "✅ mKCP+DNS伪装 已创建 {} 个配置\n📁 {}",
-                                    result.created_count,
-                                    result.config_file.as_deref().unwrap_or("?")
-                                ),
+                                text: t!("ops.deploy_created_kcp_dns",
+                                        "0" => result.created_count.to_string(),
+                                        "1" => result.config_file.as_deref().unwrap_or("?"))
+                                .into_owned(),
                                 markup: None,
                             },
                         )
@@ -780,11 +776,10 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
                         .send_message(
                             &target,
                             MessageContent {
-                                text: format!(
-                                    "✅ mKCP+微信伪装 已创建 {} 个配置\n📁 {}",
-                                    result.created_count,
-                                    result.config_file.as_deref().unwrap_or("?")
-                                ),
+                                text: t!("ops.deploy_created_kcp_wechat",
+                                        "0" => result.created_count.to_string(),
+                                        "1" => result.config_file.as_deref().unwrap_or("?"))
+                                .into_owned(),
                                 markup: None,
                             },
                         )
