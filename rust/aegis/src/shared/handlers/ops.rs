@@ -11,10 +11,15 @@ use crate::core::xray::config::ConfigManager;
 use crate::core::xray::installer::RealityInstallerInternal;
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use rust_i18n::t;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
+use tokio::sync::oneshot;
 use std::time::Duration;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use tokio::task::JoinHandle;
+
+static ONE_CLICK_IP_PENDING: LazyLock<Mutex<HashMap<String, oneshot::Sender<IpVersion>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub async fn handle(event: &CallbackEvent) -> HandlerResult {
     match event.data.as_str() {
@@ -31,8 +36,14 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         "a_bbr3_reboot_later" => handle_bbr3_reboot_later(event).await,
         "a_sys_reboot" => handle_sys_reboot(event).await,
         "a_one_click" => handle_one_click(event).await,
+        d if d.starts_with("a_one_click_ip:") => handle_one_click_ip_response(event, d).await,
         _ => Ok(HandlerAction::Done),
     }
+}
+
+async fn handle_one_click_ip_response(event: &CallbackEvent, data: &str) -> HandlerResult {
+    let _ = (event, data);
+    Ok(HandlerAction::Done)
 }
 
 fn spawn_progress_updater(
