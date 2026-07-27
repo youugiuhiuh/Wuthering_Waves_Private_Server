@@ -1,4 +1,4 @@
-use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent};
+use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::singbox::SingBoxInstaller;
 use crate::core::singbox::config::SingBoxConfigManager;
 
@@ -44,8 +44,99 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 }
 
 async fn handle_one_click_ip_response(event: &CallbackEvent, data: &str) -> HandlerResult {
-    let _ = (event, data);
+    let ip_version = match data.strip_prefix("a_one_click_ip:") {
+        Some("split4") => IpVersion::SplitStackV4Primary,
+        Some("split6") => IpVersion::SplitStackV6Primary,
+        Some("v4") => IpVersion::IPv4,
+        _ => return Ok(HandlerAction::Done),
+    };
+
+    event
+        .adapter
+        .answer_callback(
+            &event.target,
+            &event.callback_id,
+            Some(format!("Selected: {}", ip_version.label())),
+        )
+        .await?;
+
+    if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
+        if let Some(tx) = map.remove(&event.target.0) {
+            let _ = tx.send(ip_version);
+        }
+    }
+
     Ok(HandlerAction::Done)
+}
+
+/// Returns None when both IPs available (needs interactive prompt);
+/// Some(version) for single-IP or no-IP cases.
+fn match_ip_version(v4_ok: bool, v6_ok: bool) -> Option<IpVersion> {
+    match (v4_ok, v6_ok) {
+        (true, true) => None,
+        (true, false) => Some(IpVersion::IPv4),
+        (false, true) => Some(IpVersion::IPv6),
+        _ => Some(IpVersion::IPv4),
+    }
+}
+
+async fn resolve_one_click_ip_version(
+    adapter: &Arc<dyn BotAdapter>,
+    target: &TargetId,
+    msg_id: &AegisMsgId,
+) -> anyhow::Result<IpVersion> {
+    let (v4, v6) = tokio::join!(
+        SystemMonitor::get_public_ip(),
+        SystemMonitor::get_public_ipv6(),
+    );
+
+    if let Some(version) = match_ip_version(v4.is_ok(), v6.is_ok()) {
+        return Ok(version);
+    }
+
+    let (tx, mut rx) = oneshot::channel::<IpVersion>();
+
+    let markup = Markup {
+        buttons: vec![vec![
+            InlineButton {
+                text: "v4 ↑ v6 ↓ (XHTTP)".into(),
+                data: "a_one_click_ip:split4".into(),
+            },
+            InlineButton {
+                text: "v6 ↑ v4 ↓ (XHTTP)".into(),
+                data: "a_one_click_ip:split6".into(),
+            },
+            InlineButton {
+                text: "no split (IPv4 only)".into(),
+                data: "a_one_click_ip:v4".into(),
+            },
+        ]],
+    };
+
+    adapter
+        .send_message(
+            target,
+            MessageContent {
+                text: t!("ops.deploy_ip_split_title").into_owned(),
+                markup: Some(markup),
+            },
+        )
+        .await?;
+
+    ONE_CLICK_IP_PENDING
+        .lock()
+        .map_err(|_| anyhow::anyhow!("lock poisoned"))?
+        .insert(target.0.clone(), tx);
+
+    match tokio::time::timeout(Duration::from_secs(30), &mut rx).await {
+        Ok(Ok(version)) => Ok(version),
+        _ => {
+            if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
+                map.remove(&target.0);
+            }
+            Err(anyhow::anyhow!("user did not respond"))
+        }
+    }
 }
 
 fn spawn_progress_updater(
@@ -799,15 +890,6 @@ fn send_progress(tx: &UnboundedSender<String>, step: u8, total: u8, msg: impl In
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn match_ip_version(v4_ok: bool, v6_ok: bool) -> Option<IpVersion> {
-        match (v4_ok, v6_ok) {
-            (true, true) => None,
-            (true, false) => Some(IpVersion::IPv4),
-            (false, true) => Some(IpVersion::IPv6),
-            (false, false) => Some(IpVersion::IPv4),
-        }
-    }
 
     #[test]
     fn test_match_ip_version_v4_only() {
