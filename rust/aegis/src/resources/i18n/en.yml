@@ -177,6 +177,8 @@ ops:
   deploy_fail_singbox_init: "Sing-Box initialization step failed"
   deploy_fail_h2: "Hysteria2 creation step failed"
   deploy_fail_security: "Security update configuration step failed"
+  deploy_ip_split_title: "Your machine supports both IPv4 and IPv6. Enable XHTTP split-stack?"
+  deploy_ip_cancelled: "Deployment cancelled"
   bbr3_confirm_warn: "⚠️ <b>WARNING: Third-Party Kernel Risk</b>\n\nBBR3 uses an untested third-party kernel (XanMod) which may cause:\n- System failure to boot\n- Data loss\n- Complete server unavailability\n\n<b>Risk far outweighs any benefits. Proceed with extreme caution!</b>"
   bbr3_confirm_btn: "⚠️ I Understand, Install Anyway"
   bbr3_cancel: "Cancel"

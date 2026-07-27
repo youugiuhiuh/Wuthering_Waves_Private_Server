@@ -1,4 +1,4 @@
-use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent};
+use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
 use crate::core::singbox::SingBoxInstaller;
 use crate::core::singbox::config::SingBoxConfigManager;
 
@@ -11,10 +11,16 @@ use crate::core::xray::config::ConfigManager;
 use crate::core::xray::installer::RealityInstallerInternal;
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use rust_i18n::t;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+
+// ponytail: global state for one-click split-stack prompt callback routing
+static ONE_CLICK_IP_PENDING: LazyLock<Mutex<HashMap<String, oneshot::Sender<IpVersion>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub async fn handle(event: &CallbackEvent) -> HandlerResult {
     match event.data.as_str() {
@@ -31,7 +37,123 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         "a_bbr3_reboot_later" => handle_bbr3_reboot_later(event).await,
         "a_sys_reboot" => handle_sys_reboot(event).await,
         "a_one_click" => handle_one_click(event).await,
+        d if d.starts_with("a_one_click_ip:") => handle_one_click_ip_response(event, d).await,
         _ => Ok(HandlerAction::Done),
+    }
+}
+
+async fn handle_one_click_ip_response(event: &CallbackEvent, data: &str) -> HandlerResult {
+    let ip_version = match data.strip_prefix("a_one_click_ip:") {
+        Some("split4") => IpVersion::SplitStackV4Primary,
+        Some("split6") => IpVersion::SplitStackV6Primary,
+        Some("v4") => IpVersion::IPv4,
+        _ => return Ok(HandlerAction::Done),
+    };
+
+    // Deliver choice first — answer_callback failure must not discard the user's selection.
+    if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
+        if let Some(tx) = map.remove(&event.target.0) {
+            let _ = tx.send(ip_version);
+        }
+    }
+
+    let _ = event
+        .adapter
+        .answer_callback(
+            &event.target,
+            &event.callback_id,
+            Some(format!("Selected: {}", ip_version.label())),
+        )
+        .await;
+
+    Ok(HandlerAction::Done)
+}
+
+/// Returns None when both IPs available (needs interactive prompt);
+/// Some(version) for single-IP or no-IP cases.
+fn match_ip_version(v4_ok: bool, v6_ok: bool) -> Option<IpVersion> {
+    match (v4_ok, v6_ok) {
+        (true, true) => None,
+        (true, false) => Some(IpVersion::IPv4),
+        (false, true) => Some(IpVersion::IPv6),
+        _ => Some(IpVersion::IPv4),
+    }
+}
+
+async fn resolve_one_click_ip_version(
+    adapter: &Arc<dyn BotAdapter>,
+    target: &TargetId,
+) -> anyhow::Result<IpVersion> {
+    let (v4, v6) = tokio::join!(
+        SystemMonitor::get_public_ip(),
+        SystemMonitor::get_public_ipv6(),
+    );
+
+    if let Some(version) = match_ip_version(v4.is_ok(), v6.is_ok()) {
+        return Ok(version);
+    }
+
+    let (tx, mut rx) = oneshot::channel::<IpVersion>();
+
+    // Insert before send_message to avoid TOCTOU: user clicking
+    // the button between message delivery and map insertion.
+    ONE_CLICK_IP_PENDING
+        .lock()
+        .map_err(|_| anyhow::anyhow!("lock poisoned"))?
+        .insert(target.0.clone(), tx);
+
+    let markup = Markup {
+        buttons: vec![vec![
+            InlineButton {
+                text: "v4 ↑ v6 ↓ (XHTTP)".into(),
+                data: "a_one_click_ip:split4".into(),
+            },
+            InlineButton {
+                text: "v6 ↑ v4 ↓ (XHTTP)".into(),
+                data: "a_one_click_ip:split6".into(),
+            },
+            InlineButton {
+                text: "no split (IPv4 only)".into(),
+                data: "a_one_click_ip:v4".into(),
+            },
+        ]],
+    };
+
+    let res = adapter
+        .send_message(
+            target,
+            MessageContent {
+                text: t!("ops.deploy_ip_split_title").into_owned(),
+                markup: Some(markup),
+            },
+        )
+        .await;
+
+    if res.is_err() {
+        if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
+            map.remove(&target.0);
+        }
+    }
+    res?;
+
+    // tokio::select! instead of timeout to avoid race: a value sent at the
+    // timeout boundary is consumed, not discarded.
+    tokio::select! {
+        result = &mut rx => match result {
+            Ok(version) => Ok(version),
+            Err(_) => {
+                if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
+                    map.remove(&target.0);
+                }
+                Err(anyhow::anyhow!("user did not respond"))
+            }
+        },
+        _ = tokio::time::sleep(Duration::from_secs(30)) => {
+            if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
+                map.remove(&target.0);
+            }
+            Err(anyhow::anyhow!("user did not respond"))
+        }
     }
 }
 
@@ -585,17 +707,16 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
             }
         }
 
-        let ip_version = {
-            let (v4, v6) = tokio::join!(
-                SystemMonitor::get_public_ip(),
-                SystemMonitor::get_public_ipv6(),
-            );
-            match (&v4, &v6) {
-                (Ok(_), Ok(_)) => IpVersion::SplitStackV4Primary,
-                (Ok(_), Err(_)) => IpVersion::IPv4,
-                (Err(_), Ok(_)) => IpVersion::IPv6,
-                _ => IpVersion::IPv4,
+        let ip_version = if !failed {
+            match resolve_one_click_ip_version(&adapter, &target).await {
+                Ok(v) => v,
+                Err(_) => {
+                    let _ = tx.send(t!("ops.deploy_ip_cancelled").to_string());
+                    return;
+                }
             }
+        } else {
+            IpVersion::IPv4
         };
 
         if !failed {
@@ -781,4 +902,47 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
 
 fn send_progress(tx: &UnboundedSender<String>, step: u8, total: u8, msg: impl Into<String>) {
     let _ = tx.send(format!("[{}/{}] {}", step, total, msg.into()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_match_ip_version_v4_only() {
+        assert_eq!(match_ip_version(true, false), Some(IpVersion::IPv4));
+    }
+
+    #[test]
+    fn test_match_ip_version_v6_only() {
+        assert_eq!(match_ip_version(false, true), Some(IpVersion::IPv6));
+    }
+
+    #[test]
+    fn test_match_ip_version_neither() {
+        assert_eq!(match_ip_version(false, false), Some(IpVersion::IPv4));
+    }
+
+    #[test]
+    fn test_match_ip_version_both_triggers_interactive() {
+        assert_eq!(match_ip_version(true, true), None);
+    }
+
+    #[test]
+    fn test_parse_one_click_ip_callback_split4() {
+        let data = "a_one_click_ip:split4";
+        let result = data.strip_prefix("a_one_click_ip:");
+        assert_eq!(result, Some("split4"));
+    }
+
+    #[test]
+    fn test_parse_one_click_ip_callback_unknown_prefix_ignored() {
+        let data = "a_one_click_ip:invalid";
+        match data.strip_prefix("a_one_click_ip:") {
+            Some("split4") => unreachable!(),
+            Some("split6") => unreachable!(),
+            Some("v4") => unreachable!(),
+            _ => {} // expected: ignored
+        }
+    }
 }
