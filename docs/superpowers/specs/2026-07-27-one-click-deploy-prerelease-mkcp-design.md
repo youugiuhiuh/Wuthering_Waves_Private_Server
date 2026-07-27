@@ -68,14 +68,14 @@ pub async fn fetch_prerelease(&self, owner: &str, repo: &str) -> Result<ReleaseR
 **步骤 8 — mKCP + DNS伪装 ×5：**
 ```rust
 msg.edit_text(t!("ops.deploy_step_kcp_dns")).await?;
-ConfigManager::batch_create_kcp(5, &IpVersion::Both, &["mld"]).await
+ConfigManager::batch_create_kcp(5, ip_version, &["mld"]).await
     .map_err(|e| anyhow::anyhow!("{}: {e}", t!("ops.deploy_fail_kcp_dns")))?;
 ```
 
 **步骤 9 — mKCP + 微信伪装 ×5：**
 ```rust
 msg.edit_text(t!("ops.deploy_step_kcp_wechat")).await?;
-ConfigManager::batch_create_kcp(5, &IpVersion::Both, &["mlw"]).await
+ConfigManager::batch_create_kcp(5, ip_version, &["mlw"]).await
     .map_err(|e| anyhow::anyhow!("{}: {e}", t!("ops.deploy_fail_kcp_wechat")))?;
 ```
 
