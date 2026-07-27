@@ -50,20 +50,21 @@ async fn handle_one_click_ip_response(event: &CallbackEvent, data: &str) -> Hand
         _ => return Ok(HandlerAction::Done),
     };
 
-    event
+    // Deliver choice first — answer_callback failure must not discard the user's selection.
+    if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
+        if let Some(tx) = map.remove(&event.target.0) {
+            let _ = tx.send(ip_version);
+        }
+    }
+
+    let _ = event
         .adapter
         .answer_callback(
             &event.target,
             &event.callback_id,
             Some(format!("Selected: {}", ip_version.label())),
         )
-        .await?;
-
-    if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
-        if let Some(tx) = map.remove(&event.target.0) {
-            let _ = tx.send(ip_version);
-        }
-    }
+        .await;
 
     Ok(HandlerAction::Done)
 }
@@ -135,9 +136,19 @@ async fn resolve_one_click_ip_version(
     }
     res?;
 
-    match tokio::time::timeout(Duration::from_secs(30), &mut rx).await {
-        Ok(Ok(version)) => Ok(version),
-        _ => {
+    // tokio::select! instead of timeout to avoid race: a value sent at the
+    // timeout boundary is consumed, not discarded.
+    tokio::select! {
+        result = &mut rx => match result {
+            Ok(version) => Ok(version),
+            Err(_) => {
+                if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
+                    map.remove(&target.0);
+                }
+                Err(anyhow::anyhow!("user did not respond"))
+            }
+        },
+        _ = tokio::time::sleep(Duration::from_secs(30)) => {
             if let Ok(mut map) = ONE_CLICK_IP_PENDING.lock() {
                 map.remove(&target.0);
             }
@@ -915,5 +926,23 @@ mod tests {
     #[test]
     fn test_match_ip_version_both_triggers_interactive() {
         assert_eq!(match_ip_version(true, true), None);
+    }
+
+    #[test]
+    fn test_parse_one_click_ip_callback_split4() {
+        let data = "a_one_click_ip:split4";
+        let result = data.strip_prefix("a_one_click_ip:");
+        assert_eq!(result, Some("split4"));
+    }
+
+    #[test]
+    fn test_parse_one_click_ip_callback_unknown_prefix_ignored() {
+        let data = "a_one_click_ip:invalid";
+        match data.strip_prefix("a_one_click_ip:") {
+            Some("split4") => unreachable!(),
+            Some("split6") => unreachable!(),
+            Some("v4") => unreachable!(),
+            _ => {} // expected: ignored
+        }
     }
 }
