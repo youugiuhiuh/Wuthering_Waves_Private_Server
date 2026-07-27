@@ -187,6 +187,8 @@ ops:
   deploy_fail_singbox_init: "Sing-Box 初始化步骤失败"
   deploy_fail_h2: "Hysteria2 创建步骤失败"
   deploy_fail_security: "安全自动更新配置步骤失败"
+  deploy_ip_split_title: "你的机器同时支持 IPv4 和 IPv6，XHTTP 是否启用上下行分离？"
+  deploy_ip_cancelled: "部署已取消"
   bbr3_confirm_warn: "⚠️ <b>警告：第三方内核风险极高</b>\n\nBBR3 使用未经大规模验证的第三方内核 (XanMod)，可能导致：\n- 系统无法启动\n- 数据丢失\n- 服务器完全不可用\n\n<b>风险远高于收益，请谨慎操作！</b>"
   bbr3_confirm_btn: "⚠️ 我了解风险，继续安装"
   bbr3_cancel: "取消"
