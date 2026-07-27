@@ -543,7 +543,7 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
         let mut failed = false;
         let mut all_links: Vec<String> = Vec::new();
 
-        send_progress(&tx, 1, 8, t!("ops.deploy_step_tune"));
+        send_progress(&tx, 1, 10, t!("ops.deploy_step_tune"));
         if MaintenanceManager::tune_vps_generic().await.is_err() {
             let _ = tx.send(t!("ops.deploy_fail", "0" => t!("ops.deploy_fail_tune")).to_string());
             failed = true;
@@ -556,11 +556,11 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
             send_progress(
                 &tx,
                 2,
-                8,
+                10,
                 format!("{} - ⏩ 已安装，跳过", t!("ops.deploy_step_xray_init")),
             );
         } else if !failed {
-            send_progress(&tx, 2, 8, t!("ops.deploy_step_xray_init"));
+            send_progress(&tx, 2, 10, t!("ops.deploy_step_xray_init"));
             if let Err(e) = RealityInstallerInternal::install_minimal_environment().await {
                 let _ = tx.send(
                     t!("ops.deploy_fail",
@@ -573,7 +573,7 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
         }
 
         if !failed {
-            send_progress(&tx, 3, 8, t!("ops.deploy_step_pq"));
+            send_progress(&tx, 3, 10, t!("ops.deploy_step_pq"));
             if let Err(e) = ConfigManager::generate_reality_pq_keys().await {
                 let _ = tx.send(
                     t!("ops.deploy_fail",
@@ -602,7 +602,7 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
             send_progress(
                 &tx,
                 4,
-                8,
+                10,
                 format!("{} ({})", t!("ops.deploy_step_xhttp"), ip_version.label()),
             );
             match ConfigManager::batch_create_xhttp_reality_enhanced(20, ip_version).await {
@@ -639,7 +639,7 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
             send_progress(
                 &tx,
                 5,
-                8,
+                10,
                 format!("{} ({})", t!("ops.deploy_step_vision"), ip_version.label()),
             );
             match ConfigManager::batch_create_reality_vision_enhanced(20, ip_version).await {
@@ -676,11 +676,11 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
             send_progress(
                 &tx,
                 6,
-                8,
+                10,
                 format!("{} - ⏩ 已安装，跳过", t!("ops.deploy_step_singbox_init")),
             );
         } else if !failed {
-            send_progress(&tx, 6, 8, t!("ops.deploy_step_singbox_init"));
+            send_progress(&tx, 6, 10, t!("ops.deploy_step_singbox_init"));
             if let Err(e) = SingBoxInstaller::install().await {
                 let _ = tx.send(
                     t!("ops.deploy_fail",
@@ -696,7 +696,7 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
             send_progress(
                 &tx,
                 7,
-                8,
+                10,
                 format!("{} ({})", t!("ops.deploy_step_h2"), ip_version.label()),
             );
             match SingBoxConfigManager::batch_create_hysteria2(3, ip_version, false, false).await {
@@ -729,6 +729,79 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
             }
         }
 
+        if !failed {
+            let _ = adapter
+                .send_message(
+                    &target,
+                    MessageContent {
+                        text: t!("ops.deploy_step_kcp_dns").into_owned(),
+                        markup: None,
+                    },
+                )
+                .await;
+        }
+        if !failed {
+            send_progress(&tx, 8, 10, t!("ops.deploy_step_kcp_dns"));
+            match ConfigManager::batch_create_kcp(5, ip_version, &["mld"]).await {
+                Ok(result) => {
+                    all_links.extend(result.links);
+                    let _ = adapter
+                        .send_message(
+                            &target,
+                            MessageContent {
+                                text: format!(
+                                    "✅ mKCP+DNS伪装 已创建 {} 个配置\n📁 {}",
+                                    result.created_count,
+                                    result.config_file.as_deref().unwrap_or("?")
+                                ),
+                                markup: None,
+                            },
+                        )
+                        .await;
+                }
+                Err(e) => {
+                    let _ = tx.send(
+                        t!("ops.deploy_fail",
+                            "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_dns"), e)
+                        )
+                        .to_string(),
+                    );
+                    failed = true;
+                }
+            }
+        }
+
+        if !failed {
+            send_progress(&tx, 9, 10, t!("ops.deploy_step_kcp_wechat"));
+            match ConfigManager::batch_create_kcp(5, ip_version, &["mlw"]).await {
+                Ok(result) => {
+                    all_links.extend(result.links);
+                    let _ = adapter
+                        .send_message(
+                            &target,
+                            MessageContent {
+                                text: format!(
+                                    "✅ mKCP+微信伪装 已创建 {} 个配置\n📁 {}",
+                                    result.created_count,
+                                    result.config_file.as_deref().unwrap_or("?")
+                                ),
+                                markup: None,
+                            },
+                        )
+                        .await;
+                }
+                Err(e) => {
+                    let _ = tx.send(
+                        t!("ops.deploy_fail",
+                            "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_wechat"), e)
+                        )
+                        .to_string(),
+                    );
+                    failed = true;
+                }
+            }
+        }
+
         if !failed && !all_links.is_empty() {
             let combined = all_links.join("\n\n");
             if let Ok(msg) = adapter
@@ -753,7 +826,7 @@ async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
         }
 
         if !failed {
-            send_progress(&tx, 8, 8, t!("ops.deploy_step_security"));
+            send_progress(&tx, 10, 10, t!("ops.deploy_step_security"));
             if let Err(e) =
                 Operations::perform_maintenance_with_reboot_time(Operations::DEFAULT_REBOOT_TIME)
                     .await
