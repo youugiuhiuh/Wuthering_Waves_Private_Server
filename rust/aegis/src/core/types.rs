@@ -2,6 +2,40 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DnsProvider {
+    Cloudflare,
+    Aliyun,
+    Dnspod,
+    Route53,
+}
+
+impl DnsProvider {
+    pub const fn acme_flag(self) -> &'static str {
+        match self {
+            Self::Cloudflare => "dns_cf",
+            Self::Aliyun => "dns_ali",
+            Self::Dnspod => "dns_dp",
+            Self::Route53 => "dns_aws",
+        }
+    }
+
+    pub const fn credential_names(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Cloudflare => ("CF_Token", "CF_Account_ID"),
+            Self::Aliyun => ("Ali_Key", "Ali_Secret"),
+            Self::Dnspod => ("DP_Id", "DP_Key"),
+            Self::Route53 => ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DomainFlowSource {
+    Standalone,
+    OneClick,
+}
+
 /// 批量创建结果
 #[derive(Debug, Clone, Default)]
 pub struct BatchCreationResult {
@@ -54,6 +88,27 @@ impl IpVersion {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dns_provider_maps_to_acme_contract() {
+        assert_eq!(DnsProvider::Cloudflare.acme_flag(), "dns_cf");
+        assert_eq!(
+            DnsProvider::Cloudflare.credential_names(),
+            ("CF_Token", "CF_Account_ID")
+        );
+        assert_eq!(DnsProvider::Aliyun.acme_flag(), "dns_ali");
+        assert_eq!(
+            DnsProvider::Aliyun.credential_names(),
+            ("Ali_Key", "Ali_Secret")
+        );
+        assert_eq!(DnsProvider::Dnspod.acme_flag(), "dns_dp");
+        assert_eq!(DnsProvider::Dnspod.credential_names(), ("DP_Id", "DP_Key"));
+        assert_eq!(DnsProvider::Route53.acme_flag(), "dns_aws");
+        assert_eq!(
+            DnsProvider::Route53.credential_names(),
+            ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
+        );
+    }
 
     #[test]
     fn test_batch_creation_result_new() {
