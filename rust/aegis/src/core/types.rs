@@ -51,6 +51,35 @@ impl IpVersion {
     }
 }
 
+/// DNS provider for ACME-based certificate issuance
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DnsProvider {
+    Cloudflare,
+    Aliyun,
+    Dnspod,
+    Route53,
+}
+
+impl DnsProvider {
+    pub fn acme_dns_flag(&self) -> &'static str {
+        match self {
+            DnsProvider::Cloudflare => "dns_cf",
+            DnsProvider::Aliyun => "dns_ali",
+            DnsProvider::Dnspod => "dns_dp",
+            DnsProvider::Route53 => "dns_aws",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            DnsProvider::Cloudflare => "Cloudflare",
+            DnsProvider::Aliyun => "Aliyun",
+            DnsProvider::Dnspod => "DNSPod",
+            DnsProvider::Route53 => "Route53",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
