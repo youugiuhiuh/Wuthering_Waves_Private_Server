@@ -4,6 +4,7 @@ use tokio::time::{Duration, sleep};
 use crate::adapters::common::{
     BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId,
 };
+use crate::core::security::acme::CertPaths;
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::types::IpVersion;
@@ -192,6 +193,129 @@ fn trigger_reality_auto_init(adapter: Arc<dyn BotAdapter>, target: TargetId, msg
             }
         }
     });
+}
+
+pub async fn ip_version() -> IpVersion {
+    if SystemMonitor::get_public_ipv6().await.is_ok() {
+        IpVersion::IPv6
+    } else {
+        IpVersion::IPv4
+    }
+}
+
+pub async fn do_tls_batch(
+    adapter: Arc<dyn BotAdapter>,
+    target: &TargetId,
+    callback_id: &str,
+    count: usize,
+    ip_version: IpVersion,
+    domain: &str,
+    cert_paths: &CertPaths,
+) -> anyhow::Result<()> {
+    let ip_str: String = match ip_version {
+        IpVersion::IPv4 => "IPv4".into(),
+        IpVersion::IPv6 => "IPv6".into(),
+        IpVersion::SplitStackV6Primary => t!("xray.split_v6_up").into(),
+        IpVersion::SplitStackV4Primary => t!("xray.split_v4_up").into(),
+    };
+
+    adapter
+        .answer_callback(
+            target,
+            callback_id,
+            Some(
+                t!("xray.gen_progress", "0" => count, "1" => "XHTTP TLS", "2" => ip_str.as_str())
+                    .into_owned(),
+            ),
+        )
+        .await?;
+
+    let res =
+        ConfigManager::batch_create_xhttp_tls_enhanced(count, ip_version, domain, cert_paths).await;
+
+    match res {
+        Ok(result) => {
+            let mut message_ids: Vec<String> = Vec::with_capacity(result.links.len());
+
+            let mut combined_links = String::new();
+            for link in &result.links {
+                combined_links.push_str(link);
+                combined_links.push_str("\n\n");
+            }
+            if !combined_links.is_empty()
+                && let Ok(msg) = adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: combined_links,
+                            markup: None,
+                        },
+                    )
+                    .await
+            {
+                message_ids.push(msg.0);
+            }
+
+            let mut result_msg = t!(
+                "xray.batch_done",
+                "0" => result.created_count,
+                "1" => ip_str.as_str()
+            )
+            .into_owned();
+
+            if let Some(filename) = result.config_file {
+                result_msg.push_str(&format!(
+                    "\n\n{}",
+                    t!("xray.batch_config_file", "0" => filename)
+                ));
+            }
+
+            if let Some(backup_file) = result.backup_file {
+                result_msg.push_str(&format!(
+                    "\n\n{}",
+                    t!("xray.batch_backup_file", "0" => backup_file)
+                ));
+            }
+
+            if let Ok(msg) = adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: result_msg,
+                        markup: None,
+                    },
+                )
+                .await
+            {
+                message_ids.push(msg.0);
+            }
+
+            let adapter_clone = adapter.clone();
+            let target_clone = target.clone();
+            tokio::spawn(async move {
+                sleep(Duration::from_secs(60)).await;
+                for id_str in message_ids {
+                    let mid = MessageId(id_str);
+                    if let Err(e) = adapter_clone.delete_message(&target_clone, &mid).await {
+                        log::warn!("TLS batch cleanup: {}", e);
+                    }
+                }
+            });
+        }
+        Err(e) => {
+            let _ = adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!("xray.gen_fail", "0" => e).to_string(),
+                        markup: None,
+                    },
+                )
+                .await;
+        }
+    }
+
+    Ok(())
 }
 
 // ── mgmt ─────────────────────────────────────────────────────────────
