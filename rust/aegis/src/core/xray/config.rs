@@ -423,6 +423,43 @@ impl ConfigManager {
         ))
     }
 
+    pub(crate) async fn generate_tls_xhttp_config(
+        rng: &mut StdRng,
+        _domain: &str,
+        index: usize,
+        preferred_port: Option<u16>,
+    ) -> Result<(i32, String, String, String, String)> {
+        let port: i32 = if let Some(pp) = preferred_port {
+            if crate::core::system::maintenance::MaintenanceManager::is_port_available(pp).await {
+                pp as i32
+            } else {
+                Self::random_available_port(rng).await
+            }
+        } else {
+            Self::random_available_port(rng).await
+        };
+
+        let uuid = Self::generate_wwps_uuid().await?;
+        let uuid_short = Self::uuid_short_prefix(&uuid);
+        let email = format!("{}-vless_xhttp_tls", uuid_short);
+        let tag = format!("XHTTP-{}-{}", uuid_short, index);
+        let path = Self::generate_random_path();
+
+        Ok((port, uuid, email, tag, path))
+    }
+
+    async fn random_available_port(rng: &mut StdRng) -> i32 {
+        loop {
+            let p = rng.gen_range(10000..60000);
+            if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                continue;
+            }
+            if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
+                break p as i32;
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn generate_client_link(
         uuid: &str,

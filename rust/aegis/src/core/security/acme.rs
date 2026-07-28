@@ -5,7 +5,7 @@
 
 use crate::core::error::Result;
 use crate::core::types::DnsProvider;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use x509_parser::certificate::X509Certificate;
 use x509_parser::pem::Pem;
@@ -129,6 +129,22 @@ pub async fn issue_cert(domain: &str, email: &str, provider: DnsProvider) -> Res
     })?;
 
     Ok(())
+}
+
+/// Paths to TLS certificate files for a domain.
+pub struct CertPaths {
+    pub fullchain: PathBuf,
+    pub privkey: PathBuf,
+}
+
+impl CertPaths {
+    pub fn for_domain(domain: &str) -> Self {
+        let dir = format!("/root/cert/{}", domain);
+        Self {
+            fullchain: PathBuf::from(format!("{}/fullchain.pem", dir)),
+            privkey: PathBuf::from(format!("{}/privkey.pem", dir)),
+        }
+    }
 }
 
 #[cfg(test)]
