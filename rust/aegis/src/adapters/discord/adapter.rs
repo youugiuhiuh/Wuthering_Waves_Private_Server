@@ -91,19 +91,6 @@ impl BotAdapter for DiscordAdapter {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::adapters::common::PlatformCapabilities;
-
-    #[test]
-    fn discord_capabilities_matches_expected() {
-        let caps = PlatformCapabilities::DISCORD;
-        assert!(caps.can_edit_message);
-        assert!(caps.can_delete_message);
-        assert!(!caps.has_file_transfer);
-    }
-}
-
 fn convert_markup_discord(markup: &Markup) -> Vec<serenity::all::CreateActionRow> {
     markup
         .buttons
@@ -120,4 +107,17 @@ fn convert_markup_discord(markup: &Markup) -> Vec<serenity::all::CreateActionRow
             serenity::all::CreateActionRow::Buttons(buttons)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::adapters::common::PlatformCapabilities;
+
+    #[test]
+    fn discord_capabilities_matches_expected() {
+        let caps = PlatformCapabilities::DISCORD;
+        assert!(caps.can_edit_message);
+        assert!(caps.can_delete_message);
+        assert!(!caps.has_file_transfer);
+    }
 }

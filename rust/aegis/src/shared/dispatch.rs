@@ -106,7 +106,7 @@ fn is_totp_code(text: &str) -> bool {
 #[allow(dead_code)]
 async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
     let action = message::handle_message(
-        &*msg.adapter,
+        msg.adapter.clone(),
         &msg.target,
         msg.text.as_deref(),
         msg.file_id.is_some(),

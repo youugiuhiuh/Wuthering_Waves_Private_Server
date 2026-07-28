@@ -10,6 +10,7 @@ use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::system::scheduler::task_types::TaskType;
 use aegis::core::totp::TotpManager;
+use aegis::core::types::DnsProvider;
 use aegis::shared::handlers::message::MessageState;
 use aegis::shared::types::TimeoutStatus;
 
@@ -30,6 +31,21 @@ pub enum DestructStep {
 pub enum ScheduleFrequency {
     Daily,
     Weekly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DomainInputStep {
+    AwaitDomain,
+    AwaitProvider,
+    AwaitCredentials(DnsProvider),
+    Processing,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainInputState {
+    pub step: DomainInputStep,
+    pub domain: Option<String>,
+    pub dns_provider: Option<DnsProvider>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +97,7 @@ pub struct AppState {
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
     pending_security_file: Mutex<HashMap<String, Instant>>,
+    pending_domain_inputs: Mutex<HashMap<String, DomainInputState>>,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
     lang_configured: Mutex<bool>,
@@ -109,6 +126,7 @@ impl AppState {
             pending_warp_inputs: Mutex::new(HashMap::new()),
             pending_schedule_inputs: Mutex::new(HashMap::new()),
             pending_security_file: Mutex::new(HashMap::new()),
+            pending_domain_inputs: Mutex::new(HashMap::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
             lang: Mutex::new(Lang::Zh),
             lang_configured: Mutex::new(false),
@@ -463,6 +481,58 @@ impl AppState {
             None => TimeoutStatus::NotTracked,
         }
     }
+
+    pub async fn start_domain_input(&self, chat_id: String) {
+        self.pending_domain_inputs.lock().await.insert(
+            chat_id,
+            DomainInputState {
+                step: DomainInputStep::AwaitDomain,
+                domain: None,
+                dns_provider: None,
+            },
+        );
+    }
+
+    pub async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState> {
+        self.pending_domain_inputs.lock().await.remove(chat_id)
+    }
+
+    pub async fn update_domain_input<F>(&self, chat_id: &str, f: F) -> bool
+    where
+        F: FnOnce(&mut DomainInputState),
+    {
+        let mut inputs = self.pending_domain_inputs.lock().await;
+        match inputs.get_mut(chat_id) {
+            Some(state) => {
+                f(state);
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub async fn start_domain_input_with(
+        &self,
+        chat_id: String,
+        domain: String,
+        step: DomainInputStep,
+    ) {
+        self.pending_domain_inputs.lock().await.insert(
+            chat_id,
+            DomainInputState {
+                step,
+                domain: Some(domain),
+                dns_provider: None,
+            },
+        );
+    }
+
+    pub async fn has_pending_domain_input(&self, chat_id: &str) -> bool {
+        self.pending_domain_inputs
+            .lock()
+            .await
+            .contains_key(chat_id)
+    }
 }
 
 #[async_trait]
@@ -477,6 +547,27 @@ impl MessageState for AppState {
 
     async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
         self.take_warp_input_status(chat_id, timeout).await
+    }
+
+    async fn has_pending_domain_input(&self, chat_id: &str) -> bool {
+        self.has_pending_domain_input(chat_id).await
+    }
+
+    async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState> {
+        self.take_domain_input(chat_id).await
+    }
+
+    async fn start_domain_input(&self, chat_id: String) {
+        self.start_domain_input(chat_id).await
+    }
+
+    async fn start_domain_input_with(
+        &self,
+        chat_id: String,
+        domain: String,
+        step: DomainInputStep,
+    ) {
+        self.start_domain_input_with(chat_id, domain, step).await
     }
 }
 

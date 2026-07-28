@@ -200,7 +200,7 @@ mod tests {
             .unwrap();
         let sent = adapter.sent.lock().unwrap();
         assert_eq!(sent.len(), 1);
-        assert!(sent[0].len() > 0);
+        assert!(!sent[0].is_empty());
     }
 
     #[tokio::test]
@@ -231,7 +231,7 @@ mod tests {
             .unwrap();
         let sent = adapter.sent.lock().unwrap();
         assert_eq!(sent.len(), 1);
-        assert!(sent[0].contains("auth") || sent[0].len() > 0);
+        assert!(sent[0].contains("auth") || !sent[0].is_empty());
     }
 
     #[tokio::test]
@@ -245,7 +245,7 @@ mod tests {
         let sent = adapter.sent.lock().unwrap();
         assert_eq!(sent.len(), 1);
         // main menu has markup; check non-empty text
-        assert!(sent[0].len() > 0);
+        assert!(!sent[0].is_empty());
     }
 
     #[tokio::test]
@@ -261,7 +261,7 @@ mod tests {
         .unwrap();
         let sent = adapter.sent.lock().unwrap();
         assert_eq!(sent.len(), 1);
-        assert!(sent[0].len() > 0);
+        assert!(!sent[0].is_empty());
     }
 
     #[tokio::test]
@@ -277,7 +277,7 @@ mod tests {
         .unwrap();
         let sent = adapter.sent.lock().unwrap();
         assert_eq!(sent.len(), 1);
-        assert!(sent[0].len() > 0);
+        assert!(!sent[0].is_empty());
     }
 
     struct TestAdapter;
