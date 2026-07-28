@@ -147,6 +147,72 @@ impl CertPaths {
     }
 }
 
+pub fn detect_dns_provider() -> Option<DnsProvider> {
+    let conf = account_conf_path();
+    if !conf.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(&conf).ok()?;
+    let content_lower = content.to_lowercase();
+    if content_lower.contains("cf_token") || content_lower.contains("cf_key") {
+        return Some(DnsProvider::Cloudflare);
+    }
+    if content_lower.contains("ali_key") {
+        return Some(DnsProvider::Aliyun);
+    }
+    if content_lower.contains("dp_id") {
+        return Some(DnsProvider::Dnspod);
+    }
+    if content_lower.contains("aws_access_key") {
+        return Some(DnsProvider::Route53);
+    }
+    None
+}
+
+pub async fn setup_and_issue(
+    domain: &str,
+    provider: DnsProvider,
+    token: &str,
+    key: &str,
+) -> Result<()> {
+    match provider {
+        DnsProvider::Cloudflare => {
+            // SAFETY: single-threaded async context, no concurrent env reads
+            unsafe {
+                std::env::set_var("CF_Token", token);
+                std::env::set_var("CF_Account_ID", key);
+            }
+        }
+        DnsProvider::Aliyun =>
+        // SAFETY: acme.sh reads env vars for DNS API keys; single-threaded context
+        unsafe {
+            std::env::set_var("Ali_Key", token);
+            std::env::set_var("Ali_Secret", key);
+        },
+        DnsProvider::Dnspod =>
+        // SAFETY: acme.sh reads env vars for DNS API keys; single-threaded context
+        unsafe {
+            std::env::set_var("DP_Id", token);
+            std::env::set_var("DP_Key", key);
+        },
+        DnsProvider::Route53 =>
+        // SAFETY: acme.sh reads env vars for DNS API keys; single-threaded context
+        unsafe {
+            std::env::set_var("AWS_ACCESS_KEY_ID", token);
+            std::env::set_var("AWS_SECRET_ACCESS_KEY", key);
+        },
+    }
+    issue_cert(domain, &format!("admin@{}", domain), provider).await
+}
+
+fn account_conf_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    std::path::PathBuf::from(format!(
+        "{}/.acme.sh/account.conf",
+        home.trim_end_matches('/')
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

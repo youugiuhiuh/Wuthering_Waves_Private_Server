@@ -30,7 +30,9 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         "a_bbr3_reboot_now" => handle_bbr3_reboot_now(event).await,
         "a_bbr3_reboot_later" => handle_bbr3_reboot_later(event).await,
         "a_sys_reboot" => handle_sys_reboot(event).await,
-        "a_one_click" => handle_one_click(event).await,
+        "a_one_click" => handle_one_click_ask_domain(event).await,
+        "a_one_click_nodomain" => handle_one_click(event).await,
+        "a_one_click_domain" => handle_one_click_domain_start(event).await,
         _ => Ok(HandlerAction::Done),
     }
 }
@@ -517,6 +519,50 @@ async fn handle_sys_reboot(event: &CallbackEvent) -> HandlerResult {
         tokio::time::sleep(Duration::from_secs(3)).await;
         let _ = Operations::reboot_system().await;
     });
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_one_click_ask_domain(event: &CallbackEvent) -> HandlerResult {
+    let buttons = vec![
+        vec![
+            InlineButton {
+                text: "\u{1F310} 有域名（TLS XHTTP）".into(),
+                data: "a_one_click_domain".into(),
+            },
+            InlineButton {
+                text: "\u{1F680} 无域名（Reality XHTTP）".into(),
+                data: "a_one_click_nodomain".into(),
+            },
+        ],
+        vec![InlineButton {
+            text: t!("menu.back_user").into(),
+            data: "m_xray_mgmt".into(),
+        }],
+    ];
+
+    event.adapter.edit_message(&event.target, &event.msg_id, MessageContent {
+        text: "\u{1F4E6} 一键部署\n\n是否使用自有域名？\n\u{2022} \u{2705} 有域名：XHTTP 将使用 TLS（可套 CDN）\n\u{2022} \u{26D4} 无域名：XHTTP 将使用 Reality".into(),
+        markup: Some(Markup { buttons }),
+    }).await?;
+
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_one_click_domain_start(event: &CallbackEvent) -> HandlerResult {
+    event
+        .adapter
+        .send_message(
+            &event.target,
+            MessageContent {
+                text: "请输入你的域名，例如 example.com".into(),
+                markup: None,
+            },
+        )
+        .await?;
+    event
+        .adapter
+        .answer_callback(&event.target, &event.callback_id, Some("请输入域名".into()))
+        .await?;
     Ok(HandlerAction::Done)
 }
 

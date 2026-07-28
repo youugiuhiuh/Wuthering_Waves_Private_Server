@@ -24,6 +24,27 @@ pub async fn intercept(cb: &CallbackEvent, state: &AppState) -> Option<String> {
             .await;
     }
 
+    if data == "a_one_click_domain" || data == "u_xhttp_domain" {
+        state.start_domain_input(cb.target.0.clone()).await;
+    }
+
+    if data.starts_with("xhttp_tls_prov:") {
+        use crate::app::state::DomainInputStep;
+        use crate::core::types::DnsProvider;
+        let provider = match data.strip_prefix("xhttp_tls_prov:") {
+            Some("cf") => DnsProvider::Cloudflare,
+            Some("ali") => DnsProvider::Aliyun,
+            Some("dp") => DnsProvider::Dnspod,
+            Some("aws") => DnsProvider::Route53,
+            _ => return None,
+        };
+        state
+            .update_domain_input(&cb.target.0, |s| {
+                s.step = DomainInputStep::AwaitCredentials(provider);
+            })
+            .await;
+    }
+
     None
 }
 

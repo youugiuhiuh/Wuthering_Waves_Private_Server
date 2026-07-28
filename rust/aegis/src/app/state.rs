@@ -548,6 +548,27 @@ impl MessageState for AppState {
     async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
         self.take_warp_input_status(chat_id, timeout).await
     }
+
+    async fn has_pending_domain_input(&self, chat_id: &str) -> bool {
+        self.has_pending_domain_input(chat_id).await
+    }
+
+    async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState> {
+        self.take_domain_input(chat_id).await
+    }
+
+    async fn start_domain_input(&self, chat_id: String) {
+        self.start_domain_input(chat_id).await
+    }
+
+    async fn start_domain_input_with(
+        &self,
+        chat_id: String,
+        domain: String,
+        step: DomainInputStep,
+    ) {
+        self.start_domain_input_with(chat_id, domain, step).await
+    }
 }
 
 fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {

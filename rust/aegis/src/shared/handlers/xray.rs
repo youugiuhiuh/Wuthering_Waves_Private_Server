@@ -1096,10 +1096,7 @@ async fn handle_batch_init(event: &CallbackEvent) -> HandlerResult {
 }
 
 async fn handle_xhttp_batch_init(event: &CallbackEvent) -> HandlerResult {
-    if MaintenanceManager::is_reality_base_ready().await {
-        show_reality_batch_prompt(&*event.adapter, &event.target, &event.msg_id, Proto::XHTTP)
-            .await?;
-    } else {
+    if !MaintenanceManager::is_reality_base_ready().await {
         event
             .adapter
             .answer_callback(
@@ -1124,7 +1121,87 @@ async fn handle_xhttp_batch_init(event: &CallbackEvent) -> HandlerResult {
             event.target.clone(),
             event.msg_id.clone(),
         );
+        return Ok(HandlerAction::Done);
     }
+
+    let buttons = vec![
+        vec![
+            InlineButton {
+                text: "有域名（TLS）".into(),
+                data: "u_xhttp_domain".into(),
+            },
+            InlineButton {
+                text: "无域名（Reality）".into(),
+                data: "u_xhttp_nodomain".into(),
+            },
+        ],
+        vec![InlineButton {
+            text: t!("menu.back_user").into(),
+            data: "m_xray_mgmt".into(),
+        }],
+    ];
+
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text: "是否使用自有域名？\n\n 有域名：TLS + XHTTP（可套 CDN）\n 无域名：Reality + XHTTP（伪装 SNI）".into(),
+                markup: Some(Markup { buttons }),
+            },
+        )
+        .await?;
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_xhttp_nodomain(event: &CallbackEvent) -> HandlerResult {
+    show_reality_batch_prompt(&*event.adapter, &event.target, &event.msg_id, Proto::XHTTP).await?;
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_xhttp_domain_start(event: &CallbackEvent) -> HandlerResult {
+    event
+        .adapter
+        .send_message(
+            &event.target,
+            MessageContent {
+                text: "请输入你的域名，例如 example.com".into(),
+                markup: None,
+            },
+        )
+        .await?;
+    event
+        .adapter
+        .answer_callback(&event.target, &event.callback_id, Some("请输入域名".into()))
+        .await?;
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_xhttp_tls_provider(event: &CallbackEvent) -> HandlerResult {
+    let data = event.data.as_str();
+    let provider = match data.strip_prefix("xhttp_tls_prov:") {
+        Some("cf") => "Cloudflare",
+        Some("ali") => "Aliyun",
+        Some("dp") => "DNSPod",
+        Some("aws") => "Route53",
+        _ => return Ok(HandlerAction::Done),
+    };
+
+    event
+        .adapter
+        .send_message(
+            &event.target,
+            MessageContent {
+                text: format!("请输入 {} 的 API Token 和 Key（格式: TOKEN,KEY）", provider),
+                markup: None,
+            },
+        )
+        .await?;
+    event
+        .adapter
+        .answer_callback(&event.target, &event.callback_id, Some("请输入凭据".into()))
+        .await?;
     Ok(HandlerAction::Done)
 }
 
@@ -2466,6 +2543,9 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         d if d.starts_with("u_batch_ip_init:") => handle_batch_ip_init(event).await,
         d if d.starts_with("u_batch_exec:") => handle_batch_exec(event).await,
         "u_xhttp_batch_init" => handle_xhttp_batch_init(event).await,
+        "u_xhttp_domain" => handle_xhttp_domain_start(event).await,
+        "u_xhttp_nodomain" => handle_xhttp_nodomain(event).await,
+        d if d.starts_with("xhttp_tls_prov:") => handle_xhttp_tls_provider(event).await,
         d if d.starts_with("u_xhttp_batch_ip_init:") => handle_xhttp_batch_ip_init(event).await,
         d if d.starts_with("u_xhttp_batch_exec:") => handle_xhttp_batch_exec(event).await,
         "u_kcp_init" => handle_kcp_init(event).await,
