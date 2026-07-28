@@ -1,3 +1,4 @@
+pub mod acme;
 pub mod anti_debug;
 pub mod crypto;
 pub mod fail2ban;
