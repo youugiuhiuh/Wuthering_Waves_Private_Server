@@ -583,7 +583,7 @@ fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
 mod tests {
     use super::*;
     use aegis::adapters::common::{MessageContent, MessageId, Platform, TargetId};
-    use aegis::core::types::{DomainFlowSource, DomainInputState, DomainInputStep};
+    use aegis::core::types::{DomainFlowSource, DomainInputStep};
     use anyhow::Result;
     use async_trait::async_trait;
     use futures_util::future::BoxFuture;

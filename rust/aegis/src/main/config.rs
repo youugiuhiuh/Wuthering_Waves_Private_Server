@@ -134,6 +134,7 @@ mod tests {
     #[test]
     fn config_dir_uses_env_var_when_set() {
         let dir = TempDir::new().unwrap();
+        // SAFETY: test environment, single-threaded
         unsafe {
             std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
         }
@@ -144,6 +145,7 @@ mod tests {
     #[serial]
     #[test]
     fn config_dir_defaults_when_env_not_set() {
+        // SAFETY: test environment, single-threaded
         unsafe {
             std::env::remove_var("AEGIS_CONFIG_DIR");
         }
@@ -157,6 +159,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let config_dir = dir.path().join("etc/wwps/aegis");
         fs::create_dir_all(&config_dir).unwrap();
+        // SAFETY: test environment, single-threaded
         unsafe {
             std::env::set_var("AEGIS_CONFIG_DIR", config_dir.to_str().unwrap());
         }
@@ -178,6 +181,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let config_dir = dir.path().join("etc/wwps/aegis");
         fs::create_dir_all(&config_dir).unwrap();
+        // SAFETY: test environment, single-threaded
         unsafe {
             std::env::set_var("AEGIS_CONFIG_DIR", config_dir.to_str().unwrap());
         }
@@ -200,6 +204,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let config_dir = dir.path().join("etc/wwps/aegis");
         fs::create_dir_all(&config_dir).unwrap();
+        // SAFETY: test environment, single-threaded
         unsafe {
             std::env::set_var("AEGIS_CONFIG_DIR", config_dir.to_str().unwrap());
         }

@@ -12,7 +12,6 @@ use x509_parser::{extensions::GeneralName, pem::Pem, prelude::FromDer};
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const MIN_VALIDITY: u64 = 30 * 24 * 60 * 60;
-#[cfg(target_os = "linux")]
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(target_os = "linux")]
 const PROCESS_TOKEN_ENV: &str = "AEGIS_ACME_PROCESS_TOKEN";
@@ -452,19 +451,27 @@ async fn run_command_inner(
         command.env(name.as_str(), value.as_str());
     }
 
-    let mut child = command
+    let child = command
         .spawn()
         .with_context(|| format!("failed to start {program}"))?;
-    let process_id = child.id().context("subprocess has no process ID")? as i32;
+    let mut cleanup = CommandCleanup::new(child);
+    let process_id = cleanup
+        .child_mut()
+        .id()
+        .context("subprocess has no process ID")? as i32;
     #[cfg(target_os = "linux")]
-    let process_scope = initialize_process_scope(process_id, process_token, &mut child).await?;
+    let process_scope =
+        initialize_process_scope(process_id, process_token, cleanup.child_mut()).await?;
     #[cfg(not(target_os = "linux"))]
     let process_scope = ProcessScope { pid: process_id };
-    let mut stdout = child
+    cleanup.set_scope(process_scope);
+    let mut stdout = cleanup
+        .child_mut()
         .stdout
         .take()
         .context("subprocess stdout unavailable")?;
-    let mut stderr = child
+    let mut stderr = cleanup
+        .child_mut()
         .stderr
         .take()
         .context("subprocess stderr unavailable")?;
@@ -478,12 +485,12 @@ async fn run_command_inner(
     });
 
     let deadline = tokio::time::Instant::now() + timeout;
-    let status = match tokio::time::timeout_at(deadline, child.wait()).await {
+    let status = match tokio::time::timeout_at(deadline, cleanup.child_mut().wait()).await {
         Ok(status) => status.context("failed to wait for subprocess")?,
         Err(_) => {
             stdout_task.abort();
             stderr_task.abort();
-            terminate_subprocess_tree(&process_scope, &mut child).await;
+            cleanup.cleanup().await;
             let _ = stdout_task.await;
             let _ = stderr_task.await;
             bail!("command timed out after {} seconds", timeout.as_secs());
@@ -504,12 +511,13 @@ async fn run_command_inner(
         Err(_) => {
             stdout_task.abort();
             stderr_task.abort();
-            terminate_subprocess_tree(&process_scope, &mut child).await;
+            cleanup.cleanup().await;
             let _ = stdout_task.await;
             let _ = stderr_task.await;
             bail!("command timed out after {} seconds", timeout.as_secs());
         }
     };
+    cleanup.disarm();
     if !status.success() {
         bail!("command {program} failed with status {status}");
     }
@@ -525,7 +533,7 @@ async fn terminate_subprocess_tree(scope: &ProcessScope, child: &mut tokio::proc
     {
         let _ = scope.pid;
         let _ = child.start_kill();
-        let _ = child.wait().await;
+        let _ = tokio::time::timeout(CLEANUP_TIMEOUT, child.wait()).await;
     }
     #[cfg(target_os = "linux")]
     terminate_and_reap_process_scope(scope, child).await;
@@ -534,9 +542,14 @@ async fn terminate_subprocess_tree(scope: &ProcessScope, child: &mut tokio::proc
 #[cfg(target_os = "linux")]
 async fn terminate_and_reap_process_scope(scope: &ProcessScope, child: &mut tokio::process::Child) {
     let scope = scope.clone();
-    let descendants = tokio::task::spawn_blocking(move || stop_and_kill_subtree(&scope))
-        .await
-        .unwrap_or_default();
+    let descendants = tokio::time::timeout(
+        CLEANUP_TIMEOUT * 2,
+        tokio::task::spawn_blocking(move || stop_and_kill_subtree(&scope)),
+    )
+    .await
+    .ok()
+    .and_then(|result| result.ok())
+    .unwrap_or_default();
     let _ = tokio::time::timeout(CLEANUP_TIMEOUT, child.wait()).await;
     let _ = tokio::time::timeout(
         CLEANUP_TIMEOUT,
@@ -564,6 +577,89 @@ struct ProcessScope {
     pid: i32,
 }
 
+struct CommandCleanup {
+    child: Option<tokio::process::Child>,
+    scope: Option<ProcessScope>,
+    runtime: tokio::runtime::Handle,
+    #[cfg(all(test, target_os = "linux"))]
+    cleanup_pause: Option<(
+        tokio::sync::oneshot::Sender<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    )>,
+}
+
+impl CommandCleanup {
+    fn new(child: tokio::process::Child) -> Self {
+        Self {
+            child: Some(child),
+            scope: None,
+            runtime: tokio::runtime::Handle::current(),
+            #[cfg(all(test, target_os = "linux"))]
+            cleanup_pause: None,
+        }
+    }
+
+    fn child_mut(&mut self) -> &mut tokio::process::Child {
+        self.child.as_mut().expect("child is present until cleanup")
+    }
+
+    fn set_scope(&mut self, scope: ProcessScope) {
+        self.scope = Some(scope);
+    }
+
+    fn start_cleanup(&mut self) -> Option<tokio::task::JoinHandle<()>> {
+        let mut child = self.child.take()?;
+        let scope = self.scope.take();
+        #[cfg(all(test, target_os = "linux"))]
+        let cleanup_pause = self.cleanup_pause.take();
+        Some(self.runtime.spawn(async move {
+            #[cfg(all(test, target_os = "linux"))]
+            if let Some((started, resume)) = cleanup_pause {
+                let _ = started.send(());
+                let _ = resume.await;
+            }
+            cleanup_owned_child(&mut child, scope.as_ref()).await;
+        }))
+    }
+
+    async fn cleanup(&mut self) {
+        if let Some(task) = self.start_cleanup()
+            && let Err(error) = task.await
+        {
+            log::error!("command cleanup task failed: {error}");
+        }
+    }
+
+    #[cfg(all(test, target_os = "linux"))]
+    fn pause_cleanup(
+        &mut self,
+        started: tokio::sync::oneshot::Sender<()>,
+        resume: tokio::sync::oneshot::Receiver<()>,
+    ) {
+        self.cleanup_pause = Some((started, resume));
+    }
+
+    fn disarm(&mut self) {
+        self.scope = None;
+        self.child = None;
+    }
+}
+
+impl Drop for CommandCleanup {
+    fn drop(&mut self) {
+        drop(self.start_cleanup());
+    }
+}
+
+async fn cleanup_owned_child(child: &mut tokio::process::Child, scope: Option<&ProcessScope>) {
+    if let Some(scope) = scope {
+        terminate_subprocess_tree(scope, child).await;
+    } else {
+        let _ = child.start_kill();
+        let _ = tokio::time::timeout(CLEANUP_TIMEOUT, child.wait()).await;
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[derive(Debug, Clone, Copy)]
 struct ProcessEntry {
@@ -589,7 +685,7 @@ async fn initialize_process_scope(
         }
         if tokio::time::Instant::now() >= deadline {
             signal_if_same(root.identity, libc::SIGKILL);
-            let _ = child.wait().await;
+            let _ = tokio::time::timeout(CLEANUP_TIMEOUT, child.wait()).await;
             bail!("subprocess startup timed out");
         }
         tokio::time::sleep(Duration::from_millis(1)).await;
@@ -1079,38 +1175,164 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[tokio::test]
-    async fn cancelling_command_future_terminates_child() {
-        let directory = tempfile::tempdir().unwrap();
-        let ready_arc = Arc::new(directory.path().join("ready"));
-        let leaked_arc = Arc::new(directory.path().join("cancelled-child-survived"));
-        let ready_arc2 = ready_arc.clone();
-        let leaked_arc2 = leaked_arc.clone();
-        let task = tokio::spawn(async move {
-            run_command_with_timeout(
-                "sh",
-                &[
-                    "-c",
-                    "printf ready > \"$1\"; sleep 60; printf leaked > \"$2\"",
-                    "sh",
-                    ready_arc.to_str().unwrap(),
-                    leaked_arc.to_str().unwrap(),
-                ],
-                &[],
-                Duration::from_secs(5),
-            )
-            .await
-        });
+    async fn startup_cleanup_terminates_self_stopped_wrapper() {
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", "kill -STOP $$; exec sleep 60"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0);
+        let child = command.spawn().unwrap();
+        let pid = child.id().unwrap() as i32;
+        let cleanup = CommandCleanup::new(child);
         tokio::time::timeout(Duration::from_secs(2), async {
-            while !ready_arc2.exists() {
+            while !process_entry(pid).is_some_and(|entry| entry.state == 'T') {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
         })
         .await
         .unwrap();
+
+        drop(cleanup);
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while process_entry(pid).is_some() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("startup cleanup left the self-stopped wrapper alive");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn cancelling_command_future_terminates_child() {
+        let directory = tempfile::tempdir().unwrap();
+        let root_pid = Arc::new(directory.path().join("root-pid"));
+        let descendant_pid = Arc::new(directory.path().join("descendant-pid"));
+        let root_pid_for_task = root_pid.clone();
+        let descendant_pid_for_task = descendant_pid.clone();
+        let task = tokio::spawn(async move {
+            run_command_with_timeout(
+                "sh",
+                &[
+                    "-c",
+                    "printf %s $$ > \"$1\"; setsid sh -c 'printf %s $$ > \"$1\"; exec sleep 60' sh \"$2\" & wait",
+                    "sh",
+                    root_pid_for_task.to_str().unwrap(),
+                    descendant_pid_for_task.to_str().unwrap(),
+                ],
+                &[],
+                Duration::from_secs(60),
+            )
+            .await
+        });
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !root_pid.exists() || !descendant_pid.exists() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let root_pid = fs::read_to_string(&*root_pid)
+            .unwrap()
+            .parse::<i32>()
+            .unwrap();
+        let descendant_pid = fs::read_to_string(&*descendant_pid)
+            .unwrap()
+            .parse::<i32>()
+            .unwrap();
         task.abort();
         let _ = task.await;
-        tokio::time::sleep(Duration::from_millis(1200)).await;
-        assert!(!leaked_arc2.exists());
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while process_entry(root_pid).is_some() || process_entry(descendant_pid).is_some() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("cancelled command left its child or detached descendant alive");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn cancelling_explicit_cleanup_keeps_process_tree_cleanup_running() {
+        let directory = tempfile::tempdir().unwrap();
+        let root_pid_path = directory.path().join("root-pid");
+        let descendant_pid_path = directory.path().join("descendant-pid");
+        let token = process_token();
+        let mut command = Command::new("sh");
+        command
+            .args([
+                "-c",
+                "kill -STOP $$; exec \"$@\"",
+                "aegis-cleanup-test",
+                "sh",
+                "-c",
+                "printf %s $$ > \"$1\"; setsid sh -c 'printf %s $$ > \"$1\"; exec sleep 60' sh \"$2\" & wait",
+                "sh",
+                root_pid_path.to_str().unwrap(),
+                descendant_pid_path.to_str().unwrap(),
+            ])
+            .env(PROCESS_TOKEN_ENV, &token)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0);
+        let child = command.spawn().unwrap();
+        let pid = child.id().unwrap() as i32;
+        let mut cleanup = CommandCleanup::new(child);
+        let scope = initialize_process_scope(pid, token, cleanup.child_mut())
+            .await
+            .unwrap();
+        let rescue_scope = scope.clone();
+        cleanup.set_scope(scope);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !root_pid_path.exists() || !descendant_pid_path.exists() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let root_pid = fs::read_to_string(root_pid_path)
+            .unwrap()
+            .parse::<i32>()
+            .unwrap();
+        let descendant_pid = fs::read_to_string(descendant_pid_path)
+            .unwrap()
+            .parse::<i32>()
+            .unwrap();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (resume_tx, resume_rx) = tokio::sync::oneshot::channel();
+        cleanup.pause_cleanup(started_tx, resume_rx);
+        let task = tokio::spawn(async move {
+            cleanup.cleanup().await;
+        });
+        started_rx.await.unwrap();
+
+        task.abort();
+        let _ = task.await;
+        let _ = resume_tx.send(());
+
+        let reaped = tokio::time::timeout(Duration::from_secs(2), async {
+            while process_entry(root_pid).is_some() || process_entry(descendant_pid).is_some() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+        if reaped.is_err() {
+            let identities =
+                tokio::task::spawn_blocking(move || stop_and_kill_subtree(&rescue_scope))
+                    .await
+                    .unwrap();
+            tokio::task::spawn_blocking(move || reap_descendants(identities))
+                .await
+                .unwrap();
+        }
+        assert!(
+            reaped.is_ok(),
+            "cancelling explicit cleanup left its child or detached descendant alive"
+        );
     }
 
     #[cfg(target_os = "linux")]

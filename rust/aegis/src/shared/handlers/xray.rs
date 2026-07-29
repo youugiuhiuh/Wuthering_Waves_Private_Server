@@ -236,11 +236,20 @@ pub async fn show_domain_choice(event: &CallbackEvent, source: DomainFlowSource)
 }
 
 fn parse_domain_source(data: &str) -> Option<DomainFlowSource> {
-    match data.strip_prefix("xhttp_domain_yes:") {
-        Some("standalone") => Some(DomainFlowSource::Standalone),
-        Some("one_click") => Some(DomainFlowSource::OneClick),
+    let source = data
+        .strip_prefix("xhttp_domain_yes:")
+        .or_else(|| data.strip_prefix("xhttp_domain_no:"))?;
+    match source {
+        "standalone" => Some(DomainFlowSource::Standalone),
+        "one_click" => Some(DomainFlowSource::OneClick),
         _ => None,
     }
+}
+
+fn one_click_domain_no_mode(data: &str) -> Option<XhttpDeployMode> {
+    data.strip_prefix("xhttp_domain_no:")?;
+    (parse_domain_source(data) == Some(DomainFlowSource::OneClick))
+        .then_some(XhttpDeployMode::Reality)
 }
 
 fn parse_provider_callback(data: &str) -> Option<crate::core::types::DnsProvider> {
@@ -2539,8 +2548,7 @@ async fn handle_domain_yes(event: &CallbackEvent, state: &AppState, data: &str) 
 }
 
 async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
-    let source = parse_domain_source(data);
-    if source == Some(DomainFlowSource::OneClick) {
+    if let Some(mode) = one_click_domain_no_mode(data) {
         event
             .adapter
             .answer_callback(
@@ -2559,10 +2567,7 @@ async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
             session_timeout_secs: event.session_timeout_secs,
         };
         tokio::spawn(async move {
-            if let Err(e) =
-                crate::shared::handlers::ops::run_one_click(event, (), XhttpDeployMode::Reality)
-                    .await
-            {
+            if let Err(e) = crate::shared::handlers::ops::run_one_click(event, (), mode).await {
                 log::error!("run_one_click Reality failed: {}", e);
             }
         });
@@ -2648,4 +2653,19 @@ async fn handle_domain_provider(
         }
     }
     Ok(HandlerAction::Done)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_click_domain_no_selects_reality_backend() {
+        assert!(matches!(
+            one_click_domain_no_mode("xhttp_domain_no:one_click"),
+            Some(XhttpDeployMode::Reality)
+        ));
+        assert!(one_click_domain_no_mode("xhttp_domain_no:standalone").is_none());
+        assert!(one_click_domain_no_mode("xhttp_domain_maybe:one_click").is_none());
+    }
 }

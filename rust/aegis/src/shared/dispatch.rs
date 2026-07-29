@@ -655,23 +655,4 @@ mod tests {
             Some(DomainFlowSource::OneClick)
         );
     }
-
-    #[tokio::test]
-    async fn one_click_domain_no_starts_reality_flow() {
-        let adapter = Arc::new(MockAdapter::default());
-        let state = make_state();
-        state.record_auth_success(42, Instant::now()).await;
-        dispatch_event(
-            callback_event(adapter.clone(), "xhttp_domain_no:one_click"),
-            &state,
-        )
-        .await
-        .unwrap();
-        let answers = adapter.callback_answers.lock().unwrap();
-        assert!(
-            !answers.is_empty(),
-            "one_click domain_no should answer callback, got: {:?}",
-            *answers
-        );
-    }
 }

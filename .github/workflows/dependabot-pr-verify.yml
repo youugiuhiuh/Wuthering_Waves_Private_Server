@@ -18,7 +18,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -56,12 +56,12 @@ jobs:
         project: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       # ---------------- Go 环境与缓存 ----------------
       - name: Setup Go
         if: matrix.project.language == 'go'
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: "stable"
           cache: true # ⚡ 开启内置的 Go Module 和 Build 编译缓存
