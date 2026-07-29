@@ -598,7 +598,11 @@ pub async fn run_one_click(
             &tx,
             4,
             10,
-            format!("{} ({})", t!("ops.deploy_step_xhttp_tls"), ip_version.label()),
+            format!(
+                "{} ({})",
+                t!("ops.deploy_step_xhttp_tls"),
+                ip_version.label()
+            ),
         );
         match &mode {
             XhttpDeployMode::Reality => {

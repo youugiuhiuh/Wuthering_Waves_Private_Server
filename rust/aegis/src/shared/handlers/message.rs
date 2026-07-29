@@ -169,8 +169,9 @@ pub async fn handle_message(
                                             .send_message(
                                                 target,
                                                 MessageContent {
-                                                    text: t!("domain.cert_fail", "0" => e.to_string())
-                                                        .to_string(),
+                                                    text:
+                                                        t!("domain.cert_fail", "0" => e.to_string())
+                                                            .to_string(),
                                                     markup: None,
                                                 },
                                             )
@@ -197,8 +198,7 @@ pub async fn handle_message(
                                 .send_message(
                                     target,
                                     MessageContent {
-                                        text: e.to_string()
-                                            .to_string(),
+                                        text: e.to_string(),
                                         markup: None,
                                     },
                                 )
@@ -311,8 +311,9 @@ pub async fn handle_message(
                                             .send_message(
                                                 target,
                                                 MessageContent {
-                                                    text: t!("domain.cert_fail", "0" => e.to_string())
-                                                        .to_string(),
+                                                    text:
+                                                        t!("domain.cert_fail", "0" => e.to_string())
+                                                            .to_string(),
                                                     markup: None,
                                                 },
                                             )
@@ -688,7 +689,10 @@ mod tests {
         i18n::set_lang(Lang::En);
         assert!(matches!(action, MessageAction::Handled));
         assert!(matches!(state.snapshot(), DomainInputStep::AwaitDomain));
-        assert_eq!(adapter.last_text(), "Domain cannot be empty, please re-enter.");
+        assert_eq!(
+            adapter.last_text(),
+            "Domain cannot be empty, please re-enter."
+        );
     }
 
     #[tokio::test]
@@ -707,6 +711,9 @@ mod tests {
             state.snapshot(),
             DomainInputStep::AwaitCredentials(DnsProvider::Cloudflare)
         ));
-        assert_eq!(adapter.last_text(), "Invalid credential format, please re-enter.");
+        assert_eq!(
+            adapter.last_text(),
+            "Invalid credential format, please re-enter."
+        );
     }
 }
