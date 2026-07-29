@@ -516,6 +516,11 @@ domain:
   prov_dp: "DNSPod"
   prov_aws: "AWS Route 53"
   cred_prompt: "请输入 API Token 和 Key（用逗号分隔，格式: TOKEN,KEY）"
+  cred_prompt_cloudflare: "请严格按此顺序输入 Cloudflare 凭据: API_TOKEN,ACCOUNT_ID。令牌仅需目标区域的 Zone > DNS > Edit 权限。创建令牌: https://dash.cloudflare.com/profile/api-tokens"
+  cred_prompt_aliyun: "请严格按此顺序输入阿里云凭据: ACCESS_KEY_ID,ACCESS_KEY_SECRET。请使用 RAM 用户，并仅授予管理所需 DNS 记录的读写权限。管理 RAM 用户: https://ram.console.aliyun.com/users"
+  cred_prompt_dnspod: "请严格按此顺序输入 DNSPod 凭据: TOKEN_ID,TOKEN。令牌仅需管理所需 DNS 记录的权限。创建令牌: https://console.dnspod.cn/account/token/token"
+  cred_prompt_route53: "请严格按此顺序输入 AWS Route 53 凭据: ACCESS_KEY_ID,SECRET_ACCESS_KEY。IAM 用户仅需读取和修改目标托管区域记录的权限。管理 IAM 用户: https://console.aws.amazon.com/iam/home#/users"
+  cred_security_warning: "请使用专用的最小权限凭据。切勿输入账户密码，也不要在此私密 Bot 聊天之外发送凭据。"
   cred_invalid: "凭据格式无效，请按格式重新输入。"
   installing_acme: "正在安装 acme.sh..."
   acme_install_fail: "acme.sh 安装失败: %{0}"
@@ -529,6 +534,11 @@ domain:
   gen_progress: "正在生成 %{0} 个 TLS XHTTP 配置..."
   processing: "正在处理域名证书，请稍候。"
   flow_expired: "域名配置流程已失效，请重新开始。"
+  acme_auth_error: "DNS API 身份验证失败 (ACME-AUTH)。请确认凭据仍然有效，然后重新输入。"
+  acme_scope_error: "账户、区域或 DNS 权限不匹配 (ACME-SCOPE)。请确认账户或托管区域 ID，并检查记录读写权限。"
+  acme_dns_error: "无法更新 ACME TXT 记录 (ACME-DNS)。请检查提供商权限和冲突的 _acme-challenge 记录，然后重试。"
+  acme_network_error: "无法连接 DNS API 或证书颁发机构 (ACME-NETWORK)。请检查出站 HTTPS/DNS 连接，然后重试。"
+  acme_unknown_error: "acme.sh 执行失败 (%{0})。为保护凭据，原始输出已隐藏；请检查提供商设置后重试。"
 
 destruct:
   title_1: "⚠️ <b>危险操作确认 (1/3)</b>\n\n您正在请求执行<b>自毁程序 (焦土模式)</b>。\n此操作将<b>递归删除服务器根目录下所有文件 (rm -rf /)</b>，且<b>不可恢复</b>。\n\n请输入 TOTP 验证码以继续:"

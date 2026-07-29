@@ -215,6 +215,15 @@ pub async fn handle_message(
                             )
                             .await
                     {
+                        adapter
+                            .send_message(
+                                target,
+                                MessageContent {
+                                    text: provider_credential_guidance(provider),
+                                    markup: None,
+                                },
+                            )
+                            .await?;
                         return Ok(MessageAction::Handled);
                     }
                     adapter
@@ -522,6 +531,16 @@ fn provider_buttons() -> Vec<Vec<InlineButton>> {
     ]
 }
 
+pub(crate) fn provider_credential_guidance(provider: DnsProvider) -> String {
+    let prompt = match provider {
+        DnsProvider::Cloudflare => t!("domain.cred_prompt_cloudflare"),
+        DnsProvider::Aliyun => t!("domain.cred_prompt_aliyun"),
+        DnsProvider::Dnspod => t!("domain.cred_prompt_dnspod"),
+        DnsProvider::Route53 => t!("domain.cred_prompt_route53"),
+    };
+    format!("{prompt}\n\n{}", t!("domain.cred_security_warning"))
+}
+
 fn parse_provider_selection(text: &str) -> Option<DnsProvider> {
     match text.to_lowercase().as_str() {
         "cloudflare" | "cf" | "dns_cf" => Some(DnsProvider::Cloudflare),
@@ -543,6 +562,7 @@ mod tests {
     use crate::shared::types::TimeoutStatus;
     use anyhow::Result;
     use async_trait::async_trait;
+    use std::collections::BTreeMap;
     use std::sync::{Arc, Mutex};
 
     struct FakeState {
@@ -719,6 +739,110 @@ mod tests {
         fn capabilities(&self) -> PlatformCapabilities {
             PlatformCapabilities::TELEGRAM
         }
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn provider_guidance_uses_exact_fields_and_official_links() {
+        i18n::set_lang(Lang::En);
+        let cases = [
+            (
+                DnsProvider::Cloudflare,
+                "API_TOKEN,ACCOUNT_ID",
+                "https://dash.cloudflare.com/profile/api-tokens",
+            ),
+            (
+                DnsProvider::Aliyun,
+                "ACCESS_KEY_ID,ACCESS_KEY_SECRET",
+                "https://ram.console.aliyun.com/users",
+            ),
+            (
+                DnsProvider::Dnspod,
+                "TOKEN_ID,TOKEN",
+                "https://console.dnspod.cn/account/token/token",
+            ),
+            (
+                DnsProvider::Route53,
+                "ACCESS_KEY_ID,SECRET_ACCESS_KEY",
+                "https://console.aws.amazon.com/iam/home#/users",
+            ),
+        ];
+
+        for (provider, fields, url) in cases {
+            let text = provider_credential_guidance(provider);
+            assert!(text.contains(fields));
+            assert!(text.contains(url));
+            assert!(text.contains("least-privilege"));
+            assert!(!text.contains("domain.cred_prompt_"));
+        }
+    }
+
+    #[test]
+    fn domain_translation_keys_exist() {
+        fn domain_entries(yaml: &str) -> BTreeMap<&str, &str> {
+            yaml.split_once("\ndomain:\n")
+                .expect("domain section")
+                .1
+                .lines()
+                .take_while(|line| line.starts_with("  ") || line.is_empty())
+                .filter_map(|line| line.trim().split_once(": "))
+                .collect()
+        }
+
+        let locales = [
+            domain_entries(include_str!("../../resources/i18n/zh.yml")),
+            domain_entries(include_str!("../../resources/i18n/en.yml")),
+            domain_entries(include_str!("../../resources/i18n/ja.yml")),
+        ];
+        let required = [
+            "cred_prompt_cloudflare",
+            "cred_prompt_aliyun",
+            "cred_prompt_dnspod",
+            "cred_prompt_route53",
+            "cred_security_warning",
+            "acme_auth_error",
+            "acme_scope_error",
+            "acme_dns_error",
+            "acme_network_error",
+            "acme_unknown_error",
+        ];
+
+        assert_eq!(
+            locales[0].keys().collect::<Vec<_>>(),
+            locales[1].keys().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            locales[1].keys().collect::<Vec<_>>(),
+            locales[2].keys().collect::<Vec<_>>()
+        );
+        for locale in locales {
+            for key in required {
+                assert!(locale.contains_key(key), "missing domain.{key}");
+            }
+            assert!(locale["acme_unknown_error"].contains("%{0}"));
+        }
+    }
+
+    #[serial_test::serial]
+    #[tokio::test]
+    async fn typed_provider_selection_sends_provider_guidance() {
+        i18n::set_lang(Lang::En);
+        let adapter = RecordingAdapter::new();
+        let target = TargetId("test_chat".to_string());
+        let state = FakeState::domain(DomainInputStep::AwaitProvider);
+
+        handle_message(&adapter, &target, Some("cloudflare"), false, &state)
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            state.snapshot(),
+            DomainInputStep::AwaitCredentials(DnsProvider::Cloudflare)
+        ));
+        assert_eq!(
+            adapter.last_text(),
+            provider_credential_guidance(DnsProvider::Cloudflare)
+        );
     }
 
     #[tokio::test]

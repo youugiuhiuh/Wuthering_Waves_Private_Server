@@ -676,7 +676,15 @@ mod tests {
 
         let sent = adapter.sent.lock().unwrap();
         assert_eq!(sent.len(), 1, "only the winning provider gets a prompt");
-        assert_eq!(sent[0], rust_i18n::t!("domain.cred_prompt"));
+        let expected = [
+            crate::shared::handlers::message::provider_credential_guidance(
+                crate::core::types::DnsProvider::Cloudflare,
+            ),
+            crate::shared::handlers::message::provider_credential_guidance(
+                crate::core::types::DnsProvider::Aliyun,
+            ),
+        ];
+        assert!(expected.contains(&sent[0]));
         drop(sent);
         let answers = adapter.callback_answers.lock().unwrap();
         assert_eq!(answers.len(), 1);

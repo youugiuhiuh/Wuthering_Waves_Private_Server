@@ -12,6 +12,7 @@ use crate::core::types::{DomainFlowSource, IpVersion};
 use crate::core::xray::installer::{RealityInstallOutcome, RealityInstaller};
 use crate::core::xray::routing::RoutingManager;
 use crate::core::xray::{ConfigManager, KcpMask, Proto};
+use crate::shared::handlers::message::provider_credential_guidance;
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use crate::utils;
 use rust_i18n::t;
@@ -2641,7 +2642,7 @@ async fn handle_domain_provider(
         .send_message(
             &event.target,
             MessageContent {
-                text: t!("domain.cred_prompt").into_owned(),
+                text: provider_credential_guidance(provider),
                 markup: None,
             },
         )
@@ -2652,6 +2653,18 @@ async fn handle_domain_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[serial_test::serial]
+    #[test]
+    fn provider_callback_resolves_shared_credential_guidance() {
+        crate::core::i18n::set_lang(crate::core::i18n::Lang::En);
+        let provider = parse_provider_callback("xhttp_domain_provider:route53").unwrap();
+        let guidance = crate::shared::handlers::message::provider_credential_guidance(provider);
+
+        assert!(guidance.contains("ACCESS_KEY_ID,SECRET_ACCESS_KEY"));
+        assert!(guidance.contains("https://console.aws.amazon.com/iam/home#/users"));
+        assert!(guidance.contains("least-privilege"));
+    }
 
     #[test]
     fn one_click_domain_no_selects_reality_backend() {
