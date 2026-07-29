@@ -342,6 +342,7 @@ xray:
   batch_gen_done: "✅ 增强批量生成完成！\n\n📊 生成数量: %{0}\n🌐 网络协议: %{1}\n🔒 安全特性: 随机ShortId、去重SNI、唯一Tag"
   batch_done: "✅ 增强批量生成完成！\n\n📊 生成数量: %{0}\n🌐 网络协议: %{1}\n🔒 安全特性: 随机ShortId、去重SNI、唯一Tag"
   kcp_batch_done: "✅ KCP 批量生成完成！\n\n📊 生成数量: %{0}\n🌐 网络协议: %{1}\n🎭 遮罩层: %{2}"
+  tls_batch_done: "✅ TLS 批量生成完成！\n\n📊 生成数量: %{0}\n🌐 网络协议: %{1}\n🔒 安全特性: 随机ShortId、去重SNI、唯一Tag"
   batch_config_file: "\n\n📁 独立配置文件: %{0}"
   batch_backup_file: "\n💾 原配置备份: %{0}"
   kcp_config_file: "\n\n📁 配置文件: %{0}"

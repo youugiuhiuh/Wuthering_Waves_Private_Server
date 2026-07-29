@@ -5,7 +5,7 @@ use crate::adapters::common::{
     BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId,
 };
 use crate::app::state::AppState;
-use crate::core::security::acme::CertPaths;
+use crate::core::security::acme::{CertPaths, XhttpDeployMode};
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::types::{DomainFlowSource, IpVersion};
@@ -83,7 +83,7 @@ pub async fn run_standalone_xhttp_tls(
             }
 
             let mut result_msg =
-                t!("xray.batch_done", "0" => result.created_count, "1" => ip_str.as_str())
+                t!("xray.tls_batch_done", "0" => result.created_count, "1" => ip_str.as_str())
                     .into_owned();
 
             if let Some(filename) = result.config_file {
@@ -2538,7 +2538,37 @@ async fn handle_domain_yes(event: &CallbackEvent, state: &AppState, data: &str) 
     Ok(HandlerAction::Done)
 }
 
-async fn handle_domain_no(event: &CallbackEvent, _data: &str) -> HandlerResult {
+async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
+    let source = parse_domain_source(data);
+    if source == Some(DomainFlowSource::OneClick) {
+        event
+            .adapter
+            .answer_callback(
+                &event.target,
+                &event.callback_id,
+                Some(t!("ops.deploy_start").into_owned()),
+            )
+            .await?;
+        let event = CallbackEvent {
+            adapter: event.adapter.clone(),
+            target: event.target.clone(),
+            user_id: event.user_id.clone(),
+            msg_id: event.msg_id.clone(),
+            data: "a_one_click_reality".into(),
+            callback_id: event.callback_id.clone(),
+            session_timeout_secs: event.session_timeout_secs,
+        };
+        tokio::spawn(async move {
+            if let Err(e) =
+                crate::shared::handlers::ops::run_one_click(event, (), XhttpDeployMode::Reality)
+                    .await
+            {
+                log::error!("run_one_click Reality failed: {}", e);
+            }
+        });
+        return Ok(HandlerAction::Done);
+    }
+
     if MaintenanceManager::is_reality_base_ready().await {
         show_reality_batch_prompt(&*event.adapter, &event.target, &event.msg_id, Proto::XHTTP)
             .await?;

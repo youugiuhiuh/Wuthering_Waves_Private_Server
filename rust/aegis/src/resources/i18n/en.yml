@@ -330,6 +330,7 @@ xray:
   gen_fail: "❌ Generation failed: %{0}"
   batch_done: "✅ Enhanced batch creation complete!\n\n📊 Count: %{0}\n🌐 IP: %{1}\n🔒 Security: Random ShortId, Dedup SNI, Unique Tags"
   kcp_batch_done: "✅ KCP batch creation complete!\n\n📊 Count: %{0}\n🌐 IP: %{1}\n🎭 Mask Layer: %{2}"
+  tls_batch_done: "✅ TLS batch creation complete!\n\n📊 Count: %{0}\n🌐 IP: %{1}\n🔒 Security: Random ShortId, Dedup SNI, Unique Tags"
   batch_config_file: "\n\n📁 Config file: %{0}"
   batch_backup_file: "\n💾 Original config backup: %{0}"
   kcp_config_file: "\n\n📁 Config file: %{0}"

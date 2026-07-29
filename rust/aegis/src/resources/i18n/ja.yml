@@ -330,6 +330,7 @@ xray:
   gen_fail: "❌ 生成失敗: %{0}"
   batch_done: "✅ 強化バッチ作成完了！\n\n📊 数: %{0}\n🌐 IP: %{1}\n🔒 セキュリティ: ランダムShortId、重複排除SNI、一意のタグ"
   kcp_batch_done: "✅ KCPバッチ作成完了！\n\n📊 数: %{0}\n🌐 IP: %{1}\n🎭 マスク層: %{2}"
+  tls_batch_done: "✅ TLSバッチ作成完了！\n\n📊 数: %{0}\n🌐 IP: %{1}\n🔒 セキュリティ: ランダムShortId、重複排除SNI、一意のタグ"
   batch_config_file: "\n\n📁 設定ファイル: %{0}"
   batch_backup_file: "\n💾 元の設定バックアップ: %{0}"
   kcp_config_file: "\n\n📁 設定ファイル: %{0}"

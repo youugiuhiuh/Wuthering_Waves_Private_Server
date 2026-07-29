@@ -105,6 +105,7 @@ fn is_totp_code(text: &str) -> bool {
     text.len() == 6 && text.chars().all(|c| c.is_ascii_digit())
 }
 
+#[cfg(test)]
 pub fn domain_resume_target(
     action: &MessageAction,
 ) -> Option<crate::core::types::DomainFlowSource> {
@@ -231,7 +232,7 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
                     let event = CallbackEvent {
                         adapter: msg.adapter.clone(),
                         target: msg.target.clone(),
-                        user_id: msg.user_id.to_string().into(),
+                        user_id: msg.user_id.to_string(),
                         msg_id: MessageId("".into()),
                         data: "a_one_click_tls".into(),
                         callback_id: "".into(),
@@ -358,6 +359,7 @@ mod tests {
     struct MockAdapter {
         pub sent: Mutex<Vec<String>>,
         pub button_data: Mutex<Vec<String>>,
+        pub callback_answers: Mutex<Vec<String>>,
     }
 
     #[async_trait]
@@ -386,6 +388,17 @@ mod tests {
                         self.button_data.lock().unwrap().push(btn.data.clone());
                     }
                 }
+            }
+            Ok(())
+        }
+        async fn answer_callback(
+            &self,
+            _target: &TargetId,
+            _callback_id: &str,
+            text: Option<String>,
+        ) -> anyhow::Result<()> {
+            if let Some(t) = text {
+                self.callback_answers.lock().unwrap().push(t);
             }
             Ok(())
         }
@@ -640,6 +653,25 @@ mod tests {
         assert_eq!(
             domain_resume_target(&action_oneclick),
             Some(DomainFlowSource::OneClick)
+        );
+    }
+
+    #[tokio::test]
+    async fn one_click_domain_no_starts_reality_flow() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = make_state();
+        state.record_auth_success(42, Instant::now()).await;
+        dispatch_event(
+            callback_event(adapter.clone(), "xhttp_domain_no:one_click"),
+            &state,
+        )
+        .await
+        .unwrap();
+        let answers = adapter.callback_answers.lock().unwrap();
+        assert!(
+            !answers.is_empty(),
+            "one_click domain_no should answer callback, got: {:?}",
+            *answers
         );
     }
 }
