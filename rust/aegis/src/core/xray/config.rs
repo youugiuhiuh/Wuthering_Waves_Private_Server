@@ -8,6 +8,7 @@ use tokio::fs;
 
 use crate::core::cmd_async::run_cmd_output;
 use crate::core::paths::xray;
+use crate::core::security::acme::{AcmeManager, CertPaths};
 use crate::core::types::{BatchCreationResult, IpVersion};
 use crate::core::xray::routing::{ROUTING_RULES, RoutingManager};
 
@@ -164,6 +165,79 @@ impl ConfigManager {
             .chars()
             .take(8)
             .collect::<String>()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_tls_xhttp_inbound(
+        tag: &str,
+        port: i32,
+        uuid: &str,
+        email: &str,
+        domain: &str,
+        certs: &CertPaths,
+        ip_version: IpVersion,
+        path: &str,
+    ) -> Value {
+        let listen_ip = match ip_version {
+            IpVersion::IPv4 => "0.0.0.0",
+            IpVersion::IPv6 | IpVersion::SplitStackV6Primary | IpVersion::SplitStackV4Primary => {
+                "::"
+            }
+        };
+
+        json!({
+            "listen": listen_ip,
+            "port": port,
+            "protocol": "vless",
+            "tag": tag,
+            "settings": {
+                "clients": [{
+                    "id": uuid,
+                    "email": email
+                }],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "xhttp",
+                "security": "tls",
+                "tlsSettings": {
+                    "serverName": domain,
+                    "certificates": [{
+                        "certificateFile": certs.fullchain.to_string_lossy(),
+                        "certificateKey": certs.privkey.to_string_lossy()
+                    }]
+                },
+                "xhttpSettings": {
+                    "host": "",
+                    "path": path,
+                    "mode": "auto"
+                }
+            },
+            "sniffing": {
+                "enabled": true,
+                "destOverride": ["http", "tls", "quic"],
+                "metadataOnly": false
+            }
+        })
+    }
+
+    pub(crate) fn generate_client_link_tls(
+        uuid: &str,
+        domain: &str,
+        port: i32,
+        email: &str,
+        path: &str,
+    ) -> String {
+        let domain = AcmeManager::validate_domain(domain).unwrap_or_else(|_| domain.to_lowercase());
+        let encoded_sni = utf8_percent_encode(&domain, NON_ALPHANUMERIC).to_string();
+        let encoded_host = utf8_percent_encode(&domain, NON_ALPHANUMERIC).to_string();
+        let encoded_path = utf8_percent_encode(path, NON_ALPHANUMERIC).to_string();
+        let encoded_email = utf8_percent_encode(email, NON_ALPHANUMERIC).to_string();
+
+        format!(
+            "vless://{}@{}:{}?encryption=none&security=tls&sni={}&fp=chrome&type=xhttp&host={}&path={}&mode=auto#{}",
+            uuid, domain, port, encoded_sni, encoded_host, encoded_path, encoded_email
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -869,6 +943,31 @@ mod tests {
             assert!(mask.is_some(), "Failed to parse mask code: {}", code);
             assert_eq!(mask.unwrap().code(), code);
         }
+    }
+
+    #[test]
+    fn tls_xhttp_inbound_uses_certificates_without_reality_fields() {
+        let certs = CertPaths {
+            fullchain: "/root/cert/example.com/fullchain.pem".into(),
+            privkey: "/root/cert/example.com/privkey.pem".into(),
+        };
+        let value = ConfigManager::build_tls_xhttp_inbound(
+            "XHTTP-abcd-0", 2053, "uuid", "mail", "example.com",
+            &certs, IpVersion::IPv4, "/xhttp_a b",
+        );
+        assert_eq!(value["streamSettings"]["security"], "tls");
+        assert_eq!(value["streamSettings"]["xhttpSettings"]["host"], "");
+        assert_eq!(value["streamSettings"]["tlsSettings"]["certificates"][0]["certificateFile"], certs.fullchain.to_string_lossy().as_ref());
+        assert!(value["streamSettings"].get("realitySettings").is_none());
+    }
+
+    #[test]
+    fn tls_xhttp_link_matches_716_and_excludes_reality_parameters() {
+        let link = ConfigManager::generate_client_link_tls(
+            "uuid", "Example.COM", 2053, "mail tag", "/xhttp_a b",
+        );
+        assert_eq!(link, "vless://uuid@example.com:2053?encryption=none&security=tls&sni=example%2Ecom&fp=chrome&type=xhttp&host=example%2Ecom&path=%2Fxhttp%5Fa%20b&mode=auto#mail%20tag");
+        for forbidden in ["pbk=", "sid=", "pqv=", "flow="] { assert!(!link.contains(forbidden)); }
     }
 
     #[test]
