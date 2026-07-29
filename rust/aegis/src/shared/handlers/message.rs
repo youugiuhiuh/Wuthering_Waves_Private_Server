@@ -510,6 +510,8 @@ mod tests {
     use crate::adapters::common::{
         BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
     };
+    use crate::core::i18n;
+    use crate::core::i18n::Lang;
     use crate::shared::types::TimeoutStatus;
     use anyhow::Result;
     use async_trait::async_trait;
@@ -683,13 +685,15 @@ mod tests {
             .await
             .unwrap();
 
+        i18n::set_lang(Lang::En);
         assert!(matches!(action, MessageAction::Handled));
         assert!(matches!(state.snapshot(), DomainInputStep::AwaitDomain));
-        assert_eq!(adapter.last_text(), "domain.input_empty");
+        assert_eq!(adapter.last_text(), "Domain cannot be empty, please re-enter.");
     }
 
     #[tokio::test]
     async fn credentials_require_exactly_two_nonempty_values() {
+        i18n::set_lang(Lang::En);
         let adapter = RecordingAdapter::new();
         let target = TargetId("test_chat".to_string());
         let state = FakeState::credentials(DnsProvider::Cloudflare, "example.com");
@@ -703,6 +707,6 @@ mod tests {
             state.snapshot(),
             DomainInputStep::AwaitCredentials(DnsProvider::Cloudflare)
         ));
-        assert_eq!(adapter.last_text(), "domain.cred_invalid");
+        assert_eq!(adapter.last_text(), "Invalid credential format, please re-enter.");
     }
 }
