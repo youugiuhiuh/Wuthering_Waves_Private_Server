@@ -204,7 +204,7 @@ impl ConfigManager {
                     "serverName": domain,
                     "certificates": [{
                         "certificateFile": certs.fullchain.to_string_lossy(),
-                        "certificateKey": certs.privkey.to_string_lossy()
+                        "keyFile": certs.privkey.to_string_lossy()
                     }]
                 },
                 "xhttpSettings": {
