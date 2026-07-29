@@ -20,9 +20,8 @@ use crate::core::network::release_api::{
 };
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
 
-const DEFAULT_RELEASE_REPOSITORIES: &[(&str, &str)] = &[
-    ("youugiuhiuh", "Wuthering_Waves_Private_Server"),
-];
+const DEFAULT_RELEASE_REPOSITORIES: &[(&str, &str)] =
+    &[("youugiuhiuh", "Wuthering_Waves_Private_Server")];
 const DEFAULT_ASSET_NAME: &str = "aegis";
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
 
