@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use rust_i18n::t;
 
 use crate::adapters::common::{BotAdapter, MessageContent, TargetId};
+use crate::core::types::{DnsProvider, DomainFlowSource, DomainInputState, DomainInputStep};
 use crate::core::xray::config::ConfigManager;
 use crate::shared::types::TimeoutStatus;
 
@@ -19,6 +20,22 @@ pub trait MessageState: Send + Sync {
     async fn schedule_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus;
     async fn remove_schedule_input(&self, chat_id: &str);
     async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus;
+    async fn start_domain_input(
+        &self,
+        chat_id: String,
+        source: DomainFlowSource,
+        now: std::time::Instant,
+    );
+    async fn domain_input_snapshot(&self, chat_id: &str) -> Option<DomainInputState>;
+    async fn transition_domain_input(
+        &self,
+        chat_id: &str,
+        expected: DomainInputStep,
+        next: DomainInputStep,
+        domain: Option<String>,
+    ) -> bool;
+    async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState>;
+    async fn domain_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus;
 }
 
 pub async fn handle_message(

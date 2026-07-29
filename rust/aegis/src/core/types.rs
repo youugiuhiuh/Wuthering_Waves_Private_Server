@@ -1,5 +1,7 @@
 //! 共享类型定义
 
+use std::time::Instant;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +36,22 @@ impl DnsProvider {
 pub enum DomainFlowSource {
     Standalone,
     OneClick,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DomainInputStep {
+    AwaitDomain,
+    AwaitProvider,
+    AwaitCredentials(DnsProvider),
+    Processing,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainInputState {
+    pub updated_at: Instant,
+    pub source: DomainFlowSource,
+    pub step: DomainInputStep,
+    pub domain: Option<String>,
 }
 
 /// 批量创建结果

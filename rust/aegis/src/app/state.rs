@@ -10,6 +10,7 @@ use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::system::scheduler::task_types::TaskType;
 use aegis::core::totp::TotpManager;
+use aegis::core::types::{DnsProvider, DomainFlowSource, DomainInputState, DomainInputStep};
 use aegis::shared::handlers::message::MessageState;
 use aegis::shared::types::TimeoutStatus;
 
@@ -81,6 +82,7 @@ pub struct AppState {
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
     pending_security_file: Mutex<HashMap<String, Instant>>,
+    pending_domain_inputs: Mutex<HashMap<String, DomainInputState>>,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
     lang_configured: Mutex<bool>,
@@ -109,6 +111,7 @@ impl AppState {
             pending_warp_inputs: Mutex::new(HashMap::new()),
             pending_schedule_inputs: Mutex::new(HashMap::new()),
             pending_security_file: Mutex::new(HashMap::new()),
+            pending_domain_inputs: Mutex::new(HashMap::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
             lang: Mutex::new(Lang::Zh),
             lang_configured: Mutex::new(false),
@@ -463,6 +466,66 @@ impl AppState {
             None => TimeoutStatus::NotTracked,
         }
     }
+
+    pub async fn start_domain_input(
+        &self,
+        chat_id: String,
+        source: DomainFlowSource,
+        now: Instant,
+    ) {
+        let mut inputs = self.pending_domain_inputs.lock().await;
+        inputs.insert(
+            chat_id,
+            DomainInputState {
+                updated_at: now,
+                source,
+                step: DomainInputStep::AwaitDomain,
+                domain: None,
+            },
+        );
+    }
+
+    pub async fn domain_input_snapshot(&self, chat_id: &str) -> Option<DomainInputState> {
+        self.pending_domain_inputs
+            .lock()
+            .await
+            .get(chat_id)
+            .cloned()
+    }
+
+    pub async fn transition_domain_input(
+        &self,
+        chat_id: &str,
+        expected: DomainInputStep,
+        next: DomainInputStep,
+        domain: Option<String>,
+    ) -> bool {
+        let mut inputs = self.pending_domain_inputs.lock().await;
+        match inputs.get_mut(chat_id) {
+            Some(state) if state.step == expected => {
+                state.step = next;
+                state.updated_at = Instant::now();
+                if domain.is_some() {
+                    state.domain = domain;
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState> {
+        self.pending_domain_inputs.lock().await.remove(chat_id)
+    }
+
+    pub async fn domain_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
+        let inputs = self.pending_domain_inputs.lock().await;
+        match inputs.get(chat_id) {
+            Some(state) if state.updated_at.elapsed() > timeout => TimeoutStatus::Expired,
+            Some(_) => TimeoutStatus::Active,
+            None => TimeoutStatus::NotTracked,
+        }
+    }
 }
 
 #[async_trait]
@@ -478,6 +541,38 @@ impl MessageState for AppState {
     async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
         self.take_warp_input_status(chat_id, timeout).await
     }
+
+    async fn start_domain_input(
+        &self,
+        chat_id: String,
+        source: DomainFlowSource,
+        now: std::time::Instant,
+    ) {
+        self.start_domain_input(chat_id, source, now).await
+    }
+
+    async fn domain_input_snapshot(&self, chat_id: &str) -> Option<DomainInputState> {
+        self.domain_input_snapshot(chat_id).await
+    }
+
+    async fn transition_domain_input(
+        &self,
+        chat_id: &str,
+        expected: DomainInputStep,
+        next: DomainInputStep,
+        domain: Option<String>,
+    ) -> bool {
+        self.transition_domain_input(chat_id, expected, next, domain)
+            .await
+    }
+
+    async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState> {
+        self.take_domain_input(chat_id).await
+    }
+
+    async fn domain_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
+        self.domain_timeout_status(chat_id, timeout).await
+    }
 }
 
 fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
@@ -488,6 +583,7 @@ fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
 mod tests {
     use super::*;
     use aegis::adapters::common::{MessageContent, MessageId, Platform, TargetId};
+    use aegis::core::types::{DnsProvider, DomainFlowSource, DomainInputState, DomainInputStep};
     use anyhow::Result;
     use async_trait::async_trait;
     use futures_util::future::BoxFuture;
@@ -787,6 +883,33 @@ mod tests {
                 .await,
             TimeoutStatus::NotTracked
         );
+    }
+
+    #[tokio::test]
+    async fn domain_input_tracks_source_and_timeout() {
+        let state = make_state();
+        state
+            .start_domain_input("chat".into(), DomainFlowSource::OneClick, Instant::now())
+            .await;
+        let input = state.domain_input_snapshot("chat").await.unwrap();
+        assert_eq!(input.source, DomainFlowSource::OneClick);
+        assert_eq!(input.step, DomainInputStep::AwaitDomain);
+        assert_eq!(
+            state
+                .domain_timeout_status("chat", Duration::from_secs(120))
+                .await,
+            TimeoutStatus::Active
+        );
+    }
+
+    #[tokio::test]
+    async fn take_domain_input_removes_flow() {
+        let state = make_state();
+        state
+            .start_domain_input("chat".into(), DomainFlowSource::Standalone, Instant::now())
+            .await;
+        assert!(state.take_domain_input("chat").await.is_some());
+        assert!(state.domain_input_snapshot("chat").await.is_none());
     }
 
     #[tokio::test]
