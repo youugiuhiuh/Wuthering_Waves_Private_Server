@@ -426,18 +426,35 @@ fn classify_acme_failure(
     stderr: &[u8],
     environment: &[(String, String)],
 ) -> AcmeFailureKind {
-    let mut text = format!(
+    let mut text = normalize_percent_escapes(format!(
         "{}\n{}",
         String::from_utf8_lossy(stdout),
         String::from_utf8_lossy(stderr)
-    );
-    for (_, value) in environment {
-        if value.is_empty() {
-            continue;
-        }
-        text = text.replace(value, "[REDACTED]");
-        let encoded = utf8_percent_encode(value, NON_ALPHANUMERIC).to_string();
-        text = text.replace(&encoded, "[REDACTED]");
+    ));
+    let mut values = environment
+        .iter()
+        .map(|(_, value)| value.as_str())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    values
+        .sort_unstable_by(|left, right| right.len().cmp(&left.len()).then_with(|| left.cmp(right)));
+    values.dedup();
+
+    let mut representations = values
+        .into_iter()
+        .flat_map(|value| {
+            [
+                normalize_percent_escapes(value.to_string()),
+                utf8_percent_encode(value, NON_ALPHANUMERIC).to_string(),
+                form_encode(value),
+            ]
+        })
+        .collect::<Vec<_>>();
+    representations
+        .sort_unstable_by(|left, right| right.len().cmp(&left.len()).then_with(|| left.cmp(right)));
+    representations.dedup();
+    for representation in representations {
+        text = text.replace(&representation, "[REDACTED]");
     }
     let text = text.to_ascii_lowercase();
 
@@ -489,6 +506,39 @@ fn classify_acme_failure(
     } else {
         AcmeFailureKind::Unknown
     }
+}
+
+fn normalize_percent_escapes(text: String) -> String {
+    let mut bytes = text.into_bytes();
+    for index in 0..bytes.len().saturating_sub(2) {
+        if bytes[index] == b'%'
+            && bytes[index + 1].is_ascii_hexdigit()
+            && bytes[index + 2].is_ascii_hexdigit()
+        {
+            bytes[index + 1].make_ascii_uppercase();
+            bytes[index + 2].make_ascii_uppercase();
+        }
+    }
+    String::from_utf8(bytes).expect("percent-escape normalization preserves UTF-8")
+}
+
+fn form_encode(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'*' | b'-' | b'.' | b'_' => {
+                encoded.push(char::from(byte));
+            }
+            b' ' => encoded.push('+'),
+            _ => {
+                encoded.push('%');
+                encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+                encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+            }
+        }
+    }
+    encoded
 }
 
 fn acme_command_failure(
@@ -1038,6 +1088,36 @@ mod tests {
         assert!(!error.contains("token-secret"));
         assert!(!error.contains("account-secret"));
         assert!(!error.contains("private detail"));
+    }
+
+    #[test]
+    fn credential_redaction_handles_overlapping_values() {
+        let environment = vec![
+            ("SHORT".to_string(), "prefix-".to_string()),
+            ("LONG".to_string(), "prefix-unauthorized".to_string()),
+        ];
+        assert_eq!(
+            classify_acme_failure(b"", b"prefix-unauthorized", &environment),
+            AcmeFailureKind::Unknown
+        );
+    }
+
+    #[test]
+    fn credential_redaction_handles_case_equivalent_percent_escapes() {
+        let environment = vec![("TOKEN".to_string(), "a/:unauthorized".to_string())];
+        assert_eq!(
+            classify_acme_failure(b"", b"a%2f%3Aunauthorized", &environment),
+            AcmeFailureKind::Unknown
+        );
+    }
+
+    #[test]
+    fn credential_redaction_handles_form_encoded_spaces() {
+        let environment = vec![("TOKEN".to_string(), "secret unauthorized".to_string())];
+        assert_eq!(
+            classify_acme_failure(b"", b"secret+unauthorized", &environment),
+            AcmeFailureKind::Unknown
+        );
     }
 
     #[test]
