@@ -359,6 +359,7 @@ mod tests {
     struct MockAdapter {
         pub sent: Mutex<Vec<String>>,
         pub button_data: Mutex<Vec<String>>,
+        pub button_text: Mutex<Vec<String>>,
         pub callback_answers: Mutex<Vec<String>>,
     }
 
@@ -386,6 +387,7 @@ mod tests {
                 for row in &markup.buttons {
                     for btn in row {
                         self.button_data.lock().unwrap().push(btn.data.clone());
+                        self.button_text.lock().unwrap().push(btn.text.clone());
                     }
                 }
             }
@@ -543,7 +545,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn standalone_xhttp_starts_with_domain_choice() {
+    async fn domain_choice_buttons_are_localized_and_routable() {
         let adapter = Arc::new(MockAdapter::default());
         let state = make_state();
         state.record_auth_success(42, Instant::now()).await;
@@ -553,6 +555,10 @@ mod tests {
         )
         .await
         .unwrap();
+        let sent = adapter.sent.lock().unwrap();
+        assert_ne!(sent.last().map(String::as_str), Some("domain.prompt"));
+        drop(sent);
+
         let buttons = adapter.button_data.lock().unwrap();
         assert!(
             buttons.contains(&"xhttp_domain_yes:standalone".to_string()),
@@ -564,6 +570,11 @@ mod tests {
             "should have no button, got: {:?}",
             *buttons
         );
+        drop(buttons);
+
+        let button_text = adapter.button_text.lock().unwrap();
+        assert!(!button_text.contains(&"domain.yes".to_string()));
+        assert!(!button_text.contains(&"domain.no".to_string()));
     }
 
     #[tokio::test]
@@ -618,6 +629,58 @@ mod tests {
             !sent.is_empty(),
             "domain provider callback should produce a response"
         );
+    }
+
+    #[tokio::test]
+    async fn stale_domain_provider_callback_is_rejected() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = Arc::new(make_state());
+        state.record_auth_success(42, Instant::now()).await;
+        state
+            .start_domain_input(
+                "123".into(),
+                crate::core::types::DomainFlowSource::Standalone,
+                Instant::now(),
+            )
+            .await;
+        state
+            .transition_domain_input(
+                "123",
+                crate::core::types::DomainInputStep::AwaitDomain,
+                crate::core::types::DomainInputStep::AwaitProvider,
+                None,
+            )
+            .await;
+
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+        let cloudflare = async {
+            barrier.wait().await;
+            dispatch_event(
+                callback_event(adapter.clone(), "xhttp_domain_provider:cloudflare"),
+                &state,
+            )
+            .await
+        };
+        let aliyun = async {
+            barrier.wait().await;
+            dispatch_event(
+                callback_event(adapter.clone(), "xhttp_domain_provider:aliyun"),
+                &state,
+            )
+            .await
+        };
+
+        let (cloudflare_result, aliyun_result) = tokio::join!(cloudflare, aliyun);
+        cloudflare_result.unwrap();
+        aliyun_result.unwrap();
+
+        let sent = adapter.sent.lock().unwrap();
+        assert_eq!(sent.len(), 1, "only the winning provider gets a prompt");
+        assert_eq!(sent[0], rust_i18n::t!("domain.cred_prompt"));
+        drop(sent);
+        let answers = adapter.callback_answers.lock().unwrap();
+        assert_eq!(answers.len(), 1);
+        assert_eq!(answers[0], rust_i18n::t!("domain.flow_expired"));
     }
 
     #[tokio::test]
