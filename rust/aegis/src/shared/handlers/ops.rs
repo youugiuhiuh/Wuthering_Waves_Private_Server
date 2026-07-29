@@ -1,4 +1,5 @@
 use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent};
+use crate::core::security::acme::XhttpDeployMode;
 use crate::core::singbox::SingBoxInstaller;
 use crate::core::singbox::config::SingBoxConfigManager;
 
@@ -30,9 +31,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         "a_bbr3_reboot_now" => handle_bbr3_reboot_now(event).await,
         "a_bbr3_reboot_later" => handle_bbr3_reboot_later(event).await,
         "a_sys_reboot" => handle_sys_reboot(event).await,
-        "a_one_click" => handle_one_click_ask_domain(event).await,
-        "a_one_click_nodomain" => handle_one_click(event).await,
-        "a_one_click_domain" => handle_one_click_domain_start(event).await,
+        "a_one_click" => handle_one_click(event).await,
         _ => Ok(HandlerAction::Done),
     }
 }
@@ -522,377 +521,418 @@ async fn handle_sys_reboot(event: &CallbackEvent) -> HandlerResult {
     Ok(HandlerAction::Done)
 }
 
-async fn handle_one_click_ask_domain(event: &CallbackEvent) -> HandlerResult {
-    let buttons = vec![
-        vec![
-            InlineButton {
-                text: "\u{1F310} 有域名（TLS XHTTP）".into(),
-                data: "a_one_click_domain".into(),
-            },
-            InlineButton {
-                text: "\u{1F680} 无域名（Reality XHTTP）".into(),
-                data: "a_one_click_nodomain".into(),
-            },
-        ],
-        vec![InlineButton {
-            text: t!("menu.back_user").into(),
-            data: "m_xray_mgmt".into(),
-        }],
-    ];
-
-    event.adapter.edit_message(&event.target, &event.msg_id, MessageContent {
-        text: "\u{1F4E6} 一键部署\n\n是否使用自有域名？\n\u{2022} \u{2705} 有域名：XHTTP 将使用 TLS（可套 CDN）\n\u{2022} \u{26D4} 无域名：XHTTP 将使用 Reality".into(),
-        markup: Some(Markup { buttons }),
-    }).await?;
-
-    Ok(HandlerAction::Done)
-}
-
-async fn handle_one_click_domain_start(event: &CallbackEvent) -> HandlerResult {
-    event
-        .adapter
-        .send_message(
-            &event.target,
-            MessageContent {
-                text: "请输入你的域名，例如 example.com".into(),
-                markup: None,
-            },
-        )
-        .await?;
-    event
-        .adapter
-        .answer_callback(&event.target, &event.callback_id, Some("请输入域名".into()))
-        .await?;
-    Ok(HandlerAction::Done)
-}
-
-async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
-    event
-        .adapter
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.deploy_start").into_owned()),
-        )
-        .await?;
-
+pub async fn run_one_click(
+    event: CallbackEvent,
+    _state: (),
+    mode: XhttpDeployMode,
+) -> anyhow::Result<()> {
     let adapter = event.adapter.clone();
     let target = event.target.clone();
     let msg_id = event.msg_id.clone();
 
-    tokio::spawn(async move {
-        let (tx, update_task) =
-            spawn_progress_updater(adapter.clone(), target.clone(), msg_id, |t| {
-                format!("🚀 <b>{}</b>\n{}", t!("menu.one_click_deploy"), t)
-            });
+    let (tx, _update_task) =
+        spawn_progress_updater(adapter.clone(), target.clone(), msg_id.clone(), |t| {
+            format!("🚀 <b>{}</b>\n{}", t!("menu.one_click_deploy"), t)
+        });
 
-        let mut failed = false;
-        let mut all_links: Vec<String> = Vec::new();
+    let mut failed = false;
+    let mut all_links: Vec<String> = Vec::new();
 
-        send_progress(&tx, 1, 10, t!("ops.deploy_step_tune"));
-        if MaintenanceManager::tune_vps_generic().await.is_err() {
-            let _ = tx.send(t!("ops.deploy_fail", "0" => t!("ops.deploy_fail_tune")).to_string());
+    send_progress(&tx, 1, 10, t!("ops.deploy_step_tune"));
+    if MaintenanceManager::tune_vps_generic().await.is_err() {
+        let _ = tx.send(t!("ops.deploy_fail", "0" => t!("ops.deploy_fail_tune")).to_string());
+        failed = true;
+    }
+
+    let xray_installed = tokio::fs::try_exists(crate::core::paths::xray::BIN)
+        .await
+        .unwrap_or(false);
+    if xray_installed {
+        send_progress(
+            &tx,
+            2,
+            10,
+            t!("ops.deploy_skip", "0" => t!("ops.deploy_step_xray_init")),
+        );
+    } else if !failed {
+        send_progress(&tx, 2, 10, t!("ops.deploy_step_xray_init"));
+        if let Err(e) = RealityInstallerInternal::install_minimal_environment().await {
+            let _ = tx.send(
+                t!("ops.deploy_fail",
+                    "0" => format!("{}: {}", t!("ops.deploy_fail_xray_init"), e)
+                )
+                .to_string(),
+            );
             failed = true;
         }
+    }
 
-        let xray_installed = tokio::fs::try_exists(crate::core::paths::xray::BIN)
-            .await
-            .unwrap_or(false);
-        if xray_installed {
-            send_progress(
-                &tx,
-                2,
-                10,
-                t!("ops.deploy_skip", "0" => t!("ops.deploy_step_xray_init")),
-            );
-        } else if !failed {
-            send_progress(&tx, 2, 10, t!("ops.deploy_step_xray_init"));
-            if let Err(e) = RealityInstallerInternal::install_minimal_environment().await {
-                let _ = tx.send(
-                    t!("ops.deploy_fail",
-                        "0" => format!("{}: {}", t!("ops.deploy_fail_xray_init"), e)
-                    )
-                    .to_string(),
-                );
-                failed = true;
-            }
-        }
-
-        if !failed {
-            send_progress(&tx, 3, 10, t!("ops.deploy_step_pq"));
-            if let Err(e) = ConfigManager::generate_reality_pq_keys().await {
-                let _ = tx.send(
-                    t!("ops.deploy_fail",
-                        "0" => format!("{}: {}", t!("ops.deploy_fail_pq"), e)
-                    )
-                    .to_string(),
-                );
-                failed = true;
-            }
-        }
-
-        let ip_version = {
-            let (v4, v6) = tokio::join!(
-                SystemMonitor::get_public_ip(),
-                SystemMonitor::get_public_ipv6(),
-            );
-            match (&v4, &v6) {
-                (Ok(_), Ok(_)) => IpVersion::SplitStackV4Primary,
-                (Ok(_), Err(_)) => IpVersion::IPv4,
-                (Err(_), Ok(_)) => IpVersion::IPv6,
-                _ => IpVersion::IPv4,
-            }
-        };
-
-        if !failed {
-            send_progress(
-                &tx,
-                4,
-                10,
-                format!("{} ({})", t!("ops.deploy_step_xhttp"), ip_version.label()),
-            );
-            match ConfigManager::batch_create_xhttp_reality_enhanced(20, ip_version).await {
-                Ok(result) => {
-                    all_links.extend(result.links);
-                    let _ = adapter
-                        .send_message(
-                            &target,
-                            MessageContent {
-                                text: t!("ops.deploy_created_xhttp",
-                                        "0" => ip_version.label(),
-                                        "1" => result.created_count.to_string(),
-                                        "2" => result.config_file.as_deref().unwrap_or("?"))
-                                .into_owned(),
-                                markup: None,
-                            },
-                        )
-                        .await;
-                }
-                Err(e) => {
-                    let _ = tx.send(
-                        t!("ops.deploy_fail",
-                            "0" => format!("{}: {}", t!("ops.deploy_fail_xhttp"), e)
-                        )
-                        .to_string(),
-                    );
-                    failed = true;
-                }
-            }
-        }
-
-        if !failed {
-            send_progress(
-                &tx,
-                5,
-                10,
-                format!("{} ({})", t!("ops.deploy_step_vision"), ip_version.label()),
-            );
-            match ConfigManager::batch_create_reality_vision_enhanced(20, ip_version).await {
-                Ok(result) => {
-                    all_links.extend(result.links);
-                    let _ = adapter
-                        .send_message(
-                            &target,
-                            MessageContent {
-                                text: t!("ops.deploy_created_vision",
-                                        "0" => ip_version.label(),
-                                        "1" => result.created_count.to_string(),
-                                        "2" => result.config_file.as_deref().unwrap_or("?"))
-                                .into_owned(),
-                                markup: None,
-                            },
-                        )
-                        .await;
-                }
-                Err(e) => {
-                    let _ = tx.send(
-                        t!("ops.deploy_fail",
-                            "0" => format!("{}: {}", t!("ops.deploy_fail_vision"), e)
-                        )
-                        .to_string(),
-                    );
-                    failed = true;
-                }
-            }
-        }
-
-        if SingBoxInstaller::is_installed().await {
-            send_progress(
-                &tx,
-                6,
-                10,
-                t!("ops.deploy_skip", "0" => t!("ops.deploy_step_singbox_init")),
-            );
-        } else if !failed {
-            send_progress(&tx, 6, 10, t!("ops.deploy_step_singbox_init"));
-            if let Err(e) = SingBoxInstaller::install().await {
-                let _ = tx.send(
-                    t!("ops.deploy_fail",
-                        "0" => format!("{}: {}", t!("ops.deploy_fail_singbox_init"), e)
-                    )
-                    .to_string(),
-                );
-                failed = true;
-            }
-        }
-
-        if !failed {
-            send_progress(
-                &tx,
-                7,
-                10,
-                format!("{} ({})", t!("ops.deploy_step_h2"), ip_version.label()),
-            );
-            match SingBoxConfigManager::batch_create_hysteria2(3, ip_version, false, false).await {
-                Ok(result) => {
-                    all_links.extend(result.links);
-                    let _ = adapter
-                        .send_message(
-                            &target,
-                            MessageContent {
-                                text: t!("ops.deploy_created_h2",
-                                        "0" => ip_version.label(),
-                                        "1" => result.created_count.to_string(),
-                                        "2" => result.config_file.as_deref().unwrap_or("?"))
-                                .into_owned(),
-                                markup: None,
-                            },
-                        )
-                        .await;
-                }
-                Err(e) => {
-                    let _ = tx.send(
-                        t!("ops.deploy_fail",
-                            "0" => format!("{}: {}", t!("ops.deploy_fail_h2"), e)
-                        )
-                        .to_string(),
-                    );
-                    failed = true;
-                }
-            }
-        }
-
-        if !failed {
-            let _ = adapter
-                .send_message(
-                    &target,
-                    MessageContent {
-                        text: t!("ops.deploy_step_kcp_dns").into_owned(),
-                        markup: None,
-                    },
+    if !failed {
+        send_progress(&tx, 3, 10, t!("ops.deploy_step_pq"));
+        if let Err(e) = ConfigManager::generate_reality_pq_keys().await {
+            let _ = tx.send(
+                t!("ops.deploy_fail",
+                    "0" => format!("{}: {}", t!("ops.deploy_fail_pq"), e)
                 )
-                .await;
+                .to_string(),
+            );
+            failed = true;
         }
-        if !failed {
-            send_progress(&tx, 8, 10, t!("ops.deploy_step_kcp_dns"));
-            match ConfigManager::batch_create_kcp(5, ip_version, &["mld"]).await {
-                Ok(result) => {
-                    all_links.extend(result.links);
-                    let _ = adapter
-                        .send_message(
-                            &target,
-                            MessageContent {
-                                text: t!("ops.deploy_created_kcp_dns",
-                                        "0" => result.created_count.to_string(),
-                                        "1" => result.config_file.as_deref().unwrap_or("?"))
-                                .into_owned(),
-                                markup: None,
-                            },
-                        )
-                        .await;
-                }
-                Err(e) => {
-                    let _ = tx.send(
-                        t!("ops.deploy_fail",
-                            "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_dns"), e)
-                        )
-                        .to_string(),
-                    );
-                    failed = true;
-                }
-            }
-        }
+    }
 
-        if !failed {
-            send_progress(&tx, 9, 10, t!("ops.deploy_step_kcp_wechat"));
-            match ConfigManager::batch_create_kcp(5, ip_version, &["mlw"]).await {
-                Ok(result) => {
-                    all_links.extend(result.links);
-                    let _ = adapter
-                        .send_message(
-                            &target,
-                            MessageContent {
-                                text: t!("ops.deploy_created_kcp_wechat",
-                                        "0" => result.created_count.to_string(),
-                                        "1" => result.config_file.as_deref().unwrap_or("?"))
-                                .into_owned(),
-                                markup: None,
-                            },
-                        )
-                        .await;
-                }
-                Err(e) => {
-                    let _ = tx.send(
-                        t!("ops.deploy_fail",
-                            "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_wechat"), e)
-                        )
-                        .to_string(),
-                    );
-                    failed = true;
-                }
-            }
+    let ip_version = {
+        let (v4, v6) = tokio::join!(
+            SystemMonitor::get_public_ip(),
+            SystemMonitor::get_public_ipv6(),
+        );
+        match (&v4, &v6) {
+            (Ok(_), Ok(_)) => IpVersion::SplitStackV4Primary,
+            (Ok(_), Err(_)) => IpVersion::IPv4,
+            (Err(_), Ok(_)) => IpVersion::IPv6,
+            _ => IpVersion::IPv4,
         }
+    };
 
-        if !failed && !all_links.is_empty() {
-            let combined = all_links.join("\n\n");
-            if let Ok(msg) = adapter
-                .send_message(
-                    &target,
-                    MessageContent {
-                        text: combined,
-                        markup: None,
-                    },
-                )
-                .await
-            {
-                let adapter_clone = adapter.clone();
-                let target_clone = target.clone();
-                tokio::spawn(async move {
-                    tokio::time::sleep(Duration::from_secs(60)).await;
-                    if let Err(e) = adapter_clone.delete_message(&target_clone, &msg).await {
-                        log::warn!("删除一键部署链接消息失败: {}", e);
+    if !failed {
+        send_progress(
+            &tx,
+            4,
+            10,
+            format!(
+                "{} ({})",
+                t!("ops.deploy_step_xhttp_tls"),
+                ip_version.label()
+            ),
+        );
+        match &mode {
+            XhttpDeployMode::Reality => {
+                match ConfigManager::batch_create_xhttp_reality_enhanced(20, ip_version).await {
+                    Ok(result) => {
+                        all_links.extend(result.links);
+                        let _ = adapter
+                            .send_message(
+                                &target,
+                                MessageContent {
+                                    text: t!("ops.deploy_created_xhttp",
+                                            "0" => ip_version.label(),
+                                            "1" => result.created_count.to_string(),
+                                            "2" => result.config_file.as_deref().unwrap_or("?"))
+                                    .into_owned(),
+                                    markup: None,
+                                },
+                            )
+                            .await;
                     }
-                });
+                    Err(e) => {
+                        let _ = tx.send(
+                            t!("ops.deploy_fail",
+                                "0" => format!("{}: {}", t!("ops.deploy_fail_xhttp"), e)
+                            )
+                            .to_string(),
+                        );
+                        failed = true;
+                    }
+                }
+            }
+            XhttpDeployMode::Tls { domain, cert_paths } => {
+                match ConfigManager::batch_create_xhttp_tls_enhanced(domain, cert_paths, ip_version)
+                    .await
+                {
+                    Ok(result) => {
+                        all_links.extend(result.links);
+                        let _ = adapter
+                            .send_message(
+                                &target,
+                                MessageContent {
+                                    text: t!("ops.deploy_created_xhttp_tls",
+                                            "0" => ip_version.label(),
+                                            "1" => result.created_count.to_string(),
+                                            "2" => result.config_file.as_deref().unwrap_or("?"))
+                                    .into_owned(),
+                                    markup: None,
+                                },
+                            )
+                            .await;
+                    }
+                    Err(e) => {
+                        let _ = tx.send(
+                            t!("ops.deploy_fail",
+                                "0" => format!("{}: {}", t!("ops.deploy_fail_xhttp_tls"), e)
+                            )
+                            .to_string(),
+                        );
+                        failed = true;
+                    }
+                }
             }
         }
+    }
 
-        if !failed {
-            send_progress(&tx, 10, 10, t!("ops.deploy_step_security"));
-            if let Err(e) =
-                Operations::perform_maintenance_with_reboot_time(Operations::DEFAULT_REBOOT_TIME)
-                    .await
-            {
+    if !failed {
+        send_progress(
+            &tx,
+            5,
+            10,
+            format!("{} ({})", t!("ops.deploy_step_vision"), ip_version.label()),
+        );
+        match ConfigManager::batch_create_reality_vision_enhanced(20, ip_version).await {
+            Ok(result) => {
+                all_links.extend(result.links);
+                let _ = adapter
+                    .send_message(
+                        &target,
+                        MessageContent {
+                            text: t!("ops.deploy_created_vision",
+                                    "0" => ip_version.label(),
+                                    "1" => result.created_count.to_string(),
+                                    "2" => result.config_file.as_deref().unwrap_or("?"))
+                            .into_owned(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+            }
+            Err(e) => {
                 let _ = tx.send(
                     t!("ops.deploy_fail",
-                        "0" => format!("{}: {}", t!("ops.deploy_fail_security"), e)
+                        "0" => format!("{}: {}", t!("ops.deploy_fail_vision"), e)
                     )
                     .to_string(),
                 );
                 failed = true;
             }
         }
+    }
 
-        if !failed {
-            let _ = tx.send(t!("ops.deploy_success").to_string());
+    if SingBoxInstaller::is_installed().await {
+        send_progress(
+            &tx,
+            6,
+            10,
+            t!("ops.deploy_skip", "0" => t!("ops.deploy_step_singbox_init")),
+        );
+    } else if !failed {
+        send_progress(&tx, 6, 10, t!("ops.deploy_step_singbox_init"));
+        if let Err(e) = SingBoxInstaller::install().await {
+            let _ = tx.send(
+                t!("ops.deploy_fail",
+                    "0" => format!("{}: {}", t!("ops.deploy_fail_singbox_init"), e)
+                )
+                .to_string(),
+            );
+            failed = true;
         }
+    }
 
-        drop(tx);
-        let _ = update_task.await;
-    });
+    if !failed {
+        send_progress(
+            &tx,
+            7,
+            10,
+            format!("{} ({})", t!("ops.deploy_step_h2"), ip_version.label()),
+        );
+        match SingBoxConfigManager::batch_create_hysteria2(3, ip_version, false, false).await {
+            Ok(result) => {
+                all_links.extend(result.links);
+                let _ = adapter
+                    .send_message(
+                        &target,
+                        MessageContent {
+                            text: t!("ops.deploy_created_h2",
+                                    "0" => ip_version.label(),
+                                    "1" => result.created_count.to_string(),
+                                    "2" => result.config_file.as_deref().unwrap_or("?"))
+                            .into_owned(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+            }
+            Err(e) => {
+                let _ = tx.send(
+                    t!("ops.deploy_fail",
+                        "0" => format!("{}: {}", t!("ops.deploy_fail_h2"), e)
+                    )
+                    .to_string(),
+                );
+                failed = true;
+            }
+        }
+    }
 
-    Ok(HandlerAction::Done)
+    if !failed {
+        let _ = adapter
+            .send_message(
+                &target,
+                MessageContent {
+                    text: t!("ops.deploy_step_kcp_dns").into_owned(),
+                    markup: None,
+                },
+            )
+            .await;
+    }
+
+    if !failed {
+        send_progress(&tx, 8, 10, t!("ops.deploy_step_kcp_dns"));
+        match ConfigManager::batch_create_kcp(5, ip_version, &["mld"]).await {
+            Ok(result) => {
+                all_links.extend(result.links);
+                let _ = adapter
+                    .send_message(
+                        &target,
+                        MessageContent {
+                            text: t!("ops.deploy_created_kcp_dns",
+                                    "0" => result.created_count.to_string(),
+                                    "1" => result.config_file.as_deref().unwrap_or("?"))
+                            .into_owned(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+            }
+            Err(e) => {
+                let _ = tx.send(
+                    t!("ops.deploy_fail",
+                        "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_dns"), e)
+                    )
+                    .to_string(),
+                );
+                failed = true;
+            }
+        }
+    }
+
+    if !failed {
+        send_progress(&tx, 9, 10, t!("ops.deploy_step_kcp_wechat"));
+        match ConfigManager::batch_create_kcp(5, ip_version, &["mlw"]).await {
+            Ok(result) => {
+                all_links.extend(result.links);
+                let _ = adapter
+                    .send_message(
+                        &target,
+                        MessageContent {
+                            text: t!("ops.deploy_created_kcp_wechat",
+                                    "0" => result.created_count.to_string(),
+                                    "1" => result.config_file.as_deref().unwrap_or("?"))
+                            .into_owned(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+            }
+            Err(e) => {
+                let _ = tx.send(
+                    t!("ops.deploy_fail",
+                        "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_wechat"), e)
+                    )
+                    .to_string(),
+                );
+                failed = true;
+            }
+        }
+    }
+
+    if !failed && !all_links.is_empty() {
+        let combined = all_links.join("\n\n");
+        if let Ok(msg) = adapter
+            .send_message(
+                &target,
+                MessageContent {
+                    text: combined,
+                    markup: None,
+                },
+            )
+            .await
+        {
+            let adapter_clone = adapter.clone();
+            let target_clone = target.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                if let Err(e) = adapter_clone.delete_message(&target_clone, &msg).await {
+                    log::warn!("删除一键部署链接消息失败: {}", e);
+                }
+            });
+        }
+    }
+
+    if !failed {
+        send_progress(&tx, 10, 10, t!("ops.deploy_step_security"));
+        if let Err(e) =
+            Operations::perform_maintenance_with_reboot_time(Operations::DEFAULT_REBOOT_TIME).await
+        {
+            let _ = tx.send(
+                t!("ops.deploy_fail",
+                    "0" => format!("{}: {}", t!("ops.deploy_fail_security"), e)
+                )
+                .to_string(),
+            );
+            failed = true;
+        }
+    }
+
+    if !failed {
+        let _ = adapter
+            .send_message(
+                &target,
+                MessageContent {
+                    text: t!("ops.deploy_done").into_owned(),
+                    markup: None,
+                },
+            )
+            .await;
+    }
+
+    Ok(())
+}
+
+async fn handle_one_click(event: &CallbackEvent) -> HandlerResult {
+    crate::shared::handlers::xray::show_domain_choice(
+        event,
+        crate::core::types::DomainFlowSource::OneClick,
+    )
+    .await
 }
 
 fn send_progress(tx: &UnboundedSender<String>, step: u8, total: u8, msg: impl Into<String>) {
     let _ = tx.send(format!("[{}/{}] {}", step, total, msg.into()));
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::security::acme::{CertPaths, XhttpDeployMode};
+    use std::path::PathBuf;
+
+    fn tls_mode(domain: &str) -> XhttpDeployMode {
+        XhttpDeployMode::Tls {
+            domain: domain.to_string(),
+            cert_paths: CertPaths {
+                fullchain: PathBuf::from("/fake/fullchain"),
+                privkey: PathBuf::from("/fake/privkey"),
+            },
+        }
+    }
+
+    fn xhttp_mode_for_one_click(has_domain: bool, mode: XhttpDeployMode) -> XhttpDeployMode {
+        if has_domain {
+            mode
+        } else {
+            XhttpDeployMode::Reality
+        }
+    }
+
+    #[test]
+    fn one_click_selects_only_xhttp_backend() {
+        assert!(matches!(
+            xhttp_mode_for_one_click(true, tls_mode("example.com")),
+            XhttpDeployMode::Tls { .. }
+        ));
+    }
+
+    #[test]
+    fn one_click_without_domain_selects_reality() {
+        assert!(matches!(
+            xhttp_mode_for_one_click(false, tls_mode("example.com")),
+            XhttpDeployMode::Reality
+        ));
+    }
 }

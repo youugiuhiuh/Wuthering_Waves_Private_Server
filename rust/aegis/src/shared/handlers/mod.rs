@@ -8,9 +8,10 @@ pub mod singbox;
 pub mod warp;
 pub mod xray;
 
+use crate::app::state::AppState;
 use crate::shared::types::{CallbackEvent, DispatchResult};
 
-pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
+pub async fn dispatch(event: &CallbackEvent, state: &AppState) -> DispatchResult {
     let data = event.data.as_str();
 
     if data == "m_log" || data.starts_with("l_") {
@@ -35,8 +36,6 @@ pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
     if data.starts_with("a_bbr3")
         || data == "a_fw"
         || data == "a_one_click"
-        || data == "a_one_click_domain"
-        || data == "a_one_click_nodomain"
         || data == "a_reload"
         || data == "a_sys_reboot"
         || data == "a_upgrade"
@@ -52,14 +51,12 @@ pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
         || data == "m_del_cfg"
         || data == "m_pq_mgmt"
         || data == "a_inst_base"
-        || data == "u_xhttp_domain"
-        || data == "u_xhttp_nodomain"
-        || data.starts_with("xhttp_tls_prov:")
         || data.starts_with("u_")
         || data.starts_with("cfg_")
         || data.starts_with("m_pq_")
+        || data.starts_with("xhttp_domain_")
     {
-        return Ok(Some(xray::handle(event).await?));
+        return Ok(Some(xray::handle(event, state).await?));
     }
     if matches!(
         data,

@@ -134,4 +134,57 @@ mod tests {
     fn lang_to_timezone_ja() {
         assert_eq!(crate::core::i18n::lang_to_timezone(Lang::Ja), "Asia/Tokyo");
     }
+
+    #[serial]
+    #[test]
+    fn domain_translation_keys_exist() {
+        let keys = [
+            "domain.prompt",
+            "domain.yes",
+            "domain.no",
+            "domain.input_prompt",
+            "domain.input_timeout",
+            "domain.input_empty",
+            "domain.prov_title",
+            "domain.prov_cf",
+            "domain.prov_ali",
+            "domain.prov_dp",
+            "domain.prov_aws",
+            "domain.cred_prompt",
+            "domain.cred_invalid",
+            "domain.installing_acme",
+            "domain.acme_install_fail",
+            "domain.issuing_cert",
+            "domain.cert_success",
+            "domain.cert_fail",
+            "domain.cert_timeout",
+            "domain.cert_renew",
+            "domain.cert_skip",
+            "domain.cred_fail",
+            "domain.gen_progress",
+            "domain.processing",
+            "domain.flow_expired",
+            "ops.deploy_step_xhttp_tls",
+            "ops.deploy_created_xhttp_tls",
+            "ops.deploy_fail_xhttp_tls",
+            "xray.tls_batch_title",
+            "xray.tls_batch_done",
+        ];
+
+        for lang in [Lang::Zh, Lang::En, Lang::Ja] {
+            set_lang(lang);
+            for key in &keys {
+                let value = rust_i18n::t!(*key);
+                let value_str = value.to_string();
+                assert!(
+                    !value_str.is_empty() && value_str != *key,
+                    "key '{}' missing or resolves to key itself for {:?}",
+                    key,
+                    lang
+                );
+            }
+        }
+
+        set_lang(Lang::Zh);
+    }
 }

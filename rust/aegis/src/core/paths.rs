@@ -4,6 +4,13 @@
 
 pub const WWPS_BASE_DIR: &str = "/etc/wwps";
 
+pub mod acme {
+    pub const HOME: &str = "/root/.acme.sh";
+    pub const BIN: &str = "/root/.acme.sh/acme.sh";
+    pub const ACCOUNT_CONF: &str = "/root/.acme.sh/account.conf";
+    pub const CERT_ROOT: &str = "/root/cert";
+}
+
 /// Sing-box 相关路径
 pub mod singbox {
     pub const DIR: &str = "/etc/wwps/wwps-box";
@@ -70,6 +77,14 @@ pub mod log {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_acme_paths() {
+        assert_eq!(acme::HOME, "/root/.acme.sh");
+        assert_eq!(acme::BIN, "/root/.acme.sh/acme.sh");
+        assert_eq!(acme::ACCOUNT_CONF, "/root/.acme.sh/account.conf");
+        assert_eq!(acme::CERT_ROOT, "/root/cert");
+    }
 
     #[test]
     fn test_wwps_base_dir() {

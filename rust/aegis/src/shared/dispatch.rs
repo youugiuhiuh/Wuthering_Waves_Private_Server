@@ -3,9 +3,11 @@ use std::time::Duration;
 use anyhow::Result;
 use sha2::Digest;
 
-use crate::adapters::common::MessageContent;
+use crate::adapters::common::{MessageContent, MessageId};
 use crate::app::auth;
 use crate::app::state::AppState;
+use crate::core::security::acme::XhttpDeployMode;
+use crate::core::types::DomainFlowSource;
 use crate::shared::handlers::message::{self, MessageAction};
 use crate::shared::types::{
     BotCommand, BotEvent, CallbackEvent, CommandEvent, HandlerAction, MessageEvent, TimeoutStatus,
@@ -57,7 +59,7 @@ pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<()> {
                 if iterations > 16 {
                     break;
                 }
-                match handlers::dispatch(&current).await? {
+                match handlers::dispatch(&current, state).await? {
                     Some(HandlerAction::Redirect(data)) => {
                         current = CallbackEvent { data, ..current };
                     }
@@ -103,10 +105,20 @@ fn is_totp_code(text: &str) -> bool {
     text.len() == 6 && text.chars().all(|c| c.is_ascii_digit())
 }
 
+#[cfg(test)]
+pub fn domain_resume_target(
+    action: &MessageAction,
+) -> Option<crate::core::types::DomainFlowSource> {
+    match action {
+        MessageAction::DomainReady { source, .. } => Some(*source),
+        _ => None,
+    }
+}
+
 #[allow(dead_code)]
 async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
     let action = message::handle_message(
-        msg.adapter.clone(),
+        &*msg.adapter,
         &msg.target,
         msg.text.as_deref(),
         msg.file_id.is_some(),
@@ -189,6 +201,54 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
             )
             .await?;
         return Ok(());
+    }
+
+    if let MessageAction::DomainReady { source, mode } = &action {
+        let source_val = *source;
+        match source_val {
+            DomainFlowSource::Standalone => {
+                if let XhttpDeployMode::Tls { domain, cert_paths } = mode {
+                    let adapter = msg.adapter.clone();
+                    let target = msg.target.clone();
+                    let domain = domain.clone();
+                    let cert_paths = cert_paths.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = handlers::xray::run_standalone_xhttp_tls(
+                            domain,
+                            cert_paths,
+                            DomainFlowSource::Standalone,
+                            adapter,
+                            target,
+                        )
+                        .await
+                        {
+                            log::error!("run_standalone_xhttp_tls failed: {}", e);
+                        }
+                    });
+                }
+            }
+            DomainFlowSource::OneClick => {
+                if let XhttpDeployMode::Tls { domain, cert_paths } = mode {
+                    let event = CallbackEvent {
+                        adapter: msg.adapter.clone(),
+                        target: msg.target.clone(),
+                        user_id: msg.user_id.to_string(),
+                        msg_id: MessageId("".into()),
+                        data: "a_one_click_tls".into(),
+                        callback_id: "".into(),
+                        session_timeout_secs: 600,
+                    };
+                    let domain = domain.clone();
+                    let cert_paths = cert_paths.clone();
+                    tokio::spawn(async move {
+                        let mode = XhttpDeployMode::Tls { domain, cert_paths };
+                        if let Err(e) = handlers::ops::run_one_click(event, (), mode).await {
+                            log::error!("run_one_click TLS failed: {}", e);
+                        }
+                    });
+                }
+            }
+        }
     }
 
     Ok(())
@@ -298,6 +358,8 @@ mod tests {
     #[derive(Default)]
     struct MockAdapter {
         pub sent: Mutex<Vec<String>>,
+        pub button_data: Mutex<Vec<String>>,
+        pub callback_answers: Mutex<Vec<String>>,
     }
 
     #[async_trait]
@@ -320,6 +382,24 @@ mod tests {
             content: MessageContent,
         ) -> anyhow::Result<()> {
             self.sent.lock().unwrap().push(content.text);
+            if let Some(markup) = &content.markup {
+                for row in &markup.buttons {
+                    for btn in row {
+                        self.button_data.lock().unwrap().push(btn.data.clone());
+                    }
+                }
+            }
+            Ok(())
+        }
+        async fn answer_callback(
+            &self,
+            _target: &TargetId,
+            _callback_id: &str,
+            text: Option<String>,
+        ) -> anyhow::Result<()> {
+            if let Some(t) = text {
+                self.callback_answers.lock().unwrap().push(t);
+            }
             Ok(())
         }
         async fn delete_message(
@@ -459,6 +539,120 @@ mod tests {
         assert!(
             state.is_authorized(42).await,
             "valid TOTP code should authorize the user"
+        );
+    }
+
+    #[tokio::test]
+    async fn standalone_xhttp_starts_with_domain_choice() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = make_state();
+        state.record_auth_success(42, Instant::now()).await;
+        dispatch_event(
+            callback_event(adapter.clone(), "u_xhttp_batch_init"),
+            &state,
+        )
+        .await
+        .unwrap();
+        let buttons = adapter.button_data.lock().unwrap();
+        assert!(
+            buttons.contains(&"xhttp_domain_yes:standalone".to_string()),
+            "should have yes button, got: {:?}",
+            *buttons
+        );
+        assert!(
+            buttons.contains(&"xhttp_domain_no:standalone".to_string()),
+            "should have no button, got: {:?}",
+            *buttons
+        );
+    }
+
+    #[tokio::test]
+    async fn xhttp_domain_yes_routes_to_xray_handler() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = make_state();
+        state.record_auth_success(42, Instant::now()).await;
+        dispatch_event(
+            callback_event(adapter.clone(), "xhttp_domain_yes:standalone"),
+            &state,
+        )
+        .await
+        .unwrap();
+        // xhttp_domain_yes starts domain input flow, answer_callback is called
+        let sent = adapter.sent.lock().unwrap();
+        assert!(
+            !sent.is_empty(),
+            "domain yes callback should produce a response"
+        );
+    }
+
+    #[tokio::test]
+    async fn xhttp_domain_provider_routes_to_xray_handler() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = make_state();
+        state.record_auth_success(42, Instant::now()).await;
+        // Start domain flow and transition to AwaitProvider state
+        state
+            .start_domain_input(
+                "123".into(),
+                crate::core::types::DomainFlowSource::Standalone,
+                Instant::now(),
+            )
+            .await;
+        state
+            .transition_domain_input(
+                "123",
+                crate::core::types::DomainInputStep::AwaitDomain,
+                crate::core::types::DomainInputStep::AwaitProvider,
+                None,
+            )
+            .await;
+        dispatch_event(
+            callback_event(adapter.clone(), "xhttp_domain_provider:cloudflare"),
+            &state,
+        )
+        .await
+        .unwrap();
+        // Should transition to AwaitCredentials and send cred prompt
+        let sent = adapter.sent.lock().unwrap();
+        assert!(
+            !sent.is_empty(),
+            "domain provider callback should produce a response"
+        );
+    }
+
+    #[tokio::test]
+    async fn domain_ready_dispatches_by_original_source() {
+        use crate::core::security::acme::{CertPaths, XhttpDeployMode};
+        use crate::core::types::DomainFlowSource;
+        use crate::shared::handlers::message::MessageAction;
+        use std::path::PathBuf;
+
+        fn tls_mode(domain: &str) -> XhttpDeployMode {
+            XhttpDeployMode::Tls {
+                domain: domain.to_string(),
+                cert_paths: CertPaths {
+                    fullchain: PathBuf::from("/fake/fullchain"),
+                    privkey: PathBuf::from("/fake/privkey"),
+                },
+            }
+        }
+
+        let action = MessageAction::DomainReady {
+            source: DomainFlowSource::Standalone,
+            mode: tls_mode("example.com"),
+        };
+        assert_eq!(
+            domain_resume_target(&action),
+            Some(DomainFlowSource::Standalone)
+        );
+
+        let action_oneclick = MessageAction::DomainReady {
+            source: DomainFlowSource::OneClick,
+            mode: tls_mode("example.com"),
+        };
+        assert_eq!(
+            domain_resume_target(&action_oneclick),
+            Some(DomainFlowSource::OneClick)
         );
     }
 }

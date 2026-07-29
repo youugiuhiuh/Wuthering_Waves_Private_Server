@@ -4,10 +4,11 @@ use tokio::time::{Duration, sleep};
 use crate::adapters::common::{
     BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId,
 };
-use crate::core::security::acme::CertPaths;
+use crate::app::state::AppState;
+use crate::core::security::acme::{CertPaths, XhttpDeployMode};
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
-use crate::core::types::IpVersion;
+use crate::core::types::{DomainFlowSource, IpVersion};
 use crate::core::xray::installer::{RealityInstallOutcome, RealityInstaller};
 use crate::core::xray::routing::RoutingManager;
 use crate::core::xray::{ConfigManager, KcpMask, Proto};
@@ -15,6 +16,130 @@ use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use crate::utils;
 use rust_i18n::t;
 use std::fs;
+
+// ── Standalone TLS xhttp ──────────────────────────────────────────────
+
+pub async fn run_standalone_xhttp_tls(
+    domain: String,
+    certs: CertPaths,
+    _source: DomainFlowSource,
+    adapter: Arc<dyn BotAdapter>,
+    target: TargetId,
+) -> anyhow::Result<()> {
+    let ip_version = {
+        let (v4, v6) = tokio::join!(
+            SystemMonitor::get_public_ip(),
+            SystemMonitor::get_public_ipv6(),
+        );
+        match (&v4, &v6) {
+            (Ok(_), Ok(_)) => IpVersion::SplitStackV4Primary,
+            (Ok(_), Err(_)) => IpVersion::IPv4,
+            (Err(_), Ok(_)) => IpVersion::IPv6,
+            _ => IpVersion::IPv4,
+        }
+    };
+
+    let ip_str: String = match ip_version {
+        IpVersion::IPv4 => "IPv4".into(),
+        IpVersion::IPv6 => "IPv6".into(),
+        IpVersion::SplitStackV6Primary => t!("xray.split_v6_up").into(),
+        IpVersion::SplitStackV4Primary => t!("xray.split_v4_up").into(),
+    };
+
+    let _ = adapter
+        .send_message(
+            &target,
+            MessageContent {
+                text: t!("xray.gen_progress", "0" => 20, "1" => "TLS", "2" => ip_str.as_str())
+                    .into_owned(),
+                markup: None,
+            },
+        )
+        .await;
+
+    let res = ConfigManager::batch_create_xhttp_tls_enhanced(&domain, &certs, ip_version).await;
+
+    match res {
+        Ok(result) => {
+            let mut message_ids: Vec<String> = Vec::with_capacity(result.links.len());
+
+            let mut combined_links = String::new();
+            for link in &result.links {
+                combined_links.push_str(link);
+                combined_links.push_str("\n\n");
+            }
+            if !combined_links.is_empty()
+                && let Ok(msg) = adapter
+                    .send_message(
+                        &target,
+                        MessageContent {
+                            text: combined_links,
+                            markup: None,
+                        },
+                    )
+                    .await
+            {
+                message_ids.push(msg.0);
+            }
+
+            let mut result_msg =
+                t!("xray.tls_batch_done", "0" => result.created_count, "1" => domain.as_str())
+                    .into_owned();
+
+            if let Some(filename) = result.config_file {
+                result_msg.push_str(&format!(
+                    "\n\n{}",
+                    t!("xray.batch_config_file", "0" => filename)
+                ));
+            }
+
+            if let Some(backup_file) = result.backup_file {
+                result_msg.push_str(&format!(
+                    "\n\n{}",
+                    t!("xray.batch_backup_file", "0" => backup_file)
+                ));
+            }
+
+            if let Ok(msg) = adapter
+                .send_message(
+                    &target,
+                    MessageContent {
+                        text: result_msg,
+                        markup: None,
+                    },
+                )
+                .await
+            {
+                message_ids.push(msg.0);
+            }
+
+            let adapter_clone = adapter.clone();
+            let target_clone = target.clone();
+            tokio::spawn(async move {
+                sleep(Duration::from_secs(60)).await;
+                for id_str in message_ids {
+                    let mid = MessageId(id_str);
+                    if let Err(e) = adapter_clone.delete_message(&target_clone, &mid).await {
+                        log::warn!("删除消息失败: {}", e);
+                    }
+                }
+            });
+        }
+        Err(e) => {
+            let _ = adapter
+                .send_message(
+                    &target,
+                    MessageContent {
+                        text: t!("xray.gen_fail", "0" => e.to_string()).to_string(),
+                        markup: None,
+                    },
+                )
+                .await;
+        }
+    }
+
+    Ok(())
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -79,6 +204,63 @@ async fn show_reality_batch_prompt(
         )
         .await?;
     Ok(())
+}
+
+pub async fn show_domain_choice(event: &CallbackEvent, source: DomainFlowSource) -> HandlerResult {
+    let source_str = match source {
+        DomainFlowSource::Standalone => "standalone",
+        DomainFlowSource::OneClick => "one_click",
+    };
+    let buttons = vec![
+        vec![InlineButton {
+            text: t!("domain.use_custom_domain").into(),
+            data: format!("xhttp_domain_yes:{}", source_str),
+        }],
+        vec![InlineButton {
+            text: t!("domain.no_custom_domain").into(),
+            data: format!("xhttp_domain_no:{}", source_str),
+        }],
+    ];
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text: t!("domain.choice_title").into_owned(),
+                markup: Some(Markup { buttons }),
+            },
+        )
+        .await?;
+    Ok(HandlerAction::Done)
+}
+
+fn parse_domain_source(data: &str) -> Option<DomainFlowSource> {
+    let source = data
+        .strip_prefix("xhttp_domain_yes:")
+        .or_else(|| data.strip_prefix("xhttp_domain_no:"))?;
+    match source {
+        "standalone" => Some(DomainFlowSource::Standalone),
+        "one_click" => Some(DomainFlowSource::OneClick),
+        _ => None,
+    }
+}
+
+fn one_click_domain_no_mode(data: &str) -> Option<XhttpDeployMode> {
+    data.strip_prefix("xhttp_domain_no:")?;
+    (parse_domain_source(data) == Some(DomainFlowSource::OneClick))
+        .then_some(XhttpDeployMode::Reality)
+}
+
+fn parse_provider_callback(data: &str) -> Option<crate::core::types::DnsProvider> {
+    let provider_str = data.strip_prefix("xhttp_domain_provider:")?;
+    match provider_str {
+        "cloudflare" | "cf" => Some(crate::core::types::DnsProvider::Cloudflare),
+        "aliyun" | "ali" => Some(crate::core::types::DnsProvider::Aliyun),
+        "dnspod" | "dp" => Some(crate::core::types::DnsProvider::Dnspod),
+        "route53" | "aws" => Some(crate::core::types::DnsProvider::Route53),
+        _ => None,
+    }
 }
 
 async fn show_reality_qty_prompt(
@@ -193,129 +375,6 @@ fn trigger_reality_auto_init(adapter: Arc<dyn BotAdapter>, target: TargetId, msg
             }
         }
     });
-}
-
-pub async fn ip_version() -> IpVersion {
-    if SystemMonitor::get_public_ipv6().await.is_ok() {
-        IpVersion::IPv6
-    } else {
-        IpVersion::IPv4
-    }
-}
-
-pub async fn do_tls_batch(
-    adapter: Arc<dyn BotAdapter>,
-    target: &TargetId,
-    callback_id: &str,
-    count: usize,
-    ip_version: IpVersion,
-    domain: &str,
-    cert_paths: &CertPaths,
-) -> anyhow::Result<()> {
-    let ip_str: String = match ip_version {
-        IpVersion::IPv4 => "IPv4".into(),
-        IpVersion::IPv6 => "IPv6".into(),
-        IpVersion::SplitStackV6Primary => t!("xray.split_v6_up").into(),
-        IpVersion::SplitStackV4Primary => t!("xray.split_v4_up").into(),
-    };
-
-    adapter
-        .answer_callback(
-            target,
-            callback_id,
-            Some(
-                t!("xray.gen_progress", "0" => count, "1" => "XHTTP TLS", "2" => ip_str.as_str())
-                    .into_owned(),
-            ),
-        )
-        .await?;
-
-    let res =
-        ConfigManager::batch_create_xhttp_tls_enhanced(count, ip_version, domain, cert_paths).await;
-
-    match res {
-        Ok(result) => {
-            let mut message_ids: Vec<String> = Vec::with_capacity(result.links.len());
-
-            let mut combined_links = String::new();
-            for link in &result.links {
-                combined_links.push_str(link);
-                combined_links.push_str("\n\n");
-            }
-            if !combined_links.is_empty()
-                && let Ok(msg) = adapter
-                    .send_message(
-                        target,
-                        MessageContent {
-                            text: combined_links,
-                            markup: None,
-                        },
-                    )
-                    .await
-            {
-                message_ids.push(msg.0);
-            }
-
-            let mut result_msg = t!(
-                "xray.batch_done",
-                "0" => result.created_count,
-                "1" => ip_str.as_str()
-            )
-            .into_owned();
-
-            if let Some(filename) = result.config_file {
-                result_msg.push_str(&format!(
-                    "\n\n{}",
-                    t!("xray.batch_config_file", "0" => filename)
-                ));
-            }
-
-            if let Some(backup_file) = result.backup_file {
-                result_msg.push_str(&format!(
-                    "\n\n{}",
-                    t!("xray.batch_backup_file", "0" => backup_file)
-                ));
-            }
-
-            if let Ok(msg) = adapter
-                .send_message(
-                    target,
-                    MessageContent {
-                        text: result_msg,
-                        markup: None,
-                    },
-                )
-                .await
-            {
-                message_ids.push(msg.0);
-            }
-
-            let adapter_clone = adapter.clone();
-            let target_clone = target.clone();
-            tokio::spawn(async move {
-                sleep(Duration::from_secs(60)).await;
-                for id_str in message_ids {
-                    let mid = MessageId(id_str);
-                    if let Err(e) = adapter_clone.delete_message(&target_clone, &mid).await {
-                        log::warn!("TLS batch cleanup: {}", e);
-                    }
-                }
-            });
-        }
-        Err(e) => {
-            let _ = adapter
-                .send_message(
-                    target,
-                    MessageContent {
-                        text: t!("xray.gen_fail", "0" => e).to_string(),
-                        markup: None,
-                    },
-                )
-                .await;
-        }
-    }
-
-    Ok(())
 }
 
 // ── mgmt ─────────────────────────────────────────────────────────────
@@ -1096,112 +1155,7 @@ async fn handle_batch_init(event: &CallbackEvent) -> HandlerResult {
 }
 
 async fn handle_xhttp_batch_init(event: &CallbackEvent) -> HandlerResult {
-    if !MaintenanceManager::is_reality_base_ready().await {
-        event
-            .adapter
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.preparing_reality").into_owned()),
-            )
-            .await?;
-        event
-            .adapter
-            .edit_message(
-                &event.target,
-                &event.msg_id,
-                MessageContent {
-                    text: t!("xray.init_reality").into_owned(),
-                    markup: None,
-                },
-            )
-            .await?;
-        trigger_reality_auto_init(
-            event.adapter.clone(),
-            event.target.clone(),
-            event.msg_id.clone(),
-        );
-        return Ok(HandlerAction::Done);
-    }
-
-    let buttons = vec![
-        vec![
-            InlineButton {
-                text: "有域名（TLS）".into(),
-                data: "u_xhttp_domain".into(),
-            },
-            InlineButton {
-                text: "无域名（Reality）".into(),
-                data: "u_xhttp_nodomain".into(),
-            },
-        ],
-        vec![InlineButton {
-            text: t!("menu.back_user").into(),
-            data: "m_xray_mgmt".into(),
-        }],
-    ];
-
-    event
-        .adapter
-        .edit_message(
-            &event.target,
-            &event.msg_id,
-            MessageContent {
-                text: "是否使用自有域名？\n\n 有域名：TLS + XHTTP（可套 CDN）\n 无域名：Reality + XHTTP（伪装 SNI）".into(),
-                markup: Some(Markup { buttons }),
-            },
-        )
-        .await?;
-    Ok(HandlerAction::Done)
-}
-
-async fn handle_xhttp_nodomain(event: &CallbackEvent) -> HandlerResult {
-    show_reality_batch_prompt(&*event.adapter, &event.target, &event.msg_id, Proto::XHTTP).await?;
-    Ok(HandlerAction::Done)
-}
-
-async fn handle_xhttp_domain_start(event: &CallbackEvent) -> HandlerResult {
-    event
-        .adapter
-        .send_message(
-            &event.target,
-            MessageContent {
-                text: "请输入你的域名，例如 example.com".into(),
-                markup: None,
-            },
-        )
-        .await?;
-    event
-        .adapter
-        .answer_callback(&event.target, &event.callback_id, Some("请输入域名".into()))
-        .await?;
-    Ok(HandlerAction::Done)
-}
-
-async fn handle_xhttp_tls_provider(event: &CallbackEvent) -> HandlerResult {
-    let data = event.data.as_str();
-    let provider = match data.strip_prefix("xhttp_tls_prov:") {
-        Some("cf") => "Cloudflare",
-        Some("ali") => "Aliyun",
-        Some("dp") => "DNSPod",
-        Some("aws") => "Route53",
-        _ => return Ok(HandlerAction::Done),
-    };
-
-    event
-        .adapter
-        .send_message(
-            &event.target,
-            MessageContent {
-                text: format!("请输入 {} 的 API Token 和 Key（格式: TOKEN,KEY）", provider),
-                markup: None,
-            },
-        )
-        .await?;
-    event
-        .adapter
-        .answer_callback(&event.target, &event.callback_id, Some("请输入凭据".into()))
-        .await?;
+    show_domain_choice(event, DomainFlowSource::Standalone).await?;
     Ok(HandlerAction::Done)
 }
 
@@ -2511,7 +2465,7 @@ async fn handle_user_del_confirm(event: &CallbackEvent) -> HandlerResult {
 
 // ── Main dispatch ─────────────────────────────────────────────────────
 
-pub async fn handle(event: &CallbackEvent) -> HandlerResult {
+pub async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerResult {
     let data = event.data.as_str();
     match data {
         "m_xray_mgmt" => handle_mgmt(event).await,
@@ -2543,9 +2497,6 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         d if d.starts_with("u_batch_ip_init:") => handle_batch_ip_init(event).await,
         d if d.starts_with("u_batch_exec:") => handle_batch_exec(event).await,
         "u_xhttp_batch_init" => handle_xhttp_batch_init(event).await,
-        "u_xhttp_domain" => handle_xhttp_domain_start(event).await,
-        "u_xhttp_nodomain" => handle_xhttp_nodomain(event).await,
-        d if d.starts_with("xhttp_tls_prov:") => handle_xhttp_tls_provider(event).await,
         d if d.starts_with("u_xhttp_batch_ip_init:") => handle_xhttp_batch_ip_init(event).await,
         d if d.starts_with("u_xhttp_batch_exec:") => handle_xhttp_batch_exec(event).await,
         "u_kcp_init" => handle_kcp_init(event).await,
@@ -2564,6 +2515,157 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         "m_routing" => handle_routing_menu(event).await,
         d if d.starts_with("routing_toggle:") => handle_routing_toggle(event).await,
 
+        d if d.starts_with("xhttp_domain_yes:") => handle_domain_yes(event, state, d).await,
+        d if d.starts_with("xhttp_domain_no:") => handle_domain_no(event, d).await,
+        d if d.starts_with("xhttp_domain_provider:") => {
+            handle_domain_provider(event, state, d).await
+        }
+
         _ => Ok(HandlerAction::Done),
+    }
+}
+
+async fn handle_domain_yes(event: &CallbackEvent, state: &AppState, data: &str) -> HandlerResult {
+    let source = parse_domain_source(data);
+    if source.is_none() {
+        return Ok(HandlerAction::Done);
+    }
+    let source = source.unwrap();
+    state
+        .start_domain_input(event.target.0.clone(), source, std::time::Instant::now())
+        .await;
+    event
+        .adapter
+        .send_message(
+            &event.target,
+            MessageContent {
+                text: t!("domain.input_prompt").into_owned(),
+                markup: None,
+            },
+        )
+        .await?;
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
+    if let Some(mode) = one_click_domain_no_mode(data) {
+        event
+            .adapter
+            .answer_callback(
+                &event.target,
+                &event.callback_id,
+                Some(t!("ops.deploy_start").into_owned()),
+            )
+            .await?;
+        let event = CallbackEvent {
+            adapter: event.adapter.clone(),
+            target: event.target.clone(),
+            user_id: event.user_id.clone(),
+            msg_id: event.msg_id.clone(),
+            data: "a_one_click_reality".into(),
+            callback_id: event.callback_id.clone(),
+            session_timeout_secs: event.session_timeout_secs,
+        };
+        tokio::spawn(async move {
+            if let Err(e) = crate::shared::handlers::ops::run_one_click(event, (), mode).await {
+                log::error!("run_one_click Reality failed: {}", e);
+            }
+        });
+        return Ok(HandlerAction::Done);
+    }
+
+    if MaintenanceManager::is_reality_base_ready().await {
+        show_reality_batch_prompt(&*event.adapter, &event.target, &event.msg_id, Proto::XHTTP)
+            .await?;
+    } else {
+        event
+            .adapter
+            .answer_callback(
+                &event.target,
+                &event.callback_id,
+                Some(t!("xray.preparing_reality").into_owned()),
+            )
+            .await?;
+        event
+            .adapter
+            .edit_message(
+                &event.target,
+                &event.msg_id,
+                MessageContent {
+                    text: t!("xray.init_reality").into_owned(),
+                    markup: None,
+                },
+            )
+            .await?;
+        trigger_reality_auto_init(
+            event.adapter.clone(),
+            event.target.clone(),
+            event.msg_id.clone(),
+        );
+    }
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_domain_provider(
+    event: &CallbackEvent,
+    state: &AppState,
+    data: &str,
+) -> HandlerResult {
+    let provider = parse_provider_callback(data);
+    if provider.is_none() {
+        return Ok(HandlerAction::Done);
+    }
+    let provider = provider.unwrap();
+    let target_str = &event.target.0;
+    let snapshot = state.domain_input_snapshot(target_str).await;
+    match snapshot {
+        Some(domain_state)
+            if domain_state.step == crate::core::types::DomainInputStep::AwaitProvider =>
+        {
+            state
+                .transition_domain_input(
+                    target_str,
+                    crate::core::types::DomainInputStep::AwaitProvider,
+                    crate::core::types::DomainInputStep::AwaitCredentials(provider),
+                    None,
+                )
+                .await;
+            event
+                .adapter
+                .send_message(
+                    &event.target,
+                    MessageContent {
+                        text: t!("domain.cred_prompt").into_owned(),
+                        markup: None,
+                    },
+                )
+                .await?;
+        }
+        _ => {
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(t!("domain.flow_expired").into_owned()),
+                )
+                .await?;
+        }
+    }
+    Ok(HandlerAction::Done)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_click_domain_no_selects_reality_backend() {
+        assert!(matches!(
+            one_click_domain_no_mode("xhttp_domain_no:one_click"),
+            Some(XhttpDeployMode::Reality)
+        ));
+        assert!(one_click_domain_no_mode("xhttp_domain_no:standalone").is_none());
+        assert!(one_click_domain_no_mode("xhttp_domain_maybe:one_click").is_none());
     }
 }
