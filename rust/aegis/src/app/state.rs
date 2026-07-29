@@ -10,7 +10,7 @@ use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::system::scheduler::task_types::TaskType;
 use aegis::core::totp::TotpManager;
-use aegis::core::types::{DnsProvider, DomainFlowSource, DomainInputState, DomainInputStep};
+use aegis::core::types::{DomainFlowSource, DomainInputState, DomainInputStep};
 use aegis::shared::handlers::message::MessageState;
 use aegis::shared::types::TimeoutStatus;
 
@@ -583,7 +583,7 @@ fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
 mod tests {
     use super::*;
     use aegis::adapters::common::{MessageContent, MessageId, Platform, TargetId};
-    use aegis::core::types::{DnsProvider, DomainFlowSource, DomainInputState, DomainInputStep};
+    use aegis::core::types::{DomainFlowSource, DomainInputState, DomainInputStep};
     use anyhow::Result;
     use async_trait::async_trait;
     use futures_util::future::BoxFuture;

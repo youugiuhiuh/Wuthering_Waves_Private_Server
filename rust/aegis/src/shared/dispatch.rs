@@ -3,9 +3,11 @@ use std::time::Duration;
 use anyhow::Result;
 use sha2::Digest;
 
-use crate::adapters::common::MessageContent;
+use crate::adapters::common::{MessageContent, MessageId};
 use crate::app::auth;
 use crate::app::state::AppState;
+use crate::core::security::acme::XhttpDeployMode;
+use crate::core::types::DomainFlowSource;
 use crate::shared::handlers::message::{self, MessageAction};
 use crate::shared::types::{
     BotCommand, BotEvent, CallbackEvent, CommandEvent, HandlerAction, MessageEvent, TimeoutStatus,
@@ -103,6 +105,15 @@ fn is_totp_code(text: &str) -> bool {
     text.len() == 6 && text.chars().all(|c| c.is_ascii_digit())
 }
 
+pub fn domain_resume_target(
+    action: &MessageAction,
+) -> Option<crate::core::types::DomainFlowSource> {
+    match action {
+        MessageAction::DomainReady { source, .. } => Some(*source),
+        _ => None,
+    }
+}
+
 #[allow(dead_code)]
 async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
     let action = message::handle_message(
@@ -189,6 +200,54 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
             )
             .await?;
         return Ok(());
+    }
+
+    if let MessageAction::DomainReady { source, mode } = &action {
+        let source_val = *source;
+        match source_val {
+            DomainFlowSource::Standalone => {
+                if let XhttpDeployMode::Tls { domain, cert_paths } = mode {
+                    let adapter = msg.adapter.clone();
+                    let target = msg.target.clone();
+                    let domain = domain.clone();
+                    let cert_paths = cert_paths.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = handlers::xray::run_standalone_xhttp_tls(
+                            domain,
+                            cert_paths,
+                            DomainFlowSource::Standalone,
+                            adapter,
+                            target,
+                        )
+                        .await
+                        {
+                            log::error!("run_standalone_xhttp_tls failed: {}", e);
+                        }
+                    });
+                }
+            }
+            DomainFlowSource::OneClick => {
+                if let XhttpDeployMode::Tls { domain, cert_paths } = mode {
+                    let event = CallbackEvent {
+                        adapter: msg.adapter.clone(),
+                        target: msg.target.clone(),
+                        user_id: msg.user_id.to_string().into(),
+                        msg_id: MessageId("".into()),
+                        data: "a_one_click_tls".into(),
+                        callback_id: "".into(),
+                        session_timeout_secs: 600,
+                    };
+                    let domain = domain.clone();
+                    let cert_paths = cert_paths.clone();
+                    tokio::spawn(async move {
+                        let mode = XhttpDeployMode::Tls { domain, cert_paths };
+                        if let Err(e) = handlers::ops::run_one_click(event, (), mode).await {
+                            log::error!("run_one_click TLS failed: {}", e);
+                        }
+                    });
+                }
+            }
+        }
     }
 
     Ok(())
@@ -545,6 +604,42 @@ mod tests {
         assert!(
             !sent.is_empty(),
             "domain provider callback should produce a response"
+        );
+    }
+
+    #[tokio::test]
+    async fn domain_ready_dispatches_by_original_source() {
+        use crate::core::security::acme::{CertPaths, XhttpDeployMode};
+        use crate::core::types::DomainFlowSource;
+        use crate::shared::handlers::message::MessageAction;
+        use std::path::PathBuf;
+
+        fn tls_mode(domain: &str) -> XhttpDeployMode {
+            XhttpDeployMode::Tls {
+                domain: domain.to_string(),
+                cert_paths: CertPaths {
+                    fullchain: PathBuf::from("/fake/fullchain"),
+                    privkey: PathBuf::from("/fake/privkey"),
+                },
+            }
+        }
+
+        let action = MessageAction::DomainReady {
+            source: DomainFlowSource::Standalone,
+            mode: tls_mode("example.com"),
+        };
+        assert_eq!(
+            domain_resume_target(&action),
+            Some(DomainFlowSource::Standalone)
+        );
+
+        let action_oneclick = MessageAction::DomainReady {
+            source: DomainFlowSource::OneClick,
+            mode: tls_mode("example.com"),
+        };
+        assert_eq!(
+            domain_resume_target(&action_oneclick),
+            Some(DomainFlowSource::OneClick)
         );
     }
 }

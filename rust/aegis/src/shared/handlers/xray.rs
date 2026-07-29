@@ -5,6 +5,7 @@ use crate::adapters::common::{
     BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId,
 };
 use crate::app::state::AppState;
+use crate::core::security::acme::CertPaths;
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::types::{DomainFlowSource, IpVersion};
@@ -15,6 +16,130 @@ use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use crate::utils;
 use rust_i18n::t;
 use std::fs;
+
+// ── Standalone TLS xhttp ──────────────────────────────────────────────
+
+pub async fn run_standalone_xhttp_tls(
+    domain: String,
+    certs: CertPaths,
+    _source: DomainFlowSource,
+    adapter: Arc<dyn BotAdapter>,
+    target: TargetId,
+) -> anyhow::Result<()> {
+    let ip_version = {
+        let (v4, v6) = tokio::join!(
+            SystemMonitor::get_public_ip(),
+            SystemMonitor::get_public_ipv6(),
+        );
+        match (&v4, &v6) {
+            (Ok(_), Ok(_)) => IpVersion::SplitStackV4Primary,
+            (Ok(_), Err(_)) => IpVersion::IPv4,
+            (Err(_), Ok(_)) => IpVersion::IPv6,
+            _ => IpVersion::IPv4,
+        }
+    };
+
+    let ip_str: String = match ip_version {
+        IpVersion::IPv4 => "IPv4".into(),
+        IpVersion::IPv6 => "IPv6".into(),
+        IpVersion::SplitStackV6Primary => t!("xray.split_v6_up").into(),
+        IpVersion::SplitStackV4Primary => t!("xray.split_v4_up").into(),
+    };
+
+    let _ = adapter
+        .send_message(
+            &target,
+            MessageContent {
+                text: t!("xray.gen_progress", "0" => 20, "1" => "TLS", "2" => ip_str.as_str())
+                    .into_owned(),
+                markup: None,
+            },
+        )
+        .await;
+
+    let res = ConfigManager::batch_create_xhttp_tls_enhanced(&domain, &certs, ip_version).await;
+
+    match res {
+        Ok(result) => {
+            let mut message_ids: Vec<String> = Vec::with_capacity(result.links.len());
+
+            let mut combined_links = String::new();
+            for link in &result.links {
+                combined_links.push_str(link);
+                combined_links.push_str("\n\n");
+            }
+            if !combined_links.is_empty()
+                && let Ok(msg) = adapter
+                    .send_message(
+                        &target,
+                        MessageContent {
+                            text: combined_links,
+                            markup: None,
+                        },
+                    )
+                    .await
+            {
+                message_ids.push(msg.0);
+            }
+
+            let mut result_msg =
+                t!("xray.batch_done", "0" => result.created_count, "1" => ip_str.as_str())
+                    .into_owned();
+
+            if let Some(filename) = result.config_file {
+                result_msg.push_str(&format!(
+                    "\n\n{}",
+                    t!("xray.batch_config_file", "0" => filename)
+                ));
+            }
+
+            if let Some(backup_file) = result.backup_file {
+                result_msg.push_str(&format!(
+                    "\n\n{}",
+                    t!("xray.batch_backup_file", "0" => backup_file)
+                ));
+            }
+
+            if let Ok(msg) = adapter
+                .send_message(
+                    &target,
+                    MessageContent {
+                        text: result_msg,
+                        markup: None,
+                    },
+                )
+                .await
+            {
+                message_ids.push(msg.0);
+            }
+
+            let adapter_clone = adapter.clone();
+            let target_clone = target.clone();
+            tokio::spawn(async move {
+                sleep(Duration::from_secs(60)).await;
+                for id_str in message_ids {
+                    let mid = MessageId(id_str);
+                    if let Err(e) = adapter_clone.delete_message(&target_clone, &mid).await {
+                        log::warn!("删除消息失败: {}", e);
+                    }
+                }
+            });
+        }
+        Err(e) => {
+            let _ = adapter
+                .send_message(
+                    &target,
+                    MessageContent {
+                        text: t!("xray.gen_fail", "0" => e.to_string()).to_string(),
+                        markup: None,
+                    },
+                )
+                .await;
+        }
+    }
+
+    Ok(())
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -81,7 +206,7 @@ async fn show_reality_batch_prompt(
     Ok(())
 }
 
-async fn show_domain_choice(event: &CallbackEvent, source: DomainFlowSource) -> HandlerResult {
+pub async fn show_domain_choice(event: &CallbackEvent, source: DomainFlowSource) -> HandlerResult {
     let source_str = match source {
         DomainFlowSource::Standalone => "standalone",
         DomainFlowSource::OneClick => "one_click",
