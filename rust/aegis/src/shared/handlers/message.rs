@@ -857,9 +857,9 @@ mod tests {
         let providers = [
             (
                 "cred_prompt_cloudflare",
-                "API_TOKEN,ACCOUNT_ID",
+                "API_TOKEN,ZONE_ID",
                 "https://dash.cloudflare.com/profile/api-tokens",
-                &["Zone > DNS > Edit", "Zone > Zone > Read"][..],
+                &["Zone > DNS > Edit", "Zone > Zone > Read", "Zone ID"][..],
             ),
             (
                 "cred_prompt_aliyun",
@@ -912,6 +912,9 @@ mod tests {
                 let text = locale[key];
                 assert!(text.contains(fields), "domain.{key} missing {fields}");
                 assert!(text.contains(url), "domain.{key} missing {url}");
+                if key == "cred_prompt_cloudflare" {
+                    assert!(!text.contains("ACCOUNT_ID"));
+                }
                 for permission in permissions {
                     assert!(
                         text.contains(permission),

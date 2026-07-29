@@ -491,7 +491,7 @@ domain:
   prov_dp: "DNSPod"
   prov_aws: "AWS Route 53"
   cred_prompt: "API Token と Key をカンマ区切りで入力してください（TOKEN,KEY）"
-  cred_prompt_cloudflare: "Cloudflare の認証情報を次の順序どおりに入力してください: API_TOKEN,ACCOUNT_ID。トークンには対象ゾーンの Zone > DNS > Edit と Zone > Zone > Read の両方を付与してください。トークンの作成: https://dash.cloudflare.com/profile/api-tokens"
+  cred_prompt_cloudflare: "Cloudflare の認証情報を次の順序どおりに入力してください: API_TOKEN,ZONE_ID。トークンには対象ゾーンの Zone > DNS > Edit と Zone > Zone > Read の両方を付与し、リソース範囲を対象ゾーンに限定してください。Zone ID はドメイン概要ページの API セクションで確認できます。トークンの作成: https://dash.cloudflare.com/profile/api-tokens"
   cred_prompt_aliyun: "Alibaba Cloud の認証情報を次の順序どおりに入力してください: ACCESS_KEY_ID,ACCESS_KEY_SECRET。RAM ユーザーを使用し、必要な DNS レコードの読み書き権限だけを付与してください。RAM ユーザーの管理: https://ram.console.aliyun.com/users"
   cred_prompt_dnspod: "DNSPod の認証情報を次の順序どおりに入力してください: TOKEN_ID,TOKEN。トークンには必要な DNS レコードを管理する権限だけを付与してください。トークンの作成: https://console.dnspod.cn/account/token/token"
   cred_prompt_route53: "AWS Route 53 の認証情報を次の順序どおりに入力してください: ACCESS_KEY_ID,SECRET_ACCESS_KEY。route53:ListHostedZones に加え、対象ホストゾーンのみに route53:ListResourceRecordSets と route53:ChangeResourceRecordSets を付与してください。IAM ユーザーの管理: https://console.aws.amazon.com/iam/home#/users"
