@@ -241,7 +241,6 @@ impl ConfigManager {
         )
     }
 
-    #[allow(dead_code)]
     pub(crate) fn build_tls_xhttp_node(
         index: usize,
         port: i32,
