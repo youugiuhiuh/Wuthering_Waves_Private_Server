@@ -17,6 +17,25 @@ const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(target_os = "linux")]
 const PROCESS_TOKEN_ENV: &str = "AEGIS_ACME_PROCESS_TOKEN";
 
+const DNS_CREDENTIAL_VARS: &[&str] = &[
+    "Ali_Key",
+    "Ali_Secret",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "CF_Token",
+    "CF_Account_ID",
+    "DP_Id",
+    "DP_Key",
+    "SAVED_Ali_Key",
+    "SAVED_Ali_Secret",
+    "SAVED_AWS_ACCESS_KEY_ID",
+    "SAVED_AWS_SECRET_ACCESS_KEY",
+    "SAVED_CF_Token",
+    "SAVED_CF_Account_ID",
+    "SAVED_DP_Id",
+    "SAVED_DP_Key",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CertPaths {
     pub fullchain: PathBuf,
@@ -359,13 +378,39 @@ fn tighten_cert_permissions(paths: &CertPaths) -> Result<()> {
 }
 
 async fn run_command(program: &str, args: &[&str], environment: &[(&str, &str)]) -> Result<Output> {
-    run_command_with_timeout(program, args, environment, COMMAND_TIMEOUT).await
+    let owned_env: Vec<(String, String)> = environment
+        .iter()
+        .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+        .collect();
+    let stripped_env: Vec<String> = DNS_CREDENTIAL_VARS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    run_command_inner(program, args, owned_env, &stripped_env, COMMAND_TIMEOUT).await
 }
 
 async fn run_command_with_timeout(
     program: &str,
     args: &[&str],
     environment: &[(&str, &str)],
+    timeout: Duration,
+) -> Result<Output> {
+    let owned_env: Vec<(String, String)> = environment
+        .iter()
+        .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+        .collect();
+    let stripped_env: Vec<String> = DNS_CREDENTIAL_VARS
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    run_command_inner(program, args, owned_env, &stripped_env, timeout).await
+}
+
+async fn run_command_inner(
+    program: &str,
+    args: &[&str],
+    environment: Vec<(String, String)>,
+    strip_vars: &[String],
     timeout: Duration,
 ) -> Result<Output> {
     #[cfg(target_os = "linux")]
@@ -383,24 +428,28 @@ async fn run_command_with_timeout(
         command
     };
     #[cfg(not(target_os = "linux"))]
-    let mut command = Command::new(program);
-    #[cfg(not(target_os = "linux"))]
-    command.args(args);
+    let mut command = {
+        let mut command = Command::new(program);
+        command.args(args);
+        command
+    };
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(target_os = "linux")]
     {
-        // A subreaper can wait for descendants orphaned when the process group is killed.
         // SAFETY: prctl is called with the documented subreaper option and integer flag.
         if unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1) } != 0 {
             bail!("failed to configure subprocess isolation");
         }
         command.process_group(0);
     }
-    for (name, value) in environment {
-        command.env(name, value);
+    for name in strip_vars {
+        command.env_remove(name.as_str());
+    }
+    for (name, value) in &environment {
+        command.env(name.as_str(), value.as_str());
     }
 
     let mut child = command
@@ -675,7 +724,7 @@ fn reap_descendants(identities: Vec<ProcessIdentity>) {
 mod tests {
     use super::*;
     use crate::core::types::DnsProvider;
-    use std::{path::PathBuf, process::Stdio};
+    use std::{path::PathBuf, process::Stdio, sync::Arc};
 
     fn generated_certificate(domain: &str, with_san: bool) -> (tempfile::TempDir, CertPaths) {
         let directory = tempfile::tempdir().unwrap();
@@ -716,6 +765,38 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64
+    }
+
+    struct EnvRestore {
+        name: &'static str,
+        value: Option<std::ffi::OsString>,
+    }
+
+    impl EnvRestore {
+        fn set(name: &'static str, value: &str) -> Self {
+            let previous = std::env::var_os(name);
+            // SAFETY: credential environment mutation is serialized by the test attribute.
+            unsafe {
+                std::env::set_var(name, value);
+            }
+            Self {
+                name,
+                value: previous,
+            }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            // SAFETY: credential environment mutation is serialized by the test attribute.
+            unsafe {
+                if let Some(value) = &self.value {
+                    std::env::set_var(self.name, value);
+                } else {
+                    std::env::remove_var(self.name);
+                }
+            }
+        }
     }
 
     #[test]
@@ -904,6 +985,132 @@ mod tests {
         .to_string();
         assert!(error.contains("status"));
         assert!(!error.contains("transformed-secret"));
+    }
+
+    #[serial_test::serial]
+    #[tokio::test]
+    async fn child_receives_only_selected_provider_credentials() {
+        let _environment = [
+            EnvRestore::set("Ali_Key", "parent-ali-key"),
+            EnvRestore::set("SAVED_AWS_SECRET_ACCESS_KEY", "parent-aws-secret"),
+            EnvRestore::set("SAVED_CF_Token", "parent-saved-token"),
+            EnvRestore::set("ACME_OPERATIONAL_TEST", "retained"),
+        ];
+        run_command_with_timeout(
+            "sh",
+            &[
+                "-c",
+                "test -z \"${Ali_Key+x}\" && test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${SAVED_CF_Token+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$CF_Token\" && test -n \"$CF_Account_ID\"",
+            ],
+            &[("CF_Token", "selected-token"), ("CF_Account_ID", "selected-account")],
+            Duration::from_secs(2),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[serial_test::serial]
+    #[tokio::test]
+    async fn aliyun_credentials_isolated_from_other_providers() {
+        let _environment = [
+            EnvRestore::set("CF_Token", "parent-cf-token"),
+            EnvRestore::set("SAVED_AWS_SECRET_ACCESS_KEY", "parent-aws-secret"),
+            EnvRestore::set("SAVED_CF_Token", "parent-saved-cf"),
+            EnvRestore::set("DP_Id", "parent-dp-id"),
+            EnvRestore::set("ACME_OPERATIONAL_TEST", "retained"),
+        ];
+        run_command_with_timeout(
+            "sh",
+            &[
+                "-c",
+                "test -z \"${CF_Token+x}\" && test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${SAVED_CF_Token+x}\" && test -z \"${DP_Id+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$Ali_Key\" && test -n \"$Ali_Secret\"",
+            ],
+            &[("Ali_Key", "selected-ali-key"), ("Ali_Secret", "selected-ali-secret")],
+            Duration::from_secs(2),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[serial_test::serial]
+    #[tokio::test]
+    async fn dnspod_credentials_isolated_from_other_providers() {
+        let _environment = [
+            EnvRestore::set("CF_Token", "parent-cf-token"),
+            EnvRestore::set("SAVED_AWS_SECRET_ACCESS_KEY", "parent-aws-secret"),
+            EnvRestore::set("Ali_Key", "parent-ali-key"),
+            EnvRestore::set("ACME_OPERATIONAL_TEST", "retained"),
+        ];
+        run_command_with_timeout(
+            "sh",
+            &[
+                "-c",
+                "test -z \"${CF_Token+x}\" && test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${Ali_Key+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$DP_Id\" && test -n \"$DP_Key\"",
+            ],
+            &[("DP_Id", "selected-dp-id"), ("DP_Key", "selected-dp-key")],
+            Duration::from_secs(2),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[serial_test::serial]
+    #[tokio::test]
+    async fn route53_credentials_isolated_from_other_providers() {
+        let _environment = [
+            EnvRestore::set("CF_Token", "parent-cf-token"),
+            EnvRestore::set("Ali_Key", "parent-ali-key"),
+            EnvRestore::set("SAVED_CF_Token", "parent-saved-cf"),
+            EnvRestore::set("DP_Id", "parent-dp-id"),
+            EnvRestore::set("ACME_OPERATIONAL_TEST", "retained"),
+        ];
+        run_command_with_timeout(
+            "sh",
+            &[
+                "-c",
+                "test -z \"${CF_Token+x}\" && test -z \"${Ali_Key+x}\" && test -z \"${SAVED_CF_Token+x}\" && test -z \"${DP_Id+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$AWS_ACCESS_KEY_ID\" && test -n \"$AWS_SECRET_ACCESS_KEY\"",
+            ],
+            &[("AWS_ACCESS_KEY_ID", "selected-aws-key"), ("AWS_SECRET_ACCESS_KEY", "selected-aws-secret")],
+            Duration::from_secs(2),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn cancelling_command_future_terminates_child() {
+        let directory = tempfile::tempdir().unwrap();
+        let ready_arc = Arc::new(directory.path().join("ready"));
+        let leaked_arc = Arc::new(directory.path().join("cancelled-child-survived"));
+        let ready_arc2 = ready_arc.clone();
+        let leaked_arc2 = leaked_arc.clone();
+        let task = tokio::spawn(async move {
+            run_command_with_timeout(
+                "sh",
+                &[
+                    "-c",
+                    "printf ready > \"$1\"; sleep 60; printf leaked > \"$2\"",
+                    "sh",
+                    ready_arc.to_str().unwrap(),
+                    leaked_arc.to_str().unwrap(),
+                ],
+                &[],
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !ready_arc2.exists() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        task.abort();
+        let _ = task.await;
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert!(!leaked_arc2.exists());
     }
 
     #[cfg(target_os = "linux")]
