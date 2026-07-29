@@ -57,7 +57,7 @@ pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<()> {
                 if iterations > 16 {
                     break;
                 }
-                match handlers::dispatch(&current).await? {
+                match handlers::dispatch(&current, state).await? {
                     Some(HandlerAction::Redirect(data)) => {
                         current = CallbackEvent { data, ..current };
                     }
@@ -298,6 +298,7 @@ mod tests {
     #[derive(Default)]
     struct MockAdapter {
         pub sent: Mutex<Vec<String>>,
+        pub button_data: Mutex<Vec<String>>,
     }
 
     #[async_trait]
@@ -320,6 +321,13 @@ mod tests {
             content: MessageContent,
         ) -> anyhow::Result<()> {
             self.sent.lock().unwrap().push(content.text);
+            if let Some(markup) = &content.markup {
+                for row in &markup.buttons {
+                    for btn in row {
+                        self.button_data.lock().unwrap().push(btn.data.clone());
+                    }
+                }
+            }
             Ok(())
         }
         async fn delete_message(
@@ -459,6 +467,84 @@ mod tests {
         assert!(
             state.is_authorized(42).await,
             "valid TOTP code should authorize the user"
+        );
+    }
+
+    #[tokio::test]
+    async fn standalone_xhttp_starts_with_domain_choice() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = make_state();
+        state.record_auth_success(42, Instant::now()).await;
+        dispatch_event(
+            callback_event(adapter.clone(), "u_xhttp_batch_init"),
+            &state,
+        )
+        .await
+        .unwrap();
+        let buttons = adapter.button_data.lock().unwrap();
+        assert!(
+            buttons.contains(&"xhttp_domain_yes:standalone".to_string()),
+            "should have yes button, got: {:?}",
+            *buttons
+        );
+        assert!(
+            buttons.contains(&"xhttp_domain_no:standalone".to_string()),
+            "should have no button, got: {:?}",
+            *buttons
+        );
+    }
+
+    #[tokio::test]
+    async fn xhttp_domain_yes_routes_to_xray_handler() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = make_state();
+        state.record_auth_success(42, Instant::now()).await;
+        dispatch_event(
+            callback_event(adapter.clone(), "xhttp_domain_yes:standalone"),
+            &state,
+        )
+        .await
+        .unwrap();
+        // xhttp_domain_yes starts domain input flow, answer_callback is called
+        let sent = adapter.sent.lock().unwrap();
+        assert!(
+            !sent.is_empty(),
+            "domain yes callback should produce a response"
+        );
+    }
+
+    #[tokio::test]
+    async fn xhttp_domain_provider_routes_to_xray_handler() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = make_state();
+        state.record_auth_success(42, Instant::now()).await;
+        // Start domain flow and transition to AwaitProvider state
+        state
+            .start_domain_input(
+                "123".into(),
+                crate::core::types::DomainFlowSource::Standalone,
+                Instant::now(),
+            )
+            .await;
+        state
+            .transition_domain_input(
+                "123",
+                crate::core::types::DomainInputStep::AwaitDomain,
+                crate::core::types::DomainInputStep::AwaitProvider,
+                None,
+            )
+            .await;
+        dispatch_event(
+            callback_event(adapter.clone(), "xhttp_domain_provider:cloudflare"),
+            &state,
+        )
+        .await
+        .unwrap();
+        // Should transition to AwaitCredentials and send cred prompt
+        let sent = adapter.sent.lock().unwrap();
+        assert!(
+            !sent.is_empty(),
+            "domain provider callback should produce a response"
         );
     }
 }

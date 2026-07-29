@@ -8,9 +8,10 @@ pub mod singbox;
 pub mod warp;
 pub mod xray;
 
+use crate::app::state::AppState;
 use crate::shared::types::{CallbackEvent, DispatchResult};
 
-pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
+pub async fn dispatch(event: &CallbackEvent, state: &AppState) -> DispatchResult {
     let data = event.data.as_str();
 
     if data == "m_log" || data.starts_with("l_") {
@@ -53,8 +54,9 @@ pub async fn dispatch(event: &CallbackEvent) -> DispatchResult {
         || data.starts_with("u_")
         || data.starts_with("cfg_")
         || data.starts_with("m_pq_")
+        || data.starts_with("xhttp_domain_")
     {
-        return Ok(Some(xray::handle(event).await?));
+        return Ok(Some(xray::handle(event, state).await?));
     }
     if matches!(
         data,

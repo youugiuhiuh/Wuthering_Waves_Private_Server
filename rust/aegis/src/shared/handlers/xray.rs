@@ -4,9 +4,10 @@ use tokio::time::{Duration, sleep};
 use crate::adapters::common::{
     BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId,
 };
+use crate::app::state::AppState;
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
-use crate::core::types::IpVersion;
+use crate::core::types::{DomainFlowSource, IpVersion};
 use crate::core::xray::installer::{RealityInstallOutcome, RealityInstaller};
 use crate::core::xray::routing::RoutingManager;
 use crate::core::xray::{ConfigManager, KcpMask, Proto};
@@ -78,6 +79,54 @@ async fn show_reality_batch_prompt(
         )
         .await?;
     Ok(())
+}
+
+async fn show_domain_choice(event: &CallbackEvent, source: DomainFlowSource) -> HandlerResult {
+    let source_str = match source {
+        DomainFlowSource::Standalone => "standalone",
+        DomainFlowSource::OneClick => "one_click",
+    };
+    let buttons = vec![
+        vec![InlineButton {
+            text: t!("domain.use_custom_domain").into(),
+            data: format!("xhttp_domain_yes:{}", source_str),
+        }],
+        vec![InlineButton {
+            text: t!("domain.no_custom_domain").into(),
+            data: format!("xhttp_domain_no:{}", source_str),
+        }],
+    ];
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text: t!("domain.choice_title").into_owned(),
+                markup: Some(Markup { buttons }),
+            },
+        )
+        .await?;
+    Ok(HandlerAction::Done)
+}
+
+fn parse_domain_source(data: &str) -> Option<DomainFlowSource> {
+    match data.strip_prefix("xhttp_domain_yes:") {
+        Some("standalone") => Some(DomainFlowSource::Standalone),
+        Some("one_click") => Some(DomainFlowSource::OneClick),
+        _ => None,
+    }
+}
+
+fn parse_provider_callback(data: &str) -> Option<crate::core::types::DnsProvider> {
+    let provider_str = data.strip_prefix("xhttp_domain_provider:")?;
+    match provider_str {
+        "cloudflare" | "cf" => Some(crate::core::types::DnsProvider::Cloudflare),
+        "aliyun" | "ali" => Some(crate::core::types::DnsProvider::Aliyun),
+        "dnspod" | "dp" => Some(crate::core::types::DnsProvider::Dnspod),
+        "route53" | "aws" => Some(crate::core::types::DnsProvider::Route53),
+        _ => None,
+    }
 }
 
 async fn show_reality_qty_prompt(
@@ -972,35 +1021,7 @@ async fn handle_batch_init(event: &CallbackEvent) -> HandlerResult {
 }
 
 async fn handle_xhttp_batch_init(event: &CallbackEvent) -> HandlerResult {
-    if MaintenanceManager::is_reality_base_ready().await {
-        show_reality_batch_prompt(&*event.adapter, &event.target, &event.msg_id, Proto::XHTTP)
-            .await?;
-    } else {
-        event
-            .adapter
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.preparing_reality").into_owned()),
-            )
-            .await?;
-        event
-            .adapter
-            .edit_message(
-                &event.target,
-                &event.msg_id,
-                MessageContent {
-                    text: t!("xray.init_reality").into_owned(),
-                    markup: None,
-                },
-            )
-            .await?;
-        trigger_reality_auto_init(
-            event.adapter.clone(),
-            event.target.clone(),
-            event.msg_id.clone(),
-        );
-    }
+    show_domain_choice(event, DomainFlowSource::Standalone).await?;
     Ok(HandlerAction::Done)
 }
 
@@ -2310,7 +2331,7 @@ async fn handle_user_del_confirm(event: &CallbackEvent) -> HandlerResult {
 
 // ── Main dispatch ─────────────────────────────────────────────────────
 
-pub async fn handle(event: &CallbackEvent) -> HandlerResult {
+pub async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerResult {
     let data = event.data.as_str();
     match data {
         "m_xray_mgmt" => handle_mgmt(event).await,
@@ -2360,6 +2381,116 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         "m_routing" => handle_routing_menu(event).await,
         d if d.starts_with("routing_toggle:") => handle_routing_toggle(event).await,
 
+        d if d.starts_with("xhttp_domain_yes:") => handle_domain_yes(event, state, d).await,
+        d if d.starts_with("xhttp_domain_no:") => handle_domain_no(event, d).await,
+        d if d.starts_with("xhttp_domain_provider:") => {
+            handle_domain_provider(event, state, d).await
+        }
+
         _ => Ok(HandlerAction::Done),
     }
+}
+
+async fn handle_domain_yes(event: &CallbackEvent, state: &AppState, data: &str) -> HandlerResult {
+    let source = parse_domain_source(data);
+    if source.is_none() {
+        return Ok(HandlerAction::Done);
+    }
+    let source = source.unwrap();
+    state
+        .start_domain_input(event.target.0.clone(), source, std::time::Instant::now())
+        .await;
+    event
+        .adapter
+        .send_message(
+            &event.target,
+            MessageContent {
+                text: t!("domain.input_prompt").into_owned(),
+                markup: None,
+            },
+        )
+        .await?;
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_domain_no(event: &CallbackEvent, _data: &str) -> HandlerResult {
+    if MaintenanceManager::is_reality_base_ready().await {
+        show_reality_batch_prompt(&*event.adapter, &event.target, &event.msg_id, Proto::XHTTP)
+            .await?;
+    } else {
+        event
+            .adapter
+            .answer_callback(
+                &event.target,
+                &event.callback_id,
+                Some(t!("xray.preparing_reality").into_owned()),
+            )
+            .await?;
+        event
+            .adapter
+            .edit_message(
+                &event.target,
+                &event.msg_id,
+                MessageContent {
+                    text: t!("xray.init_reality").into_owned(),
+                    markup: None,
+                },
+            )
+            .await?;
+        trigger_reality_auto_init(
+            event.adapter.clone(),
+            event.target.clone(),
+            event.msg_id.clone(),
+        );
+    }
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_domain_provider(
+    event: &CallbackEvent,
+    state: &AppState,
+    data: &str,
+) -> HandlerResult {
+    let provider = parse_provider_callback(data);
+    if provider.is_none() {
+        return Ok(HandlerAction::Done);
+    }
+    let provider = provider.unwrap();
+    let target_str = &event.target.0;
+    let snapshot = state.domain_input_snapshot(target_str).await;
+    match snapshot {
+        Some(domain_state)
+            if domain_state.step == crate::core::types::DomainInputStep::AwaitProvider =>
+        {
+            state
+                .transition_domain_input(
+                    target_str,
+                    crate::core::types::DomainInputStep::AwaitProvider,
+                    crate::core::types::DomainInputStep::AwaitCredentials(provider),
+                    None,
+                )
+                .await;
+            event
+                .adapter
+                .send_message(
+                    &event.target,
+                    MessageContent {
+                        text: t!("domain.cred_prompt").into_owned(),
+                        markup: None,
+                    },
+                )
+                .await?;
+        }
+        _ => {
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(t!("domain.flow_expired").into_owned()),
+                )
+                .await?;
+        }
+    }
+    Ok(HandlerAction::Done)
 }
