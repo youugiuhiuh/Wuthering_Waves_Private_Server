@@ -97,38 +97,43 @@ fn configured_provider_from(config: &str) -> Option<DnsProvider> {
 
 ## 变更2: CDN 端口限制
 
+CDN 端口数量即节点数量——每个端口一个节点，不超量。
+
 ### 涉及文件
 
 | 文件 | 变更 |
 |---|---|
-| `rust/aegis/src/core/xray/xhttp.rs` | `batch_create_xhttp_tls_enhanced` 端口选择逻辑 |
+| `rust/aegis/src/core/xray/xhttp.rs` | `batch_create_xhttp_tls_enhanced` 端口选择逻辑 + 节点数量 |
 
 ### xhttp.rs 变更
 
 **当前逻辑：**
 ```
+count: 20
 node[0]: 443（如空闲）else 随机 10000-60000
 node[1..]: 随机 10000-60000
 ```
 
 **新逻辑：**
 ```
-若有 CDN 白名单：
-    从 CDN 端口池顺序选取可用端口（含端口分配器锁范围检查），
-    不足时放回已占用端口。
+let cdn_ports = configured_provider.cdn_ports();
+
+若 cdn_ports 非空：
+    count = cdn_ports.len()      // CF→6, AWS→0
+    每个端口建 1 个节点，仅在端口空闲时
 无 CDN 白名单：
-    原随机策略不变。
+    count = 20
+    原随机策略不变
 ```
 
 ```rust
-let cdn_ports = AcmeManager::configured_provider()
-    .map(|p| p.cdn_ports())
-    .unwrap_or(&[]);
+let provider = AcmeManager::configured_provider();
+let cdn_ports = provider.map(|p| p.cdn_ports()).unwrap_or(&[]);
+let count = if !cdn_ports.is_empty() { cdn_ports.len() } else { 20 };
 
-for i in 0..20 {
+for i in 0..count {
     let port: i32 = if !cdn_ports.is_empty() {
-        // 从 CDN 端口池顺序选取可用端口
-        select_cdn_port(cdn_ports, &port_allocator).await?
+        cdn_ports[i] as i32
     } else if i == 0 && port_443_available {
         443
     } else {
@@ -142,25 +147,12 @@ for i in 0..20 {
 }
 ```
 
-新增辅助函数：
-```rust
-async fn select_cdn_port(
-    cdn_ports: &[u16],
-    port_allocator: &PortAllocator,
-) -> Result<i32> {
-    for &port in cdn_ports {
-        if port_allocator.is_port_in_locked_range(port).await { continue; }
-        if MaintenanceManager::is_port_available(port).await {
-            return Ok(port as i32);
-        }
-    }
-    bail!("all CDN ports occupied or locked");
-}
-```
+`port_443_available` 检查和 `port_allocator` 仅在随机端口路径中使用，CDN 端口路径跳过。
 
 ### 测试
 
-- `tls_batch_uses_cf_ports_when_cloudflare_configured`（需 mock）
+- `tls_batch_creates_6_nodes_when_cloudflare_configured`
+- `tls_batch_creates_20_nodes_when_no_provider`
 - 现有 `build_tls_node_returns_matching_config_and_link` 保持不变
 
 ---
