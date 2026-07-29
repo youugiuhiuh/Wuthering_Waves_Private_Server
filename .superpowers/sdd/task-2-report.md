@@ -52,3 +52,34 @@ Complete.
 
 - Cargo reports the existing future-incompatibility warning for `proc-macro-error2 v2.0.1`; it does not fail Clippy or tests and is unrelated to Task 2.
 - The harness did not expose a subagent dispatch tool, so review was performed as a requirements and diff self-review.
+
+## Important Review Fix
+
+### RED Evidence
+
+- Command: `cargo test domain_translation_keys_exist -- --nocapture`
+- Result: failed with `domain.cred_prompt_route53 missing route53:ListHostedZones`; the existing core i18n test passed in the same run.
+
+### GREEN Evidence
+
+- Command: `cargo test guidance -- --nocapture && cargo test domain_translation_keys_exist -- --nocapture`
+- Result: guidance tests 3 passed, 0 failed; locale tests 2 passed, 0 failed.
+- Command: `cargo fmt && cargo clippy -- -D warnings && cargo test`
+- Result: formatting and Clippy passed; library tests 540 passed, 0 failed, 1 ignored; all binary, CLI, integration, self-destruct, and doc-test targets passed.
+
+### Fixes
+
+- Route53 guidance in zh/en/ja now explicitly requires `route53:ListHostedZones`, `route53:ListResourceRecordSets`, and `route53:ChangeResourceRecordSets`, with record actions limited to the target hosted zone.
+- Embedded YAML resource tests verify every locale's exact provider credential field order, official HTTPS URL, provider permission tokens, Route53 IAM actions, key parity, and `%{0}` placeholder.
+- New runtime guidance tests no longer call global `set_lang` or depend on a specific locale; they only verify that rendered output does not expose raw translation keys.
+
+### Self-Review
+
+- Confirmed provider production mapping and credential parsing are unchanged.
+- Confirmed no new dependency or broad test serialization/refactor was introduced.
+- Confirmed only the three Route53 locale values and the new Task 2 tests changed.
+- Restored Cargo's unrelated `Cargo.lock` package-version drift after verification.
+
+### Remaining Concerns
+
+- Cargo still reports the pre-existing `proc-macro-error2 v2.0.1` future-incompatibility notice; no Task 2 warning or failure remains.

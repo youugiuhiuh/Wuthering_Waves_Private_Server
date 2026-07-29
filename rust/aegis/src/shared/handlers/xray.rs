@@ -2654,16 +2654,13 @@ async fn handle_domain_provider(
 mod tests {
     use super::*;
 
-    #[serial_test::serial]
     #[test]
     fn provider_callback_resolves_shared_credential_guidance() {
-        crate::core::i18n::set_lang(crate::core::i18n::Lang::En);
         let provider = parse_provider_callback("xhttp_domain_provider:route53").unwrap();
         let guidance = crate::shared::handlers::message::provider_credential_guidance(provider);
 
-        assert!(guidance.contains("ACCESS_KEY_ID,SECRET_ACCESS_KEY"));
-        assert!(guidance.contains("https://console.aws.amazon.com/iam/home#/users"));
-        assert!(guidance.contains("least-privilege"));
+        assert!(!guidance.contains("domain.cred_prompt_"));
+        assert!(!guidance.contains("domain.cred_security_warning"));
     }
 
     #[test]

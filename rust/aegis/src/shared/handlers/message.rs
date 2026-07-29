@@ -741,39 +741,17 @@ mod tests {
         }
     }
 
-    #[serial_test::serial]
     #[test]
-    fn provider_guidance_uses_exact_fields_and_official_links() {
-        i18n::set_lang(Lang::En);
-        let cases = [
-            (
-                DnsProvider::Cloudflare,
-                "API_TOKEN,ACCOUNT_ID",
-                "https://dash.cloudflare.com/profile/api-tokens",
-            ),
-            (
-                DnsProvider::Aliyun,
-                "ACCESS_KEY_ID,ACCESS_KEY_SECRET",
-                "https://ram.console.aliyun.com/users",
-            ),
-            (
-                DnsProvider::Dnspod,
-                "TOKEN_ID,TOKEN",
-                "https://console.dnspod.cn/account/token/token",
-            ),
-            (
-                DnsProvider::Route53,
-                "ACCESS_KEY_ID,SECRET_ACCESS_KEY",
-                "https://console.aws.amazon.com/iam/home#/users",
-            ),
-        ];
-
-        for (provider, fields, url) in cases {
+    fn provider_guidance_runtime_never_returns_raw_keys() {
+        for provider in [
+            DnsProvider::Cloudflare,
+            DnsProvider::Aliyun,
+            DnsProvider::Dnspod,
+            DnsProvider::Route53,
+        ] {
             let text = provider_credential_guidance(provider);
-            assert!(text.contains(fields));
-            assert!(text.contains(url));
-            assert!(text.contains("least-privilege"));
             assert!(!text.contains("domain.cred_prompt_"));
+            assert!(!text.contains("domain.cred_security_warning"));
         }
     }
 
@@ -815,18 +793,58 @@ mod tests {
             locales[1].keys().collect::<Vec<_>>(),
             locales[2].keys().collect::<Vec<_>>()
         );
+        let providers = [
+            (
+                "cred_prompt_cloudflare",
+                "API_TOKEN,ACCOUNT_ID",
+                "https://dash.cloudflare.com/profile/api-tokens",
+                &["Zone > DNS > Edit"][..],
+            ),
+            (
+                "cred_prompt_aliyun",
+                "ACCESS_KEY_ID,ACCESS_KEY_SECRET",
+                "https://ram.console.aliyun.com/users",
+                &["RAM", "DNS"][..],
+            ),
+            (
+                "cred_prompt_dnspod",
+                "TOKEN_ID,TOKEN",
+                "https://console.dnspod.cn/account/token/token",
+                &["DNS"][..],
+            ),
+            (
+                "cred_prompt_route53",
+                "ACCESS_KEY_ID,SECRET_ACCESS_KEY",
+                "https://console.aws.amazon.com/iam/home#/users",
+                &[
+                    "route53:ListHostedZones",
+                    "route53:ListResourceRecordSets",
+                    "route53:ChangeResourceRecordSets",
+                ][..],
+            ),
+        ];
+
         for locale in locales {
             for key in required {
                 assert!(locale.contains_key(key), "missing domain.{key}");
             }
             assert!(locale["acme_unknown_error"].contains("%{0}"));
+            for (key, fields, url, permissions) in providers {
+                let text = locale[key];
+                assert!(text.contains(fields), "domain.{key} missing {fields}");
+                assert!(text.contains(url), "domain.{key} missing {url}");
+                for permission in permissions {
+                    assert!(
+                        text.contains(permission),
+                        "domain.{key} missing {permission}"
+                    );
+                }
+            }
         }
     }
 
-    #[serial_test::serial]
     #[tokio::test]
     async fn typed_provider_selection_sends_provider_guidance() {
-        i18n::set_lang(Lang::En);
         let adapter = RecordingAdapter::new();
         let target = TargetId("test_chat".to_string());
         let state = FakeState::domain(DomainInputStep::AwaitProvider);
@@ -839,10 +857,8 @@ mod tests {
             state.snapshot(),
             DomainInputStep::AwaitCredentials(DnsProvider::Cloudflare)
         ));
-        assert_eq!(
-            adapter.last_text(),
-            provider_credential_guidance(DnsProvider::Cloudflare)
-        );
+        assert!(!adapter.last_text().contains("domain.cred_prompt_"));
+        assert!(!adapter.last_text().contains("domain.cred_security_warning"));
     }
 
     #[tokio::test]

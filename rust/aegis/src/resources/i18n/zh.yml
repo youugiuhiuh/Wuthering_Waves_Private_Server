@@ -519,7 +519,7 @@ domain:
   cred_prompt_cloudflare: "请严格按此顺序输入 Cloudflare 凭据: API_TOKEN,ACCOUNT_ID。令牌仅需目标区域的 Zone > DNS > Edit 权限。创建令牌: https://dash.cloudflare.com/profile/api-tokens"
   cred_prompt_aliyun: "请严格按此顺序输入阿里云凭据: ACCESS_KEY_ID,ACCESS_KEY_SECRET。请使用 RAM 用户，并仅授予管理所需 DNS 记录的读写权限。管理 RAM 用户: https://ram.console.aliyun.com/users"
   cred_prompt_dnspod: "请严格按此顺序输入 DNSPod 凭据: TOKEN_ID,TOKEN。令牌仅需管理所需 DNS 记录的权限。创建令牌: https://console.dnspod.cn/account/token/token"
-  cred_prompt_route53: "请严格按此顺序输入 AWS Route 53 凭据: ACCESS_KEY_ID,SECRET_ACCESS_KEY。IAM 用户仅需读取和修改目标托管区域记录的权限。管理 IAM 用户: https://console.aws.amazon.com/iam/home#/users"
+  cred_prompt_route53: "请严格按此顺序输入 AWS Route 53 凭据: ACCESS_KEY_ID,SECRET_ACCESS_KEY。必须授予 route53:ListHostedZones，并仅针对目标托管区域授予 route53:ListResourceRecordSets 和 route53:ChangeResourceRecordSets。管理 IAM 用户: https://console.aws.amazon.com/iam/home#/users"
   cred_security_warning: "请使用专用的最小权限凭据。切勿输入账户密码，也不要在此私密 Bot 聊天之外发送凭据。"
   cred_invalid: "凭据格式无效，请按格式重新输入。"
   installing_acme: "正在安装 acme.sh..."
