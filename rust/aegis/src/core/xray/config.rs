@@ -167,7 +167,7 @@ impl ConfigManager {
             .collect::<String>()
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code, clippy::too_many_arguments)]
     pub(crate) fn build_tls_xhttp_inbound(
         tag: &str,
         port: i32,
@@ -221,6 +221,7 @@ impl ConfigManager {
         })
     }
 
+    #[allow(dead_code)]
     pub(crate) fn generate_client_link_tls(
         uuid: &str,
         domain: &str,
@@ -228,7 +229,7 @@ impl ConfigManager {
         email: &str,
         path: &str,
     ) -> String {
-        let domain = AcmeManager::validate_domain(domain).unwrap_or_else(|_| domain.to_lowercase());
+        let domain = AcmeManager::validate_domain(domain).expect("domain must be valid ASCII");
         let encoded_sni = utf8_percent_encode(&domain, NON_ALPHANUMERIC).to_string();
         let encoded_host = utf8_percent_encode(&domain, NON_ALPHANUMERIC).to_string();
         let encoded_path = utf8_percent_encode(path, NON_ALPHANUMERIC).to_string();
@@ -952,22 +953,40 @@ mod tests {
             privkey: "/root/cert/example.com/privkey.pem".into(),
         };
         let value = ConfigManager::build_tls_xhttp_inbound(
-            "XHTTP-abcd-0", 2053, "uuid", "mail", "example.com",
-            &certs, IpVersion::IPv4, "/xhttp_a b",
+            "XHTTP-abcd-0",
+            2053,
+            "uuid",
+            "mail",
+            "example.com",
+            &certs,
+            IpVersion::IPv4,
+            "/xhttp_a b",
         );
         assert_eq!(value["streamSettings"]["security"], "tls");
         assert_eq!(value["streamSettings"]["xhttpSettings"]["host"], "");
-        assert_eq!(value["streamSettings"]["tlsSettings"]["certificates"][0]["certificateFile"], certs.fullchain.to_string_lossy().as_ref());
+        assert_eq!(
+            value["streamSettings"]["tlsSettings"]["certificates"][0]["certificateFile"],
+            certs.fullchain.to_string_lossy().as_ref()
+        );
         assert!(value["streamSettings"].get("realitySettings").is_none());
     }
 
     #[test]
     fn tls_xhttp_link_matches_716_and_excludes_reality_parameters() {
         let link = ConfigManager::generate_client_link_tls(
-            "uuid", "Example.COM", 2053, "mail tag", "/xhttp_a b",
+            "uuid",
+            "Example.COM",
+            2053,
+            "mail tag",
+            "/xhttp_a b",
         );
-        assert_eq!(link, "vless://uuid@example.com:2053?encryption=none&security=tls&sni=example%2Ecom&fp=chrome&type=xhttp&host=example%2Ecom&path=%2Fxhttp%5Fa%20b&mode=auto#mail%20tag");
-        for forbidden in ["pbk=", "sid=", "pqv=", "flow="] { assert!(!link.contains(forbidden)); }
+        assert_eq!(
+            link,
+            "vless://uuid@example.com:2053?encryption=none&security=tls&sni=example%2Ecom&fp=chrome&type=xhttp&host=example%2Ecom&path=%2Fxhttp%5Fa%20b&mode=auto#mail%20tag"
+        );
+        for forbidden in ["pbk=", "sid=", "pqv=", "flow="] {
+            assert!(!link.contains(forbidden));
+        }
     }
 
     #[test]
