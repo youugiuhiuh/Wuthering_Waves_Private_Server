@@ -213,11 +213,11 @@ pub async fn show_domain_choice(event: &CallbackEvent, source: DomainFlowSource)
     };
     let buttons = vec![
         vec![InlineButton {
-            text: t!("domain.use_custom_domain").into(),
+            text: t!("domain.yes").into(),
             data: format!("xhttp_domain_yes:{}", source_str),
         }],
         vec![InlineButton {
-            text: t!("domain.no_custom_domain").into(),
+            text: t!("domain.no").into(),
             data: format!("xhttp_domain_no:{}", source_str),
         }],
     ];
@@ -227,7 +227,7 @@ pub async fn show_domain_choice(event: &CallbackEvent, source: DomainFlowSource)
             &event.target,
             &event.msg_id,
             MessageContent {
-                text: t!("domain.choice_title").into_owned(),
+                text: t!("domain.prompt").into_owned(),
                 markup: Some(Markup { buttons }),
             },
         )
@@ -2617,41 +2617,35 @@ async fn handle_domain_provider(
     }
     let provider = provider.unwrap();
     let target_str = &event.target.0;
-    let snapshot = state.domain_input_snapshot(target_str).await;
-    match snapshot {
-        Some(domain_state)
-            if domain_state.step == crate::core::types::DomainInputStep::AwaitProvider =>
-        {
-            state
-                .transition_domain_input(
-                    target_str,
-                    crate::core::types::DomainInputStep::AwaitProvider,
-                    crate::core::types::DomainInputStep::AwaitCredentials(provider),
-                    None,
-                )
-                .await;
-            event
-                .adapter
-                .send_message(
-                    &event.target,
-                    MessageContent {
-                        text: t!("domain.cred_prompt").into_owned(),
-                        markup: None,
-                    },
-                )
-                .await?;
-        }
-        _ => {
-            event
-                .adapter
-                .answer_callback(
-                    &event.target,
-                    &event.callback_id,
-                    Some(t!("domain.flow_expired").into_owned()),
-                )
-                .await?;
-        }
+    let transitioned = state
+        .transition_domain_input(
+            target_str,
+            crate::core::types::DomainInputStep::AwaitProvider,
+            crate::core::types::DomainInputStep::AwaitCredentials(provider),
+            None,
+        )
+        .await;
+    if !transitioned {
+        event
+            .adapter
+            .answer_callback(
+                &event.target,
+                &event.callback_id,
+                Some(t!("domain.flow_expired").into_owned()),
+            )
+            .await?;
+        return Ok(HandlerAction::Done);
     }
+    event
+        .adapter
+        .send_message(
+            &event.target,
+            MessageContent {
+                text: t!("domain.cred_prompt").into_owned(),
+                markup: None,
+            },
+        )
+        .await?;
     Ok(HandlerAction::Done)
 }
 

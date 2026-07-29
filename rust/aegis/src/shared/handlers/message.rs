@@ -181,17 +181,10 @@ pub async fn handle_message(
                                 }
                             }
 
-                            let buttons = provider_buttons();
-                            adapter
-                                .send_message(
-                                    target,
-                                    MessageContent {
-                                        text: t!("domain.prov_title").to_string(),
-                                        markup: Some(Markup { buttons }),
-                                    },
-                                )
-                                .await?;
-                            return Ok(MessageAction::Handled);
+                            return show_provider_selection(
+                                adapter, target, state, target_str, domain,
+                            )
+                            .await;
                         }
                         Err(e) => {
                             adapter
@@ -335,8 +328,9 @@ pub async fn handle_message(
                                     .send_message(
                                         target,
                                         MessageContent {
-                                            text: t!("domain.install_fail", "0" => e.to_string())
-                                                .to_string(),
+                                            text:
+                                                t!("domain.acme_install_fail", "0" => e.to_string())
+                                                    .to_string(),
                                             markup: None,
                                         },
                                     )
@@ -470,26 +464,59 @@ pub async fn handle_message(
     Ok(MessageAction::NeedsDestruct)
 }
 
+async fn show_provider_selection(
+    adapter: &dyn BotAdapter,
+    target: &TargetId,
+    state: &dyn MessageState,
+    target_str: &str,
+    domain: String,
+) -> anyhow::Result<MessageAction> {
+    if !state
+        .transition_domain_input(
+            target_str,
+            DomainInputStep::AwaitDomain,
+            DomainInputStep::AwaitProvider,
+            Some(domain),
+        )
+        .await
+    {
+        return Ok(MessageAction::Handled);
+    }
+
+    adapter
+        .send_message(
+            target,
+            MessageContent {
+                text: t!("domain.prov_title").to_string(),
+                markup: Some(Markup {
+                    buttons: provider_buttons(),
+                }),
+            },
+        )
+        .await?;
+    Ok(MessageAction::Handled)
+}
+
 fn provider_buttons() -> Vec<Vec<InlineButton>> {
     vec![
         vec![
             InlineButton {
-                text: t!("domain.provider.cloudflare").to_string(),
-                data: "prov:cloudflare".to_string(),
+                text: t!("domain.prov_cf").to_string(),
+                data: "xhttp_domain_provider:cloudflare".to_string(),
             },
             InlineButton {
-                text: t!("domain.provider.aliyun").to_string(),
-                data: "prov:aliyun".to_string(),
+                text: t!("domain.prov_ali").to_string(),
+                data: "xhttp_domain_provider:aliyun".to_string(),
             },
         ],
         vec![
             InlineButton {
-                text: t!("domain.provider.dnspod").to_string(),
-                data: "prov:dnspod".to_string(),
+                text: t!("domain.prov_dp").to_string(),
+                data: "xhttp_domain_provider:dnspod".to_string(),
             },
             InlineButton {
-                text: t!("domain.provider.route53").to_string(),
-                data: "prov:route53".to_string(),
+                text: t!("domain.prov_aws").to_string(),
+                data: "xhttp_domain_provider:route53".to_string(),
             },
         ],
     ]
@@ -596,12 +623,18 @@ mod tests {
         }
         async fn transition_domain_input(
             &self,
-            _chat_id: &str,
-            _expected: DomainInputStep,
+            chat_id: &str,
+            expected: DomainInputStep,
             next: DomainInputStep,
             domain: Option<String>,
         ) -> bool {
+            if chat_id != self.chat_id {
+                return false;
+            }
             let mut inner = self.inner.lock().unwrap();
+            if inner.step != expected {
+                return false;
+            }
             inner.step = next;
             if domain.is_some() {
                 inner.domain = domain;
@@ -618,12 +651,16 @@ mod tests {
 
     struct RecordingAdapter {
         messages: Arc<Mutex<Vec<String>>>,
+        button_data: Arc<Mutex<Vec<String>>>,
+        button_text: Arc<Mutex<Vec<String>>>,
     }
 
     impl RecordingAdapter {
         fn new() -> Self {
             Self {
                 messages: Arc::new(Mutex::new(Vec::new())),
+                button_data: Arc::new(Mutex::new(Vec::new())),
+                button_text: Arc::new(Mutex::new(Vec::new())),
             }
         }
         fn last_text(&self) -> String {
@@ -646,6 +683,14 @@ mod tests {
             _target: &TargetId,
             content: MessageContent,
         ) -> Result<MessageId> {
+            if let Some(markup) = &content.markup {
+                for row in &markup.buttons {
+                    for button in row {
+                        self.button_data.lock().unwrap().push(button.data.clone());
+                        self.button_text.lock().unwrap().push(button.text.clone());
+                    }
+                }
+            }
             self.messages.lock().unwrap().push(content.text);
             Ok(MessageId("0".to_string()))
         }
@@ -715,5 +760,61 @@ mod tests {
             adapter.last_text(),
             "Invalid credential format, please re-enter."
         );
+    }
+
+    #[tokio::test]
+    async fn provider_fallback_presents_routable_buttons() {
+        let adapter = RecordingAdapter::new();
+        let target = TargetId("test_chat".to_string());
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+
+        let action = show_provider_selection(
+            &adapter,
+            &target,
+            &state,
+            &target.0,
+            "no-certificate.invalid".to_string(),
+        )
+        .await
+        .unwrap();
+
+        assert!(matches!(action, MessageAction::Handled));
+        assert!(matches!(state.snapshot(), DomainInputStep::AwaitProvider));
+        assert_ne!(adapter.last_text(), "domain.prov_title");
+        assert_eq!(
+            *adapter.button_data.lock().unwrap(),
+            vec![
+                "xhttp_domain_provider:cloudflare".to_string(),
+                "xhttp_domain_provider:aliyun".to_string(),
+                "xhttp_domain_provider:dnspod".to_string(),
+                "xhttp_domain_provider:route53".to_string(),
+            ]
+        );
+        let button_text = adapter.button_text.lock().unwrap();
+        for raw_key in [
+            "domain.prov_cf",
+            "domain.prov_ali",
+            "domain.prov_dp",
+            "domain.prov_aws",
+        ] {
+            assert!(!button_text.contains(&raw_key.to_string()));
+        }
+    }
+
+    #[tokio::test]
+    async fn fake_domain_transition_is_compare_and_set() {
+        let state = FakeState::domain(DomainInputStep::AwaitProvider);
+
+        assert!(
+            !state
+                .transition_domain_input(
+                    "test_chat",
+                    DomainInputStep::AwaitDomain,
+                    DomainInputStep::Processing,
+                    None,
+                )
+                .await
+        );
+        assert!(matches!(state.snapshot(), DomainInputStep::AwaitProvider));
     }
 }
