@@ -14,6 +14,8 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const MIN_VALIDITY: u64 = 30 * 24 * 60 * 60;
 #[cfg(target_os = "linux")]
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+#[cfg(target_os = "linux")]
+const PROCESS_TOKEN_ENV: &str = "AEGIS_ACME_PROCESS_TOKEN";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CertPaths {
@@ -366,13 +368,28 @@ async fn run_command_with_timeout(
     environment: &[(&str, &str)],
     timeout: Duration,
 ) -> Result<Output> {
+    #[cfg(target_os = "linux")]
+    let process_token = process_token();
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut command = Command::new("sh");
+        command.args([
+            "-c",
+            "kill -STOP $$; exec \"$@\"",
+            "aegis-acme-command",
+            program,
+        ]);
+        command.args(args).env(PROCESS_TOKEN_ENV, &process_token);
+        command
+    };
+    #[cfg(not(target_os = "linux"))]
     let mut command = Command::new(program);
+    #[cfg(not(target_os = "linux"))]
+    command.args(args);
     command
-        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
+        .stderr(Stdio::piped());
     #[cfg(target_os = "linux")]
     {
         // A subreaper can wait for descendants orphaned when the process group is killed.
@@ -389,7 +406,11 @@ async fn run_command_with_timeout(
     let mut child = command
         .spawn()
         .with_context(|| format!("failed to start {program}"))?;
-    let process_group = child.id().context("subprocess has no process ID")? as i32;
+    let process_id = child.id().context("subprocess has no process ID")? as i32;
+    #[cfg(target_os = "linux")]
+    let process_scope = initialize_process_scope(process_id, process_token, &mut child).await?;
+    #[cfg(not(target_os = "linux"))]
+    let process_scope = ProcessScope { pid: process_id };
     let mut stdout = child
         .stdout
         .take()
@@ -413,7 +434,7 @@ async fn run_command_with_timeout(
         Err(_) => {
             stdout_task.abort();
             stderr_task.abort();
-            terminate_subprocess_tree(process_group, &mut child).await;
+            terminate_subprocess_tree(&process_scope, &mut child).await;
             let _ = stdout_task.await;
             let _ = stderr_task.await;
             bail!("command timed out after {} seconds", timeout.as_secs());
@@ -434,7 +455,7 @@ async fn run_command_with_timeout(
         Err(_) => {
             stdout_task.abort();
             stderr_task.abort();
-            terminate_subprocess_tree(process_group, &mut child).await;
+            terminate_subprocess_tree(&process_scope, &mut child).await;
             let _ = stdout_task.await;
             let _ = stderr_task.await;
             bail!("command timed out after {} seconds", timeout.as_secs());
@@ -450,20 +471,21 @@ async fn run_command_with_timeout(
     })
 }
 
-async fn terminate_subprocess_tree(process_group: i32, child: &mut tokio::process::Child) {
+async fn terminate_subprocess_tree(scope: &ProcessScope, child: &mut tokio::process::Child) {
     #[cfg(not(target_os = "linux"))]
     {
-        let _ = process_group;
+        let _ = scope.pid;
         let _ = child.start_kill();
         let _ = child.wait().await;
     }
     #[cfg(target_os = "linux")]
-    terminate_and_reap_process_group(process_group, child).await;
+    terminate_and_reap_process_scope(scope, child).await;
 }
 
 #[cfg(target_os = "linux")]
-async fn terminate_and_reap_process_group(process_group: i32, child: &mut tokio::process::Child) {
-    let descendants = tokio::task::spawn_blocking(move || stop_and_kill_subtree(process_group))
+async fn terminate_and_reap_process_scope(scope: &ProcessScope, child: &mut tokio::process::Child) {
+    let scope = scope.clone();
+    let descendants = tokio::task::spawn_blocking(move || stop_and_kill_subtree(&scope))
         .await
         .unwrap_or_default();
     let _ = tokio::time::timeout(CLEANUP_TIMEOUT, child.wait()).await;
@@ -482,46 +504,86 @@ struct ProcessIdentity {
 }
 
 #[cfg(target_os = "linux")]
-#[derive(Debug, Clone, Copy)]
-struct ProcessEntry {
-    identity: ProcessIdentity,
-    parent: i32,
-    group: i32,
+#[derive(Debug, Clone)]
+struct ProcessScope {
+    root: ProcessIdentity,
+    token: String,
+}
+
+#[cfg(not(target_os = "linux"))]
+struct ProcessScope {
+    pid: i32,
 }
 
 #[cfg(target_os = "linux")]
-fn stop_and_kill_subtree(root_pid: i32) -> Vec<ProcessIdentity> {
-    let Some(root) = process_entry(root_pid) else {
-        let identities = process_snapshot()
-            .into_iter()
-            .filter(|entry| entry.group == root_pid)
-            .map(|entry| entry.identity)
-            .collect::<Vec<_>>();
-        for identity in &identities {
-            signal_if_same(*identity, libc::SIGKILL);
+#[derive(Debug, Clone, Copy)]
+struct ProcessEntry {
+    identity: ProcessIdentity,
+    state: char,
+}
+
+#[cfg(target_os = "linux")]
+async fn initialize_process_scope(
+    pid: i32,
+    token: String,
+    child: &mut tokio::process::Child,
+) -> Result<ProcessScope> {
+    let root = process_entry(pid).context("failed to establish subprocess identity")?;
+    let deadline = tokio::time::Instant::now() + CLEANUP_TIMEOUT;
+    loop {
+        let current = process_entry(pid);
+        if !identity_matches(root.identity, current) {
+            bail!("subprocess identity changed during startup");
         }
-        return identities;
-    };
-    let mut tracked = std::collections::HashMap::from([(root_pid, root.identity)]);
-    signal_if_same(root.identity, libc::SIGSTOP);
+        if current.is_some_and(|entry| entry.state == 'T') {
+            break;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            signal_if_same(root.identity, libc::SIGKILL);
+            let _ = child.wait().await;
+            bail!("subprocess startup timed out");
+        }
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+    if !signal_if_same(root.identity, libc::SIGCONT) {
+        bail!("subprocess identity changed before startup");
+    }
+    Ok(ProcessScope {
+        root: root.identity,
+        token,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn process_token() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TOKEN: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    format!(
+        "{}-{nanos}-{}",
+        std::process::id(),
+        NEXT_TOKEN.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn stop_and_kill_subtree(scope: &ProcessScope) -> Vec<ProcessIdentity> {
+    let mut tracked = std::collections::HashMap::from([(scope.root.pid, scope.root)]);
+    signal_if_same(scope.root, libc::SIGSTOP);
     let deadline = std::time::Instant::now() + CLEANUP_TIMEOUT;
 
     loop {
-        let snapshot = process_snapshot();
-        let mut changed = true;
-        let mut added = Vec::new();
-        while changed {
-            changed = false;
-            for entry in &snapshot {
-                if tracked.contains_key(&entry.parent) && !tracked.contains_key(&entry.identity.pid)
-                {
-                    tracked.insert(entry.identity.pid, entry.identity);
-                    added.push(entry.identity);
-                    changed = true;
-                }
-            }
-        }
+        let added = process_snapshot()
+            .into_iter()
+            .filter(|entry| process_has_token(entry.identity.pid, &scope.token))
+            .filter(|entry| !tracked.contains_key(&entry.identity.pid))
+            .map(|entry| entry.identity)
+            .collect::<Vec<_>>();
         for identity in &added {
+            tracked.insert(identity.pid, *identity);
             signal_if_same(*identity, libc::SIGSTOP);
         }
         if added.is_empty() || std::time::Instant::now() >= deadline {
@@ -534,6 +596,18 @@ fn stop_and_kill_subtree(root_pid: i32) -> Vec<ProcessIdentity> {
         signal_if_same(*identity, libc::SIGKILL);
     }
     identities
+}
+
+#[cfg(target_os = "linux")]
+fn process_has_token(pid: i32, token: &str) -> bool {
+    let expected = format!("{PROCESS_TOKEN_ENV}={token}");
+    fs::read(format!("/proc/{pid}/environ"))
+        .ok()
+        .is_some_and(|environment| {
+            environment
+                .split(|byte| *byte == 0)
+                .any(|value| value == expected.as_bytes())
+        })
 }
 
 #[cfg(target_os = "linux")]
@@ -560,19 +634,22 @@ fn process_entry(pid: i32) -> Option<ProcessEntry> {
             pid,
             start_time: fields.get(19)?.parse().ok()?,
         },
-        parent: fields.get(1)?.parse().ok()?,
-        group: fields.get(2)?.parse().ok()?,
+        state: fields.first()?.chars().next()?,
     })
 }
 
 #[cfg(target_os = "linux")]
-fn signal_if_same(identity: ProcessIdentity, signal: i32) {
-    if process_entry(identity.pid).is_some_and(|entry| entry.identity == identity) {
+fn identity_matches(expected: ProcessIdentity, current: Option<ProcessEntry>) -> bool {
+    current.is_some_and(|entry| entry.identity == expected)
+}
+
+#[cfg(target_os = "linux")]
+fn signal_if_same(identity: ProcessIdentity, signal: i32) -> bool {
+    if identity_matches(identity, process_entry(identity.pid)) {
         // SAFETY: identity was read from /proc and revalidated immediately before signaling.
-        unsafe {
-            libc::kill(identity.pid, signal);
-        }
+        return unsafe { libc::kill(identity.pid, signal) } == 0;
     }
+    false
 }
 
 #[cfg(target_os = "linux")]
@@ -882,5 +959,55 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(1200)).await;
         assert!(bounded, "runner exceeded its timeout");
         assert!(!marker.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn timeout_tracks_detached_descendant_after_root_exits() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("orphaned-descendant-survived");
+        let result = tokio::time::timeout(
+            Duration::from_millis(600),
+            run_command_with_timeout(
+                "sh",
+                &[
+                    "-c",
+                    "setsid sh -c '(sleep 1; printf leaked > \"$1\")' sh \"$1\" &",
+                    "sh",
+                    marker.to_str().unwrap(),
+                ],
+                &[],
+                Duration::from_millis(100),
+            ),
+        )
+        .await;
+        let bounded =
+            matches!(result, Ok(Err(ref error)) if error.to_string().contains("timed out"));
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert!(bounded, "runner exceeded its timeout");
+        assert!(!marker.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn process_identity_rejects_reused_pid() {
+        let expected = ProcessIdentity {
+            pid: 42,
+            start_time: 100,
+        };
+        let same = ProcessEntry {
+            identity: expected,
+            state: 'S',
+        };
+        let reused = ProcessEntry {
+            identity: ProcessIdentity {
+                pid: 42,
+                start_time: 101,
+            },
+            state: 'S',
+        };
+        assert!(identity_matches(expected, Some(same)));
+        assert!(!identity_matches(expected, Some(reused)));
+        assert!(!identity_matches(expected, None));
     }
 }
