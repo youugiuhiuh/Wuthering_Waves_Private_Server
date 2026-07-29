@@ -21,24 +21,16 @@ const CREDENTIAL_ENCODING_DEPTH: usize = 2;
 const PROCESS_TOKEN_ENV: &str = "AEGIS_ACME_PROCESS_TOKEN";
 
 const DNS_CREDENTIAL_VARS: &[&str] = &[
-    "Ali_Key",
-    "Ali_Secret",
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
     "CF_Token",
     "CF_Zone_ID",
     "CF_Account_ID",
-    "DP_Id",
-    "DP_Key",
-    "SAVED_Ali_Key",
-    "SAVED_Ali_Secret",
     "SAVED_AWS_ACCESS_KEY_ID",
     "SAVED_AWS_SECRET_ACCESS_KEY",
     "SAVED_CF_Token",
     "SAVED_CF_Zone_ID",
     "SAVED_CF_Account_ID",
-    "SAVED_DP_Id",
-    "SAVED_DP_Key",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -386,13 +378,7 @@ fn configured_provider_from_configs(
         return Some(DnsProvider::Cloudflare);
     }
 
-    [
-        DnsProvider::Aliyun,
-        DnsProvider::Dnspod,
-        DnsProvider::Route53,
-    ]
-    .into_iter()
-    .find(|provider| {
+    [DnsProvider::Route53].into_iter().find(|provider| {
         let (first, second) = provider.credential_names();
         has_non_empty_assignment(account_config, first)
             && has_non_empty_assignment(account_config, second)
@@ -1762,9 +1748,9 @@ mod tests {
         assert_eq!(
             configured_provider_from_configs(
                 "",
-                "SAVED_Ali_Key='key'\nSAVED_Ali_Secret='secret'\n"
+                "SAVED_AWS_ACCESS_KEY_ID='id'\nSAVED_AWS_SECRET_ACCESS_KEY='secret'\n"
             ),
-            Some(DnsProvider::Aliyun)
+            Some(DnsProvider::Route53)
         );
     }
 
@@ -1782,10 +1768,10 @@ mod tests {
 
     #[test]
     fn detects_non_empty_legacy_provider_credentials() {
-        let config = "Ali_Key=legacy-key\nAli_Secret=legacy-secret\n";
+        let config = "AWS_ACCESS_KEY_ID=legacy-id\nAWS_SECRET_ACCESS_KEY=legacy-secret\n";
         assert_eq!(
             configured_provider_from_configs("", config),
-            Some(DnsProvider::Aliyun)
+            Some(DnsProvider::Route53)
         );
     }
 
@@ -1946,7 +1932,6 @@ mod tests {
     #[tokio::test]
     async fn child_receives_only_selected_provider_credentials() {
         let _environment = [
-            EnvRestore::set("Ali_Key", "parent-ali-key"),
             EnvRestore::set("SAVED_AWS_SECRET_ACCESS_KEY", "parent-aws-secret"),
             EnvRestore::set("SAVED_CF_Token", "parent-saved-token"),
             EnvRestore::set("CF_Account_ID", "parent-account-id"),
@@ -1957,54 +1942,9 @@ mod tests {
             "sh",
             &[
                 "-c",
-                "test -z \"${Ali_Key+x}\" && test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${SAVED_CF_Token+x}\" && test -z \"${CF_Account_ID+x}\" && test -z \"${SAVED_CF_Account_ID+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$CF_Token\" && test -n \"$CF_Zone_ID\"",
+                "test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${SAVED_CF_Token+x}\" && test -z \"${CF_Account_ID+x}\" && test -z \"${SAVED_CF_Account_ID+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$CF_Token\" && test -n \"$CF_Zone_ID\"",
             ],
             &[("CF_Token", "selected-token"), ("CF_Zone_ID", "selected-zone")],
-            Duration::from_secs(2),
-        )
-        .await
-        .unwrap();
-    }
-
-    #[serial_test::serial]
-    #[tokio::test]
-    async fn aliyun_credentials_isolated_from_other_providers() {
-        let _environment = [
-            EnvRestore::set("CF_Token", "parent-cf-token"),
-            EnvRestore::set("SAVED_AWS_SECRET_ACCESS_KEY", "parent-aws-secret"),
-            EnvRestore::set("SAVED_CF_Token", "parent-saved-cf"),
-            EnvRestore::set("DP_Id", "parent-dp-id"),
-            EnvRestore::set("ACME_OPERATIONAL_TEST", "retained"),
-        ];
-        run_command_with_timeout(
-            "sh",
-            &[
-                "-c",
-                "test -z \"${CF_Token+x}\" && test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${SAVED_CF_Token+x}\" && test -z \"${DP_Id+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$Ali_Key\" && test -n \"$Ali_Secret\"",
-            ],
-            &[("Ali_Key", "selected-ali-key"), ("Ali_Secret", "selected-ali-secret")],
-            Duration::from_secs(2),
-        )
-        .await
-        .unwrap();
-    }
-
-    #[serial_test::serial]
-    #[tokio::test]
-    async fn dnspod_credentials_isolated_from_other_providers() {
-        let _environment = [
-            EnvRestore::set("CF_Token", "parent-cf-token"),
-            EnvRestore::set("SAVED_AWS_SECRET_ACCESS_KEY", "parent-aws-secret"),
-            EnvRestore::set("Ali_Key", "parent-ali-key"),
-            EnvRestore::set("ACME_OPERATIONAL_TEST", "retained"),
-        ];
-        run_command_with_timeout(
-            "sh",
-            &[
-                "-c",
-                "test -z \"${CF_Token+x}\" && test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${Ali_Key+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$DP_Id\" && test -n \"$DP_Key\"",
-            ],
-            &[("DP_Id", "selected-dp-id"), ("DP_Key", "selected-dp-key")],
             Duration::from_secs(2),
         )
         .await
@@ -2016,16 +1956,14 @@ mod tests {
     async fn route53_credentials_isolated_from_other_providers() {
         let _environment = [
             EnvRestore::set("CF_Token", "parent-cf-token"),
-            EnvRestore::set("Ali_Key", "parent-ali-key"),
             EnvRestore::set("SAVED_CF_Token", "parent-saved-cf"),
-            EnvRestore::set("DP_Id", "parent-dp-id"),
             EnvRestore::set("ACME_OPERATIONAL_TEST", "retained"),
         ];
         run_command_with_timeout(
             "sh",
             &[
                 "-c",
-                "test -z \"${CF_Token+x}\" && test -z \"${Ali_Key+x}\" && test -z \"${SAVED_CF_Token+x}\" && test -z \"${DP_Id+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$AWS_ACCESS_KEY_ID\" && test -n \"$AWS_SECRET_ACCESS_KEY\"",
+                "test -z \"${CF_Token+x}\" && test -z \"${SAVED_CF_Token+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$AWS_ACCESS_KEY_ID\" && test -n \"$AWS_SECRET_ACCESS_KEY\"",
             ],
             &[("AWS_ACCESS_KEY_ID", "selected-aws-key"), ("AWS_SECRET_ACCESS_KEY", "selected-aws-secret")],
             Duration::from_secs(2),

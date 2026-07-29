@@ -257,8 +257,6 @@ fn parse_provider_callback(data: &str) -> Option<crate::core::types::DnsProvider
     let provider_str = data.strip_prefix("xhttp_domain_provider:")?;
     match provider_str {
         "cloudflare" | "cf" => Some(crate::core::types::DnsProvider::Cloudflare),
-        "aliyun" | "ali" => Some(crate::core::types::DnsProvider::Aliyun),
-        "dnspod" | "dp" => Some(crate::core::types::DnsProvider::Dnspod),
         "route53" | "aws" => Some(crate::core::types::DnsProvider::Route53),
         _ => None,
     }

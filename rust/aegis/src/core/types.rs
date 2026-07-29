@@ -7,8 +7,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DnsProvider {
     Cloudflare,
-    Aliyun,
-    Dnspod,
     Route53,
 }
 
@@ -16,8 +14,6 @@ impl DnsProvider {
     pub const fn acme_flag(self) -> &'static str {
         match self {
             Self::Cloudflare => "dns_cf",
-            Self::Aliyun => "dns_ali",
-            Self::Dnspod => "dns_dp",
             Self::Route53 => "dns_aws",
         }
     }
@@ -25,9 +21,14 @@ impl DnsProvider {
     pub const fn credential_names(self) -> (&'static str, &'static str) {
         match self {
             Self::Cloudflare => ("CF_Token", "CF_Zone_ID"),
-            Self::Aliyun => ("Ali_Key", "Ali_Secret"),
-            Self::Dnspod => ("DP_Id", "DP_Key"),
             Self::Route53 => ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"),
+        }
+    }
+
+    pub const fn cdn_ports(self) -> &'static [i32] {
+        match self {
+            Self::Cloudflare => &[443, 8443, 2053, 2083, 2087, 2096],
+            Self::Route53 => &[],
         }
     }
 }
@@ -114,18 +115,20 @@ mod tests {
             DnsProvider::Cloudflare.credential_names(),
             ("CF_Token", "CF_Zone_ID")
         );
-        assert_eq!(DnsProvider::Aliyun.acme_flag(), "dns_ali");
-        assert_eq!(
-            DnsProvider::Aliyun.credential_names(),
-            ("Ali_Key", "Ali_Secret")
-        );
-        assert_eq!(DnsProvider::Dnspod.acme_flag(), "dns_dp");
-        assert_eq!(DnsProvider::Dnspod.credential_names(), ("DP_Id", "DP_Key"));
         assert_eq!(DnsProvider::Route53.acme_flag(), "dns_aws");
         assert_eq!(
             DnsProvider::Route53.credential_names(),
             ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
         );
+    }
+
+    #[test]
+    fn dns_provider_cdn_ports() {
+        assert_eq!(
+            DnsProvider::Cloudflare.cdn_ports(),
+            &[443, 8443, 2053, 2083, 2087, 2096]
+        );
+        assert!(DnsProvider::Route53.cdn_ports().is_empty());
     }
 
     #[test]

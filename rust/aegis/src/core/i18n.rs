@@ -147,8 +147,6 @@ mod tests {
             "domain.input_empty",
             "domain.prov_title",
             "domain.prov_cf",
-            "domain.prov_ali",
-            "domain.prov_dp",
             "domain.prov_aws",
             "domain.cred_prompt",
             "domain.cred_invalid",
