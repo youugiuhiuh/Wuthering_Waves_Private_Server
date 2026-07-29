@@ -1,7 +1,8 @@
 use crate::core::{paths::acme, types::DnsProvider};
 use anyhow::{Context, Result, bail};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use std::{
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
     process::{Output, Stdio},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -40,6 +41,50 @@ pub struct CertPaths {
     pub fullchain: PathBuf,
     pub privkey: PathBuf,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcmeFailureKind {
+    Authentication,
+    Scope,
+    Dns,
+    Network,
+    Timeout,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AcmeCommandError {
+    kind: AcmeFailureKind,
+}
+
+impl AcmeCommandError {
+    pub fn new(kind: AcmeFailureKind) -> Self {
+        Self { kind }
+    }
+
+    pub fn kind(&self) -> AcmeFailureKind {
+        self.kind
+    }
+
+    pub fn code(&self) -> &'static str {
+        match self.kind {
+            AcmeFailureKind::Authentication => "ACME-AUTH",
+            AcmeFailureKind::Scope => "ACME-SCOPE",
+            AcmeFailureKind::Dns => "ACME-DNS",
+            AcmeFailureKind::Network => "ACME-NETWORK",
+            AcmeFailureKind::Timeout => "ACME-TIMEOUT",
+            AcmeFailureKind::Unknown => "ACME-UNKNOWN",
+        }
+    }
+}
+
+impl fmt::Display for AcmeCommandError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.code())
+    }
+}
+
+impl std::error::Error for AcmeCommandError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum XhttpDeployMode {
@@ -376,6 +421,94 @@ fn tighten_cert_permissions(paths: &CertPaths) -> Result<()> {
     set_mode_if_exists(&paths.privkey, 0o600)
 }
 
+fn classify_acme_failure(
+    stdout: &[u8],
+    stderr: &[u8],
+    environment: &[(String, String)],
+) -> AcmeFailureKind {
+    let mut text = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(stdout),
+        String::from_utf8_lossy(stderr)
+    );
+    for (_, value) in environment {
+        if value.is_empty() {
+            continue;
+        }
+        text = text.replace(value, "[REDACTED]");
+        let encoded = utf8_percent_encode(value, NON_ALPHANUMERIC).to_string();
+        text = text.replace(&encoded, "[REDACTED]");
+    }
+    let text = text.to_ascii_lowercase();
+
+    let contains =
+        |signatures: &[&str]| signatures.iter().any(|signature| text.contains(signature));
+    if contains(&[
+        "invalid access token",
+        "invalid api token",
+        "authentication error",
+        "unauthorized",
+        "\"code\":9109",
+        "\"code\":10000",
+        "signaturedoesnotmatch",
+        "invalidclienttokenid",
+        "invalidaccesskeyid",
+    ]) {
+        AcmeFailureKind::Authentication
+    } else if contains(&[
+        "invalid domain",
+        "permission denied",
+        "forbidden",
+        "not authorized",
+        "accessdenied",
+        "zone not found",
+        "no matching zone",
+        "domain not found",
+    ]) {
+        AcmeFailureKind::Scope
+    } else if contains(&[
+        "add txt record error",
+        "error adding txt",
+        "can not get record id",
+        "delete record error",
+        "dns problem",
+        "dns validation error",
+    ]) {
+        AcmeFailureKind::Dns
+    } else if contains(&[
+        "could not resolve host",
+        "connection timed out",
+        "connection refused",
+        "network is unreachable",
+        "ssl connect error",
+        "tls connect error",
+        "order status",
+        "rate limit",
+    ]) {
+        AcmeFailureKind::Network
+    } else {
+        AcmeFailureKind::Unknown
+    }
+}
+
+fn acme_command_failure(
+    program: &str,
+    timed_out: bool,
+    stdout: &[u8],
+    stderr: &[u8],
+    environment: &[(String, String)],
+) -> Option<AcmeCommandError> {
+    if program != acme::BIN {
+        return None;
+    }
+    let kind = if timed_out {
+        AcmeFailureKind::Timeout
+    } else {
+        classify_acme_failure(stdout, stderr, environment)
+    };
+    Some(AcmeCommandError::new(kind))
+}
+
 async fn run_command(program: &str, args: &[&str], environment: &[(&str, &str)]) -> Result<Output> {
     let owned_env: Vec<(String, String)> = environment
         .iter()
@@ -493,6 +626,9 @@ async fn run_command_inner(
             cleanup.cleanup().await;
             let _ = stdout_task.await;
             let _ = stderr_task.await;
+            if let Some(error) = acme_command_failure(program, true, b"", b"", &environment) {
+                return Err(error.into());
+            }
             bail!("command timed out after {} seconds", timeout.as_secs());
         }
     };
@@ -514,11 +650,17 @@ async fn run_command_inner(
             cleanup.cleanup().await;
             let _ = stdout_task.await;
             let _ = stderr_task.await;
+            if let Some(error) = acme_command_failure(program, true, b"", b"", &environment) {
+                return Err(error.into());
+            }
             bail!("command timed out after {} seconds", timeout.as_secs());
         }
     };
     cleanup.disarm();
     if !status.success() {
+        if let Some(error) = acme_command_failure(program, false, &stdout, &stderr, &environment) {
+            return Err(error.into());
+        }
         bail!("command {program} failed with status {status}");
     }
     Ok(Output {
@@ -861,6 +1003,53 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64
+    }
+
+    #[test]
+    fn classifies_safe_acme_failures() {
+        let cases = [
+            (
+                r#"{\"errors\":[{\"code\":9109,\"message\":\"Invalid access token\"}]}"#,
+                AcmeFailureKind::Authentication,
+            ),
+            ("invalid domain", AcmeFailureKind::Scope),
+            ("Add txt record error.", AcmeFailureKind::Dns),
+            ("curl: (6) Could not resolve host", AcmeFailureKind::Network),
+            ("unrecognized provider response", AcmeFailureKind::Unknown),
+        ];
+        for (stderr, expected) in cases {
+            assert_eq!(classify_acme_failure(b"", stderr.as_bytes(), &[]), expected);
+        }
+    }
+
+    #[test]
+    fn command_error_never_contains_credentials_or_raw_output() {
+        let environment = vec![
+            ("CF_Token".to_string(), "token-secret/value".to_string()),
+            ("CF_Account_ID".to_string(), "account-secret".to_string()),
+        ];
+        let kind = classify_acme_failure(
+            b"",
+            b"unrecognized token-secret/value account-secret private detail",
+            &environment,
+        );
+        let error = AcmeCommandError::new(kind).to_string();
+        assert_eq!(error, "ACME-UNKNOWN");
+        assert!(!error.contains("token-secret"));
+        assert!(!error.contains("account-secret"));
+        assert!(!error.contains("private detail"));
+    }
+
+    #[test]
+    fn converts_acme_command_failures_to_typed_errors() {
+        let classified =
+            acme_command_failure(acme::BIN, false, b"", b"Add txt record error.", &[]).unwrap();
+        assert_eq!(classified.kind(), AcmeFailureKind::Dns);
+
+        let timed_out = acme_command_failure(acme::BIN, true, b"", b"", &[]).unwrap();
+        assert_eq!(timed_out.kind(), AcmeFailureKind::Timeout);
+        assert!(acme_command_failure("sh", false, b"", b"invalid domain", &[]).is_none());
+        assert!(acme_command_failure("sh", true, b"", b"", &[]).is_none());
     }
 
     struct EnvRestore {
