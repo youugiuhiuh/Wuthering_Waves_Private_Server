@@ -120,7 +120,8 @@ pub async fn handle_message(
                                 });
                             }
 
-                            if let Some(provider) = AcmeManager::configured_provider()
+                            if let Some(provider) =
+                                AcmeManager::configured_provider_for_domain(&domain)?
                                 && state
                                     .transition_domain_input(
                                         target_str,
@@ -130,17 +131,9 @@ pub async fn handle_message(
                                     )
                                     .await
                             {
-                                let bin_path = AcmeManager::ensure_installed().await;
-                                let cert_exists = matches!(
-                                    &bin_path,
-                                    Ok(path) if path.is_file()
-                                        && AcmeManager::cert_paths(&domain).is_ok()
-                                );
-                                let msg = if cert_exists {
-                                    t!("domain.cert_renew").to_string()
-                                } else {
-                                    t!("domain.issuing_cert").to_string()
-                                };
+                                let _install_result = AcmeManager::ensure_installed().await;
+                                let renewing = AcmeManager::ecc_domain_state_exists(&domain)?;
+                                let msg = certificate_progress_message(&domain, renewing);
                                 adapter
                                     .send_message(
                                         target,
@@ -561,6 +554,14 @@ fn localized_acme_install_failure() -> String {
     t!("domain.acme_install_fail", "0" => "ACME-UNKNOWN").to_string()
 }
 
+fn certificate_progress_message(domain: &str, renewing: bool) -> String {
+    if renewing {
+        t!("domain.cert_renew").to_string()
+    } else {
+        t!("domain.issuing_cert", "0" => domain).to_string()
+    }
+}
+
 fn parse_provider_selection(text: &str) -> Option<DnsProvider> {
     match text.to_lowercase().as_str() {
         "cloudflare" | "cf" | "dns_cf" => Some(DnsProvider::Cloudflare),
@@ -817,6 +818,22 @@ mod tests {
     }
 
     #[test]
+    fn new_issuance_uses_existing_issuance_message() {
+        assert_eq!(
+            certificate_progress_message("example.com", false),
+            t!("domain.issuing_cert", "0" => "example.com").to_string()
+        );
+    }
+
+    #[test]
+    fn renewal_uses_existing_renewal_message() {
+        assert_eq!(
+            certificate_progress_message("example.com", true),
+            t!("domain.cert_renew").to_string()
+        );
+    }
+
+    #[test]
     fn domain_translation_keys_exist() {
         fn domain_entries(yaml: &str) -> BTreeMap<&str, &str> {
             yaml.split_once("\ndomain:\n")
@@ -896,12 +913,35 @@ mod tests {
             ][..],
             &["注文ステータス", "レート制限", "待って", "再試行", "接続"][..],
         ];
+        let cloudflare_scope_and_location = [
+            &["资源范围限制到该区域", "域名概述页", "API 区域"][..],
+            &[
+                "resources limited to the target zone",
+                "domain Overview page",
+                "API section",
+            ][..],
+            &[
+                "リソース範囲を対象ゾーンに限定",
+                "ドメイン概要ページ",
+                "API セクション",
+            ][..],
+        ];
 
-        for (locale, network_requirements) in locales.into_iter().zip(network_requirements) {
+        for ((locale, network_requirements), cloudflare_requirements) in locales
+            .into_iter()
+            .zip(network_requirements)
+            .zip(cloudflare_scope_and_location)
+        {
             for key in required {
                 assert!(locale.contains_key(key), "missing domain.{key}");
             }
             assert!(locale["acme_unknown_error"].contains("%{0}"));
+            for requirement in cloudflare_requirements {
+                assert!(
+                    locale["cred_prompt_cloudflare"].contains(requirement),
+                    "domain.cred_prompt_cloudflare missing {requirement}"
+                );
+            }
             for requirement in network_requirements {
                 assert!(
                     locale["acme_network_error"].contains(requirement),
