@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use rust_i18n::t;
 
 use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
-use crate::core::security::acme::{AcmeManager, XhttpDeployMode};
+use crate::core::security::acme::{
+    AcmeCommandError, AcmeFailureKind, AcmeManager, XhttpDeployMode,
+};
 use crate::core::types::{DnsProvider, DomainFlowSource, DomainInputState, DomainInputStep};
 use crate::core::xray::config::ConfigManager;
 use crate::shared::types::TimeoutStatus;
@@ -169,9 +171,8 @@ pub async fn handle_message(
                                             .send_message(
                                                 target,
                                                 MessageContent {
-                                                    text:
-                                                        t!("domain.cert_fail", "0" => e.to_string())
-                                                            .to_string(),
+                                                    text: t!("domain.cert_fail", "0" => localized_acme_failure(&e))
+                                                        .to_string(),
                                                     markup: None,
                                                 },
                                             )
@@ -215,6 +216,15 @@ pub async fn handle_message(
                             )
                             .await
                     {
+                        adapter
+                            .send_message(
+                                target,
+                                MessageContent {
+                                    text: provider_credential_guidance(provider),
+                                    markup: None,
+                                },
+                            )
+                            .await?;
                         return Ok(MessageAction::Handled);
                     }
                     adapter
@@ -304,9 +314,8 @@ pub async fn handle_message(
                                             .send_message(
                                                 target,
                                                 MessageContent {
-                                                    text:
-                                                        t!("domain.cert_fail", "0" => e.to_string())
-                                                            .to_string(),
+                                                    text: t!("domain.cert_fail", "0" => localized_acme_failure(&e))
+                                                        .to_string(),
                                                     markup: None,
                                                 },
                                             )
@@ -315,7 +324,7 @@ pub async fn handle_message(
                                     }
                                 }
                             }
-                            Err(e) => {
+                            Err(_) => {
                                 state
                                     .transition_domain_input(
                                         target_str,
@@ -328,9 +337,7 @@ pub async fn handle_message(
                                     .send_message(
                                         target,
                                         MessageContent {
-                                            text:
-                                                t!("domain.acme_install_fail", "0" => e.to_string())
-                                                    .to_string(),
+                                            text: localized_acme_install_failure(),
                                             markup: None,
                                         },
                                     )
@@ -522,6 +529,38 @@ fn provider_buttons() -> Vec<Vec<InlineButton>> {
     ]
 }
 
+pub(crate) fn provider_credential_guidance(provider: DnsProvider) -> String {
+    let prompt = match provider {
+        DnsProvider::Cloudflare => t!("domain.cred_prompt_cloudflare"),
+        DnsProvider::Aliyun => t!("domain.cred_prompt_aliyun"),
+        DnsProvider::Dnspod => t!("domain.cred_prompt_dnspod"),
+        DnsProvider::Route53 => t!("domain.cred_prompt_route53"),
+    };
+    format!("{prompt}\n\n{}", t!("domain.cred_security_warning"))
+}
+
+fn localized_acme_failure(error: &anyhow::Error) -> String {
+    match error
+        .downcast_ref::<AcmeCommandError>()
+        .map(|error| error.kind())
+    {
+        Some(AcmeFailureKind::Authentication) => t!("domain.acme_auth_error").to_string(),
+        Some(AcmeFailureKind::Scope) => t!("domain.acme_scope_error").to_string(),
+        Some(AcmeFailureKind::Dns) => t!("domain.acme_dns_error").to_string(),
+        Some(AcmeFailureKind::Network) => t!("domain.acme_network_error").to_string(),
+        Some(AcmeFailureKind::Timeout) => {
+            format!("{} (ACME-TIMEOUT)", t!("domain.cert_timeout"))
+        }
+        Some(AcmeFailureKind::Unknown) | None => {
+            t!("domain.acme_unknown_error", "0" => "ACME-UNKNOWN").to_string()
+        }
+    }
+}
+
+fn localized_acme_install_failure() -> String {
+    t!("domain.acme_install_fail", "0" => "ACME-UNKNOWN").to_string()
+}
+
 fn parse_provider_selection(text: &str) -> Option<DnsProvider> {
     match text.to_lowercase().as_str() {
         "cloudflare" | "cf" | "dns_cf" => Some(DnsProvider::Cloudflare),
@@ -543,6 +582,7 @@ mod tests {
     use crate::shared::types::TimeoutStatus;
     use anyhow::Result;
     use async_trait::async_trait;
+    use std::collections::BTreeMap;
     use std::sync::{Arc, Mutex};
 
     struct FakeState {
@@ -719,6 +759,185 @@ mod tests {
         fn capabilities(&self) -> PlatformCapabilities {
             PlatformCapabilities::TELEGRAM
         }
+    }
+
+    #[test]
+    fn provider_guidance_runtime_never_returns_raw_keys() {
+        for provider in [
+            DnsProvider::Cloudflare,
+            DnsProvider::Aliyun,
+            DnsProvider::Dnspod,
+            DnsProvider::Route53,
+        ] {
+            let text = provider_credential_guidance(provider);
+            assert!(!text.contains("domain.cred_prompt_"));
+            assert!(!text.contains("domain.cred_security_warning"));
+        }
+    }
+
+    #[test]
+    fn acme_failures_render_safe_localized_guidance() {
+        i18n::set_lang(Lang::En);
+        let cases = [
+            (AcmeFailureKind::Authentication, "ACME-AUTH"),
+            (AcmeFailureKind::Scope, "ACME-SCOPE"),
+            (AcmeFailureKind::Dns, "ACME-DNS"),
+            (AcmeFailureKind::Network, "ACME-NETWORK"),
+            (AcmeFailureKind::Timeout, "ACME-TIMEOUT"),
+            (AcmeFailureKind::Unknown, "ACME-UNKNOWN"),
+        ];
+
+        for (kind, code) in cases {
+            let error = anyhow::Error::new(AcmeCommandError::new(kind))
+                .context("raw provider detail must stay hidden");
+            let rendered = localized_acme_failure(&error);
+
+            assert!(rendered.contains(code), "missing {code}: {rendered}");
+            assert!(!rendered.contains("domain.acme_"));
+            assert!(!rendered.contains("domain.cert_timeout"));
+            assert!(!rendered.contains("raw provider detail"));
+        }
+
+        let rendered = localized_acme_failure(&anyhow::anyhow!(
+            "untyped subprocess output must stay hidden"
+        ));
+        assert!(rendered.contains("ACME-UNKNOWN"));
+        assert!(!rendered.contains("domain.acme_unknown_error"));
+        assert!(!rendered.contains("untyped subprocess output"));
+    }
+
+    #[test]
+    fn acme_install_failure_hides_arbitrary_detail() {
+        i18n::set_lang(Lang::En);
+
+        let rendered = localized_acme_install_failure();
+
+        assert!(rendered.contains("ACME-UNKNOWN"));
+        assert!(!rendered.contains("domain.acme_install_fail"));
+    }
+
+    #[test]
+    fn domain_translation_keys_exist() {
+        fn domain_entries(yaml: &str) -> BTreeMap<&str, &str> {
+            yaml.split_once("\ndomain:\n")
+                .expect("domain section")
+                .1
+                .lines()
+                .take_while(|line| line.starts_with("  ") || line.is_empty())
+                .filter_map(|line| line.trim().split_once(": "))
+                .collect()
+        }
+
+        let locales = [
+            domain_entries(include_str!("../../resources/i18n/zh.yml")),
+            domain_entries(include_str!("../../resources/i18n/en.yml")),
+            domain_entries(include_str!("../../resources/i18n/ja.yml")),
+        ];
+        let required = [
+            "cred_prompt_cloudflare",
+            "cred_prompt_aliyun",
+            "cred_prompt_dnspod",
+            "cred_prompt_route53",
+            "cred_security_warning",
+            "acme_auth_error",
+            "acme_scope_error",
+            "acme_dns_error",
+            "acme_network_error",
+            "acme_unknown_error",
+        ];
+
+        assert_eq!(
+            locales[0].keys().collect::<Vec<_>>(),
+            locales[1].keys().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            locales[1].keys().collect::<Vec<_>>(),
+            locales[2].keys().collect::<Vec<_>>()
+        );
+        let providers = [
+            (
+                "cred_prompt_cloudflare",
+                "API_TOKEN,ACCOUNT_ID",
+                "https://dash.cloudflare.com/profile/api-tokens",
+                &["Zone > DNS > Edit", "Zone > Zone > Read"][..],
+            ),
+            (
+                "cred_prompt_aliyun",
+                "ACCESS_KEY_ID,ACCESS_KEY_SECRET",
+                "https://ram.console.aliyun.com/users",
+                &["RAM", "DNS"][..],
+            ),
+            (
+                "cred_prompt_dnspod",
+                "TOKEN_ID,TOKEN",
+                "https://console.dnspod.cn/account/token/token",
+                &["DNS"][..],
+            ),
+            (
+                "cred_prompt_route53",
+                "ACCESS_KEY_ID,SECRET_ACCESS_KEY",
+                "https://console.aws.amazon.com/iam/home#/users",
+                &[
+                    "route53:ListHostedZones",
+                    "route53:ListResourceRecordSets",
+                    "route53:ChangeResourceRecordSets",
+                ][..],
+            ),
+        ];
+
+        let network_requirements = [
+            &["订单状态", "速率限制", "等待", "重试", "连接"][..],
+            &[
+                "order status",
+                "rate limit",
+                "wait",
+                "retry",
+                "connectivity",
+            ][..],
+            &["注文ステータス", "レート制限", "待って", "再試行", "接続"][..],
+        ];
+
+        for (locale, network_requirements) in locales.into_iter().zip(network_requirements) {
+            for key in required {
+                assert!(locale.contains_key(key), "missing domain.{key}");
+            }
+            assert!(locale["acme_unknown_error"].contains("%{0}"));
+            for requirement in network_requirements {
+                assert!(
+                    locale["acme_network_error"].contains(requirement),
+                    "domain.acme_network_error missing {requirement}"
+                );
+            }
+            for (key, fields, url, permissions) in providers {
+                let text = locale[key];
+                assert!(text.contains(fields), "domain.{key} missing {fields}");
+                assert!(text.contains(url), "domain.{key} missing {url}");
+                for permission in permissions {
+                    assert!(
+                        text.contains(permission),
+                        "domain.{key} missing {permission}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn typed_provider_selection_sends_provider_guidance() {
+        let adapter = RecordingAdapter::new();
+        let target = TargetId("test_chat".to_string());
+        let state = FakeState::domain(DomainInputStep::AwaitProvider);
+
+        handle_message(&adapter, &target, Some("cloudflare"), false, &state)
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            state.snapshot(),
+            DomainInputStep::AwaitCredentials(DnsProvider::Cloudflare)
+        ));
+        assert!(!adapter.last_text().contains("domain.cred_prompt_"));
+        assert!(!adapter.last_text().contains("domain.cred_security_warning"));
     }
 
     #[tokio::test]

@@ -491,6 +491,11 @@ domain:
   prov_dp: "DNSPod"
   prov_aws: "AWS Route 53"
   cred_prompt: "API Token と Key をカンマ区切りで入力してください（TOKEN,KEY）"
+  cred_prompt_cloudflare: "Cloudflare の認証情報を次の順序どおりに入力してください: API_TOKEN,ACCOUNT_ID。トークンには対象ゾーンの Zone > DNS > Edit と Zone > Zone > Read の両方を付与してください。トークンの作成: https://dash.cloudflare.com/profile/api-tokens"
+  cred_prompt_aliyun: "Alibaba Cloud の認証情報を次の順序どおりに入力してください: ACCESS_KEY_ID,ACCESS_KEY_SECRET。RAM ユーザーを使用し、必要な DNS レコードの読み書き権限だけを付与してください。RAM ユーザーの管理: https://ram.console.aliyun.com/users"
+  cred_prompt_dnspod: "DNSPod の認証情報を次の順序どおりに入力してください: TOKEN_ID,TOKEN。トークンには必要な DNS レコードを管理する権限だけを付与してください。トークンの作成: https://console.dnspod.cn/account/token/token"
+  cred_prompt_route53: "AWS Route 53 の認証情報を次の順序どおりに入力してください: ACCESS_KEY_ID,SECRET_ACCESS_KEY。route53:ListHostedZones に加え、対象ホストゾーンのみに route53:ListResourceRecordSets と route53:ChangeResourceRecordSets を付与してください。IAM ユーザーの管理: https://console.aws.amazon.com/iam/home#/users"
+  cred_security_warning: "専用の最小権限認証情報を使用してください。アカウントのパスワードを入力したり、この非公開 Bot チャット以外へ認証情報を送信したりしないでください。"
   cred_invalid: "認証情報の形式が無効です。再入力してください。"
   installing_acme: "acme.sh をインストールしています..."
   acme_install_fail: "acme.sh のインストールに失敗しました: %{0}"
@@ -504,6 +509,11 @@ domain:
   gen_progress: "TLS XHTTP 設定を %{0} 件生成しています..."
   processing: "ドメイン証明書を処理中です。しばらくお待ちください。"
   flow_expired: "ドメイン設定フローの期限が切れました。やり直してください。"
+  acme_auth_error: "DNS API の認証に失敗しました (ACME-AUTH)。認証情報が有効であることを確認し、再入力してください。"
+  acme_scope_error: "アカウント、ゾーン、または DNS 権限が一致しません (ACME-SCOPE)。アカウントまたはホストゾーン ID と、レコードの読み書き権限を確認してください。"
+  acme_dns_error: "ACME TXT レコードを更新できませんでした (ACME-DNS)。プロバイダーの権限と競合する _acme-challenge レコードを確認してから、再試行してください。"
+  acme_network_error: "DNS API または認証局へのリクエストに失敗しました (ACME-NETWORK)。外向きの HTTPS/DNS 接続を確認してください。認証局の注文ステータスまたはレート制限の場合は、待ってから再試行してください。"
+  acme_unknown_error: "acme.sh が失敗しました (%{0})。認証情報を保護するため生の出力は非表示です。プロバイダー設定を確認して再試行してください。"
 
 destruct:
   title_1: "⚠️ <b>危険な操作 (1/3)</b>\n\n<b>自己破壊プログラム (焦土モード)</b>を実行しようとしています。\nサーバーのルートディレクトリ以下の<b>すべてのファイルを再帰的に削除 (rm -rf /)</b>し、<b>元に戻せません</b>。\n\n続行するにはTOTPコードを入力:"

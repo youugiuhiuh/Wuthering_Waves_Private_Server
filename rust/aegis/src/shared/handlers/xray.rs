@@ -12,6 +12,7 @@ use crate::core::types::{DomainFlowSource, IpVersion};
 use crate::core::xray::installer::{RealityInstallOutcome, RealityInstaller};
 use crate::core::xray::routing::RoutingManager;
 use crate::core::xray::{ConfigManager, KcpMask, Proto};
+use crate::shared::handlers::message::provider_credential_guidance;
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use crate::utils;
 use rust_i18n::t;
@@ -2641,7 +2642,7 @@ async fn handle_domain_provider(
         .send_message(
             &event.target,
             MessageContent {
-                text: t!("domain.cred_prompt").into_owned(),
+                text: provider_credential_guidance(provider),
                 markup: None,
             },
         )

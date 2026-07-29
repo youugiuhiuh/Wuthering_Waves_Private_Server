@@ -623,11 +623,21 @@ mod tests {
         )
         .await
         .unwrap();
-        // Should transition to AwaitCredentials and send cred prompt
+        let domain_state = state.domain_input_snapshot("123").await.unwrap();
+        assert_eq!(
+            domain_state.step,
+            crate::core::types::DomainInputStep::AwaitCredentials(
+                crate::core::types::DnsProvider::Cloudflare
+            )
+        );
         let sent = adapter.sent.lock().unwrap();
-        assert!(
-            !sent.is_empty(),
-            "domain provider callback should produce a response"
+        assert_eq!(
+            sent.as_slice(),
+            &[
+                crate::shared::handlers::message::provider_credential_guidance(
+                    crate::core::types::DnsProvider::Cloudflare
+                )
+            ]
         );
     }
 
@@ -676,7 +686,15 @@ mod tests {
 
         let sent = adapter.sent.lock().unwrap();
         assert_eq!(sent.len(), 1, "only the winning provider gets a prompt");
-        assert_eq!(sent[0], rust_i18n::t!("domain.cred_prompt"));
+        let expected = [
+            crate::shared::handlers::message::provider_credential_guidance(
+                crate::core::types::DnsProvider::Cloudflare,
+            ),
+            crate::shared::handlers::message::provider_credential_guidance(
+                crate::core::types::DnsProvider::Aliyun,
+            ),
+        ];
+        assert!(expected.contains(&sent[0]));
         drop(sent);
         let answers = adapter.callback_answers.lock().unwrap();
         assert_eq!(answers.len(), 1);
