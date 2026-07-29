@@ -378,11 +378,9 @@ fn configured_provider_from_configs(
         return Some(DnsProvider::Cloudflare);
     }
 
-    [DnsProvider::Route53].into_iter().find(|provider| {
-        let (first, second) = provider.credential_names();
-        has_non_empty_assignment(account_config, first)
-            && has_non_empty_assignment(account_config, second)
-    })
+    (has_non_empty_assignment(account_config, "AWS_ACCESS_KEY_ID")
+        && has_non_empty_assignment(account_config, "AWS_SECRET_ACCESS_KEY"))
+    .then_some(DnsProvider::Route53)
 }
 
 fn has_non_empty_assignment(config: &str, name: &str) -> bool {

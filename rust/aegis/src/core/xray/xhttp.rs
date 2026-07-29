@@ -102,60 +102,23 @@ impl ConfigManager {
         let _ = AcmeManager::validate_domain(domain)?;
 
         let provider = AcmeManager::configured_provider_for_domain(domain)?;
-        let cdn_ports = provider.as_ref().map(|p| p.cdn_ports()).unwrap_or_default();
+        let cdn_ports: &[u16] = provider.as_ref().map(|p| p.cdn_ports()).unwrap_or_default();
 
         let mut rng = StdRng::from_entropy();
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
 
         if !cdn_ports.is_empty() {
-            for (i, &port) in cdn_ports.iter().enumerate() {
-                let port_u16 = port as u16;
-                if !crate::core::system::maintenance::MaintenanceManager::is_port_available(
-                    port_u16,
-                )
-                .await
-                {
-                    continue;
-                }
-
-                let uuid = ConfigManager::generate_wwps_uuid().await?;
-                let path = ConfigManager::generate_random_path();
-
-                let (config, link) = ConfigManager::build_tls_xhttp_node(
-                    i, port, &uuid, domain, certs, ip_version, &path,
-                );
-
-                batch_configs.push(config);
-                links.push(link);
-
-                let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(port_u16)
-                    .await;
-            }
-        }
-
-        if batch_configs.is_empty() {
-            let port_443_available =
-                crate::core::system::maintenance::MaintenanceManager::is_port_available(443).await;
-
-            for i in 0..20 {
-                let port: i32 = if i == 0 && port_443_available {
-                    443
+            for (i, &cdn_port) in cdn_ports.iter().enumerate() {
+                let port: i32 = if crate::core::system::maintenance::MaintenanceManager::is_port_available(cdn_port).await {
+                    cdn_port as i32
                 } else {
                     loop {
                         let p = rng.gen_range(10000..60000);
-                        if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(
-                            p,
-                        )
-                        .await
-                        {
+                        if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
                             continue;
                         }
-                        if crate::core::system::maintenance::MaintenanceManager::is_port_available(
-                            p,
-                        )
-                        .await
-                        {
+                        if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
                             break p as i32;
                         }
                     }
@@ -171,9 +134,38 @@ impl ConfigManager {
                 batch_configs.push(config);
                 links.push(link);
 
-                let _ =
-                    crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16)
-                        .await;
+                let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(cdn_port).await;
+            }
+        } else {
+            let port_443_available =
+                crate::core::system::maintenance::MaintenanceManager::is_port_available(443).await;
+
+            for i in 0..20 {
+                let port: i32 = if i == 0 && port_443_available {
+                    443
+                } else {
+                    loop {
+                        let p = rng.gen_range(10000..60000);
+                        if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                            continue;
+                        }
+                        if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
+                            break p as i32;
+                        }
+                    }
+                };
+
+                let uuid = ConfigManager::generate_wwps_uuid().await?;
+                let path = ConfigManager::generate_random_path();
+
+                let (config, link) = ConfigManager::build_tls_xhttp_node(
+                    i, port, &uuid, domain, certs, ip_version, &path,
+                );
+
+                batch_configs.push(config);
+                links.push(link);
+
+                let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
             }
         }
 
@@ -218,7 +210,7 @@ mod tests {
         for (i, &port) in cdn_ports.iter().enumerate() {
             let (config, link) = ConfigManager::build_tls_xhttp_node(
                 i,
-                port,
+                port as i32,
                 "uuid",
                 "cdn-test.example.com",
                 &certs,
@@ -226,8 +218,14 @@ mod tests {
                 "/cdn_test",
             );
             assert_eq!(config["port"], port, "port mismatch for index {i}");
-            assert!(link.contains("security=tls"), "link missing tls for port {port}");
-            assert!(link.contains("@cdn-test.example.com:"), "link missing domain for port {port}");
+            assert!(
+                link.contains("security=tls"),
+                "link missing tls for port {port}"
+            );
+            assert!(
+                link.contains("@cdn-test.example.com:"),
+                "link missing domain for port {port}"
+            );
         }
     }
 

@@ -643,6 +643,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_domain_provider_callback_is_rejected() {
+        let prev_lang = crate::core::i18n::current_lang();
         crate::core::i18n::set_lang(crate::core::i18n::Lang::En);
         let adapter = Arc::new(MockAdapter::default());
         let state = Arc::new(make_state());
@@ -700,6 +701,7 @@ mod tests {
         let answers = adapter.callback_answers.lock().unwrap();
         assert_eq!(answers.len(), 1);
         assert_eq!(answers[0], rust_i18n::t!("domain.flow_expired"));
+        crate::core::i18n::set_lang(prev_lang);
     }
 
     #[tokio::test]

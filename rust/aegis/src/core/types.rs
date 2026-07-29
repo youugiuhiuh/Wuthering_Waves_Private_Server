@@ -25,7 +25,7 @@ impl DnsProvider {
         }
     }
 
-    pub const fn cdn_ports(self) -> &'static [i32] {
+    pub const fn cdn_ports(self) -> &'static [u16] {
         match self {
             Self::Cloudflare => &[443, 8443, 2053, 2083, 2087, 2096],
             Self::Route53 => &[],
