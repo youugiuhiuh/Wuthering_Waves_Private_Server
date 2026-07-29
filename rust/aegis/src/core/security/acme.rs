@@ -14,6 +14,7 @@ use x509_parser::{extensions::GeneralName, pem::Pem, prelude::FromDer};
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const MIN_VALIDITY: u64 = 30 * 24 * 60 * 60;
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+const ACME_SERVER: &str = "letsencrypt";
 // Two passes cover direct and once-wrapped provider output without unbounded decoding.
 const CREDENTIAL_ENCODING_DEPTH: usize = 2;
 #[cfg(target_os = "linux")]
@@ -221,35 +222,46 @@ impl AcmeManager {
     }
 
     fn issue_args(domain: &str, provider: DnsProvider) -> Result<Vec<String>> {
-        Self::command_args("--issue", domain, Some(provider))
+        let domain = Self::validate_domain(domain)?;
+        Ok(vec![
+            "--issue".to_string(),
+            "--server".to_string(),
+            ACME_SERVER.to_string(),
+            "--ecc".to_string(),
+            "--dns".to_string(),
+            provider.acme_flag().to_string(),
+            "-d".to_string(),
+            domain,
+        ])
     }
 
     fn renew_args(domain: &str) -> Result<Vec<String>> {
-        Self::command_args("--renew", domain, None)
+        let domain = Self::validate_domain(domain)?;
+        Ok(vec![
+            "--renew".to_string(),
+            "--server".to_string(),
+            ACME_SERVER.to_string(),
+            "--ecc".to_string(),
+            "-d".to_string(),
+            domain,
+            "--force".to_string(),
+        ])
     }
 
-    fn command_args(
-        action: &str,
-        domain: &str,
-        provider: Option<DnsProvider>,
-    ) -> Result<Vec<String>> {
+    #[allow(dead_code)]
+    fn install_args(domain: &str) -> Result<Vec<String>> {
         let domain = Self::validate_domain(domain)?;
         let paths = Self::cert_paths(&domain)?;
-        let mut args = vec![action.to_string()];
-        if let Some(provider) = provider {
-            args.extend(["--dns".to_string(), provider.acme_flag().to_string()]);
-        }
-        args.extend(["-d".to_string(), domain]);
-        if provider.is_none() {
-            args.push("--force".to_string());
-        }
-        args.extend([
+        Ok(vec![
+            "--install-cert".to_string(),
+            "--ecc".to_string(),
+            "-d".to_string(),
+            domain,
             "--fullchain-file".to_string(),
             paths.fullchain.to_string_lossy().into_owned(),
             "--key-file".to_string(),
             paths.privkey.to_string_lossy().into_owned(),
-        ]);
-        Ok(args)
+        ])
     }
 }
 
@@ -1271,40 +1283,71 @@ mod tests {
     }
 
     #[test]
-    fn issue_arguments_install_to_expected_paths() {
-        let args = AcmeManager::issue_args("example.com", DnsProvider::Cloudflare).unwrap();
+    fn issue_arguments_use_letsencrypt_without_destination_paths() {
         assert_eq!(
-            args,
+            AcmeManager::issue_args("example.com", DnsProvider::Cloudflare).unwrap(),
             vec![
                 "--issue",
+                "--server",
+                "letsencrypt",
+                "--ecc",
                 "--dns",
                 "dns_cf",
                 "-d",
                 "example.com",
-                "--fullchain-file",
-                "/root/cert/example.com/fullchain.pem",
-                "--key-file",
-                "/root/cert/example.com/privkey.pem"
             ]
         );
     }
 
     #[test]
-    fn renewal_arguments_force_refresh_existing_domain() {
-        let args = AcmeManager::renew_args("example.com").unwrap();
+    fn renewal_arguments_use_letsencrypt_and_force() {
         assert_eq!(
-            args,
+            AcmeManager::renew_args("example.com").unwrap(),
             vec![
                 "--renew",
+                "--server",
+                "letsencrypt",
+                "--ecc",
                 "-d",
                 "example.com",
                 "--force",
+            ]
+        );
+    }
+
+    #[test]
+    fn install_arguments_target_production_certificate_paths() {
+        assert_eq!(
+            AcmeManager::install_args("example.com").unwrap(),
+            vec![
+                "--install-cert",
+                "--ecc",
+                "-d",
+                "example.com",
                 "--fullchain-file",
                 "/root/cert/example.com/fullchain.pem",
                 "--key-file",
-                "/root/cert/example.com/privkey.pem"
+                "/root/cert/example.com/privkey.pem",
             ]
         );
+    }
+
+    #[test]
+    fn every_ca_command_is_letsencrypt_only() {
+        for args in [
+            AcmeManager::issue_args("example.com", DnsProvider::Cloudflare).unwrap(),
+            AcmeManager::renew_args("example.com").unwrap(),
+        ] {
+            assert!(
+                args.windows(2)
+                    .any(|pair| pair == ["--server", "letsencrypt"])
+            );
+            assert!(
+                !args
+                    .iter()
+                    .any(|arg| arg.to_ascii_lowercase().contains("zerossl"))
+            );
+        }
     }
 
     #[test]
