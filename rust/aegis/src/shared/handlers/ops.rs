@@ -598,7 +598,7 @@ pub async fn run_one_click(
             &tx,
             4,
             10,
-            format!("{} ({})", t!("ops.deploy_step_xhttp"), ip_version.label()),
+            format!("{} ({})", t!("ops.deploy_step_xhttp_tls"), ip_version.label()),
         );
         match &mode {
             XhttpDeployMode::Reality => {
@@ -640,7 +640,7 @@ pub async fn run_one_click(
                             .send_message(
                                 &target,
                                 MessageContent {
-                                    text: t!("ops.deploy_created_xhttp",
+                                    text: t!("ops.deploy_created_xhttp_tls",
                                             "0" => ip_version.label(),
                                             "1" => result.created_count.to_string(),
                                             "2" => result.config_file.as_deref().unwrap_or("?"))
@@ -653,7 +653,7 @@ pub async fn run_one_click(
                     Err(e) => {
                         let _ = tx.send(
                             t!("ops.deploy_fail",
-                                "0" => format!("{}: {}", t!("ops.deploy_fail_xhttp"), e)
+                                "0" => format!("{}: {}", t!("ops.deploy_fail_xhttp_tls"), e)
                             )
                             .to_string(),
                         );

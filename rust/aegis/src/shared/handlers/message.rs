@@ -169,7 +169,7 @@ pub async fn handle_message(
                                             .send_message(
                                                 target,
                                                 MessageContent {
-                                                    text: t!("domain.issue_fail", "0" => e.to_string())
+                                                    text: t!("domain.cert_fail", "0" => e.to_string())
                                                         .to_string(),
                                                     markup: None,
                                                 },
@@ -185,7 +185,7 @@ pub async fn handle_message(
                                 .send_message(
                                     target,
                                     MessageContent {
-                                        text: t!("domain.provider_needed").to_string(),
+                                        text: t!("domain.prov_title").to_string(),
                                         markup: Some(Markup { buttons }),
                                     },
                                 )
@@ -197,7 +197,7 @@ pub async fn handle_message(
                                 .send_message(
                                     target,
                                     MessageContent {
-                                        text: t!("domain.invalid", "0" => e.to_string())
+                                        text: e.to_string()
                                             .to_string(),
                                         markup: None,
                                     },
@@ -311,7 +311,7 @@ pub async fn handle_message(
                                             .send_message(
                                                 target,
                                                 MessageContent {
-                                                    text: t!("domain.issue_fail", "0" => e.to_string())
+                                                    text: t!("domain.cert_fail", "0" => e.to_string())
                                                         .to_string(),
                                                     markup: None,
                                                 },

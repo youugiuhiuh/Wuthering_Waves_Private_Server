@@ -83,7 +83,7 @@ pub async fn run_standalone_xhttp_tls(
             }
 
             let mut result_msg =
-                t!("xray.tls_batch_done", "0" => result.created_count, "1" => ip_str.as_str())
+                t!("xray.tls_batch_done", "0" => result.created_count, "1" => domain.as_str())
                     .into_owned();
 
             if let Some(filename) = result.config_file {
