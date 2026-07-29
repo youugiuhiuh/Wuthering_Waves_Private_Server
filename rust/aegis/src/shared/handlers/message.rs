@@ -502,35 +502,21 @@ async fn show_provider_selection(
 }
 
 fn provider_buttons() -> Vec<Vec<InlineButton>> {
-    vec![
-        vec![
-            InlineButton {
-                text: t!("domain.prov_cf").to_string(),
-                data: "xhttp_domain_provider:cloudflare".to_string(),
-            },
-            InlineButton {
-                text: t!("domain.prov_ali").to_string(),
-                data: "xhttp_domain_provider:aliyun".to_string(),
-            },
-        ],
-        vec![
-            InlineButton {
-                text: t!("domain.prov_dp").to_string(),
-                data: "xhttp_domain_provider:dnspod".to_string(),
-            },
-            InlineButton {
-                text: t!("domain.prov_aws").to_string(),
-                data: "xhttp_domain_provider:route53".to_string(),
-            },
-        ],
-    ]
+    vec![vec![
+        InlineButton {
+            text: t!("domain.prov_cf").to_string(),
+            data: "xhttp_domain_provider:cloudflare".to_string(),
+        },
+        InlineButton {
+            text: t!("domain.prov_aws").to_string(),
+            data: "xhttp_domain_provider:route53".to_string(),
+        },
+    ]]
 }
 
 pub(crate) fn provider_credential_guidance(provider: DnsProvider) -> String {
     let prompt = match provider {
         DnsProvider::Cloudflare => t!("domain.cred_prompt_cloudflare"),
-        DnsProvider::Aliyun => t!("domain.cred_prompt_aliyun"),
-        DnsProvider::Dnspod => t!("domain.cred_prompt_dnspod"),
         DnsProvider::Route53 => t!("domain.cred_prompt_route53"),
     };
     format!("{prompt}\n\n{}", t!("domain.cred_security_warning"))
@@ -568,8 +554,6 @@ fn certificate_progress_message(domain: &str, operation: AcmeCertificateOperatio
 fn parse_provider_selection(text: &str) -> Option<DnsProvider> {
     match text.to_lowercase().as_str() {
         "cloudflare" | "cf" | "dns_cf" => Some(DnsProvider::Cloudflare),
-        "aliyun" | "ali" | "dns_ali" => Some(DnsProvider::Aliyun),
-        "dnspod" | "dp" | "dns_dp" => Some(DnsProvider::Dnspod),
         "route53" | "aws" | "dns_aws" => Some(DnsProvider::Route53),
         _ => None,
     }
@@ -767,12 +751,7 @@ mod tests {
 
     #[test]
     fn provider_guidance_runtime_never_returns_raw_keys() {
-        for provider in [
-            DnsProvider::Cloudflare,
-            DnsProvider::Aliyun,
-            DnsProvider::Dnspod,
-            DnsProvider::Route53,
-        ] {
+        for provider in [DnsProvider::Cloudflare, DnsProvider::Route53] {
             let text = provider_credential_guidance(provider);
             assert!(!text.contains("domain.cred_prompt_"));
             assert!(!text.contains("domain.cred_security_warning"));
@@ -855,8 +834,6 @@ mod tests {
         ];
         let required = [
             "cred_prompt_cloudflare",
-            "cred_prompt_aliyun",
-            "cred_prompt_dnspod",
             "cred_prompt_route53",
             "cred_security_warning",
             "acme_auth_error",
@@ -880,18 +857,6 @@ mod tests {
                 "API_TOKEN,ZONE_ID",
                 "https://dash.cloudflare.com/profile/api-tokens",
                 &["Zone > DNS > Edit", "Zone > Zone > Read", "Zone ID"][..],
-            ),
-            (
-                "cred_prompt_aliyun",
-                "ACCESS_KEY_ID,ACCESS_KEY_SECRET",
-                "https://ram.console.aliyun.com/users",
-                &["RAM", "DNS"][..],
-            ),
-            (
-                "cred_prompt_dnspod",
-                "TOKEN_ID,TOKEN",
-                "https://console.dnspod.cn/account/token/token",
-                &["DNS"][..],
             ),
             (
                 "cred_prompt_route53",
@@ -1050,18 +1015,11 @@ mod tests {
             *adapter.button_data.lock().unwrap(),
             vec![
                 "xhttp_domain_provider:cloudflare".to_string(),
-                "xhttp_domain_provider:aliyun".to_string(),
-                "xhttp_domain_provider:dnspod".to_string(),
                 "xhttp_domain_provider:route53".to_string(),
             ]
         );
         let button_text = adapter.button_text.lock().unwrap();
-        for raw_key in [
-            "domain.prov_cf",
-            "domain.prov_ali",
-            "domain.prov_dp",
-            "domain.prov_aws",
-        ] {
+        for raw_key in ["domain.prov_cf", "domain.prov_aws"] {
             assert!(!button_text.contains(&raw_key.to_string()));
         }
     }

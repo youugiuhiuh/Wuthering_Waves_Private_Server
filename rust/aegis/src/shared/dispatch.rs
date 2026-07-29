@@ -643,6 +643,8 @@ mod tests {
 
     #[tokio::test]
     async fn stale_domain_provider_callback_is_rejected() {
+        let prev_lang = crate::core::i18n::current_lang();
+        crate::core::i18n::set_lang(crate::core::i18n::Lang::En);
         let adapter = Arc::new(MockAdapter::default());
         let state = Arc::new(make_state());
         state.record_auth_success(42, Instant::now()).await;
@@ -671,18 +673,18 @@ mod tests {
             )
             .await
         };
-        let aliyun = async {
+        let route53 = async {
             barrier.wait().await;
             dispatch_event(
-                callback_event(adapter.clone(), "xhttp_domain_provider:aliyun"),
+                callback_event(adapter.clone(), "xhttp_domain_provider:route53"),
                 &state,
             )
             .await
         };
 
-        let (cloudflare_result, aliyun_result) = tokio::join!(cloudflare, aliyun);
+        let (cloudflare_result, route53_result) = tokio::join!(cloudflare, route53);
         cloudflare_result.unwrap();
-        aliyun_result.unwrap();
+        route53_result.unwrap();
 
         let sent = adapter.sent.lock().unwrap();
         assert_eq!(sent.len(), 1, "only the winning provider gets a prompt");
@@ -691,7 +693,7 @@ mod tests {
                 crate::core::types::DnsProvider::Cloudflare,
             ),
             crate::shared::handlers::message::provider_credential_guidance(
-                crate::core::types::DnsProvider::Aliyun,
+                crate::core::types::DnsProvider::Route53,
             ),
         ];
         assert!(expected.contains(&sent[0]));
@@ -699,6 +701,7 @@ mod tests {
         let answers = adapter.callback_answers.lock().unwrap();
         assert_eq!(answers.len(), 1);
         assert_eq!(answers[0], rust_i18n::t!("domain.flow_expired"));
+        crate::core::i18n::set_lang(prev_lang);
     }
 
     #[tokio::test]
