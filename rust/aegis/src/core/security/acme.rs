@@ -100,6 +100,12 @@ pub enum XhttpDeployMode {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AcmeCertificateOperation {
+    Issue,
+    Renew,
+}
+
 pub struct AcmeManager;
 
 impl AcmeManager {
@@ -158,8 +164,21 @@ impl AcmeManager {
         Self::ecc_domain_config_path_at(domain, Path::new(acme::HOME))
     }
 
-    pub fn ecc_domain_state_exists(domain: &str) -> Result<bool> {
-        Ok(Self::ecc_domain_config_path(domain)?.is_file())
+    pub(crate) fn operation_for_domain(domain: &str) -> Result<AcmeCertificateOperation> {
+        let state_config = Self::ecc_domain_config_path(domain)?;
+        Self::operation_for_domain_at(domain, &state_config)
+    }
+
+    fn operation_for_domain_at(
+        domain: &str,
+        state_config: &Path,
+    ) -> Result<AcmeCertificateOperation> {
+        Self::validate_domain(domain)?;
+        Ok(if state_config.is_file() {
+            AcmeCertificateOperation::Renew
+        } else {
+            AcmeCertificateOperation::Issue
+        })
     }
 
     pub fn configured_provider_for_domain(domain: &str) -> Result<Option<DnsProvider>> {
@@ -218,6 +237,16 @@ impl AcmeManager {
         provider: DnsProvider,
         credentials: Option<(&str, &str)>,
     ) -> Result<CertPaths> {
+        let operation = Self::operation_for_domain(domain)?;
+        Self::issue_cert_for_operation(domain, provider, credentials, operation).await
+    }
+
+    pub(crate) async fn issue_cert_for_operation(
+        domain: &str,
+        provider: DnsProvider,
+        credentials: Option<(&str, &str)>,
+        operation: AcmeCertificateOperation,
+    ) -> Result<CertPaths> {
         let domain = Self::validate_domain(domain)?;
         let paths = Self::cert_paths(&domain)?;
         let directory = paths
@@ -226,8 +255,7 @@ impl AcmeManager {
             .context("certificate path has no parent directory")?;
         tokio::fs::create_dir_all(directory).await?;
         tighten_cert_permissions(&paths)?;
-        let state_config = Self::ecc_domain_config_path(&domain)?;
-        let commands = certificate_commands(&domain, provider, &state_config, &paths)?;
+        let commands = certificate_commands(&domain, provider, operation, &paths)?;
         let names = provider.credential_names();
         let environment = credentials
             .map(|(first, second)| {
@@ -318,14 +346,13 @@ impl AcmeManager {
 fn certificate_commands(
     domain: &str,
     provider: DnsProvider,
-    state_config: &Path,
+    operation: AcmeCertificateOperation,
     paths: &CertPaths,
 ) -> Result<Vec<Vec<String>>> {
     let domain = AcmeManager::validate_domain(domain)?;
-    let primary = if state_config.is_file() {
-        AcmeManager::renew_args(&domain)?
-    } else {
-        AcmeManager::issue_args(&domain, provider)?
+    let primary = match operation {
+        AcmeCertificateOperation::Issue => AcmeManager::issue_args(&domain, provider)?,
+        AcmeCertificateOperation::Renew => AcmeManager::renew_args(&domain)?,
     };
     Ok(vec![
         primary,
@@ -384,11 +411,11 @@ fn assignment_value<'a>(config: &'a str, name: &str) -> Option<&'a str> {
         let (key, value) = line.split_once('=')?;
         (key.trim() == name)
             .then(|| parse_assignment_value(value))
-            .filter(|value| !value.is_empty())
+            .flatten()
     })
 }
 
-fn parse_assignment_value(value: &str) -> &str {
+fn parse_assignment_value(value: &str) -> Option<&str> {
     let value = value.trim();
     if let Some(quote) = value
         .chars()
@@ -396,9 +423,17 @@ fn parse_assignment_value(value: &str) -> &str {
         .filter(|quote| matches!(quote, '\'' | '"'))
     {
         let quoted = &value[quote.len_utf8()..];
-        if let Some(end) = quoted.find(quote) {
-            return &quoted[..end];
+        let end = quoted.find(quote)?;
+        let remainder = quoted[end + quote.len_utf8()..].trim();
+        if !remainder.is_empty() && !remainder.starts_with('#') {
+            return None;
         }
+        let content = &quoted[..end];
+        return if content.is_empty() {
+            None
+        } else {
+            Some(content)
+        };
     }
     let comment = value
         .char_indices()
@@ -411,7 +446,12 @@ fn parse_assignment_value(value: &str) -> &str {
                         .is_some_and(char::is_whitespace))
         })
         .map_or(value, |(index, _)| &value[..index]);
-    comment.trim_end()
+    let result = comment.trim_end();
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 async fn certificate_files_valid(domain: &str, paths: &CertPaths, now: i64) -> bool {
@@ -1451,8 +1491,10 @@ mod tests {
             privkey: directory.path().join("missing-privkey.pem"),
         };
 
+        let operation = AcmeManager::operation_for_domain_at("example.com", &state).unwrap();
         let commands =
-            certificate_commands("example.com", DnsProvider::Cloudflare, &state, &paths).unwrap();
+            certificate_commands("example.com", DnsProvider::Cloudflare, operation, &paths)
+                .unwrap();
 
         assert_eq!(commands[0], AcmeManager::renew_args("example.com").unwrap());
         assert_eq!(commands[1][0], "--install-cert");
@@ -1469,14 +1511,35 @@ mod tests {
         fs::write(&paths.fullchain, "stale destination").unwrap();
         fs::write(&paths.privkey, "stale destination").unwrap();
 
+        let operation = AcmeManager::operation_for_domain_at("example.com", &state).unwrap();
         let commands =
-            certificate_commands("example.com", DnsProvider::Cloudflare, &state, &paths).unwrap();
+            certificate_commands("example.com", DnsProvider::Cloudflare, operation, &paths)
+                .unwrap();
 
         assert_eq!(
             commands[0],
             AcmeManager::issue_args("example.com", DnsProvider::Cloudflare).unwrap()
         );
         assert_eq!(commands[1][0], "--install-cert");
+    }
+
+    #[test]
+    fn selected_operation_survives_acme_state_change() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("example.com.conf");
+        let paths = CertPaths {
+            fullchain: directory.path().join("fullchain.pem"),
+            privkey: directory.path().join("privkey.pem"),
+        };
+        let operation = AcmeManager::operation_for_domain_at("example.com", &state).unwrap();
+        assert_eq!(operation, AcmeCertificateOperation::Issue);
+
+        fs::write(&state, "Le_Domain='example.com'\n").unwrap();
+        let commands =
+            certificate_commands("example.com", DnsProvider::Cloudflare, operation, &paths)
+                .unwrap();
+
+        assert_eq!(commands[0][0], "--issue");
     }
 
     #[tokio::test]
@@ -1638,6 +1701,51 @@ mod tests {
         assert_eq!(
             configured_provider_from_configs(
                 "NOT_CF_Token='token-value'\nNOT_CF_Zone_ID='zone-value'\n",
+                ""
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn assignment_parser_rejects_unterminated_quotes() {
+        for config in ["CF_Token='unterminated\n", "CF_Token=\"unterminated\n"] {
+            assert_eq!(assignment_value(config, "CF_Token"), None);
+        }
+    }
+
+    #[test]
+    fn assignment_parser_rejects_trailing_garbage_after_quotes() {
+        for config in ["CF_Token='token' garbage\n", "CF_Token=\"token\"; next\n"] {
+            assert_eq!(assignment_value(config, "CF_Token"), None);
+        }
+    }
+
+    #[test]
+    fn assignment_parser_rejects_empty_quoted_values() {
+        for config in ["CF_Token=''\n", "CF_Token=\"\" # unset\n"] {
+            assert_eq!(assignment_value(config, "CF_Token"), None);
+        }
+    }
+
+    #[test]
+    fn assignment_parser_accepts_valid_quoted_and_unquoted_values() {
+        let cases = [
+            ("CF_Token=token-value\n", "token-value"),
+            ("export CF_Token = 'single-value' # note\n", "single-value"),
+            ("CF_Token=\"double-value\"\n", "double-value"),
+            ("CF_Token=unquoted-value # note\n", "unquoted-value"),
+        ];
+        for (config, expected) in cases {
+            assert_eq!(assignment_value(config, "CF_Token"), Some(expected));
+        }
+    }
+
+    #[test]
+    fn malformed_cloudflare_domain_config_is_not_discovered() {
+        assert_eq!(
+            configured_provider_from_configs(
+                "CF_Token='unterminated\nCF_Zone_ID='zone-value'\n",
                 ""
             ),
             None

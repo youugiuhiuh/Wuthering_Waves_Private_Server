@@ -5,7 +5,7 @@ use rust_i18n::t;
 
 use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
 use crate::core::security::acme::{
-    AcmeCommandError, AcmeFailureKind, AcmeManager, XhttpDeployMode,
+    AcmeCertificateOperation, AcmeCommandError, AcmeFailureKind, AcmeManager, XhttpDeployMode,
 };
 use crate::core::types::{DnsProvider, DomainFlowSource, DomainInputState, DomainInputStep};
 use crate::core::xray::config::ConfigManager;
@@ -132,8 +132,8 @@ pub async fn handle_message(
                                     .await
                             {
                                 let _install_result = AcmeManager::ensure_installed().await;
-                                let renewing = AcmeManager::ecc_domain_state_exists(&domain)?;
-                                let msg = certificate_progress_message(&domain, renewing);
+                                let operation = AcmeManager::operation_for_domain(&domain)?;
+                                let msg = certificate_progress_message(&domain, operation);
                                 adapter
                                     .send_message(
                                         target,
@@ -143,7 +143,11 @@ pub async fn handle_message(
                                         },
                                     )
                                     .await?;
-                                match AcmeManager::issue_cert(&domain, provider, None).await {
+                                match AcmeManager::issue_cert_for_operation(
+                                    &domain, provider, None, operation,
+                                )
+                                .await
+                                {
                                     Ok(cert_paths) => {
                                         state.take_domain_input(target_str).await;
                                         return Ok(MessageAction::DomainReady {
@@ -554,11 +558,10 @@ fn localized_acme_install_failure() -> String {
     t!("domain.acme_install_fail", "0" => "ACME-UNKNOWN").to_string()
 }
 
-fn certificate_progress_message(domain: &str, renewing: bool) -> String {
-    if renewing {
-        t!("domain.cert_renew").to_string()
-    } else {
-        t!("domain.issuing_cert", "0" => domain).to_string()
+fn certificate_progress_message(domain: &str, operation: AcmeCertificateOperation) -> String {
+    match operation {
+        AcmeCertificateOperation::Issue => t!("domain.issuing_cert", "0" => domain).to_string(),
+        AcmeCertificateOperation::Renew => t!("domain.cert_renew").to_string(),
     }
 }
 
@@ -820,7 +823,7 @@ mod tests {
     #[test]
     fn new_issuance_uses_existing_issuance_message() {
         assert_eq!(
-            certificate_progress_message("example.com", false),
+            certificate_progress_message("example.com", AcmeCertificateOperation::Issue),
             t!("domain.issuing_cert", "0" => "example.com").to_string()
         );
     }
@@ -828,7 +831,7 @@ mod tests {
     #[test]
     fn renewal_uses_existing_renewal_message() {
         assert_eq!(
-            certificate_progress_message("example.com", true),
+            certificate_progress_message("example.com", AcmeCertificateOperation::Renew),
             t!("domain.cert_renew").to_string()
         );
     }
