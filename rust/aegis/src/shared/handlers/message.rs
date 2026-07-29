@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use rust_i18n::t;
 
 use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
-use crate::core::security::acme::{AcmeManager, XhttpDeployMode};
+use crate::core::security::acme::{
+    AcmeCommandError, AcmeFailureKind, AcmeManager, XhttpDeployMode,
+};
 use crate::core::types::{DnsProvider, DomainFlowSource, DomainInputState, DomainInputStep};
 use crate::core::xray::config::ConfigManager;
 use crate::shared::types::TimeoutStatus;
@@ -169,9 +171,8 @@ pub async fn handle_message(
                                             .send_message(
                                                 target,
                                                 MessageContent {
-                                                    text:
-                                                        t!("domain.cert_fail", "0" => e.to_string())
-                                                            .to_string(),
+                                                    text: t!("domain.cert_fail", "0" => localized_acme_failure(&e))
+                                                        .to_string(),
                                                     markup: None,
                                                 },
                                             )
@@ -313,9 +314,8 @@ pub async fn handle_message(
                                             .send_message(
                                                 target,
                                                 MessageContent {
-                                                    text:
-                                                        t!("domain.cert_fail", "0" => e.to_string())
-                                                            .to_string(),
+                                                    text: t!("domain.cert_fail", "0" => localized_acme_failure(&e))
+                                                        .to_string(),
                                                     markup: None,
                                                 },
                                             )
@@ -541,6 +541,24 @@ pub(crate) fn provider_credential_guidance(provider: DnsProvider) -> String {
     format!("{prompt}\n\n{}", t!("domain.cred_security_warning"))
 }
 
+fn localized_acme_failure(error: &anyhow::Error) -> String {
+    match error
+        .downcast_ref::<AcmeCommandError>()
+        .map(|error| error.kind())
+    {
+        Some(AcmeFailureKind::Authentication) => t!("domain.acme_auth_error").to_string(),
+        Some(AcmeFailureKind::Scope) => t!("domain.acme_scope_error").to_string(),
+        Some(AcmeFailureKind::Dns) => t!("domain.acme_dns_error").to_string(),
+        Some(AcmeFailureKind::Network) => t!("domain.acme_network_error").to_string(),
+        Some(AcmeFailureKind::Timeout) => {
+            format!("{} (ACME-TIMEOUT)", t!("domain.cert_timeout"))
+        }
+        Some(AcmeFailureKind::Unknown) | None => {
+            t!("domain.acme_unknown_error", "0" => "ACME-UNKNOWN").to_string()
+        }
+    }
+}
+
 fn parse_provider_selection(text: &str) -> Option<DnsProvider> {
     match text.to_lowercase().as_str() {
         "cloudflare" | "cf" | "dns_cf" => Some(DnsProvider::Cloudflare),
@@ -753,6 +771,37 @@ mod tests {
             assert!(!text.contains("domain.cred_prompt_"));
             assert!(!text.contains("domain.cred_security_warning"));
         }
+    }
+
+    #[test]
+    fn acme_failures_render_safe_localized_guidance() {
+        i18n::set_lang(Lang::En);
+        let cases = [
+            (AcmeFailureKind::Authentication, "ACME-AUTH"),
+            (AcmeFailureKind::Scope, "ACME-SCOPE"),
+            (AcmeFailureKind::Dns, "ACME-DNS"),
+            (AcmeFailureKind::Network, "ACME-NETWORK"),
+            (AcmeFailureKind::Timeout, "ACME-TIMEOUT"),
+            (AcmeFailureKind::Unknown, "ACME-UNKNOWN"),
+        ];
+
+        for (kind, code) in cases {
+            let error = anyhow::Error::new(AcmeCommandError::new(kind))
+                .context("raw provider detail must stay hidden");
+            let rendered = localized_acme_failure(&error);
+
+            assert!(rendered.contains(code), "missing {code}: {rendered}");
+            assert!(!rendered.contains("domain.acme_"));
+            assert!(!rendered.contains("domain.cert_timeout"));
+            assert!(!rendered.contains("raw provider detail"));
+        }
+
+        let rendered = localized_acme_failure(&anyhow::anyhow!(
+            "untyped subprocess output must stay hidden"
+        ));
+        assert!(rendered.contains("ACME-UNKNOWN"));
+        assert!(!rendered.contains("domain.acme_unknown_error"));
+        assert!(!rendered.contains("untyped subprocess output"));
     }
 
     #[test]
