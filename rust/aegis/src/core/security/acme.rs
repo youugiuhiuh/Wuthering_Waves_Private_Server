@@ -194,18 +194,34 @@ impl AcmeManager {
             .context("certificate path has no parent directory")?;
         tokio::fs::create_dir_all(directory).await?;
         tighten_cert_permissions(&paths)?;
-        let args = if paths.fullchain.exists() || paths.privkey.exists() {
+        let primary_args = if paths.fullchain.exists() || paths.privkey.exists() {
             Self::renew_args(&domain)?
         } else {
             Self::issue_args(&domain, provider)?
         };
-        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let commands = vec![primary_args, Self::install_args(&domain)?];
         let names = provider.credential_names();
         let environment = credentials
-            .map(|(first, second)| [(names.0, first), (names.1, second)])
+            .map(|(first, second)| {
+                vec![
+                    (names.0.to_string(), first.to_string()),
+                    (names.1.to_string(), second.to_string()),
+                ]
+            })
             .unwrap_or_default();
 
-        let command_result = run_command(acme::BIN, &args, &environment).await;
+        let command_result =
+            execute_acme_sequence(commands, environment, |args, environment| async move {
+                let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+                let env_refs = environment
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.as_str()))
+                    .collect::<Vec<_>>();
+                run_command(acme::BIN, &arg_refs, &env_refs)
+                    .await
+                    .map(|_| ())
+            })
+            .await;
         tighten_acme_permissions()?;
         tighten_cert_permissions(&paths)?;
         command_result?;
@@ -248,7 +264,6 @@ impl AcmeManager {
         ])
     }
 
-    #[allow(dead_code)]
     fn install_args(domain: &str) -> Result<Vec<String>> {
         let domain = Self::validate_domain(domain)?;
         let paths = Self::cert_paths(&domain)?;
@@ -263,6 +278,22 @@ impl AcmeManager {
             paths.privkey.to_string_lossy().into_owned(),
         ])
     }
+}
+
+async fn execute_acme_sequence<F, Fut>(
+    commands: Vec<Vec<String>>,
+    environment: Vec<(String, String)>,
+    mut execute: F,
+) -> Result<()>
+where
+    F: FnMut(Vec<String>, Vec<(String, String)>) -> Fut,
+    Fut: std::future::Future<Output = Result<()>>,
+{
+    let mut first_environment = Some(environment);
+    for args in commands {
+        execute(args, first_environment.take().unwrap_or_default()).await?;
+    }
+    Ok(())
 }
 
 fn configured_provider_from(config: &str) -> Option<DnsProvider> {
@@ -1062,7 +1093,11 @@ fn reap_descendants(identities: Vec<ProcessIdentity>) {
 mod tests {
     use super::*;
     use crate::core::types::DnsProvider;
-    use std::{path::PathBuf, process::Stdio, sync::Arc};
+    use std::{
+        path::PathBuf,
+        process::Stdio,
+        sync::{Arc, Mutex},
+    };
 
     fn generated_certificate(domain: &str, with_san: bool) -> (tempfile::TempDir, CertPaths) {
         let directory = tempfile::tempdir().unwrap();
@@ -1328,6 +1363,96 @@ mod tests {
                 "/root/cert/example.com/fullchain.pem",
                 "--key-file",
                 "/root/cert/example.com/privkey.pem",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn acme_sequence_stops_before_install_after_primary_failure() {
+        let calls = Arc::new(Mutex::new(Vec::<Vec<String>>::new()));
+        let recorded = Arc::clone(&calls);
+        let commands = vec![
+            vec!["--issue".to_string()],
+            vec!["--install-cert".to_string()],
+        ];
+
+        let result = execute_acme_sequence(
+            commands,
+            vec![("CF_Token".to_string(), "secret".to_string())],
+            move |args, environment| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push(args);
+                    assert_eq!(environment.len(), 1);
+                    bail!("primary failed")
+                }
+            },
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(*calls.lock().unwrap(), vec![vec!["--issue".to_string()]]);
+    }
+
+    #[tokio::test]
+    async fn acme_sequence_installs_without_provider_credentials() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&calls);
+        execute_acme_sequence(
+            vec![
+                vec!["--issue".to_string()],
+                vec!["--install-cert".to_string()],
+            ],
+            vec![
+                ("CF_Token".to_string(), "token".to_string()),
+                ("CF_Zone_ID".to_string(), "zone".to_string()),
+            ],
+            move |args, environment| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push((args, environment));
+                    Ok(())
+                }
+            },
+        )
+        .await
+        .unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].1.len(), 2);
+        assert!(calls[1].1.is_empty());
+    }
+
+    #[tokio::test]
+    async fn acme_sequence_completes_only_after_install_succeeds() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&calls);
+        execute_acme_sequence(
+            vec![
+                vec!["--issue".to_string()],
+                vec!["--install-cert".to_string()],
+            ],
+            Vec::new(),
+            move |args, _| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push(args.clone());
+                    if args[0] == "--install-cert" {
+                        bail!("install failed");
+                    }
+                    Ok(())
+                }
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![
+                vec!["--issue".to_string()],
+                vec!["--install-cert".to_string()],
             ]
         );
     }
