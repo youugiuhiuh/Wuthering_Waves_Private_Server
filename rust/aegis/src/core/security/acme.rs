@@ -12,6 +12,8 @@ use x509_parser::{extensions::GeneralName, pem::Pem, prelude::FromDer};
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const MIN_VALIDITY: u64 = 30 * 24 * 60 * 60;
+#[cfg(target_os = "linux")]
+const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CertPaths {
@@ -95,15 +97,18 @@ impl AcmeManager {
         Ok(PathBuf::from(acme::BIN))
     }
 
-    pub fn cert_valid(domain: &str) -> Option<CertPaths> {
-        let paths = Self::cert_paths(domain).ok()?;
+    pub async fn cert_valid(domain: &str) -> Option<CertPaths> {
+        let domain = Self::validate_domain(domain).ok()?;
+        let paths = Self::cert_paths(&domain).ok()?;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .ok()?
             .as_secs()
             .try_into()
             .ok()?;
-        certificate_files_valid(domain, &paths, now).then_some(paths)
+        certificate_files_valid(&domain, &paths, now)
+            .await
+            .then_some(paths)
     }
 
     pub async fn issue_cert(
@@ -138,7 +143,9 @@ impl AcmeManager {
             &domain,
             &paths,
             SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64,
-        ) {
+        )
+        .await
+        {
             bail!("ACME command produced invalid certificate material");
         }
         Ok(paths)
@@ -202,23 +209,41 @@ fn assignment_value<'a>(config: &'a str, name: &str) -> Option<&'a str> {
         let line = line.trim().strip_prefix("export ").unwrap_or(line.trim());
         let (key, value) = line.split_once('=')?;
         (key.trim() == name)
-            .then(|| {
-                let value = value.trim();
-                value
-                    .strip_prefix('\'')
-                    .and_then(|value| value.strip_suffix('\''))
-                    .or_else(|| {
-                        value
-                            .strip_prefix('"')
-                            .and_then(|value| value.strip_suffix('"'))
-                    })
-                    .unwrap_or(value)
-            })
+            .then(|| parse_assignment_value(value))
             .filter(|value| !value.is_empty())
     })
 }
 
-fn certificate_files_valid(domain: &str, paths: &CertPaths, now: i64) -> bool {
+fn parse_assignment_value(value: &str) -> &str {
+    let value = value.trim();
+    if let Some(quote) = value
+        .chars()
+        .next()
+        .filter(|quote| matches!(quote, '\'' | '"'))
+    {
+        let quoted = &value[quote.len_utf8()..];
+        if let Some(end) = quoted.find(quote) {
+            return &quoted[..end];
+        }
+    }
+    let comment = value
+        .char_indices()
+        .find(|(index, character)| {
+            *character == '#'
+                && (*index == 0
+                    || value[..*index]
+                        .chars()
+                        .next_back()
+                        .is_some_and(char::is_whitespace))
+        })
+        .map_or(value, |(index, _)| &value[..index]);
+    comment.trim_end()
+}
+
+async fn certificate_files_valid(domain: &str, paths: &CertPaths, now: i64) -> bool {
+    let Ok(domain) = AcmeManager::validate_domain(domain) else {
+        return false;
+    };
     if !paths.fullchain.is_file() || !paths.privkey.is_file() {
         return false;
     }
@@ -238,13 +263,17 @@ fn certificate_files_valid(domain: &str, paths: &CertPaths, now: i64) -> bool {
     };
     if certificate.validity().not_before.timestamp() > now
         || certificate.validity().not_after.timestamp() <= minimum_expiry
-        || !certificate_matches_domain(&certificate, domain)
+        || !certificate_matches_domain(&certificate, &domain)
     {
         return false;
     }
 
-    public_key(&paths.fullchain, true)
-        .zip(public_key(&paths.privkey, false))
+    let (certificate_key, private_key) = tokio::join!(
+        public_key(&paths.fullchain, true),
+        public_key(&paths.privkey, false)
+    );
+    certificate_key
+        .zip(private_key)
         .is_some_and(|(certificate_key, private_key)| certificate_key == private_key)
 }
 
@@ -277,22 +306,26 @@ fn dns_name_matches(pattern: &str, domain: &str) -> bool {
         .is_some_and(|prefix| prefix.ends_with('.') && !prefix[..prefix.len() - 1].contains('.'))
 }
 
-fn public_key(path: &Path, certificate: bool) -> Option<Vec<u8>> {
-    let mut command = std::process::Command::new("openssl");
-    if certificate {
-        command
-            .args(["x509", "-in"])
-            .arg(path)
-            .args(["-pubkey", "-noout"]);
+async fn public_key(path: &Path, certificate: bool) -> Option<Vec<u8>> {
+    public_key_with_program("openssl", path, certificate, COMMAND_TIMEOUT).await
+}
+
+async fn public_key_with_program(
+    program: &str,
+    path: &Path,
+    certificate: bool,
+    timeout: Duration,
+) -> Option<Vec<u8>> {
+    let path = path.to_str()?;
+    let args = if certificate {
+        vec!["x509", "-in", path, "-pubkey", "-noout"]
     } else {
-        command.args(["pkey", "-in"]).arg(path).args(["-pubout"]);
-    }
-    let output = command
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    output.status.success().then_some(output.stdout)
+        vec!["pkey", "-in", path, "-pubout"]
+    };
+    run_command_with_timeout(program, &args, &[], timeout)
+        .await
+        .ok()
+        .map(|output| output.stdout)
 }
 
 #[cfg(unix)]
@@ -378,6 +411,8 @@ async fn run_command_with_timeout(
     let status = match tokio::time::timeout_at(deadline, child.wait()).await {
         Ok(status) => status.context("failed to wait for subprocess")?,
         Err(_) => {
+            stdout_task.abort();
+            stderr_task.abort();
             terminate_subprocess_tree(process_group, &mut child).await;
             let _ = stdout_task.await;
             let _ = stderr_task.await;
@@ -397,6 +432,8 @@ async fn run_command_with_timeout(
     let (stdout, stderr) = match output {
         Ok(output) => output?,
         Err(_) => {
+            stdout_task.abort();
+            stderr_task.abort();
             terminate_subprocess_tree(process_group, &mut child).await;
             let _ = stdout_task.await;
             let _ = stderr_task.await;
@@ -426,23 +463,135 @@ async fn terminate_subprocess_tree(process_group: i32, child: &mut tokio::proces
 
 #[cfg(target_os = "linux")]
 async fn terminate_and_reap_process_group(process_group: i32, child: &mut tokio::process::Child) {
-    // Negative PID targets every process in the isolated process group.
-    // SAFETY: the negative PID is the child-owned process group created before spawn.
-    unsafe {
-        libc::kill(-process_group, libc::SIGKILL);
-    }
-    let _ = child.wait().await;
-    let _ = tokio::task::spawn_blocking(move || {
-        let mut status = 0;
-        loop {
-            // SAFETY: status is writable and waitpid is restricted to the killed process group.
-            let result = unsafe { libc::waitpid(-process_group, &mut status, 0) };
-            if result <= 0 {
-                break;
+    let descendants = tokio::task::spawn_blocking(move || stop_and_kill_subtree(process_group))
+        .await
+        .unwrap_or_default();
+    let _ = tokio::time::timeout(CLEANUP_TIMEOUT, child.wait()).await;
+    let _ = tokio::time::timeout(
+        CLEANUP_TIMEOUT,
+        tokio::task::spawn_blocking(move || reap_descendants(descendants)),
+    )
+    .await;
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ProcessIdentity {
+    pid: i32,
+    start_time: u64,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Copy)]
+struct ProcessEntry {
+    identity: ProcessIdentity,
+    parent: i32,
+    group: i32,
+}
+
+#[cfg(target_os = "linux")]
+fn stop_and_kill_subtree(root_pid: i32) -> Vec<ProcessIdentity> {
+    let Some(root) = process_entry(root_pid) else {
+        let identities = process_snapshot()
+            .into_iter()
+            .filter(|entry| entry.group == root_pid)
+            .map(|entry| entry.identity)
+            .collect::<Vec<_>>();
+        for identity in &identities {
+            signal_if_same(*identity, libc::SIGKILL);
+        }
+        return identities;
+    };
+    let mut tracked = std::collections::HashMap::from([(root_pid, root.identity)]);
+    signal_if_same(root.identity, libc::SIGSTOP);
+    let deadline = std::time::Instant::now() + CLEANUP_TIMEOUT;
+
+    loop {
+        let snapshot = process_snapshot();
+        let mut changed = true;
+        let mut added = Vec::new();
+        while changed {
+            changed = false;
+            for entry in &snapshot {
+                if tracked.contains_key(&entry.parent) && !tracked.contains_key(&entry.identity.pid)
+                {
+                    tracked.insert(entry.identity.pid, entry.identity);
+                    added.push(entry.identity);
+                    changed = true;
+                }
             }
         }
+        for identity in &added {
+            signal_if_same(*identity, libc::SIGSTOP);
+        }
+        if added.is_empty() || std::time::Instant::now() >= deadline {
+            break;
+        }
+    }
+
+    let identities = tracked.into_values().collect::<Vec<_>>();
+    for identity in &identities {
+        signal_if_same(*identity, libc::SIGKILL);
+    }
+    identities
+}
+
+#[cfg(target_os = "linux")]
+fn process_snapshot() -> Vec<ProcessEntry> {
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.file_name().to_string_lossy().parse::<i32>().ok())
+        .filter_map(process_entry)
+        .collect()
+}
+
+#[cfg(target_os = "linux")]
+fn process_entry(pid: i32) -> Option<ProcessEntry> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let fields = stat
+        .get(stat.rfind(')')? + 2..)?
+        .split_whitespace()
+        .collect::<Vec<_>>();
+    Some(ProcessEntry {
+        identity: ProcessIdentity {
+            pid,
+            start_time: fields.get(19)?.parse().ok()?,
+        },
+        parent: fields.get(1)?.parse().ok()?,
+        group: fields.get(2)?.parse().ok()?,
     })
-    .await;
+}
+
+#[cfg(target_os = "linux")]
+fn signal_if_same(identity: ProcessIdentity, signal: i32) {
+    if process_entry(identity.pid).is_some_and(|entry| entry.identity == identity) {
+        // SAFETY: identity was read from /proc and revalidated immediately before signaling.
+        unsafe {
+            libc::kill(identity.pid, signal);
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn reap_descendants(identities: Vec<ProcessIdentity>) {
+    let mut pending = identities
+        .into_iter()
+        .map(|identity| identity.pid)
+        .collect::<std::collections::HashSet<_>>();
+    let deadline = std::time::Instant::now() + CLEANUP_TIMEOUT;
+    while !pending.is_empty() && std::time::Instant::now() < deadline {
+        pending.retain(|pid| {
+            let mut status = 0;
+            // SAFETY: status is writable and waitpid is scoped to a known descendant PID.
+            unsafe { libc::waitpid(*pid, &mut status, libc::WNOHANG) == 0 }
+        });
+        if !pending.is_empty() {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -576,41 +725,76 @@ mod tests {
     }
 
     #[test]
+    fn ignores_quoted_empty_credentials_followed_by_comments() {
+        let config = "SAVED_CF_Token='' # unset\nSAVED_CF_Account_ID='account-value'\n";
+        assert_eq!(configured_provider_from(config), None);
+    }
+
+    #[test]
     fn detects_non_empty_legacy_provider_credentials() {
         let config = "Ali_Key=legacy-key\nAli_Secret=legacy-secret\n";
         assert_eq!(configured_provider_from(config), Some(DnsProvider::Aliyun));
     }
 
-    #[test]
-    fn accepts_valid_certificate_material() {
+    #[tokio::test]
+    async fn accepts_valid_certificate_material() {
         let (_directory, paths) = generated_certificate("example.com", true);
-        assert!(certificate_files_valid("example.com", &paths, unix_now()));
+        assert!(certificate_files_valid("example.com", &paths, unix_now()).await);
     }
 
-    #[test]
-    fn accepts_matching_common_name_when_san_is_absent() {
+    #[tokio::test]
+    async fn accepts_matching_common_name_when_san_is_absent() {
         let (_directory, paths) = generated_certificate("example.com", false);
-        assert!(certificate_files_valid("example.com", &paths, unix_now()));
+        assert!(certificate_files_valid("example.com", &paths, unix_now()).await);
     }
 
-    #[test]
-    fn rejects_not_yet_valid_certificate() {
+    #[tokio::test]
+    async fn accepts_normalized_domain_for_certificate_matching() {
         let (_directory, paths) = generated_certificate("example.com", true);
-        assert!(!certificate_files_valid("example.com", &paths, 0));
+        assert!(certificate_files_valid("Example.COM.", &paths, unix_now()).await);
     }
 
-    #[test]
-    fn rejects_certificate_for_another_domain() {
+    #[tokio::test]
+    async fn rejects_not_yet_valid_certificate() {
+        let (_directory, paths) = generated_certificate("example.com", true);
+        assert!(!certificate_files_valid("example.com", &paths, 0).await);
+    }
+
+    #[tokio::test]
+    async fn rejects_certificate_for_another_domain() {
         let (_directory, paths) = generated_certificate("other.example", true);
-        assert!(!certificate_files_valid("example.com", &paths, unix_now()));
+        assert!(!certificate_files_valid("example.com", &paths, unix_now()).await);
     }
 
-    #[test]
-    fn rejects_mismatched_private_key() {
+    #[tokio::test]
+    async fn rejects_mismatched_private_key() {
         let (_first_directory, mut paths) = generated_certificate("example.com", true);
         let (_second_directory, second_paths) = generated_certificate("example.com", true);
         paths.privkey = second_paths.privkey;
-        assert!(!certificate_files_valid("example.com", &paths, unix_now()));
+        assert!(!certificate_files_valid("example.com", &paths, unix_now()).await);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn public_key_command_uses_bounded_runner() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let program = directory.path().join("slow-openssl");
+        let key = directory.path().join("key.pem");
+        fs::write(&program, "#!/bin/sh\nsleep 2\n").unwrap();
+        fs::write(&key, "unused").unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
+        let started = tokio::time::Instant::now();
+        let result = public_key_with_program(
+            program.to_str().unwrap(),
+            &key,
+            false,
+            Duration::from_millis(100),
+        )
+        .await;
+        assert!(result.is_none());
+        assert!(started.elapsed() < Duration::from_millis(500));
     }
 
     #[cfg(unix)]
@@ -670,6 +854,33 @@ mod tests {
             .expect_err("descendant unexpectedly survived command timeout");
         assert!(error.to_string().contains("timed out"));
         tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert!(!marker.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn timeout_terminates_detached_descendants() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("detached-descendant-survived");
+        let result = tokio::time::timeout(
+            Duration::from_millis(600),
+            run_command_with_timeout(
+                "sh",
+                &[
+                    "-c",
+                    "setsid sh -c '(sleep 1; printf leaked > \"$1\")' sh \"$1\" & wait",
+                    "sh",
+                    marker.to_str().unwrap(),
+                ],
+                &[],
+                Duration::from_millis(100),
+            ),
+        )
+        .await;
+        let bounded =
+            matches!(result, Ok(Err(ref error)) if error.to_string().contains("timed out"));
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert!(bounded, "runner exceeded its timeout");
         assert!(!marker.exists());
     }
 }
