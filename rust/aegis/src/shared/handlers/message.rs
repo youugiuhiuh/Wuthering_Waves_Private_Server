@@ -337,9 +337,7 @@ pub async fn handle_message(
                                     .send_message(
                                         target,
                                         MessageContent {
-                                            text:
-                                                t!("domain.acme_install_fail", "0" => e.to_string())
-                                                    .to_string(),
+                                            text: localized_acme_install_failure(&e),
                                             markup: None,
                                         },
                                     )
@@ -557,6 +555,10 @@ fn localized_acme_failure(error: &anyhow::Error) -> String {
             t!("domain.acme_unknown_error", "0" => "ACME-UNKNOWN").to_string()
         }
     }
+}
+
+fn localized_acme_install_failure(_error: &anyhow::Error) -> String {
+    t!("domain.acme_install_fail", "0" => "ACME-UNKNOWN").to_string()
 }
 
 fn parse_provider_selection(text: &str) -> Option<DnsProvider> {
@@ -802,6 +804,18 @@ mod tests {
         assert!(rendered.contains("ACME-UNKNOWN"));
         assert!(!rendered.contains("domain.acme_unknown_error"));
         assert!(!rendered.contains("untyped subprocess output"));
+    }
+
+    #[test]
+    fn acme_install_failure_hides_arbitrary_detail() {
+        i18n::set_lang(Lang::En);
+        let error = anyhow::anyhow!("internal command detail must stay hidden");
+
+        let rendered = localized_acme_install_failure(&error);
+
+        assert!(rendered.contains("ACME-UNKNOWN"));
+        assert!(!rendered.contains("domain.acme_install_fail"));
+        assert!(!rendered.contains("internal command detail"));
     }
 
     #[test]
