@@ -241,6 +241,27 @@ impl ConfigManager {
         )
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn build_tls_xhttp_node(
+        index: usize,
+        port: i32,
+        uuid: &str,
+        domain: &str,
+        certs: &CertPaths,
+        ip_version: IpVersion,
+        path: &str,
+    ) -> (Value, String) {
+        let uuid_short = Self::uuid_short_prefix(uuid);
+        let email = format!("{}-vless_xhttp_tls", uuid_short);
+        let tag = format!("XHTTP-{}-{}", uuid_short, index);
+
+        let config = Self::build_tls_xhttp_inbound(
+            &tag, port, uuid, &email, domain, certs, ip_version, path,
+        );
+        let link = Self::generate_client_link_tls(uuid, domain, port, &email, path);
+        (config, link)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn build_reality_vless_inbound(
         tag: &str,
