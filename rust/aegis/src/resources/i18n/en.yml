@@ -491,7 +491,7 @@ domain:
   prov_dp: "DNSPod"
   prov_aws: "AWS Route 53"
   cred_prompt: "Enter API Token and Key (comma-separated: TOKEN,KEY)"
-  cred_prompt_cloudflare: "Enter Cloudflare credentials in this exact order: API_TOKEN,ACCOUNT_ID. The token needs only Zone > DNS > Edit permission for the required zone. Create a token: https://dash.cloudflare.com/profile/api-tokens"
+  cred_prompt_cloudflare: "Enter Cloudflare credentials in this exact order: API_TOKEN,ACCOUNT_ID. The token requires both Zone > DNS > Edit and Zone > Zone > Read for the required zone. Create a token: https://dash.cloudflare.com/profile/api-tokens"
   cred_prompt_aliyun: "Enter Alibaba Cloud credentials in this exact order: ACCESS_KEY_ID,ACCESS_KEY_SECRET. Use a RAM user with only the DNS record read/write permissions required. Manage RAM users: https://ram.console.aliyun.com/users"
   cred_prompt_dnspod: "Enter DNSPod credentials in this exact order: TOKEN_ID,TOKEN. The token needs only permission to manage the required DNS records. Create a token: https://console.dnspod.cn/account/token/token"
   cred_prompt_route53: "Enter AWS Route 53 credentials in this exact order: ACCESS_KEY_ID,SECRET_ACCESS_KEY. Require route53:ListHostedZones plus route53:ListResourceRecordSets and route53:ChangeResourceRecordSets for the target hosted zone only. Manage IAM users: https://console.aws.amazon.com/iam/home#/users"
@@ -512,7 +512,7 @@ domain:
   acme_auth_error: "DNS API authentication failed (ACME-AUTH). Verify that the credential is active and re-enter it."
   acme_scope_error: "The account/zone or DNS permission does not match (ACME-SCOPE). Verify the account/hosted-zone ID and record read/write access."
   acme_dns_error: "The ACME TXT record could not be updated (ACME-DNS). Check provider permissions and conflicting _acme-challenge records, then retry."
-  acme_network_error: "The DNS API or certificate authority could not be reached (ACME-NETWORK). Check outbound HTTPS/DNS connectivity and retry."
+  acme_network_error: "The DNS API or certificate authority request failed (ACME-NETWORK). Check outbound HTTPS/DNS connectivity. A certificate authority order status or rate limit may require you to wait, then retry."
   acme_unknown_error: "acme.sh failed (%{0}). Raw output is hidden to protect credentials; verify the provider settings and retry."
 
 destruct:

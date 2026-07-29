@@ -324,7 +324,7 @@ pub async fn handle_message(
                                     }
                                 }
                             }
-                            Err(e) => {
+                            Err(_) => {
                                 state
                                     .transition_domain_input(
                                         target_str,
@@ -337,7 +337,7 @@ pub async fn handle_message(
                                     .send_message(
                                         target,
                                         MessageContent {
-                                            text: localized_acme_install_failure(&e),
+                                            text: localized_acme_install_failure(),
                                             markup: None,
                                         },
                                     )
@@ -557,7 +557,7 @@ fn localized_acme_failure(error: &anyhow::Error) -> String {
     }
 }
 
-fn localized_acme_install_failure(_error: &anyhow::Error) -> String {
+fn localized_acme_install_failure() -> String {
     t!("domain.acme_install_fail", "0" => "ACME-UNKNOWN").to_string()
 }
 
@@ -809,13 +809,11 @@ mod tests {
     #[test]
     fn acme_install_failure_hides_arbitrary_detail() {
         i18n::set_lang(Lang::En);
-        let error = anyhow::anyhow!("internal command detail must stay hidden");
 
-        let rendered = localized_acme_install_failure(&error);
+        let rendered = localized_acme_install_failure();
 
         assert!(rendered.contains("ACME-UNKNOWN"));
         assert!(!rendered.contains("domain.acme_install_fail"));
-        assert!(!rendered.contains("internal command detail"));
     }
 
     #[test]
@@ -861,7 +859,7 @@ mod tests {
                 "cred_prompt_cloudflare",
                 "API_TOKEN,ACCOUNT_ID",
                 "https://dash.cloudflare.com/profile/api-tokens",
-                &["Zone > DNS > Edit"][..],
+                &["Zone > DNS > Edit", "Zone > Zone > Read"][..],
             ),
             (
                 "cred_prompt_aliyun",
@@ -887,11 +885,29 @@ mod tests {
             ),
         ];
 
-        for locale in locales {
+        let network_requirements = [
+            &["订单状态", "速率限制", "等待", "重试", "连接"][..],
+            &[
+                "order status",
+                "rate limit",
+                "wait",
+                "retry",
+                "connectivity",
+            ][..],
+            &["注文ステータス", "レート制限", "待って", "再試行", "接続"][..],
+        ];
+
+        for (locale, network_requirements) in locales.into_iter().zip(network_requirements) {
             for key in required {
                 assert!(locale.contains_key(key), "missing domain.{key}");
             }
             assert!(locale["acme_unknown_error"].contains("%{0}"));
+            for requirement in network_requirements {
+                assert!(
+                    locale["acme_network_error"].contains(requirement),
+                    "domain.acme_network_error missing {requirement}"
+                );
+            }
             for (key, fields, url, permissions) in providers {
                 let text = locale[key];
                 assert!(text.contains(fields), "domain.{key} missing {fields}");

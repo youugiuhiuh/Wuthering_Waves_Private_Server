@@ -1,6 +1,6 @@
 use crate::core::{paths::acme, types::DnsProvider};
 use anyhow::{Context, Result, bail};
-use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use percent_encoding::percent_decode_str;
 use std::{
     fmt, fs,
     path::{Path, PathBuf},
@@ -14,6 +14,8 @@ use x509_parser::{extensions::GeneralName, pem::Pem, prelude::FromDer};
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const MIN_VALIDITY: u64 = 30 * 24 * 60 * 60;
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+// Two passes cover direct and once-wrapped provider output without unbounded decoding.
+const CREDENTIAL_ENCODING_DEPTH: usize = 2;
 #[cfg(target_os = "linux")]
 const PROCESS_TOKEN_ENV: &str = "AEGIS_ACME_PROCESS_TOKEN";
 
@@ -426,11 +428,11 @@ fn classify_acme_failure(
     stderr: &[u8],
     environment: &[(String, String)],
 ) -> AcmeFailureKind {
-    let mut text = normalize_percent_escapes(format!(
+    let text = format!(
         "{}\n{}",
         String::from_utf8_lossy(stdout),
         String::from_utf8_lossy(stderr)
-    ));
+    );
     let mut values = environment
         .iter()
         .map(|(_, value)| value.as_str())
@@ -443,23 +445,28 @@ fn classify_acme_failure(
     let mut representations = values
         .into_iter()
         .flat_map(|value| {
-            [
-                normalize_percent_escapes(value.to_string()),
-                utf8_percent_encode(value, NON_ALPHANUMERIC).to_string(),
-                form_encode(value),
-            ]
+            std::iter::once(normalize_percent_escapes(value.to_string()))
+                .chain(canonicalized_views(value))
         })
         .collect::<Vec<_>>();
     representations
         .sort_unstable_by(|left, right| right.len().cmp(&left.len()).then_with(|| left.cmp(right)));
     representations.dedup();
-    for representation in representations {
-        text = text.replace(&representation, "[REDACTED]");
-    }
-    let text = text.to_ascii_lowercase();
+    let texts = canonicalized_views(&text)
+        .into_iter()
+        .map(|mut text| {
+            for representation in &representations {
+                text = text.replace(representation, "[REDACTED]");
+            }
+            text.to_ascii_lowercase()
+        })
+        .collect::<Vec<_>>();
 
-    let contains =
-        |signatures: &[&str]| signatures.iter().any(|signature| text.contains(signature));
+    let contains = |signatures: &[&str]| {
+        signatures
+            .iter()
+            .any(|signature| texts.iter().all(|text| text.contains(signature)))
+    };
     if contains(&[
         "invalid access token",
         "invalid api token",
@@ -522,33 +529,37 @@ fn normalize_percent_escapes(text: String) -> String {
     String::from_utf8(bytes).expect("percent-escape normalization preserves UTF-8")
 }
 
-fn form_encode(value: &str) -> String {
-    const HEX: &[u8; 16] = b"0123456789ABCDEF";
-    let mut encoded = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'*' | b'-' | b'.' | b'_' => {
-                encoded.push(char::from(byte));
-            }
-            b' ' => encoded.push('+'),
-            _ => {
-                encoded.push('%');
-                encoded.push(char::from(HEX[usize::from(byte >> 4)]));
-                encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
-            }
-        }
+fn canonicalized_views(value: &str) -> Vec<String> {
+    let raw = normalize_percent_escapes(value.to_string());
+    let mut percent = raw.clone();
+    let mut form = raw;
+    for _ in 0..CREDENTIAL_ENCODING_DEPTH {
+        percent = normalize_percent_escapes(
+            percent_decode_str(&percent)
+                .decode_utf8_lossy()
+                .into_owned(),
+        );
+        form = normalize_percent_escapes(
+            percent_decode_str(&form.replace('+', " "))
+                .decode_utf8_lossy()
+                .into_owned(),
+        );
     }
-    encoded
+    let mut views = vec![percent];
+    if views[0] != form {
+        views.push(form);
+    }
+    views
 }
 
 fn acme_command_failure(
-    program: &str,
+    is_acme_program: bool,
     timed_out: bool,
     stdout: &[u8],
     stderr: &[u8],
     environment: &[(String, String)],
 ) -> Option<AcmeCommandError> {
-    if program != acme::BIN {
+    if !is_acme_program {
         return None;
     }
     let kind = if timed_out {
@@ -557,6 +568,10 @@ fn acme_command_failure(
         classify_acme_failure(stdout, stderr, environment)
     };
     Some(AcmeCommandError::new(kind))
+}
+
+fn is_acme_program(program: &str) -> bool {
+    program == acme::BIN
 }
 
 async fn run_command(program: &str, args: &[&str], environment: &[(&str, &str)]) -> Result<Output> {
@@ -568,7 +583,15 @@ async fn run_command(program: &str, args: &[&str], environment: &[(&str, &str)])
         .iter()
         .map(|s| (*s).to_string())
         .collect();
-    run_command_inner(program, args, owned_env, &stripped_env, COMMAND_TIMEOUT).await
+    run_command_inner(
+        program,
+        args,
+        owned_env,
+        &stripped_env,
+        COMMAND_TIMEOUT,
+        is_acme_program(program),
+    )
+    .await
 }
 
 async fn run_command_with_timeout(
@@ -585,7 +608,15 @@ async fn run_command_with_timeout(
         .iter()
         .map(|s| (*s).to_string())
         .collect();
-    run_command_inner(program, args, owned_env, &stripped_env, timeout).await
+    run_command_inner(
+        program,
+        args,
+        owned_env,
+        &stripped_env,
+        timeout,
+        is_acme_program(program),
+    )
+    .await
 }
 
 async fn run_command_inner(
@@ -594,6 +625,7 @@ async fn run_command_inner(
     environment: Vec<(String, String)>,
     strip_vars: &[String],
     timeout: Duration,
+    is_acme_program: bool,
 ) -> Result<Output> {
     #[cfg(target_os = "linux")]
     let process_token = process_token();
@@ -676,7 +708,8 @@ async fn run_command_inner(
             cleanup.cleanup().await;
             let _ = stdout_task.await;
             let _ = stderr_task.await;
-            if let Some(error) = acme_command_failure(program, true, b"", b"", &environment) {
+            if let Some(error) = acme_command_failure(is_acme_program, true, b"", b"", &environment)
+            {
                 return Err(error.into());
             }
             bail!("command timed out after {} seconds", timeout.as_secs());
@@ -700,7 +733,8 @@ async fn run_command_inner(
             cleanup.cleanup().await;
             let _ = stdout_task.await;
             let _ = stderr_task.await;
-            if let Some(error) = acme_command_failure(program, true, b"", b"", &environment) {
+            if let Some(error) = acme_command_failure(is_acme_program, true, b"", b"", &environment)
+            {
                 return Err(error.into());
             }
             bail!("command timed out after {} seconds", timeout.as_secs());
@@ -708,15 +742,17 @@ async fn run_command_inner(
     };
     cleanup.disarm();
     if !status.success() {
-        if let Some(error) = acme_command_failure(program, false, &stdout, &stderr, &environment) {
+        if let Some(error) =
+            acme_command_failure(is_acme_program, false, &stdout, &stderr, &environment)
+        {
             return Err(error.into());
         }
         bail!("command {program} failed with status {status}");
     }
     Ok(Output {
         status,
-        stdout,
-        stderr,
+        stdout: if is_acme_program { Vec::new() } else { stdout },
+        stderr: if is_acme_program { Vec::new() } else { stderr },
     })
 }
 
@@ -1121,15 +1157,52 @@ mod tests {
     }
 
     #[test]
+    fn credential_redaction_handles_mixed_percent_encoding() {
+        let environment = vec![("TOKEN".to_string(), "a/:unauthorized".to_string())];
+        assert_eq!(
+            classify_acme_failure(b"", b"a/%3Aunauthorized", &environment),
+            AcmeFailureKind::Unknown
+        );
+    }
+
+    #[test]
+    fn credential_redaction_handles_two_encoding_levels() {
+        let environment = vec![("TOKEN".to_string(), "a/:unauthorized".to_string())];
+        assert_eq!(
+            classify_acme_failure(b"", b"a%252F%3Aunauthorized", &environment),
+            AcmeFailureKind::Unknown
+        );
+    }
+
+    #[test]
+    fn malformed_percent_escapes_remain_classifiable() {
+        assert_eq!(
+            classify_acme_failure(b"", b"%GG unauthorized", &[]),
+            AcmeFailureKind::Authentication
+        );
+    }
+
+    #[test]
+    fn canonicalization_handles_fully_encoded_and_malformed_values() {
+        let credential = canonicalized_views("a/:unauthorized");
+        let fully_encoded = canonicalized_views("%61%2F%3A%75%6E%61%75%74%68%6F%72%69%7A%65%64");
+
+        assert!(fully_encoded.iter().any(|view| credential.contains(view)));
+        assert_eq!(canonicalized_views("%GG"), vec!["%GG"]);
+    }
+
+    #[test]
     fn converts_acme_command_failures_to_typed_errors() {
+        assert!(is_acme_program(acme::BIN));
+        assert!(!is_acme_program("sh"));
         let classified =
-            acme_command_failure(acme::BIN, false, b"", b"Add txt record error.", &[]).unwrap();
+            acme_command_failure(true, false, b"", b"Add txt record error.", &[]).unwrap();
         assert_eq!(classified.kind(), AcmeFailureKind::Dns);
 
-        let timed_out = acme_command_failure(acme::BIN, true, b"", b"", &[]).unwrap();
+        let timed_out = acme_command_failure(true, true, b"", b"", &[]).unwrap();
         assert_eq!(timed_out.kind(), AcmeFailureKind::Timeout);
-        assert!(acme_command_failure("sh", false, b"", b"invalid domain", &[]).is_none());
-        assert!(acme_command_failure("sh", true, b"", b"", &[]).is_none());
+        assert!(acme_command_failure(false, false, b"", b"invalid domain", &[]).is_none());
+        assert!(acme_command_failure(false, true, b"", b"", &[]).is_none());
     }
 
     struct EnvRestore {
@@ -1350,6 +1423,66 @@ mod tests {
         .to_string();
         assert!(error.contains("status"));
         assert!(!error.contains("transformed-secret"));
+    }
+
+    #[tokio::test]
+    async fn acme_like_success_discards_captured_output_at_process_boundary() {
+        let output = run_command_inner(
+            "sh",
+            &[
+                "-c",
+                "printf success-secret; printf success-error-secret >&2",
+            ],
+            Vec::new(),
+            &[],
+            Duration::from_secs(1),
+            true,
+        )
+        .await
+        .unwrap();
+
+        assert!(output.status.success());
+        assert!(output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
+    }
+
+    #[tokio::test]
+    async fn acme_like_nonzero_returns_typed_error_at_process_boundary() {
+        let error = run_command_inner(
+            "sh",
+            &["-c", "printf 'Add txt record error. private' >&2; exit 7"],
+            Vec::new(),
+            &[],
+            Duration::from_secs(1),
+            true,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(
+            error
+                .downcast_ref::<AcmeCommandError>()
+                .map(|error| error.kind()),
+            Some(AcmeFailureKind::Dns)
+        );
+        assert_eq!(error.to_string(), "ACME-DNS");
+    }
+
+    #[tokio::test]
+    async fn non_acme_success_preserves_captured_output() {
+        let output = run_command_inner(
+            "sh",
+            &["-c", "printf ordinary-output; printf ordinary-error >&2"],
+            Vec::new(),
+            &[],
+            Duration::from_secs(1),
+            false,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(output.stdout, b"ordinary-output");
+        assert_eq!(output.stderr, b"ordinary-error");
     }
 
     #[serial_test::serial]

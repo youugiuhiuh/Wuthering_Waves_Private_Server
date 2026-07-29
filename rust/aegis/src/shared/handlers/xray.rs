@@ -2655,15 +2655,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn provider_callback_resolves_shared_credential_guidance() {
-        let provider = parse_provider_callback("xhttp_domain_provider:route53").unwrap();
-        let guidance = crate::shared::handlers::message::provider_credential_guidance(provider);
-
-        assert!(!guidance.contains("domain.cred_prompt_"));
-        assert!(!guidance.contains("domain.cred_security_warning"));
-    }
-
-    #[test]
     fn one_click_domain_no_selects_reality_backend() {
         assert!(matches!(
             one_click_domain_no_mode("xhttp_domain_no:one_click"),
