@@ -14,6 +14,7 @@ use x509_parser::{extensions::GeneralName, pem::Pem, prelude::FromDer};
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const MIN_VALIDITY: u64 = 30 * 24 * 60 * 60;
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+const ACME_SERVER: &str = "letsencrypt";
 // Two passes cover direct and once-wrapped provider output without unbounded decoding.
 const CREDENTIAL_ENCODING_DEPTH: usize = 2;
 #[cfg(target_os = "linux")]
@@ -25,6 +26,7 @@ const DNS_CREDENTIAL_VARS: &[&str] = &[
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
     "CF_Token",
+    "CF_Zone_ID",
     "CF_Account_ID",
     "DP_Id",
     "DP_Key",
@@ -33,6 +35,7 @@ const DNS_CREDENTIAL_VARS: &[&str] = &[
     "SAVED_AWS_ACCESS_KEY_ID",
     "SAVED_AWS_SECRET_ACCESS_KEY",
     "SAVED_CF_Token",
+    "SAVED_CF_Zone_ID",
     "SAVED_CF_Account_ID",
     "SAVED_DP_Id",
     "SAVED_DP_Key",
@@ -97,6 +100,12 @@ pub enum XhttpDeployMode {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AcmeCertificateOperation {
+    Issue,
+    Renew,
+}
+
 pub struct AcmeManager;
 
 impl AcmeManager {
@@ -144,9 +153,54 @@ impl AcmeManager {
         })
     }
 
-    pub fn configured_provider() -> Option<DnsProvider> {
-        let config = fs::read_to_string(acme::ACCOUNT_CONF).ok()?;
-        configured_provider_from(&config)
+    fn ecc_domain_config_path_at(domain: &str, acme_home: &Path) -> Result<PathBuf> {
+        let domain = Self::validate_domain(domain)?;
+        Ok(acme_home
+            .join(format!("{domain}_ecc"))
+            .join(format!("{domain}.conf")))
+    }
+
+    fn ecc_domain_config_path(domain: &str) -> Result<PathBuf> {
+        Self::ecc_domain_config_path_at(domain, Path::new(acme::HOME))
+    }
+
+    pub(crate) fn operation_for_domain(domain: &str) -> Result<AcmeCertificateOperation> {
+        let state_config = Self::ecc_domain_config_path(domain)?;
+        Self::operation_for_domain_at(domain, &state_config)
+    }
+
+    fn operation_for_domain_at(
+        domain: &str,
+        state_config: &Path,
+    ) -> Result<AcmeCertificateOperation> {
+        Self::validate_domain(domain)?;
+        Ok(if state_config.is_file() {
+            AcmeCertificateOperation::Renew
+        } else {
+            AcmeCertificateOperation::Issue
+        })
+    }
+
+    pub fn configured_provider_for_domain(domain: &str) -> Result<Option<DnsProvider>> {
+        Self::configured_provider_for_domain_at(
+            domain,
+            Path::new(acme::HOME),
+            Path::new(acme::ACCOUNT_CONF),
+        )
+    }
+
+    fn configured_provider_for_domain_at(
+        domain: &str,
+        acme_home: &Path,
+        account_conf: &Path,
+    ) -> Result<Option<DnsProvider>> {
+        let domain_config = Self::ecc_domain_config_path_at(domain, acme_home)?;
+        let domain_config = fs::read_to_string(domain_config).unwrap_or_default();
+        let account_config = fs::read_to_string(account_conf).unwrap_or_default();
+        Ok(configured_provider_from_configs(
+            &domain_config,
+            &account_config,
+        ))
     }
 
     pub async fn ensure_installed() -> Result<PathBuf> {
@@ -183,6 +237,16 @@ impl AcmeManager {
         provider: DnsProvider,
         credentials: Option<(&str, &str)>,
     ) -> Result<CertPaths> {
+        let operation = Self::operation_for_domain(domain)?;
+        Self::issue_cert_for_operation(domain, provider, credentials, operation).await
+    }
+
+    pub(crate) async fn issue_cert_for_operation(
+        domain: &str,
+        provider: DnsProvider,
+        credentials: Option<(&str, &str)>,
+        operation: AcmeCertificateOperation,
+    ) -> Result<CertPaths> {
         let domain = Self::validate_domain(domain)?;
         let paths = Self::cert_paths(&domain)?;
         let directory = paths
@@ -191,18 +255,29 @@ impl AcmeManager {
             .context("certificate path has no parent directory")?;
         tokio::fs::create_dir_all(directory).await?;
         tighten_cert_permissions(&paths)?;
-        let args = if paths.fullchain.exists() || paths.privkey.exists() {
-            Self::renew_args(&domain)?
-        } else {
-            Self::issue_args(&domain, provider)?
-        };
-        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let commands = certificate_commands(&domain, provider, operation, &paths)?;
         let names = provider.credential_names();
         let environment = credentials
-            .map(|(first, second)| [(names.0, first), (names.1, second)])
+            .map(|(first, second)| {
+                vec![
+                    (names.0.to_string(), first.to_string()),
+                    (names.1.to_string(), second.to_string()),
+                ]
+            })
             .unwrap_or_default();
 
-        let command_result = run_command(acme::BIN, &args, &environment).await;
+        let command_result =
+            execute_acme_sequence(commands, environment, |args, environment| async move {
+                let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+                let env_refs = environment
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.as_str()))
+                    .collect::<Vec<_>>();
+                run_command(acme::BIN, &arg_refs, &env_refs)
+                    .await
+                    .map(|_| ())
+            })
+            .await;
         tighten_acme_permissions()?;
         tighten_cert_permissions(&paths)?;
         command_result?;
@@ -219,41 +294,99 @@ impl AcmeManager {
     }
 
     fn issue_args(domain: &str, provider: DnsProvider) -> Result<Vec<String>> {
-        Self::command_args("--issue", domain, Some(provider))
+        let domain = Self::validate_domain(domain)?;
+        Ok(vec![
+            "--issue".to_string(),
+            "--server".to_string(),
+            ACME_SERVER.to_string(),
+            "--keylength".to_string(),
+            "ec-256".to_string(),
+            "--dns".to_string(),
+            provider.acme_flag().to_string(),
+            "-d".to_string(),
+            domain,
+        ])
     }
 
     fn renew_args(domain: &str) -> Result<Vec<String>> {
-        Self::command_args("--renew", domain, None)
+        let domain = Self::validate_domain(domain)?;
+        Ok(vec![
+            "--renew".to_string(),
+            "--server".to_string(),
+            ACME_SERVER.to_string(),
+            "--ecc".to_string(),
+            "-d".to_string(),
+            domain,
+            "--force".to_string(),
+        ])
     }
 
-    fn command_args(
-        action: &str,
-        domain: &str,
-        provider: Option<DnsProvider>,
-    ) -> Result<Vec<String>> {
+    #[cfg(test)]
+    fn install_args(domain: &str) -> Result<Vec<String>> {
         let domain = Self::validate_domain(domain)?;
         let paths = Self::cert_paths(&domain)?;
-        let mut args = vec![action.to_string()];
-        if let Some(provider) = provider {
-            args.extend(["--dns".to_string(), provider.acme_flag().to_string()]);
-        }
-        args.extend(["-d".to_string(), domain]);
-        if provider.is_none() {
-            args.push("--force".to_string());
-        }
-        args.extend([
+        Self::install_args_for_paths(&domain, &paths)
+    }
+
+    fn install_args_for_paths(domain: &str, paths: &CertPaths) -> Result<Vec<String>> {
+        let domain = Self::validate_domain(domain)?;
+        Ok(vec![
+            "--install-cert".to_string(),
+            "--ecc".to_string(),
+            "-d".to_string(),
+            domain,
             "--fullchain-file".to_string(),
             paths.fullchain.to_string_lossy().into_owned(),
             "--key-file".to_string(),
             paths.privkey.to_string_lossy().into_owned(),
-        ]);
-        Ok(args)
+        ])
     }
 }
 
-fn configured_provider_from(config: &str) -> Option<DnsProvider> {
+fn certificate_commands(
+    domain: &str,
+    provider: DnsProvider,
+    operation: AcmeCertificateOperation,
+    paths: &CertPaths,
+) -> Result<Vec<Vec<String>>> {
+    let domain = AcmeManager::validate_domain(domain)?;
+    let primary = match operation {
+        AcmeCertificateOperation::Issue => AcmeManager::issue_args(&domain, provider)?,
+        AcmeCertificateOperation::Renew => AcmeManager::renew_args(&domain)?,
+    };
+    Ok(vec![
+        primary,
+        AcmeManager::install_args_for_paths(&domain, paths)?,
+    ])
+}
+
+async fn execute_acme_sequence<F, Fut>(
+    commands: Vec<Vec<String>>,
+    environment: Vec<(String, String)>,
+    mut execute: F,
+) -> Result<()>
+where
+    F: FnMut(Vec<String>, Vec<(String, String)>) -> Fut,
+    Fut: std::future::Future<Output = Result<()>>,
+{
+    let mut first_environment = Some(environment);
+    for args in commands {
+        execute(args, first_environment.take().unwrap_or_default()).await?;
+    }
+    Ok(())
+}
+
+fn configured_provider_from_configs(
+    domain_config: &str,
+    account_config: &str,
+) -> Option<DnsProvider> {
+    if assignment_value(domain_config, "CF_Token").is_some()
+        && assignment_value(domain_config, "CF_Zone_ID").is_some()
+    {
+        return Some(DnsProvider::Cloudflare);
+    }
+
     [
-        DnsProvider::Cloudflare,
         DnsProvider::Aliyun,
         DnsProvider::Dnspod,
         DnsProvider::Route53,
@@ -261,7 +394,8 @@ fn configured_provider_from(config: &str) -> Option<DnsProvider> {
     .into_iter()
     .find(|provider| {
         let (first, second) = provider.credential_names();
-        has_non_empty_assignment(config, first) && has_non_empty_assignment(config, second)
+        has_non_empty_assignment(account_config, first)
+            && has_non_empty_assignment(account_config, second)
     })
 }
 
@@ -277,11 +411,11 @@ fn assignment_value<'a>(config: &'a str, name: &str) -> Option<&'a str> {
         let (key, value) = line.split_once('=')?;
         (key.trim() == name)
             .then(|| parse_assignment_value(value))
-            .filter(|value| !value.is_empty())
+            .flatten()
     })
 }
 
-fn parse_assignment_value(value: &str) -> &str {
+fn parse_assignment_value(value: &str) -> Option<&str> {
     let value = value.trim();
     if let Some(quote) = value
         .chars()
@@ -289,9 +423,17 @@ fn parse_assignment_value(value: &str) -> &str {
         .filter(|quote| matches!(quote, '\'' | '"'))
     {
         let quoted = &value[quote.len_utf8()..];
-        if let Some(end) = quoted.find(quote) {
-            return &quoted[..end];
+        let end = quoted.find(quote)?;
+        let remainder = quoted[end + quote.len_utf8()..].trim();
+        if !remainder.is_empty() && !remainder.starts_with('#') {
+            return None;
         }
+        let content = &quoted[..end];
+        return if content.is_empty() {
+            None
+        } else {
+            Some(content)
+        };
     }
     let comment = value
         .char_indices()
@@ -304,7 +446,12 @@ fn parse_assignment_value(value: &str) -> &str {
                         .is_some_and(char::is_whitespace))
         })
         .map_or(value, |(index, _)| &value[..index]);
-    comment.trim_end()
+    let result = comment.trim_end();
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 async fn certificate_files_valid(domain: &str, paths: &CertPaths, now: i64) -> bool {
@@ -1048,7 +1195,11 @@ fn reap_descendants(identities: Vec<ProcessIdentity>) {
 mod tests {
     use super::*;
     use crate::core::types::DnsProvider;
-    use std::{path::PathBuf, process::Stdio, sync::Arc};
+    use std::{
+        path::PathBuf,
+        process::Stdio,
+        sync::{Arc, Mutex},
+    };
 
     fn generated_certificate(domain: &str, with_san: bool) -> (tempfile::TempDir, CertPaths) {
         let directory = tempfile::tempdir().unwrap();
@@ -1269,67 +1420,373 @@ mod tests {
     }
 
     #[test]
-    fn issue_arguments_install_to_expected_paths() {
+    fn issue_arguments_use_letsencrypt_without_destination_paths() {
         let args = AcmeManager::issue_args("example.com", DnsProvider::Cloudflare).unwrap();
         assert_eq!(
             args,
             vec![
                 "--issue",
+                "--server",
+                "letsencrypt",
+                "--keylength",
+                "ec-256",
                 "--dns",
                 "dns_cf",
                 "-d",
                 "example.com",
-                "--fullchain-file",
-                "/root/cert/example.com/fullchain.pem",
-                "--key-file",
-                "/root/cert/example.com/privkey.pem"
             ]
         );
+        assert!(!args.iter().any(|arg| arg == "--ecc"));
     }
 
     #[test]
-    fn renewal_arguments_force_refresh_existing_domain() {
-        let args = AcmeManager::renew_args("example.com").unwrap();
+    fn renewal_arguments_use_letsencrypt_and_force() {
         assert_eq!(
-            args,
+            AcmeManager::renew_args("example.com").unwrap(),
             vec![
                 "--renew",
+                "--server",
+                "letsencrypt",
+                "--ecc",
                 "-d",
                 "example.com",
                 "--force",
-                "--fullchain-file",
-                "/root/cert/example.com/fullchain.pem",
-                "--key-file",
-                "/root/cert/example.com/privkey.pem"
             ]
         );
     }
 
     #[test]
-    fn detects_non_empty_saved_provider_credentials() {
-        let config = "SAVED_CF_Token='token-value'\nSAVED_CF_Account_ID='account-value'\n";
+    fn install_arguments_target_production_certificate_paths() {
         assert_eq!(
-            configured_provider_from(config),
+            AcmeManager::install_args("example.com").unwrap(),
+            vec![
+                "--install-cert",
+                "--ecc",
+                "-d",
+                "example.com",
+                "--fullchain-file",
+                "/root/cert/example.com/fullchain.pem",
+                "--key-file",
+                "/root/cert/example.com/privkey.pem",
+            ]
+        );
+    }
+
+    #[test]
+    fn ecc_domain_config_path_is_validated_and_domain_specific() {
+        assert_eq!(
+            AcmeManager::ecc_domain_config_path("Example.COM.").unwrap(),
+            PathBuf::from("/root/.acme.sh/example.com_ecc/example.com.conf")
+        );
+        assert!(AcmeManager::ecc_domain_config_path("../../etc").is_err());
+    }
+
+    #[test]
+    fn acme_state_present_renews_when_destination_is_missing() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("example.com.conf");
+        fs::write(&state, "Le_Domain='example.com'\n").unwrap();
+        let paths = CertPaths {
+            fullchain: directory.path().join("missing-fullchain.pem"),
+            privkey: directory.path().join("missing-privkey.pem"),
+        };
+
+        let operation = AcmeManager::operation_for_domain_at("example.com", &state).unwrap();
+        let commands =
+            certificate_commands("example.com", DnsProvider::Cloudflare, operation, &paths)
+                .unwrap();
+
+        assert_eq!(commands[0], AcmeManager::renew_args("example.com").unwrap());
+        assert_eq!(commands[1][0], "--install-cert");
+    }
+
+    #[test]
+    fn absent_acme_state_issues_when_destination_is_present() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("missing-domain.conf");
+        let paths = CertPaths {
+            fullchain: directory.path().join("fullchain.pem"),
+            privkey: directory.path().join("privkey.pem"),
+        };
+        fs::write(&paths.fullchain, "stale destination").unwrap();
+        fs::write(&paths.privkey, "stale destination").unwrap();
+
+        let operation = AcmeManager::operation_for_domain_at("example.com", &state).unwrap();
+        let commands =
+            certificate_commands("example.com", DnsProvider::Cloudflare, operation, &paths)
+                .unwrap();
+
+        assert_eq!(
+            commands[0],
+            AcmeManager::issue_args("example.com", DnsProvider::Cloudflare).unwrap()
+        );
+        assert_eq!(commands[1][0], "--install-cert");
+    }
+
+    #[test]
+    fn selected_operation_survives_acme_state_change() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("example.com.conf");
+        let paths = CertPaths {
+            fullchain: directory.path().join("fullchain.pem"),
+            privkey: directory.path().join("privkey.pem"),
+        };
+        let operation = AcmeManager::operation_for_domain_at("example.com", &state).unwrap();
+        assert_eq!(operation, AcmeCertificateOperation::Issue);
+
+        fs::write(&state, "Le_Domain='example.com'\n").unwrap();
+        let commands =
+            certificate_commands("example.com", DnsProvider::Cloudflare, operation, &paths)
+                .unwrap();
+
+        assert_eq!(commands[0][0], "--issue");
+    }
+
+    #[tokio::test]
+    async fn acme_sequence_stops_before_install_after_primary_failure() {
+        let calls = Arc::new(Mutex::new(Vec::<Vec<String>>::new()));
+        let recorded = Arc::clone(&calls);
+        let commands = vec![
+            vec!["--issue".to_string()],
+            vec!["--install-cert".to_string()],
+        ];
+
+        let result = execute_acme_sequence(
+            commands,
+            vec![("CF_Token".to_string(), "secret".to_string())],
+            move |args, environment| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push(args);
+                    assert_eq!(environment.len(), 1);
+                    bail!("primary failed")
+                }
+            },
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(*calls.lock().unwrap(), vec![vec!["--issue".to_string()]]);
+    }
+
+    #[tokio::test]
+    async fn acme_sequence_installs_without_provider_credentials() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&calls);
+        execute_acme_sequence(
+            vec![
+                vec!["--issue".to_string()],
+                vec!["--install-cert".to_string()],
+            ],
+            vec![
+                ("CF_Token".to_string(), "token".to_string()),
+                ("CF_Zone_ID".to_string(), "zone".to_string()),
+            ],
+            move |args, environment| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push((args, environment));
+                    Ok(())
+                }
+            },
+        )
+        .await
+        .unwrap();
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].1.len(), 2);
+        assert!(calls[1].1.is_empty());
+    }
+
+    #[tokio::test]
+    async fn acme_sequence_completes_only_after_install_succeeds() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&calls);
+        execute_acme_sequence(
+            vec![
+                vec!["--issue".to_string()],
+                vec!["--install-cert".to_string()],
+            ],
+            Vec::new(),
+            move |args, _| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push(args.clone());
+                    if args[0] == "--install-cert" {
+                        bail!("install failed");
+                    }
+                    Ok(())
+                }
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![
+                vec!["--issue".to_string()],
+                vec!["--install-cert".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn every_ca_command_is_letsencrypt_only() {
+        for args in [
+            AcmeManager::issue_args("example.com", DnsProvider::Cloudflare).unwrap(),
+            AcmeManager::renew_args("example.com").unwrap(),
+        ] {
+            assert!(
+                args.windows(2)
+                    .any(|pair| pair == ["--server", "letsencrypt"])
+            );
+            assert!(
+                !args
+                    .iter()
+                    .any(|arg| arg.to_ascii_lowercase().contains("zerossl"))
+            );
+        }
+    }
+
+    #[test]
+    fn discovers_cloudflare_credentials_from_ecc_domain_config() {
+        let directory = tempfile::tempdir().unwrap();
+        let domain_directory = directory.path().join("example.com_ecc");
+        fs::create_dir(&domain_directory).unwrap();
+        fs::write(
+            domain_directory.join("example.com.conf"),
+            "CF_Token='token-value'\nCF_Zone_ID='zone-value'\n",
+        )
+        .unwrap();
+        let account = directory.path().join("account.conf");
+        fs::write(&account, "").unwrap();
+
+        assert_eq!(
+            AcmeManager::configured_provider_for_domain_at(
+                "Example.COM.",
+                directory.path(),
+                &account,
+            )
+            .unwrap(),
             Some(DnsProvider::Cloudflare)
         );
     }
 
     #[test]
+    fn account_only_cloudflare_zone_id_is_not_discovered() {
+        assert_eq!(
+            configured_provider_from_configs(
+                "",
+                "CF_Token='token-value'\nCF_Zone_ID='zone-value'\n"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn cloudflare_account_id_is_not_a_supported_contract() {
+        assert_eq!(
+            configured_provider_from_configs(
+                "CF_Token='token-value'\nCF_Account_ID='account-value'\n",
+                ""
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn cloudflare_domain_config_requires_exact_assignment_names() {
+        assert_eq!(
+            configured_provider_from_configs(
+                "NOT_CF_Token='token-value'\nNOT_CF_Zone_ID='zone-value'\n",
+                ""
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn assignment_parser_rejects_unterminated_quotes() {
+        for config in ["CF_Token='unterminated\n", "CF_Token=\"unterminated\n"] {
+            assert_eq!(assignment_value(config, "CF_Token"), None);
+        }
+    }
+
+    #[test]
+    fn assignment_parser_rejects_trailing_garbage_after_quotes() {
+        for config in ["CF_Token='token' garbage\n", "CF_Token=\"token\"; next\n"] {
+            assert_eq!(assignment_value(config, "CF_Token"), None);
+        }
+    }
+
+    #[test]
+    fn assignment_parser_rejects_empty_quoted_values() {
+        for config in ["CF_Token=''\n", "CF_Token=\"\" # unset\n"] {
+            assert_eq!(assignment_value(config, "CF_Token"), None);
+        }
+    }
+
+    #[test]
+    fn assignment_parser_accepts_valid_quoted_and_unquoted_values() {
+        let cases = [
+            ("CF_Token=token-value\n", "token-value"),
+            ("export CF_Token = 'single-value' # note\n", "single-value"),
+            ("CF_Token=\"double-value\"\n", "double-value"),
+            ("CF_Token=unquoted-value # note\n", "unquoted-value"),
+        ];
+        for (config, expected) in cases {
+            assert_eq!(assignment_value(config, "CF_Token"), Some(expected));
+        }
+    }
+
+    #[test]
+    fn malformed_cloudflare_domain_config_is_not_discovered() {
+        assert_eq!(
+            configured_provider_from_configs(
+                "CF_Token='unterminated\nCF_Zone_ID='zone-value'\n",
+                ""
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn domain_provider_discovery_rejects_invalid_domains_before_io() {
+        assert!(AcmeManager::configured_provider_for_domain("../../etc").is_err());
+    }
+
+    #[test]
+    fn other_providers_remain_discoverable_from_account_config() {
+        assert_eq!(
+            configured_provider_from_configs(
+                "",
+                "SAVED_Ali_Key='key'\nSAVED_Ali_Secret='secret'\n"
+            ),
+            Some(DnsProvider::Aliyun)
+        );
+    }
+
+    #[test]
     fn ignores_empty_saved_provider_credentials() {
-        let config = "SAVED_CF_Token=''\nSAVED_CF_Account_ID='account-value'\n";
-        assert_eq!(configured_provider_from(config), None);
+        let config = "SAVED_CF_Token=''\nSAVED_CF_Zone_ID='zone-value'\n";
+        assert_eq!(configured_provider_from_configs(config, ""), None);
     }
 
     #[test]
     fn ignores_quoted_empty_credentials_followed_by_comments() {
-        let config = "SAVED_CF_Token='' # unset\nSAVED_CF_Account_ID='account-value'\n";
-        assert_eq!(configured_provider_from(config), None);
+        let config = "SAVED_CF_Token='' # unset\nSAVED_CF_Zone_ID='zone-value'\n";
+        assert_eq!(configured_provider_from_configs(config, ""), None);
     }
 
     #[test]
     fn detects_non_empty_legacy_provider_credentials() {
         let config = "Ali_Key=legacy-key\nAli_Secret=legacy-secret\n";
-        assert_eq!(configured_provider_from(config), Some(DnsProvider::Aliyun));
+        assert_eq!(
+            configured_provider_from_configs("", config),
+            Some(DnsProvider::Aliyun)
+        );
     }
 
     #[tokio::test]
@@ -1492,15 +1949,17 @@ mod tests {
             EnvRestore::set("Ali_Key", "parent-ali-key"),
             EnvRestore::set("SAVED_AWS_SECRET_ACCESS_KEY", "parent-aws-secret"),
             EnvRestore::set("SAVED_CF_Token", "parent-saved-token"),
+            EnvRestore::set("CF_Account_ID", "parent-account-id"),
+            EnvRestore::set("SAVED_CF_Account_ID", "parent-saved-account-id"),
             EnvRestore::set("ACME_OPERATIONAL_TEST", "retained"),
         ];
         run_command_with_timeout(
             "sh",
             &[
                 "-c",
-                "test -z \"${Ali_Key+x}\" && test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${SAVED_CF_Token+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$CF_Token\" && test -n \"$CF_Account_ID\"",
+                "test -z \"${Ali_Key+x}\" && test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${SAVED_CF_Token+x}\" && test -z \"${CF_Account_ID+x}\" && test -z \"${SAVED_CF_Account_ID+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$CF_Token\" && test -n \"$CF_Zone_ID\"",
             ],
-            &[("CF_Token", "selected-token"), ("CF_Account_ID", "selected-account")],
+            &[("CF_Token", "selected-token"), ("CF_Zone_ID", "selected-zone")],
             Duration::from_secs(2),
         )
         .await
