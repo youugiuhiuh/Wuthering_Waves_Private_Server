@@ -24,7 +24,7 @@ impl DnsProvider {
 
     pub const fn credential_names(self) -> (&'static str, &'static str) {
         match self {
-            Self::Cloudflare => ("CF_Token", "CF_Account_ID"),
+            Self::Cloudflare => ("CF_Token", "CF_Zone_ID"),
             Self::Aliyun => ("Ali_Key", "Ali_Secret"),
             Self::Dnspod => ("DP_Id", "DP_Key"),
             Self::Route53 => ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"),
@@ -112,7 +112,7 @@ mod tests {
         assert_eq!(DnsProvider::Cloudflare.acme_flag(), "dns_cf");
         assert_eq!(
             DnsProvider::Cloudflare.credential_names(),
-            ("CF_Token", "CF_Account_ID")
+            ("CF_Token", "CF_Zone_ID")
         );
         assert_eq!(DnsProvider::Aliyun.acme_flag(), "dns_ali");
         assert_eq!(

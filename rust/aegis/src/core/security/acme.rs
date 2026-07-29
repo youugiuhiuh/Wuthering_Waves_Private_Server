@@ -25,6 +25,7 @@ const DNS_CREDENTIAL_VARS: &[&str] = &[
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
     "CF_Token",
+    "CF_Zone_ID",
     "CF_Account_ID",
     "DP_Id",
     "DP_Key",
@@ -33,6 +34,7 @@ const DNS_CREDENTIAL_VARS: &[&str] = &[
     "SAVED_AWS_ACCESS_KEY_ID",
     "SAVED_AWS_SECRET_ACCESS_KEY",
     "SAVED_CF_Token",
+    "SAVED_CF_Zone_ID",
     "SAVED_CF_Account_ID",
     "SAVED_DP_Id",
     "SAVED_DP_Key",
@@ -1307,7 +1309,7 @@ mod tests {
 
     #[test]
     fn detects_non_empty_saved_provider_credentials() {
-        let config = "SAVED_CF_Token='token-value'\nSAVED_CF_Account_ID='account-value'\n";
+        let config = "SAVED_CF_Token='token-value'\nSAVED_CF_Zone_ID='zone-value'\n";
         assert_eq!(
             configured_provider_from(config),
             Some(DnsProvider::Cloudflare)
@@ -1315,14 +1317,20 @@ mod tests {
     }
 
     #[test]
+    fn cloudflare_account_id_is_not_a_supported_contract() {
+        let config = "SAVED_CF_Token='token-value'\nSAVED_CF_Account_ID='account-value'\n";
+        assert_eq!(configured_provider_from(config), None);
+    }
+
+    #[test]
     fn ignores_empty_saved_provider_credentials() {
-        let config = "SAVED_CF_Token=''\nSAVED_CF_Account_ID='account-value'\n";
+        let config = "SAVED_CF_Token=''\nSAVED_CF_Zone_ID='zone-value'\n";
         assert_eq!(configured_provider_from(config), None);
     }
 
     #[test]
     fn ignores_quoted_empty_credentials_followed_by_comments() {
-        let config = "SAVED_CF_Token='' # unset\nSAVED_CF_Account_ID='account-value'\n";
+        let config = "SAVED_CF_Token='' # unset\nSAVED_CF_Zone_ID='zone-value'\n";
         assert_eq!(configured_provider_from(config), None);
     }
 
@@ -1492,15 +1500,17 @@ mod tests {
             EnvRestore::set("Ali_Key", "parent-ali-key"),
             EnvRestore::set("SAVED_AWS_SECRET_ACCESS_KEY", "parent-aws-secret"),
             EnvRestore::set("SAVED_CF_Token", "parent-saved-token"),
+            EnvRestore::set("CF_Account_ID", "parent-account-id"),
+            EnvRestore::set("SAVED_CF_Account_ID", "parent-saved-account-id"),
             EnvRestore::set("ACME_OPERATIONAL_TEST", "retained"),
         ];
         run_command_with_timeout(
             "sh",
             &[
                 "-c",
-                "test -z \"${Ali_Key+x}\" && test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${SAVED_CF_Token+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$CF_Token\" && test -n \"$CF_Account_ID\"",
+                "test -z \"${Ali_Key+x}\" && test -z \"${SAVED_AWS_SECRET_ACCESS_KEY+x}\" && test -z \"${SAVED_CF_Token+x}\" && test -z \"${CF_Account_ID+x}\" && test -z \"${SAVED_CF_Account_ID+x}\" && test \"$ACME_OPERATIONAL_TEST\" = retained && test -n \"$CF_Token\" && test -n \"$CF_Zone_ID\"",
             ],
-            &[("CF_Token", "selected-token"), ("CF_Account_ID", "selected-account")],
+            &[("CF_Token", "selected-token"), ("CF_Zone_ID", "selected-zone")],
             Duration::from_secs(2),
         )
         .await
