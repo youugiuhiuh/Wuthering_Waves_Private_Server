@@ -875,7 +875,7 @@ pub async fn run_one_click(
             .send_message(
                 &target,
                 MessageContent {
-                    text: t!("ops.deploy_done").into_owned(),
+                    text: t!("ops.deploy_success").into_owned(),
                     markup: None,
                 },
             )
