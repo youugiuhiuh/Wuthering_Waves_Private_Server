@@ -741,14 +741,15 @@ func installAegis() {
 	}
 
 	configPath := filepath.Join(installDir, "config.enc")
-	var enableTG bool
+	var platform string
 	if _, err := os.Stat(configPath); err == nil {
 		printGreen(i18n.T("install.config_exists"))
+		platform = "tg"
 	} else {
-		enableTG = firstTimeSetup(destPath)
+		platform = firstTimeSetup(destPath)
 	}
 
-	writeSystemdService(enableTG)
+	writeSystemdService(platform)
 
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = runCmdSilent("systemctl", "enable", serviceName)
@@ -791,8 +792,8 @@ func runAegisSetup(destPath string, payload []byte) {
 	}
 }
 
-func finishDeploy(enableTG bool) {
-	writeSystemdService(enableTG)
+func finishDeploy(platform string) {
+	writeSystemdService(platform)
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = runCmdSilent("systemctl", "enable", serviceName)
 	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
@@ -826,9 +827,15 @@ func installFromStdin() {
 		os.Exit(1)
 	}
 
-	enableTG := true
+	platform := "tg"
 	if discordToken, ok := inputData["discord_token"].(string); ok && discordToken != "" {
-		enableTG = false
+		platform = "discord"
+	} else if _, ok := inputData["matrix_homeserver"].(string); ok {
+		if token, ok := inputData["token"].(string); ok && token != "" {
+			platform = "tg-matrix"
+		} else {
+			platform = "matrix"
+		}
 	}
 
 	secret, hasSecret := inputData["totp_secret"].(string)
@@ -843,7 +850,7 @@ func installFromStdin() {
 	}
 
 	runAegisSetup(destPath, payload)
-	finishDeploy(enableTG)
+	finishDeploy(platform)
 }
 
 type setupConfig struct {
@@ -930,7 +937,17 @@ func installFromKeyVal() {
 		cfg.TOTPSecret = generateTOTPSecret(destPath)
 	}
 
-	enableTG := cfg.Token != ""
+	platform := "tg"
+	if cfg.Token == "" {
+		if cfg.DiscordToken != "" {
+			platform = "discord"
+		} else if cfg.MatrixHS != "" {
+			platform = "matrix"
+		}
+	}
+	if platform == "tg" && (cfg.MatrixHS != "" || cfg.MatrixUser != "") {
+		platform = "tg-matrix"
+	}
 
 	payload := buildSetupPayload(
 		[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
@@ -939,16 +956,23 @@ func installFromKeyVal() {
 	)
 
 	runAegisSetup(destPath, payload)
-	finishDeploy(enableTG)
+	finishDeploy(platform)
 }
 
-func firstTimeSetup(binaryPath string) bool {
+func firstTimeSetup(binaryPath string) string {
 	printSkyBlue(i18n.T("firsttime.title"))
 
 	printSkyBlue(i18n.T("firsttime.section_platform"))
 	fmt.Print(i18n.T("firsttime.platform_prompt"))
 	platformChoice, _ := readLine()
 	enableTG := platformChoice == "1"
+	enableMatrix := platformChoice == "2"
+	enableDiscord := platformChoice == "3"
+
+	if platformChoice != "1" && platformChoice != "2" && platformChoice != "3" {
+		printRed(i18n.T("firsttime.platform_invalid"))
+		return "tg"
+	}
 
 	var botTokenEnclave *memguard.Enclave
 	var adminIDEnclave *memguard.Enclave
@@ -972,10 +996,6 @@ func firstTimeSetup(binaryPath string) bool {
 		fmt.Println()
 
 		adminIDEnclave = readSecureInput(i18n.T("firsttime.admin_prompt"))
-	} else {
-		if platformChoice != "2" {
-			printRed(i18n.T("firsttime.platform_invalid"))
-		}
 	}
 
 	var totpSecretEnclave *memguard.Enclave
@@ -984,14 +1004,14 @@ func firstTimeSetup(binaryPath string) bool {
 		totpSecretOutput, err := runCmdOutputBytes(binaryPath, "--generate-totp-secret")
 		if err != nil {
 			printRed(i18n.T("totp.generate_failed", err.Error()))
-			return false
+			return ""
 		}
 		defer zeroBytes(totpSecretOutput)
 
 		totpSecretRaw, err := extractBase32Secret(totpSecretOutput)
 		if err != nil {
 			printRed(i18n.T("totp.parse_failed", err.Error()))
-			return false
+			return ""
 		}
 		defer zeroBytes(totpSecretRaw)
 
@@ -1036,13 +1056,18 @@ func firstTimeSetup(binaryPath string) bool {
 	printYellow(i18n.T("firsttime.matrix_desc1"))
 	printYellow(i18n.T("firsttime.matrix_desc2"))
 	printYellow(i18n.T("firsttime.matrix_desc3"))
-	fmt.Print(i18n.T("firsttime.matrix_prompt_yn"))
-	setupMatrix, _ := readLine()
 
 	var matrixHS, matrixUser, matrixRoom, matrixRecoveryKey string
 	var matrixPassEnclave *memguard.Enclave
 
-	if setupMatrix == "y" || setupMatrix == "Y" {
+	setupMatrix := enableMatrix
+	if !setupMatrix {
+		fmt.Print(i18n.T("firsttime.matrix_prompt_yn"))
+		choice, _ := readLine()
+		setupMatrix = choice == "y" || choice == "Y"
+	}
+
+	if setupMatrix {
 		printYellow(i18n.T("firsttime.matrix_hs_title"))
 		printYellow(i18n.T("firsttime.matrix_hs_default"))
 		printYellow(i18n.T("firsttime.matrix_hs_custom"))
@@ -1076,7 +1101,7 @@ func firstTimeSetup(binaryPath string) bool {
 
 	// ── Discord section ──
 	var discordToken, discordAdminID string
-	if !enableTG {
+	if enableDiscord {
 		printSkyBlue(i18n.T("firsttime.discord_section"))
 		printYellow(i18n.T("firsttime.discord_desc1"))
 		printYellow(i18n.T("firsttime.discord_desc2"))
@@ -1149,7 +1174,17 @@ func firstTimeSetup(binaryPath string) bool {
 	zeroBytes(bTokenBytes)
 	zeroBytes(aIDBytes)
 	zeroBytes(tSecretBytes)
-	return enableTG
+
+	if enableDiscord {
+		return "discord"
+	}
+	if enableMatrix {
+		return "matrix"
+	}
+	if setupMatrix {
+		return "tg-matrix"
+	}
+	return "tg"
 }
 
 // readSecureInput 安全地从终端读取输入，直接返回加密的 Enclave，避免产生明文 string 垃圾
@@ -1180,20 +1215,37 @@ func readSecureInput(prompt string) *memguard.Enclave {
 	return memguard.NewEnclave(actualData)
 }
 
-func writeSystemdService(enableTG bool) {
-	platformFlag := "--telegram"
-	if !enableTG {
+func writeSystemdService(platform string) {
+	platformFlag := ""
+	switch platform {
+	case "matrix":
+		platformFlag = "--matrix"
+	case "discord":
 		platformFlag = "--discord"
+	case "tg-matrix":
+		platformFlag = "--all"
+	}
+	descName := "WWPS Telegram Bot"
+	if platform == "matrix" {
+		descName = "WWPS Matrix Bot"
+	} else if platform == "discord" {
+		descName = "WWPS Discord Bot"
+	} else if platform == "tg-matrix" {
+		descName = "WWPS Telegram + Matrix Bot"
+	}
+	execArgs := platformFlag
+	if execArgs != "" {
+		execArgs = " " + execArgs
 	}
 	content := `[Unit]
-Description=WWPS ` + platformFlag + ` Bot
+Description=` + descName + `
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=` + installDir + `
-ExecStart=` + filepath.Join(installDir, binaryName) + ` ` + platformFlag + `
+ExecStart=` + filepath.Join(installDir, binaryName) + execArgs + `
 Restart=always
 RestartSec=5
 

@@ -58,7 +58,7 @@
   "keyval.missing_required": "Missing required fields: token, admin_id",
   "firsttime.title": "First-time setup, configuring TG Bot\u2026",
   "firsttime.section_platform": "\n========== Platform Selection ==========",
-  "firsttime.platform_prompt": "Select platform (1=Telegram, 2=Discord): ",
+  "firsttime.platform_prompt": "Select platform (1=Telegram, 2=Matrix, 3=Discord): ",
   "firsttime.platform_invalid": "Invalid platform selection",
   "firsttime.section_tg": "\n========== Telegram Bot Configuration ==========",
   "firsttime.tg_help_howto": "\ud83e\udd16 How to get a TG Bot Token:",
