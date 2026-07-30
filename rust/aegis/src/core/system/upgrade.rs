@@ -1,4 +1,4 @@
-use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
+use crate::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use obfstr::obfstr;

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use aegis::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
+use aegis::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
 use anyhow::Result;
 use rust_i18n::t;
 

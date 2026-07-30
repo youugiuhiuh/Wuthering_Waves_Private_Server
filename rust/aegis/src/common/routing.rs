@@ -1,4 +1,4 @@
-use crate::adapters::common::{
+use crate::common::{
     BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
 use anyhow::Result;
@@ -78,6 +78,48 @@ impl BotAdapter for RoutingAdapter {
     fn capabilities(&self) -> PlatformCapabilities {
         self.primary.capabilities()
     }
+
+    async fn send_file(
+        &self,
+        target: &TargetId,
+        name: &str,
+        data: Vec<u8>,
+        mime: &str,
+    ) -> Result<MessageId> {
+        self.primary.send_file(target, name, data, mime).await
+    }
+
+    async fn send_image(&self, target: &TargetId, data: Vec<u8>, mime: &str) -> Result<MessageId> {
+        self.primary.send_image(target, data, mime).await
+    }
+
+    async fn send_voice(&self, target: &TargetId, data: Vec<u8>, mime: &str) -> Result<MessageId> {
+        self.primary.send_voice(target, data, mime).await
+    }
+
+    async fn send_typing(&self, target: &TargetId, active: bool) -> Result<()> {
+        self.primary.send_typing(target, active).await
+    }
+
+    async fn send_reaction(
+        &self,
+        target: &TargetId,
+        msg_id: &MessageId,
+        emoji: &str,
+    ) -> Result<()> {
+        self.primary.send_reaction(target, msg_id, emoji).await
+    }
+
+    async fn send_message_threaded(
+        &self,
+        target: &TargetId,
+        content: MessageContent,
+        thread_root: &str,
+    ) -> Result<MessageId> {
+        self.primary
+            .send_message_threaded(target, content, thread_root)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -147,7 +189,7 @@ mod tests {
 
     mod routing_tests {
         use super::*;
-        use crate::adapters::common::MockBotAdapter;
+        use crate::common::MockBotAdapter;
 
         #[tokio::test]
         async fn sends_sensitive_to_secondary() {

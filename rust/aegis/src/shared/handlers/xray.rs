@@ -1,10 +1,8 @@
 use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
-use crate::adapters::common::{
-    BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId,
-};
 use crate::app::state::AppState;
+use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
 use crate::core::security::acme::{CertPaths, XhttpDeployMode};
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;

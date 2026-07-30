@@ -1,4 +1,4 @@
-use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
+use crate::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::cmd_async::run_cmd_status;
 use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
 use crate::core::network::release_api::{

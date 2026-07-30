@@ -1,0 +1,183 @@
+use crate::core::i18n::Lang;
+
+use anyhow::Result;
+use async_trait::async_trait;
+
+#[derive(Debug, Clone)]
+pub struct TargetId(pub String);
+
+#[derive(Debug, Clone)]
+pub struct MessageId(pub String);
+
+#[derive(Debug, Clone)]
+pub struct MessageContent {
+    pub text: String,
+    pub markup: Option<Markup>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Markup {
+    pub buttons: Vec<Vec<InlineButton>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InlineButton {
+    pub text: String,
+    pub data: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Platform {
+    Telegram,
+    Discord,
+    Matrix,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PlatformCapabilities {
+    pub can_edit_message: bool,
+    pub can_delete_message: bool,
+    pub has_inline_keyboard: bool,
+    pub has_slash_commands: bool,
+    pub has_file_transfer: bool,
+    pub can_send_file: bool,
+    pub can_send_image: bool,
+    pub can_send_voice: bool,
+    pub can_send_typing: bool,
+    pub can_send_reaction: bool,
+    pub can_thread: bool,
+    pub has_e2ee: bool,
+}
+
+impl PlatformCapabilities {
+    pub const TELEGRAM: Self = Self {
+        can_edit_message: true,
+        can_delete_message: true,
+        has_inline_keyboard: true,
+        has_slash_commands: true,
+        has_file_transfer: true,
+        can_send_file: true,
+        can_send_image: true,
+        can_send_voice: true,
+        can_send_typing: true,
+        can_send_reaction: true,
+        can_thread: true,
+        has_e2ee: false,
+    };
+
+    pub const DISCORD: Self = Self {
+        can_edit_message: true,
+        can_delete_message: true,
+        has_inline_keyboard: true,
+        has_slash_commands: true,
+        has_file_transfer: false,
+        can_send_file: true,
+        can_send_image: true,
+        can_send_voice: false,
+        can_send_typing: true,
+        can_send_reaction: true,
+        can_thread: true,
+        has_e2ee: false,
+    };
+
+    pub const MATRIX: Self = Self {
+        can_edit_message: true,
+        can_delete_message: true,
+        has_inline_keyboard: false,
+        has_slash_commands: false,
+        has_file_transfer: true,
+        can_send_file: true,
+        can_send_image: true,
+        can_send_voice: false,
+        can_send_typing: false,
+        can_send_reaction: false,
+        can_thread: false,
+        has_e2ee: true,
+    };
+}
+
+#[mockall::automock]
+#[async_trait]
+pub trait BotAdapter: Send + Sync {
+    fn platform(&self) -> Platform;
+    async fn send_message(&self, target: &TargetId, content: MessageContent) -> Result<MessageId>;
+    async fn edit_message(
+        &self,
+        target: &TargetId,
+        msg_id: &MessageId,
+        content: MessageContent,
+    ) -> Result<()>;
+    async fn delete_message(&self, target: &TargetId, msg_id: &MessageId) -> Result<()>;
+
+    async fn answer_callback(
+        &self,
+        _target: &TargetId,
+        _callback_id: &str,
+        _text: Option<String>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
+        anyhow::bail!("platform does not support file download")
+    }
+
+    /// Apply OS-level locale/system settings for a chosen language.
+    /// Default no-op; only the Telegram adapter performs system operations.
+    async fn set_system_locale(&self, _lang: Lang) -> Result<()> {
+        Ok(())
+    }
+
+    fn capabilities(&self) -> PlatformCapabilities;
+
+    /// Send a file as attachment. Returns the message ID.
+    async fn send_file(
+        &self,
+        _target: &TargetId,
+        _name: &str,
+        _data: Vec<u8>,
+        _mime: &str,
+    ) -> Result<MessageId> {
+        anyhow::bail!("platform does not support file sending")
+    }
+
+    /// Send an image. Delegates to send_file by default.
+    async fn send_image(&self, target: &TargetId, data: Vec<u8>, mime: &str) -> Result<MessageId> {
+        self.send_file(target, "image", data, mime).await
+    }
+
+    /// Send a voice recording. Delegates to send_file by default.
+    async fn send_voice(&self, target: &TargetId, data: Vec<u8>, mime: &str) -> Result<MessageId> {
+        self.send_file(target, "voice", data, mime).await
+    }
+
+    /// Set typing indicator. Default no-op.
+    async fn send_typing(&self, _target: &TargetId, _active: bool) -> Result<()> {
+        Ok(())
+    }
+
+    /// React to a message with an emoji. Default no-op.
+    async fn send_reaction(
+        &self,
+        _target: &TargetId,
+        _msg_id: &MessageId,
+        _emoji: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    /// Send a message in a thread. Default: falls back to send_message.
+    async fn send_message_threaded(
+        &self,
+        target: &TargetId,
+        content: MessageContent,
+        _thread_root: &str,
+    ) -> Result<MessageId> {
+        self.send_message(target, content).await
+    }
+}
+
+// MockBotAdapter is auto-generated by mockall above.
+// answer_callback, download_file, send_file, send_image, send_voice,
+// send_typing, send_reaction, send_message_threaded have default implementations
+// so mockall does NOT generate expect_ methods for them.

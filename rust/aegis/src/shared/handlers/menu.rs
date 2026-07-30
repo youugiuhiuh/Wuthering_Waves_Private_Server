@@ -1,4 +1,4 @@
-use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
+use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
 use crate::core::paths::{singbox, xray};
 use crate::core::singbox::SingBoxInstaller;
 use crate::core::system::SystemMonitor;

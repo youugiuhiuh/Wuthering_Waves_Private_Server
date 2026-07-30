@@ -3,9 +3,9 @@ use std::time::Duration;
 use anyhow::Result;
 use sha2::Digest;
 
-use crate::adapters::common::{MessageContent, MessageId};
 use crate::app::auth;
 use crate::app::state::AppState;
+use crate::common::{MessageContent, MessageId};
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::types::DomainFlowSource;
 use crate::shared::handlers::message::{self, MessageAction};
@@ -258,7 +258,7 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
 mod dispatch_security_file_tests {
     use super::*;
 
-    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
     use crate::shared::types::MessageEvent;
@@ -295,8 +295,8 @@ mod dispatch_security_file_tests {
         async fn download_file(&self, fid: &str) -> anyhow::Result<Vec<u8>> {
             Ok(fid.as_bytes().to_vec())
         }
-        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
-            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> crate::common::PlatformCapabilities {
+            crate::common::PlatformCapabilities::TELEGRAM
         }
     }
 
@@ -311,9 +311,9 @@ mod dispatch_security_file_tests {
     async fn file_captured_when_pending_sets_hash() {
         let secret = TotpManager::generate_new_secret();
         let state = Arc::new(AppState::new(
-            42,
+            Some(42),
             None,
-            TotpManager::new(&secrecy::SecretString::from(secret)).unwrap(),
+            Some(TotpManager::new(&secrecy::SecretString::from(secret)).unwrap()),
             Arc::new(TestExecutor),
             None,
             600,
@@ -332,6 +332,7 @@ mod dispatch_security_file_tests {
             file_id: Some("test-file".into()),
             file_name: Some("test.txt".into()),
             reply_to_text: None,
+            thread_root: None,
         };
         handle_message(msg, &state).await.unwrap();
         let hash = state.self_destruct_key_hash().await;
@@ -343,8 +344,8 @@ mod dispatch_security_file_tests {
 mod tests {
     use super::*;
 
-    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::app::state::{AppState, DestructStep};
+    use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
     use crate::shared::types::{BotCommand, BotEvent, CallbackEvent, CommandEvent, MessageEvent};
@@ -414,8 +415,8 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> anyhow::Result<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
-            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> crate::common::PlatformCapabilities {
+            crate::common::PlatformCapabilities::TELEGRAM
         }
     }
 
@@ -429,9 +430,11 @@ mod tests {
 
     fn make_state() -> AppState {
         AppState::new(
-            42,
+            Some(42),
             None,
-            TotpManager::new(&SecretString::from(TotpManager::generate_new_secret())).unwrap(),
+            Some(
+                TotpManager::new(&SecretString::from(TotpManager::generate_new_secret())).unwrap(),
+            ),
             Arc::new(NoopExecutor),
             None,
             600,
@@ -469,6 +472,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         })
     }
 
@@ -505,7 +509,7 @@ mod tests {
         let state = make_state();
         state.record_auth_success(42, Instant::now()).await;
         state.begin_destruct("42".to_string(), Instant::now()).await;
-        let totp = state.generate_current_totp().unwrap();
+        let totp = state.generate_current_totp().unwrap().unwrap();
         dispatch_event(message_event(adapter.clone(), "42", Some(totp)), &state)
             .await
             .unwrap();
@@ -534,7 +538,7 @@ mod tests {
         let state = make_state();
         // not authorized initially
         assert!(!state.is_authorized(42).await);
-        let code = state.generate_current_totp().unwrap();
+        let code = state.generate_current_totp().unwrap().unwrap();
         dispatch_event(message_event(adapter.clone(), "123", Some(code)), &state)
             .await
             .unwrap();

@@ -1,4 +1,4 @@
-use crate::adapters::common::{InlineButton, Markup, MessageContent};
+use crate::common::{InlineButton, Markup, MessageContent};
 use crate::core::system::scheduler::{ScheduledTask, SchedulerState, TaskType, get_manager};
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use crate::utils;

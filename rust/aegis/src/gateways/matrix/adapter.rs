@@ -1,5 +1,5 @@
-use crate::adapters::common::routing::is_sensitive;
-use crate::adapters::common::{
+use crate::common::routing::is_sensitive;
+use crate::common::{
     BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
 use anyhow::Result;
@@ -7,6 +7,8 @@ use async_trait::async_trait;
 use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::room::Room;
 use matrix_sdk::ruma::OwnedEventId;
+use matrix_sdk::ruma::events::reaction::ReactionEventContent;
+use matrix_sdk::ruma::events::relation::Annotation;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 
 /// Matrix adapter: sends messages to a single Matrix room.
@@ -81,7 +83,7 @@ mod tests {
 
 #[cfg(test)]
 mod matrix_adapter_tests {
-    use crate::adapters::common::{InlineButton, Markup};
+    use crate::common::{InlineButton, Markup};
 
     #[test]
     fn send_message_with_markup_appends_command_list() {
@@ -208,6 +210,89 @@ impl BotAdapter for MatrixAdapter {
             has_inline_keyboard: false,
             has_slash_commands: false,
             has_file_transfer: true,
+            can_send_file: true,
+            can_send_image: true,
+            can_send_voice: false,
+            can_send_typing: true,
+            can_send_reaction: true,
+            can_thread: true,
+            has_e2ee: true,
         }
+    }
+
+    async fn send_file(
+        &self,
+        _target: &TargetId,
+        name: &str,
+        data: Vec<u8>,
+        mime_str: &str,
+    ) -> Result<MessageId> {
+        let mime_type: mime::Mime = mime_str.parse()?;
+        let response = self
+            .room
+            .send_attachment(name, &mime_type, data, AttachmentConfig::new())
+            .await?;
+        Ok(MessageId(response.event_id.to_string()))
+    }
+
+    async fn send_image(
+        &self,
+        _target: &TargetId,
+        data: Vec<u8>,
+        mime_str: &str,
+    ) -> Result<MessageId> {
+        self.send_file(_target, "image", data, mime_str).await
+    }
+
+    async fn send_voice(
+        &self,
+        _target: &TargetId,
+        data: Vec<u8>,
+        mime_str: &str,
+    ) -> Result<MessageId> {
+        self.send_file(_target, "voice", data, mime_str).await
+    }
+
+    async fn send_typing(&self, _target: &TargetId, active: bool) -> Result<()> {
+        self.room.typing_notice(active).await?;
+        Ok(())
+    }
+
+    async fn send_reaction(
+        &self,
+        _target: &TargetId,
+        msg_id: &MessageId,
+        emoji: &str,
+    ) -> Result<()> {
+        let event_id: OwnedEventId = msg_id
+            .0
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Invalid event ID: {}", e))?;
+        let annotation = Annotation::new(event_id, emoji.to_string());
+        let content = ReactionEventContent::new(annotation);
+        self.room.send(content).await?;
+        Ok(())
+    }
+
+    async fn send_message_threaded(
+        &self,
+        _target: &TargetId,
+        content: MessageContent,
+        thread_root: &str,
+    ) -> Result<MessageId> {
+        use matrix_sdk::ruma::events::relation::Thread;
+        use matrix_sdk::ruma::events::room::message::Relation;
+        let body_text = match &content.markup {
+            Some(markup) => render_markup_buttons(content.text, markup),
+            None => content.text,
+        };
+        let root_id: OwnedEventId = thread_root
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Invalid event ID: {}", e))?;
+        let thread = Thread::without_fallback(root_id);
+        let mut room_msg = RoomMessageEventContent::text_plain(&body_text);
+        room_msg.relates_to = Some(Relation::Thread(thread));
+        let response = self.room.send(room_msg).await?;
+        Ok(MessageId(response.response.event_id.to_string()))
     }
 }

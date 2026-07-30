@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use aegis::adapters::common::BotAdapter;
+use aegis::common::BotAdapter;
 use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::system::scheduler::task_types::TaskType;
@@ -71,9 +71,9 @@ pub struct ScheduleInputState {
 pub struct AppState {
     #[allow(dead_code)]
     pub adapter: Arc<dyn BotAdapter>,
-    admin_id: i64,
+    admin_id: Option<i64>,
     discord_admin_id: Option<i64>,
-    totp_manager: TotpManager,
+    totp_manager: Option<TotpManager>,
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
     sessions: Mutex<HashMap<i64, Instant>>,
     failed_attempts: Mutex<HashMap<i64, FailedRecord>>,
@@ -90,9 +90,9 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(
-        admin_id: i64,
+        admin_id: Option<i64>,
         discord_admin_id: Option<i64>,
-        totp_manager: TotpManager,
+        totp_manager: Option<TotpManager>,
         self_destruct_executor: Arc<dyn SelfDestructExecutor>,
         self_destruct_key_hash: Option<String>,
         session_timeout_secs: u64,
@@ -119,21 +119,24 @@ impl AppState {
     }
 
     #[allow(dead_code)]
-    pub fn admin_id(&self) -> i64 {
+    pub fn admin_id(&self) -> Option<i64> {
         self.admin_id
     }
 
     pub fn is_admin_user(&self, user_id: i64) -> bool {
-        user_id == self.admin_id || self.discord_admin_id == Some(user_id)
+        user_id == self.admin_id.unwrap_or(0) || self.discord_admin_id == Some(user_id)
     }
 
     pub fn verify_totp(&self, code: &str) -> bool {
-        self.totp_manager.verify(code)
+        self.totp_manager
+            .as_ref()
+            .map(|m| m.verify(code))
+            .unwrap_or(false)
     }
 
     #[allow(dead_code)]
-    pub fn generate_current_totp(&self) -> Result<String, std::time::SystemTimeError> {
-        self.totp_manager.generate_current()
+    pub fn generate_current_totp(&self) -> Option<Result<String, std::time::SystemTimeError>> {
+        self.totp_manager.as_ref().map(|m| m.generate_current())
     }
 
     pub async fn is_authorized(&self, user_id: i64) -> bool {
@@ -582,7 +585,7 @@ fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::adapters::common::{MessageContent, MessageId, Platform, TargetId};
+    use aegis::common::{MessageContent, MessageId, Platform, TargetId};
     use aegis::core::types::{DomainFlowSource, DomainInputStep};
     use anyhow::Result;
     use async_trait::async_trait;
@@ -624,19 +627,21 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> aegis::adapters::common::PlatformCapabilities {
-            aegis::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> aegis::common::PlatformCapabilities {
+            aegis::common::PlatformCapabilities::TELEGRAM
         }
     }
 
     fn make_state() -> AppState {
         AppState::new(
-            42,
+            Some(42),
             None,
-            TotpManager::new(&secrecy::SecretString::from(
-                TotpManager::generate_new_secret(),
-            ))
-            .unwrap(),
+            Some(
+                TotpManager::new(&secrecy::SecretString::from(
+                    TotpManager::generate_new_secret(),
+                ))
+                .unwrap(),
+            ),
             Arc::new(NoopExecutor),
             None,
             600,
@@ -915,12 +920,14 @@ mod tests {
     #[tokio::test]
     async fn discord_admin_id_is_recognized_as_admin() {
         let state = AppState::new(
-            42,
+            Some(42),
             Some(999),
-            TotpManager::new(&secrecy::SecretString::from(
-                TotpManager::generate_new_secret(),
-            ))
-            .unwrap(),
+            Some(
+                TotpManager::new(&secrecy::SecretString::from(
+                    TotpManager::generate_new_secret(),
+                ))
+                .unwrap(),
+            ),
             Arc::new(NoopExecutor),
             None,
             600,

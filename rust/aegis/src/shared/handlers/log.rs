@@ -1,4 +1,4 @@
-use crate::adapters::common::{InlineButton, Markup, MessageContent};
+use crate::common::{InlineButton, Markup, MessageContent};
 use crate::core::system::log_audit::{LogAudit, SERVICE_SING_BOX, SERVICE_WWPS_CORE};
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use crate::utils;

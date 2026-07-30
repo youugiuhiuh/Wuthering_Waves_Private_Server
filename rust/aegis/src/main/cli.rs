@@ -6,9 +6,9 @@ use crate::bootstrap::{run_setup, run_setup_from_stdin};
 pub enum CliMode {
     Stdout(String),
     Setup {
-        token: String,
-        admin_id: String,
-        totp_secret: String,
+        token: Option<String>,
+        admin_id: Option<String>,
+        totp_secret: Option<String>,
     },
     SetupStdin,
 }
@@ -23,19 +23,11 @@ pub fn try_cli_mode(args: &[String]) -> Option<CliMode> {
             "aegis {}",
             env!("CARGO_PKG_VERSION")
         ))),
-        "--setup" => {
-            if args.len() < 5 {
-                Some(CliMode::Stdout(
-                    "Usage: aegis --setup <token> <admin_id> <totp_secret>".to_string(),
-                ))
-            } else {
-                Some(CliMode::Setup {
-                    token: args[2].clone(),
-                    admin_id: args[3].clone(),
-                    totp_secret: args[4].clone(),
-                })
-            }
-        }
+        "--setup" => Some(CliMode::Setup {
+            token: args.get(2).cloned(),
+            admin_id: args.get(3).cloned(),
+            totp_secret: args.get(4).cloned(),
+        }),
         "--setup-stdin" => Some(CliMode::SetupStdin),
         _ => None,
     }
@@ -51,7 +43,18 @@ pub async fn execute_cli_mode(mode: CliMode) -> Result<()> {
             token,
             admin_id,
             totp_secret,
-        } => run_setup(&token, &admin_id, &totp_secret, None, None, None, None).await,
+        } => {
+            run_setup(
+                token.as_deref(),
+                admin_id.as_deref(),
+                totp_secret.as_deref(),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+        }
         CliMode::SetupStdin => run_setup_from_stdin().await,
     }
 }

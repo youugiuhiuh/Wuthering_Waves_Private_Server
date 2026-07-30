@@ -1,6 +1,6 @@
-use crate::adapters::common::MessageContent;
 use crate::app::auth;
 use crate::app::state::AppState;
+use crate::common::MessageContent;
 use crate::shared::types::{BotCommand, CommandEvent};
 use anyhow::Result;
 use std::time::Duration;
@@ -100,7 +100,7 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::core::totp::TotpManager;
     use async_trait::async_trait;
     use std::sync::Arc;
@@ -150,19 +150,21 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> AnyResult<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
-            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> crate::common::PlatformCapabilities {
+            crate::common::PlatformCapabilities::TELEGRAM
         }
     }
 
     fn make_state() -> AppState {
         AppState::new(
-            42,
+            Some(42),
             None,
-            TotpManager::new(&secrecy::SecretString::from(
-                TotpManager::generate_new_secret(),
-            ))
-            .unwrap(),
+            Some(
+                TotpManager::new(&secrecy::SecretString::from(
+                    TotpManager::generate_new_secret(),
+                ))
+                .unwrap(),
+            ),
             Arc::new(NoopExecutor),
             None,
             600,
@@ -303,8 +305,8 @@ mod tests {
         async fn download_file(&self, _f: &str) -> AnyResult<Vec<u8>> {
             Ok(vec![])
         }
-        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
-            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> crate::common::PlatformCapabilities {
+            crate::common::PlatformCapabilities::TELEGRAM
         }
     }
 
@@ -321,9 +323,9 @@ mod tests {
     async fn set_security_file_starts_pending_input() {
         let secret = TotpManager::generate_new_secret();
         let state = Arc::new(AppState::new(
-            42,
+            Some(42),
             None,
-            TotpManager::new(&secrecy::SecretString::from(secret)).unwrap(),
+            Some(TotpManager::new(&secrecy::SecretString::from(secret)).unwrap()),
             Arc::new(TestExecutor),
             None,
             600,

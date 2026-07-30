@@ -27,9 +27,12 @@ pub const DEFAULT_SESSION_TIMEOUT_SECS: u64 = 10 * 60;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct EncryptedConfig {
-    pub token: Vec<u8>,
-    pub admin_id: Vec<u8>,
-    pub totp_secret: Vec<u8>,
+    #[serde(default)]
+    pub token: Option<Vec<u8>>,
+    #[serde(default)]
+    pub admin_id: Option<Vec<u8>>,
+    #[serde(default)]
+    pub totp_secret: Option<Vec<u8>>,
     #[serde(default)]
     pub self_destruct_key_hash: Option<String>,
     #[serde(default)]
@@ -54,9 +57,12 @@ pub struct EncryptedConfig {
 
 #[derive(serde::Deserialize, Zeroize, ZeroizeOnDrop)]
 struct SetupInput {
-    token: String,
-    admin_id: String,
-    totp_secret: String,
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    admin_id: Option<String>,
+    #[serde(default)]
+    totp_secret: Option<String>,
     #[serde(default)]
     matrix_homeserver: Option<String>,
     #[serde(default)]
@@ -77,9 +83,15 @@ struct SetupInput {
 
 impl Drop for EncryptedConfig {
     fn drop(&mut self) {
-        self.token.zeroize();
-        self.admin_id.zeroize();
-        self.totp_secret.zeroize();
+        if let Some(v) = &mut self.token {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.admin_id {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.totp_secret {
+            v.zeroize();
+        }
         if let Some(v) = &mut self.matrix_homeserver {
             v.zeroize();
         }
@@ -195,17 +207,14 @@ pub struct MatrixSetupConfig {
 }
 
 pub async fn run_setup(
-    token: &str,
-    admin_id: &str,
-    totp_secret: &str,
+    token: Option<&str>,
+    admin_id: Option<&str>,
+    totp_secret: Option<&str>,
     matrix: Option<MatrixSetupConfig>,
     discord_token: Option<&str>,
     discord_admin_id: Option<&str>,
     matrix_recovery_key: Option<&str>,
 ) -> Result<()> {
-    let token = token.trim();
-    let admin_id = admin_id.trim();
-    let totp_secret = totp_secret.trim();
     let config_dir = config_dir();
     fs::create_dir_all(&config_dir)?;
     let security = SecurityManager::new(&config_dir.join(KEY_FILE))?;
@@ -240,9 +249,15 @@ pub async fn run_setup(
         .transpose()?;
 
     let encrypted_config = EncryptedConfig {
-        token: security.encrypt(token.as_bytes())?,
-        admin_id: security.encrypt(admin_id.as_bytes())?,
-        totp_secret: security.encrypt(totp_secret.as_bytes())?,
+        token: token
+            .map(|t| security.encrypt(t.trim().as_bytes()))
+            .transpose()?,
+        admin_id: admin_id
+            .map(|t| security.encrypt(t.trim().as_bytes()))
+            .transpose()?,
+        totp_secret: totp_secret
+            .map(|t| security.encrypt(t.trim().as_bytes()))
+            .transpose()?,
         self_destruct_key_hash: None,
         matrix_homeserver,
         matrix_username,
@@ -309,9 +324,9 @@ pub async fn run_setup_from_stdin() -> Result<()> {
     let matrix_recovery_key = input.matrix_recovery_key.as_deref();
 
     run_setup(
-        &input.token,
-        &input.admin_id,
-        &input.totp_secret,
+        input.token.as_deref(),
+        input.admin_id.as_deref(),
+        input.totp_secret.as_deref(),
         matrix,
         discord_token,
         discord_admin_id,
@@ -425,14 +440,20 @@ impl ConfigValidator {
 
     pub fn validate_decrypted_config(
         &self,
-        token: &str,
-        admin_id: i64,
-        totp_secret: &str,
+        token: Option<&str>,
+        admin_id: Option<i64>,
+        totp_secret: Option<&str>,
         self_destruct_key_hash: &Option<String>,
     ) -> Result<(), String> {
-        self.validate_token(token)?;
-        self.validate_admin_id(admin_id)?;
-        self.validate_totp_secret(totp_secret)?;
+        if let Some(t) = token {
+            self.validate_token(t)?;
+        }
+        if let Some(a) = admin_id {
+            self.validate_admin_id(a)?;
+        }
+        if let Some(t) = totp_secret {
+            self.validate_totp_secret(t)?;
+        }
         if let Some(hash) = self_destruct_key_hash {
             self.validate_self_destruct_key_hash(hash)?;
         }
@@ -504,9 +525,9 @@ mod config_validator_tests {
     fn validate_decrypted_config_accepts_valid_config() {
         let validator = ConfigValidator::new();
         let result = validator.validate_decrypted_config(
-            "123456:ABCdefGHIjklMNOpqrsTUVwxyz",
-            123456789,
-            "JBSWY3DPEHPK3PXP",
+            Some("123456:ABCdefGHIjklMNOpqrsTUVwxyz"),
+            Some(123456789),
+            Some("JBSWY3DPEHPK3PXP"),
             &None,
         );
         assert!(result.is_ok());
@@ -516,11 +537,18 @@ mod config_validator_tests {
     fn validate_decrypted_config_accepts_valid_config_with_hash() {
         let validator = ConfigValidator::new();
         let result = validator.validate_decrypted_config(
-            "123456:ABCdefGHIjklMNOpqrsTUVwxyz",
-            123456789,
-            "JBSWY3DPEHPK3PXP",
+            Some("123456:ABCdefGHIjklMNOpqrsTUVwxyz"),
+            Some(123456789),
+            Some("JBSWY3DPEHPK3PXP"),
             &Some("a".repeat(64)),
         );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_decrypted_config_accepts_empty_config() {
+        let validator = ConfigValidator::new();
+        let result = validator.validate_decrypted_config(None, None, None, &None);
         assert!(result.is_ok());
     }
 
@@ -650,9 +678,9 @@ mod config_tests {
     #[test]
     fn discord_config_fields_round_trip() {
         let config = EncryptedConfig {
-            token: b"t".to_vec(),
-            admin_id: b"a".to_vec(),
-            totp_secret: b"s".to_vec(),
+            token: Some(b"t".to_vec()),
+            admin_id: Some(b"a".to_vec()),
+            totp_secret: Some(b"s".to_vec()),
             self_destruct_key_hash: None,
             matrix_homeserver: None,
             matrix_username: None,

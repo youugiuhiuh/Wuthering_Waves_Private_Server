@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use aegis::adapters::common::{BotAdapter, MessageId, TargetId};
+use aegis::common::{BotAdapter, MessageId, TargetId};
 use aegis::shared::types::{BotCommand, BotEvent, CallbackEvent, CommandEvent};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -390,21 +390,14 @@ mod tests {
 #[cfg(test)]
 mod parse_to_event_tests {
     use super::*;
-    use aegis::adapters::common::{
-        BotAdapter, MockBotAdapter, Platform, PlatformCapabilities, TargetId,
-    };
+    use aegis::common::{BotAdapter, MockBotAdapter, Platform, PlatformCapabilities, TargetId};
     use std::sync::Arc;
 
     fn test_adapter() -> Arc<dyn BotAdapter> {
         let mut m = MockBotAdapter::new();
         m.expect_platform().returning(|| Platform::Matrix);
-        m.expect_capabilities().returning(|| PlatformCapabilities {
-            can_edit_message: false,
-            can_delete_message: false,
-            has_inline_keyboard: false,
-            has_slash_commands: false,
-            has_file_transfer: false,
-        });
+        m.expect_capabilities()
+            .returning(|| PlatformCapabilities::MATRIX);
         Arc::new(m)
     }
 

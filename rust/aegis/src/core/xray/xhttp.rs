@@ -110,19 +110,24 @@ impl ConfigManager {
 
         if !cdn_ports.is_empty() {
             for (i, &cdn_port) in cdn_ports.iter().enumerate() {
-                let port: i32 = if crate::core::system::maintenance::MaintenanceManager::is_port_available(cdn_port).await {
-                    cdn_port as i32
-                } else {
-                    loop {
-                        let p = rng.gen_range(10000..60000);
-                        if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                let port: i32 =
+                    if crate::core::system::maintenance::MaintenanceManager::is_port_available(
+                        cdn_port,
+                    )
+                    .await
+                    {
+                        cdn_port as i32
+                    } else {
+                        loop {
+                            let p = rng.gen_range(10000..60000);
+                            if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
                             continue;
                         }
-                        if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
+                            if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
                             break p as i32;
                         }
-                    }
-                };
+                        }
+                    };
 
                 let uuid = ConfigManager::generate_wwps_uuid().await?;
                 let path = ConfigManager::generate_random_path();
@@ -134,7 +139,8 @@ impl ConfigManager {
                 batch_configs.push(config);
                 links.push(link);
 
-                let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(cdn_port).await;
+                let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(cdn_port)
+                    .await;
             }
         } else {
             let port_443_available =
@@ -149,7 +155,11 @@ impl ConfigManager {
                         if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
                             continue;
                         }
-                        if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
+                        if crate::core::system::maintenance::MaintenanceManager::is_port_available(
+                            p,
+                        )
+                        .await
+                        {
                             break p as i32;
                         }
                     }
@@ -165,7 +175,9 @@ impl ConfigManager {
                 batch_configs.push(config);
                 links.push(link);
 
-                let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
+                let _ =
+                    crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16)
+                        .await;
             }
         }
 

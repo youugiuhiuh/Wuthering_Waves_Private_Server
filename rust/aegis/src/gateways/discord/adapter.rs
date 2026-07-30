@@ -1,4 +1,4 @@
-use crate::adapters::common::{
+use crate::common::{
     BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
 use anyhow::{Context, Result};
@@ -89,6 +89,28 @@ impl BotAdapter for DiscordAdapter {
     fn capabilities(&self) -> PlatformCapabilities {
         PlatformCapabilities::DISCORD
     }
+
+    async fn send_typing(&self, _target: &TargetId, _active: bool) -> Result<()> {
+        Ok(())
+    }
+
+    async fn send_reaction(
+        &self,
+        _target: &TargetId,
+        _msg_id: &MessageId,
+        _emoji: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn send_message_threaded(
+        &self,
+        target: &TargetId,
+        content: MessageContent,
+        _thread_root: &str,
+    ) -> Result<MessageId> {
+        self.send_message(target, content).await
+    }
 }
 
 fn convert_markup_discord(markup: &Markup) -> Vec<serenity::all::CreateActionRow> {
@@ -111,7 +133,7 @@ fn convert_markup_discord(markup: &Markup) -> Vec<serenity::all::CreateActionRow
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::common::PlatformCapabilities;
+    use crate::common::PlatformCapabilities;
 
     #[test]
     fn discord_capabilities_matches_expected() {

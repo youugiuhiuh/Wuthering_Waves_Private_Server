@@ -4,7 +4,7 @@ use anyhow::Result;
 use rust_i18n::t;
 use sha2::Digest;
 
-use aegis::adapters::common::{InlineButton, Markup, MessageContent};
+use aegis::common::{InlineButton, Markup, MessageContent};
 use aegis::shared::types::{CallbackEvent, MessageEvent, TimeoutStatus};
 
 use crate::app::state::{AppState, DestructStep};
@@ -601,7 +601,7 @@ pub async fn intercept_callback(cb: &CallbackEvent, state: &AppState) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use aegis::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use aegis::core::security::self_destruct::SelfDestructExecutor;
     use aegis::core::totp::TotpManager;
     use async_trait::async_trait;
@@ -638,8 +638,8 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> aegis::adapters::common::PlatformCapabilities {
-            aegis::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> aegis::common::PlatformCapabilities {
+            aegis::common::PlatformCapabilities::TELEGRAM
         }
     }
 
@@ -652,9 +652,9 @@ mod tests {
 
     async fn make_test_state(totp_secret: &str) -> AppState {
         let state = AppState::new(
-            42,
+            Some(42),
             None,
-            TotpManager::new(&SecretString::from(totp_secret.to_string())).unwrap(),
+            Some(TotpManager::new(&SecretString::from(totp_secret.to_string())).unwrap()),
             Arc::new(TestExecutor),
             None,
             600,
@@ -668,7 +668,7 @@ mod tests {
     async fn first_totp_valid_returns_confirm() {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
-        let totp = state.generate_current_totp().unwrap();
+        let totp = state.generate_current_totp().unwrap().unwrap();
         let action = process_destruct_message(
             Some(&totp),
             DestructStep::AwaitFirstTotp,
@@ -752,7 +752,7 @@ mod tests {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
         state.begin_destruct("42".to_string(), Instant::now()).await;
-        let totp = state.generate_current_totp().unwrap();
+        let totp = state.generate_current_totp().unwrap().unwrap();
         let msg = MessageEvent {
             adapter: Arc::new(MockAdapter),
             target: TargetId("42".into()),
@@ -761,6 +761,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
@@ -789,7 +790,7 @@ mod tests {
                 Instant::now(),
             )
             .await;
-        let totp = state.generate_current_totp().unwrap();
+        let totp = state.generate_current_totp().unwrap().unwrap();
         let msg = MessageEvent {
             adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),
@@ -798,6 +799,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
@@ -825,6 +827,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
@@ -853,6 +856,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
@@ -871,6 +875,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::NotHandled);

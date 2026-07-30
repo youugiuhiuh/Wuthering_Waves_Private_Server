@@ -67,6 +67,9 @@
   "keyval.missing_required": "缺少必填字段: token, admin_id",
 
   "firsttime.title": "\n首次安装，开始配置 TG Bot…",
+  "firsttime.section_platform": "\n========== 平台选择 ==========",
+  "firsttime.platform_prompt": "选择平台 (1=Telegram, 2=Discord): ",
+  "firsttime.platform_invalid": "无效的平台选择",
   "firsttime.section_tg": "\n========== 配置 Telegram Bot ==========",
   "firsttime.tg_help_howto": "🤖 如何获取 TG Bot Token:",
   "firsttime.tg_help_step1": "  1. 打开 Telegram，搜索 @BotFather",

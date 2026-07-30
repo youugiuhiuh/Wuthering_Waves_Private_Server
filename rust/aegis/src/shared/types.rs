@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::adapters::common::{BotAdapter, MessageId, TargetId};
+use crate::common::{BotAdapter, MessageId, TargetId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeoutStatus {
@@ -69,6 +69,7 @@ pub struct MessageEvent {
     pub file_id: Option<String>,
     pub file_name: Option<String>,
     pub reply_to_text: Option<String>,
+    pub thread_root: Option<String>,
 }
 
 pub struct CommandEvent {
@@ -95,20 +96,21 @@ mod event_tests {
     fn message_event_constructs() {
         // MessageEvent is a plain struct — verify fields compile
         let _ = MessageEvent {
-            adapter: std::sync::Arc::new(crate::adapters::common::MockBotAdapter::new()),
+            adapter: std::sync::Arc::new(crate::common::MockBotAdapter::new()),
             target: TargetId("123".into()),
             user_id: 42,
             text: Some("hello".into()),
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
     }
 
     #[test]
     fn command_event_constructs() {
         let _ = CommandEvent {
-            adapter: std::sync::Arc::new(crate::adapters::common::MockBotAdapter::new()),
+            adapter: std::sync::Arc::new(crate::common::MockBotAdapter::new()),
             target: TargetId("123".into()),
             user_id: 42,
             command: BotCommand::Help,
