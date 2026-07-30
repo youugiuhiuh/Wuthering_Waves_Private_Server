@@ -28,7 +28,16 @@ cargo test --doc
 
 This command sequence MUST succeed with no errors before you proceed.
 
-> If `cargo-nextest` is unavailable, fall back to:
+> If `cargo-nextest` is unavailable, try to auto-install it:
+>
+> ```bash
+> if ! command -v cargo-nextest &>/dev/null; then
+>   cargo install cargo-binstall --locked && \
+>   cargo binstall cargo-nextest --secure -y
+> fi
+> ```
+>
+> If installation also fails, fall back to:
 >
 > ```bash
 > cargo test
