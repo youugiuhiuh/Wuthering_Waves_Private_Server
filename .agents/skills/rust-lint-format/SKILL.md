@@ -111,6 +111,23 @@ Never skip the quality gate because:
 | `cargo test --doc` | Run documentation tests |
 | `cargo test` | Fallback when `cargo-nextest` is unavailable |
 
+## Common Nextest Commands
+
+| Command | Purpose |
+|---------|---------|
+| `cargo nextest run` | Run all tests |
+| `cargo nextest run -p <package>` | Tests for a specific package only |
+| `cargo nextest run <test_name>` | Run tests matching a name/pattern |
+| `cargo nextest run --no-fail-fast` (`--nff`) | Run all tests regardless of failures |
+| `cargo nextest run --max-fail=N` | Stop after N failures |
+| `cargo nextest run --retries=N` | Retry each failing test up to N times |
+| `cargo nextest run -j N` (`--test-threads=N`) | Run N tests in parallel |
+| `cargo nextest run --no-capture` | Run serially, show stdout/stderr |
+| `cargo nextest run --failure-output=immediate` | Print failure output as tests fail |
+| `cargo nextest run --all-features` | Test with all Cargo features enabled |
+| `cargo nextest run --release` | Build and run in release mode |
+| `cargo nextest run --run-ignored=only` | Run only `#[ignore]` tests |
+
 ## Project-Specific Notes
 
 - Run from the workspace root.
