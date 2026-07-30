@@ -129,6 +129,28 @@ impl BotAdapter for TelegramAdapter {
     fn capabilities(&self) -> PlatformCapabilities {
         PlatformCapabilities::TELEGRAM
     }
+
+    async fn send_typing(&self, _target: &TargetId, _active: bool) -> Result<()> {
+        Ok(())
+    }
+
+    async fn send_reaction(
+        &self,
+        _target: &TargetId,
+        _msg_id: &MessageId,
+        _emoji: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn send_message_threaded(
+        &self,
+        target: &TargetId,
+        content: MessageContent,
+        _thread_root: &str,
+    ) -> Result<MessageId> {
+        self.send_message(target, content).await
+    }
 }
 
 fn convert_markup(markup: &Markup) -> InlineKeyboardMarkup {
