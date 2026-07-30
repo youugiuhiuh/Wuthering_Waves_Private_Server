@@ -215,6 +215,7 @@ pub async fn run(
                             file_id,
                             file_name,
                             reply_to_text: None,
+                            thread_root: None,
                         })
                     };
                     let _ = dispatch_event(event, &state).await;
@@ -279,6 +280,7 @@ pub async fn run(
                     reply_to_text: msg
                         .reply_to_message()
                         .and_then(|r| r.text().map(|s| s.to_string())),
+                    thread_root: None,
                 }),
                 &state,
             )

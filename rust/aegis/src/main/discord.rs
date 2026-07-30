@@ -161,6 +161,7 @@ impl EventHandler for DiscordHandler {
             file_id,
             file_name,
             reply_to_text: None,
+            thread_root: None,
         });
         let _ = dispatch_event(event, &self.state).await;
     }

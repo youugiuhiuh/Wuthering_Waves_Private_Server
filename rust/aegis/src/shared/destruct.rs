@@ -761,6 +761,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
@@ -798,6 +799,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
@@ -825,6 +827,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
@@ -853,6 +856,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
@@ -871,6 +875,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::NotHandled);

@@ -332,6 +332,7 @@ mod dispatch_security_file_tests {
             file_id: Some("test-file".into()),
             file_name: Some("test.txt".into()),
             reply_to_text: None,
+            thread_root: None,
         };
         handle_message(msg, &state).await.unwrap();
         let hash = state.self_destruct_key_hash().await;
@@ -469,6 +470,7 @@ mod tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         })
     }
 

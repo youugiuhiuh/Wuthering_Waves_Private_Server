@@ -69,6 +69,7 @@ pub struct MessageEvent {
     pub file_id: Option<String>,
     pub file_name: Option<String>,
     pub reply_to_text: Option<String>,
+    pub thread_root: Option<String>,
 }
 
 pub struct CommandEvent {
@@ -102,6 +103,7 @@ mod event_tests {
             file_id: None,
             file_name: None,
             reply_to_text: None,
+            thread_root: None,
         };
     }
 
