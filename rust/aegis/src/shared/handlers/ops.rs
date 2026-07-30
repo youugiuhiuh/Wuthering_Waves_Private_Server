@@ -1,4 +1,4 @@
-use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent};
+use crate::common::{BotAdapter, InlineButton, Markup, MessageContent};
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::singbox::SingBoxInstaller;
 use crate::core::singbox::config::SingBoxConfigManager;
@@ -38,8 +38,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
 fn spawn_progress_updater(
     adapter: Arc<dyn BotAdapter>,
-    target: crate::adapters::common::TargetId,
-    msg_id: crate::adapters::common::MessageId,
+    target: crate::common::TargetId,
+    msg_id: crate::common::MessageId,
     title_fn: impl Fn(String) -> String + Send + 'static,
 ) -> (UnboundedSender<String>, JoinHandle<()>) {
     let (tx, mut rx) = unbounded_channel::<String>();
@@ -337,8 +337,8 @@ async fn handle_bbr3_prompt(event: &CallbackEvent) -> HandlerResult {
 
 async fn send_bbr3_progress(
     adapter: Arc<dyn BotAdapter>,
-    target: crate::adapters::common::TargetId,
-    msg_id: crate::adapters::common::MessageId,
+    target: crate::common::TargetId,
+    msg_id: crate::common::MessageId,
 ) -> (UnboundedSender<String>, JoinHandle<()>) {
     spawn_progress_updater(adapter, target, msg_id, |t| {
         t!("ops.bbr3_title", "0" => t).to_string()

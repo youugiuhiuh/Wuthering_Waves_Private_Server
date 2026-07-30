@@ -1,4 +1,4 @@
-use crate::adapters::common::{
+use crate::common::{
     BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
 use anyhow::Result;
@@ -147,7 +147,7 @@ mod tests {
 
     mod routing_tests {
         use super::*;
-        use crate::adapters::common::MockBotAdapter;
+        use crate::common::MockBotAdapter;
 
         #[tokio::test]
         async fn sends_sensitive_to_secondary() {

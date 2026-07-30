@@ -1,4 +1,4 @@
-use crate::adapters::common::{InlineButton, Markup, MessageContent};
+use crate::common::{InlineButton, Markup, MessageContent};
 use crate::core::xray::installer::WarpInstaller;
 use crate::core::xray::{ConfigManager, WarpMode};
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};

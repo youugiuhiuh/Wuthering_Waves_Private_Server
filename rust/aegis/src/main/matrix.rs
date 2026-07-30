@@ -2,9 +2,9 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use aegis::adapters::common::BotAdapter;
-use aegis::adapters::matrix::MatrixAdapter;
+use aegis::common::BotAdapter;
 use aegis::core::security::SecurityManager;
+use aegis::gateways::matrix::MatrixAdapter;
 use anyhow::{Context, Result};
 use matrix_sdk::{
     Client as MatrixClient, Room, RoomState,

@@ -1,4 +1,4 @@
-use crate::adapters::common::{
+use crate::common::{
     BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
 use crate::core::i18n;

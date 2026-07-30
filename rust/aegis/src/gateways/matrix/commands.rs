@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use aegis::adapters::common::{BotAdapter, MessageId, TargetId};
+use aegis::common::{BotAdapter, MessageId, TargetId};
 use aegis::shared::types::{BotCommand, BotEvent, CallbackEvent, CommandEvent};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -390,9 +390,7 @@ mod tests {
 #[cfg(test)]
 mod parse_to_event_tests {
     use super::*;
-    use aegis::adapters::common::{
-        BotAdapter, MockBotAdapter, Platform, PlatformCapabilities, TargetId,
-    };
+    use aegis::common::{BotAdapter, MockBotAdapter, Platform, PlatformCapabilities, TargetId};
     use std::sync::Arc;
 
     fn test_adapter() -> Arc<dyn BotAdapter> {

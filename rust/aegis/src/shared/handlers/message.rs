@@ -3,7 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rust_i18n::t;
 
-use crate::adapters::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
+use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
 use crate::core::security::acme::{
     AcmeCertificateOperation, AcmeCommandError, AcmeFailureKind, AcmeManager, XhttpDeployMode,
 };
@@ -562,7 +562,7 @@ fn parse_provider_selection(text: &str) -> Option<DnsProvider> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::common::{
+    use crate::common::{
         BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
     };
     use crate::core::i18n;

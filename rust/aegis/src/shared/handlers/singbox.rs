@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use tokio::time::{Duration, sleep};
 
-use crate::adapters::common::{
-    BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId,
-};
+use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
 use crate::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use crate::core::system::SystemMonitor;
 use crate::core::types::{BatchCreationResult, IpVersion};

@@ -1,4 +1,4 @@
-use crate::adapters::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
+use crate::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::paths::{warp as warp_paths, xray};
 use crate::core::system::core_upgrade::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
 use crate::core::system::maintenance::MaintenanceManager;

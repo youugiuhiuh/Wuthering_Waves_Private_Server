@@ -78,8 +78,8 @@ async fn handle_lang(cb: &CallbackEvent, state: &AppState) -> Option<String> {
 mod tests {
     use super::*;
 
-    use crate::adapters::common::{BotAdapter, MessageId, MockBotAdapter, TargetId};
     use crate::app::state::AppState;
+    use crate::common::{BotAdapter, MessageId, MockBotAdapter, TargetId};
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
     use crate::shared::types::CallbackEvent;

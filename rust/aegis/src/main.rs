@@ -9,8 +9,8 @@ mod main;
 mod utils;
 
 use crate::bootstrap::{config_dir, harden_process, verify_integrity};
-use aegis::adapters::common::{BotAdapter, MessageContent, TargetId};
 use aegis::app::state::AppState;
+use aegis::common::{BotAdapter, MessageContent, TargetId};
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::self_destruct::production_executor;
 use aegis::core::system::SystemMonitor;

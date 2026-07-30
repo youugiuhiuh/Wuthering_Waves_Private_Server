@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use aegis::adapters::common::BotAdapter;
+use aegis::common::BotAdapter;
 use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::system::scheduler::task_types::TaskType;
@@ -582,7 +582,7 @@ fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::adapters::common::{MessageContent, MessageId, Platform, TargetId};
+    use aegis::common::{MessageContent, MessageId, Platform, TargetId};
     use aegis::core::types::{DomainFlowSource, DomainInputStep};
     use anyhow::Result;
     use async_trait::async_trait;
@@ -624,8 +624,8 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> aegis::adapters::common::PlatformCapabilities {
-            aegis::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> aegis::common::PlatformCapabilities {
+            aegis::common::PlatformCapabilities::TELEGRAM
         }
     }
 

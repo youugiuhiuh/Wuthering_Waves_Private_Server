@@ -1,5 +1,5 @@
-use crate::adapters::common::routing::is_sensitive;
-use crate::adapters::common::{
+use crate::common::routing::is_sensitive;
+use crate::common::{
     BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
 use anyhow::Result;
@@ -81,7 +81,7 @@ mod tests {
 
 #[cfg(test)]
 mod matrix_adapter_tests {
-    use crate::adapters::common::{InlineButton, Markup};
+    use crate::common::{InlineButton, Markup};
 
     #[test]
     fn send_message_with_markup_appends_command_list() {

@@ -1,4 +1,4 @@
-use crate::adapters::common::{BotAdapter, TargetId};
+use crate::common::{BotAdapter, TargetId};
 use anyhow::{Context, Result};
 use chrono_tz::Tz;
 use once_cell::sync::Lazy;
@@ -416,8 +416,8 @@ mod tests {
     async fn add_new_task_rejects_invalid_task_without_persisting_state() {
         let tempdir = tempdir().unwrap();
         let state_path = tempdir.path().join("scheduler_state.json");
-        use crate::adapters::common::PlatformCapabilities;
-        use crate::adapters::common::{MessageContent, Platform};
+        use crate::common::PlatformCapabilities;
+        use crate::common::{MessageContent, Platform};
         use async_trait::async_trait;
 
         struct TestAdapter;
@@ -430,13 +430,13 @@ mod tests {
                 &self,
                 _target: &TargetId,
                 _content: MessageContent,
-            ) -> Result<crate::adapters::common::MessageId> {
-                Ok(crate::adapters::common::MessageId("0".to_string()))
+            ) -> Result<crate::common::MessageId> {
+                Ok(crate::common::MessageId("0".to_string()))
             }
             async fn edit_message(
                 &self,
                 _target: &TargetId,
-                _msg_id: &crate::adapters::common::MessageId,
+                _msg_id: &crate::common::MessageId,
                 _content: MessageContent,
             ) -> Result<()> {
                 Ok(())
@@ -444,7 +444,7 @@ mod tests {
             async fn delete_message(
                 &self,
                 _target: &TargetId,
-                _msg_id: &crate::adapters::common::MessageId,
+                _msg_id: &crate::common::MessageId,
             ) -> Result<()> {
                 Ok(())
             }

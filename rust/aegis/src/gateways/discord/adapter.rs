@@ -1,4 +1,4 @@
-use crate::adapters::common::{
+use crate::common::{
     BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
 use anyhow::{Context, Result};
@@ -111,7 +111,7 @@ fn convert_markup_discord(markup: &Markup) -> Vec<serenity::all::CreateActionRow
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::common::PlatformCapabilities;
+    use crate::common::PlatformCapabilities;
 
     #[test]
     fn discord_capabilities_matches_expected() {

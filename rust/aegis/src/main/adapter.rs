@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use aegis::adapters::common::{BotAdapter, RoutingAdapter};
-use aegis::adapters::telegram::TelegramAdapter;
+use aegis::common::{BotAdapter, RoutingAdapter};
+use aegis::gateways::telegram::TelegramAdapter;
 use anyhow::Result;
 use teloxide::Bot;
 

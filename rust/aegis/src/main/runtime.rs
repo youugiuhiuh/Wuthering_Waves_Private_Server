@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use aegis::adapters::common::{MessageId, TargetId};
+use aegis::common::{MessageId, TargetId};
 use aegis::core::i18n;
 use aegis::shared::dispatch_event;
 use aegis::shared::types::*;
@@ -199,7 +199,7 @@ pub async fn run(
                         _ => (None, None),
                     };
 
-                    let event = if let Some(ev) = aegis::adapters::matrix::commands::parse_to_event(
+                    let event = if let Some(ev) = aegis::gateways::matrix::commands::parse_to_event(
                         &text,
                         adapter.clone(),
                         &target,

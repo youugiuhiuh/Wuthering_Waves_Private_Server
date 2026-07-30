@@ -3,9 +3,9 @@ use std::time::Duration;
 use anyhow::Result;
 use sha2::Digest;
 
-use crate::adapters::common::{MessageContent, MessageId};
 use crate::app::auth;
 use crate::app::state::AppState;
+use crate::common::{MessageContent, MessageId};
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::types::DomainFlowSource;
 use crate::shared::handlers::message::{self, MessageAction};
@@ -258,7 +258,7 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
 mod dispatch_security_file_tests {
     use super::*;
 
-    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
     use crate::shared::types::MessageEvent;
@@ -295,8 +295,8 @@ mod dispatch_security_file_tests {
         async fn download_file(&self, fid: &str) -> anyhow::Result<Vec<u8>> {
             Ok(fid.as_bytes().to_vec())
         }
-        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
-            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> crate::common::PlatformCapabilities {
+            crate::common::PlatformCapabilities::TELEGRAM
         }
     }
 
@@ -343,8 +343,8 @@ mod dispatch_security_file_tests {
 mod tests {
     use super::*;
 
-    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::app::state::{AppState, DestructStep};
+    use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
     use crate::shared::types::{BotCommand, BotEvent, CallbackEvent, CommandEvent, MessageEvent};
@@ -414,8 +414,8 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> anyhow::Result<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
-            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> crate::common::PlatformCapabilities {
+            crate::common::PlatformCapabilities::TELEGRAM
         }
     }
 

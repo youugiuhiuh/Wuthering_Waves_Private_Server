@@ -4,7 +4,7 @@ use anyhow::Result;
 use rust_i18n::t;
 use sha2::Digest;
 
-use aegis::adapters::common::{InlineButton, Markup, MessageContent};
+use aegis::common::{InlineButton, Markup, MessageContent};
 use aegis::shared::types::{CallbackEvent, MessageEvent, TimeoutStatus};
 
 use crate::app::state::{AppState, DestructStep};
@@ -601,7 +601,7 @@ pub async fn intercept_callback(cb: &CallbackEvent, state: &AppState) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use aegis::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use aegis::core::security::self_destruct::SelfDestructExecutor;
     use aegis::core::totp::TotpManager;
     use async_trait::async_trait;
@@ -638,8 +638,8 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> aegis::adapters::common::PlatformCapabilities {
-            aegis::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> aegis::common::PlatformCapabilities {
+            aegis::common::PlatformCapabilities::TELEGRAM
         }
     }
 

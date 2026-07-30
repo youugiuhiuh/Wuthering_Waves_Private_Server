@@ -1,4 +1,4 @@
-use crate::adapters::common::{BotAdapter, MessageContent, TargetId};
+use crate::common::{BotAdapter, MessageContent, TargetId};
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::system::operations::Operations;
 use anyhow::Result;

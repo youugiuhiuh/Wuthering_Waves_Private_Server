@@ -1,6 +1,6 @@
-use crate::adapters::common::MessageContent;
 use crate::app::auth;
 use crate::app::state::AppState;
+use crate::common::MessageContent;
 use crate::shared::types::{BotCommand, CommandEvent};
 use anyhow::Result;
 use std::time::Duration;
@@ -100,7 +100,7 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::core::totp::TotpManager;
     use async_trait::async_trait;
     use std::sync::Arc;
@@ -150,8 +150,8 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> AnyResult<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
-            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> crate::common::PlatformCapabilities {
+            crate::common::PlatformCapabilities::TELEGRAM
         }
     }
 
@@ -303,8 +303,8 @@ mod tests {
         async fn download_file(&self, _f: &str) -> AnyResult<Vec<u8>> {
             Ok(vec![])
         }
-        fn capabilities(&self) -> crate::adapters::common::PlatformCapabilities {
-            crate::adapters::common::PlatformCapabilities::TELEGRAM
+        fn capabilities(&self) -> crate::common::PlatformCapabilities {
+            crate::common::PlatformCapabilities::TELEGRAM
         }
     }
 

@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use aegis::adapters::common::BotAdapter;
-use aegis::adapters::discord::DiscordAdapter;
 use aegis::app::state::AppState;
+use aegis::common::BotAdapter;
+use aegis::gateways::discord::DiscordAdapter;
 use aegis::shared::dispatch_event;
 use aegis::shared::types::*;
 use anyhow::{Context, Result};
@@ -155,7 +155,7 @@ impl EventHandler for DiscordHandler {
         };
         let event = BotEvent::Message(MessageEvent {
             adapter: self.adapter.clone(),
-            target: aegis::adapters::common::TargetId(self.admin_channel.to_string()),
+            target: aegis::common::TargetId(self.admin_channel.to_string()),
             user_id,
             text,
             file_id,
@@ -177,7 +177,7 @@ impl EventHandler for DiscordHandler {
                 if let Some(command) = parse_slash(name, code) {
                     let event = BotEvent::Command(CommandEvent {
                         adapter: self.adapter.clone(),
-                        target: aegis::adapters::common::TargetId(cmd.channel_id.to_string()),
+                        target: aegis::common::TargetId(cmd.channel_id.to_string()),
                         user_id: cmd.user.id.get() as i64,
                         command,
                     });
@@ -191,9 +191,9 @@ impl EventHandler for DiscordHandler {
                 let msg = &comp.message;
                 let event = BotEvent::Callback(CallbackEvent {
                     adapter: self.adapter.clone(),
-                    target: aegis::adapters::common::TargetId(msg.channel_id.to_string()),
+                    target: aegis::common::TargetId(msg.channel_id.to_string()),
                     user_id: comp.user.id.get().to_string(),
-                    msg_id: aegis::adapters::common::MessageId(msg.id.to_string()),
+                    msg_id: aegis::common::MessageId(msg.id.to_string()),
                     data: comp.data.custom_id.clone(),
                     callback_id: String::new(),
                     session_timeout_secs: self.state.session_timeout_secs().await,
