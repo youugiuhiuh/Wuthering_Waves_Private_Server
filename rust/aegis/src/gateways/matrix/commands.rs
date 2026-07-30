@@ -396,13 +396,8 @@ mod parse_to_event_tests {
     fn test_adapter() -> Arc<dyn BotAdapter> {
         let mut m = MockBotAdapter::new();
         m.expect_platform().returning(|| Platform::Matrix);
-        m.expect_capabilities().returning(|| PlatformCapabilities {
-            can_edit_message: false,
-            can_delete_message: false,
-            has_inline_keyboard: false,
-            has_slash_commands: false,
-            has_file_transfer: false,
-        });
+        m.expect_capabilities()
+            .returning(|| PlatformCapabilities::MATRIX);
         Arc::new(m)
     }
 

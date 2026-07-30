@@ -202,12 +202,6 @@ impl BotAdapter for MatrixAdapter {
     }
 
     fn capabilities(&self) -> PlatformCapabilities {
-        PlatformCapabilities {
-            can_edit_message: true,
-            can_delete_message: true,
-            has_inline_keyboard: false,
-            has_slash_commands: false,
-            has_file_transfer: true,
-        }
+        PlatformCapabilities::MATRIX
     }
 }
