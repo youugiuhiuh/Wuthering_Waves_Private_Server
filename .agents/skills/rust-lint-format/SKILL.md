@@ -1,11 +1,11 @@
 ---
 name: rust-lint-format
-description: Use when completing any Rust code work or before marking Rust tasks as done. Enforces cargo fmt, cargo clippy, and cargo test as mandatory quality gates.
+description: Use when completing any Rust code work or before marking Rust tasks as done. Enforces cargo fmt, cargo clippy, cargo nextest, and documentation tests as mandatory quality gates.
 ---
 
 # Rust Lint & Format Enforcement
 
-Enforces running `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo test` before claiming any Rust work is complete.
+Enforces running `cargo fmt`, `cargo clippy -- -D warnings`, `cargo nextest run`, and documentation tests before claiming any Rust work is complete.
 
 ## When to Use
 
@@ -20,91 +20,101 @@ Enforces running `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo test` be
 **Before claiming any Rust work is done, you MUST run:**
 
 ```bash
-cargo fmt && cargo clippy -- -D warnings && cargo test
+cargo fmt && \
+cargo clippy --all-targets --all-features -- -D warnings && \
+cargo nextest run && \
+cargo test --doc
 ```
 
-This command MUST succeed with no errors before you proceed.
+This command sequence MUST succeed with no errors before you proceed.
+
+> If `cargo-nextest` is unavailable, fall back to:
+>
+> ```bash
+> cargo test
+> ```
 
 ## Workflow
 
-1. **Finish your implementation** - all code changes done
-2. **Run the enforcement command** - from the Rust project root (where Cargo.toml lives)
-3. **Handle clippy errors** - if `--fix` couldn't auto-fix, manually fix them
-4. **Re-run until clean** - repeat until all commands pass
-5. **Stage and commit** - only then proceed to commit/PR
+1. Finish your implementation.
+2. Run the quality gate from the project root (where `Cargo.toml` lives).
+3. Fix formatting issues.
+4. Fix all Clippy warnings and errors.
+5. Fix failing tests.
+6. Fix failing documentation tests.
+7. Re-run until every command succeeds.
+8. Only then stage, commit, or declare the task complete.
 
 ## Handling Failures
 
-### Clippy Reports Unfixable Errors
+### Formatting Failed
 
-```
-error: unused imports: `use std::io`
-```
-
-**Action:** Remove the unused import, then re-run the enforcement command.
-
-### Clippy Suggests Restructuring
-
-```
-warning: unnecessary struct wrapping
+```text
+Diff in src/main.rs
 ```
 
-**Action:** Apply the suggested refactoring, then re-run.
+**Action:** Run `cargo fmt` again and verify the diff is clean.
 
-### Tests Fail
+### Clippy Reports Errors
 
+```text
+error: unused import
 ```
-test result: FAILED. 0 passed, 1 failed
+
+**Action:** Fix the code instead of suppressing the lint unless there is a documented justification.
+
+### Unit or Integration Tests Fail
+
+```text
+test result: FAILED
 ```
 
-**Action:** Fix the failing test before proceeding. Do not skip tests.
+**Action:** Fix the failing tests before proceeding.
+
+### Documentation Tests Fail
+
+```text
+Doc-tests FAILED
+```
+
+**Action:** Update either the documentation examples or the implementation until they pass.
 
 ## Enforcement Checklist
 
-- [ ] `cargo fmt` passes (no output = success)
-- [ ] `cargo clippy -- -D warnings` passes (exit code 0)
-- [ ] `cargo test` passes (all tests green)
-- [ ] No warnings treated as errors
+- [ ] `cargo fmt`
+- [ ] `cargo clippy --all-targets --all-features -- -D warnings`
+- [ ] `cargo nextest run`
+- [ ] `cargo test --doc`
+- [ ] Zero Clippy warnings
+- [ ] All tests passing
 
-## Red Flags - STOP and Start Over
+## Red Flags — STOP
 
-These mean you MUST run the enforcement command:
+Never skip the quality gate because:
 
-- "Let me commit first, lint can be done later"
-- "Clippy warnings are not errors, they won't block compilation"
-- "The code works, formatting is optional"
-- "I'll run clippy in the CI, no need locally"
-- "A small change, no need for full lint"
-- "I tested it manually, no need for clippy"
-- "Let me just check if it compiles first"
-- "Tests are optional for this change"
-
-**Violating the letter of this rule is violating the spirit of this rule.**
+- "It's only a tiny change."
+- "CI will catch it."
+- "Formatting can wait."
+- "The code compiles."
+- "I tested it manually."
+- "Clippy is too strict."
+- "Tests take too long."
+- "Doc tests aren't important."
 
 ## Quick Reference
 
 | Command | Purpose |
 |---------|---------|
-| `cargo fmt` | Format code with rustfmt |
-| `cargo clippy -- -D warnings` | Lint with deny-all-warnings |
-| `cargo test` | Run all tests |
-| `cargo fmt && cargo clippy -- -D warnings && cargo test` | **MUST run before claiming done** |
-
-## Rationalization Countermeasures
-
-| Excuse | Reality |
-|-------|---------|
-| "Small change, lint is overkill" | Small changes still violate lint rules; one warning is too many |
-| "I'll do it before the final commit" | The final commit is now. The enforcement is non-negotiable |
-| "CI will catch issues" | CI is a safety net, not an excuse to skip local checks |
-| "Clippy is too strict" | Clippy catches real bugs; "strict" is a feature |
-| "Code compiles, that's enough" | Compiling != correct; clippy catches logic errors |
-| "I already manually tested" | Manual testing doesn't replace static analysis |
-| "Tests take too long" | Skipping tests means shipping broken code |
+| `cargo fmt` | Format code |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Strict linting |
+| `cargo nextest run` | Run unit & integration tests (recommended) |
+| `cargo test --doc` | Run documentation tests |
+| `cargo test` | Fallback when `cargo-nextest` is unavailable |
 
 ## Project-Specific Notes
 
-- Run from the Rust project root: `rust/tgbot/` or `rust/version-sync/`
-- If working in a Rust workspace, run from the workspace root
-- For multi-crate projects, run in each affected crate
-- Use `cargo test --all-features` if your project has feature-gated code
+- Run from the workspace root.
+- Prefer `cargo nextest run` over `cargo test` for daily development.
+- Always run `cargo test --doc` because `cargo-nextest` does not execute documentation tests.
+- For workspaces, execute the commands from the workspace root.
+- If feature-gated code exists, ensure the appropriate feature set is tested (typically `--all-features` where applicable).
