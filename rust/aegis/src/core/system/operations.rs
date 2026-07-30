@@ -178,6 +178,12 @@ APT::Periodic::AutocleanInterval "7";
             DistroFamily::Debian => {
                 run_cmd_checked(
                     "systemctl",
+                    &["enable", "--now", "apt-daily.timer"],
+                    TIMEOUT_APT,
+                )
+                .await?;
+                run_cmd_checked(
+                    "systemctl",
                     &["enable", "--now", "apt-daily-upgrade.timer"],
                     TIMEOUT_APT,
                 )
