@@ -699,13 +699,14 @@ func installAegis() {
 	}
 
 	configPath := filepath.Join(installDir, "config.enc")
+	var enableTG bool
 	if _, err := os.Stat(configPath); err == nil {
 		printGreen(i18n.T("install.config_exists"))
 	} else {
-		firstTimeSetup(destPath)
+		enableTG = firstTimeSetup(destPath)
 	}
 
-	writeSystemdService()
+	writeSystemdService(enableTG)
 
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = runCmdSilent("systemctl", "enable", serviceName)
@@ -748,8 +749,8 @@ func runAegisSetup(destPath string, payload []byte) {
 	}
 }
 
-func finishDeploy() {
-	writeSystemdService()
+func finishDeploy(enableTG bool) {
+	writeSystemdService(enableTG)
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = runCmdSilent("systemctl", "enable", serviceName)
 	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
@@ -783,6 +784,11 @@ func installFromStdin() {
 		os.Exit(1)
 	}
 
+	enableTG := true
+	if discordToken, ok := inputData["discord_token"].(string); ok && discordToken != "" {
+		enableTG = false
+	}
+
 	secret, hasSecret := inputData["totp_secret"].(string)
 	if !hasSecret || secret == "" {
 		secret = generateTOTPSecret(destPath)
@@ -795,7 +801,7 @@ func installFromStdin() {
 	}
 
 	runAegisSetup(destPath, payload)
-	finishDeploy()
+	finishDeploy(enableTG)
 }
 
 type setupConfig struct {
@@ -882,6 +888,8 @@ func installFromKeyVal() {
 		cfg.TOTPSecret = generateTOTPSecret(destPath)
 	}
 
+	enableTG := cfg.DiscordToken == ""
+
 	payload := buildSetupPayload(
 		[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
 		cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), []byte(cfg.MatrixStorePassphrase),
@@ -889,64 +897,72 @@ func installFromKeyVal() {
 	)
 
 	runAegisSetup(destPath, payload)
-	finishDeploy()
+	finishDeploy(enableTG)
 }
 
-func firstTimeSetup(binaryPath string) {
+func firstTimeSetup(binaryPath string) bool {
 	printSkyBlue(i18n.T("firsttime.title"))
 
-	printSkyBlue(i18n.T("firsttime.section_tg"))
-	printYellow(i18n.T("firsttime.tg_help_howto"))
-	printYellow(i18n.T("firsttime.tg_help_step1"))
-	printYellow(i18n.T("firsttime.tg_help_step2"))
-	printYellow(i18n.T("firsttime.tg_help_step3"))
-	printYellow(i18n.T("firsttime.tg_help_format"))
-	fmt.Println()
+	printSkyBlue(i18n.T("firsttime.section_platform"))
+	fmt.Print(i18n.T("firsttime.platform_prompt"))
+	platformChoice, _ := readLine()
+	enableTG := platformChoice == "1"
 
-	botTokenEnclave := readSecureInput(i18n.T("firsttime.tg_prompt"))
+	var botTokenEnclave *memguard.Enclave
+	var adminIDEnclave *memguard.Enclave
 
-	printYellow(i18n.T("firsttime.admin_help_howto"))
-	printYellow(i18n.T("firsttime.admin_help_step1"))
-	printYellow(i18n.T("firsttime.admin_help_step2"))
-	printYellow(i18n.T("firsttime.admin_help_step3"))
-	printYellow(i18n.T("firsttime.admin_help_format"))
-	fmt.Println()
+	if enableTG {
+		printSkyBlue(i18n.T("firsttime.section_tg"))
+		printYellow(i18n.T("firsttime.tg_help_howto"))
+		printYellow(i18n.T("firsttime.tg_help_step1"))
+		printYellow(i18n.T("firsttime.tg_help_step2"))
+		printYellow(i18n.T("firsttime.tg_help_step3"))
+		printYellow(i18n.T("firsttime.tg_help_format"))
+		fmt.Println()
 
-	adminIDEnclave := readSecureInput(i18n.T("firsttime.admin_prompt"))
+		botTokenEnclave = readSecureInput(i18n.T("firsttime.tg_prompt"))
 
-	totpSecretOutput, err := runCmdOutputBytes(binaryPath, "--generate-totp-secret")
-	if err != nil {
-		printRed(i18n.T("totp.generate_failed", err.Error()))
-		return
-	}
-	defer zeroBytes(totpSecretOutput)
+		printYellow(i18n.T("firsttime.admin_help_howto"))
+		printYellow(i18n.T("firsttime.admin_help_step1"))
+		printYellow(i18n.T("firsttime.admin_help_step2"))
+		printYellow(i18n.T("firsttime.admin_help_step3"))
+		printYellow(i18n.T("firsttime.admin_help_format"))
+		fmt.Println()
 
-	totpSecretRaw, err := extractBase32Secret(totpSecretOutput)
-	if err != nil {
-		printRed(i18n.T("totp.parse_failed", err.Error()))
-		return
-	}
-	defer zeroBytes(totpSecretRaw)
-
-	totpSecretEnclave := memguard.NewEnclave(totpSecretRaw)
-
-	totpSecretBuffer, _ := totpSecretEnclave.Open()
-	otpauthURL := buildOtpAuthURL(totpSecretBuffer.Bytes())
-	defer zeroBytes(otpauthURL)
-
-	printYellow(i18n.T("firsttime.totp_section"))
-	writeLine(i18n.T("firsttime.totp_key_label"), totpSecretBuffer.Bytes())
-
-	if _, err := exec.LookPath("qrencode"); err == nil {
-		printYellow(i18n.T("firsttime.totp_qr_scan"))
-		cmd := exec.Command("qrencode", "-t", "ANSIUTF8")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Stdin = bytes.NewReader(otpauthURL)
-		_ = cmd.Run()
+		adminIDEnclave = readSecureInput(i18n.T("firsttime.admin_prompt"))
 	} else {
-		printYellow(i18n.T("firsttime.totp_installing_qr"))
-		if err := runCmdSilent("apt-get", "install", "-y", "qrencode"); err == nil {
+		if platformChoice != "2" {
+			printRed(i18n.T("firsttime.platform_invalid"))
+		}
+	}
+
+	var totpSecretEnclave *memguard.Enclave
+
+	if enableTG {
+		totpSecretOutput, err := runCmdOutputBytes(binaryPath, "--generate-totp-secret")
+		if err != nil {
+			printRed(i18n.T("totp.generate_failed", err.Error()))
+			return false
+		}
+		defer zeroBytes(totpSecretOutput)
+
+		totpSecretRaw, err := extractBase32Secret(totpSecretOutput)
+		if err != nil {
+			printRed(i18n.T("totp.parse_failed", err.Error()))
+			return false
+		}
+		defer zeroBytes(totpSecretRaw)
+
+		totpSecretEnclave = memguard.NewEnclave(totpSecretRaw)
+
+		totpSecretBuffer, _ := totpSecretEnclave.Open()
+		otpauthURL := buildOtpAuthURL(totpSecretBuffer.Bytes())
+		defer zeroBytes(otpauthURL)
+
+		printYellow(i18n.T("firsttime.totp_section"))
+		writeLine(i18n.T("firsttime.totp_key_label"), totpSecretBuffer.Bytes())
+
+		if _, err := exec.LookPath("qrencode"); err == nil {
 			printYellow(i18n.T("firsttime.totp_qr_scan"))
 			cmd := exec.Command("qrencode", "-t", "ANSIUTF8")
 			cmd.Stdout = os.Stdout
@@ -954,15 +970,25 @@ func firstTimeSetup(binaryPath string) {
 			cmd.Stdin = bytes.NewReader(otpauthURL)
 			_ = cmd.Run()
 		} else {
-			printYellow(i18n.T("firsttime.totp_no_qr"))
+			printYellow(i18n.T("firsttime.totp_installing_qr"))
+			if err := runCmdSilent("apt-get", "install", "-y", "qrencode"); err == nil {
+				printYellow(i18n.T("firsttime.totp_qr_scan"))
+				cmd := exec.Command("qrencode", "-t", "ANSIUTF8")
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				cmd.Stdin = bytes.NewReader(otpauthURL)
+				_ = cmd.Run()
+			} else {
+				printYellow(i18n.T("firsttime.totp_no_qr"))
+			}
 		}
+
+		writeLine(i18n.T("firsttime.totp_manual_url"), otpauthURL)
+		printYellow(i18n.T("firsttime.totp_clear_hint"))
+		printYellow(i18n.T("firsttime.totp_separator"))
+
+		totpSecretBuffer.Destroy()
 	}
-
-	writeLine(i18n.T("firsttime.totp_manual_url"), otpauthURL)
-	printYellow(i18n.T("firsttime.totp_clear_hint"))
-	printYellow(i18n.T("firsttime.totp_separator"))
-
-	totpSecretBuffer.Destroy()
 
 	printSkyBlue(i18n.T("firsttime.matrix_section"))
 	printYellow(i18n.T("firsttime.matrix_desc1"))
@@ -1007,34 +1033,48 @@ func firstTimeSetup(binaryPath string) {
 	}
 
 	// ── Discord section ──
-	printSkyBlue(i18n.T("firsttime.discord_section"))
-	printYellow(i18n.T("firsttime.discord_desc1"))
-	printYellow(i18n.T("firsttime.discord_desc2"))
-	fmt.Print(i18n.T("firsttime.discord_prompt_yn"))
-	setupDiscord, _ := readLine()
-
 	var discordToken, discordAdminID string
+	if !enableTG {
+		printSkyBlue(i18n.T("firsttime.discord_section"))
+		printYellow(i18n.T("firsttime.discord_desc1"))
+		printYellow(i18n.T("firsttime.discord_desc2"))
+		fmt.Print(i18n.T("firsttime.discord_prompt_yn"))
+		setupDiscord, _ := readLine()
 
-	if setupDiscord == "y" || setupDiscord == "Y" {
-		printYellow(i18n.T("firsttime.discord_token_title"))
-		printYellow(i18n.T("firsttime.discord_token_help_step1"))
-		printYellow(i18n.T("firsttime.discord_token_help_step2"))
-		printYellow(i18n.T("firsttime.discord_token_help_format"))
-		discordToken = readSecureInputStr(i18n.T("firsttime.discord_token_prompt"))
+		if setupDiscord == "y" || setupDiscord == "Y" {
+			printYellow(i18n.T("firsttime.discord_token_title"))
+			printYellow(i18n.T("firsttime.discord_token_help_step1"))
+			printYellow(i18n.T("firsttime.discord_token_help_step2"))
+			printYellow(i18n.T("firsttime.discord_token_help_format"))
+			discordToken = readSecureInputStr(i18n.T("firsttime.discord_token_prompt"))
 
-		printYellow(i18n.T("firsttime.discord_admin_title"))
-		printYellow(i18n.T("firsttime.discord_admin_help_step1"))
-		printYellow(i18n.T("firsttime.discord_admin_help_step2"))
-		printYellow(i18n.T("firsttime.discord_admin_help_format"))
-		discordAdminID = readSecureInputStr(i18n.T("firsttime.discord_admin_prompt"))
+			printYellow(i18n.T("firsttime.discord_admin_title"))
+			printYellow(i18n.T("firsttime.discord_admin_help_step1"))
+			printYellow(i18n.T("firsttime.discord_admin_help_step2"))
+			printYellow(i18n.T("firsttime.discord_admin_help_format"))
+			discordAdminID = readSecureInputStr(i18n.T("firsttime.discord_admin_prompt"))
 
-		printYellow(i18n.T("firsttime.discord_intent_warning"))
-		printYellow(i18n.T("firsttime.discord_guild_warning"))
+			printYellow(i18n.T("firsttime.discord_intent_warning"))
+			printYellow(i18n.T("firsttime.discord_guild_warning"))
+		}
 	}
 
-	bTokenBuf, _ := botTokenEnclave.Open()
-	aIDBuf, _ := adminIDEnclave.Open()
-	tSecretBuf, _ := totpSecretEnclave.Open()
+	var bTokenBytes, aIDBytes, tSecretBytes []byte
+	if botTokenEnclave != nil {
+		bTokenBuf, _ := botTokenEnclave.Open()
+		bTokenBytes = bTokenBuf.Bytes()
+		bTokenBuf.Destroy()
+	}
+	if adminIDEnclave != nil {
+		aIDBuf, _ := adminIDEnclave.Open()
+		aIDBytes = aIDBuf.Bytes()
+		aIDBuf.Destroy()
+	}
+	if totpSecretEnclave != nil {
+		tSecretBuf, _ := totpSecretEnclave.Open()
+		tSecretBytes = tSecretBuf.Bytes()
+		tSecretBuf.Destroy()
+	}
 
 	var mPassBuf *memguard.LockedBuffer
 	var mPassBytes []byte
@@ -1046,7 +1086,7 @@ func firstTimeSetup(binaryPath string) {
 	}
 
 	setupPayload := buildSetupPayload(
-		bTokenBuf.Bytes(), aIDBuf.Bytes(), tSecretBuf.Bytes(),
+		bTokenBytes, aIDBytes, tSecretBytes,
 		matrixHS, matrixUser, matrixRoom, mPassBytes, []byte(matrixStorePassphrase),
 		discordToken, discordAdminID, matrixRecoveryKey,
 	)
@@ -1064,9 +1104,10 @@ func firstTimeSetup(binaryPath string) {
 		printRed(i18n.T("setup.failed", err.Error()))
 	}
 
-	bTokenBuf.Destroy()
-	aIDBuf.Destroy()
-	tSecretBuf.Destroy()
+	zeroBytes(bTokenBytes)
+	zeroBytes(aIDBytes)
+	zeroBytes(tSecretBytes)
+	return enableTG
 }
 
 // readSecureInput 安全地从终端读取输入，直接返回加密的 Enclave，避免产生明文 string 垃圾
@@ -1097,16 +1138,20 @@ func readSecureInput(prompt string) *memguard.Enclave {
 	return memguard.NewEnclave(actualData)
 }
 
-func writeSystemdService() {
+func writeSystemdService(enableTG bool) {
+	platformFlag := "--telegram"
+	if !enableTG {
+		platformFlag = "--discord"
+	}
 	content := `[Unit]
-Description=WWPS Telegram Bot
+Description=WWPS ` + platformFlag + ` Bot
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=` + installDir + `
-ExecStart=` + filepath.Join(installDir, binaryName) + `
+ExecStart=` + filepath.Join(installDir, binaryName) + ` ` + platformFlag + `
 Restart=always
 RestartSec=5
 
