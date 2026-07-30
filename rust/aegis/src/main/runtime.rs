@@ -9,7 +9,8 @@ use anyhow::Result;
 use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::Room as MatrixRoom;
 use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::events::room::message::MessageType;
+use matrix_sdk::ruma::events::room::message::{MessageType, Relation, RoomMessageEventContentWithoutRelation};
+use matrix_sdk::ruma::events::room::encrypted;
 use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::prelude::*;
 use teloxide::types::{CallbackQuery, ChatId, Message};
@@ -161,6 +162,17 @@ pub async fn run(
         let matrix_state = state.clone();
         let matrix_adapter_sync = matrix_adapter;
         let matrix_target = target.clone();
+        let matrix_target_for_encrypted = matrix_target.clone();
+
+        fn extract_thread_root(relates_to: &Option<Relation<RoomMessageEventContentWithoutRelation>>) -> Option<String> {
+            relates_to.as_ref().and_then(|r| {
+                if let Relation::Thread(t) = r {
+                    Some(t.event_id.to_string())
+                } else {
+                    None
+                }
+            })
+        }
 
         client.add_event_handler(
             move |event: matrix_sdk::ruma::events::room::message::OriginalSyncRoomMessageEvent,
@@ -215,10 +227,26 @@ pub async fn run(
                             file_id,
                             file_name,
                             reply_to_text: None,
-                            thread_root: None,
+                            thread_root: extract_thread_root(&event.content.relates_to),
                         })
                     };
                     let _ = dispatch_event(event, &state).await;
+                }
+            },
+        );
+
+        client.add_event_handler(
+            move |event: encrypted::SyncRoomEncryptedEvent, room: MatrixRoom, _client: MatrixClient| {
+                let target = matrix_target_for_encrypted.clone();
+                async move {
+                    if room.room_id().as_str() != target.0.as_str() {
+                        return;
+                    }
+                    log::debug!(
+                        "Encrypted event in thread room from {}: {:?}",
+                        event.sender(),
+                        event.event_id()
+                    );
                 }
             },
         );
