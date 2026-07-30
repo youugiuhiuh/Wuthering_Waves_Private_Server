@@ -1,0 +1,151 @@
+name: Dependabot PR Verify
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  # 1. 探测任务：极其轻量，只负责找出哪个项目变了
+  detect-changes:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Generate Dynamic Matrix
+        id: set-matrix
+        run: |
+          PROJECTS='[
+            {"name": "rust-tgbot", "path": "rust/tgbot", "language": "rust"},
+            {"name": "go-installer", "path": "go/installer", "language": "go"},
+            {"name": "sni-tester", "path": "sni_tester", "language": "go"},
+            {"name": "github-actions", "path": ".github", "language": "gha"}
+          ]'
+
+          # 1. 先把变动的文件列表格式化为标准的 JSON 字符串数组
+          CHANGED_JSON=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | jq -R -s 'split("\n") | map(select(length > 0))')
+
+          # 2. 将两个 JSON 丢给 jq 做纯粹的数组过滤，不再混用 Shell 命令
+          FILTERED_PRJ=$(jq -c -n \
+            --argjson projs "$PROJECTS" \
+            --argjson files "$CHANGED_JSON" \
+            '$projs | [ .[] | select(.path as $p | any($files[]; startswith($p))) ]')
+
+          echo "最终需要测试的项目: $FILTERED_PRJ"
+          echo "matrix=$FILTERED_PRJ" >> $GITHUB_OUTPUT
+
+  # 2. 测试任务：动态接收上一步的结果并应用缓存
+  test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.matrix != '[]' && needs.detect-changes.outputs.matrix != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      # ---------------- Go 环境与缓存 ----------------
+      - name: Setup Go
+        if: matrix.project.language == 'go'
+        uses: actions/setup-go@v7
+        with:
+          go-version: "stable"
+          cache: true # ⚡ 开启内置的 Go Module 和 Build 编译缓存
+          cache-dependency-path: ${{ matrix.project.path }}/go.sum
+
+      # ---------------- Rust 环境与缓存 ----------------
+      - name: Setup Rust
+        if: matrix.project.language == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Setup Rust Cache
+        if: matrix.project.language == 'rust'
+        uses: swatinem/rust-cache@v2
+        with:
+          # ⚡ 针对 Monorepo 显式指定工作区路径，防止多项目间缓存相互覆盖或污染
+          workspaces: ${{ matrix.project.path }}
+
+      - name: Install protoc
+        if: matrix.project.language == 'rust'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      # ---------------- Xray（Rust 测试依赖） ----------------
+      - name: Setup Xray
+        if: matrix.project.language == 'rust'
+        uses: youugiuhiuh/Xray-setup@1
+
+      # ---------------- 构建与测试 ----------------
+      - name: Build and Test
+        run: |
+          cd ${{ matrix.project.path }}
+          if [ "${{ matrix.project.language }}" = "go" ]; then
+            go test ./...
+          elif [ "${{ matrix.project.language }}" = "rust" ]; then
+            # 💡 得益于 rust-cache，第二次及以后的 Dependabot PR 速度会大幅提升
+            cargo test
+          else
+            echo "🔍 开始内联检查 GitHub Actions YAML 语法..."
+            python3 -c "
+          import yaml, glob, sys
+          files = glob.glob('workflows/*.yml') + glob.glob('workflows/*.yaml')
+          if not files: sys.exit(1)
+          for f in files:
+              try:
+                  with open(f, 'r') as s: yaml.safe_load(s)
+              except Exception as e: sys.exit(1)
+          "
+          fi
+
+  # 3. 统一标签管理
+  update-labels:
+    needs: [detect-changes, test]
+    if: github.actor == 'dependabot[bot]' && always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update PR Labels
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const testResult = "${{ needs.test.result }}";
+            const detectResult = "${{ needs.detect-changes.result }}";
+
+            let label = "automerge-failed";
+            if (detectResult === "success" && (testResult === "success" || testResult === "skipped")) {
+              label = "automerge";
+            }
+
+            const removeLabel = label === "automerge" ? "automerge-failed" : "automerge";
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: [label]
+            });
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: removeLabel
+              });
+            } catch (e) {}

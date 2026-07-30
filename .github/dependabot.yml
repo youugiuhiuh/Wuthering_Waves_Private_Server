@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # 1. 对应项目: rust-tgbot
+  - package-ecosystem: "cargo"
+    directory: "/rust/tgbot" # 必须以 / 开头
+    schedule:
+      interval: "weekly"
+
+  # 2. 对应项目: sni-tester
+  - package-ecosystem: "gomod"
+    directory: "/sni_tester"
+    schedule:
+      interval: "weekly"
+
+  # 3. 对应项目: go-installer
+  - package-ecosystem: "gomod"
+    directory: "/go/installer"
+    schedule:
+      interval: "weekly"
+
+  # 4. 对应项目: github-actions 自身更新
+  - package-ecosystem: "github-actions"
+    directory: "/" # 保持为 "/"，它会自动识别根目录下的 .github/workflows
+    schedule:
+      interval: "weekly"

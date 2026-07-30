@@ -1,0 +1,89 @@
+name: Minisign Key Expiration Check
+
+on:
+  schedule:
+    - cron: '0 0 1 1,4,7,10 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Check key expiration dates
+        id: check
+        run: |
+          # 提取所有过期日期
+          GO_DATES=$(grep -oP 'ExpiresAt: "\K[^"]+' go/installer/minisign_verify.go 2>/dev/null || true)
+          RS_DATES=$(grep -oP 'expires_at: "\K[^"]+' rust/aegis/src/core/crypto/minisign.rs 2>/dev/null || true)
+          ALL_DATES=$(printf '%s\n%s' "$GO_DATES" "$RS_DATES" | grep -v '^$' | sort)
+
+          if [ -z "$ALL_DATES" ]; then
+            echo "DAYS_LEFT=999" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          EARLIEST=$(echo "$ALL_DATES" | head -1)
+          NOW_EPOCH=$(date +%s)
+          EXPIRY_EPOCH=$(date -d "$EARLIEST" +%s 2>/dev/null || date -j -f "%Y-%m-%d" "$EARLIEST" +%s 2>/dev/null || echo 0)
+
+          if [ "$EXPIRY_EPOCH" = "0" ]; then
+            echo "DAYS_LEFT=999" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          DAYS=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+          echo "DAYS_LEFT=$DAYS" >> $GITHUB_ENV
+          echo "EARLIEST=$EARLIEST" >> $GITHUB_ENV
+          echo "Earliest: $EARLIEST ($DAYS days remaining)"
+
+      - name: Create issue if key is expiring soon
+        if: env.DAYS_LEFT <= 90
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$DAYS_LEFT" -le 0 ]; then
+            TITLE="🚨 Minisign key has EXPIRED ($EARLIEST)"
+            LABEL="key-expired"
+          else
+            TITLE="⚠️ Minisign key expires in $DAYS_LEFT days ($EARLIEST)"
+            LABEL="key-rotation"
+          fi
+
+          BODY="## Minisign Key Expiration Warning
+
+          | Field | Value |
+          |-------|-------|
+          | Expires | $EARLIEST |
+          | Days remaining | $DAYS_LEFT |
+          | Source files | \`go/installer/minisign_verify.go\` / \`rust/aegis/src/core/crypto/minisign.rs\` |
+
+          ### Required action
+          1. Run \`scripts/rotate-minisign-key.sh\`
+          2. Commit and push the updated keys
+          3. Update \`MINISIGN_SECRET_KEY\` in GitHub Secrets"
+
+          EXISTING=$(gh issue list --label "$LABEL" --json number -q '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "🔁 Still expiring (checked $(date +%Y-%m-%d))"
+          else
+            gh issue create --title "$TITLE" --body "$BODY" --label "$LABEL"
+          fi
+
+      - name: Close resolved issue
+        if: env.DAYS_LEFT > 90
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for LABEL in key-rotation key-expired; do
+            EXISTING=$(gh issue list --label "$LABEL" --json number -q '.[0].number' 2>/dev/null || echo "")
+            if [ -n "$EXISTING" ]; then
+              gh issue close "$EXISTING" --comment "✅ Key has been rotated (checked $(date +%Y-%m-%d))"
+            fi
+          done

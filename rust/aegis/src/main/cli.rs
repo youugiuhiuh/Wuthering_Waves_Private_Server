@@ -1,0 +1,60 @@
+use aegis::core::totp::TotpManager;
+use anyhow::Result;
+
+use crate::bootstrap::{run_setup, run_setup_from_stdin};
+
+pub enum CliMode {
+    Stdout(String),
+    Setup {
+        token: Option<String>,
+        admin_id: Option<String>,
+        totp_secret: Option<String>,
+    },
+    SetupStdin,
+}
+
+pub fn try_cli_mode(args: &[String]) -> Option<CliMode> {
+    if args.len() <= 1 {
+        return None;
+    }
+    match args[1].as_str() {
+        "--generate-totp-secret" => Some(CliMode::Stdout(TotpManager::generate_new_secret())),
+        "-v" | "--version" => Some(CliMode::Stdout(format!(
+            "aegis {}",
+            env!("CARGO_PKG_VERSION")
+        ))),
+        "--setup" => Some(CliMode::Setup {
+            token: args.get(2).cloned(),
+            admin_id: args.get(3).cloned(),
+            totp_secret: args.get(4).cloned(),
+        }),
+        "--setup-stdin" => Some(CliMode::SetupStdin),
+        _ => None,
+    }
+}
+
+pub async fn execute_cli_mode(mode: CliMode) -> Result<()> {
+    match mode {
+        CliMode::Stdout(msg) => {
+            println!("{msg}");
+            Ok(())
+        }
+        CliMode::Setup {
+            token,
+            admin_id,
+            totp_secret,
+        } => {
+            run_setup(
+                token.as_deref(),
+                admin_id.as_deref(),
+                totp_secret.as_deref(),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+        }
+        CliMode::SetupStdin => run_setup_from_stdin().await,
+    }
+}

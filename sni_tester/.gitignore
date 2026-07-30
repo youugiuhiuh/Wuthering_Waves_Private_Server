@@ -1,0 +1,10 @@
+sni_web
+sni_output/
+badger_db
+*.class
+*.lock
+*.log
+*.pyc
+*.swp
+.buildlog/
+.history

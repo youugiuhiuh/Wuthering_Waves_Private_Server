@@ -1,0 +1,151 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g., 0.4.4)"
+        required: true
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - "rust/aegis/Cargo.toml"
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore(deps)')"
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Resolve Version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(grep -m1 '^version' rust/aegis/Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          fi
+          VERSION=${VERSION#v}
+          echo "NEW_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Resolved version: $VERSION"
+
+      - name: Update Version in Cargo.toml (Manual Trigger Only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          sed -i 's/^version = .*/version = "'${{ env.NEW_VERSION }}'"/' rust/aegis/Cargo.toml
+
+      - name: Sync Source Tags
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            git add rust/aegis/Cargo.toml
+            git commit -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]" || echo "No changes to commit"
+            git push origin main
+          fi
+
+          git tag -f "v${{ env.NEW_VERSION }}"
+          git push origin "v${{ env.NEW_VERSION }}" --force
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.10
+
+      - name: Cache Rust build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            rust/aegis/target/release/.fingerprint
+            rust/aegis/target/release/build
+            rust/aegis/target/release/deps
+          key: ${{ runner.os }}-rust-aegis-${{ hashFiles('rust/aegis/Cargo.lock', 'rust/aegis/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-aegis-
+
+      - name: Cache Go build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/garble
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-installer-${{ hashFiles('go/installer/go.sum', 'go/installer/go.mod') }}
+          restore-keys: |
+            ${{ runner.os }}-go-installer-
+
+      - name: Build Runtime Binary
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
+          SCCACHE_GHA_VERSION: rust-aegis-v1
+        run: |
+          cd rust/aegis
+          RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" \
+          cargo build --release
+
+          ls -lh target/release/aegis
+          upx --best --lzma target/release/aegis
+
+      - name: Build Bootstrap Binary
+        run: |
+          cd go/installer
+          CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+
+      - name: Prepare Distribution Artifacts
+        run: |
+          mkdir -p dist
+          cp rust/aegis/target/release/aegis dist/
+          cp go/installer/installer dist/
+
+      - name: Cleanup Old Releases (Keep Last 3)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASES=$(gh release list --limit 100 -L 100 | sort -t$'\t' -k3 -r | cut -f 3)
+
+          COUNT=0
+          for tag in $RELEASES; do
+            COUNT=$((COUNT + 1))
+            if [ $COUNT -gt 3 ]; then
+              echo "Deleting old release: $tag"
+              gh release delete "$tag" --yes --cleanup-tag || true
+            fi
+          done
+
+          echo "Kept $((COUNT > 3 ? 3 : COUNT)) releases, deleted $((COUNT > 3 ? COUNT - 3 : 0)) old releases"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@7c4723f7a335432393329f8f1c564994ce50185d
+        with:
+          tag_name: v${{ env.NEW_VERSION }}
+          name: v${{ env.NEW_VERSION }}
+          files: |
+            dist/aegis
+            dist/installer
+          body: |
+            Release `v${{ env.NEW_VERSION }}`.
+
+            ### Included Files
+            - `installer`: bootstrap executable
+            - `aegis`: runtime management executable
+
+      - name: Dispatch Signing Workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run sign-release.yml --ref main -f tag_name=v${{ env.NEW_VERSION }}
