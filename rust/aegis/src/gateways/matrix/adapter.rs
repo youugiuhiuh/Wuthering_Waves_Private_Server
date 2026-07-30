@@ -212,7 +212,7 @@ impl BotAdapter for MatrixAdapter {
             has_file_transfer: true,
             can_send_file: true,
             can_send_image: true,
-            can_send_voice: true,
+            can_send_voice: false,
             can_send_typing: true,
             can_send_reaction: true,
             can_thread: true,
