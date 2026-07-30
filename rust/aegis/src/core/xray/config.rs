@@ -202,6 +202,8 @@ impl ConfigManager {
                 "security": "tls",
                 "tlsSettings": {
                     "serverName": domain,
+                    "alpn": ["h2", "http/1.1"],
+                    "minVersion": "1.2",
                     "certificates": [{
                         "certificateFile": certs.fullchain.to_string_lossy(),
                         "keyFile": certs.privkey.to_string_lossy()
@@ -989,6 +991,11 @@ mod tests {
             certs.fullchain.to_string_lossy().as_ref()
         );
         assert!(value["streamSettings"].get("realitySettings").is_none());
+        assert_eq!(
+            value["streamSettings"]["tlsSettings"]["alpn"],
+            json!(["h2", "http/1.1"])
+        );
+        assert_eq!(value["streamSettings"]["tlsSettings"]["minVersion"], "1.2");
     }
 
     #[test]
