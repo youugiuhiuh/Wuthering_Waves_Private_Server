@@ -652,9 +652,9 @@ mod tests {
 
     async fn make_test_state(totp_secret: &str) -> AppState {
         let state = AppState::new(
-            42,
+            Some(42),
             None,
-            TotpManager::new(&SecretString::from(totp_secret.to_string())).unwrap(),
+            Some(TotpManager::new(&SecretString::from(totp_secret.to_string())).unwrap()),
             Arc::new(TestExecutor),
             None,
             600,
@@ -668,7 +668,7 @@ mod tests {
     async fn first_totp_valid_returns_confirm() {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
-        let totp = state.generate_current_totp().unwrap();
+        let totp = state.generate_current_totp().unwrap().unwrap();
         let action = process_destruct_message(
             Some(&totp),
             DestructStep::AwaitFirstTotp,
@@ -752,7 +752,7 @@ mod tests {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
         state.begin_destruct("42".to_string(), Instant::now()).await;
-        let totp = state.generate_current_totp().unwrap();
+        let totp = state.generate_current_totp().unwrap().unwrap();
         let msg = MessageEvent {
             adapter: Arc::new(MockAdapter),
             target: TargetId("42".into()),
@@ -790,7 +790,7 @@ mod tests {
                 Instant::now(),
             )
             .await;
-        let totp = state.generate_current_totp().unwrap();
+        let totp = state.generate_current_totp().unwrap().unwrap();
         let msg = MessageEvent {
             adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),

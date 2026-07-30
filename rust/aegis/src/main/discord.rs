@@ -213,9 +213,9 @@ mod tests {
 
     fn make_enc() -> EncryptedConfig {
         EncryptedConfig {
-            token: vec![],
-            admin_id: vec![],
-            totp_secret: vec![],
+            token: Some(vec![]),
+            admin_id: Some(vec![]),
+            totp_secret: Some(vec![]),
             self_destruct_key_hash: None,
             matrix_homeserver: None,
             matrix_username: None,

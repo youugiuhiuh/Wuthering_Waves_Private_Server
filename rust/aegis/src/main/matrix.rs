@@ -184,9 +184,9 @@ mod tests {
 
     fn empty_config() -> EncryptedConfig {
         EncryptedConfig {
-            token: vec![],
-            admin_id: vec![],
-            totp_secret: vec![],
+            token: Some(vec![]),
+            admin_id: Some(vec![]),
+            totp_secret: Some(vec![]),
             self_destruct_key_hash: None,
             matrix_homeserver: None,
             matrix_username: None,
@@ -203,9 +203,9 @@ mod tests {
     #[test]
     fn returns_true_when_all_matrix_fields_present() {
         let config = EncryptedConfig {
-            token: vec![],
-            admin_id: vec![],
-            totp_secret: vec![],
+            token: Some(vec![]),
+            admin_id: Some(vec![]),
+            totp_secret: Some(vec![]),
             self_destruct_key_hash: None,
             matrix_homeserver: Some(vec![1]),
             matrix_username: Some(vec![1]),
@@ -241,9 +241,9 @@ mod tests {
     #[test]
     fn returns_false_when_some_fields_missing() {
         let config = EncryptedConfig {
-            token: vec![],
-            admin_id: vec![],
-            totp_secret: vec![],
+            token: Some(vec![]),
+            admin_id: Some(vec![]),
+            totp_secret: Some(vec![]),
             self_destruct_key_hash: None,
             matrix_homeserver: Some(vec![1]),
             matrix_username: Some(vec![1]),

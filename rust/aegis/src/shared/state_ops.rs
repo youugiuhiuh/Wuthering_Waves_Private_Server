@@ -97,12 +97,14 @@ mod tests {
 
     fn make_state() -> AppState {
         AppState::new(
-            42,
+            Some(42),
             None,
-            TotpManager::new(&secrecy::SecretString::from(
-                TotpManager::generate_new_secret(),
-            ))
-            .unwrap(),
+            Some(
+                TotpManager::new(&secrecy::SecretString::from(
+                    TotpManager::generate_new_secret(),
+                ))
+                .unwrap(),
+            ),
             Arc::new(NoopExecutor),
             None,
             600,

@@ -311,9 +311,9 @@ mod dispatch_security_file_tests {
     async fn file_captured_when_pending_sets_hash() {
         let secret = TotpManager::generate_new_secret();
         let state = Arc::new(AppState::new(
-            42,
+            Some(42),
             None,
-            TotpManager::new(&secrecy::SecretString::from(secret)).unwrap(),
+            Some(TotpManager::new(&secrecy::SecretString::from(secret)).unwrap()),
             Arc::new(TestExecutor),
             None,
             600,
@@ -430,9 +430,11 @@ mod tests {
 
     fn make_state() -> AppState {
         AppState::new(
-            42,
+            Some(42),
             None,
-            TotpManager::new(&SecretString::from(TotpManager::generate_new_secret())).unwrap(),
+            Some(
+                TotpManager::new(&SecretString::from(TotpManager::generate_new_secret())).unwrap(),
+            ),
             Arc::new(NoopExecutor),
             None,
             600,
@@ -507,7 +509,7 @@ mod tests {
         let state = make_state();
         state.record_auth_success(42, Instant::now()).await;
         state.begin_destruct("42".to_string(), Instant::now()).await;
-        let totp = state.generate_current_totp().unwrap();
+        let totp = state.generate_current_totp().unwrap().unwrap();
         dispatch_event(message_event(adapter.clone(), "42", Some(totp)), &state)
             .await
             .unwrap();
@@ -536,7 +538,7 @@ mod tests {
         let state = make_state();
         // not authorized initially
         assert!(!state.is_authorized(42).await);
-        let code = state.generate_current_totp().unwrap();
+        let code = state.generate_current_totp().unwrap().unwrap();
         dispatch_event(message_event(adapter.clone(), "123", Some(code)), &state)
             .await
             .unwrap();

@@ -9,8 +9,10 @@ use anyhow::Result;
 use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::Room as MatrixRoom;
 use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::events::room::message::{MessageType, Relation, RoomMessageEventContentWithoutRelation};
 use matrix_sdk::ruma::events::room::encrypted;
+use matrix_sdk::ruma::events::room::message::{
+    MessageType, Relation, RoomMessageEventContentWithoutRelation,
+};
 use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::prelude::*;
 use teloxide::types::{CallbackQuery, ChatId, Message};
@@ -58,8 +60,8 @@ pub async fn run(
     enable_telegram: bool,
     enable_matrix: bool,
     discord_raw: Option<super::discord::DiscordRawHandle>,
-    token: String,
-    admin_id: i64,
+    token: Option<String>,
+    admin_id: Option<i64>,
 ) -> Result<(), anyhow::Error> {
     // Initialize i18n language from config
     if let Ok(config_data) = std::fs::read(config_dir().join(crate::bootstrap::CONFIG_FILE))
@@ -164,7 +166,9 @@ pub async fn run(
         let matrix_target = target.clone();
         let matrix_target_for_encrypted = matrix_target.clone();
 
-        fn extract_thread_root(relates_to: &Option<Relation<RoomMessageEventContentWithoutRelation>>) -> Option<String> {
+        fn extract_thread_root(
+            relates_to: &Option<Relation<RoomMessageEventContentWithoutRelation>>,
+        ) -> Option<String> {
             relates_to.as_ref().and_then(|r| {
                 if let Relation::Thread(t) = r {
                     Some(t.event_id.to_string())
@@ -236,7 +240,9 @@ pub async fn run(
         );
 
         client.add_event_handler(
-            move |event: encrypted::SyncRoomEncryptedEvent, room: MatrixRoom, _client: MatrixClient| {
+            move |event: encrypted::SyncRoomEncryptedEvent,
+                  room: MatrixRoom,
+                  _client: MatrixClient| {
                 let target = matrix_target_for_encrypted.clone();
                 async move {
                     if room.room_id().as_str() != target.0.as_str() {
@@ -339,7 +345,7 @@ pub async fn run(
             Ok(())
         }
 
-        let bot = Bot::new(&token);
+        let bot = Bot::new(token.as_deref().unwrap());
 
         let handler = dptree::entry()
             .branch(
@@ -351,7 +357,7 @@ pub async fn run(
             .branch(Update::filter_callback_query().endpoint(handle_callback));
 
         let adapter_for_init = state.adapter.clone();
-        let target_for_init = TargetId(admin_id.to_string());
+        let target_for_init = TargetId(admin_id.unwrap_or(0).to_string());
         tokio::spawn(async move {
             if let Err(e) = aegis::core::system::scheduler::start_scheduler(
                 adapter_for_init.clone(),
@@ -387,7 +393,7 @@ pub async fn run(
     // ── Matrix-only: 后台初始化 + 保活 ──
     if enable_matrix && !enable_telegram {
         let adapter_for_init = state.adapter.clone();
-        let target_for_init = TargetId(admin_id.to_string());
+        let target_for_init = TargetId(admin_id.unwrap_or(0).to_string());
         tokio::spawn(async move {
             if let Err(e) = aegis::core::system::scheduler::start_scheduler(
                 adapter_for_init.clone(),

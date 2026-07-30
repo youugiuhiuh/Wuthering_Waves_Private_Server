@@ -12,10 +12,10 @@ use crate::bootstrap::{
 };
 
 pub struct DecryptedConfig {
-    pub token: String,
-    pub admin_id: i64,
+    pub token: Option<String>,
+    pub admin_id: Option<i64>,
     #[expect(dead_code)]
-    pub totp_secret: String,
+    pub totp_secret: Option<String>,
     #[expect(dead_code)]
     pub discord_token: Option<String>,
     #[expect(dead_code)]
@@ -25,7 +25,7 @@ pub struct DecryptedConfig {
 
 pub struct AppConfig {
     pub decrypted: DecryptedConfig,
-    pub totp_manager: TotpManager,
+    pub totp_manager: Option<TotpManager>,
     pub bot_settings: BotSettings,
 }
 
@@ -44,29 +44,43 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
     let config_data = fs::read(&config_path).context("Config file miss")?;
     let encrypted_config: EncryptedConfig = serde_json::from_slice(&config_data)?;
 
-    let token_vec = security
-        .decrypt(&encrypted_config.token)
-        .context("解密 token 失败")?;
-    let admin_id_vec = security
-        .decrypt(&encrypted_config.admin_id)
-        .context("解密 admin_id 失败")?;
-    let totp_sec_vec = security
-        .decrypt(&encrypted_config.totp_secret)
-        .context("解密 totp_secret 失败")?;
+    let token = match &encrypted_config.token {
+        Some(v) => {
+            let vec = security.decrypt(v).context("解密 token 失败")?;
+            Some(
+                String::from_utf8(vec.expose_secret().to_vec())
+                    .context("token 包含无效的 UTF-8 字符")?,
+            )
+        }
+        None => None,
+    };
 
-    let token: String = String::from_utf8(token_vec.expose_secret().to_vec())
-        .context("token 包含无效的 UTF-8 字符")?;
-    let admin_id_str: String = String::from_utf8(admin_id_vec.expose_secret().to_vec())
-        .context("admin_id 包含无效的 UTF-8 字符")?;
-    let totp_secret: String = String::from_utf8(totp_sec_vec.expose_secret().to_vec())
-        .context("totp_secret 包含无效的 UTF-8 字符")?
-        .trim()
-        .to_string();
+    let admin_id = match &encrypted_config.admin_id {
+        Some(v) => {
+            let vec = security.decrypt(v).context("解密 admin_id 失败")?;
+            let s = String::from_utf8(vec.expose_secret().to_vec())
+                .context("admin_id 包含无效的 UTF-8 字符")?;
+            Some(
+                s.trim()
+                    .parse()
+                    .context("无效的 admin_id 格式 (应为 i64)")?,
+            )
+        }
+        None => None,
+    };
 
-    let admin_id: i64 = admin_id_str
-        .trim()
-        .parse()
-        .context("无效的 admin_id 格式 (应为 i64)")?;
+    let totp_secret = match &encrypted_config.totp_secret {
+        Some(v) => {
+            let vec = security.decrypt(v).context("解密 totp_secret 失败")?;
+            Some(
+                String::from_utf8(vec.expose_secret().to_vec())
+                    .context("totp_secret 包含无效的 UTF-8 字符")?
+                    .trim()
+                    .to_string(),
+            )
+        }
+        None => None,
+    };
 
     let discord_token = match &encrypted_config.discord_token {
         Some(v) => {
@@ -94,16 +108,21 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
 
     let validator = ConfigValidator::new();
     if let Err(e) = validator.validate_decrypted_config(
-        &token,
+        token.as_deref(),
         admin_id,
-        &totp_secret,
+        totp_secret.as_deref(),
         &encrypted_config.self_destruct_key_hash,
     ) {
         anyhow::bail!("❌ 配置校验失败: {}", e);
     }
 
-    let totp_manager = TotpManager::new(&secrecy::SecretString::from(totp_secret.clone()))
-        .map_err(|e| anyhow::anyhow!("初始化 TOTP 验证器失败: {}", e))?;
+    let totp_manager = match totp_secret {
+        Some(ref secret) => Some(
+            TotpManager::new(&secrecy::SecretString::from(secret.clone()))
+                .map_err(|e| anyhow::anyhow!("初始化 TOTP 验证器失败: {}", e))?,
+        ),
+        None => None,
+    };
 
     let bot_settings = BotSettings::load();
 

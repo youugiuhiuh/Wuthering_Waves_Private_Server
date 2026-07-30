@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
         raw.adapter.clone()
     } else {
         main::adapter::build_adapter(
-            &app_config.decrypted.token,
+            app_config.decrypted.token.as_deref(),
             enable_telegram,
             enable_matrix,
             &matrix_handle,
