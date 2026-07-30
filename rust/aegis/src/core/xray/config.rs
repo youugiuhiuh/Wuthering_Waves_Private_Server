@@ -238,7 +238,7 @@ impl ConfigManager {
         let encoded_email = utf8_percent_encode(email, NON_ALPHANUMERIC).to_string();
 
         format!(
-            "vless://{}@{}:{}?encryption=none&security=tls&sni={}&fp=chrome&type=xhttp&host={}&path={}&mode=auto#{}",
+            "vless://{}@{}:{}?encryption=none&security=tls&sni={}&fp=chrome&alpn=h2&type=xhttp&host={}&path={}&mode=auto#{}",
             uuid, domain, port, encoded_sni, encoded_host, encoded_path, encoded_email
         )
     }
@@ -1009,7 +1009,7 @@ mod tests {
         );
         assert_eq!(
             link,
-            "vless://uuid@example.com:2053?encryption=none&security=tls&sni=example%2Ecom&fp=chrome&type=xhttp&host=example%2Ecom&path=%2Fxhttp%5Fa%20b&mode=auto#mail%20tag"
+            "vless://uuid@example.com:2053?encryption=none&security=tls&sni=example%2Ecom&fp=chrome&alpn=h2&type=xhttp&host=example%2Ecom&path=%2Fxhttp%5Fa%20b&mode=auto#mail%20tag"
         );
         for forbidden in ["pbk=", "sid=", "pqv=", "flow="] {
             assert!(!link.contains(forbidden));
