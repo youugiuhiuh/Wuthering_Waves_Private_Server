@@ -287,73 +287,101 @@ func readSecureInputStr(prompt string) string {
 }
 
 func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, matrixRoom string, matrixPass, matrixStorePassphrase []byte, discordToken, discordAdminID, matrixRecoveryKey string) []byte {
-	payload := make([]byte, 0, 64)
-	payload = append(payload, '{')
+	buf := make([]byte, 0, 256)
+	buf = append(buf, '{')
+	first := true
 
 	if len(token) > 0 {
-		payload = append(payload, []byte(`"token":`)...)
-		payload = appendJSONEscaped(payload, token)
-		payload = append(payload, ',')
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"token":`)...)
+		buf = appendJSONEscaped(buf, token)
 	}
 	if len(adminID) > 0 {
-		payload = append(payload, []byte(`"admin_id":`)...)
-		payload = appendJSONEscaped(payload, adminID)
-		if len(totpSecret) > 0 {
-			payload = append(payload, ',')
+		if !first {
+			buf = append(buf, ',')
 		}
+		first = false
+		buf = append(buf, []byte(`"admin_id":`)...)
+		buf = appendJSONEscaped(buf, adminID)
 	}
 	if len(totpSecret) > 0 {
-		payload = append(payload, []byte(`"totp_secret":`)...)
-		payload = appendJSONEscaped(payload, totpSecret)
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"totp_secret":`)...)
+		buf = appendJSONEscaped(buf, totpSecret)
 	}
-
-	hasMatrix := matrixHS != "" || matrixUser != "" || len(matrixPass) > 0 || matrixRoom != "" || len(matrixStorePassphrase) > 0 || matrixRecoveryKey != ""
-	if hasMatrix {
-		payload = append(payload, ',')
-		if matrixHS != "" {
-			payload = append(payload, []byte(`"matrix_homeserver":`)...)
-			payload = appendJSONEscaped(payload, []byte(matrixHS))
-			payload = append(payload, ',')
+	if matrixHS != "" {
+		if !first {
+			buf = append(buf, ',')
 		}
-		if matrixUser != "" {
-			payload = append(payload, []byte(`"matrix_username":`)...)
-			payload = appendJSONEscaped(payload, []byte(matrixUser))
-			payload = append(payload, ',')
-		}
-		if len(matrixPass) > 0 {
-			payload = append(payload, []byte(`"matrix_password":`)...)
-			payload = appendJSONEscaped(payload, matrixPass)
-			payload = append(payload, ',')
-		}
-		if matrixRoom != "" {
-			payload = append(payload, []byte(`"matrix_room_id":`)...)
-			payload = appendJSONEscaped(payload, []byte(matrixRoom))
-			payload = append(payload, ',')
-		}
-		if len(matrixStorePassphrase) > 0 {
-			payload = append(payload, []byte(`"matrix_store_passphrase":`)...)
-			payload = appendJSONEscaped(payload, matrixStorePassphrase)
-			payload = append(payload, ',')
-		}
-		if matrixRecoveryKey != "" {
-			payload = append(payload, []byte(`"matrix_recovery_key":`)...)
-			payload = appendJSONEscaped(payload, []byte(matrixRecoveryKey))
-		}
+		first = false
+		buf = append(buf, []byte(`"matrix_homeserver":`)...)
+		buf = appendJSONEscaped(buf, []byte(matrixHS))
 	}
-
+	if matrixUser != "" {
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"matrix_username":`)...)
+		buf = appendJSONEscaped(buf, []byte(matrixUser))
+	}
+	if len(matrixPass) > 0 {
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"matrix_password":`)...)
+		buf = appendJSONEscaped(buf, matrixPass)
+	}
+	if matrixRoom != "" {
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"matrix_room_id":`)...)
+		buf = appendJSONEscaped(buf, []byte(matrixRoom))
+	}
+	if len(matrixStorePassphrase) > 0 {
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"matrix_store_passphrase":`)...)
+		buf = appendJSONEscaped(buf, matrixStorePassphrase)
+	}
 	if discordToken != "" {
-		payload = append(payload, ',')
-		payload = append(payload, []byte(`"discord_token":`)...)
-		payload = appendJSONEscaped(payload, []byte(discordToken))
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"discord_token":`)...)
+		buf = appendJSONEscaped(buf, []byte(discordToken))
 	}
 	if discordAdminID != "" {
-		payload = append(payload, ',')
-		payload = append(payload, []byte(`"discord_admin_id":`)...)
-		payload = appendJSONEscaped(payload, []byte(discordAdminID))
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"discord_admin_id":`)...)
+		buf = appendJSONEscaped(buf, []byte(discordAdminID))
+	}
+	if matrixRecoveryKey != "" {
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"matrix_recovery_key":`)...)
+		buf = appendJSONEscaped(buf, []byte(matrixRecoveryKey))
 	}
 
-	payload = append(payload, '}')
-	return payload
+	buf = append(buf, '}')
+	return buf
 }
 
 func buildOtpAuthURL(secret []byte) []byte {
