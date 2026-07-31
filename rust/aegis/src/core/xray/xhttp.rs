@@ -104,6 +104,12 @@ impl ConfigManager {
         let provider = AcmeManager::configured_provider_for_domain(domain)?;
         let cdn_ports: &[u16] = provider.as_ref().map(|p| p.cdn_ports()).unwrap_or_default();
 
+        if cdn_ports.is_empty() {
+            anyhow::bail!(
+                "no CDN provider configured for domain: no Cloudflare or Route53 credentials found"
+            );
+        }
+
         let mut rng = StdRng::from_entropy();
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
