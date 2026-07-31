@@ -655,7 +655,8 @@ pub async fn run_one_click(
                             )
                             .await;
 
-                        // Pad with Reality XHTTP to reach 20 total
+                        // Pad with Reality XHTTP to reach 20 total.
+                        // prefer_443=false: 443 is already taken by the TLS batch above.
                         let reality_count = 20_usize.saturating_sub(result.created_count);
                         match ConfigManager::batch_create_xhttp_reality_enhanced(
                             reality_count,
