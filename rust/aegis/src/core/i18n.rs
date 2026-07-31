@@ -164,6 +164,7 @@ mod tests {
             "domain.flow_expired",
             "ops.deploy_step_xhttp_tls",
             "ops.deploy_created_xhttp_tls",
+            "ops.deploy_created_xhttp_bonus",
             "ops.deploy_fail_xhttp_tls",
             "xray.tls_batch_title",
             "xray.tls_batch_done",

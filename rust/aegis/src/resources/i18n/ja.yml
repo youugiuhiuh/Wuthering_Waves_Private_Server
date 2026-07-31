@@ -189,6 +189,7 @@ ops:
   deploy_created_kcp_wechat: "✅ mKCP+WeChat 偽装 %{0} 個の設定を作成しました\n📁 %{1}"
   deploy_step_xhttp_tls: "TLS XHTTP を作成しています（×20）..."
   deploy_created_xhttp_tls: "✅ TLS XHTTP（%{0}）設定を %{1} 件作成しました\n📁 %{2}"
+  deploy_created_xhttp_bonus: "✅ 追加で %{1} 個の Reality XHTTP（%{0}）を作成しました\n📁 %{2}"
   deploy_fail_xhttp_tls: "TLS XHTTP の作成に失敗しました"
   bbr3_confirm_warn: "⚠️ <b>警告：サードパーティカーネルのリスク</b>\n\nBBR3 は未検証のサードパーティカーネル (XanMod) を使用しており、以下の原因となる可能性があります：\n- システム起動不能\n- データ損失\n- サーバー完全停止\n\n<b>リスクが利点を大幅に上回ります。十分注意して進めてください！</b>"
   bbr3_confirm_btn: "⚠️ リスクを理解し、インストール"

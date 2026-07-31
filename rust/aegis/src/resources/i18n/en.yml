@@ -189,6 +189,7 @@ ops:
   deploy_created_kcp_wechat: "✅ mKCP+WeChat obfuscation created %{0} config(s)\n📁 %{1}"
   deploy_step_xhttp_tls: "Creating TLS XHTTP (×20)..."
   deploy_created_xhttp_tls: "✅ TLS XHTTP (%{0}) created %{1} configs\n📁 %{2}"
+  deploy_created_xhttp_bonus: "✅ Additionally created %{1} Reality XHTTP (%{0}) config(s)\n📁 %{2}"
   deploy_fail_xhttp_tls: "TLS XHTTP creation failed"
   bbr3_confirm_warn: "⚠️ <b>WARNING: Third-Party Kernel Risk</b>\n\nBBR3 uses an untested third-party kernel (XanMod) which may cause:\n- System failure to boot\n- Data loss\n- Complete server unavailability\n\n<b>Risk far outweighs any benefits. Proceed with extreme caution!</b>"
   bbr3_confirm_btn: "⚠️ I Understand, Install Anyway"

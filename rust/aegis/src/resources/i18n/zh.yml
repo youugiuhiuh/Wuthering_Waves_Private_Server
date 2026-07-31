@@ -199,6 +199,7 @@ ops:
   deploy_created_kcp_wechat: "✅ mKCP+微信伪装 已创建 %{0} 个配置\n📁 %{1}"
   deploy_step_xhttp_tls: "正在创建 TLS XHTTP (×20)..."
   deploy_created_xhttp_tls: "✅ TLS XHTTP (%{0}) 已创建 %{1} 个配置\n📁 %{2}"
+  deploy_created_xhttp_bonus: "✅ 额外创建了 %{1} 个 Reality XHTTP (%{0}) 配置\n📁 %{2}"
   deploy_fail_xhttp_tls: "TLS XHTTP 创建步骤失败"
   bbr3_confirm_warn: "⚠️ <b>警告：第三方内核风险极高</b>\n\nBBR3 使用未经大规模验证的第三方内核 (XanMod)，可能导致：\n- 系统无法启动\n- 数据丢失\n- 服务器完全不可用\n\n<b>风险远高于收益，请谨慎操作！</b>"
   bbr3_confirm_btn: "⚠️ 我了解风险，继续安装"
