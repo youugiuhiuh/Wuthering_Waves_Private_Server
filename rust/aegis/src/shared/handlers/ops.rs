@@ -606,7 +606,8 @@ pub async fn run_one_click(
         );
         match &mode {
             XhttpDeployMode::Reality => {
-                match ConfigManager::batch_create_xhttp_reality_enhanced(20, ip_version).await {
+                match ConfigManager::batch_create_xhttp_reality_enhanced(20, ip_version, true).await
+                {
                     Ok(result) => {
                         all_links.extend(result.links);
                         let _ = adapter
@@ -653,6 +654,43 @@ pub async fn run_one_click(
                                 },
                             )
                             .await;
+
+                        // Pad with Reality XHTTP to reach 20 total.
+                        // prefer_443=false: 443 is already taken by the TLS batch above.
+                        let reality_count = 20_usize.saturating_sub(result.created_count);
+                        match ConfigManager::batch_create_xhttp_reality_enhanced(
+                            reality_count,
+                            ip_version,
+                            false,
+                        )
+                        .await
+                        {
+                            Ok(reality_result) => {
+                                all_links.extend(reality_result.links);
+                                let _ = adapter
+                                    .send_message(
+                                        &target,
+                                        MessageContent {
+                                            text: t!("ops.deploy_created_xhttp_bonus",
+                                                    "0" => ip_version.label(),
+                                                    "1" => reality_result.created_count.to_string(),
+                                                    "2" => reality_result.config_file.as_deref().unwrap_or("?"))
+                                            .into_owned(),
+                                            markup: None,
+                                        },
+                                    )
+                                    .await;
+                            }
+                            Err(e) => {
+                                let _ = tx.send(
+                                    t!("ops.deploy_fail",
+                                        "0" => format!("{}: {}", t!("ops.deploy_fail_xhttp"), e)
+                                    )
+                                    .to_string(),
+                                );
+                                failed = true;
+                            }
+                        }
                     }
                     Err(e) => {
                         let _ = tx.send(

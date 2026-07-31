@@ -28,7 +28,7 @@ impl DnsProvider {
     pub const fn cdn_ports(self) -> &'static [u16] {
         match self {
             Self::Cloudflare => &[443, 8443, 2053, 2083, 2087, 2096],
-            Self::Route53 => &[],
+            Self::Route53 => &[443],
         }
     }
 }
@@ -128,7 +128,7 @@ mod tests {
             DnsProvider::Cloudflare.cdn_ports(),
             &[443, 8443, 2053, 2083, 2087, 2096]
         );
-        assert!(DnsProvider::Route53.cdn_ports().is_empty());
+        assert_eq!(DnsProvider::Route53.cdn_ports(), &[443]);
     }
 
     #[test]
