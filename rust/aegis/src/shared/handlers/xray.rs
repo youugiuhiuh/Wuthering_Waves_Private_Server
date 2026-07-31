@@ -3,7 +3,7 @@ use tokio::time::{Duration, sleep};
 
 use crate::app::state::AppState;
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
-use crate::core::security::acme::{CertPaths, XhttpDeployMode};
+use crate::core::security::acme::{AcmeManager, CertPaths, XhttpDeployMode};
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::types::{DomainFlowSource, IpVersion};
@@ -45,12 +45,23 @@ pub async fn run_standalone_xhttp_tls(
         IpVersion::SplitStackV4Primary => t!("xray.split_v4_up").into(),
     };
 
+    let tls_count = AcmeManager::configured_provider_for_domain(&domain)
+        .ok()
+        .flatten()
+        .map(|p| p.cdn_ports().len())
+        .unwrap_or(0);
+
     let _ = adapter
         .send_message(
             &target,
             MessageContent {
-                text: t!("xray.gen_progress", "0" => 20, "1" => "TLS", "2" => ip_str.as_str())
-                    .into_owned(),
+                text: t!(
+                    "xray.gen_progress",
+                    "0" => tls_count,
+                    "1" => "TLS",
+                    "2" => ip_str.as_str()
+                )
+                .into_owned(),
                 markup: None,
             },
         )
