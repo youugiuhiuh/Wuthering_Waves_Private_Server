@@ -242,8 +242,9 @@ mod tests {
     }
 
     #[test]
-    fn route53_cdn_ports_is_empty() {
+    fn route53_cdn_ports_contains_443() {
         let ports = DnsProvider::Route53.cdn_ports();
-        assert!(ports.is_empty(), "Route53 should have no CDN ports");
+        assert_eq!(ports, &[443]);
+        assert!(!ports.is_empty());
     }
 }
