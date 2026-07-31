@@ -606,7 +606,8 @@ pub async fn run_one_click(
         );
         match &mode {
             XhttpDeployMode::Reality => {
-                match ConfigManager::batch_create_xhttp_reality_enhanced(20, ip_version).await {
+                match ConfigManager::batch_create_xhttp_reality_enhanced(20, ip_version, true).await
+                {
                     Ok(result) => {
                         all_links.extend(result.links);
                         let _ = adapter
@@ -659,6 +660,7 @@ pub async fn run_one_click(
                         match ConfigManager::batch_create_xhttp_reality_enhanced(
                             reality_count,
                             ip_version,
+                            false,
                         )
                         .await
                         {

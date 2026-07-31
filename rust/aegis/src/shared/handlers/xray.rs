@@ -1277,7 +1277,9 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
 
     let res = match proto {
         Proto::Vision => ConfigManager::batch_create_reality_vision_enhanced(n, ip_version).await,
-        Proto::XHTTP => ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version).await,
+        Proto::XHTTP => {
+            ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
+        }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
     };
 
@@ -1453,7 +1455,9 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
 
     let res = match proto {
         Proto::Vision => ConfigManager::batch_create_reality_vision_enhanced(n, ip_version).await,
-        Proto::XHTTP => ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version).await,
+        Proto::XHTTP => {
+            ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
+        }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
     };
 

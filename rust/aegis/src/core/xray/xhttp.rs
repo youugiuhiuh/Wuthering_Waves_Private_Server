@@ -12,6 +12,7 @@ impl ConfigManager {
     pub async fn batch_create_xhttp_reality_enhanced(
         count: usize,
         ip_version: IpVersion,
+        prefer_443: bool,
     ) -> Result<BatchCreationResult> {
         let (ip, ipv6) = tokio::join!(
             crate::core::system::SystemMonitor::get_public_ip(),
@@ -38,7 +39,7 @@ impl ConfigManager {
 
             let pq_ok = crate::core::security::tls_probe::sni_is_pq_friendly(&sni).await;
 
-            let preferred = if i == 0 && port_443_available {
+            let preferred = if prefer_443 && i == 0 && port_443_available {
                 Some(443u16)
             } else {
                 None
