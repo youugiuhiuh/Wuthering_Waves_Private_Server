@@ -252,4 +252,55 @@ mod tests {
         assert_eq!(result, BusinessResult::Ok);
         assert!(output.published.lock().unwrap().is_empty());
     }
+
+    #[tokio::test]
+    async fn menu_denied_identical_across_platforms() {
+        let service = ApplicationService;
+        for platform in [
+            PlatformId::Telegram,
+            PlatformId::Matrix,
+            PlatformId::Discord,
+        ] {
+            let output = RecordingOutput::new();
+            let state = make_state();
+            let result = service
+                .handle(
+                    &command_input(platform, BusinessCommand::Menu),
+                    &state,
+                    &output,
+                )
+                .await
+                .unwrap();
+            let expected = rust_i18n::t!("auth.required").into_owned();
+            assert_eq!(result, BusinessResult::Message(expected.clone()));
+            let published = output.published.lock().unwrap();
+            assert_eq!(published.len(), 1);
+            assert_eq!(published[0].text, expected);
+            assert_eq!(published[0].origin.platform, platform);
+        }
+    }
+
+    #[tokio::test]
+    async fn menu_authorized_identical_across_platforms() {
+        let service = ApplicationService;
+        for platform in [
+            PlatformId::Telegram,
+            PlatformId::Matrix,
+            PlatformId::Discord,
+        ] {
+            let output = RecordingOutput::new();
+            let state = make_state();
+            state.record_auth_success(42, Instant::now()).await;
+            let result = service
+                .handle(
+                    &command_input(platform, BusinessCommand::Menu),
+                    &state,
+                    &output,
+                )
+                .await
+                .unwrap();
+            assert_eq!(result, BusinessResult::Ok);
+            assert!(output.published.lock().unwrap().is_empty());
+        }
+    }
 }

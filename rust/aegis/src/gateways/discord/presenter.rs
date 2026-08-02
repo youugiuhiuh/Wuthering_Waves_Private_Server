@@ -1,8 +1,8 @@
-use crate::app::interaction::BusinessMessage;
+use crate::app::interaction::{BusinessMessage, Sensitivity};
 use crate::app::output::BusinessOutput;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use serenity::all::ChannelId;
+use serenity::all::{ChannelId, CreateAttachment};
 use serenity::http::Http;
 use std::sync::Arc;
 
@@ -27,14 +27,31 @@ impl BusinessOutput for DiscordPresenter {
                 .parse::<u64>()
                 .context("invalid channel id")?,
         );
-        let msg = channel_id
-            .send_message(
-                &self.http,
-                serenity::all::CreateMessage::new().content(&message.text),
-            )
-            .await
-            .context("发送 Discord 消息失败")?;
-        let _ = msg;
+        match message.sensitivity {
+            Sensitivity::Protected => {
+                let msg = channel_id
+                    .send_message(
+                        &self.http,
+                        serenity::all::CreateMessage::new().add_file(CreateAttachment::bytes(
+                            message.text.into_bytes(),
+                            "message.txt",
+                        )),
+                    )
+                    .await
+                    .context("发送 Discord 文件消息失败")?;
+                let _ = msg;
+            }
+            Sensitivity::Public => {
+                let msg = channel_id
+                    .send_message(
+                        &self.http,
+                        serenity::all::CreateMessage::new().content(&message.text),
+                    )
+                    .await
+                    .context("发送 Discord 消息失败")?;
+                let _ = msg;
+            }
+        }
         Ok(())
     }
 }
