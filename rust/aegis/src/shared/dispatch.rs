@@ -364,6 +364,7 @@ mod tests {
         pub button_data: Mutex<Vec<String>>,
         pub button_text: Mutex<Vec<String>>,
         pub callback_answers: Mutex<Vec<String>>,
+        pub deleted: Mutex<Vec<String>>,
     }
 
     #[async_trait]
@@ -410,8 +411,9 @@ mod tests {
         async fn delete_message(
             &self,
             _target: &TargetId,
-            _msg_id: &MessageId,
+            msg_id: &MessageId,
         ) -> anyhow::Result<()> {
+            self.deleted.lock().unwrap().push(msg_id.0.clone());
             Ok(())
         }
         async fn download_file(&self, _file_id: &str) -> anyhow::Result<Vec<u8>> {
@@ -751,6 +753,70 @@ mod tests {
         assert_eq!(
             domain_resume_target(&action_oneclick),
             Some(DomainFlowSource::OneClick)
+        );
+    }
+
+    #[tokio::test]
+    async fn answer_callback_reload_sends_success_text() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = make_state();
+        state.record_auth_success(42, Instant::now()).await;
+        dispatch_event(callback_event(adapter.clone(), "a_reload"), &state)
+            .await
+            .unwrap();
+        let answers = adapter.callback_answers.lock().unwrap();
+        assert!(
+            !answers.is_empty(),
+            "a_reload callback should trigger answer_callback"
+        );
+        assert!(
+            answers[0].contains("ops.reload_success")
+                || answers[0].to_lowercase().contains("reload")
+                || answers[0].to_lowercase().contains("success"),
+            "a_reload answer should contain success text, got: {}",
+            answers[0]
+        );
+    }
+
+    #[tokio::test]
+    async fn answer_callback_bbr3_cancel_sends_cancelled_text() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = make_state();
+        state.record_auth_success(42, Instant::now()).await;
+        dispatch_event(callback_event(adapter.clone(), "a_bbr3_cancel"), &state)
+            .await
+            .unwrap();
+        let answers = adapter.callback_answers.lock().unwrap();
+        assert!(
+            !answers.is_empty(),
+            "a_bbr3_cancel callback should trigger answer_callback"
+        );
+        assert!(
+            answers[0].to_lowercase().contains("cancel")
+                || answers[0].to_lowercase().contains("cancelled"),
+            "a_bbr3_cancel answer should contain cancelled text, got: {}",
+            answers[0]
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_data_recorded_in_answer_callback() {
+        let adapter = Arc::new(MockAdapter::default());
+        let state = make_state();
+        state.record_auth_success(42, Instant::now()).await;
+        dispatch_event(callback_event(adapter.clone(), "a_fw"), &state)
+            .await
+            .unwrap();
+        let answers = adapter.callback_answers.lock().unwrap();
+        assert!(
+            !answers.is_empty(),
+            "a_fw callback should produce an answer"
+        );
+        assert!(
+            answers[0].to_lowercase().contains("start")
+                || answers[0].to_lowercase().contains("firewall"),
+            "a_fw answer text should indicate firewall operation, got: {}",
+            answers[0]
         );
     }
 }

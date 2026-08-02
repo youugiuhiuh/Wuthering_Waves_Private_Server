@@ -619,19 +619,68 @@ pub async fn intercept_callback(cb: &CallbackEvent, state: &AppState) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
+    use aegis::common::{BotAdapter, InlineButton, MessageContent, MessageId, Platform, TargetId};
     use aegis::core::security::self_destruct::SelfDestructExecutor;
     use aegis::core::totp::TotpManager;
     use async_trait::async_trait;
     use futures_util::future::BoxFuture;
     use secrecy::SecretString;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::time::Instant;
 
-    struct MockAdapter;
+    #[derive(Default)]
+    struct MockAdapter {
+        pub answer_callback_text: Mutex<Option<String>>,
+        pub edited_text: Mutex<Option<String>>,
+        pub edited_markup: Mutex<Option<Vec<Vec<InlineButton>>>>,
+    }
 
     #[async_trait]
     impl BotAdapter for MockAdapter {
+        fn platform(&self) -> Platform {
+            Platform::Telegram
+        }
+        async fn send_message(
+            &self,
+            _target: &TargetId,
+            _content: MessageContent,
+        ) -> Result<MessageId> {
+            Ok(MessageId("0".to_string()))
+        }
+        async fn edit_message(
+            &self,
+            _target: &TargetId,
+            _msg_id: &MessageId,
+            content: MessageContent,
+        ) -> Result<()> {
+            *self.edited_text.lock().unwrap() = Some(content.text);
+            if let Some(markup) = &content.markup {
+                *self.edited_markup.lock().unwrap() =
+                    Some(markup.buttons.to_vec());
+            }
+            Ok(())
+        }
+        async fn delete_message(&self, _target: &TargetId, _msg_id: &MessageId) -> Result<()> {
+            Ok(())
+        }
+        async fn answer_callback(
+            &self,
+            _target: &TargetId,
+            _callback_id: &str,
+            text: Option<String>,
+        ) -> Result<()> {
+            *self.answer_callback_text.lock().unwrap() = text;
+            Ok(())
+        }
+        async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct NoopAdapter;
+
+    #[async_trait]
+    impl BotAdapter for NoopAdapter {
         fn platform(&self) -> Platform {
             Platform::Telegram
         }
@@ -651,6 +700,14 @@ mod tests {
             Ok(())
         }
         async fn delete_message(&self, _target: &TargetId, _msg_id: &MessageId) -> Result<()> {
+            Ok(())
+        }
+        async fn answer_callback(
+            &self,
+            _target: &TargetId,
+            _callback_id: &str,
+            _text: Option<String>,
+        ) -> Result<()> {
             Ok(())
         }
         async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
@@ -728,7 +785,19 @@ mod tests {
 
     fn callback_event(data: &str) -> CallbackEvent {
         CallbackEvent {
-            adapter: Arc::new(MockAdapter),
+            adapter: Arc::new(NoopAdapter),
+            target: TargetId("42".into()),
+            user_id: "42".into(),
+            msg_id: MessageId("0".into()),
+            data: data.into(),
+            callback_id: "q1".into(),
+            session_timeout_secs: 600,
+        }
+    }
+
+    fn callback_event_with_adapter(data: &str, adapter: Arc<dyn BotAdapter>) -> CallbackEvent {
+        CallbackEvent {
+            adapter,
             target: TargetId("42".into()),
             user_id: "42".into(),
             msg_id: MessageId("0".into()),
@@ -782,7 +851,7 @@ mod tests {
             .await;
         let totp = state.generate_current_totp().unwrap().unwrap();
         let msg = MessageEvent {
-            adapter: Arc::new(MockAdapter),
+            adapter: Arc::new(NoopAdapter),
             target: TargetId("42".into()),
             user_id: 42,
             text: Some(totp),
@@ -827,7 +896,7 @@ mod tests {
             .await;
         let totp = state.generate_current_totp().unwrap().unwrap();
         let msg = MessageEvent {
-            adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
+            adapter: Arc::new(NoopAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),
             user_id: 42,
             text: Some(totp),
@@ -863,7 +932,7 @@ mod tests {
             )
             .await;
         let msg = MessageEvent {
-            adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
+            adapter: Arc::new(NoopAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),
             user_id: 42,
             text: Some("confirm".into()),
@@ -898,7 +967,7 @@ mod tests {
             )
             .await;
         let msg = MessageEvent {
-            adapter: Arc::new(MockAdapter) as Arc<dyn BotAdapter>,
+            adapter: Arc::new(NoopAdapter) as Arc<dyn BotAdapter>,
             target: TargetId("42".into()),
             user_id: 42,
             text: Some("cancel".into()),
@@ -922,7 +991,7 @@ mod tests {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
         let msg = MessageEvent {
-            adapter: Arc::new(MockAdapter),
+            adapter: Arc::new(NoopAdapter),
             target: TargetId("99".into()),
             user_id: 42,
             text: Some("hi".into()),
@@ -933,5 +1002,108 @@ mod tests {
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::NotHandled);
+    }
+
+    #[tokio::test]
+    async fn intercept_callback_ask_unauthorized_sends_auth_expired() {
+        let state = AppState::new(
+            Some(42),
+            None,
+            Some(
+                TotpManager::new(&SecretString::from(TotpManager::generate_new_secret())).unwrap(),
+            ),
+            Arc::new(TestExecutor),
+            None,
+            600,
+        );
+        let adapter = Arc::new(MockAdapter::default());
+        let cb = callback_event_with_adapter("a_destroy_ask", adapter.clone());
+        intercept_callback(&cb, &state).await.unwrap();
+        let text = adapter.answer_callback_text.lock().unwrap();
+        assert!(
+            text.as_ref().is_some_and(|t| {
+                t.contains("expired") || t.contains("auth") || t.contains("TOTP")
+            }),
+            "unauthorized callback should get localized auth.expired answer, got: {:?}",
+            *text
+        );
+    }
+
+    #[tokio::test]
+    async fn intercept_callback_ask_authorized_edits_with_destruct_title() {
+        let secret = TotpManager::generate_new_secret();
+        let state = make_test_state(&secret).await;
+        let adapter = Arc::new(MockAdapter::default());
+        let cb = callback_event_with_adapter("a_destroy_ask", adapter.clone());
+        intercept_callback(&cb, &state).await.unwrap();
+        let edited = adapter.edited_text.lock().unwrap();
+        assert!(
+            edited.as_ref().is_some_and(|t| {
+                t.contains("Dangerous") || t.contains("Self-Destruct") || t.contains("destruct")
+            }),
+            "authorized a_destroy_ask should edit message with localized destruct text, got: {:?}",
+            *edited
+        );
+        let markup = adapter.edited_markup.lock().unwrap();
+        assert!(
+            markup.as_ref().is_some_and(|rows| {
+                rows.iter()
+                    .any(|row| row.iter().any(|b| b.data == "a_destroy_cancel"))
+            }),
+            "authorized a_destroy_ask markup should contain a_destroy_cancel button"
+        );
+    }
+
+    #[tokio::test]
+    async fn intercept_callback_cancel_edits_danger_zone_markup() {
+        let secret = TotpManager::generate_new_secret();
+        let state = make_test_state(&secret).await;
+        state
+            .begin_destruct(Platform::Telegram, "42".to_string(), Instant::now())
+            .await;
+        let adapter = Arc::new(MockAdapter::default());
+        let cb = callback_event_with_adapter("a_destroy_cancel", adapter.clone());
+        intercept_callback(&cb, &state).await.unwrap();
+        let markup = adapter.edited_markup.lock().unwrap();
+        assert!(
+            markup.as_ref().is_some_and(|rows| {
+                rows.iter()
+                    .any(|row| row.iter().any(|b| b.data == "a_destroy_ask"))
+                    && rows
+                        .iter()
+                        .any(|row| row.iter().any(|b| b.data == "m_settings"))
+            }),
+            "a_destroy_cancel markup should contain a_destroy_ask and m_settings buttons"
+        );
+    }
+
+    #[tokio::test]
+    async fn intercept_callback_confirm_advances_to_second_totp() {
+        let secret = TotpManager::generate_new_secret();
+        let state = make_test_state(&secret).await;
+        state
+            .begin_destruct(Platform::Telegram, "42".to_string(), Instant::now())
+            .await;
+        state
+            .advance_destruct_step(
+                Platform::Telegram,
+                "42",
+                DestructStep::AwaitFirstTotp,
+                DestructStep::AwaitConfirm,
+                Instant::now(),
+            )
+            .await;
+        let adapter = Arc::new(MockAdapter::default());
+        let cb = callback_event_with_adapter("a_destroy_confirm", adapter.clone());
+        intercept_callback(&cb, &state).await.unwrap();
+        let snap = state
+            .destruct_snapshot(Platform::Telegram, "42")
+            .await
+            .unwrap();
+        assert_eq!(
+            snap.step,
+            DestructStep::AwaitSecondTotp,
+            "a_destroy_confirm should advance to AwaitSecondTotp"
+        );
     }
 }
