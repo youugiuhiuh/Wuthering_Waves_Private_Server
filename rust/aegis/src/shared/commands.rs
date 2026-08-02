@@ -1,7 +1,7 @@
 use crate::app::auth;
 use crate::app::interaction::{
-    ActorId, BusinessInput, BusinessMessage, BusinessRequest, BusinessResult, ConversationId,
-    Origin, PlatformId,
+    ActorId, BusinessInput, BusinessRequest, BusinessResult, ConversationId, Origin, OutputAction,
+    OutputPayload, PlatformId,
 };
 use crate::app::output::BusinessOutput;
 use crate::app::service::ApplicationService;
@@ -76,16 +76,43 @@ struct AdapterOutput {
 
 #[async_trait]
 impl BusinessOutput for AdapterOutput {
-    async fn publish(&self, message: BusinessMessage) -> Result<()> {
-        self.adapter
-            .send_message(
-                &self.target,
-                MessageContent {
-                    text: message.text,
-                    markup: None,
-                },
-            )
-            .await?;
+    async fn publish(&self, action: OutputAction) -> Result<()> {
+        match action {
+            OutputAction::SendText {
+                target_conversation: _,
+                payload,
+                sensitivity: _,
+            } => match payload {
+                OutputPayload::Text { text } => {
+                    self.adapter
+                        .send_message(&self.target, MessageContent { text, markup: None })
+                        .await?;
+                }
+                OutputPayload::Attachment {
+                    bytes,
+                    filename,
+                    mime,
+                } => {
+                    self.adapter
+                        .send_file(&self.target, &filename, bytes, &mime)
+                        .await?;
+                }
+            },
+            OutputAction::SendAttachment {
+                target_conversation: _,
+                payload:
+                    OutputPayload::Attachment {
+                        bytes,
+                        filename,
+                        mime,
+                    },
+            } => {
+                self.adapter
+                    .send_file(&self.target, &filename, bytes, &mime)
+                    .await?;
+            }
+            _ => {}
+        }
         Ok(())
     }
 }

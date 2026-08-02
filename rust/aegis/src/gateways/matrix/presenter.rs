@@ -1,6 +1,6 @@
-use crate::app::interaction::{BusinessMessage, Sensitivity};
+use crate::app::interaction::{OutputAction, OutputPayload, Sensitivity};
 use crate::app::output::BusinessOutput;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::room::Room;
@@ -16,25 +16,60 @@ impl MatrixPresenter {
     }
 }
 
+fn parse_mime(s: &str) -> Result<mime::Mime> {
+    s.parse().map_err(|_| anyhow!("invalid mime type: {}", s))
+}
+
 #[async_trait]
 impl BusinessOutput for MatrixPresenter {
-    async fn publish(&self, message: BusinessMessage) -> Result<()> {
-        match message.sensitivity {
-            Sensitivity::Protected => {
-                let data = message.text.into_bytes();
+    async fn publish(&self, action: OutputAction) -> Result<()> {
+        match action {
+            OutputAction::SendText {
+                target_conversation: _,
+                payload,
+                sensitivity,
+            } => match sensitivity {
+                Sensitivity::Protected => {
+                    let (data, mime_val) = match payload {
+                        OutputPayload::Text { text } => (text.into_bytes(), mime::TEXT_PLAIN),
+                        OutputPayload::Attachment {
+                            bytes,
+                            filename: _,
+                            mime,
+                        } => (bytes, parse_mime(&mime)?),
+                    };
+                    self.room
+                        .send_attachment("message.txt", &mime_val, data, AttachmentConfig::new())
+                        .await?;
+                }
+                Sensitivity::Public => {
+                    let text = match payload {
+                        OutputPayload::Text { text } => text,
+                        OutputPayload::Attachment {
+                            bytes,
+                            filename: _,
+                            mime: _,
+                        } => String::from_utf8_lossy(&bytes).to_string(),
+                    };
+                    let content = RoomMessageEventContent::text_plain(&text);
+                    self.room.send(content).await?;
+                }
+            },
+            OutputAction::SendAttachment {
+                target_conversation: _,
+                payload:
+                    OutputPayload::Attachment {
+                        bytes,
+                        filename,
+                        mime,
+                    },
+            } => {
+                let mime_val = parse_mime(&mime)?;
                 self.room
-                    .send_attachment(
-                        "message.txt",
-                        &mime::TEXT_PLAIN,
-                        data,
-                        AttachmentConfig::new(),
-                    )
+                    .send_attachment(&filename, &mime_val, bytes, AttachmentConfig::new())
                     .await?;
             }
-            Sensitivity::Public => {
-                let content = RoomMessageEventContent::text_plain(&message.text);
-                self.room.send(content).await?;
-            }
+            _ => {}
         }
         Ok(())
     }

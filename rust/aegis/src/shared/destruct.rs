@@ -4,7 +4,7 @@ use anyhow::Result;
 use rust_i18n::t;
 use sha2::Digest;
 
-use aegis::common::{InlineButton, Markup, MessageContent, Platform};
+use aegis::common::{InlineButton, Markup, MessageContent};
 use aegis::shared::types::{CallbackEvent, MessageEvent, TimeoutStatus};
 
 use crate::app::state::AppState;
@@ -655,8 +655,7 @@ mod tests {
         ) -> Result<()> {
             *self.edited_text.lock().unwrap() = Some(content.text);
             if let Some(markup) = &content.markup {
-                *self.edited_markup.lock().unwrap() =
-                    Some(markup.buttons.to_vec());
+                *self.edited_markup.lock().unwrap() = Some(markup.buttons.to_vec());
             }
             Ok(())
         }

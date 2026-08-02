@@ -708,7 +708,7 @@ mod tests {
             _platform: Platform,
             _chat_id: &str,
         ) -> Option<DomainInputState> {
-            self.domain_input_snapshot(_platform, &_chat_id).await
+            self.domain_input_snapshot(_platform, _chat_id).await
         }
         async fn domain_timeout_status(
             &self,

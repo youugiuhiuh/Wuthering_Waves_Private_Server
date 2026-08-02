@@ -1,5 +1,6 @@
 use crate::app::interaction::{
-    BusinessCommand, BusinessInput, BusinessMessage, BusinessRequest, BusinessResult, Sensitivity,
+    BusinessCommand, BusinessInput, BusinessRequest, BusinessResult, OutputAction, OutputPayload,
+    Sensitivity,
 };
 use crate::app::output::BusinessOutput;
 use crate::app::state::AppState;
@@ -22,9 +23,9 @@ impl ApplicationService {
             BusinessCommand::Help => {
                 let text = rust_i18n::t!("help.text").into_owned();
                 output
-                    .publish(BusinessMessage {
-                        origin: input.origin.clone(),
-                        text: text.clone(),
+                    .publish(OutputAction::SendText {
+                        target_conversation: input.origin.conversation_id.clone(),
+                        payload: OutputPayload::Text { text: text.clone() },
                         sensitivity: Sensitivity::default(),
                     })
                     .await
@@ -38,9 +39,9 @@ impl ApplicationService {
                     rust_i18n::t!("welcome.prompt")
                 );
                 output
-                    .publish(BusinessMessage {
-                        origin: input.origin.clone(),
-                        text: text.clone(),
+                    .publish(OutputAction::SendText {
+                        target_conversation: input.origin.conversation_id.clone(),
+                        payload: OutputPayload::Text { text: text.clone() },
                         sensitivity: Sensitivity::default(),
                     })
                     .await
@@ -52,9 +53,9 @@ impl ApplicationService {
                 if !state.is_authorized(user_id).await {
                     let text = rust_i18n::t!("auth.required").into_owned();
                     output
-                        .publish(BusinessMessage {
-                            origin: input.origin.clone(),
-                            text: text.clone(),
+                        .publish(OutputAction::SendText {
+                            target_conversation: input.origin.conversation_id.clone(),
+                            payload: OutputPayload::Text { text: text.clone() },
                             sensitivity: Sensitivity::default(),
                         })
                         .await
@@ -68,9 +69,9 @@ impl ApplicationService {
                 if !state.is_recently_authenticated(user_id).await {
                     let text = rust_i18n::t!("auth.recent_auth_required").into_owned();
                     output
-                        .publish(BusinessMessage {
-                            origin: input.origin.clone(),
-                            text: text.clone(),
+                        .publish(OutputAction::SendText {
+                            target_conversation: input.origin.conversation_id.clone(),
+                            payload: OutputPayload::Text { text: text.clone() },
                             sensitivity: Sensitivity::default(),
                         })
                         .await
@@ -79,9 +80,9 @@ impl ApplicationService {
                 }
                 let text = rust_i18n::t!("bot_commands.security_file_prompt").into_owned();
                 output
-                    .publish(BusinessMessage {
-                        origin: input.origin.clone(),
-                        text: text.clone(),
+                    .publish(OutputAction::SendText {
+                        target_conversation: input.origin.conversation_id.clone(),
+                        payload: OutputPayload::Text { text: text.clone() },
                         sensitivity: Sensitivity::default(),
                     })
                     .await
@@ -115,8 +116,8 @@ fn to_app_error(err: anyhow::Error) -> AppError {
 #[cfg(test)]
 mod tests {
     use crate::app::interaction::{
-        ActorId, BusinessCommand, BusinessInput, BusinessMessage, BusinessRequest, BusinessResult,
-        ConversationId, Origin, PlatformId,
+        ActorId, BusinessCommand, BusinessInput, BusinessRequest, BusinessResult, ConversationId,
+        Origin, OutputAction, OutputPayload, PlatformId,
     };
     use crate::app::output::BusinessOutput;
     use crate::app::service::ApplicationService;
@@ -138,7 +139,7 @@ mod tests {
     }
 
     struct RecordingOutput {
-        published: Mutex<Vec<BusinessMessage>>,
+        published: Mutex<Vec<OutputAction>>,
     }
 
     impl RecordingOutput {
@@ -151,8 +152,8 @@ mod tests {
 
     #[async_trait]
     impl BusinessOutput for RecordingOutput {
-        async fn publish(&self, message: BusinessMessage) -> AnyResult<()> {
-            self.published.lock().unwrap().push(message);
+        async fn publish(&self, action: OutputAction) -> AnyResult<()> {
+            self.published.lock().unwrap().push(action);
             Ok(())
         }
     }
@@ -188,6 +189,16 @@ mod tests {
         }
     }
 
+    fn extract_text(action: &OutputAction) -> Option<&str> {
+        match action {
+            OutputAction::SendText { payload, .. } => match payload {
+                OutputPayload::Text { text } => Some(text),
+                OutputPayload::Attachment { .. } => None,
+            },
+            _ => None,
+        }
+    }
+
     #[tokio::test]
     async fn help_is_identical_across_platforms() {
         let service = ApplicationService;
@@ -210,8 +221,7 @@ mod tests {
             assert_eq!(result, BusinessResult::Message(expected.clone()));
             let published = output.published.lock().unwrap();
             assert_eq!(published.len(), 1);
-            assert_eq!(published[0].text, expected);
-            assert_eq!(published[0].origin.platform, platform);
+            assert_eq!(extract_text(&published[0]), Some(expected.as_str()));
         }
     }
 
@@ -232,7 +242,7 @@ mod tests {
         assert_eq!(result, BusinessResult::Message(expected.clone()));
         let published = output.published.lock().unwrap();
         assert_eq!(published.len(), 1);
-        assert_eq!(published[0].text, expected);
+        assert_eq!(extract_text(&published[0]), Some(expected.as_str()));
     }
 
     #[tokio::test]
@@ -275,8 +285,7 @@ mod tests {
             assert_eq!(result, BusinessResult::Message(expected.clone()));
             let published = output.published.lock().unwrap();
             assert_eq!(published.len(), 1);
-            assert_eq!(published[0].text, expected);
-            assert_eq!(published[0].origin.platform, platform);
+            assert_eq!(extract_text(&published[0]), Some(expected.as_str()));
         }
     }
 

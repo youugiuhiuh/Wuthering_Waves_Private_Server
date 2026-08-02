@@ -1,4 +1,4 @@
-use crate::app::interaction::{BusinessMessage, Sensitivity};
+use crate::app::interaction::{OutputAction, OutputPayload, Sensitivity};
 use crate::app::output::BusinessOutput;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -17,23 +17,67 @@ impl TelegramPresenter {
 
 #[async_trait]
 impl BusinessOutput for TelegramPresenter {
-    async fn publish(&self, message: BusinessMessage) -> Result<()> {
-        let chat_id = ChatId(message.origin.conversation_id.as_str().parse::<i64>()?);
-        match message.sensitivity {
-            Sensitivity::Protected => {
-                self.bot
-                    .send_document(
-                        chat_id,
-                        teloxide::types::InputFile::memory(message.text.into_bytes()),
-                    )
-                    .await?;
+    async fn publish(&self, action: OutputAction) -> Result<()> {
+        match action {
+            OutputAction::SendText {
+                target_conversation,
+                payload,
+                sensitivity,
+            } => {
+                let chat_id = ChatId(target_conversation.as_str().parse::<i64>()?);
+                match sensitivity {
+                    Sensitivity::Protected => {
+                        let text = match payload {
+                            OutputPayload::Text { text } => text,
+                            OutputPayload::Attachment {
+                                bytes,
+                                filename: _,
+                                mime: _,
+                            } => String::from_utf8_lossy(&bytes).to_string(),
+                        };
+                        self.bot
+                            .send_document(
+                                chat_id,
+                                teloxide::types::InputFile::memory(text.into_bytes()),
+                            )
+                            .await?;
+                    }
+                    Sensitivity::Public => match payload {
+                        OutputPayload::Text { text } => {
+                            self.bot
+                                .send_message(chat_id, &text)
+                                .parse_mode(ParseMode::Html)
+                                .await?;
+                        }
+                        OutputPayload::Attachment {
+                            bytes,
+                            filename: _,
+                            mime: _,
+                        } => {
+                            self.bot
+                                .send_document(chat_id, teloxide::types::InputFile::memory(bytes))
+                                .await?;
+                        }
+                    },
+                }
             }
-            Sensitivity::Public => {
-                self.bot
-                    .send_message(chat_id, &message.text)
-                    .parse_mode(ParseMode::Html)
-                    .await?;
+            OutputAction::SendAttachment {
+                target_conversation,
+                payload,
+            } => {
+                let chat_id = ChatId(target_conversation.as_str().parse::<i64>()?);
+                if let OutputPayload::Attachment {
+                    bytes,
+                    filename: _,
+                    mime: _,
+                } = payload
+                {
+                    self.bot
+                        .send_document(chat_id, teloxide::types::InputFile::memory(bytes))
+                        .await?;
+                }
             }
+            _ => {}
         }
         Ok(())
     }
