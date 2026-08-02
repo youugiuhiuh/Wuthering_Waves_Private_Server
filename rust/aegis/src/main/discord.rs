@@ -1,11 +1,16 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use aegis::app::interaction::BusinessResult;
+use aegis::app::service::ApplicationService;
 use aegis::app::state::AppState;
 use aegis::common::BotAdapter;
+use aegis::core::error::AppError;
 use aegis::gateways::discord::DiscordAdapter;
+use aegis::gateways::discord::commands::command_to_business_input;
+use aegis::gateways::discord::presenter::DiscordPresenter;
 use aegis::shared::dispatch_event;
-use aegis::shared::types::*;
+use aegis::shared::types::{BotEvent, CallbackEvent, MessageEvent};
 use anyhow::{Context, Result};
 use secrecy::ExposeSecret;
 use serenity::all::{
@@ -31,20 +36,6 @@ pub struct DiscordRawHandle {
 /// Discord runtime handle: Client (gateway), ChannelId, Adapter.
 #[allow(dead_code)]
 pub type DiscordHandle = (Client, ChannelId, Arc<dyn BotAdapter>);
-
-#[allow(dead_code)]
-fn parse_slash(name: &str, code: Option<&str>) -> Option<BotCommand> {
-    match name {
-        "help" => Some(BotCommand::Help),
-        "start" => Some(BotCommand::Start),
-        "menu" => Some(BotCommand::Menu),
-        "auth" => code.map(|c| BotCommand::Auth {
-            code: c.to_string(),
-        }),
-        "setsecurityfile" => Some(BotCommand::SetSecurityFile),
-        _ => None,
-    }
-}
 
 #[allow(dead_code)]
 pub fn has_discord_config(enc: &EncryptedConfig, args: &[String]) -> bool {
@@ -118,11 +109,12 @@ pub async fn connect_discord(
 /// Called in runtime.rs where AppState exists.
 #[allow(dead_code)]
 pub async fn build_handle(raw: DiscordRawHandle, state: Arc<AppState>) -> Result<DiscordHandle> {
-    let intents = GatewayIntents::DIRECT_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::DIRECT_MESSAGES;
     let handler = DiscordHandler {
         state,
         adapter: raw.adapter.clone(),
         admin_channel: raw.admin_channel,
+        http: raw.http.clone(),
     };
     let client = Client::builder(&raw.token, intents)
         .event_handler(handler)
@@ -136,6 +128,7 @@ struct DiscordHandler {
     state: Arc<AppState>,
     adapter: Arc<dyn BotAdapter>,
     admin_channel: ChannelId,
+    http: Arc<Http>,
 }
 
 #[async_trait]
@@ -166,29 +159,28 @@ impl EventHandler for DiscordHandler {
         let _ = dispatch_event(event, &self.state).await;
     }
 
-    async fn interaction_create(&self, ctx: SerenityCtx, interaction: Interaction) {
+    async fn interaction_create(&self, _ctx: SerenityCtx, interaction: Interaction) {
         let _ = match interaction {
             Interaction::Command(ref cmd) => {
-                let _ = cmd.defer(&ctx.http).await;
+                let _ = cmd.defer(&self.http).await;
                 let name = cmd.data.name.as_str();
                 let code = cmd.data.options.first().and_then(|opt| match &opt.value {
                     CommandDataOptionValue::String(s) => Some(s.as_str()),
                     _ => None,
                 });
-                if let Some(command) = parse_slash(name, code) {
-                    let event = BotEvent::Command(CommandEvent {
-                        adapter: self.adapter.clone(),
-                        target: aegis::common::TargetId(cmd.channel_id.to_string()),
-                        user_id: cmd.user.id.get() as i64,
-                        command,
-                    });
-                    dispatch_event(event, &self.state).await
+                if let Some(input) =
+                    command_to_business_input(name, code, cmd.user.id.get(), cmd.channel_id.get())
+                {
+                    let presenter = DiscordPresenter::new(self.http.clone());
+                    ApplicationService
+                        .handle(&input, &self.state, &presenter)
+                        .await
                 } else {
-                    Ok(())
+                    Ok(BusinessResult::Ok)
                 }
             }
             Interaction::Component(ref comp) => {
-                let _ = comp.defer(&ctx.http).await;
+                let _ = comp.defer(&self.http).await;
                 let msg = &comp.message;
                 let event = BotEvent::Callback(CallbackEvent {
                     adapter: self.adapter.clone(),
@@ -199,9 +191,12 @@ impl EventHandler for DiscordHandler {
                     callback_id: String::new(),
                     session_timeout_secs: self.state.session_timeout_secs().await,
                 });
-                dispatch_event(event, &self.state).await
+                dispatch_event(event, &self.state)
+                    .await
+                    .map(|_| BusinessResult::Ok)
+                    .map_err(|e| AppError::Service(e.to_string()))
             }
-            _ => Ok(()),
+            _ => Ok(BusinessResult::Ok),
         };
     }
 }
@@ -209,7 +204,6 @@ impl EventHandler for DiscordHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::shared::types::BotCommand;
 
     fn make_enc() -> EncryptedConfig {
         EncryptedConfig {
@@ -227,29 +221,6 @@ mod tests {
             lang: None,
             matrix_recovery_key: None,
         }
-    }
-
-    #[test]
-    fn parse_slash_known_commands() {
-        assert_eq!(parse_slash("help", None), Some(BotCommand::Help));
-        assert_eq!(parse_slash("start", None), Some(BotCommand::Start));
-        assert_eq!(parse_slash("menu", None), Some(BotCommand::Menu));
-        assert_eq!(
-            parse_slash("auth", Some("123456")),
-            Some(BotCommand::Auth {
-                code: "123456".into()
-            })
-        );
-        assert_eq!(
-            parse_slash("setsecurityfile", None),
-            Some(BotCommand::SetSecurityFile)
-        );
-    }
-
-    #[test]
-    fn parse_slash_unknown_returns_none() {
-        assert_eq!(parse_slash("unknown", None), None);
-        assert_eq!(parse_slash("auth", None), None);
     }
 
     #[test]
