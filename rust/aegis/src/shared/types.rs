@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::common::{BotAdapter, MessageId, TargetId};
+use crate::core::error::AppError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeoutStatus {
@@ -29,6 +30,8 @@ pub enum HandlerAction {
 pub type HandlerResult = Result<HandlerAction>;
 pub type DispatchResult = Result<Option<HandlerAction>>;
 
+/// Legacy ingress for current native gateways. Tasks 10-12 migrate each native
+/// SDK to construct `BusinessRequest` directly; this type is removed in Task 14.
 pub enum BotEvent {
     Message(MessageEvent),
     Callback(CallbackEvent),
@@ -36,11 +39,14 @@ pub enum BotEvent {
 }
 
 impl BotEvent {
-    pub fn user_id(&self) -> i64 {
+    pub fn user_id(&self) -> crate::core::error::Result<i64> {
         match self {
-            BotEvent::Message(m) => m.user_id,
-            BotEvent::Callback(c) => c.user_id.parse().unwrap_or(0),
-            BotEvent::Command(c) => c.user_id,
+            BotEvent::Message(m) => Ok(m.user_id),
+            BotEvent::Callback(c) => c
+                .user_id
+                .parse()
+                .map_err(|_| AppError::InvalidParameter("callback user id is not numeric".into())),
+            BotEvent::Command(c) => Ok(c.user_id),
         }
     }
 
@@ -79,14 +85,7 @@ pub struct CommandEvent {
     pub command: BotCommand,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BotCommand {
-    Help,
-    Start,
-    Menu,
-    Auth { code: String },
-    SetSecurityFile,
-}
+pub use crate::app::interaction::BusinessCommand as BotCommand;
 
 #[cfg(test)]
 mod event_tests {
@@ -123,5 +122,22 @@ mod event_tests {
             code: "123456".into(),
         };
         assert!(matches!(cmd, BotCommand::Auth { ref code } if code == "123456"));
+    }
+
+    #[test]
+    fn malformed_callback_user_id_returns_error() {
+        let event = BotEvent::Callback(CallbackEvent {
+            adapter: std::sync::Arc::new(crate::common::MockBotAdapter::new()),
+            target: TargetId("123".into()),
+            user_id: "not-a-number".into(),
+            msg_id: MessageId("1".into()),
+            data: String::new(),
+            callback_id: String::new(),
+            session_timeout_secs: 600,
+        });
+        assert!(matches!(
+            event.user_id(),
+            Err(AppError::InvalidParameter(_))
+        ));
     }
 }

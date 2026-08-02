@@ -1,4 +1,4 @@
-use crate::common::{BotAdapter, MessageContent, TargetId};
+use crate::core::progress::{OperationProgress, ProgressReporter};
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::system::operations::Operations;
 use anyhow::Result;
@@ -25,18 +25,14 @@ impl TaskType {
         }
     }
 
-    pub async fn execute(&self, adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
+    pub async fn execute(&self, reporter: &dyn ProgressReporter) -> Result<()> {
         match self {
             TaskType::GeoUpdate => {
                 log::info!("执行 GeoData 更新任务...");
-                let _ = adapter
-                    .send_message(
-                        target,
-                        MessageContent {
-                            text: "⏳ [定时任务] 开始更新 GeoData...".to_string(),
-                            markup: None,
-                        },
-                    )
+                let _ = reporter
+                    .report(OperationProgress::Started(
+                        "⏳ [定时任务] 开始更新 GeoData...".to_string(),
+                    ))
                     .await;
 
                 let result = MaintenanceManager::update_geodata(|_pct, msg| {
@@ -45,8 +41,7 @@ impl TaskType {
                 .await;
 
                 report_result(
-                    adapter,
-                    target,
+                    reporter,
                     "GeoData 更新",
                     "✅ [定时任务] GeoData 更新完成。",
                     result.map(|_| ()),
@@ -54,54 +49,35 @@ impl TaskType {
                 .await
             }
             TaskType::Reboot => {
-                let _ = adapter
-                    .send_message(
-                        target,
-                        MessageContent {
-                            text: "⚠️ 系统即将重启 (定时任务)...".to_string(),
-                            markup: None,
-                        },
-                    )
+                let _ = reporter
+                    .report(OperationProgress::Started(
+                        "⚠️ 系统即将重启 (定时任务)...".to_string(),
+                    ))
                     .await;
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                 Operations::reboot_system().await?;
                 Ok(())
             }
             TaskType::ReloadCore => {
-                let _ = adapter
-                    .send_message(
-                        target,
-                        MessageContent {
-                            text: "🔄 重载核心服务...".to_string(),
-                            markup: None,
-                        },
-                    )
+                let _ = reporter
+                    .report(OperationProgress::Started("🔄 重载核心服务...".to_string()))
                     .await;
                 MaintenanceManager::reload_core().await?;
                 Ok(())
             }
             TaskType::SecurityUpdate => {
-                let _ = adapter
-                    .send_message(
-                        target,
-                        MessageContent {
-                            text: "ℹ️ 自动安全更新已由系统定时器管理，无需手动执行。".to_string(),
-                            markup: None,
-                        },
-                    )
+                let _ = reporter
+                    .report(OperationProgress::Started(
+                        "ℹ️ 自动安全更新已由系统定时器管理，无需手动执行。".to_string(),
+                    ))
                     .await;
                 Ok(())
             }
             TaskType::Unknown => {
-                let _ = adapter
-                    .send_message(
-                        target,
-                        MessageContent {
-                            text: "⚠️ 此任务类型已弃用，自动安全更新已由系统定时器管理。"
-                                .to_string(),
-                            markup: None,
-                        },
-                    )
+                let _ = reporter
+                    .report(OperationProgress::Started(
+                        "⚠️ 此任务类型已弃用，自动安全更新已由系统定时器管理。".to_string(),
+                    ))
                     .await;
                 Ok(())
             }
@@ -110,34 +86,24 @@ impl TaskType {
 }
 
 async fn report_result(
-    adapter: &dyn BotAdapter,
-    target: &TargetId,
+    reporter: &dyn ProgressReporter,
     task_name: &str,
     success_msg: &str,
     result: Result<()>,
 ) -> Result<()> {
     match result {
         Ok(()) => {
-            adapter
-                .send_message(
-                    target,
-                    MessageContent {
-                        text: success_msg.to_string(),
-                        markup: None,
-                    },
-                )
+            reporter
+                .report(OperationProgress::Finished(success_msg.to_string()))
                 .await?;
             Ok(())
         }
         Err(e) => {
-            adapter
-                .send_message(
-                    target,
-                    MessageContent {
-                        text: format!("❌ [定时任务] {} 失败: {:#}", task_name, e),
-                        markup: None,
-                    },
-                )
+            reporter
+                .report(OperationProgress::Finished(format!(
+                    "❌ [定时任务] {} 失败: {:#}",
+                    task_name, e
+                )))
                 .await?;
             Err(e)
         }

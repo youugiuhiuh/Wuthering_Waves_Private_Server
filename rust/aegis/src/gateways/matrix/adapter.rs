@@ -1,4 +1,3 @@
-use crate::common::routing::is_sensitive;
 use crate::common::{
     BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
@@ -134,23 +133,17 @@ impl BotAdapter for MatrixAdapter {
             None => content.text,
         };
 
-        if is_sensitive(&body_text) {
-            let data = body_text.into_bytes();
-            let response = self
-                .room
-                .send_attachment(
-                    "batch_result.txt",
-                    &mime::TEXT_PLAIN,
-                    data,
-                    AttachmentConfig::new(),
-                )
-                .await?;
-            Ok(MessageId(response.event_id.to_string()))
-        } else {
-            let body = RoomMessageEventContent::text_plain(&body_text);
-            let response = self.room.send(body).await?;
-            Ok(MessageId(response.response.event_id.to_string()))
-        }
+        let data = body_text.into_bytes();
+        let response = self
+            .room
+            .send_attachment(
+                "batch_result.txt",
+                &mime::TEXT_PLAIN,
+                data,
+                AttachmentConfig::new(),
+            )
+            .await?;
+        Ok(MessageId(response.event_id.to_string()))
     }
 
     async fn edit_message(

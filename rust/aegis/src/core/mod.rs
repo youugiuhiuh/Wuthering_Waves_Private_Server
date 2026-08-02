@@ -11,6 +11,7 @@ pub mod crypto;
 pub mod error;
 pub mod network;
 pub mod paths;
+pub mod progress;
 pub mod security;
 pub mod singbox;
 pub mod sni;

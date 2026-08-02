@@ -1,4 +1,4 @@
-use crate::common::{BotAdapter, TargetId};
+use crate::core::progress::ProgressReporter;
 use anyhow::{Context, Result};
 use chrono_tz::Tz;
 use once_cell::sync::Lazy;
@@ -96,16 +96,11 @@ pub struct SchedulerManager {
     pub scheduler: Arc<Mutex<Option<JobScheduler>>>,
     pub state: Arc<Mutex<SchedulerState>>,
     pub state_path: String,
-    pub adapter: Arc<dyn BotAdapter>,
-    pub target: TargetId,
+    pub reporter: Arc<dyn ProgressReporter>,
 }
 
 impl SchedulerManager {
-    pub async fn new(
-        adapter: Arc<dyn BotAdapter>,
-        target: TargetId,
-        state_path: String,
-    ) -> Result<Arc<Self>> {
+    pub async fn new(reporter: Arc<dyn ProgressReporter>, state_path: String) -> Result<Arc<Self>> {
         let path = state_path.clone();
         let state = tokio::task::spawn_blocking(move || {
             let s =
@@ -126,8 +121,7 @@ impl SchedulerManager {
             scheduler,
             state,
             state_path,
-            adapter,
-            target,
+            reporter,
         });
 
         let _ = manager.start_all_tasks().await;
@@ -155,12 +149,7 @@ impl SchedulerManager {
         for task in tasks.iter() {
             if task.enabled {
                 let cron_expr = normalize_cron_expression(&task.cron_expression);
-                let job = build_job(
-                    self.adapter.clone(),
-                    self.target.clone(),
-                    task,
-                    cron_expr.as_str(),
-                );
+                let job = build_job(self.reporter.clone(), task, cron_expr.as_str());
 
                 match job {
                     Ok(j) => {
@@ -304,11 +293,11 @@ pub async fn get_manager() -> Option<Arc<SchedulerManager>> {
     guard.as_ref().cloned()
 }
 
-pub async fn start_scheduler(adapter: Arc<dyn BotAdapter>, target: TargetId) -> Result<()> {
+pub async fn start_scheduler(reporter: Arc<dyn ProgressReporter>) -> Result<()> {
     log::info!("⏰ 开始初始化调度器...");
     let state_path = "/etc/wwps/aegis/scheduler_state.json".to_string();
 
-    let manager = SchedulerManager::new(adapter, target, state_path).await?;
+    let manager = SchedulerManager::new(reporter, state_path).await?;
     let mut manager_guard = SCHEDULER.lock().await;
     *manager_guard = Some(manager);
 
@@ -325,8 +314,7 @@ fn normalize_cron_expression(cron_expr: &str) -> String {
 }
 
 fn build_job(
-    adapter: Arc<dyn BotAdapter>,
-    target: TargetId,
+    reporter: Arc<dyn ProgressReporter>,
     task: &ScheduledTask,
     cron_expr: &str,
 ) -> Result<Job> {
@@ -334,17 +322,15 @@ fn build_job(
 
     match timezone_name.parse::<Tz>() {
         Ok(timezone) => {
-            let adapter_clone = adapter.clone();
-            let target_clone = target.clone();
+            let reporter_clone = reporter.clone();
             let task_type = task.task_type.clone();
             Job::new_async_tz(cron_expr, timezone, move |_uuid, _l| {
-                let adapter = adapter_clone.clone();
-                let target = target_clone.clone();
+                let reporter = reporter_clone.clone();
                 let task_type = task_type.clone();
 
                 Box::pin(async move {
                     log::info!("执行定时任务: {:?}", task_type);
-                    if let Err(e) = task_type.execute(&*adapter, &target).await {
+                    if let Err(e) = task_type.execute(&*reporter).await {
                         log::error!("任务执行失败: {}", e);
                     }
                 })
@@ -352,17 +338,15 @@ fn build_job(
             .map_err(Into::into)
         }
         Err(_) => {
-            let adapter_clone = adapter.clone();
-            let target_clone = target.clone();
+            let reporter_clone = reporter.clone();
             let task_type = task.task_type.clone();
             Job::new_async(cron_expr, move |_uuid, _l| {
-                let adapter = adapter_clone.clone();
-                let target = target_clone.clone();
+                let reporter = reporter_clone.clone();
                 let task_type = task_type.clone();
 
                 Box::pin(async move {
                     log::info!("执行定时任务: {:?}", task_type);
-                    if let Err(e) = task_type.execute(&*adapter, &target).await {
+                    if let Err(e) = task_type.execute(&*reporter).await {
                         log::error!("任务执行失败: {}", e);
                     }
                 })
@@ -416,52 +400,25 @@ mod tests {
     async fn add_new_task_rejects_invalid_task_without_persisting_state() {
         let tempdir = tempdir().unwrap();
         let state_path = tempdir.path().join("scheduler_state.json");
-        use crate::common::PlatformCapabilities;
-        use crate::common::{MessageContent, Platform};
-        use async_trait::async_trait;
+        use crate::core::progress::OperationProgress;
 
-        struct TestAdapter;
-        #[async_trait]
-        impl BotAdapter for TestAdapter {
-            fn platform(&self) -> Platform {
-                Platform::Telegram
-            }
-            async fn send_message(
-                &self,
-                _target: &TargetId,
-                _content: MessageContent,
-            ) -> Result<crate::common::MessageId> {
-                Ok(crate::common::MessageId("0".to_string()))
-            }
-            async fn edit_message(
-                &self,
-                _target: &TargetId,
-                _msg_id: &crate::common::MessageId,
-                _content: MessageContent,
-            ) -> Result<()> {
+        #[derive(Clone)]
+        struct RecordingReporter(Arc<Mutex<Vec<OperationProgress>>>);
+        #[async_trait::async_trait]
+        impl crate::core::progress::ProgressReporter for RecordingReporter {
+            async fn report(&self, progress: OperationProgress) -> Result<(), anyhow::Error> {
+                self.0.lock().await.push(progress);
                 Ok(())
-            }
-            async fn delete_message(
-                &self,
-                _target: &TargetId,
-                _msg_id: &crate::common::MessageId,
-            ) -> Result<()> {
-                Ok(())
-            }
-            async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
-                Ok(Vec::new())
-            }
-            fn capabilities(&self) -> PlatformCapabilities {
-                PlatformCapabilities::TELEGRAM
             }
         }
+
+        let reporter = RecordingReporter(Arc::new(Mutex::new(Vec::new())));
 
         let manager = SchedulerManager {
             scheduler: Arc::new(Mutex::new(None)),
             state: Arc::new(Mutex::new(SchedulerState { tasks: Vec::new() })),
             state_path: state_path.to_string_lossy().to_string(),
-            adapter: Arc::new(TestAdapter),
-            target: TargetId("0".to_string()),
+            reporter: Arc::new(reporter),
         };
 
         let result = manager

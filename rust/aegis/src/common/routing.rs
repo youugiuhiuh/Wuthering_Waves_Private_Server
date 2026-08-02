@@ -244,6 +244,63 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn routing_sensitive_send_uses_secondary() {
+            let mut primary = MockBotAdapter::new();
+            primary.expect_platform().returning(|| Platform::Telegram);
+            primary.expect_send_message().never();
+
+            let mut secondary = MockBotAdapter::new();
+            secondary.expect_platform().returning(|| Platform::Matrix);
+            secondary
+                .expect_send_message()
+                .times(1)
+                .returning(|_, _| Ok(MessageId("1".to_string())));
+
+            let routing = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)));
+            let _id = routing
+                .send_message(
+                    &TargetId("1".to_string()),
+                    MessageContent {
+                        text: "vless://abc123".into(),
+                        markup: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn routing_follow_up_currently_uses_primary() {
+            // Characterizes the current defect: a message routed to the secondary
+            // adapter returns a MessageId that later edit/delete operations send
+            // to the primary adapter, where the reference does not exist.
+            // Task 14 removes this obsolete routing contract.
+            let mut primary = MockBotAdapter::new();
+            primary.expect_platform().returning(|| Platform::Telegram);
+            primary
+                .expect_edit_message()
+                .times(1)
+                .returning(|_, _, _| Ok(()));
+
+            let mut secondary = MockBotAdapter::new();
+            secondary.expect_platform().returning(|| Platform::Matrix);
+            secondary.expect_edit_message().never();
+
+            let routing = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)));
+            routing
+                .edit_message(
+                    &TargetId("1".to_string()),
+                    &MessageId("1".to_string()),
+                    MessageContent {
+                        text: "updated".into(),
+                        markup: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
         async fn sends_all_to_primary_when_no_secondary() {
             let mut primary = MockBotAdapter::new();
             primary.expect_platform().returning(|| Platform::Telegram);

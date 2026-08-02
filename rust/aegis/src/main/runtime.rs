@@ -8,20 +8,32 @@ use anyhow::Context;
 use anyhow::Result;
 use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::Room as MatrixRoom;
-use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::encrypted;
-use matrix_sdk::ruma::events::room::message::{
-    MessageType, Relation, RoomMessageEventContentWithoutRelation,
-};
+#[cfg(feature = "telegram")]
 use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
+#[cfg(feature = "telegram")]
 use teloxide::prelude::*;
+#[cfg(feature = "telegram")]
 use teloxide::types::{CallbackQuery, ChatId, Message};
+#[cfg(feature = "telegram")]
 use teloxide::utils::command::BotCommands;
 use tokio_util::sync::CancellationToken;
 
 use crate::bootstrap::config_dir;
+#[cfg(feature = "telegram")]
+use aegis::app::interaction::{BusinessCommand, BusinessResult};
+use aegis::app::service::ApplicationService;
 use aegis::app::state::AppState;
+use aegis::gateways::matrix::commands::command_to_business_input;
+use aegis::gateways::matrix::presenter::MatrixPresenter;
+#[cfg(feature = "telegram")]
+use aegis::gateways::telegram::mapping;
+#[cfg(feature = "telegram")]
+use aegis::gateways::telegram::presenter::TelegramPresenter;
+#[cfg(feature = "telegram")]
+use aegis::shared::handlers::menu::send_main_menu;
 
+#[cfg(feature = "telegram")]
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "Available commands:")]
 enum TeloxideCommand {
@@ -37,6 +49,7 @@ enum TeloxideCommand {
     SetSecurityFile,
 }
 
+#[cfg(feature = "telegram")]
 pub(crate) async fn register_bot_commands(bot: &Bot) -> Result<()> {
     bot.set_my_commands(TeloxideCommand::bot_commands())
         .await
@@ -44,16 +57,7 @@ pub(crate) async fn register_bot_commands(bot: &Bot) -> Result<()> {
     Ok(())
 }
 
-fn teloxide_to_bot(cmd: TeloxideCommand) -> BotCommand {
-    match cmd {
-        TeloxideCommand::Help => BotCommand::Help,
-        TeloxideCommand::Start => BotCommand::Start,
-        TeloxideCommand::Menu => BotCommand::Menu,
-        TeloxideCommand::Auth(code) => BotCommand::Auth { code },
-        TeloxideCommand::SetSecurityFile => BotCommand::SetSecurityFile,
-    }
-}
-
+#[cfg_attr(not(feature = "telegram"), allow(unused_variables))]
 pub async fn run(
     state: Arc<AppState>,
     matrix_handle: Option<super::matrix::MatrixHandle>,
@@ -97,12 +101,13 @@ pub async fn run(
     if let Some(raw) = discord_raw {
         let adapter_for_init = raw.adapter.clone();
         let target_for_init = TargetId(raw.admin_channel.to_string());
+        let scheduler_reporter = aegis::shared::reporters::SendMessageReporter::new(
+            adapter_for_init.clone(),
+            target_for_init.clone(),
+        );
         tokio::spawn(async move {
-            if let Err(e) = aegis::core::system::scheduler::start_scheduler(
-                adapter_for_init.clone(),
-                target_for_init.clone(),
-            )
-            .await
+            if let Err(e) =
+                aegis::core::system::scheduler::start_scheduler(Arc::new(scheduler_reporter)).await
             {
                 log::error!("❌ 初始化调度器失败: {}", e);
             }
@@ -166,18 +171,6 @@ pub async fn run(
         let matrix_target = target.clone();
         let matrix_target_for_encrypted = matrix_target.clone();
 
-        fn extract_thread_root(
-            relates_to: &Option<Relation<RoomMessageEventContentWithoutRelation>>,
-        ) -> Option<String> {
-            relates_to.as_ref().and_then(|r| {
-                if let Relation::Thread(t) = r {
-                    Some(t.event_id.to_string())
-                } else {
-                    None
-                }
-            })
-        }
-
         client.add_event_handler(
             move |event: matrix_sdk::ruma::events::room::message::OriginalSyncRoomMessageEvent,
                   room: MatrixRoom,
@@ -195,25 +188,29 @@ pub async fn run(
                     }
                     let text = event.content.body().trim().to_string();
 
-                    fn extract_media_info(
-                        source: &MediaSource,
-                        filename: &str,
-                    ) -> (Option<String>, Option<String>) {
-                        let fid = match source {
-                            MediaSource::Plain(url) => Some(url.to_string()),
-                            MediaSource::Encrypted(info) => Some(info.url.to_string()),
+                    if let Some(bot_cmd) =
+                        aegis::gateways::matrix::commands::parse_to_bot_command(&text)
+                    {
+                        let cmd = match bot_cmd {
+                            BotCommand::Help => {
+                                Some(aegis::gateways::matrix::commands::Command::Help)
+                            }
+                            BotCommand::Menu => {
+                                Some(aegis::gateways::matrix::commands::Command::Menu)
+                            }
+                            BotCommand::Auth { code } => {
+                                Some(aegis::gateways::matrix::commands::Command::Auth { code })
+                            }
+                            BotCommand::Start | BotCommand::SetSecurityFile => None,
                         };
-                        let fname = Some(filename.to_string());
-                        (fid, fname)
+                        if let Some(cmd) = cmd
+                            && let Some(input) = command_to_business_input(cmd, user_id, &target)
+                        {
+                            let presenter = MatrixPresenter::new(room);
+                            let _ = ApplicationService.handle(&input, &state, &presenter).await;
+                            return;
+                        }
                     }
-
-                    let (file_id, file_name) = match &event.content.msgtype {
-                        MessageType::Audio(c) => extract_media_info(&c.source, c.filename()),
-                        MessageType::File(c) => extract_media_info(&c.source, c.filename()),
-                        MessageType::Image(c) => extract_media_info(&c.source, c.filename()),
-                        MessageType::Video(c) => extract_media_info(&c.source, c.filename()),
-                        _ => (None, None),
-                    };
 
                     let event = if let Some(ev) = aegis::gateways::matrix::commands::parse_to_event(
                         &text,
@@ -223,16 +220,7 @@ pub async fn run(
                     ) {
                         ev
                     } else {
-                        BotEvent::Message(MessageEvent {
-                            adapter: adapter.clone(),
-                            target: target.clone(),
-                            user_id,
-                            text: Some(text),
-                            file_id,
-                            file_name,
-                            reply_to_text: None,
-                            thread_root: extract_thread_root(&event.content.relates_to),
-                        })
+                        return;
                     };
                     let _ = dispatch_event(event, &state).await;
                 }
@@ -268,31 +256,70 @@ pub async fn run(
     }
 
     // ── Telegram Dispatcher ──
+    #[cfg(feature = "telegram")]
     if enable_telegram {
         async fn handle_command(
-            _bot: Bot,
+            bot: Bot,
             msg: Message,
             cmd: TeloxideCommand,
             state: Arc<AppState>,
         ) -> Result<(), teloxide::RequestError> {
-            let _ = dispatch_event(
-                BotEvent::Command(CommandEvent {
-                    adapter: state.adapter.clone(),
-                    target: TargetId(msg.chat.id.0.to_string()),
-                    user_id: msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0),
-                    command: teloxide_to_bot(cmd),
-                }),
-                &state,
-            )
-            .await;
+            match cmd {
+                TeloxideCommand::Auth(code) => {
+                    let _ = dispatch_event(
+                        BotEvent::Command(CommandEvent {
+                            adapter: state.adapter.clone(),
+                            target: TargetId(msg.chat.id.0.to_string()),
+                            user_id: msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0),
+                            command: BotCommand::Auth { code },
+                        }),
+                        &state,
+                    )
+                    .await;
+                }
+                TeloxideCommand::Menu => {
+                    let target = TargetId(msg.chat.id.0.to_string());
+                    if let Ok(input) = mapping::command_input(&msg, BusinessCommand::Menu) {
+                        let presenter = TelegramPresenter::new(bot.clone());
+                        if let Ok(result) =
+                            ApplicationService.handle(&input, &state, &presenter).await
+                            && matches!(result, BusinessResult::Ok)
+                        {
+                            let _ = send_main_menu(&*state.adapter, &target).await;
+                        }
+                    }
+                }
+                _ => {
+                    let command = match cmd {
+                        TeloxideCommand::Help => BusinessCommand::Help,
+                        TeloxideCommand::Start => BusinessCommand::Start,
+                        TeloxideCommand::SetSecurityFile => BusinessCommand::SetSecurityFile,
+                        TeloxideCommand::Auth(_) | TeloxideCommand::Menu => unreachable!(),
+                    };
+                    if let Ok(input) = mapping::command_input(&msg, command) {
+                        let presenter = TelegramPresenter::new(bot.clone());
+                        let _ = ApplicationService.handle(&input, &state, &presenter).await;
+                    }
+                }
+            }
             Ok(())
         }
 
         async fn handle_message(
-            _bot: Bot,
+            bot: Bot,
             msg: Message,
             state: Arc<AppState>,
         ) -> Result<(), teloxide::RequestError> {
+            if let Some(text) = msg.text().map(|s| s.to_string())
+                && let Ok(ref input) = mapping::text_input(&msg, text.clone())
+            {
+                let presenter = TelegramPresenter::new(bot.clone());
+                if let Ok(BusinessResult::Message(_)) =
+                    ApplicationService.handle(input, &state, &presenter).await
+                {
+                    return Ok(());
+                }
+            }
             let user_id = msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
             let _ = dispatch_event(
                 BotEvent::Message(MessageEvent {
@@ -358,12 +385,13 @@ pub async fn run(
 
         let adapter_for_init = state.adapter.clone();
         let target_for_init = TargetId(admin_id.unwrap_or(0).to_string());
+        let scheduler_reporter = aegis::shared::reporters::SendMessageReporter::new(
+            adapter_for_init.clone(),
+            target_for_init.clone(),
+        );
         tokio::spawn(async move {
-            if let Err(e) = aegis::core::system::scheduler::start_scheduler(
-                adapter_for_init.clone(),
-                target_for_init.clone(),
-            )
-            .await
+            if let Err(e) =
+                aegis::core::system::scheduler::start_scheduler(Arc::new(scheduler_reporter)).await
             {
                 log::error!("❌ 初始化调度器失败: {}", e);
             }
@@ -394,12 +422,13 @@ pub async fn run(
     if enable_matrix && !enable_telegram {
         let adapter_for_init = state.adapter.clone();
         let target_for_init = TargetId(admin_id.unwrap_or(0).to_string());
+        let scheduler_reporter = aegis::shared::reporters::SendMessageReporter::new(
+            adapter_for_init.clone(),
+            target_for_init.clone(),
+        );
         tokio::spawn(async move {
-            if let Err(e) = aegis::core::system::scheduler::start_scheduler(
-                adapter_for_init.clone(),
-                target_for_init.clone(),
-            )
-            .await
+            if let Err(e) =
+                aegis::core::system::scheduler::start_scheduler(Arc::new(scheduler_reporter)).await
             {
                 log::error!("❌ 初始化调度器失败: {}", e);
             }

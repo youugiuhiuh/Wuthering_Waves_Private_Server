@@ -1,16 +1,22 @@
 use crate::app::state::AppState;
 use crate::bootstrap::BotSettings;
 use crate::core::i18n;
+use crate::core::system::host_settings::HostSettings;
 use crate::shared::types::CallbackEvent;
 
+use std::sync::Arc;
 use std::time::Instant;
 
 #[allow(dead_code)]
-pub async fn intercept(cb: &CallbackEvent, state: &AppState) -> Option<String> {
+pub async fn intercept(
+    cb: &CallbackEvent,
+    state: &AppState,
+    host: Arc<dyn HostSettings>,
+) -> Option<String> {
     let data = cb.data.as_str();
 
     if data.starts_with("lang:") {
-        return handle_lang(cb, state).await;
+        return handle_lang(cb, state, host).await;
     }
 
     if data.starts_with("set_timeout:") {
@@ -43,7 +49,11 @@ async fn handle_set_timeout(cb: &CallbackEvent, state: &AppState) {
     }
 }
 
-async fn handle_lang(cb: &CallbackEvent, state: &AppState) -> Option<String> {
+async fn handle_lang(
+    cb: &CallbackEvent,
+    state: &AppState,
+    host: Arc<dyn HostSettings>,
+) -> Option<String> {
     let lang = match cb.data.as_str() {
         "lang:zh" => i18n::Lang::Zh,
         "lang:en" => i18n::Lang::En,
@@ -57,7 +67,7 @@ async fn handle_lang(cb: &CallbackEvent, state: &AppState) -> Option<String> {
     }
     state.mark_lang_configured().await;
     i18n::mark_lang_configured();
-    if let Err(e) = cb.adapter.set_system_locale(lang).await {
+    if let Err(e) = host.apply_locale(lang.as_str()).await {
         log::error!("设置系统语言环境失败: {}", e);
     }
     if let Err(e) = cb
@@ -81,9 +91,11 @@ mod tests {
     use crate::app::state::AppState;
     use crate::common::{BotAdapter, MessageId, MockBotAdapter, TargetId};
     use crate::core::security::self_destruct::SelfDestructExecutor;
+    use crate::core::system::host_settings::{HostSettings, SystemHostSettings};
     use crate::core::totp::TotpManager;
     use crate::shared::types::CallbackEvent;
 
+    use async_trait::async_trait;
     use futures_util::future::BoxFuture;
     use std::sync::Arc;
 
@@ -124,7 +136,42 @@ mod tests {
             callback_id: "cb1".into(),
             session_timeout_secs: 600,
         };
-        intercept(&event, &state).await;
+        intercept(&event, &state, Arc::new(SystemHostSettings)).await;
         assert_eq!(state.session_timeout_secs().await, 3600);
+    }
+
+    struct RecordingHost {
+        applied: tokio::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl HostSettings for RecordingHost {
+        async fn apply_locale(&self, locale: &str) -> anyhow::Result<()> {
+            self.applied.lock().await.push(locale.to_string());
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn intercept_lang_calls_host_service_without_bot_adapter() {
+        let state = make_state();
+        let host = Arc::new(RecordingHost {
+            applied: Default::default(),
+        });
+        let mut adapter = MockBotAdapter::new();
+        adapter.expect_answer_callback().returning(|_, _, _| Ok(()));
+        let adapter: Arc<dyn BotAdapter> = Arc::new(adapter);
+        let event = CallbackEvent {
+            adapter: adapter.clone(),
+            target: TargetId("123".into()),
+            user_id: "42".into(),
+            msg_id: MessageId("1".into()),
+            data: "lang:zh".into(),
+            callback_id: "cb1".into(),
+            session_timeout_secs: 600,
+        };
+        intercept(&event, &state, host.clone() as Arc<dyn HostSettings>).await;
+        let applied = host.applied.lock().await;
+        assert_eq!(*applied, vec!["zh".to_string()]);
     }
 }

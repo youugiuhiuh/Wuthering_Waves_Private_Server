@@ -140,7 +140,11 @@ async fn handle_upgrade(event: &CallbackEvent) -> HandlerResult {
     tokio::spawn(async move {
         match UpgradeManager::new() {
             Ok(manager) => {
-                if let Err(err) = manager.run(adapter.as_ref(), &target).await {
+                let reporter = crate::shared::reporters::StatusMessageReporter::new(
+                    adapter.clone(),
+                    target.clone(),
+                );
+                if let Err(err) = manager.run(&reporter).await {
                     let _ = adapter
                         .send_message(
                             &target,

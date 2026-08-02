@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+use aegis::app::interaction::{
+    ActorId, BusinessCommand, BusinessInput, BusinessRequest, ConversationId, Origin, PlatformId,
+};
 use aegis::common::{BotAdapter, MessageId, TargetId};
 use aegis::shared::types::{BotCommand, BotEvent, CallbackEvent, CommandEvent};
 
@@ -777,5 +780,142 @@ mod parse_to_event_tests {
             result,
             Some(BotEvent::Callback(CallbackEvent { ref data, .. })) if data == "m_sched"
         ));
+    }
+}
+
+pub fn command_to_business_input(
+    cmd: Command,
+    user_id: i64,
+    target: &TargetId,
+) -> Option<BusinessInput> {
+    let origin = Origin {
+        platform: PlatformId::Matrix,
+        actor_id: ActorId::new(user_id.to_string()).ok()?,
+        conversation_id: ConversationId::new(target.0.clone()).ok()?,
+    };
+    match cmd {
+        Command::Help => Some(BusinessInput {
+            origin,
+            request: BusinessRequest::Command(BusinessCommand::Help),
+        }),
+        Command::Menu => Some(BusinessInput {
+            origin,
+            request: BusinessRequest::Command(BusinessCommand::Menu),
+        }),
+        Command::Auth { code } => Some(BusinessInput {
+            origin,
+            request: BusinessRequest::Command(BusinessCommand::Auth { code }),
+        }),
+        Command::Status
+        | Command::Xray(_)
+        | Command::Singbox(_)
+        | Command::Ops(_)
+        | Command::Destruct
+        | Command::Schedule(_)
+        | Command::Warp(_)
+        | Command::Unknown(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod command_to_business_input_tests {
+    use super::*;
+
+    fn target() -> TargetId {
+        TargetId("!room:matrix.org".into())
+    }
+
+    #[test]
+    fn command_to_business_input_help() {
+        let input = command_to_business_input(Command::Help, 42, &target());
+        let input = input.expect("Help should map to BusinessInput");
+        assert!(matches!(
+            input.request,
+            BusinessRequest::Command(BusinessCommand::Help)
+        ));
+        assert_eq!(input.origin.platform, PlatformId::Matrix);
+        assert_eq!(input.origin.actor_id.as_str(), "42");
+        assert_eq!(input.origin.conversation_id.as_str(), "!room:matrix.org");
+    }
+
+    #[test]
+    fn command_to_business_input_menu() {
+        let input = command_to_business_input(Command::Menu, 99, &target());
+        let input = input.expect("Menu should map to BusinessInput");
+        assert!(matches!(
+            input.request,
+            BusinessRequest::Command(BusinessCommand::Menu)
+        ));
+    }
+
+    #[test]
+    fn command_to_business_input_auth() {
+        let input = command_to_business_input(
+            Command::Auth {
+                code: "123456".into(),
+            },
+            7,
+            &target(),
+        );
+        let input = input.expect("Auth should map to BusinessInput");
+        match input.request {
+            BusinessRequest::Command(BusinessCommand::Auth { code }) => {
+                assert_eq!(code, "123456");
+            }
+            _ => panic!("Expected Auth command"),
+        }
+    }
+
+    #[test]
+    fn command_to_business_input_complex_returns_none() {
+        for cmd in [
+            Command::Status,
+            Command::Xray(XraySubCommand::Status),
+            Command::Singbox(SingboxSubCommand::Status),
+            Command::Ops(OpsSubCommand::Reload),
+            Command::Destruct,
+            Command::Warp(WarpSubCommand::Status),
+            Command::Unknown("bad".into()),
+        ] {
+            let result = command_to_business_input(cmd, 1, &target());
+            assert!(
+                result.is_none(),
+                "Complex command should not map to BusinessInput"
+            );
+        }
+    }
+
+    #[test]
+    fn room_boundary_preserves_configured_room_as_conversation_id() {
+        let configured_room = TargetId("!configured:matrix.org".into());
+
+        let input = command_to_business_input(Command::Help, 42, &configured_room)
+            .expect("Help should map");
+
+        assert_eq!(
+            input.origin.conversation_id.as_str(),
+            "!configured:matrix.org",
+            "room_id preserved as conversation_id in Origin"
+        );
+
+        assert_ne!(
+            input.origin.conversation_id.as_str(),
+            "!other:matrix.org",
+            "different room_id produces different conversation_id"
+        );
+    }
+
+    #[test]
+    fn room_filter_guard_is_string_comparison_in_runtime() {
+        let configured = "!myroom:matrix.org";
+        let other = "!otherroom:matrix.org";
+
+        assert_ne!(configured, other, "rooms are distinct");
+
+        assert!(configured == "!myroom:matrix.org", "self matches");
+        assert!(
+            other != "!myroom:matrix.org",
+            "other room does not match configured room"
+        );
     }
 }

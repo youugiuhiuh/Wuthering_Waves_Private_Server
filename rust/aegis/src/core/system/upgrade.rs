@@ -1,4 +1,4 @@
-use crate::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
+use crate::core::progress::{OperationProgress, ProgressReporter};
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use obfstr::obfstr;
@@ -127,30 +127,20 @@ impl UpgradeManager {
         })
     }
 
-    pub async fn run(self, adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
-        let progress_msg_id = adapter
-            .send_message(
-                target,
-                MessageContent {
-                    text: t!("upgrade.bot_querying").to_string(),
-                    markup: None,
-                },
-            )
+    pub async fn run(self, reporter: &dyn ProgressReporter) -> Result<()> {
+        reporter
+            .report(OperationProgress::Started(
+                t!("upgrade.bot_querying").to_string(),
+            ))
             .await?;
 
         let artifact = match self.fetch_latest_release().await {
             Ok(a) => a,
             Err(e) => {
-                let _ = adapter
-                    .edit_message(
-                        target,
-                        &progress_msg_id,
-                        MessageContent {
-                            text: t!("upgrade.bot_fetch_fail", "0" => e.to_string().as_str())
-                                .to_string(),
-                            markup: None,
-                        },
-                    )
+                let _ = reporter
+                    .report(OperationProgress::Advanced(
+                        t!("upgrade.bot_fetch_fail", "0" => e.to_string().as_str()).to_string(),
+                    ))
                     .await;
                 return Err(e);
             }
@@ -170,52 +160,32 @@ impl UpgradeManager {
         )
         .to_string();
 
-        let _ = adapter
-            .edit_message(
-                target,
-                &progress_msg_id,
-                MessageContent {
-                    text: t!("upgrade.bot_preparing", "0" => summary.as_str()).to_string(),
-                    markup: None,
-                },
-            )
+        let _ = reporter
+            .report(OperationProgress::Advanced(
+                t!("upgrade.bot_preparing", "0" => summary.as_str()).to_string(),
+            ))
             .await;
 
-        let update_path = match self
-            .download_with_progress(&artifact, adapter, target, &progress_msg_id)
-            .await
-        {
+        let update_path = match self.download_with_progress(&artifact, reporter).await {
             Ok(path) => path,
             Err(e) => {
-                let _ = adapter
-                    .edit_message(
-                        target,
-                        &progress_msg_id,
-                        MessageContent {
-                            text: t!("upgrade.bot_download_fail", "0" => e.to_string().as_str())
-                                .to_string(),
-                            markup: None,
-                        },
-                    )
+                let _ = reporter
+                    .report(OperationProgress::Advanced(
+                        t!("upgrade.bot_download_fail", "0" => e.to_string().as_str()).to_string(),
+                    ))
                     .await;
                 return Err(e);
             }
         };
 
         if let Err(e) = self
-            .finalize_install(&artifact, &update_path, adapter, target, &progress_msg_id)
+            .finalize_install(&artifact, &update_path, reporter)
             .await
         {
-            let _ = adapter
-                .edit_message(
-                    target,
-                    &progress_msg_id,
-                    MessageContent {
-                        text: t!("upgrade.bot_install_fail", "0" => e.to_string().as_str())
-                            .to_string(),
-                        markup: None,
-                    },
-                )
+            let _ = reporter
+                .report(OperationProgress::Advanced(
+                    t!("upgrade.bot_install_fail", "0" => e.to_string().as_str()).to_string(),
+                ))
                 .await;
             let _ = fs::remove_file(&update_path).await;
             return Err(e);
@@ -396,9 +366,7 @@ impl UpgradeManager {
     async fn download_with_progress(
         &self,
         artifact: &ReleaseArtifact,
-        adapter: &dyn BotAdapter,
-        target: &TargetId,
-        progress_msg_id: &AegisMsgId,
+        reporter: &dyn ProgressReporter,
     ) -> Result<PathBuf> {
         let response = self
             .build_request(&artifact.download_url)
@@ -440,15 +408,8 @@ impl UpgradeManager {
             ) {
                 last_report = Instant::now();
                 let progress_text = format_download_progress(downloaded, total_size, start);
-                let _ = adapter
-                    .edit_message(
-                        target,
-                        progress_msg_id,
-                        MessageContent {
-                            text: progress_text,
-                            markup: None,
-                        },
-                    )
+                let _ = reporter
+                    .report(OperationProgress::Advanced(progress_text))
                     .await;
             }
         }
@@ -476,15 +437,10 @@ impl UpgradeManager {
 
         // Minisign verification
         if let Some(sig_bytes) = &artifact.minisig {
-            let _ = adapter
-                .edit_message(
-                    target,
-                    progress_msg_id,
-                    MessageContent {
-                        text: t!("upgrade.bot_minisign_verifying").to_string(),
-                        markup: None,
-                    },
-                )
+            let _ = reporter
+                .report(OperationProgress::Advanced(
+                    t!("upgrade.bot_minisign_verifying").to_string(),
+                ))
                 .await;
 
             let download_data =
@@ -497,27 +453,17 @@ impl UpgradeManager {
                 anyhow::bail!("Minisign 验证失败: {}", e);
             }
 
-            let _ = adapter
-                .edit_message(
-                    target,
-                    progress_msg_id,
-                    MessageContent {
-                        text: t!("upgrade.bot_minisign_ok").to_string(),
-                        markup: None,
-                    },
-                )
+            let _ = reporter
+                .report(OperationProgress::Advanced(
+                    t!("upgrade.bot_minisign_ok").to_string(),
+                ))
                 .await;
         }
 
-        let _ = adapter
-            .edit_message(
-                target,
-                progress_msg_id,
-                MessageContent {
-                    text: t!("upgrade.bot_download_done").to_string(),
-                    markup: None,
-                },
-            )
+        let _ = reporter
+            .report(OperationProgress::Advanced(
+                t!("upgrade.bot_download_done").to_string(),
+            ))
             .await;
 
         Ok(update_path)
@@ -527,19 +473,12 @@ impl UpgradeManager {
         &self,
         artifact: &ReleaseArtifact,
         update_path: &Path,
-        adapter: &dyn BotAdapter,
-        target: &TargetId,
-        progress_msg_id: &AegisMsgId,
+        reporter: &dyn ProgressReporter,
     ) -> Result<()> {
-        let _ = adapter
-            .edit_message(
-                target,
-                progress_msg_id,
-                MessageContent {
-                    text: t!("upgrade.bot_replacing").to_string(),
-                    markup: None,
-                },
-            )
+        let _ = reporter
+            .report(OperationProgress::Advanced(
+                t!("upgrade.bot_replacing").to_string(),
+            ))
             .await;
 
         let update_path_owned = update_path.to_path_buf();
@@ -554,14 +493,10 @@ impl UpgradeManager {
 
         self.write_upgrade_flag(&artifact.tag_name).await?;
 
-        adapter
-            .send_message(
-                target,
-                MessageContent {
-                    text: t!("upgrade.bot_updated", "0" => artifact.tag_name.as_str()).to_string(),
-                    markup: None,
-                },
-            )
+        reporter
+            .report(OperationProgress::Finished(
+                t!("upgrade.bot_updated", "0" => artifact.tag_name.as_str()).to_string(),
+            ))
             .await?;
 
         sleep(Duration::from_secs(2)).await;

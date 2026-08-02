@@ -1,18 +1,25 @@
 use std::sync::Arc;
 
-use aegis::common::{BotAdapter, RoutingAdapter};
-use aegis::gateways::telegram::TelegramAdapter;
+use aegis::common::BotAdapter;
 use anyhow::{Context, Result};
+
+#[cfg(feature = "telegram")]
+use crate::main::runtime::register_bot_commands;
+#[cfg(feature = "telegram")]
+use aegis::common::RoutingAdapter;
+#[cfg(feature = "telegram")]
+use aegis::gateways::telegram::TelegramAdapter;
+#[cfg(feature = "telegram")]
 use teloxide::Bot;
 
-use crate::main::runtime::register_bot_commands;
-
+#[cfg_attr(not(feature = "telegram"), allow(unused_variables))]
 pub async fn build_adapter(
     token: Option<&str>,
     enable_telegram: bool,
     enable_matrix: bool,
     matrix_handle: &Option<super::matrix::MatrixHandle>,
 ) -> Result<Arc<dyn BotAdapter>> {
+    #[cfg(feature = "telegram")]
     if enable_telegram {
         let token = token.context("Telegram token is required when enable_telegram is true")?;
         if enable_matrix {
@@ -33,6 +40,18 @@ pub async fn build_adapter(
             Ok(Arc::new(TelegramAdapter::new(bot)))
         }
     } else if let Some((_, _, matrix_adapter)) = matrix_handle {
+        Ok(matrix_adapter.clone())
+    } else {
+        anyhow::bail!("没有启用任何平台，请使用 --matrix 或 --all 或省略参数使用 Telegram");
+    }
+
+    #[cfg(not(feature = "telegram"))]
+    if enable_telegram {
+        anyhow::bail!("Telegram support was not compiled in; build with the `telegram` feature");
+    }
+
+    #[cfg(not(feature = "telegram"))]
+    if let Some((_, _, matrix_adapter)) = matrix_handle {
         Ok(matrix_adapter.clone())
     } else {
         anyhow::bail!("没有启用任何平台，请使用 --matrix 或 --all 或省略参数使用 Telegram");

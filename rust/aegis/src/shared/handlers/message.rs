@@ -3,6 +3,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rust_i18n::t;
 
+use crate::app::workflows::schedule::ScheduleFlow;
+use crate::app::workflows::warp::WarpFlow;
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
 use crate::core::security::acme::{
     AcmeCertificateOperation, AcmeCommandError, AcmeFailureKind, AcmeManager, XhttpDeployMode,
@@ -24,9 +26,8 @@ pub enum MessageAction {
 
 #[async_trait]
 pub trait MessageState: Send + Sync {
-    async fn schedule_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus;
-    async fn remove_schedule_input(&self, chat_id: &str);
-    async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus;
+    async fn schedule_flow(&self, chat_id: &str, timeout: Duration) -> ScheduleFlow;
+    async fn warp_flow(&self, chat_id: &str, timeout: Duration) -> WarpFlow;
     async fn start_domain_input(
         &self,
         chat_id: String,
@@ -363,11 +364,10 @@ pub async fn handle_message(
 
     // Schedule timeout check
     match state
-        .schedule_timeout_status(target_str, Duration::from_secs(180))
+        .schedule_flow(target_str, Duration::from_secs(180))
         .await
     {
-        TimeoutStatus::Expired => {
-            state.remove_schedule_input(target_str).await;
+        ScheduleFlow::Expired => {
             adapter
                 .send_message(
                     target,
@@ -379,7 +379,7 @@ pub async fn handle_message(
                 .await?;
             return Ok(MessageAction::Handled);
         }
-        TimeoutStatus::Active => {
+        ScheduleFlow::Waiting => {
             if text.is_some() || has_file {
                 adapter
                     .send_message(
@@ -393,15 +393,12 @@ pub async fn handle_message(
             }
             return Ok(MessageAction::Handled);
         }
-        TimeoutStatus::NotTracked => {}
+        ScheduleFlow::Continue => {}
     }
 
     // Warp input check
-    match state
-        .take_warp_input_status(target_str, Duration::from_secs(60))
-        .await
-    {
-        TimeoutStatus::Expired => {
+    match state.warp_flow(target_str, Duration::from_secs(60)).await {
+        WarpFlow::Expired => {
             adapter
                 .send_message(
                     target,
@@ -413,7 +410,7 @@ pub async fn handle_message(
                 .await?;
             return Ok(MessageAction::Handled);
         }
-        TimeoutStatus::Active => {
+        WarpFlow::Waiting => {
             if let Some(t) = text {
                 let rules: Vec<String> = t
                     .split([',', '，', '\n'])
@@ -462,7 +459,7 @@ pub async fn handle_message(
             }
             return Ok(MessageAction::Handled);
         }
-        TimeoutStatus::NotTracked => {}
+        WarpFlow::Continue => {}
     }
 
     Ok(MessageAction::NeedsDestruct)
@@ -614,20 +611,11 @@ mod tests {
 
     #[async_trait]
     impl MessageState for FakeState {
-        async fn schedule_timeout_status(
-            &self,
-            _chat_id: &str,
-            _timeout: Duration,
-        ) -> TimeoutStatus {
-            TimeoutStatus::NotTracked
+        async fn schedule_flow(&self, _chat_id: &str, _timeout: Duration) -> ScheduleFlow {
+            ScheduleFlow::Continue
         }
-        async fn remove_schedule_input(&self, _chat_id: &str) {}
-        async fn take_warp_input_status(
-            &self,
-            _chat_id: &str,
-            _timeout: Duration,
-        ) -> TimeoutStatus {
-            TimeoutStatus::NotTracked
+        async fn warp_flow(&self, _chat_id: &str, _timeout: Duration) -> WarpFlow {
+            WarpFlow::Continue
         }
         async fn start_domain_input(
             &self,

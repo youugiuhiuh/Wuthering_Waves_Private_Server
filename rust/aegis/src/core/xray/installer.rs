@@ -1,5 +1,5 @@
-use crate::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::paths::{warp as warp_paths, xray};
+use crate::core::progress::{OperationProgress, ProgressReporter};
 use crate::core::system::core_upgrade::{CpuArch, WwpsCoreUpgradeConfig, WwpsCoreUpgradeManager};
 use crate::core::system::maintenance::MaintenanceManager;
 use anyhow::{Context, Result, anyhow};
@@ -102,18 +102,10 @@ pub enum RealityInstallOutcome {
     InProgress,
 }
 
-#[allow(dead_code)]
-pub struct RealityInstaller {
-    msg_id: Option<AegisMsgId>,
-    progress_state: Arc<Mutex<ProgressState>>,
-}
+pub struct RealityInstaller;
 
 impl RealityInstaller {
-    pub async fn run(
-        adapter: &dyn BotAdapter,
-        target: &TargetId,
-        msg_id: Option<&AegisMsgId>,
-    ) -> Result<RealityInstallOutcome> {
+    pub async fn run(reporter: &dyn ProgressReporter) -> Result<RealityInstallOutcome> {
         if MaintenanceManager::is_reality_base_ready().await {
             return Ok(RealityInstallOutcome::AlreadyReady);
         }
@@ -126,9 +118,7 @@ impl RealityInstaller {
         }
 
         let installer = RealityInstallerInternal {
-            adapter,
-            target,
-            msg_id: msg_id.cloned(),
+            reporter,
             progress_state: progress_state.clone(),
         };
 
@@ -156,9 +146,7 @@ impl RealityInstaller {
 }
 
 pub struct RealityInstallerInternal<'a> {
-    adapter: &'a dyn BotAdapter,
-    target: &'a TargetId,
-    msg_id: Option<AegisMsgId>,
+    reporter: &'a dyn ProgressReporter,
     progress_state: Arc<Mutex<ProgressState>>,
 }
 
@@ -312,13 +300,14 @@ impl<'a> RealityInstallerInternal<'a> {
             state.description = desc.to_string();
         }
         let text = build_progress_text(step.min(TOTAL_STEPS), TOTAL_STEPS, desc, false);
-        if let Some(msg_id) = &self.msg_id {
-            let _ = self
-                .adapter
-                .edit_message(self.target, msg_id, MessageContent { text, markup: None })
-                .await;
-        }
-        Ok(())
+        let progress = if step == 0 {
+            OperationProgress::Started(text)
+        } else if step >= TOTAL_STEPS {
+            OperationProgress::Finished(text)
+        } else {
+            OperationProgress::Advanced(text)
+        };
+        self.reporter.report(progress).await
     }
 
     pub async fn install_toolchain_with_logs(&self, manager: &PackageManager) -> Result<()> {
@@ -388,12 +377,10 @@ impl<'a> RealityInstallerInternal<'a> {
             "❌ <b>Reality 初始化失败</b>\n\n原因: {}\n\n请检查系统环境或尝试 install.sh 回退流程。",
             err
         );
-        if let Some(msg_id) = &self.msg_id {
-            let _ = self
-                .adapter
-                .edit_message(self.target, msg_id, MessageContent { text, markup: None })
-                .await;
-        }
+        let _ = self
+            .reporter
+            .report(OperationProgress::Finished(text))
+            .await;
     }
 }
 
@@ -537,7 +524,7 @@ pub async fn install_wwps_core(arch: CpuArch) -> Result<()> {
     );
     let manager = WwpsCoreUpgradeManager::new(config).context("构建 wwps-core 升级管理器失败")?;
     let release = manager.fetch_release(None).await?;
-    let archive = manager.download_release(&release, None, None, None).await?;
+    let archive = manager.download_release(&release, None).await?;
     let unpack = manager.extract_archive(&archive).await?;
     manager.replace_core(&unpack).await?;
     manager

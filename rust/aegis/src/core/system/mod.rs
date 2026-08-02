@@ -1,4 +1,5 @@
 pub mod core_upgrade;
+pub mod host_settings;
 pub mod log_audit;
 pub mod maintenance;
 pub mod monitor;

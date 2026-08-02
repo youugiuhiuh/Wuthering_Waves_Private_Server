@@ -1,100 +1,93 @@
 use crate::app::auth;
+use crate::app::interaction::{
+    ActorId, BusinessInput, BusinessMessage, BusinessRequest, BusinessResult, ConversationId,
+    Origin, PlatformId,
+};
+use crate::app::output::BusinessOutput;
+use crate::app::service::ApplicationService;
 use crate::app::state::AppState;
-use crate::common::MessageContent;
+use crate::common::{BotAdapter, MessageContent, Platform, TargetId};
 use crate::shared::types::{BotCommand, CommandEvent};
 use anyhow::Result;
+use async_trait::async_trait;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[allow(dead_code)]
 pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
-    match cmd.command {
-        BotCommand::Help => {
-            cmd.adapter
-                .send_message(
-                    &cmd.target,
-                    MessageContent {
-                        text: rust_i18n::t!("help.text").into_owned(),
-                        markup: None,
-                    },
-                )
-                .await?;
-        }
-        BotCommand::Start => {
-            cmd.adapter
-                .send_message(
-                    &cmd.target,
-                    MessageContent {
-                        text: format!(
-                            "{}\n\n{}",
-                            rust_i18n::t!("welcome.title"),
-                            rust_i18n::t!("welcome.prompt")
-                        ),
-                        markup: None,
-                    },
-                )
-                .await?;
-        }
-        BotCommand::Auth { code } => {
-            let _ = auth::process_auth_code(
-                &*cmd.adapter,
-                &cmd.target,
-                cmd.user_id,
-                &code,
-                state,
-                5,
-                Duration::from_secs(600),
-                &[
-                    Duration::from_secs(900),
-                    Duration::from_secs(3600),
-                    Duration::from_secs(86400),
-                    Duration::from_secs(172800),
-                ],
-            )
-            .await;
-        }
-        BotCommand::Menu => {
-            if !state.is_authorized(cmd.user_id).await {
-                cmd.adapter
-                    .send_message(
-                        &cmd.target,
-                        MessageContent {
-                            text: rust_i18n::t!("auth.required").into_owned(),
-                            markup: None,
-                        },
-                    )
-                    .await?;
-                return Ok(());
-            }
-            crate::shared::handlers::menu::send_main_menu(&*cmd.adapter, &cmd.target).await?;
-        }
-        BotCommand::SetSecurityFile => {
-            if !state.is_recently_authenticated(cmd.user_id).await {
-                cmd.adapter
-                    .send_message(
-                        &cmd.target,
-                        MessageContent {
-                            text: rust_i18n::t!("auth.recent_auth_required").into_owned(),
-                            markup: None,
-                        },
-                    )
-                    .await?;
-                return Ok(());
-            }
-            cmd.adapter
-                .send_message(
-                    &cmd.target,
-                    MessageContent {
-                        text: rust_i18n::t!("bot_commands.security_file_prompt").into_owned(),
-                        markup: None,
-                    },
-                )
-                .await?;
-            state
-                .start_security_file_input(cmd.target.0.clone(), std::time::Instant::now())
-                .await;
-        }
+    // Legacy Auth path stays in the bridge; the service treats it as
+    // unreachable and returns Ok.
+    if let BotCommand::Auth { code } = &cmd.command {
+        let _ = auth::process_auth_code(
+            &*cmd.adapter,
+            &cmd.target,
+            cmd.user_id,
+            code,
+            state,
+            5,
+            Duration::from_secs(600),
+            &[
+                Duration::from_secs(900),
+                Duration::from_secs(3600),
+                Duration::from_secs(86400),
+                Duration::from_secs(172800),
+            ],
+        )
+        .await;
+        return Ok(());
+    }
+
+    let input = bridge_input(&cmd);
+    let output = AdapterOutput {
+        adapter: cmd.adapter.clone(),
+        target: cmd.target.clone(),
+    };
+    let result = ApplicationService
+        .handle(&input, state, &output)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    if matches!(&cmd.command, BotCommand::Menu) && matches!(result, BusinessResult::Ok) {
+        crate::shared::handlers::menu::send_main_menu(&*cmd.adapter, &cmd.target).await?;
     }
     Ok(())
+}
+
+/// Temporary dispatch bridge: converts a legacy `CommandEvent` into a
+/// `BusinessRequest` and adapts its `BotAdapter` to `BusinessOutput`.
+fn bridge_input(cmd: &CommandEvent) -> BusinessInput {
+    BusinessInput {
+        origin: Origin {
+            platform: match cmd.adapter.platform() {
+                Platform::Telegram => PlatformId::Telegram,
+                Platform::Discord => PlatformId::Discord,
+                Platform::Matrix => PlatformId::Matrix,
+            },
+            actor_id: ActorId::new(cmd.user_id.to_string()).unwrap(),
+            conversation_id: ConversationId::new(cmd.target.0.clone()).unwrap(),
+        },
+        request: BusinessRequest::Command(cmd.command.clone()),
+    }
+}
+
+struct AdapterOutput {
+    adapter: Arc<dyn BotAdapter>,
+    target: TargetId,
+}
+
+#[async_trait]
+impl BusinessOutput for AdapterOutput {
+    async fn publish(&self, message: BusinessMessage) -> Result<()> {
+        self.adapter
+            .send_message(
+                &self.target,
+                MessageContent {
+                    text: message.text,
+                    markup: None,
+                },
+            )
+            .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

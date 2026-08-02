@@ -550,9 +550,11 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             let adapter = event.adapter.clone();
             let target = event.target.clone();
             tokio::spawn(async move {
-                if let Err(err) =
-                    WwpsCoreUpgradeManager::run_upgrade(None, adapter.as_ref(), &target).await
-                {
+                let reporter = crate::shared::reporters::StatusMessageReporter::new(
+                    adapter.clone(),
+                    target.clone(),
+                );
+                if let Err(err) = WwpsCoreUpgradeManager::run_upgrade(None, &reporter).await {
                     let _ = adapter
                         .send_message(
                             &target,
@@ -685,9 +687,11 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             let adapter = event.adapter.clone();
             let target = event.target.clone();
             tokio::spawn(async move {
-                if let Err(err) =
-                    WwpsCoreUpgradeManager::run_upgrade(Some(tag), adapter.as_ref(), &target).await
-                {
+                let reporter = crate::shared::reporters::StatusMessageReporter::new(
+                    adapter.clone(),
+                    target.clone(),
+                );
+                if let Err(err) = WwpsCoreUpgradeManager::run_upgrade(Some(tag), &reporter).await {
                     let _ = adapter
                         .send_message(
                             &target,

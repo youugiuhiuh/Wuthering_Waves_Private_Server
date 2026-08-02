@@ -7,7 +7,8 @@ use sha2::Digest;
 use aegis::common::{InlineButton, Markup, MessageContent};
 use aegis::shared::types::{CallbackEvent, MessageEvent, TimeoutStatus};
 
-use crate::app::state::{AppState, DestructStep};
+use crate::app::state::AppState;
+use crate::app::workflows::destruct::DestructStep;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DestructMessageAction {

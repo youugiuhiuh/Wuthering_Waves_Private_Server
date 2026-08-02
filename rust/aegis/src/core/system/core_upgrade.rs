@@ -1,4 +1,3 @@
-use crate::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::cmd_async::run_cmd_status;
 use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
 use crate::core::network::release_api::{
@@ -6,6 +5,7 @@ use crate::core::network::release_api::{
     fetch_prerelease, find_minisig_asset, parse_digest, parse_sha256_manifest,
 };
 use crate::core::paths::xray;
+use crate::core::progress::{OperationProgress, ProgressReporter};
 use crate::core::utils::{format_download_progress, human_readable_size, should_report};
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
@@ -268,9 +268,7 @@ impl WwpsCoreUpgradeManager {
     pub async fn download_release(
         &self,
         release: &WwpsCoreReleaseInfo,
-        adapter: Option<&dyn BotAdapter>,
-        target: Option<&TargetId>,
-        msg_id: Option<&AegisMsgId>,
+        reporter: Option<&dyn ProgressReporter>,
     ) -> Result<PathBuf> {
         let temp_file = self.config.temp_dir.join(format!(
             "wwps-core-{}-{}.zip",
@@ -313,7 +311,7 @@ impl WwpsCoreUpgradeManager {
                 .context("写入 wwps-core 临时包失败")?;
             downloaded += chunk.len() as u64;
 
-            if let (Some(adapter), Some(target), Some(msg_id)) = (adapter, target, msg_id)
+            if let Some(reporter) = reporter
                 && should_report(
                     downloaded,
                     total_size,
@@ -324,15 +322,8 @@ impl WwpsCoreUpgradeManager {
             {
                 last_instant = Instant::now();
                 let progress_text = format_download_progress(downloaded, total_size, start);
-                let _ = adapter
-                    .edit_message(
-                        target,
-                        msg_id,
-                        MessageContent {
-                            text: progress_text,
-                            markup: None,
-                        },
-                    )
+                let _ = reporter
+                    .report(OperationProgress::Advanced(progress_text))
                     .await;
             }
         }
@@ -521,34 +512,21 @@ impl WwpsCoreUpgradeManager {
         }
     }
 
-    pub async fn run_upgrade(
-        tag: Option<String>,
-        adapter: &dyn BotAdapter,
-        target: &TargetId,
-    ) -> Result<()> {
-        let status_msg_id = adapter
-            .send_message(
-                target,
-                MessageContent {
-                    text: t!("upgrade.core_checking").to_string(),
-                    markup: None,
-                },
-            )
+    pub async fn run_upgrade(tag: Option<String>, reporter: &dyn ProgressReporter) -> Result<()> {
+        reporter
+            .report(OperationProgress::Started(
+                t!("upgrade.core_checking").to_string(),
+            ))
             .await?;
 
         let config = WwpsCoreUpgradeConfig::from_env()?;
         config.validate()?;
         let manager = WwpsCoreUpgradeManager::new(config)?;
 
-        let _ = adapter
-            .edit_message(
-                target,
-                &status_msg_id,
-                MessageContent {
-                    text: t!("upgrade.core_fetching").to_string(),
-                    markup: None,
-                },
-            )
+        let _ = reporter
+            .report(OperationProgress::Advanced(
+                t!("upgrade.core_fetching").to_string(),
+            ))
             .await;
 
         let release = manager.fetch_release(tag.as_deref()).await?;
@@ -564,66 +542,37 @@ impl WwpsCoreUpgradeManager {
             "2" => release.sha256.as_str()
         )
         .to_string();
-        let _ = adapter
-            .edit_message(
-                target,
-                &status_msg_id,
-                MessageContent {
-                    text: info_text,
-                    markup: None,
-                },
-            )
+        let _ = reporter
+            .report(OperationProgress::Advanced(info_text))
             .await;
 
-        let archive_path = manager
-            .download_release(&release, Some(adapter), Some(target), Some(&status_msg_id))
-            .await?;
+        let archive_path = manager.download_release(&release, Some(reporter)).await?;
 
-        let _ = adapter
-            .edit_message(
-                target,
-                &status_msg_id,
-                MessageContent {
-                    text: t!("upgrade.core_extracting").to_string(),
-                    markup: None,
-                },
-            )
+        let _ = reporter
+            .report(OperationProgress::Advanced(
+                t!("upgrade.core_extracting").to_string(),
+            ))
             .await;
         let unpack_dir = manager.extract_archive(&archive_path).await?;
 
-        let _ = adapter
-            .edit_message(
-                target,
-                &status_msg_id,
-                MessageContent {
-                    text: t!("upgrade.core_backing_up").to_string(),
-                    markup: None,
-                },
-            )
+        let _ = reporter
+            .report(OperationProgress::Advanced(
+                t!("upgrade.core_backing_up").to_string(),
+            ))
             .await;
         let backup_path = manager.backup_current_core().await?;
 
-        let _ = adapter
-            .edit_message(
-                target,
-                &status_msg_id,
-                MessageContent {
-                    text: t!("upgrade.core_replacing").to_string(),
-                    markup: None,
-                },
-            )
+        let _ = reporter
+            .report(OperationProgress::Advanced(
+                t!("upgrade.core_replacing").to_string(),
+            ))
             .await;
         manager.replace_core(&unpack_dir).await?;
 
-        let _ = adapter
-            .edit_message(
-                target,
-                &status_msg_id,
-                MessageContent {
-                    text: t!("upgrade.core_restarting").to_string(),
-                    markup: None,
-                },
-            )
+        let _ = reporter
+            .report(OperationProgress::Advanced(
+                t!("upgrade.core_restarting").to_string(),
+            ))
             .await;
 
         manager.restart_service().await?;
@@ -633,19 +582,15 @@ impl WwpsCoreUpgradeManager {
             .cleanup_paths(&[archive_path.clone(), unpack_dir.clone()])
             .await;
 
-        adapter
-            .send_message(
-                target,
-                MessageContent {
-                    text: t!(
-                        "upgrade.core_updated",
-                        "0" => release.tag_name.as_str(),
-                        "1" => backup_path.display().to_string().as_str()
-                    )
-                    .to_string(),
-                    markup: None,
-                },
-            )
+        reporter
+            .report(OperationProgress::Finished(
+                t!(
+                    "upgrade.core_updated",
+                    "0" => release.tag_name.as_str(),
+                    "1" => backup_path.display().to_string().as_str()
+                )
+                .to_string(),
+            ))
             .await?;
 
         Ok(())

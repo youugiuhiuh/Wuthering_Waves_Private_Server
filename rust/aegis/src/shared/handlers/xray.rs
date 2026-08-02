@@ -3,6 +3,7 @@ use tokio::time::{Duration, sleep};
 
 use crate::app::state::AppState;
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
+use crate::core::progress::{OperationProgress, ProgressReporter};
 use crate::core::security::acme::{AcmeManager, CertPaths, XhttpDeployMode};
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
@@ -351,9 +352,39 @@ async fn show_reality_qty_prompt(
     Ok(())
 }
 
+struct MessageProgressReporter {
+    adapter: Arc<dyn BotAdapter>,
+    target: TargetId,
+    msg_id: MessageId,
+}
+
+#[async_trait::async_trait]
+impl ProgressReporter for MessageProgressReporter {
+    async fn report(&self, progress: OperationProgress) -> anyhow::Result<()> {
+        let text = match progress {
+            OperationProgress::Started(t)
+            | OperationProgress::Advanced(t)
+            | OperationProgress::Finished(t) => t,
+        };
+        self.adapter
+            .edit_message(
+                &self.target,
+                &self.msg_id,
+                MessageContent { text, markup: None },
+            )
+            .await?;
+        Ok(())
+    }
+}
+
 fn trigger_reality_auto_init(adapter: Arc<dyn BotAdapter>, target: TargetId, msg_id: MessageId) {
     tokio::spawn(async move {
-        match RealityInstaller::run(adapter.as_ref(), &target, Some(&msg_id)).await {
+        let reporter = MessageProgressReporter {
+            adapter: adapter.clone(),
+            target: target.clone(),
+            msg_id: msg_id.clone(),
+        };
+        match RealityInstaller::run(&reporter).await {
             Ok(RealityInstallOutcome::AlreadyReady) => {
                 let _ = show_reality_batch_prompt(&*adapter, &target, &msg_id, Proto::Vision).await;
             }

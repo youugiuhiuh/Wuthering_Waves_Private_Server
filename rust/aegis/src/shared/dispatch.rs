@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -7,6 +8,7 @@ use crate::app::auth;
 use crate::app::state::AppState;
 use crate::common::{MessageContent, MessageId};
 use crate::core::security::acme::XhttpDeployMode;
+use crate::core::system::host_settings::SystemHostSettings;
 use crate::core::types::DomainFlowSource;
 use crate::shared::handlers::message::{self, MessageAction};
 use crate::shared::types::{
@@ -47,7 +49,8 @@ pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<()> {
         BotEvent::Callback(mut cb) => {
             // State operations (lang, set_timeout, warp input). The lang branch
             // may return a redirect (e.g. re-show main menu).
-            if let Some(next) = state_ops::intercept(&cb, state).await {
+            if let Some(next) = state_ops::intercept(&cb, state, Arc::new(SystemHostSettings)).await
+            {
                 cb = CallbackEvent { data: next, ..cb };
             }
             // Shared callback dispatch (from Phase A), following redirects for
@@ -73,7 +76,9 @@ pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<()> {
 
 #[allow(dead_code)]
 async fn check_auth(event: &BotEvent, state: &AppState) -> bool {
-    let user_id = event.user_id();
+    let Ok(user_id) = event.user_id() else {
+        return false;
+    };
     if !state.is_admin_user(user_id) {
         return false;
     }
@@ -344,7 +349,8 @@ mod dispatch_security_file_tests {
 mod tests {
     use super::*;
 
-    use crate::app::state::{AppState, DestructStep};
+    use crate::app::state::AppState;
+    use crate::app::workflows::destruct::DestructStep;
     use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;

@@ -5,10 +5,13 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
+use aegis::app::workflows::certificate::CertificateWorkflow;
+use aegis::app::workflows::destruct::{DestructState, DestructStep, DestructWorkflow};
+use aegis::app::workflows::schedule::{ScheduleFlow, ScheduleWorkflow};
+use aegis::app::workflows::warp::{WarpFlow, WarpWorkflow};
 use aegis::common::BotAdapter;
 use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
-use aegis::core::system::scheduler::task_types::TaskType;
 use aegis::core::totp::TotpManager;
 use aegis::core::types::{DomainFlowSource, DomainInputState, DomainInputStep};
 use aegis::shared::handlers::message::MessageState;
@@ -16,35 +19,11 @@ use aegis::shared::types::TimeoutStatus;
 
 const RECENT_AUTH_WINDOW_SECS: u64 = 5 * 60;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(clippy::enum_variant_names)]
-pub enum DestructStep {
-    AwaitFirstTotp,
-    AwaitConfirm,
-    AwaitSecondTotp,
-    AwaitSecurityFile,
-    AwaitFinalConfirm,
-}
-
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScheduleFrequency {
-    Daily,
-    Weekly,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthFailureOutcome {
     Invalid { attempts: u32, max_attempts: u32 },
     Locked { duration: Duration },
-}
-
-#[derive(Debug, Clone)]
-pub struct DestructState {
-    pub step: DestructStep,
-    pub first_totp: String,
-    pub second_totp: String,
-    pub last_action_time: Instant,
 }
 
 #[derive(Debug, Clone)]
@@ -53,19 +32,6 @@ pub struct FailedRecord {
     pub first_fail: Instant,
     pub cooldown_until: Option<Instant>,
     pub lock_level: usize,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct ScheduleInputState {
-    pub updated_at: Instant,
-    pub task_type: TaskType,
-    pub frequency: ScheduleFrequency,
-    pub timezone: String,
-    pub day_of_week: Option<String>,
-    pub hour: Option<u8>,
-    pub minute: Option<u8>,
-    pub return_to: String,
 }
 
 pub struct AppState {
@@ -77,12 +43,12 @@ pub struct AppState {
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
     sessions: Mutex<HashMap<i64, Instant>>,
     failed_attempts: Mutex<HashMap<i64, FailedRecord>>,
-    pending_destructs: Mutex<HashMap<String, DestructState>>,
+    pending_destructs: DestructWorkflow,
     self_destruct_key_hash: Mutex<Option<String>>,
-    pending_warp_inputs: Mutex<HashMap<String, Instant>>,
-    pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
+    warp_workflow: WarpWorkflow,
+    schedule_workflow: ScheduleWorkflow,
     pending_security_file: Mutex<HashMap<String, Instant>>,
-    pending_domain_inputs: Mutex<HashMap<String, DomainInputState>>,
+    certificate_workflow: CertificateWorkflow,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
     lang_configured: Mutex<bool>,
@@ -106,12 +72,12 @@ impl AppState {
             self_destruct_executor,
             sessions: Mutex::new(HashMap::new()),
             failed_attempts: Mutex::new(HashMap::new()),
-            pending_destructs: Mutex::new(HashMap::new()),
+            pending_destructs: DestructWorkflow::default(),
             self_destruct_key_hash: Mutex::new(self_destruct_key_hash),
-            pending_warp_inputs: Mutex::new(HashMap::new()),
-            pending_schedule_inputs: Mutex::new(HashMap::new()),
+            warp_workflow: WarpWorkflow::default(),
+            schedule_workflow: ScheduleWorkflow::default(),
             pending_security_file: Mutex::new(HashMap::new()),
-            pending_domain_inputs: Mutex::new(HashMap::new()),
+            certificate_workflow: CertificateWorkflow::default(),
             session_timeout_secs: Mutex::new(session_timeout_secs),
             lang: Mutex::new(Lang::Zh),
             lang_configured: Mutex::new(false),
@@ -269,27 +235,26 @@ impl AppState {
     }
 
     pub async fn begin_destruct(&self, chat_id: String, now: Instant) {
-        self.pending_destructs.lock().await.insert(
-            chat_id,
-            DestructState {
-                step: DestructStep::AwaitFirstTotp,
-                first_totp: String::new(),
-                second_totp: String::new(),
-                last_action_time: now,
-            },
-        );
+        let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id) else {
+            return;
+        };
+        self.pending_destructs.begin(conversation, now);
     }
 
     pub async fn cancel_destruct(&self, chat_id: &str) -> bool {
-        self.pending_destructs
-            .lock()
-            .await
-            .remove(chat_id)
-            .is_some()
+        let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return false;
+        };
+        self.pending_destructs.cancel(&conversation)
     }
 
     pub async fn destruct_snapshot(&self, chat_id: &str) -> Option<DestructState> {
-        self.pending_destructs.lock().await.get(chat_id).cloned()
+        let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return None;
+        };
+        self.pending_destructs.snapshot(&conversation)
     }
 
     pub async fn touch_destruct(
@@ -298,15 +263,11 @@ impl AppState {
         now: Instant,
         timeout: Duration,
     ) -> TimeoutStatus {
-        let mut destructs = self.pending_destructs.lock().await;
-        match destructs.get_mut(chat_id) {
-            Some(state) if state.last_action_time.elapsed() > timeout => TimeoutStatus::Expired,
-            Some(state) => {
-                state.last_action_time = now;
-                TimeoutStatus::Active
-            }
-            None => TimeoutStatus::NotTracked,
-        }
+        let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return TimeoutStatus::NotTracked;
+        };
+        self.pending_destructs.touch(&conversation, now, timeout)
     }
 
     pub async fn advance_destruct_step(
@@ -316,17 +277,12 @@ impl AppState {
         next: DestructStep,
         now: Instant,
     ) -> bool {
-        self.with_destruct(chat_id, |state| {
-            if state.step == expected {
-                state.step = next;
-                state.last_action_time = now;
-                true
-            } else {
-                false
-            }
-        })
-        .await
-        .unwrap_or(false)
+        let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return false;
+        };
+        self.pending_destructs
+            .advance_step(&conversation, expected, next, now)
     }
 
     pub async fn confirm_first_destruct_totp(
@@ -335,18 +291,12 @@ impl AppState {
         code: &str,
         now: Instant,
     ) -> bool {
-        self.with_destruct(chat_id, |state| {
-            if state.step == DestructStep::AwaitFirstTotp {
-                state.step = DestructStep::AwaitConfirm;
-                state.first_totp = code.to_string();
-                state.last_action_time = now;
-                true
-            } else {
-                false
-            }
-        })
-        .await
-        .unwrap_or(false)
+        let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return false;
+        };
+        self.pending_destructs
+            .confirm_first_totp(&conversation, code, now)
     }
 
     pub async fn confirm_second_destruct_totp(
@@ -355,40 +305,21 @@ impl AppState {
         code: &str,
         now: Instant,
     ) -> Result<bool, String> {
-        let snapshot = self.destruct_snapshot(chat_id).await;
-        let Some(snapshot) = snapshot else {
+        let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
             return Ok(false);
         };
-        if snapshot.step != DestructStep::AwaitSecondTotp {
-            return Ok(false);
-        }
-        if snapshot.first_totp == code {
-            return Err(snapshot.first_totp);
-        }
-
-        Ok(self
-            .with_destruct(chat_id, |state| {
-                if state.step == DestructStep::AwaitSecondTotp {
-                    state.step = DestructStep::AwaitSecurityFile;
-                    state.second_totp = code.to_string();
-                    state.last_action_time = now;
-                    true
-                } else {
-                    false
-                }
-            })
-            .await
-            .unwrap_or(false))
+        self.pending_destructs
+            .confirm_second_totp(&conversation, code, now)
     }
 
     pub async fn mark_destruct_file_verified(&self, chat_id: &str, now: Instant) -> bool {
-        self.advance_destruct_step(
-            chat_id,
-            DestructStep::AwaitSecurityFile,
-            DestructStep::AwaitFinalConfirm,
-            now,
-        )
-        .await
+        let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return false;
+        };
+        self.pending_destructs
+            .mark_file_verified(&conversation, now)
     }
 
     pub async fn with_destruct<R>(
@@ -396,61 +327,34 @@ impl AppState {
         chat_id: &str,
         f: impl FnOnce(&mut DestructState) -> R,
     ) -> Option<R> {
-        let mut destructs = self.pending_destructs.lock().await;
-        destructs.get_mut(chat_id).map(f)
+        let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return None;
+        };
+        self.pending_destructs.with_state(&conversation, f)
     }
 
     pub async fn start_warp_input(&self, chat_id: String, now: Instant) {
-        self.pending_warp_inputs.lock().await.insert(chat_id, now);
+        let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id) else {
+            return;
+        };
+        self.warp_workflow.start(conversation, now);
     }
 
-    pub async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
-        let mut warp_inputs = self.pending_warp_inputs.lock().await;
-        match warp_inputs.remove(chat_id) {
-            Some(start_time) if start_time.elapsed() > timeout => TimeoutStatus::Expired,
-            Some(_) => TimeoutStatus::Active,
-            None => TimeoutStatus::NotTracked,
-        }
+    pub async fn warp_flow(&self, chat_id: &str, timeout: Duration) -> WarpFlow {
+        let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return WarpFlow::Continue;
+        };
+        self.warp_workflow.take(&conversation, timeout)
     }
 
-    pub async fn schedule_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
-        let schedule_inputs = self.pending_schedule_inputs.lock().await;
-        match schedule_inputs.get(chat_id) {
-            Some(input) if input.updated_at.elapsed() > timeout => TimeoutStatus::Expired,
-            Some(_) => TimeoutStatus::Active,
-            None => TimeoutStatus::NotTracked,
-        }
-    }
-
-    pub async fn remove_schedule_input(&self, chat_id: &str) {
-        self.pending_schedule_inputs.lock().await.remove(chat_id);
-    }
-
-    #[allow(dead_code)]
-    pub async fn insert_schedule_input(&self, chat_id: String, input: ScheduleInputState) {
-        self.pending_schedule_inputs
-            .lock()
-            .await
-            .insert(chat_id, input);
-    }
-
-    #[allow(dead_code)]
-    pub async fn schedule_input_snapshot(&self, chat_id: &str) -> Option<ScheduleInputState> {
-        self.pending_schedule_inputs
-            .lock()
-            .await
-            .get(chat_id)
-            .cloned()
-    }
-
-    #[allow(dead_code)]
-    pub async fn with_schedule_input<R>(
-        &self,
-        chat_id: &str,
-        f: impl FnOnce(&mut ScheduleInputState) -> R,
-    ) -> Option<R> {
-        let mut inputs = self.pending_schedule_inputs.lock().await;
-        inputs.get_mut(chat_id).map(f)
+    pub async fn schedule_flow(&self, chat_id: &str, timeout: Duration) -> ScheduleFlow {
+        let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return ScheduleFlow::Continue;
+        };
+        self.schedule_workflow.route(&conversation, timeout)
     }
 
     pub async fn start_security_file_input(&self, chat_id: String, now: Instant) {
@@ -476,24 +380,18 @@ impl AppState {
         source: DomainFlowSource,
         now: Instant,
     ) {
-        let mut inputs = self.pending_domain_inputs.lock().await;
-        inputs.insert(
-            chat_id,
-            DomainInputState {
-                updated_at: now,
-                source,
-                step: DomainInputStep::AwaitDomain,
-                domain: None,
-            },
-        );
+        let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id) else {
+            return;
+        };
+        self.certificate_workflow.start(conversation, source, now);
     }
 
     pub async fn domain_input_snapshot(&self, chat_id: &str) -> Option<DomainInputState> {
-        self.pending_domain_inputs
-            .lock()
-            .await
-            .get(chat_id)
-            .cloned()
+        let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return None;
+        };
+        self.certificate_workflow.snapshot(&conversation)
     }
 
     pub async fn transition_domain_input(
@@ -503,46 +401,40 @@ impl AppState {
         next: DomainInputStep,
         domain: Option<String>,
     ) -> bool {
-        let mut inputs = self.pending_domain_inputs.lock().await;
-        match inputs.get_mut(chat_id) {
-            Some(state) if state.step == expected => {
-                state.step = next;
-                state.updated_at = Instant::now();
-                if domain.is_some() {
-                    state.domain = domain;
-                }
-                true
-            }
-            _ => false,
-        }
+        let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return false;
+        };
+        self.certificate_workflow
+            .transition(&conversation, expected, next, domain)
     }
 
     pub async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState> {
-        self.pending_domain_inputs.lock().await.remove(chat_id)
+        let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return None;
+        };
+        self.certificate_workflow.take(&conversation)
     }
 
     pub async fn domain_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
-        let inputs = self.pending_domain_inputs.lock().await;
-        match inputs.get(chat_id) {
-            Some(state) if state.updated_at.elapsed() > timeout => TimeoutStatus::Expired,
-            Some(_) => TimeoutStatus::Active,
-            None => TimeoutStatus::NotTracked,
-        }
+        let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
+        else {
+            return TimeoutStatus::NotTracked;
+        };
+        self.certificate_workflow
+            .timeout_status(&conversation, timeout)
     }
 }
 
 #[async_trait]
 impl MessageState for AppState {
-    async fn schedule_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
-        self.schedule_timeout_status(chat_id, timeout).await
+    async fn schedule_flow(&self, chat_id: &str, timeout: Duration) -> ScheduleFlow {
+        self.schedule_flow(chat_id, timeout).await
     }
 
-    async fn remove_schedule_input(&self, chat_id: &str) {
-        self.remove_schedule_input(chat_id).await
-    }
-
-    async fn take_warp_input_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
-        self.take_warp_input_status(chat_id, timeout).await
+    async fn warp_flow(&self, chat_id: &str, timeout: Duration) -> WarpFlow {
+        self.warp_flow(chat_id, timeout).await
     }
 
     async fn start_domain_input(
@@ -759,36 +651,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn schedule_timeout_returns_not_tracked_for_unknown_chat() {
+    async fn schedule_flow_returns_continue_for_unknown_chat() {
         let state = make_state();
-        let status = state
-            .schedule_timeout_status("123", Duration::from_secs(60))
-            .await;
-        assert_eq!(status, TimeoutStatus::NotTracked);
-    }
-
-    #[tokio::test]
-    async fn schedule_input_insert_and_snapshot() {
-        let state = make_state();
-        let chat_id = "100".to_string();
-        let input = ScheduleInputState {
-            updated_at: Instant::now(),
-            task_type: TaskType::Reboot,
-            frequency: ScheduleFrequency::Daily,
-            timezone: "UTC".to_string(),
-            day_of_week: None,
-            hour: Some(3),
-            minute: Some(0),
-            return_to: "m_main".to_string(),
-        };
-        state
-            .insert_schedule_input(chat_id.clone(), input.clone())
-            .await;
-        let snapshot = state.schedule_input_snapshot(&chat_id).await;
-        assert!(snapshot.is_some());
-        let snap = snapshot.unwrap();
-        assert_eq!(snap.task_type, TaskType::Reboot);
-        assert_eq!(snap.hour, Some(3));
+        let flow = state.schedule_flow("123", Duration::from_secs(60)).await;
+        assert_eq!(flow, ScheduleFlow::Continue);
     }
 
     #[tokio::test]
@@ -812,10 +678,8 @@ mod tests {
         state
             .start_warp_input(chat_id.clone(), Instant::now())
             .await;
-        let status = state
-            .take_warp_input_status(&chat_id, Duration::from_secs(60))
-            .await;
-        assert_eq!(status, TimeoutStatus::Active);
+        let status = state.warp_flow(&chat_id, Duration::from_secs(60)).await;
+        assert_eq!(status, WarpFlow::Waiting);
     }
 
     #[tokio::test]
