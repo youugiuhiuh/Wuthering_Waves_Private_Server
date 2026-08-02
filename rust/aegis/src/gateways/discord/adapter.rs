@@ -1,6 +1,4 @@
-use crate::common::{
-    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
-};
+use crate::common::{BotAdapter, Markup, MessageContent, MessageId, Platform, TargetId};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serenity::all::{ChannelId, MessageId as SerenityMessageId};
@@ -86,10 +84,6 @@ impl BotAdapter for DiscordAdapter {
         Ok(bytes.to_vec())
     }
 
-    fn capabilities(&self) -> PlatformCapabilities {
-        PlatformCapabilities::DISCORD
-    }
-
     async fn send_typing(&self, _target: &TargetId, _active: bool) -> Result<()> {
         Ok(())
     }
@@ -129,17 +123,4 @@ fn convert_markup_discord(markup: &Markup) -> Vec<serenity::all::CreateActionRow
             serenity::all::CreateActionRow::Buttons(buttons)
         })
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::common::PlatformCapabilities;
-
-    #[test]
-    fn discord_capabilities_matches_expected() {
-        let caps = PlatformCapabilities::DISCORD;
-        assert!(caps.can_edit_message);
-        assert!(caps.can_delete_message);
-        assert!(!caps.has_file_transfer);
-    }
 }

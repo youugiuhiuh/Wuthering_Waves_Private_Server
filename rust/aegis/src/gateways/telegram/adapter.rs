@@ -1,6 +1,4 @@
-use crate::common::{
-    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
-};
+use crate::common::{BotAdapter, Markup, MessageContent, MessageId, Platform, TargetId};
 use anyhow::Result;
 use async_trait::async_trait;
 use teloxide::net::Download;
@@ -87,10 +85,6 @@ impl BotAdapter for TelegramAdapter {
         let mut buf = Vec::with_capacity(file.size as usize);
         self.bot.download_file(&file.path, &mut buf).await?;
         Ok(buf)
-    }
-
-    fn capabilities(&self) -> PlatformCapabilities {
-        PlatformCapabilities::TELEGRAM
     }
 
     async fn send_typing(&self, _target: &TargetId, _active: bool) -> Result<()> {

@@ -639,9 +639,6 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> aegis::common::PlatformCapabilities {
-            aegis::common::PlatformCapabilities::TELEGRAM
-        }
     }
 
     struct TestExecutor;
@@ -659,7 +656,6 @@ mod tests {
             Arc::new(TestExecutor),
             None,
             600,
-            Arc::new(MockAdapter),
         );
         state.record_auth_success(42, Instant::now()).await;
         state

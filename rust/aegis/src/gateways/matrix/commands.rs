@@ -393,14 +393,12 @@ mod tests {
 #[cfg(test)]
 mod parse_to_event_tests {
     use super::*;
-    use aegis::common::{BotAdapter, MockBotAdapter, Platform, PlatformCapabilities, TargetId};
+    use aegis::common::{BotAdapter, MockBotAdapter, Platform, TargetId};
     use std::sync::Arc;
 
     fn test_adapter() -> Arc<dyn BotAdapter> {
         let mut m = MockBotAdapter::new();
         m.expect_platform().returning(|| Platform::Matrix);
-        m.expect_capabilities()
-            .returning(|| PlatformCapabilities::MATRIX);
         Arc::new(m)
     }
 

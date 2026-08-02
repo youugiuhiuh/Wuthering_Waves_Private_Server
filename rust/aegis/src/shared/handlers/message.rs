@@ -559,9 +559,7 @@ fn parse_provider_selection(text: &str) -> Option<DnsProvider> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{
-        BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
-    };
+    use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::core::i18n;
     use crate::core::i18n::Lang;
     use crate::shared::types::TimeoutStatus;
@@ -731,9 +729,6 @@ mod tests {
         }
         async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
             Ok(Vec::new())
-        }
-        fn capabilities(&self) -> PlatformCapabilities {
-            PlatformCapabilities::TELEGRAM
         }
     }
 

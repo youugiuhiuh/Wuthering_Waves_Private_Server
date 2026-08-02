@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use aegis::common::{MessageId, TargetId};
+use aegis::common::{BotAdapter, MessageId, TargetId};
 use aegis::core::i18n;
 use aegis::shared::dispatch_event;
 use aegis::shared::types::*;
@@ -27,6 +27,8 @@ use aegis::app::state::AppState;
 use aegis::gateways::matrix::commands::command_to_business_input;
 use aegis::gateways::matrix::presenter::MatrixPresenter;
 #[cfg(feature = "telegram")]
+use aegis::gateways::telegram::TelegramAdapter;
+#[cfg(feature = "telegram")]
 use aegis::gateways::telegram::mapping;
 #[cfg(feature = "telegram")]
 use aegis::gateways::telegram::presenter::TelegramPresenter;
@@ -50,6 +52,7 @@ enum TeloxideCommand {
 }
 
 #[cfg(feature = "telegram")]
+#[allow(dead_code)]
 pub(crate) async fn register_bot_commands(bot: &Bot) -> Result<()> {
     bot.set_my_commands(TeloxideCommand::bot_commands())
         .await
@@ -155,6 +158,7 @@ pub async fn run(
     }
 
     // ── Matrix 同步循环 ──
+    let matrix_adapter_for_notify = matrix_handle.as_ref().map(|(_, _, a)| a.clone());
     if let Some((client, room, matrix_adapter)) = matrix_handle {
         let target = TargetId(room.room_id().to_string());
 
@@ -266,9 +270,10 @@ pub async fn run(
         ) -> Result<(), teloxide::RequestError> {
             match cmd {
                 TeloxideCommand::Auth(code) => {
+                    let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
                     let _ = dispatch_event(
                         BotEvent::Command(CommandEvent {
-                            adapter: state.adapter.clone(),
+                            adapter,
                             target: TargetId(msg.chat.id.0.to_string()),
                             user_id: msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0),
                             command: BotCommand::Auth { code },
@@ -285,7 +290,9 @@ pub async fn run(
                             ApplicationService.handle(&input, &state, &presenter).await
                             && matches!(result, BusinessResult::Ok)
                         {
-                            let _ = send_main_menu(&*state.adapter, &target).await;
+                            let adapter: Arc<dyn BotAdapter> =
+                                Arc::new(TelegramAdapter::new(bot.clone()));
+                            let _ = send_main_menu(&*adapter, &target).await;
                         }
                     }
                 }
@@ -321,9 +328,10 @@ pub async fn run(
                 }
             }
             let user_id = msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
+            let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
             let _ = dispatch_event(
                 BotEvent::Message(MessageEvent {
-                    adapter: state.adapter.clone(),
+                    adapter,
                     target: TargetId(msg.chat.id.0.to_string()),
                     user_id,
                     text: msg.text().map(|s| s.to_string()),
@@ -350,15 +358,16 @@ pub async fn run(
         }
 
         async fn handle_callback(
-            _bot: Bot,
+            bot: Bot,
             q: CallbackQuery,
             state: Arc<AppState>,
         ) -> Result<(), teloxide::RequestError> {
             let chat_id = q.message.as_ref().map(|m| m.chat().id).unwrap_or(ChatId(0));
             let msg_id = q.message.as_ref().map(|m| m.id()).unwrap_or_default();
+            let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
             let _ = dispatch_event(
                 BotEvent::Callback(CallbackEvent {
-                    adapter: state.adapter.clone(),
+                    adapter,
                     target: TargetId(chat_id.0.to_string()),
                     user_id: q.from.id.0.to_string(),
                     msg_id: MessageId(msg_id.0.to_string()),
@@ -383,7 +392,8 @@ pub async fn run(
             .branch(Update::filter_message().endpoint(handle_message))
             .branch(Update::filter_callback_query().endpoint(handle_callback));
 
-        let adapter_for_init = state.adapter.clone();
+        let tg_adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
+        let adapter_for_init = tg_adapter.clone();
         let target_for_init = TargetId(admin_id.unwrap_or(0).to_string());
         let scheduler_reporter = aegis::shared::reporters::SendMessageReporter::new(
             adapter_for_init.clone(),
@@ -420,7 +430,7 @@ pub async fn run(
 
     // ── Matrix-only: 后台初始化 + 保活 ──
     if enable_matrix && !enable_telegram {
-        let adapter_for_init = state.adapter.clone();
+        let adapter_for_init = matrix_adapter_for_notify.unwrap();
         let target_for_init = TargetId(admin_id.unwrap_or(0).to_string());
         let scheduler_reporter = aegis::shared::reporters::SendMessageReporter::new(
             adapter_for_init.clone(),

@@ -9,7 +9,6 @@ use aegis::app::workflows::certificate::CertificateWorkflow;
 use aegis::app::workflows::destruct::{DestructState, DestructStep, DestructWorkflow};
 use aegis::app::workflows::schedule::{ScheduleFlow, ScheduleWorkflow};
 use aegis::app::workflows::warp::{WarpFlow, WarpWorkflow};
-use aegis::common::BotAdapter;
 use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::totp::TotpManager;
@@ -35,8 +34,6 @@ pub struct FailedRecord {
 }
 
 pub struct AppState {
-    #[allow(dead_code)]
-    pub adapter: Arc<dyn BotAdapter>,
     admin_id: Option<i64>,
     discord_admin_id: Option<i64>,
     totp_manager: Option<TotpManager>,
@@ -62,10 +59,8 @@ impl AppState {
         self_destruct_executor: Arc<dyn SelfDestructExecutor>,
         self_destruct_key_hash: Option<String>,
         session_timeout_secs: u64,
-        adapter: Arc<dyn BotAdapter>,
     ) -> Self {
         Self {
-            adapter,
             admin_id,
             discord_admin_id,
             totp_manager,
@@ -477,7 +472,7 @@ fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::common::{MessageContent, MessageId, Platform, TargetId};
+    use aegis::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use aegis::core::types::{DomainFlowSource, DomainInputStep};
     use anyhow::Result;
     use async_trait::async_trait;
@@ -519,9 +514,6 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> aegis::common::PlatformCapabilities {
-            aegis::common::PlatformCapabilities::TELEGRAM
-        }
     }
 
     fn make_state() -> AppState {
@@ -537,7 +529,6 @@ mod tests {
             Arc::new(NoopExecutor),
             None,
             600,
-            Arc::new(MockAdapter),
         )
     }
 
@@ -795,7 +786,6 @@ mod tests {
             Arc::new(NoopExecutor),
             None,
             600,
-            Arc::new(MockAdapter),
         );
         assert!(state.is_admin_user(999));
         assert!(!state.is_admin_user(888));

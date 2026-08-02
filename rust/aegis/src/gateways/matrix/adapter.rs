@@ -1,6 +1,4 @@
-use crate::common::{
-    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
-};
+use crate::common::{BotAdapter, Markup, MessageContent, MessageId, Platform, TargetId};
 use anyhow::Result;
 use async_trait::async_trait;
 use matrix_sdk::attachment::AttachmentConfig;
@@ -194,23 +192,6 @@ impl BotAdapter for MatrixAdapter {
         };
         let data = client.media().get_media_content(&request, false).await?;
         Ok(data)
-    }
-
-    fn capabilities(&self) -> PlatformCapabilities {
-        PlatformCapabilities {
-            can_edit_message: true,
-            can_delete_message: true,
-            has_inline_keyboard: false,
-            has_slash_commands: false,
-            has_file_transfer: true,
-            can_send_file: true,
-            can_send_image: true,
-            can_send_voice: false,
-            can_send_typing: true,
-            can_send_reaction: true,
-            can_thread: true,
-            has_e2ee: true,
-        }
     }
 
     async fn send_file(

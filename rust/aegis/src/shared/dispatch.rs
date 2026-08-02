@@ -300,9 +300,6 @@ mod dispatch_security_file_tests {
         async fn download_file(&self, fid: &str) -> anyhow::Result<Vec<u8>> {
             Ok(fid.as_bytes().to_vec())
         }
-        fn capabilities(&self) -> crate::common::PlatformCapabilities {
-            crate::common::PlatformCapabilities::TELEGRAM
-        }
     }
 
     struct TestExecutor;
@@ -322,7 +319,6 @@ mod dispatch_security_file_tests {
             Arc::new(TestExecutor),
             None,
             600,
-            Arc::new(TestAdapter),
         ));
         state.record_auth_success(42, Instant::now()).await;
         state
@@ -421,9 +417,6 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> anyhow::Result<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> crate::common::PlatformCapabilities {
-            crate::common::PlatformCapabilities::TELEGRAM
-        }
     }
 
     struct NoopExecutor;
@@ -444,7 +437,6 @@ mod tests {
             Arc::new(NoopExecutor),
             None,
             600,
-            Arc::new(MockAdapter::default()),
         )
     }
 

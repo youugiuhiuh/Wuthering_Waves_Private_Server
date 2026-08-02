@@ -80,18 +80,6 @@ async fn main() -> Result<()> {
         None
     };
 
-    let adapter = if let Some(ref raw) = discord_raw {
-        raw.adapter.clone()
-    } else {
-        main::adapter::build_adapter(
-            app_config.decrypted.token.as_deref(),
-            enable_telegram,
-            enable_matrix,
-            &matrix_handle,
-        )
-        .await?
-    };
-
     let state = Arc::new(AppState::new(
         app_config.decrypted.admin_id,
         discord_raw.as_ref().map(|r| r.admin_id as i64),
@@ -103,7 +91,6 @@ async fn main() -> Result<()> {
             .self_destruct_key_hash
             .clone(),
         app_config.bot_settings.session_timeout_secs,
-        adapter,
     ));
 
     main::runtime::run(

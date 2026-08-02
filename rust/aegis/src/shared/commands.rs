@@ -143,9 +143,6 @@ mod tests {
         async fn download_file(&self, _file_id: &str) -> AnyResult<Vec<u8>> {
             Ok(Vec::new())
         }
-        fn capabilities(&self) -> crate::common::PlatformCapabilities {
-            crate::common::PlatformCapabilities::TELEGRAM
-        }
     }
 
     fn make_state() -> AppState {
@@ -161,7 +158,6 @@ mod tests {
             Arc::new(NoopExecutor),
             None,
             600,
-            Arc::new(MockAdapter::default()),
         )
     }
 
@@ -298,9 +294,6 @@ mod tests {
         async fn download_file(&self, _f: &str) -> AnyResult<Vec<u8>> {
             Ok(vec![])
         }
-        fn capabilities(&self) -> crate::common::PlatformCapabilities {
-            crate::common::PlatformCapabilities::TELEGRAM
-        }
     }
 
     struct TestExecutor;
@@ -322,7 +315,6 @@ mod tests {
             Arc::new(TestExecutor),
             None,
             600,
-            Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
         ));
         state.record_auth_success(42, Instant::now()).await;
         let cmd = CommandEvent {

@@ -120,7 +120,6 @@ mod tests {
             Arc::new(NoopExecutor),
             None,
             600,
-            Arc::new(MockBotAdapter::new()),
         )
     }
 
