@@ -4,7 +4,7 @@ use anyhow::Result;
 use rust_i18n::t;
 use sha2::Digest;
 
-use aegis::common::{InlineButton, Markup, MessageContent};
+use aegis::common::{InlineButton, Markup, MessageContent, Platform};
 use aegis::shared::types::{CallbackEvent, MessageEvent, TimeoutStatus};
 
 use crate::app::state::AppState;
@@ -89,14 +89,20 @@ fn btn(text: &str, data: &str) -> InlineButton {
 /// destruct flow.
 pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<FlowOutcome> {
     let adapter = msg.adapter.as_ref();
+    let platform = adapter.platform();
     let target = &msg.target;
     let chat_id_str = target.0.clone();
     match state
-        .touch_destruct(&chat_id_str, Instant::now(), Duration::from_secs(60))
+        .touch_destruct(
+            platform,
+            &chat_id_str,
+            Instant::now(),
+            Duration::from_secs(60),
+        )
         .await
     {
         TimeoutStatus::Expired => {
-            state.cancel_destruct(&chat_id_str).await;
+            state.cancel_destruct(platform, &chat_id_str).await;
             adapter
                 .send_message(
                     target,
@@ -125,7 +131,7 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
         return Ok(FlowOutcome::Handled);
     }
 
-    let Some(destruct_state) = state.destruct_snapshot(&chat_id_str).await else {
+    let Some(destruct_state) = state.destruct_snapshot(platform, &chat_id_str).await else {
         return Ok(FlowOutcome::NotHandled);
     };
 
@@ -142,6 +148,7 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
         (DestructStep::AwaitFirstTotp, DestructMessageAction::ConfirmFirstTotp) => {
             if state
                 .confirm_first_destruct_totp(
+                    platform,
                     &chat_id_str,
                     msg.text.as_deref().unwrap().trim(),
                     Instant::now(),
@@ -171,6 +178,7 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
         (DestructStep::AwaitSecondTotp, DestructMessageAction::AwaitingSecondTotp) => {
             match state
                 .confirm_second_destruct_totp(
+                    platform,
                     &chat_id_str,
                     msg.text.as_deref().unwrap().trim(),
                     Instant::now(),
@@ -244,7 +252,7 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
                             .map(|n| format!("{} | {}", n, hash_short))
                             .unwrap_or_else(|| hash_short.clone());
                         if state
-                            .mark_destruct_file_verified(&chat_id_str, Instant::now())
+                            .mark_destruct_file_verified(platform, &chat_id_str, Instant::now())
                             .await
                         {
                             let keyboard = Markup {
@@ -310,6 +318,7 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
                 if t == "confirm" || t == "確認" || t == "yes" || state.verify_totp(text.trim()) {
                     if state
                         .advance_destruct_step(
+                            platform,
                             &chat_id_str,
                             DestructStep::AwaitConfirm,
                             DestructStep::AwaitFinalConfirm,
@@ -338,7 +347,7 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
                             .await?;
                     }
                 } else if t == "cancel" || t == "取消" || t == "no" {
-                    state.cancel_destruct(&chat_id_str).await;
+                    state.cancel_destruct(platform, &chat_id_str).await;
                     adapter
                         .send_message(
                             target,
@@ -366,9 +375,9 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
                         .await?;
                     let executor = state.self_destruct_executor();
                     aegis::core::security::self_destruct::trigger(executor);
-                    state.cancel_destruct(&chat_id_str).await;
+                    state.cancel_destruct(platform, &chat_id_str).await;
                 } else if t == "cancel" || t == "取消" || t == "no" {
-                    state.cancel_destruct(&chat_id_str).await;
+                    state.cancel_destruct(platform, &chat_id_str).await;
                     adapter
                         .send_message(
                             target,
@@ -388,14 +397,20 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
 
 async fn callback_timeout(cb: &CallbackEvent, state: &AppState) -> Result<FlowOutcome> {
     let adapter = cb.adapter.as_ref();
+    let platform = adapter.platform();
     let target = &cb.target;
     let chat_id_str = target.0.clone();
     match state
-        .touch_destruct(&chat_id_str, Instant::now(), Duration::from_secs(60))
+        .touch_destruct(
+            platform,
+            &chat_id_str,
+            Instant::now(),
+            Duration::from_secs(60),
+        )
         .await
     {
         TimeoutStatus::Expired => {
-            state.cancel_destruct(&chat_id_str).await;
+            state.cancel_destruct(platform, &chat_id_str).await;
             adapter
                 .answer_callback(
                     target,
@@ -422,6 +437,7 @@ async fn callback_timeout(cb: &CallbackEvent, state: &AppState) -> Result<FlowOu
 
 async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOutcome> {
     let adapter = cb.adapter.as_ref();
+    let platform = adapter.platform();
     let target = &cb.target;
     let chat_id_str = target.0.clone();
     let user_id = cb.user_id.parse::<i64>().unwrap_or(0);
@@ -438,7 +454,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
                 return Ok(FlowOutcome::Handled);
             }
             state
-                .begin_destruct(chat_id_str.clone(), Instant::now())
+                .begin_destruct(platform, chat_id_str.clone(), Instant::now())
                 .await;
             let keyboard = Markup {
                 buttons: vec![vec![btn(
@@ -459,7 +475,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
             Ok(FlowOutcome::Handled)
         }
         "a_destroy_cancel" => {
-            if state.cancel_destruct(&chat_id_str).await {
+            if state.cancel_destruct(platform, &chat_id_str).await {
                 adapter
                     .send_message(
                         target,
@@ -505,6 +521,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
             }
             if state
                 .advance_destruct_step(
+                    platform,
                     &chat_id_str,
                     DestructStep::AwaitConfirm,
                     DestructStep::AwaitSecondTotp,
@@ -551,7 +568,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
                 return Ok(FlowOutcome::Handled);
             }
 
-            let snapshot = state.destruct_snapshot(&chat_id_str).await;
+            let snapshot = state.destruct_snapshot(platform, &chat_id_str).await;
             if snapshot.map(|s| s.step) == Some(DestructStep::AwaitFinalConfirm) {
                 adapter
                     .answer_callback(
@@ -572,7 +589,7 @@ async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOut
                     .await?;
                 let executor = state.self_destruct_executor();
                 aegis::core::security::self_destruct::trigger(executor);
-                state.cancel_destruct(&chat_id_str).await;
+                state.cancel_destruct(platform, &chat_id_str).await;
             } else {
                 adapter
                     .answer_callback(
@@ -729,26 +746,40 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
-        assert!(state.destruct_snapshot("42").await.is_some());
+        assert!(
+            state
+                .destruct_snapshot(Platform::Telegram, "42")
+                .await
+                .is_some()
+        );
     }
 
     #[tokio::test]
     async fn intercept_callback_cancel_cancels_destruct() {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
-        state.begin_destruct("42".to_string(), Instant::now()).await;
+        state
+            .begin_destruct(Platform::Telegram, "42".to_string(), Instant::now())
+            .await;
         let outcome = intercept_callback(&callback_event("a_destroy_cancel"), &state)
             .await
             .unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
-        assert!(state.destruct_snapshot("42").await.is_none());
+        assert!(
+            state
+                .destruct_snapshot(Platform::Telegram, "42")
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
     async fn intercept_message_totp_advances_step() {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
-        state.begin_destruct("42".to_string(), Instant::now()).await;
+        state
+            .begin_destruct(Platform::Telegram, "42".to_string(), Instant::now())
+            .await;
         let totp = state.generate_current_totp().unwrap().unwrap();
         let msg = MessageEvent {
             adapter: Arc::new(MockAdapter),
@@ -762,7 +793,10 @@ mod tests {
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
-        let snap = state.destruct_snapshot("42").await.unwrap();
+        let snap = state
+            .destruct_snapshot(Platform::Telegram, "42")
+            .await
+            .unwrap();
         assert_eq!(snap.step, DestructStep::AwaitConfirm);
     }
 
@@ -770,9 +804,12 @@ mod tests {
     async fn confirm_text_triggers_destruct_at_final_confirm() {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
-        state.begin_destruct("42".into(), Instant::now()).await;
+        state
+            .begin_destruct(Platform::Telegram, "42".into(), Instant::now())
+            .await;
         state
             .advance_destruct_step(
+                Platform::Telegram,
                 "42",
                 DestructStep::AwaitFirstTotp,
                 DestructStep::AwaitConfirm,
@@ -781,6 +818,7 @@ mod tests {
             .await;
         state
             .advance_destruct_step(
+                Platform::Telegram,
                 "42",
                 DestructStep::AwaitConfirm,
                 DestructStep::AwaitFinalConfirm,
@@ -800,16 +838,24 @@ mod tests {
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
-        assert!(state.destruct_snapshot("42").await.is_none());
+        assert!(
+            state
+                .destruct_snapshot(Platform::Telegram, "42")
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
     async fn confirm_text_advances_await_confirm_to_final() {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
-        state.begin_destruct("42".into(), Instant::now()).await;
+        state
+            .begin_destruct(Platform::Telegram, "42".into(), Instant::now())
+            .await;
         state
             .advance_destruct_step(
+                Platform::Telegram,
                 "42",
                 DestructStep::AwaitFirstTotp,
                 DestructStep::AwaitConfirm,
@@ -828,7 +874,10 @@ mod tests {
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
-        let snap = state.destruct_snapshot("42").await.unwrap();
+        let snap = state
+            .destruct_snapshot(Platform::Telegram, "42")
+            .await
+            .unwrap();
         assert_eq!(snap.step, DestructStep::AwaitFinalConfirm);
     }
 
@@ -836,9 +885,12 @@ mod tests {
     async fn confirm_text_cancels_destruct_on_no() {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
-        state.begin_destruct("42".into(), Instant::now()).await;
+        state
+            .begin_destruct(Platform::Telegram, "42".into(), Instant::now())
+            .await;
         state
             .advance_destruct_step(
+                Platform::Telegram,
                 "42",
                 DestructStep::AwaitFirstTotp,
                 DestructStep::AwaitConfirm,
@@ -857,7 +909,12 @@ mod tests {
         };
         let outcome = intercept_message(&msg, &state).await.unwrap();
         assert_eq!(outcome, FlowOutcome::Handled);
-        assert!(state.destruct_snapshot("42").await.is_none());
+        assert!(
+            state
+                .destruct_snapshot(Platform::Telegram, "42")
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]

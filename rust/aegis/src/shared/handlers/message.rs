@@ -5,7 +5,7 @@ use rust_i18n::t;
 
 use crate::app::workflows::schedule::ScheduleFlow;
 use crate::app::workflows::warp::WarpFlow;
-use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
+use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, Platform, TargetId};
 use crate::core::security::acme::{
     AcmeCertificateOperation, AcmeCommandError, AcmeFailureKind, AcmeManager, XhttpDeployMode,
 };
@@ -26,24 +26,44 @@ pub enum MessageAction {
 
 #[async_trait]
 pub trait MessageState: Send + Sync {
-    async fn schedule_flow(&self, chat_id: &str, timeout: Duration) -> ScheduleFlow;
-    async fn warp_flow(&self, chat_id: &str, timeout: Duration) -> WarpFlow;
+    async fn schedule_flow(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> ScheduleFlow;
+    async fn warp_flow(&self, platform: Platform, chat_id: &str, timeout: Duration) -> WarpFlow;
     async fn start_domain_input(
         &self,
+        platform: Platform,
         chat_id: String,
         source: DomainFlowSource,
         now: std::time::Instant,
     );
-    async fn domain_input_snapshot(&self, chat_id: &str) -> Option<DomainInputState>;
+    async fn domain_input_snapshot(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+    ) -> Option<DomainInputState>;
     async fn transition_domain_input(
         &self,
+        platform: Platform,
         chat_id: &str,
         expected: DomainInputStep,
         next: DomainInputStep,
         domain: Option<String>,
     ) -> bool;
-    async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState>;
-    async fn domain_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus;
+    async fn take_domain_input(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+    ) -> Option<DomainInputState>;
+    async fn domain_timeout_status(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> TimeoutStatus;
 }
 
 pub async fn handle_message(
@@ -53,6 +73,7 @@ pub async fn handle_message(
     has_file: bool,
     state: &dyn MessageState,
 ) -> anyhow::Result<MessageAction> {
+    let platform = adapter.platform();
     // Input length check
     if let Some(t) = text
         && t.len() > MAX_INPUT_LENGTH
@@ -72,15 +93,15 @@ pub async fn handle_message(
 
     let target_str = &target.0;
 
-    if let Some(domain_state) = state.domain_input_snapshot(target_str).await {
+    if let Some(domain_state) = state.domain_input_snapshot(platform, target_str).await {
         match domain_state.step {
             DomainInputStep::AwaitDomain => {
                 match state
-                    .domain_timeout_status(target_str, Duration::from_secs(120))
+                    .domain_timeout_status(platform, target_str, Duration::from_secs(120))
                     .await
                 {
                     TimeoutStatus::Expired => {
-                        state.take_domain_input(target_str).await;
+                        state.take_domain_input(platform, target_str).await;
                         adapter
                             .send_message(
                                 target,
@@ -114,7 +135,7 @@ pub async fn handle_message(
                     match AcmeManager::validate_domain(trimmed) {
                         Ok(domain) => {
                             if let Some(cert_paths) = AcmeManager::cert_valid(&domain).await {
-                                state.take_domain_input(target_str).await;
+                                state.take_domain_input(platform, target_str).await;
                                 return Ok(MessageAction::DomainReady {
                                     source: domain_state.source,
                                     mode: XhttpDeployMode::Tls { domain, cert_paths },
@@ -125,6 +146,7 @@ pub async fn handle_message(
                                 AcmeManager::configured_provider_for_domain(&domain)?
                                 && state
                                     .transition_domain_input(
+                                        platform,
                                         target_str,
                                         DomainInputStep::AwaitDomain,
                                         DomainInputStep::Processing,
@@ -150,7 +172,7 @@ pub async fn handle_message(
                                 .await
                                 {
                                     Ok(cert_paths) => {
-                                        state.take_domain_input(target_str).await;
+                                        state.take_domain_input(platform, target_str).await;
                                         return Ok(MessageAction::DomainReady {
                                             source: domain_state.source,
                                             mode: XhttpDeployMode::Tls { domain, cert_paths },
@@ -159,6 +181,7 @@ pub async fn handle_message(
                                     Err(e) => {
                                         state
                                             .transition_domain_input(
+                                                platform,
                                                 target_str,
                                                 DomainInputStep::Processing,
                                                 DomainInputStep::AwaitDomain,
@@ -181,7 +204,7 @@ pub async fn handle_message(
                             }
 
                             return show_provider_selection(
-                                adapter, target, state, target_str, domain,
+                                adapter, target, state, platform, target_str, domain,
                             )
                             .await;
                         }
@@ -207,6 +230,7 @@ pub async fn handle_message(
                     if let Some(provider) = parse_provider_selection(trimmed)
                         && state
                             .transition_domain_input(
+                                platform,
                                 target_str,
                                 DomainInputStep::AwaitProvider,
                                 DomainInputStep::AwaitCredentials(provider),
@@ -267,6 +291,7 @@ pub async fn handle_message(
 
                     if state
                         .transition_domain_input(
+                            platform,
                             target_str,
                             DomainInputStep::AwaitCredentials(selected_provider),
                             DomainInputStep::Processing,
@@ -288,7 +313,7 @@ pub async fn handle_message(
                                 .await
                                 {
                                     Ok(cert_paths) => {
-                                        state.take_domain_input(target_str).await;
+                                        state.take_domain_input(platform, target_str).await;
                                         return Ok(MessageAction::DomainReady {
                                             source: domain_state.source,
                                             mode: XhttpDeployMode::Tls {
@@ -300,6 +325,7 @@ pub async fn handle_message(
                                     Err(e) => {
                                         state
                                             .transition_domain_input(
+                                                platform,
                                                 target_str,
                                                 DomainInputStep::Processing,
                                                 DomainInputStep::AwaitCredentials(
@@ -325,6 +351,7 @@ pub async fn handle_message(
                             Err(_) => {
                                 state
                                     .transition_domain_input(
+                                        platform,
                                         target_str,
                                         DomainInputStep::Processing,
                                         DomainInputStep::AwaitCredentials(selected_provider),
@@ -364,7 +391,7 @@ pub async fn handle_message(
 
     // Schedule timeout check
     match state
-        .schedule_flow(target_str, Duration::from_secs(180))
+        .schedule_flow(platform, target_str, Duration::from_secs(180))
         .await
     {
         ScheduleFlow::Expired => {
@@ -397,7 +424,10 @@ pub async fn handle_message(
     }
 
     // Warp input check
-    match state.warp_flow(target_str, Duration::from_secs(60)).await {
+    match state
+        .warp_flow(platform, target_str, Duration::from_secs(60))
+        .await
+    {
         WarpFlow::Expired => {
             adapter
                 .send_message(
@@ -469,11 +499,13 @@ async fn show_provider_selection(
     adapter: &dyn BotAdapter,
     target: &TargetId,
     state: &dyn MessageState,
+    platform: Platform,
     target_str: &str,
     domain: String,
 ) -> anyhow::Result<MessageAction> {
     if !state
         .transition_domain_input(
+            platform,
             target_str,
             DomainInputStep::AwaitDomain,
             DomainInputStep::AwaitProvider,
@@ -609,20 +641,35 @@ mod tests {
 
     #[async_trait]
     impl MessageState for FakeState {
-        async fn schedule_flow(&self, _chat_id: &str, _timeout: Duration) -> ScheduleFlow {
+        async fn schedule_flow(
+            &self,
+            _platform: Platform,
+            _chat_id: &str,
+            _timeout: Duration,
+        ) -> ScheduleFlow {
             ScheduleFlow::Continue
         }
-        async fn warp_flow(&self, _chat_id: &str, _timeout: Duration) -> WarpFlow {
+        async fn warp_flow(
+            &self,
+            _platform: Platform,
+            _chat_id: &str,
+            _timeout: Duration,
+        ) -> WarpFlow {
             WarpFlow::Continue
         }
         async fn start_domain_input(
             &self,
+            _platform: Platform,
             _chat_id: String,
             _source: DomainFlowSource,
             _now: std::time::Instant,
         ) {
         }
-        async fn domain_input_snapshot(&self, chat_id: &str) -> Option<DomainInputState> {
+        async fn domain_input_snapshot(
+            &self,
+            _platform: Platform,
+            chat_id: &str,
+        ) -> Option<DomainInputState> {
             if chat_id == self.chat_id {
                 let inner = self.inner.lock().unwrap();
                 Some(DomainInputState {
@@ -637,6 +684,7 @@ mod tests {
         }
         async fn transition_domain_input(
             &self,
+            _platform: Platform,
             chat_id: &str,
             expected: DomainInputStep,
             next: DomainInputStep,
@@ -655,10 +703,19 @@ mod tests {
             }
             true
         }
-        async fn take_domain_input(&self, _chat_id: &str) -> Option<DomainInputState> {
-            self.domain_input_snapshot(&self.chat_id).await
+        async fn take_domain_input(
+            &self,
+            _platform: Platform,
+            _chat_id: &str,
+        ) -> Option<DomainInputState> {
+            self.domain_input_snapshot(_platform, &_chat_id).await
         }
-        async fn domain_timeout_status(&self, _chat_id: &str, _timeout: Duration) -> TimeoutStatus {
+        async fn domain_timeout_status(
+            &self,
+            _platform: Platform,
+            _chat_id: &str,
+            _timeout: Duration,
+        ) -> TimeoutStatus {
             TimeoutStatus::Active
         }
     }
@@ -985,6 +1042,7 @@ mod tests {
             &adapter,
             &target,
             &state,
+            Platform::Telegram,
             &target.0,
             "no-certificate.invalid".to_string(),
         )
@@ -1014,6 +1072,7 @@ mod tests {
         assert!(
             !state
                 .transition_domain_input(
+                    Platform::Telegram,
                     "test_chat",
                     DomainInputStep::AwaitDomain,
                     DomainInputStep::Processing,

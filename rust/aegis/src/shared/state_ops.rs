@@ -25,8 +25,9 @@ pub async fn intercept(
     }
 
     if data == "a_warp_add_input" {
+        let platform = cb.adapter.platform();
         state
-            .start_warp_input(cb.target.0.clone(), Instant::now())
+            .start_warp_input(platform, cb.target.0.clone(), Instant::now())
             .await;
     }
 

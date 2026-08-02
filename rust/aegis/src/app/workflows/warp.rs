@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::app::interaction::ConversationId;
+use crate::common::r#trait::Platform;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WarpFlow {
@@ -13,7 +14,7 @@ pub enum WarpFlow {
 
 #[derive(Default)]
 pub struct WarpWorkflow {
-    pending: Mutex<HashMap<ConversationId, Instant>>,
+    pending: Mutex<HashMap<(Platform, ConversationId), Instant>>,
 }
 
 impl WarpWorkflow {
@@ -21,14 +22,27 @@ impl WarpWorkflow {
         Self::default()
     }
 
-    pub fn start(&self, conversation: ConversationId, now: Instant) {
-        self.pending.lock().unwrap().insert(conversation, now);
+    pub fn start(&self, platform: Platform, conversation: ConversationId, now: Instant) {
+        self.pending
+            .lock()
+            .unwrap()
+            .insert((platform, conversation), now);
     }
 
     /// Destructive read: consumes the pending warp input, reporting whether it
     /// is still within its timeout window.
-    pub fn take(&self, conversation: &ConversationId, timeout: Duration) -> WarpFlow {
-        match self.pending.lock().unwrap().remove(conversation) {
+    pub fn take(
+        &self,
+        platform: Platform,
+        conversation: &ConversationId,
+        timeout: Duration,
+    ) -> WarpFlow {
+        match self
+            .pending
+            .lock()
+            .unwrap()
+            .remove(&(platform, conversation.clone()))
+        {
             Some(start) if start.elapsed() > timeout => WarpFlow::Expired,
             Some(_) => WarpFlow::Waiting,
             None => WarpFlow::Continue,
@@ -43,6 +57,7 @@ mod tests {
     use crate::app::interaction::ConversationId;
     use crate::app::workflows::warp::WarpFlow;
     use crate::app::workflows::warp::WarpWorkflow;
+    use crate::common::r#trait::Platform;
 
     fn conversation(id: u64) -> ConversationId {
         ConversationId::new(id.to_string()).unwrap()
@@ -51,9 +66,10 @@ mod tests {
     #[test]
     fn start_then_take_is_waiting() {
         let wf = WarpWorkflow::new();
-        wf.start(conversation(1), Instant::now());
+        let platform = Platform::Telegram;
+        wf.start(platform, conversation(1), Instant::now());
         assert_eq!(
-            wf.take(&conversation(1), Duration::from_secs(60)),
+            wf.take(platform, &conversation(1), Duration::from_secs(60)),
             WarpFlow::Waiting
         );
     }
@@ -61,9 +77,14 @@ mod tests {
     #[test]
     fn stale_start_expires() {
         let wf = WarpWorkflow::new();
-        wf.start(conversation(1), Instant::now() - Duration::from_secs(61));
+        let platform = Platform::Telegram;
+        wf.start(
+            platform,
+            conversation(1),
+            Instant::now() - Duration::from_secs(61),
+        );
         assert_eq!(
-            wf.take(&conversation(1), Duration::from_secs(60)),
+            wf.take(platform, &conversation(1), Duration::from_secs(60)),
             WarpFlow::Expired
         );
     }
@@ -71,8 +92,9 @@ mod tests {
     #[test]
     fn unknown_is_continue() {
         let wf = WarpWorkflow::new();
+        let platform = Platform::Telegram;
         assert_eq!(
-            wf.take(&conversation(9), Duration::from_secs(60)),
+            wf.take(platform, &conversation(9), Duration::from_secs(60)),
             WarpFlow::Continue
         );
     }
@@ -80,13 +102,14 @@ mod tests {
     #[test]
     fn take_is_destructive() {
         let wf = WarpWorkflow::new();
-        wf.start(conversation(1), Instant::now());
+        let platform = Platform::Telegram;
+        wf.start(platform, conversation(1), Instant::now());
         assert_eq!(
-            wf.take(&conversation(1), Duration::from_secs(60)),
+            wf.take(platform, &conversation(1), Duration::from_secs(60)),
             WarpFlow::Waiting
         );
         assert_eq!(
-            wf.take(&conversation(1), Duration::from_secs(60)),
+            wf.take(platform, &conversation(1), Duration::from_secs(60)),
             WarpFlow::Continue
         );
     }
@@ -94,6 +117,7 @@ mod tests {
     #[test]
     fn expiry_boundary_is_table_driven() {
         let stale = Instant::now() - Duration::from_secs(60);
+        let platform = Platform::Telegram;
         let cases = [
             (Duration::from_secs(59), WarpFlow::Expired),
             (Duration::from_secs(60), WarpFlow::Expired),
@@ -101,8 +125,24 @@ mod tests {
         ];
         for (timeout, expected) in cases {
             let wf = WarpWorkflow::new();
-            wf.start(conversation(1), stale);
-            assert_eq!(wf.take(&conversation(1), timeout), expected);
+            wf.start(platform, conversation(1), stale);
+            assert_eq!(wf.take(platform, &conversation(1), timeout), expected);
         }
+    }
+
+    #[test]
+    fn different_platforms_are_separate_flows() {
+        let wf = WarpWorkflow::new();
+        let conv = conversation(1);
+        wf.start(Platform::Telegram, conv.clone(), Instant::now());
+        wf.start(Platform::Discord, conv.clone(), Instant::now());
+        assert_eq!(
+            wf.take(Platform::Telegram, &conv, Duration::from_secs(60)),
+            WarpFlow::Waiting
+        );
+        assert_eq!(
+            wf.take(Platform::Discord, &conv, Duration::from_secs(60)),
+            WarpFlow::Waiting
+        );
     }
 }

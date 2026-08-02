@@ -121,7 +121,6 @@ mod tests {
     use crate::app::output::BusinessOutput;
     use crate::app::service::ApplicationService;
     use crate::app::state::AppState;
-    use crate::common::MockBotAdapter;
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
     use anyhow::Result as AnyResult;

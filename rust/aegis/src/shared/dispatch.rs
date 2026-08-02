@@ -506,12 +506,17 @@ mod tests {
         let adapter = Arc::new(MockAdapter::default());
         let state = make_state();
         state.record_auth_success(42, Instant::now()).await;
-        state.begin_destruct("42".to_string(), Instant::now()).await;
+        state
+            .begin_destruct(Platform::Telegram, "42".to_string(), Instant::now())
+            .await;
         let totp = state.generate_current_totp().unwrap().unwrap();
         dispatch_event(message_event(adapter.clone(), "42", Some(totp)), &state)
             .await
             .unwrap();
-        let snap = state.destruct_snapshot("42").await.unwrap();
+        let snap = state
+            .destruct_snapshot(Platform::Telegram, "42")
+            .await
+            .unwrap();
         assert_eq!(snap.step, DestructStep::AwaitConfirm);
     }
 
@@ -606,6 +611,7 @@ mod tests {
         // Start domain flow and transition to AwaitProvider state
         state
             .start_domain_input(
+                Platform::Telegram,
                 "123".into(),
                 crate::core::types::DomainFlowSource::Standalone,
                 Instant::now(),
@@ -613,6 +619,7 @@ mod tests {
             .await;
         state
             .transition_domain_input(
+                Platform::Telegram,
                 "123",
                 crate::core::types::DomainInputStep::AwaitDomain,
                 crate::core::types::DomainInputStep::AwaitProvider,
@@ -625,7 +632,10 @@ mod tests {
         )
         .await
         .unwrap();
-        let domain_state = state.domain_input_snapshot("123").await.unwrap();
+        let domain_state = state
+            .domain_input_snapshot(Platform::Telegram, "123")
+            .await
+            .unwrap();
         assert_eq!(
             domain_state.step,
             crate::core::types::DomainInputStep::AwaitCredentials(
@@ -652,6 +662,7 @@ mod tests {
         state.record_auth_success(42, Instant::now()).await;
         state
             .start_domain_input(
+                Platform::Telegram,
                 "123".into(),
                 crate::core::types::DomainFlowSource::Standalone,
                 Instant::now(),
@@ -659,6 +670,7 @@ mod tests {
             .await;
         state
             .transition_domain_input(
+                Platform::Telegram,
                 "123",
                 crate::core::types::DomainInputStep::AwaitDomain,
                 crate::core::types::DomainInputStep::AwaitProvider,

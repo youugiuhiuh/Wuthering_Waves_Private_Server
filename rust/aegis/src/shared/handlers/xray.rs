@@ -2574,8 +2574,14 @@ async fn handle_domain_yes(event: &CallbackEvent, state: &AppState, data: &str) 
         return Ok(HandlerAction::Done);
     }
     let source = source.unwrap();
+    let platform = event.adapter.platform();
     state
-        .start_domain_input(event.target.0.clone(), source, std::time::Instant::now())
+        .start_domain_input(
+            platform,
+            event.target.0.clone(),
+            source,
+            std::time::Instant::now(),
+        )
         .await;
     event
         .adapter
@@ -2660,8 +2666,10 @@ async fn handle_domain_provider(
     }
     let provider = provider.unwrap();
     let target_str = &event.target.0;
+    let platform = event.adapter.platform();
     let transitioned = state
         .transition_domain_input(
+            platform,
             target_str,
             crate::core::types::DomainInputStep::AwaitProvider,
             crate::core::types::DomainInputStep::AwaitCredentials(provider),

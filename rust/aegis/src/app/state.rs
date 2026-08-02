@@ -9,6 +9,7 @@ use aegis::app::workflows::certificate::CertificateWorkflow;
 use aegis::app::workflows::destruct::{DestructState, DestructStep, DestructWorkflow};
 use aegis::app::workflows::schedule::{ScheduleFlow, ScheduleWorkflow};
 use aegis::app::workflows::warp::{WarpFlow, WarpWorkflow};
+use aegis::common::r#trait::Platform;
 use aegis::core::i18n::Lang;
 use aegis::core::security::self_destruct::SelfDestructExecutor;
 use aegis::core::totp::TotpManager;
@@ -229,31 +230,36 @@ impl AppState {
         }
     }
 
-    pub async fn begin_destruct(&self, chat_id: String, now: Instant) {
+    pub async fn begin_destruct(&self, platform: Platform, chat_id: String, now: Instant) {
         let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id) else {
             return;
         };
-        self.pending_destructs.begin(conversation, now);
+        self.pending_destructs.begin(platform, conversation, now);
     }
 
-    pub async fn cancel_destruct(&self, chat_id: &str) -> bool {
+    pub async fn cancel_destruct(&self, platform: Platform, chat_id: &str) -> bool {
         let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
         else {
             return false;
         };
-        self.pending_destructs.cancel(&conversation)
+        self.pending_destructs.cancel(platform, &conversation)
     }
 
-    pub async fn destruct_snapshot(&self, chat_id: &str) -> Option<DestructState> {
+    pub async fn destruct_snapshot(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+    ) -> Option<DestructState> {
         let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
         else {
             return None;
         };
-        self.pending_destructs.snapshot(&conversation)
+        self.pending_destructs.snapshot(platform, &conversation)
     }
 
     pub async fn touch_destruct(
         &self,
+        platform: Platform,
         chat_id: &str,
         now: Instant,
         timeout: Duration,
@@ -262,11 +268,13 @@ impl AppState {
         else {
             return TimeoutStatus::NotTracked;
         };
-        self.pending_destructs.touch(&conversation, now, timeout)
+        self.pending_destructs
+            .touch(platform, &conversation, now, timeout)
     }
 
     pub async fn advance_destruct_step(
         &self,
+        platform: Platform,
         chat_id: &str,
         expected: DestructStep,
         next: DestructStep,
@@ -277,11 +285,12 @@ impl AppState {
             return false;
         };
         self.pending_destructs
-            .advance_step(&conversation, expected, next, now)
+            .advance_step(platform, &conversation, expected, next, now)
     }
 
     pub async fn confirm_first_destruct_totp(
         &self,
+        platform: Platform,
         chat_id: &str,
         code: &str,
         now: Instant,
@@ -291,11 +300,12 @@ impl AppState {
             return false;
         };
         self.pending_destructs
-            .confirm_first_totp(&conversation, code, now)
+            .confirm_first_totp(platform, &conversation, code, now)
     }
 
     pub async fn confirm_second_destruct_totp(
         &self,
+        platform: Platform,
         chat_id: &str,
         code: &str,
         now: Instant,
@@ -305,20 +315,26 @@ impl AppState {
             return Ok(false);
         };
         self.pending_destructs
-            .confirm_second_totp(&conversation, code, now)
+            .confirm_second_totp(platform, &conversation, code, now)
     }
 
-    pub async fn mark_destruct_file_verified(&self, chat_id: &str, now: Instant) -> bool {
+    pub async fn mark_destruct_file_verified(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+        now: Instant,
+    ) -> bool {
         let Ok(conversation) = aegis::app::interaction::ConversationId::new(chat_id.to_string())
         else {
             return false;
         };
         self.pending_destructs
-            .mark_file_verified(&conversation, now)
+            .mark_file_verified(platform, &conversation, now)
     }
 
     pub async fn with_destruct<R>(
         &self,
+        platform: Platform,
         chat_id: &str,
         f: impl FnOnce(&mut DestructState) -> R,
     ) -> Option<R> {
@@ -326,30 +342,42 @@ impl AppState {
         else {
             return None;
         };
-        self.pending_destructs.with_state(&conversation, f)
+        self.pending_destructs
+            .with_state(platform, &conversation, f)
     }
 
-    pub async fn start_warp_input(&self, chat_id: String, now: Instant) {
+    pub async fn start_warp_input(&self, platform: Platform, chat_id: String, now: Instant) {
         let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id) else {
             return;
         };
-        self.warp_workflow.start(conversation, now);
+        self.warp_workflow.start(platform, conversation, now);
     }
 
-    pub async fn warp_flow(&self, chat_id: &str, timeout: Duration) -> WarpFlow {
+    pub async fn warp_flow(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> WarpFlow {
         let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
         else {
             return WarpFlow::Continue;
         };
-        self.warp_workflow.take(&conversation, timeout)
+        self.warp_workflow.take(platform, &conversation, timeout)
     }
 
-    pub async fn schedule_flow(&self, chat_id: &str, timeout: Duration) -> ScheduleFlow {
+    pub async fn schedule_flow(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> ScheduleFlow {
         let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
         else {
             return ScheduleFlow::Continue;
         };
-        self.schedule_workflow.route(&conversation, timeout)
+        self.schedule_workflow
+            .route(platform, &conversation, timeout)
     }
 
     pub async fn start_security_file_input(&self, chat_id: String, now: Instant) {
@@ -371,6 +399,7 @@ impl AppState {
 
     pub async fn start_domain_input(
         &self,
+        platform: Platform,
         chat_id: String,
         source: DomainFlowSource,
         now: Instant,
@@ -378,19 +407,25 @@ impl AppState {
         let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id) else {
             return;
         };
-        self.certificate_workflow.start(conversation, source, now);
+        self.certificate_workflow
+            .start(platform, conversation, source, now);
     }
 
-    pub async fn domain_input_snapshot(&self, chat_id: &str) -> Option<DomainInputState> {
+    pub async fn domain_input_snapshot(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+    ) -> Option<DomainInputState> {
         let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
         else {
             return None;
         };
-        self.certificate_workflow.snapshot(&conversation)
+        self.certificate_workflow.snapshot(platform, &conversation)
     }
 
     pub async fn transition_domain_input(
         &self,
+        platform: Platform,
         chat_id: &str,
         expected: DomainInputStep,
         next: DomainInputStep,
@@ -401,67 +436,97 @@ impl AppState {
             return false;
         };
         self.certificate_workflow
-            .transition(&conversation, expected, next, domain)
+            .transition(platform, &conversation, expected, next, domain)
     }
 
-    pub async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState> {
+    pub async fn take_domain_input(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+    ) -> Option<DomainInputState> {
         let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
         else {
             return None;
         };
-        self.certificate_workflow.take(&conversation)
+        self.certificate_workflow.take(platform, &conversation)
     }
 
-    pub async fn domain_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
+    pub async fn domain_timeout_status(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> TimeoutStatus {
         let Ok(conversation) = crate::app::interaction::ConversationId::new(chat_id.to_string())
         else {
             return TimeoutStatus::NotTracked;
         };
         self.certificate_workflow
-            .timeout_status(&conversation, timeout)
+            .timeout_status(platform, &conversation, timeout)
     }
 }
 
 #[async_trait]
 impl MessageState for AppState {
-    async fn schedule_flow(&self, chat_id: &str, timeout: Duration) -> ScheduleFlow {
-        self.schedule_flow(chat_id, timeout).await
+    async fn schedule_flow(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> ScheduleFlow {
+        self.schedule_flow(platform, chat_id, timeout).await
     }
 
-    async fn warp_flow(&self, chat_id: &str, timeout: Duration) -> WarpFlow {
-        self.warp_flow(chat_id, timeout).await
+    async fn warp_flow(&self, platform: Platform, chat_id: &str, timeout: Duration) -> WarpFlow {
+        self.warp_flow(platform, chat_id, timeout).await
     }
 
     async fn start_domain_input(
         &self,
+        platform: Platform,
         chat_id: String,
         source: DomainFlowSource,
         now: std::time::Instant,
     ) {
-        self.start_domain_input(chat_id, source, now).await
+        self.start_domain_input(platform, chat_id, source, now)
+            .await
     }
 
-    async fn domain_input_snapshot(&self, chat_id: &str) -> Option<DomainInputState> {
-        self.domain_input_snapshot(chat_id).await
+    async fn domain_input_snapshot(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+    ) -> Option<DomainInputState> {
+        self.domain_input_snapshot(platform, chat_id).await
     }
 
     async fn transition_domain_input(
         &self,
+        platform: Platform,
         chat_id: &str,
         expected: DomainInputStep,
         next: DomainInputStep,
         domain: Option<String>,
     ) -> bool {
-        self.transition_domain_input(chat_id, expected, next, domain)
+        self.transition_domain_input(platform, chat_id, expected, next, domain)
             .await
     }
 
-    async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState> {
-        self.take_domain_input(chat_id).await
+    async fn take_domain_input(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+    ) -> Option<DomainInputState> {
+        self.take_domain_input(platform, chat_id).await
     }
 
-    async fn domain_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
-        self.domain_timeout_status(chat_id, timeout).await
+    async fn domain_timeout_status(
+        &self,
+        platform: Platform,
+        chat_id: &str,
+        timeout: Duration,
+    ) -> TimeoutStatus {
+        self.domain_timeout_status(platform, chat_id, timeout).await
     }
 }
 
@@ -472,47 +537,16 @@ fn is_session_valid(session_time: &Instant, timeout_secs: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use aegis::core::types::{DomainFlowSource, DomainInputStep};
     use anyhow::Result;
-    use async_trait::async_trait;
     use futures_util::future::BoxFuture;
+    use std::time::Instant;
 
     struct NoopExecutor;
 
     impl SelfDestructExecutor for NoopExecutor {
         fn execute(&self) -> BoxFuture<'static, Result<()>> {
             Box::pin(async { Ok(()) })
-        }
-    }
-
-    struct MockAdapter;
-
-    #[async_trait]
-    impl BotAdapter for MockAdapter {
-        fn platform(&self) -> Platform {
-            Platform::Telegram
-        }
-        async fn send_message(
-            &self,
-            _target: &TargetId,
-            _content: MessageContent,
-        ) -> Result<MessageId> {
-            Ok(MessageId("0".to_string()))
-        }
-        async fn edit_message(
-            &self,
-            _target: &TargetId,
-            _msg_id: &MessageId,
-            _content: MessageContent,
-        ) -> Result<()> {
-            Ok(())
-        }
-        async fn delete_message(&self, _target: &TargetId, _msg_id: &MessageId) -> Result<()> {
-            Ok(())
-        }
-        async fn download_file(&self, _file_id: &str) -> Result<Vec<u8>> {
-            Ok(Vec::new())
         }
     }
 
@@ -565,15 +599,18 @@ mod tests {
         let state = make_state();
         let chat_id = "1".to_string();
         let now = Instant::now();
-        state.begin_destruct(chat_id.clone(), now).await;
+        state
+            .begin_destruct(Platform::Telegram, chat_id.clone(), now)
+            .await;
         assert!(
             state
-                .confirm_first_destruct_totp(&chat_id, "111111", now)
+                .confirm_first_destruct_totp(Platform::Telegram, &chat_id, "111111", now)
                 .await
         );
         assert!(
             state
                 .advance_destruct_step(
+                    Platform::Telegram,
                     &chat_id,
                     DestructStep::AwaitConfirm,
                     DestructStep::AwaitSecondTotp,
@@ -583,11 +620,15 @@ mod tests {
         );
         assert!(
             state
-                .confirm_second_destruct_totp(&chat_id, "222222", now)
+                .confirm_second_destruct_totp(Platform::Telegram, &chat_id, "222222", now)
                 .await
                 .unwrap()
         );
-        assert!(state.mark_destruct_file_verified(&chat_id, now).await);
+        assert!(
+            state
+                .mark_destruct_file_verified(Platform::Telegram, &chat_id, now)
+                .await
+        );
     }
 
     #[tokio::test]
@@ -595,11 +636,20 @@ mod tests {
         let state = make_state();
         let chat_id = "2".to_string();
         state
-            .begin_destruct(chat_id.clone(), Instant::now() - Duration::from_secs(61))
+            .begin_destruct(
+                Platform::Telegram,
+                chat_id.clone(),
+                Instant::now() - Duration::from_secs(61),
+            )
             .await;
         assert_eq!(
             state
-                .touch_destruct(&chat_id, Instant::now(), Duration::from_secs(60))
+                .touch_destruct(
+                    Platform::Telegram,
+                    &chat_id,
+                    Instant::now(),
+                    Duration::from_secs(60)
+                )
                 .await,
             TimeoutStatus::Expired
         );
@@ -644,7 +694,9 @@ mod tests {
     #[tokio::test]
     async fn schedule_flow_returns_continue_for_unknown_chat() {
         let state = make_state();
-        let flow = state.schedule_flow("123", Duration::from_secs(60)).await;
+        let flow = state
+            .schedule_flow(Platform::Telegram, "123", Duration::from_secs(60))
+            .await;
         assert_eq!(flow, ScheduleFlow::Continue);
     }
 
@@ -652,14 +704,16 @@ mod tests {
     async fn cancel_destruct_returns_true_when_exists() {
         let state = make_state();
         let chat_id = "5".to_string();
-        state.begin_destruct(chat_id.clone(), Instant::now()).await;
-        assert!(state.cancel_destruct(&chat_id).await);
+        state
+            .begin_destruct(Platform::Telegram, chat_id.clone(), Instant::now())
+            .await;
+        assert!(state.cancel_destruct(Platform::Telegram, &chat_id).await);
     }
 
     #[tokio::test]
     async fn cancel_destruct_returns_false_when_not_exists() {
         let state = make_state();
-        assert!(!state.cancel_destruct("999").await);
+        assert!(!state.cancel_destruct(Platform::Telegram, "999").await);
     }
 
     #[tokio::test]
@@ -667,9 +721,11 @@ mod tests {
         let state = make_state();
         let chat_id = "200".to_string();
         state
-            .start_warp_input(chat_id.clone(), Instant::now())
+            .start_warp_input(Platform::Telegram, chat_id.clone(), Instant::now())
             .await;
-        let status = state.warp_flow(&chat_id, Duration::from_secs(60)).await;
+        let status = state
+            .warp_flow(Platform::Telegram, &chat_id, Duration::from_secs(60))
+            .await;
         assert_eq!(status, WarpFlow::Waiting);
     }
 
@@ -703,7 +759,7 @@ mod tests {
     #[tokio::test]
     async fn destruct_snapshot_returns_none_for_unknown_chat() {
         let state = make_state();
-        let snapshot = state.destruct_snapshot("999").await;
+        let snapshot = state.destruct_snapshot(Platform::Telegram, "999").await;
         assert!(snapshot.is_none());
     }
 
@@ -749,14 +805,22 @@ mod tests {
     async fn domain_input_tracks_source_and_timeout() {
         let state = make_state();
         state
-            .start_domain_input("chat".into(), DomainFlowSource::OneClick, Instant::now())
+            .start_domain_input(
+                Platform::Telegram,
+                "chat".into(),
+                DomainFlowSource::OneClick,
+                Instant::now(),
+            )
             .await;
-        let input = state.domain_input_snapshot("chat").await.unwrap();
+        let input = state
+            .domain_input_snapshot(Platform::Telegram, "chat")
+            .await
+            .unwrap();
         assert_eq!(input.source, DomainFlowSource::OneClick);
         assert_eq!(input.step, DomainInputStep::AwaitDomain);
         assert_eq!(
             state
-                .domain_timeout_status("chat", Duration::from_secs(120))
+                .domain_timeout_status(Platform::Telegram, "chat", Duration::from_secs(120))
                 .await,
             TimeoutStatus::Active
         );
@@ -766,10 +830,25 @@ mod tests {
     async fn take_domain_input_removes_flow() {
         let state = make_state();
         state
-            .start_domain_input("chat".into(), DomainFlowSource::Standalone, Instant::now())
+            .start_domain_input(
+                Platform::Telegram,
+                "chat".into(),
+                DomainFlowSource::Standalone,
+                Instant::now(),
+            )
             .await;
-        assert!(state.take_domain_input("chat").await.is_some());
-        assert!(state.domain_input_snapshot("chat").await.is_none());
+        assert!(
+            state
+                .take_domain_input(Platform::Telegram, "chat")
+                .await
+                .is_some()
+        );
+        assert!(
+            state
+                .domain_input_snapshot(Platform::Telegram, "chat")
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
