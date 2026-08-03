@@ -129,12 +129,9 @@ impl BusinessOutput for AdapterOutput {
                 let msg_id = MessageId(message_id);
                 self.adapter.delete_message(&self.target, &msg_id).await?;
             }
-            OutputAction::AnswerCallback {
-                callback_id,
-                text: _,
-            } => {
+            OutputAction::AnswerCallback { callback_id, text } => {
                 self.adapter
-                    .answer_callback(&self.target, &callback_id, None)
+                    .answer_callback(&self.target, &callback_id, text)
                     .await?;
             }
             OutputAction::SendAttachment {

@@ -1,4 +1,5 @@
-use crate::common::{BotAdapter, InlineButton, Markup, MessageContent};
+use crate::app::interaction::{ConversationId, OutputAction, OutputPayload, Sensitivity};
+use crate::common::{InlineButton, Markup};
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::singbox::SingBoxInstaller;
 use crate::core::singbox::config::SingBoxConfigManager;
@@ -37,8 +38,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 }
 
 fn spawn_progress_updater(
-    adapter: Arc<dyn BotAdapter>,
-    target: crate::common::TargetId,
+    output: Arc<dyn crate::app::output::BusinessOutput>,
+    conversation_id: ConversationId,
     msg_id: crate::common::MessageId,
     title_fn: impl Fn(String) -> String + Send + 'static,
 ) -> (UnboundedSender<String>, JoinHandle<()>) {
@@ -50,15 +51,14 @@ fn spawn_progress_updater(
                 continue;
             }
             last = text.clone();
-            let _ = adapter
-                .edit_message(
-                    &target,
-                    &msg_id,
-                    MessageContent {
+            let _ = output
+                .publish(OutputAction::Edit {
+                    target_conversation: conversation_id.clone(),
+                    message_id: msg_id.0.clone(),
+                    payload: OutputPayload::Text {
                         text: title_fn(text),
-                        markup: None,
                     },
-                )
+                })
                 .await;
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
@@ -70,12 +70,10 @@ async fn handle_reload(event: &CallbackEvent) -> HandlerResult {
     let _ = MaintenanceManager::reload_core().await;
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.reload_success").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.reload_success").into_owned()),
+        })
         .await?;
     Ok(HandlerAction::Done)
 }
@@ -83,22 +81,21 @@ async fn handle_reload(event: &CallbackEvent) -> HandlerResult {
 async fn handle_firewall(event: &CallbackEvent) -> HandlerResult {
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.fw_start").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.fw_start").into_owned()),
+        })
         .await?;
 
-    let adapter = event.output.as_adapter().clone();
-    let target = event.target.clone();
+    let output = event.output.clone();
+    let conversation_id = event.origin.conversation_id.clone();
     let msg_id = event.msg_id.clone();
 
     tokio::spawn(async move {
-        let (tx, update_task) = spawn_progress_updater(adapter, target, msg_id, |t| {
-            t!("ops.fw_title", "0" => t).to_string()
-        });
+        let (tx, update_task) =
+            spawn_progress_updater(output.clone(), conversation_id.clone(), msg_id, |t| {
+                t!("ops.fw_title", "0" => t).to_string()
+            });
 
         let tx_clone = tx.clone();
         let res = tokio::time::timeout(
@@ -129,12 +126,10 @@ async fn handle_firewall(event: &CallbackEvent) -> HandlerResult {
 async fn handle_upgrade(event: &CallbackEvent) -> HandlerResult {
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.upgrade_start").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.upgrade_start").into_owned()),
+        })
         .await?;
 
     let adapter = event.output.as_adapter().clone();
@@ -151,7 +146,7 @@ async fn handle_upgrade(event: &CallbackEvent) -> HandlerResult {
                     let _ = adapter
                         .send_message(
                             &target,
-                            MessageContent {
+                            crate::common::MessageContent {
                                 text: t!("ops.upgrade_fail", "0" => err.to_string()).into_owned(),
                                 markup: None,
                             },
@@ -163,7 +158,7 @@ async fn handle_upgrade(event: &CallbackEvent) -> HandlerResult {
                 let _ = adapter
                     .send_message(
                         &target,
-                        MessageContent {
+                        crate::common::MessageContent {
                             text: t!("ops.upgrade_init_fail", "0" => err.to_string()).into_owned(),
                             markup: None,
                         },
@@ -179,51 +174,49 @@ async fn handle_upgrade(event: &CallbackEvent) -> HandlerResult {
 async fn handle_geo(event: &CallbackEvent) -> HandlerResult {
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.geo_start").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.geo_start").into_owned()),
+        })
         .await?;
 
-    let adapter = event.output.as_adapter().clone();
-    let target = event.target.clone();
+    let output = event.output.clone();
+    let conversation_id = event.origin.conversation_id.clone();
     let msg_id = event.msg_id.clone();
 
     tokio::spawn(async move {
         let (tx, update_task) =
-            spawn_progress_updater(adapter.clone(), target.clone(), msg_id, |t| {
+            spawn_progress_updater(output.clone(), conversation_id.clone(), msg_id, |t| {
                 t!("ops.geo_title", "0" => t).to_string()
             });
 
-        let tx_for_adapter = tx.clone();
+        let tx_for_output = tx.clone();
         let res = MaintenanceManager::update_geodata(move |_, text| {
-            let _ = tx_for_adapter.send(text.to_string());
+            let _ = tx_for_output.send(text.to_string());
         })
         .await;
 
         match res {
             Ok(_) => {
-                let _ = adapter
-                    .send_message(
-                        &target,
-                        MessageContent {
+                let _ = output
+                    .publish(OutputAction::SendText {
+                        target_conversation: conversation_id.clone(),
+                        payload: OutputPayload::Text {
                             text: t!("ops.geo_success").into_owned(),
-                            markup: None,
                         },
-                    )
+                        sensitivity: Sensitivity::Public,
+                    })
                     .await;
             }
             Err(e) => {
-                let _ = adapter
-                    .send_message(
-                        &target,
-                        MessageContent {
+                let _ = output
+                    .publish(OutputAction::SendText {
+                        target_conversation: conversation_id.clone(),
+                        payload: OutputPayload::Text {
                             text: t!("ops.geo_fail", "0" => e.to_string()).into_owned(),
-                            markup: None,
                         },
-                    )
+                        sensitivity: Sensitivity::Public,
+                    })
                     .await;
             }
         }
@@ -238,22 +231,21 @@ async fn handle_geo(event: &CallbackEvent) -> HandlerResult {
 async fn handle_tune(event: &CallbackEvent) -> HandlerResult {
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.tune_start").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.tune_start").into_owned()),
+        })
         .await?;
 
-    let adapter = event.output.as_adapter().clone();
-    let target = event.target.clone();
+    let output = event.output.clone();
+    let conversation_id = event.origin.conversation_id.clone();
     let msg_id = event.msg_id.clone();
 
     tokio::spawn(async move {
-        let (tx, update_task) = spawn_progress_updater(adapter, target, msg_id, |t| {
-            format!("⚙️ <b>{}</b>\n{}", t!("menu.generic_tune"), t)
-        });
+        let (tx, update_task) =
+            spawn_progress_updater(output.clone(), conversation_id.clone(), msg_id, |t| {
+                format!("⚙️ <b>{}</b>\n{}", t!("menu.generic_tune"), t)
+            });
 
         let result = MaintenanceManager::tune_vps_generic().await;
         match result {
@@ -275,22 +267,21 @@ async fn handle_tune(event: &CallbackEvent) -> HandlerResult {
 async fn handle_sys_update(event: &CallbackEvent) -> HandlerResult {
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.sys_update_start").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.sys_update_start").into_owned()),
+        })
         .await?;
 
-    let adapter = event.output.as_adapter().clone();
-    let target = event.target.clone();
+    let output = event.output.clone();
+    let conversation_id = event.origin.conversation_id.clone();
     let msg_id = event.msg_id.clone();
 
     tokio::spawn(async move {
-        let (tx, update_task) = spawn_progress_updater(adapter, target, msg_id, |t| {
-            format!("⬆️ <b>{}</b>\n{}", t!("menu.sys_cmd"), t)
-        });
+        let (tx, update_task) =
+            spawn_progress_updater(output.clone(), conversation_id.clone(), msg_id, |t| {
+                format!("⬆️ <b>{}</b>\n{}", t!("menu.sys_cmd"), t)
+            });
 
         let tx_clone = tx.clone();
         let result = MaintenanceManager::upgrade_system_packages(move |text| {
@@ -329,8 +320,10 @@ async fn handle_bbr3_prompt(event: &CallbackEvent) -> HandlerResult {
     };
     event
         .output
-        .as_adapter()
-        .answer_callback(&event.target, &event.callback_id, None)
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: None,
+        })
         .await?;
     event
         .output
@@ -338,7 +331,7 @@ async fn handle_bbr3_prompt(event: &CallbackEvent) -> HandlerResult {
         .edit_message(
             &event.target,
             &event.msg_id,
-            MessageContent {
+            crate::common::MessageContent {
                 text: t!("ops.bbr3_confirm_warn").into_owned(),
                 markup: Some(markup),
             },
@@ -348,11 +341,11 @@ async fn handle_bbr3_prompt(event: &CallbackEvent) -> HandlerResult {
 }
 
 async fn send_bbr3_progress(
-    adapter: Arc<dyn BotAdapter>,
-    target: crate::common::TargetId,
+    output: Arc<dyn crate::app::output::BusinessOutput>,
+    conversation_id: ConversationId,
     msg_id: crate::common::MessageId,
 ) -> (UnboundedSender<String>, JoinHandle<()>) {
-    spawn_progress_updater(adapter, target, msg_id, |t| {
+    spawn_progress_updater(output, conversation_id, msg_id, |t| {
         t!("ops.bbr3_title", "0" => t).to_string()
     })
 }
@@ -360,20 +353,20 @@ async fn send_bbr3_progress(
 async fn handle_bbr3_install(event: &CallbackEvent) -> HandlerResult {
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.bbr3_start").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.bbr3_start").into_owned()),
+        })
         .await?;
 
-    let adapter = event.output.as_adapter().clone();
-    let target = event.target.clone();
+    let output = event.output.clone();
+    let conversation_id = event.origin.conversation_id.clone();
     let msg_id = event.msg_id.clone();
+    let target = event.target.clone();
 
     tokio::spawn(async move {
-        let (tx, update_task) = send_bbr3_progress(adapter.clone(), target.clone(), msg_id).await;
+        let (tx, update_task) =
+            send_bbr3_progress(output.clone(), conversation_id.clone(), msg_id).await;
 
         let tx_clone = tx.clone();
         let res = tokio::time::timeout(
@@ -413,10 +406,11 @@ async fn handle_bbr3_install(event: &CallbackEvent) -> HandlerResult {
                             }],
                         ],
                     };
-                    let _ = adapter
+                    let _ = output
+                        .as_adapter()
                         .send_message(
                             &target,
-                            MessageContent {
+                            crate::common::MessageContent {
                                 text: t!("ops.bbr3_reboot_prompt").into_owned(),
                                 markup: Some(markup),
                             },
@@ -442,12 +436,10 @@ async fn handle_bbr3_install(event: &CallbackEvent) -> HandlerResult {
 async fn handle_bbr3_cancel(event: &CallbackEvent) -> HandlerResult {
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.bbr3_cancelled").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.bbr3_cancelled").into_owned()),
+        })
         .await?;
     Ok(HandlerAction::Redirect("m_ops_center".to_string()))
 }
@@ -455,19 +447,17 @@ async fn handle_bbr3_cancel(event: &CallbackEvent) -> HandlerResult {
 async fn handle_bbr3_reboot_now(event: &CallbackEvent) -> HandlerResult {
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.sys_reboot_text").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.sys_reboot_text").into_owned()),
+        })
         .await?;
     event
         .output
         .as_adapter()
         .send_message(
             &event.target,
-            MessageContent {
+            crate::common::MessageContent {
                 text: t!("ops.bbr3_reboot_now_msg").into_owned(),
                 markup: None,
             },
@@ -483,12 +473,10 @@ async fn handle_bbr3_reboot_now(event: &CallbackEvent) -> HandlerResult {
 async fn handle_bbr3_reboot_later(event: &CallbackEvent) -> HandlerResult {
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.sys_reboot_later").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.sys_reboot_later").into_owned()),
+        })
         .await?;
     let markup = Markup {
         buttons: vec![vec![InlineButton {
@@ -502,7 +490,7 @@ async fn handle_bbr3_reboot_later(event: &CallbackEvent) -> HandlerResult {
         .edit_message(
             &event.target,
             &event.msg_id,
-            MessageContent {
+            crate::common::MessageContent {
                 text: t!("ops.bbr3_reboot_later_msg").into_owned(),
                 markup: Some(markup),
             },
@@ -515,24 +503,20 @@ async fn handle_sys_reboot(event: &CallbackEvent) -> HandlerResult {
     if REBOOT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("ops.sys_reboot_busy").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("ops.sys_reboot_busy").into_owned()),
+            })
             .await?;
         return Ok(HandlerAction::Done);
     }
 
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("ops.sys_reboot_text").into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("ops.sys_reboot_text").into_owned()),
+        })
         .await?;
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -546,14 +530,17 @@ pub async fn run_one_click(
     _state: (),
     mode: XhttpDeployMode,
 ) -> anyhow::Result<()> {
-    let adapter = event.output.as_adapter().clone();
+    let output = event.output.clone();
+    let conversation_id = event.origin.conversation_id.clone();
     let target = event.target.clone();
     let msg_id = event.msg_id.clone();
 
-    let (tx, _update_task) =
-        spawn_progress_updater(adapter.clone(), target.clone(), msg_id.clone(), |t| {
-            format!("🚀 <b>{}</b>\n{}", t!("menu.one_click_deploy"), t)
-        });
+    let (tx, _update_task) = spawn_progress_updater(
+        output.clone(),
+        conversation_id.clone(),
+        msg_id.clone(),
+        |t| format!("🚀 <b>{}</b>\n{}", t!("menu.one_click_deploy"), t),
+    );
 
     let mut failed = false;
     let mut all_links: Vec<String> = Vec::new();
@@ -630,18 +617,18 @@ pub async fn run_one_click(
                 {
                     Ok(result) => {
                         all_links.extend(result.links);
-                        let _ = adapter
-                            .send_message(
-                                &target,
-                                MessageContent {
+                        let _ = output
+                            .publish(OutputAction::SendText {
+                                target_conversation: conversation_id.clone(),
+                                payload: OutputPayload::Text {
                                     text: t!("ops.deploy_created_xhttp",
                                             "0" => ip_version.label(),
                                             "1" => result.created_count.to_string(),
                                             "2" => result.config_file.as_deref().unwrap_or("?"))
                                     .into_owned(),
-                                    markup: None,
                                 },
-                            )
+                                sensitivity: Sensitivity::Public,
+                            })
                             .await;
                     }
                     Err(e) => {
@@ -661,22 +648,20 @@ pub async fn run_one_click(
                 {
                     Ok(result) => {
                         all_links.extend(result.links);
-                        let _ = adapter
-                            .send_message(
-                                &target,
-                                MessageContent {
+                        let _ = output
+                            .publish(OutputAction::SendText {
+                                target_conversation: conversation_id.clone(),
+                                payload: OutputPayload::Text {
                                     text: t!("ops.deploy_created_xhttp_tls",
                                             "0" => ip_version.label(),
                                             "1" => result.created_count.to_string(),
                                             "2" => result.config_file.as_deref().unwrap_or("?"))
                                     .into_owned(),
-                                    markup: None,
                                 },
-                            )
+                                sensitivity: Sensitivity::Public,
+                            })
                             .await;
 
-                        // Pad with Reality XHTTP to reach 20 total.
-                        // prefer_443=false: 443 is already taken by the TLS batch above.
                         let reality_count = 20_usize.saturating_sub(result.created_count);
                         match ConfigManager::batch_create_xhttp_reality_enhanced(
                             reality_count,
@@ -687,18 +672,18 @@ pub async fn run_one_click(
                         {
                             Ok(reality_result) => {
                                 all_links.extend(reality_result.links);
-                                let _ = adapter
-                                    .send_message(
-                                        &target,
-                                        MessageContent {
+                                let _ = output
+                                    .publish(OutputAction::SendText {
+                                        target_conversation: conversation_id.clone(),
+                                        payload: OutputPayload::Text {
                                             text: t!("ops.deploy_created_xhttp_bonus",
                                                     "0" => ip_version.label(),
                                                     "1" => reality_result.created_count.to_string(),
                                                     "2" => reality_result.config_file.as_deref().unwrap_or("?"))
                                             .into_owned(),
-                                            markup: None,
                                         },
-                                    )
+                                        sensitivity: Sensitivity::Public,
+                                    })
                                     .await;
                             }
                             Err(e) => {
@@ -736,18 +721,18 @@ pub async fn run_one_click(
         match ConfigManager::batch_create_reality_vision_enhanced(20, ip_version).await {
             Ok(result) => {
                 all_links.extend(result.links);
-                let _ = adapter
-                    .send_message(
-                        &target,
-                        MessageContent {
+                let _ = output
+                    .publish(OutputAction::SendText {
+                        target_conversation: conversation_id.clone(),
+                        payload: OutputPayload::Text {
                             text: t!("ops.deploy_created_vision",
                                     "0" => ip_version.label(),
                                     "1" => result.created_count.to_string(),
                                     "2" => result.config_file.as_deref().unwrap_or("?"))
                             .into_owned(),
-                            markup: None,
                         },
-                    )
+                        sensitivity: Sensitivity::Public,
+                    })
                     .await;
             }
             Err(e) => {
@@ -792,18 +777,18 @@ pub async fn run_one_click(
         match SingBoxConfigManager::batch_create_hysteria2(3, ip_version, false, false).await {
             Ok(result) => {
                 all_links.extend(result.links);
-                let _ = adapter
-                    .send_message(
-                        &target,
-                        MessageContent {
+                let _ = output
+                    .publish(OutputAction::SendText {
+                        target_conversation: conversation_id.clone(),
+                        payload: OutputPayload::Text {
                             text: t!("ops.deploy_created_h2",
                                     "0" => ip_version.label(),
                                     "1" => result.created_count.to_string(),
                                     "2" => result.config_file.as_deref().unwrap_or("?"))
                             .into_owned(),
-                            markup: None,
                         },
-                    )
+                        sensitivity: Sensitivity::Public,
+                    })
                     .await;
             }
             Err(e) => {
@@ -819,10 +804,11 @@ pub async fn run_one_click(
     }
 
     if !failed {
-        let _ = adapter
+        let _ = output
+            .as_adapter()
             .send_message(
                 &target,
-                MessageContent {
+                crate::common::MessageContent {
                     text: t!("ops.deploy_step_kcp_dns").into_owned(),
                     markup: None,
                 },
@@ -835,17 +821,17 @@ pub async fn run_one_click(
         match ConfigManager::batch_create_kcp(5, ip_version, &["mld"]).await {
             Ok(result) => {
                 all_links.extend(result.links);
-                let _ = adapter
-                    .send_message(
-                        &target,
-                        MessageContent {
+                let _ = output
+                    .publish(OutputAction::SendText {
+                        target_conversation: conversation_id.clone(),
+                        payload: OutputPayload::Text {
                             text: t!("ops.deploy_created_kcp_dns",
                                     "0" => result.created_count.to_string(),
                                     "1" => result.config_file.as_deref().unwrap_or("?"))
                             .into_owned(),
-                            markup: None,
                         },
-                    )
+                        sensitivity: Sensitivity::Public,
+                    })
                     .await;
             }
             Err(e) => {
@@ -865,17 +851,17 @@ pub async fn run_one_click(
         match ConfigManager::batch_create_kcp(5, ip_version, &["mlw"]).await {
             Ok(result) => {
                 all_links.extend(result.links);
-                let _ = adapter
-                    .send_message(
-                        &target,
-                        MessageContent {
+                let _ = output
+                    .publish(OutputAction::SendText {
+                        target_conversation: conversation_id.clone(),
+                        payload: OutputPayload::Text {
                             text: t!("ops.deploy_created_kcp_wechat",
                                     "0" => result.created_count.to_string(),
                                     "1" => result.config_file.as_deref().unwrap_or("?"))
                             .into_owned(),
-                            markup: None,
                         },
-                    )
+                        sensitivity: Sensitivity::Public,
+                    })
                     .await;
             }
             Err(e) => {
@@ -892,17 +878,18 @@ pub async fn run_one_click(
 
     if !failed && !all_links.is_empty() {
         let combined = all_links.join("\n\n");
-        if let Ok(msg) = adapter
+        if let Ok(msg) = output
+            .as_adapter()
             .send_message(
                 &target,
-                MessageContent {
+                crate::common::MessageContent {
                     text: combined,
                     markup: None,
                 },
             )
             .await
         {
-            let adapter_clone = adapter.clone();
+            let adapter_clone = output.as_adapter().clone();
             let target_clone = target.clone();
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(60)).await;
@@ -929,10 +916,11 @@ pub async fn run_one_click(
     }
 
     if !failed {
-        let _ = adapter
+        let _ = output
+            .as_adapter()
             .send_message(
                 &target,
-                MessageContent {
+                crate::common::MessageContent {
                     text: t!("ops.deploy_success").into_owned(),
                     markup: None,
                 },
