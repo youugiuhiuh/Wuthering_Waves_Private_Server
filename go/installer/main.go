@@ -744,7 +744,7 @@ func installAegis() {
 	var platform string
 	if _, err := os.Stat(configPath); err == nil {
 		printGreen(i18n.T("install.config_exists"))
-		platform = "tg"
+		platform = detectExistingPlatform()
 	} else {
 		platform = firstTimeSetup(destPath)
 	}
@@ -1213,6 +1213,24 @@ func readSecureInput(prompt string) *memguard.Enclave {
 
 	// 密封到 Enclave 并返回
 	return memguard.NewEnclave(actualData)
+}
+
+func detectExistingPlatform() string {
+	data, err := os.ReadFile(serviceFile)
+	if err != nil {
+		return "tg"
+	}
+	content := string(data)
+	if strings.Contains(content, "--matrix") {
+		return "matrix"
+	}
+	if strings.Contains(content, "--discord") {
+		return "discord"
+	}
+	if strings.Contains(content, "--all") {
+		return "tg-matrix"
+	}
+	return "tg"
 }
 
 func writeSystemdService(platform string) {
