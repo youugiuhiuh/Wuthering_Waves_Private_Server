@@ -1,20 +1,17 @@
-use crate::common::{BotAdapter, MessageContent, MessageId, TargetId};
+use crate::common::{MessageContent, MessageId, TargetId};
 use crate::core::progress::{OperationProgress, ProgressReporter};
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// A reporter that edits a single persistent status message: `Started` creates it
-/// (and remembers its id), `Advanced` edits it, `Finished` sends a final message.
-/// Used by upgrade flows that previously sent one message and edited it repeatedly.
 pub struct StatusMessageReporter {
-    pub adapter: Arc<dyn BotAdapter>,
-    pub target: TargetId,
+    adapter: Arc<dyn crate::common::BotAdapter>,
+    target: TargetId,
     msg_id: Mutex<Option<MessageId>>,
 }
 
 impl StatusMessageReporter {
-    pub fn new(adapter: Arc<dyn BotAdapter>, target: TargetId) -> Self {
+    pub fn new(adapter: Arc<dyn crate::common::BotAdapter>, target: TargetId) -> Self {
         Self {
             adapter,
             target,
@@ -65,15 +62,13 @@ impl ProgressReporter for StatusMessageReporter {
     }
 }
 
-/// A reporter that sends a fresh message for every progress event. Used by the
-/// scheduler, whose tasks previously announced themselves via `send_message`.
 pub struct SendMessageReporter {
-    pub adapter: Arc<dyn BotAdapter>,
-    pub target: TargetId,
+    adapter: Arc<dyn crate::common::BotAdapter>,
+    target: TargetId,
 }
 
 impl SendMessageReporter {
-    pub fn new(adapter: Arc<dyn BotAdapter>, target: TargetId) -> Self {
+    pub fn new(adapter: Arc<dyn crate::common::BotAdapter>, target: TargetId) -> Self {
         Self { adapter, target }
     }
 }

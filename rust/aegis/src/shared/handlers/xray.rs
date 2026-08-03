@@ -536,23 +536,19 @@ async fn handle_pq_del(event: &CallbackEvent) -> HandlerResult {
         Ok(()) => {
             event
                 .output
-                .as_adapter()
-                .answer_callback(
-                    &event.target,
-                    &event.callback_id,
-                    Some(t!("xray.pq_del_success").into_owned()),
-                )
+                .publish(OutputAction::AnswerCallback {
+                    callback_id: event.callback_id.clone(),
+                    text: Some(t!("xray.pq_del_success").into_owned()),
+                })
                 .await?;
         }
         Err(e) => {
             event
                 .output
-                .as_adapter()
-                .answer_callback(
-                    &event.target,
-                    &event.callback_id,
-                    Some(t!("xray.pq_del_fail", "0" => e).into_owned()),
-                )
+                .publish(OutputAction::AnswerCallback {
+                    callback_id: event.callback_id.clone(),
+                    text: Some(t!("xray.pq_del_fail", "0" => e).into_owned()),
+                })
                 .await?;
         }
     }
@@ -564,23 +560,19 @@ async fn handle_pq_init(event: &CallbackEvent) -> HandlerResult {
         Ok(()) => {
             event
                 .output
-                .as_adapter()
-                .answer_callback(
-                    &event.target,
-                    &event.callback_id,
-                    Some(t!("xray.pq_init_success").into_owned()),
-                )
+                .publish(OutputAction::AnswerCallback {
+                    callback_id: event.callback_id.clone(),
+                    text: Some(t!("xray.pq_init_success").into_owned()),
+                })
                 .await?;
         }
         Err(e) => {
             event
                 .output
-                .as_adapter()
-                .answer_callback(
-                    &event.target,
-                    &event.callback_id,
-                    Some(t!("xray.pq_init_fail", "0" => e).into_owned()),
-                )
+                .publish(OutputAction::AnswerCallback {
+                    callback_id: event.callback_id.clone(),
+                    text: Some(t!("xray.pq_init_fail", "0" => e).into_owned()),
+                })
                 .await?;
         }
     }
@@ -653,19 +645,19 @@ async fn handle_routing_toggle(event: &CallbackEvent) -> HandlerResult {
             };
             event
                 .output
-                .as_adapter()
-                .answer_callback(&event.target, &event.callback_id, Some(msg.into()))
+                .publish(OutputAction::AnswerCallback {
+                    callback_id: event.callback_id.clone(),
+                    text: Some(msg.into()),
+                })
                 .await?;
         }
         Err(e) => {
             event
                 .output
-                .as_adapter()
-                .answer_callback(
-                    &event.target,
-                    &event.callback_id,
-                    Some(format!("{}: {}", t!("xray.routing_reload_failed"), e)),
-                )
+                .publish(OutputAction::AnswerCallback {
+                    callback_id: event.callback_id.clone(),
+                    text: Some(format!("{}: {}", t!("xray.routing_reload_failed"), e)),
+                })
                 .await?;
         }
     }
@@ -842,12 +834,10 @@ async fn handle_cfg_del_all_exec(event: &CallbackEvent) -> HandlerResult {
             _ => {
                 event
                     .output
-                    .as_adapter()
-                    .answer_callback(
-                        &event.target,
-                        &event.callback_id,
-                        Some(t!("xray.del_unknown_filter").into_owned()),
-                    )
+                    .publish(OutputAction::AnswerCallback {
+                        callback_id: event.callback_id.clone(),
+                        text: Some(t!("xray.del_unknown_filter").into_owned()),
+                    })
                     .await?;
                 return Ok(HandlerAction::Redirect("m_del_cfg".to_string()));
             }
@@ -866,12 +856,10 @@ async fn handle_cfg_del_all_exec(event: &CallbackEvent) -> HandlerResult {
     };
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("xray.del_success_all", "0" => count).into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("xray.del_success_all", "0" => count).into_owned()),
+        })
         .await?;
 
     Ok(HandlerAction::Redirect("m_del_cfg".to_string()))
@@ -975,12 +963,10 @@ async fn handle_cfg_del_exec_count(event: &CallbackEvent) -> HandlerResult {
     }
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("xray.del_success_count", "0" => deleted_count).into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("xray.del_success_count", "0" => deleted_count).into_owned()),
+        })
         .await?;
 
     Ok(HandlerAction::Redirect(format!("cfg_del_count:{}", filter)))
@@ -1091,12 +1077,10 @@ async fn handle_cfg_del_file(event: &CallbackEvent) -> HandlerResult {
     } else {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.del_not_found").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("xray.del_not_found").into_owned()),
+            })
             .await?;
     }
 
@@ -1128,8 +1112,10 @@ async fn handle_cfg_del_confirm(event: &CallbackEvent) -> HandlerResult {
     if let Err(e) = utils::validate_idx(idx, files.len(), &t!("xray.del_label")) {
         event
             .output
-            .as_adapter()
-            .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(format!("❌ {}", e)),
+            })
             .await?;
         return Ok(HandlerAction::Done);
     }
@@ -1138,22 +1124,18 @@ async fn handle_cfg_del_confirm(event: &CallbackEvent) -> HandlerResult {
         let _ = ConfigManager::delete_specific_configuration(path).await;
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.del_success").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("xray.del_success").into_owned()),
+            })
             .await?;
     } else {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.del_nonexist").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("xray.del_nonexist").into_owned()),
+            })
             .await?;
     }
 
@@ -1172,24 +1154,20 @@ async fn handle_batch_init(event: &CallbackEvent) -> HandlerResult {
     } else {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.preparing_reality").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("xray.preparing_reality").into_owned()),
+            })
             .await?;
         event
             .output
-            .as_adapter()
-            .edit_message(
-                &event.target,
-                &event.msg_id,
-                MessageContent {
+            .publish(OutputAction::Edit {
+                target_conversation: ConversationId::new(event.target.0.clone())?,
+                message_id: event.msg_id.0.clone(),
+                payload: OutputPayload::Text {
                     text: t!("xray.init_reality").into_owned(),
-                    markup: None,
                 },
-            )
+            })
             .await?;
         trigger_reality_auto_init(
             event.output.as_adapter().clone(),
@@ -1262,12 +1240,10 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
     if !MaintenanceManager::is_reality_base_ready().await {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.base_missing").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("xray.base_missing").into_owned()),
+            })
             .await?;
         trigger_reality_auto_init(
             event.output.as_adapter().clone(),
@@ -1292,15 +1268,13 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
 
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(
                 t!("xray.gen_progress", "0" => n, "1" => proto_str, "2" => ip_str.as_str())
                     .into_owned(),
             ),
-        )
+        })
         .await?;
 
     let res = match proto {
@@ -1442,12 +1416,10 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
     if !MaintenanceManager::is_reality_base_ready().await {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.base_missing").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("xray.base_missing").into_owned()),
+            })
             .await?;
         trigger_reality_auto_init(
             event.output.as_adapter().clone(),
@@ -1472,15 +1444,13 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
 
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(
                 t!("xray.gen_progress", "0" => n, "1" => proto_str, "2" => ip_str.as_str())
                     .into_owned(),
             ),
-        )
+        })
         .await?;
 
     let res = match proto {
@@ -1695,12 +1665,10 @@ async fn handle_kcp_add(event: &CallbackEvent) -> HandlerResult {
     if code == "rl" {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.kcp_realm_note").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("xray.kcp_realm_note").into_owned()),
+            })
             .await?;
         let m = KcpMask::from_code(code).unwrap();
         let stack_display = format!("1️⃣ {}", m.display_name());
@@ -1740,8 +1708,10 @@ async fn handle_kcp_add(event: &CallbackEvent) -> HandlerResult {
         if let Err(e) = m.is_compatible_with(&[]) {
             event
                 .output
-                .as_adapter()
-                .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
+                .publish(OutputAction::AnswerCallback {
+                    callback_id: event.callback_id.clone(),
+                    text: Some(format!("❌ {}", e)),
+                })
                 .await?;
             return Ok(HandlerAction::Done);
         }
@@ -2012,12 +1982,10 @@ async fn handle_kcp_push(event: &CallbackEvent) -> HandlerResult {
         None => {
             event
                 .output
-                .as_adapter()
-                .answer_callback(
-                    &event.target,
-                    &event.callback_id,
-                    Some(t!("xray.kcp_unknown_type").into_owned()),
-                )
+                .publish(OutputAction::AnswerCallback {
+                    callback_id: event.callback_id.clone(),
+                    text: Some(t!("xray.kcp_unknown_type").into_owned()),
+                })
                 .await?;
             return Ok(HandlerAction::Done);
         }
@@ -2026,8 +1994,10 @@ async fn handle_kcp_push(event: &CallbackEvent) -> HandlerResult {
     if let Err(e) = new_mask.is_compatible_with(&current_masks) {
         event
             .output
-            .as_adapter()
-            .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(format!("❌ {}", e)),
+            })
             .await?;
         return Ok(HandlerAction::Done);
     }
@@ -2087,12 +2057,10 @@ async fn handle_kcp_done(event: &CallbackEvent) -> HandlerResult {
     if codes.is_empty() {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.kcp_min_one").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("xray.kcp_min_one").into_owned()),
+            })
             .await?;
         return Ok(HandlerAction::Done);
     }
@@ -2104,8 +2072,10 @@ async fn handle_kcp_done(event: &CallbackEvent) -> HandlerResult {
     if let Err(e) = KcpMask::validate_stack(&ordered) {
         event
             .output
-            .as_adapter()
-            .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(format!("❌ {}", e)),
+            })
             .await?;
         return Ok(HandlerAction::Done);
     }
@@ -2294,12 +2264,10 @@ async fn handle_kcp_ok(event: &CallbackEvent) -> HandlerResult {
 
     event
         .output
-        .as_adapter()
-        .answer_callback(
-            &event.target,
-            &event.callback_id,
-            Some(t!("xray.gen_kcp_progress", "0" => n).into_owned()),
-        )
+        .publish(OutputAction::AnswerCallback {
+            callback_id: event.callback_id.clone(),
+            text: Some(t!("xray.gen_kcp_progress", "0" => n).into_owned()),
+        })
         .await?;
 
     let res = ConfigManager::batch_create_kcp(n, ip_version, &mask_codes).await;
@@ -2401,8 +2369,10 @@ async fn handle_user_list(event: &CallbackEvent) -> HandlerResult {
     if let Err(e) = utils::validate_idx(idx, inbounds.len(), &t!("xray.user_label")) {
         event
             .output
-            .as_adapter()
-            .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(format!("❌ {}", e)),
+            })
             .await?;
         return Ok(HandlerAction::Done);
     }
@@ -2490,12 +2460,10 @@ async fn handle_user_del(event: &CallbackEvent) -> HandlerResult {
         } else {
             event
                 .output
-                .as_adapter()
-                .answer_callback(
-                    &event.target,
-                    &event.callback_id,
-                    Some(t!("xray.user_cfg_not_found").into_owned()),
-                )
+                .publish(OutputAction::AnswerCallback {
+                    callback_id: event.callback_id.clone(),
+                    text: Some(t!("xray.user_cfg_not_found").into_owned()),
+                })
                 .await?;
         }
     }
@@ -2514,12 +2482,10 @@ async fn handle_user_del_confirm(event: &CallbackEvent) -> HandlerResult {
         let email = parts[1];
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.user_del_not_supported", "0" => email).into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("xray.user_del_not_supported", "0" => email).into_owned()),
+            })
             .await?;
     }
 
@@ -2621,12 +2587,10 @@ async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
     if let Some(mode) = one_click_domain_no_mode(data) {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("ops.deploy_start").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("ops.deploy_start").into_owned()),
+            })
             .await?;
         let event = CallbackEvent {
             output: event.output.clone(),
@@ -2652,12 +2616,10 @@ async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
     } else {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("xray.preparing_reality").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("xray.preparing_reality").into_owned()),
+            })
             .await?;
         event
             .output
@@ -2704,12 +2666,10 @@ async fn handle_domain_provider(
     if !transitioned {
         event
             .output
-            .as_adapter()
-            .answer_callback(
-                &event.target,
-                &event.callback_id,
-                Some(t!("domain.flow_expired").into_owned()),
-            )
+            .publish(OutputAction::AnswerCallback {
+                callback_id: event.callback_id.clone(),
+                text: Some(t!("domain.flow_expired").into_owned()),
+            })
             .await?;
         return Ok(HandlerAction::Done);
     }

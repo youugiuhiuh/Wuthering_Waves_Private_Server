@@ -8,7 +8,7 @@ use crate::app::auth;
 use crate::app::interaction::{ConversationId, OutputAction, OutputPayload, Sensitivity};
 use crate::app::output::BusinessOutput;
 use crate::app::state::AppState;
-use crate::common::{BotAdapter, MessageId};
+use crate::common::MessageId;
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::system::host_settings::SystemHostSettings;
 use crate::core::types::DomainFlowSource;
@@ -125,7 +125,7 @@ pub fn domain_resume_target(
 
 #[allow(dead_code)]
 async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
-    let adapter: Arc<dyn BotAdapter> = msg.output.as_adapter();
+    let adapter = msg.output.as_adapter();
     let action = message::handle_message(
         &*adapter,
         &msg.target,

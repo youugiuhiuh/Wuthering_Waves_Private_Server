@@ -1,11 +1,10 @@
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use rust_i18n::t;
 use sha2::Digest;
 
-use aegis::common::{BotAdapter, InlineButton, Markup, MessageContent, Platform};
+use aegis::common::{InlineButton, Markup, MessageContent, Platform};
 use aegis::shared::types::{CallbackEvent, MessageEvent, TimeoutStatus};
 
 use crate::app::state::AppState;
@@ -89,7 +88,7 @@ fn btn(text: &str, data: &str) -> InlineButton {
 /// Returns `FlowOutcome` describing whether the message was consumed by the
 /// destruct flow.
 pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<FlowOutcome> {
-    let adapter: Arc<dyn BotAdapter> = msg.output.as_adapter();
+    let adapter = msg.output.as_adapter();
     let platform = adapter.platform();
     let target = &msg.target;
     let chat_id_str = target.0.clone();
@@ -397,7 +396,7 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
 }
 
 async fn callback_timeout(cb: &CallbackEvent, state: &AppState) -> Result<FlowOutcome> {
-    let adapter: Arc<dyn BotAdapter> = cb.output.as_adapter();
+    let adapter = cb.output.as_adapter();
     let platform: Platform = cb.origin.platform.into();
     let target = &cb.target;
     let chat_id_str = target.0.clone();
@@ -437,7 +436,7 @@ async fn callback_timeout(cb: &CallbackEvent, state: &AppState) -> Result<FlowOu
 }
 
 async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOutcome> {
-    let adapter: Arc<dyn BotAdapter> = cb.output.as_adapter();
+    let adapter = cb.output.as_adapter();
     let platform: Platform = cb.origin.platform.into();
     let target = &cb.target;
     let chat_id_str = target.0.clone();
