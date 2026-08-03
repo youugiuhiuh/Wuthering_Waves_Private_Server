@@ -51,6 +51,17 @@ impl SensitiveOutputRouter {
     }
 }
 
+#[async_trait]
+impl BusinessOutput for SensitiveOutputRouter {
+    async fn publish(&self, action: OutputAction) -> anyhow::Result<()> {
+        self.route(action).await
+    }
+
+    fn as_adapter(&self) -> Arc<dyn BotAdapter> {
+        NoopBotAdapter::new()
+    }
+}
+
 #[derive(Default)]
 pub struct FakeOutput {
     pub actions: Arc<Mutex<Vec<OutputAction>>>,

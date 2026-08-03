@@ -1,3 +1,4 @@
+use crate::app::interaction::{ConversationId, OutputAction, OutputPayload, Sensitivity};
 use crate::common::{InlineButton, Markup, MessageContent};
 use crate::core::xray::installer::WarpInstaller;
 use crate::core::xray::{ConfigManager, WarpMode};
@@ -177,28 +178,26 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 Ok(_) => {
                     event
                         .output
-                        .as_adapter()
-                        .send_message(
-                            &event.target,
-                            MessageContent {
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(event.target.0.clone())?,
+                            payload: OutputPayload::Text {
                                 text: t!("warp.install_success").into(),
-                                markup: None,
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await?;
                     Ok(HandlerAction::Redirect("m_warp".to_string()))
                 }
                 Err(e) => {
                     event
                         .output
-                        .as_adapter()
-                        .send_message(
-                            &event.target,
-                            MessageContent {
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(event.target.0.clone())?,
+                            payload: OutputPayload::Text {
                                 text: t!("warp.install_fail", "0" => e.to_string()).into(),
-                                markup: None,
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await?;
                     Ok(HandlerAction::Done)
                 }
@@ -207,14 +206,13 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         "a_warp_add_input" => {
             event
                 .output
-                .as_adapter()
-                .send_message(
-                    &event.target,
-                    MessageContent {
+                .publish(OutputAction::SendText {
+                    target_conversation: ConversationId::new(event.target.0.clone())?,
+                    payload: OutputPayload::Text {
                         text: t!("warp.add_input").into(),
-                        markup: None,
                     },
-                )
+                    sensitivity: Sensitivity::Public,
+                })
                 .await?;
             Ok(HandlerAction::Done)
         }
@@ -520,14 +518,13 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 Err(e) => {
                     event
                         .output
-                        .as_adapter()
-                        .send_message(
-                            &event.target,
-                            MessageContent {
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(event.target.0.clone())?,
+                            payload: OutputPayload::Text {
                                 text: t!("warp.restart_fail", "0" => e.to_string()).into(),
-                                markup: None,
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await?;
                 }
             }
@@ -587,28 +584,26 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 Ok(_) => {
                     event
                         .output
-                        .as_adapter()
-                        .send_message(
-                            &event.target,
-                            MessageContent {
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(event.target.0.clone())?,
+                            payload: OutputPayload::Text {
                                 text: t!("warp.uninstall_success").into(),
-                                markup: None,
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await?;
                     Ok(HandlerAction::Redirect("m_warp".to_string()))
                 }
                 Err(e) => {
                     event
                         .output
-                        .as_adapter()
-                        .send_message(
-                            &event.target,
-                            MessageContent {
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(event.target.0.clone())?,
+                            payload: OutputPayload::Text {
                                 text: t!("warp.uninstall_fail", "0" => e.to_string()).into(),
-                                markup: None,
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await?;
                     Ok(HandlerAction::Done)
                 }

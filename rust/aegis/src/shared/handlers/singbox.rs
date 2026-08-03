@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use tokio::time::{Duration, sleep};
-
-use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
+use crate::app::interaction::{ConversationId, OutputAction, OutputPayload, Sensitivity};
+use crate::app::output::BusinessOutput;
+use crate::common::{InlineButton, Markup, MessageContent, TargetId};
 use crate::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use crate::core::system::SystemMonitor;
 use crate::core::types::{BatchCreationResult, IpVersion};
@@ -10,15 +10,14 @@ use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use rust_i18n::t;
 
 /// Send SingBox batch creation results through the adapter (supports routing):
-/// header message, chunked link messages, summary message,
-/// then best-effort auto-delete after 60 seconds.
+/// header message, chunked link messages, summary message.
 pub async fn send_singbox_batch_result(
-    adapter: Arc<dyn BotAdapter>,
+    output: Arc<dyn BusinessOutput>,
     target: &TargetId,
     protocol_name: &str,
     result: &BatchCreationResult,
 ) -> anyhow::Result<()> {
-    let mut message_ids: Vec<String> = Vec::new();
+    let conversation_id = ConversationId::new(target.0.clone())?;
 
     let header_msg = format!(
         "✅ <b>{} 批量创建完成</b>\n\n已创建 {} 个配置:\n📁 配置文件: <code>{}</code>\n\n",
@@ -26,63 +25,39 @@ pub async fn send_singbox_batch_result(
         result.created_count,
         result.config_file.as_deref().unwrap_or("未知")
     );
-    if let Ok(msg) = adapter
-        .send_message(
-            target,
-            MessageContent {
-                text: header_msg,
-                markup: None,
-            },
-        )
-        .await
-    {
-        message_ids.push(msg.0);
-    }
+    let _ = output
+        .publish(OutputAction::SendText {
+            target_conversation: conversation_id.clone(),
+            payload: OutputPayload::Text { text: header_msg },
+            sensitivity: Sensitivity::Public,
+        })
+        .await;
 
     let mut combined_links = String::new();
     for link in &result.links {
         combined_links.push_str(link);
         combined_links.push_str("\n\n");
     }
-    if !combined_links.is_empty()
-        && let Ok(msg) = adapter
-            .send_message(
-                target,
-                MessageContent {
+    if !combined_links.is_empty() {
+        let _ = output
+            .publish(OutputAction::SendText {
+                target_conversation: conversation_id.clone(),
+                payload: OutputPayload::Text {
                     text: combined_links,
-                    markup: None,
                 },
-            )
-            .await
-    {
-        message_ids.push(msg.0);
+                sensitivity: Sensitivity::Protected,
+            })
+            .await;
     }
 
     let result_msg = format!("✅ 批量创建完成！\n\n📊 生成数量: {}", result.created_count);
-    if let Ok(msg) = adapter
-        .send_message(
-            target,
-            MessageContent {
-                text: result_msg,
-                markup: None,
-            },
-        )
-        .await
-    {
-        message_ids.push(msg.0);
-    }
-
-    let adapter_clone = adapter.clone();
-    let target_clone = target.clone();
-    tokio::spawn(async move {
-        sleep(Duration::from_secs(60)).await;
-        for id_str in message_ids {
-            let mid = MessageId(id_str);
-            if let Err(e) = adapter_clone.delete_message(&target_clone, &mid).await {
-                log::warn!("删除批量创建消息失败: {}", e);
-            }
-        }
-    });
+    let _ = output
+        .publish(OutputAction::SendText {
+            target_conversation: conversation_id,
+            payload: OutputPayload::Text { text: result_msg },
+            sensitivity: Sensitivity::Public,
+        })
+        .await;
 
     Ok(())
 }
@@ -196,34 +171,34 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            let adapter = event.output.as_adapter().clone();
+            let output = event.output.clone();
             let target = event.target.clone();
             tokio::spawn(async move {
                 match SingBoxInstaller::install().await {
                     Ok(_) => {
-                        let _ = adapter
-                            .send_message(
-                                &target,
-                                MessageContent {
+                        let _ = output
+                            .publish(OutputAction::SendText {
+                                target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                                payload: OutputPayload::Text {
                                     text: t!("menu.singbox_install_success").into_owned(),
-                                    markup: None,
                                 },
-                            )
+                                sensitivity: Sensitivity::Public,
+                            })
                             .await;
                     }
                     Err(e) => {
-                        let _ = adapter
-                            .send_message(
-                                &target,
-                                MessageContent {
+                        let _ = output
+                            .publish(OutputAction::SendText {
+                                target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                                payload: OutputPayload::Text {
                                     text: t!(
                                         "menu.singbox_install_fail",
                                         "0" => e.to_string()
                                     )
                                     .into_owned(),
-                                    markup: None,
                                 },
-                            )
+                                sensitivity: Sensitivity::Public,
+                            })
                             .await;
                     }
                 }
@@ -575,7 +550,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            let adapter = event.output.as_adapter().clone();
+            let output = event.output.clone();
             let target = event.target.clone();
 
             tokio::spawn(async move {
@@ -588,27 +563,23 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 .await
                 {
                     Ok(result) => {
-                        if let Err(e) = send_singbox_batch_result(
-                            adapter.clone(),
-                            &target,
-                            "Hysteria2",
-                            &result,
-                        )
-                        .await
+                        if let Err(e) =
+                            send_singbox_batch_result(output.clone(), &target, "Hysteria2", &result)
+                                .await
                         {
                             log::warn!("发送批量创建结果失败: {}", e);
                         }
                     }
                     Err(e) => {
-                        let _ = adapter
-                            .send_message(
-                                &target,
-                                MessageContent {
+                        let _ = output
+                            .publish(OutputAction::SendText {
+                                target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                                payload: OutputPayload::Text {
                                     text: t!("menu.singbox_create_fail", "0" => e.to_string())
                                         .into_owned(),
-                                    markup: None,
                                 },
-                            )
+                                sensitivity: Sensitivity::Public,
+                            })
                             .await;
                     }
                 }
@@ -653,29 +624,29 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            let adapter = event.output.as_adapter().clone();
+            let output = event.output.clone();
             let target = event.target.clone();
 
             tokio::spawn(async move {
                 match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
                     Ok(result) => {
                         if let Err(e) =
-                            send_singbox_batch_result(adapter.clone(), &target, "TUIC", &result)
+                            send_singbox_batch_result(output.clone(), &target, "TUIC", &result)
                                 .await
                         {
                             log::warn!("发送批量创建结果失败: {}", e);
                         }
                     }
                     Err(e) => {
-                        let _ = adapter
-                            .send_message(
-                                &target,
-                                MessageContent {
+                        let _ = output
+                            .publish(OutputAction::SendText {
+                                target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                                payload: OutputPayload::Text {
                                     text: t!("menu.singbox_create_fail", "0" => e.to_string())
                                         .into_owned(),
-                                    markup: None,
                                 },
-                            )
+                                sensitivity: Sensitivity::Public,
+                            })
                             .await;
                     }
                 }

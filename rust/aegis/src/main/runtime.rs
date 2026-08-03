@@ -28,6 +28,7 @@ use aegis::app::service::ApplicationService;
 use aegis::app::state::AppState;
 use aegis::gateways::matrix::commands::command_to_business_input;
 use aegis::gateways::matrix::presenter::MatrixPresenter;
+use aegis::gateways::output_router::SensitiveOutputRouter;
 #[cfg(feature = "telegram")]
 use aegis::gateways::telegram::TelegramAdapter;
 #[cfg(feature = "telegram")]
@@ -212,8 +213,10 @@ pub async fn run(
                         if let Some(cmd) = cmd
                             && let Some(input) = command_to_business_input(cmd, user_id, &target)
                         {
-                            let presenter = MatrixPresenter::new(room);
-                            let _ = ApplicationService.handle(&input, &state, &presenter).await;
+                            let origin: Arc<dyn BusinessOutput> =
+                                Arc::new(MatrixPresenter::new(room));
+                            let router = SensitiveOutputRouter::new(origin, None);
+                            let _ = ApplicationService.handle(&input, &state, &router).await;
                             return;
                         }
                     }
@@ -260,170 +263,205 @@ pub async fn run(
             }
         });
     }
-
     // ── Telegram Dispatcher ──
     #[cfg(feature = "telegram")]
     if enable_telegram {
-        async fn handle_command(
-            bot: Bot,
-            msg: Message,
-            cmd: TeloxideCommand,
-            state: Arc<AppState>,
-        ) -> Result<(), teloxide::RequestError> {
-            match cmd {
-                TeloxideCommand::Auth(code) => {
-                    let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
-                    let target = TargetId(msg.chat.id.0.to_string());
-                    let user_id = msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
-                    let output: Arc<dyn BusinessOutput> =
-                        Arc::new(AdapterOutput::new(adapter.clone(), target.clone()));
-                    let origin = Origin {
-                        platform: PlatformId::Telegram,
-                        actor_id: ActorId::new(user_id.to_string()).unwrap(),
-                        conversation_id: ConversationId::new(target.0.clone()).unwrap(),
-                    };
-                    let _ = dispatch_event(
-                        BotEvent::Command(CommandEvent {
-                            output,
-                            origin,
-                            target,
-                            user_id,
-                            command: BotCommand::Auth { code },
-                        }),
-                        &state,
-                    )
-                    .await;
-                }
-                TeloxideCommand::Menu => {
-                    let target = TargetId(msg.chat.id.0.to_string());
-                    if let Ok(input) = mapping::command_input(&msg, BusinessCommand::Menu) {
-                        let presenter = TelegramPresenter::new(bot.clone());
-                        if let Ok(result) =
-                            ApplicationService.handle(&input, &state, &presenter).await
-                            && matches!(result, BusinessResult::Ok)
-                        {
-                            let adapter: Arc<dyn BotAdapter> =
-                                Arc::new(TelegramAdapter::new(bot.clone()));
-                            let output = AdapterOutput::new(adapter, target.clone());
-                            let conversation_id = ConversationId::new(target.0).unwrap();
-                            let _ = send_main_menu(&output, &conversation_id).await;
-                        }
-                    }
-                }
-                _ => {
-                    let command = match cmd {
-                        TeloxideCommand::Help => BusinessCommand::Help,
-                        TeloxideCommand::Start => BusinessCommand::Start,
-                        TeloxideCommand::SetSecurityFile => BusinessCommand::SetSecurityFile,
-                        TeloxideCommand::Auth(_) | TeloxideCommand::Menu => unreachable!(),
-                    };
-                    if let Ok(input) = mapping::command_input(&msg, command) {
-                        let presenter = TelegramPresenter::new(bot.clone());
-                        let _ = ApplicationService.handle(&input, &state, &presenter).await;
-                    }
-                }
-            }
-            Ok(())
-        }
-
-        async fn handle_message(
-            bot: Bot,
-            msg: Message,
-            state: Arc<AppState>,
-        ) -> Result<(), teloxide::RequestError> {
-            if let Some(text) = msg.text().map(|s| s.to_string())
-                && let Ok(ref input) = mapping::text_input(&msg, text.clone())
-            {
-                let presenter = TelegramPresenter::new(bot.clone());
-                if let Ok(BusinessResult::Message(_)) =
-                    ApplicationService.handle(input, &state, &presenter).await
-                {
-                    return Ok(());
-                }
-            }
-            let user_id = msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
-            let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
-            let target = TargetId(msg.chat.id.0.to_string());
-            let output: Arc<dyn BusinessOutput> =
-                Arc::new(AdapterOutput::new(adapter.clone(), target.clone()));
-            let origin = Origin {
-                platform: PlatformId::Telegram,
-                actor_id: ActorId::new(user_id.to_string()).unwrap(),
-                conversation_id: ConversationId::new(target.0.clone()).unwrap(),
-            };
-            let _ = dispatch_event(
-                BotEvent::Message(MessageEvent {
-                    output,
-                    origin,
-                    target,
-                    user_id,
-                    text: msg.text().map(|s| s.to_string()),
-                    file_id: msg.document().map(|d| d.file.id.clone()).or_else(|| {
-                        msg.photo()
-                            .and_then(|p| p.last().map(|ph| ph.file.id.clone()))
-                    }),
-                    file_name: msg
-                        .document()
-                        .and_then(|d| d.file_name.clone())
-                        .or_else(|| {
-                            msg.photo()
-                                .map(|_| rust_i18n::t!("destruct.image_label").to_string())
-                        }),
-                    reply_to_text: msg
-                        .reply_to_message()
-                        .and_then(|r| r.text().map(|s| s.to_string())),
-                    thread_root: None,
-                }),
-                &state,
-            )
-            .await;
-            Ok(())
-        }
-
-        async fn handle_callback(
-            bot: Bot,
-            q: CallbackQuery,
-            state: Arc<AppState>,
-        ) -> Result<(), teloxide::RequestError> {
-            let chat_id = q.message.as_ref().map(|m| m.chat().id).unwrap_or(ChatId(0));
-            let msg_id = q.message.as_ref().map(|m| m.id()).unwrap_or_default();
-            let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
-            let target = TargetId(chat_id.0.to_string());
-            let user_id_str = q.from.id.0.to_string();
-            let output: Arc<dyn BusinessOutput> =
-                Arc::new(AdapterOutput::new(adapter.clone(), target.clone()));
-            let origin = Origin {
-                platform: PlatformId::Telegram,
-                actor_id: ActorId::new(user_id_str.clone()).unwrap(),
-                conversation_id: ConversationId::new(target.0.clone()).unwrap(),
-            };
-            let _ = dispatch_event(
-                BotEvent::Callback(CallbackEvent {
-                    output,
-                    origin,
-                    target,
-                    user_id: user_id_str,
-                    msg_id: MessageId(msg_id.0.to_string()),
-                    data: q.data.clone().unwrap_or_default(),
-                    callback_id: q.id.clone(),
-                    session_timeout_secs: state.session_timeout_secs().await,
-                }),
-                &state,
-            )
-            .await;
-            Ok(())
-        }
+        let matrix_output: Option<Arc<dyn BusinessOutput>> =
+            matrix_adapter_for_notify.as_ref().map(|adapter| {
+                Arc::new(AdapterOutput::new(
+                    adapter.clone(),
+                    TargetId("matrix".into()),
+                )) as Arc<dyn BusinessOutput>
+            });
 
         let bot = Bot::new(token.as_deref().unwrap());
+
+        let matrix_output_for_handlers = matrix_output.clone();
 
         let handler = dptree::entry()
             .branch(
                 Update::filter_message()
                     .filter_command::<TeloxideCommand>()
-                    .endpoint(handle_command),
+                    .endpoint(
+                        move |bot: Bot,
+                              msg: Message,
+                              cmd: TeloxideCommand,
+                              state: Arc<AppState>| {
+                            let matrix_output = matrix_output_for_handlers.clone();
+                            async move {
+                                match cmd {
+                                    TeloxideCommand::Auth(code) => {
+                                        let adapter: Arc<dyn BotAdapter> =
+                                            Arc::new(TelegramAdapter::new(bot.clone()));
+                                        let target = TargetId(msg.chat.id.0.to_string());
+                                        let user_id =
+                                            msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
+                                        let output: Arc<dyn BusinessOutput> = Arc::new(
+                                            AdapterOutput::new(adapter.clone(), target.clone()),
+                                        );
+                                        let origin = Origin {
+                                            platform: PlatformId::Telegram,
+                                            actor_id: ActorId::new(user_id.to_string()).unwrap(),
+                                            conversation_id: ConversationId::new(target.0.clone())
+                                                .unwrap(),
+                                        };
+                                        let _ = dispatch_event(
+                                            BotEvent::Command(CommandEvent {
+                                                output,
+                                                origin,
+                                                target,
+                                                user_id,
+                                                command: BotCommand::Auth { code },
+                                            }),
+                                            &state,
+                                        )
+                                        .await;
+                                    }
+                                    TeloxideCommand::Menu => {
+                                        let target = TargetId(msg.chat.id.0.to_string());
+                                        if let Ok(input) =
+                                            mapping::command_input(&msg, BusinessCommand::Menu)
+                                        {
+                                            let origin: Arc<dyn BusinessOutput> =
+                                                Arc::new(TelegramPresenter::new(bot.clone()));
+                                            let router = SensitiveOutputRouter::new(
+                                                origin,
+                                                matrix_output.clone(),
+                                            );
+                                            if let Ok(result) = ApplicationService
+                                                .handle(&input, &state, &router)
+                                                .await
+                                                && matches!(result, BusinessResult::Ok)
+                                            {
+                                                let adapter: Arc<dyn BotAdapter> =
+                                                    Arc::new(TelegramAdapter::new(bot.clone()));
+                                                let output =
+                                                    AdapterOutput::new(adapter, target.clone());
+                                                let conversation_id =
+                                                    ConversationId::new(target.0).unwrap();
+                                                let _ =
+                                                    send_main_menu(&output, &conversation_id).await;
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        let command = match cmd {
+                                            TeloxideCommand::Help => BusinessCommand::Help,
+                                            TeloxideCommand::Start => BusinessCommand::Start,
+                                            TeloxideCommand::SetSecurityFile => {
+                                                BusinessCommand::SetSecurityFile
+                                            }
+                                            TeloxideCommand::Auth(_) | TeloxideCommand::Menu => {
+                                                unreachable!()
+                                            }
+                                        };
+                                        if let Ok(input) = mapping::command_input(&msg, command) {
+                                            let origin: Arc<dyn BusinessOutput> =
+                                                Arc::new(TelegramPresenter::new(bot.clone()));
+                                            let router = SensitiveOutputRouter::new(
+                                                origin,
+                                                matrix_output.clone(),
+                                            );
+                                            let _ = ApplicationService
+                                                .handle(&input, &state, &router)
+                                                .await;
+                                        }
+                                    }
+                                }
+                                Ok::<(), teloxide::RequestError>(())
+                            }
+                        },
+                    ),
             )
-            .branch(Update::filter_message().endpoint(handle_message))
-            .branch(Update::filter_callback_query().endpoint(handle_callback));
+            .branch(Update::filter_message().endpoint(
+                move |bot: Bot, msg: Message, state: Arc<AppState>| {
+                    let matrix_output = matrix_output.clone();
+                    async move {
+                        if let Some(text) = msg.text().map(|s| s.to_string())
+                            && let Ok(ref input) = mapping::text_input(&msg, text.clone())
+                        {
+                            let origin: Arc<dyn BusinessOutput> =
+                                Arc::new(TelegramPresenter::new(bot.clone()));
+                            let router = SensitiveOutputRouter::new(origin, matrix_output.clone());
+                            if let Ok(BusinessResult::Message(_)) =
+                                ApplicationService.handle(input, &state, &router).await
+                            {
+                                return Ok(());
+                            }
+                        }
+                        let user_id = msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
+                        let adapter: Arc<dyn BotAdapter> =
+                            Arc::new(TelegramAdapter::new(bot.clone()));
+                        let target = TargetId(msg.chat.id.0.to_string());
+                        let output: Arc<dyn BusinessOutput> =
+                            Arc::new(AdapterOutput::new(adapter.clone(), target.clone()));
+                        let origin = Origin {
+                            platform: PlatformId::Telegram,
+                            actor_id: ActorId::new(user_id.to_string()).unwrap(),
+                            conversation_id: ConversationId::new(target.0.clone()).unwrap(),
+                        };
+                        let _ = dispatch_event(
+                            BotEvent::Message(MessageEvent {
+                                output,
+                                origin,
+                                target,
+                                user_id,
+                                text: msg.text().map(|s| s.to_string()),
+                                file_id: msg.document().map(|d| d.file.id.clone()).or_else(|| {
+                                    msg.photo()
+                                        .and_then(|p| p.last().map(|ph| ph.file.id.clone()))
+                                }),
+                                file_name: msg
+                                    .document()
+                                    .and_then(|d| d.file_name.clone())
+                                    .or_else(|| {
+                                        msg.photo().map(|_| {
+                                            rust_i18n::t!("destruct.image_label").to_string()
+                                        })
+                                    }),
+                                reply_to_text: msg
+                                    .reply_to_message()
+                                    .and_then(|r| r.text().map(|s| s.to_string())),
+                                thread_root: None,
+                            }),
+                            &state,
+                        )
+                        .await;
+                        Ok::<(), teloxide::RequestError>(())
+                    }
+                },
+            ))
+            .branch(Update::filter_callback_query().endpoint(
+                move |bot: Bot, q: CallbackQuery, state: Arc<AppState>| async move {
+                    let chat_id = q.message.as_ref().map(|m| m.chat().id).unwrap_or(ChatId(0));
+                    let msg_id = q.message.as_ref().map(|m| m.id()).unwrap_or_default();
+                    let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
+                    let target = TargetId(chat_id.0.to_string());
+                    let user_id_str = q.from.id.0.to_string();
+                    let output: Arc<dyn BusinessOutput> =
+                        Arc::new(AdapterOutput::new(adapter.clone(), target.clone()));
+                    let origin = Origin {
+                        platform: PlatformId::Telegram,
+                        actor_id: ActorId::new(user_id_str.clone()).unwrap(),
+                        conversation_id: ConversationId::new(target.0.clone()).unwrap(),
+                    };
+                    let _ = dispatch_event(
+                        BotEvent::Callback(CallbackEvent {
+                            output,
+                            origin,
+                            target,
+                            user_id: user_id_str,
+                            msg_id: MessageId(msg_id.0.to_string()),
+                            data: q.data.clone().unwrap_or_default(),
+                            callback_id: q.id.clone(),
+                            session_timeout_secs: state.session_timeout_secs().await,
+                        }),
+                        &state,
+                    )
+                    .await;
+                    Ok::<(), teloxide::RequestError>(())
+                },
+            ));
 
         let tg_adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
         let adapter_for_init = tg_adapter.clone();

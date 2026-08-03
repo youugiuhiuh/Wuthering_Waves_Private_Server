@@ -132,37 +132,37 @@ async fn handle_upgrade(event: &CallbackEvent) -> HandlerResult {
         })
         .await?;
 
-    let adapter = event.output.as_adapter().clone();
+    let output = event.output.clone();
     let target = event.target.clone();
 
     tokio::spawn(async move {
         match UpgradeManager::new() {
             Ok(manager) => {
                 let reporter = crate::shared::reporters::StatusMessageReporter::new(
-                    adapter.clone(),
+                    output.as_adapter(),
                     target.clone(),
                 );
                 if let Err(err) = manager.run(&reporter).await {
-                    let _ = adapter
-                        .send_message(
-                            &target,
-                            crate::common::MessageContent {
+                    let _ = output
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                            payload: OutputPayload::Text {
                                 text: t!("ops.upgrade_fail", "0" => err.to_string()).into_owned(),
-                                markup: None,
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await;
                 }
             }
             Err(err) => {
-                let _ = adapter
-                    .send_message(
-                        &target,
-                        crate::common::MessageContent {
+                let _ = output
+                    .publish(OutputAction::SendText {
+                        target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                        payload: OutputPayload::Text {
                             text: t!("ops.upgrade_init_fail", "0" => err.to_string()).into_owned(),
-                            markup: None,
                         },
-                    )
+                        sensitivity: Sensitivity::Public,
+                    })
                     .await;
             }
         }
@@ -394,7 +394,7 @@ async fn handle_bbr3_install(event: &CallbackEvent) -> HandlerResult {
                 );
 
                 if status.reboot_required {
-                    let markup = Markup {
+                    let _markup = Markup {
                         buttons: vec![
                             vec![InlineButton {
                                 text: t!("ops.bbr3_reboot_now").into(),
@@ -407,14 +407,13 @@ async fn handle_bbr3_install(event: &CallbackEvent) -> HandlerResult {
                         ],
                     };
                     let _ = output
-                        .as_adapter()
-                        .send_message(
-                            &target,
-                            crate::common::MessageContent {
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                            payload: OutputPayload::Text {
                                 text: t!("ops.bbr3_reboot_prompt").into_owned(),
-                                markup: Some(markup),
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await;
                 }
             }
@@ -454,14 +453,13 @@ async fn handle_bbr3_reboot_now(event: &CallbackEvent) -> HandlerResult {
         .await?;
     event
         .output
-        .as_adapter()
-        .send_message(
-            &event.target,
-            crate::common::MessageContent {
+        .publish(OutputAction::SendText {
+            target_conversation: ConversationId::new(event.target.0.clone()).unwrap(),
+            payload: OutputPayload::Text {
                 text: t!("ops.bbr3_reboot_now_msg").into_owned(),
-                markup: None,
             },
-        )
+            sensitivity: Sensitivity::Public,
+        })
         .await?;
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -805,14 +803,13 @@ pub async fn run_one_click(
 
     if !failed {
         let _ = output
-            .as_adapter()
-            .send_message(
-                &target,
-                crate::common::MessageContent {
+            .publish(OutputAction::SendText {
+                target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                payload: OutputPayload::Text {
                     text: t!("ops.deploy_step_kcp_dns").into_owned(),
-                    markup: None,
                 },
-            )
+                sensitivity: Sensitivity::Public,
+            })
             .await;
     }
 
@@ -878,26 +875,13 @@ pub async fn run_one_click(
 
     if !failed && !all_links.is_empty() {
         let combined = all_links.join("\n\n");
-        if let Ok(msg) = output
-            .as_adapter()
-            .send_message(
-                &target,
-                crate::common::MessageContent {
-                    text: combined,
-                    markup: None,
-                },
-            )
-            .await
-        {
-            let adapter_clone = output.as_adapter().clone();
-            let target_clone = target.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_secs(60)).await;
-                if let Err(e) = adapter_clone.delete_message(&target_clone, &msg).await {
-                    log::warn!("删除一键部署链接消息失败: {}", e);
-                }
-            });
-        }
+        let _ = output
+            .publish(OutputAction::SendText {
+                target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                payload: OutputPayload::Text { text: combined },
+                sensitivity: Sensitivity::Protected,
+            })
+            .await;
     }
 
     if !failed {
@@ -917,14 +901,13 @@ pub async fn run_one_click(
 
     if !failed {
         let _ = output
-            .as_adapter()
-            .send_message(
-                &target,
-                crate::common::MessageContent {
+            .publish(OutputAction::SendText {
+                target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                payload: OutputPayload::Text {
                     text: t!("ops.deploy_success").into_owned(),
-                    markup: None,
                 },
-            )
+                sensitivity: Sensitivity::Public,
+            })
             .await;
     }
 

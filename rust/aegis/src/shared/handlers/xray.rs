@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
+use crate::app::interaction::{ConversationId, OutputAction, OutputPayload, Sensitivity};
+use crate::app::output::BusinessOutput;
 use crate::app::state::AppState;
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
 use crate::core::progress::{OperationProgress, ProgressReporter};
@@ -23,7 +25,7 @@ pub async fn run_standalone_xhttp_tls(
     domain: String,
     certs: CertPaths,
     _source: DomainFlowSource,
-    adapter: Arc<dyn BotAdapter>,
+    output: Arc<dyn BusinessOutput>,
     target: TargetId,
 ) -> anyhow::Result<()> {
     let ip_version = {
@@ -52,10 +54,10 @@ pub async fn run_standalone_xhttp_tls(
         .map(|p| p.cdn_ports().len())
         .unwrap_or(0);
 
-    let _ = adapter
-        .send_message(
-            &target,
-            MessageContent {
+    let _ = output
+        .publish(OutputAction::SendText {
+            target_conversation: ConversationId::new(target.0.clone())?,
+            payload: OutputPayload::Text {
                 text: t!(
                     "xray.gen_progress",
                     "0" => tls_count,
@@ -63,34 +65,30 @@ pub async fn run_standalone_xhttp_tls(
                     "2" => ip_str.as_str()
                 )
                 .into_owned(),
-                markup: None,
             },
-        )
+            sensitivity: Sensitivity::Public,
+        })
         .await;
 
     let res = ConfigManager::batch_create_xhttp_tls_enhanced(&domain, &certs, ip_version).await;
 
     match res {
         Ok(result) => {
-            let mut message_ids: Vec<String> = Vec::with_capacity(result.links.len());
-
             let mut combined_links = String::new();
             for link in &result.links {
                 combined_links.push_str(link);
                 combined_links.push_str("\n\n");
             }
-            if !combined_links.is_empty()
-                && let Ok(msg) = adapter
-                    .send_message(
-                        &target,
-                        MessageContent {
+            if !combined_links.is_empty() {
+                let _ = output
+                    .publish(OutputAction::SendText {
+                        target_conversation: ConversationId::new(target.0.clone())?,
+                        payload: OutputPayload::Text {
                             text: combined_links,
-                            markup: None,
                         },
-                    )
-                    .await
-            {
-                message_ids.push(msg.0);
+                        sensitivity: Sensitivity::Protected,
+                    })
+                    .await;
             }
 
             let mut result_msg =
@@ -111,40 +109,23 @@ pub async fn run_standalone_xhttp_tls(
                 ));
             }
 
-            if let Ok(msg) = adapter
-                .send_message(
-                    &target,
-                    MessageContent {
-                        text: result_msg,
-                        markup: None,
-                    },
-                )
-                .await
-            {
-                message_ids.push(msg.0);
-            }
-
-            let adapter_clone = adapter.clone();
-            let target_clone = target.clone();
-            tokio::spawn(async move {
-                sleep(Duration::from_secs(60)).await;
-                for id_str in message_ids {
-                    let mid = MessageId(id_str);
-                    if let Err(e) = adapter_clone.delete_message(&target_clone, &mid).await {
-                        log::warn!("删除消息失败: {}", e);
-                    }
-                }
-            });
+            let _ = output
+                .publish(OutputAction::SendText {
+                    target_conversation: ConversationId::new(target.0.clone())?,
+                    payload: OutputPayload::Text { text: result_msg },
+                    sensitivity: Sensitivity::Protected,
+                })
+                .await;
         }
         Err(e) => {
-            let _ = adapter
-                .send_message(
-                    &target,
-                    MessageContent {
+            let _ = output
+                .publish(OutputAction::SendText {
+                    target_conversation: ConversationId::new(target.0.clone())?,
+                    payload: OutputPayload::Text {
                         text: t!("xray.gen_fail", "0" => e.to_string()).to_string(),
-                        markup: None,
                     },
-                )
+                    sensitivity: Sensitivity::Public,
+                })
                 .await;
         }
     }

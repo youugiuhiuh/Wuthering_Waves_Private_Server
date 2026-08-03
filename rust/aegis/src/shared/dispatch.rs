@@ -5,10 +5,10 @@ use anyhow::Result;
 use sha2::Digest;
 
 use crate::app::auth;
-use crate::app::interaction::ConversationId;
+use crate::app::interaction::{ConversationId, OutputAction, OutputPayload, Sensitivity};
 use crate::app::output::BusinessOutput;
 use crate::app::state::AppState;
-use crate::common::{BotAdapter, MessageContent, MessageId};
+use crate::common::{BotAdapter, MessageId};
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::system::host_settings::SystemHostSettings;
 use crate::core::types::DomainFlowSource;
@@ -172,19 +172,19 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
         const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
         let content = adapter.download_file(fid).await?;
         if content.len() as u64 > MAX_FILE_SIZE {
-            adapter
-                .send_message(
-                    &msg.target,
-                    MessageContent {
+            msg.output
+                .publish(OutputAction::SendText {
+                    target_conversation: ConversationId::new(msg.target.0.clone())?,
+                    payload: OutputPayload::Text {
                         text: rust_i18n::t!(
                             "bot_commands.file_too_big",
                             "0" => content.len() as u64,
                             "1" => MAX_FILE_SIZE
                         )
                         .into(),
-                        markup: None,
                     },
-                )
+                    sensitivity: Sensitivity::Public,
+                })
                 .await?;
             return Ok(());
         }
@@ -199,18 +199,18 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
             .as_ref()
             .map(|n| format!("{} | {}", n, &hash[..8]))
             .unwrap_or_else(|| hash[..8].to_string());
-        adapter
-            .send_message(
-                &msg.target,
-                MessageContent {
+        msg.output
+            .publish(OutputAction::SendText {
+                target_conversation: ConversationId::new(msg.target.0.clone())?,
+                payload: OutputPayload::Text {
                     text: rust_i18n::t!(
                         "bot_commands.security_file_set",
                         "0" => file_display
                     )
                     .into(),
-                    markup: None,
                 },
-            )
+                sensitivity: Sensitivity::Public,
+            })
             .await?;
         return Ok(());
     }
@@ -220,7 +220,7 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
         match source_val {
             DomainFlowSource::Standalone => {
                 if let XhttpDeployMode::Tls { domain, cert_paths } = mode {
-                    let adapter_clone = adapter.clone();
+                    let output_clone = msg.output.clone();
                     let target = msg.target.clone();
                     let domain = domain.clone();
                     let cert_paths = cert_paths.clone();
@@ -229,7 +229,7 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
                             domain,
                             cert_paths,
                             DomainFlowSource::Standalone,
-                            adapter_clone,
+                            output_clone,
                             target,
                         )
                         .await

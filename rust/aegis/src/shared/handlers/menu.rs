@@ -567,22 +567,22 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     Some(t!("ops.upgrade_start").into_owned()),
                 )
                 .await?;
-            let adapter = event.output.as_adapter().clone();
+            let output = event.output.clone();
             let target = event.target.clone();
             tokio::spawn(async move {
                 let reporter = crate::shared::reporters::StatusMessageReporter::new(
-                    adapter.clone(),
+                    output.as_adapter(),
                     target.clone(),
                 );
                 if let Err(err) = WwpsCoreUpgradeManager::run_upgrade(None, &reporter).await {
-                    let _ = adapter
-                        .send_message(
-                            &target,
-                            MessageContent {
+                    let _ = output
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                            payload: OutputPayload::Text {
                                 text: t!("ops.upgrade_fail", "0" => err.to_string()).into_owned(),
-                                markup: None,
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await;
                 }
             });
@@ -676,14 +676,13 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             if reply.is_err() {
                 let _ = event
                     .output
-                    .as_adapter()
-                    .send_message(
-                        &event.target,
-                        MessageContent {
+                    .publish(OutputAction::SendText {
+                        target_conversation: ConversationId::new(event.target.0.clone()).unwrap(),
+                        payload: OutputPayload::Text {
                             text: t!("ops.upgrade_fail", "0" => "").into_owned(),
-                            markup: None,
                         },
-                    )
+                        sensitivity: Sensitivity::Public,
+                    })
                     .await;
             }
         }
@@ -712,22 +711,22 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            let adapter = event.output.as_adapter().clone();
+            let output = event.output.clone();
             let target = event.target.clone();
             tokio::spawn(async move {
                 let reporter = crate::shared::reporters::StatusMessageReporter::new(
-                    adapter.clone(),
+                    output.as_adapter(),
                     target.clone(),
                 );
                 if let Err(err) = WwpsCoreUpgradeManager::run_upgrade(Some(tag), &reporter).await {
-                    let _ = adapter
-                        .send_message(
-                            &target,
-                            MessageContent {
+                    let _ = output
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                            payload: OutputPayload::Text {
                                 text: t!("ops.upgrade_fail", "0" => err.to_string()).into_owned(),
-                                markup: None,
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await;
                 }
             });

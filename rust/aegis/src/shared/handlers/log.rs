@@ -1,3 +1,4 @@
+use crate::app::interaction::{ConversationId, OutputAction, OutputPayload, Sensitivity};
 use crate::common::{InlineButton, Markup, MessageContent};
 use crate::core::system::log_audit::{LogAudit, SERVICE_SING_BOX, SERVICE_WWPS_CORE};
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
@@ -125,19 +126,19 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     Some(t!("log.fetching_xray").into()),
                 )
                 .await?;
-            let adapter = event.output.as_adapter().clone();
+            let output = event.output.clone();
             let target = event.target.clone();
             tokio::spawn(async move {
                 if let Ok(log) = LogAudit::tail_logs(SERVICE_WWPS_CORE, 50).await {
-                    let _ = adapter
-                        .send_message(
-                            &target,
-                            MessageContent {
+                    let _ = output
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                            payload: OutputPayload::Text {
                                 text: t!("log.xray_tail_title", "0" => utils::escape_html(&log))
                                     .into_owned(),
-                                markup: None,
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await;
                 }
             });
@@ -152,19 +153,19 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     Some(t!("log.fetching_box").into()),
                 )
                 .await?;
-            let adapter = event.output.as_adapter().clone();
+            let output = event.output.clone();
             let target = event.target.clone();
             tokio::spawn(async move {
                 if let Ok(log) = LogAudit::tail_logs(SERVICE_SING_BOX, 50).await {
-                    let _ = adapter
-                        .send_message(
-                            &target,
-                            MessageContent {
+                    let _ = output
+                        .publish(OutputAction::SendText {
+                            target_conversation: ConversationId::new(target.0.clone()).unwrap(),
+                            payload: OutputPayload::Text {
                                 text: t!("log.box_tail_title", "0" => utils::escape_html(&log))
                                     .into_owned(),
-                                markup: None,
                             },
-                        )
+                            sensitivity: Sensitivity::Public,
+                        })
                         .await;
                 }
             });
