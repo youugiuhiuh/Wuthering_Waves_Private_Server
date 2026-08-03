@@ -119,9 +119,10 @@ mod tests {
         ActorId, BusinessCommand, BusinessInput, BusinessRequest, BusinessResult, ConversationId,
         Origin, OutputAction, OutputPayload, PlatformId,
     };
-    use crate::app::output::BusinessOutput;
+    use crate::app::output::{BusinessOutput, NoopBotAdapter};
     use crate::app::service::ApplicationService;
     use crate::app::state::AppState;
+    use crate::common::BotAdapter;
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
     use anyhow::Result as AnyResult;
@@ -155,6 +156,10 @@ mod tests {
         async fn publish(&self, action: OutputAction) -> AnyResult<()> {
             self.published.lock().unwrap().push(action);
             Ok(())
+        }
+
+        fn as_adapter(&self) -> Arc<dyn BotAdapter> {
+            NoopBotAdapter::new()
         }
     }
 

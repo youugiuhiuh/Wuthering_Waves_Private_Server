@@ -1,5 +1,7 @@
+use crate::app::interaction::OutputAction;
 use crate::app::state::AppState;
 use crate::bootstrap::BotSettings;
+use crate::common::Platform;
 use crate::core::i18n;
 use crate::core::system::host_settings::HostSettings;
 use crate::shared::types::CallbackEvent;
@@ -25,7 +27,7 @@ pub async fn intercept(
     }
 
     if data == "a_warp_add_input" {
-        let platform = cb.adapter.platform();
+        let platform: Platform = cb.origin.platform.into();
         state
             .start_warp_input(platform, cb.target.0.clone(), Instant::now())
             .await;
@@ -72,12 +74,11 @@ async fn handle_lang(
         log::error!("设置系统语言环境失败: {}", e);
     }
     if let Err(e) = cb
-        .adapter
-        .answer_callback(
-            &cb.target,
-            &cb.callback_id,
-            Some(rust_i18n::t!("lang.switched", "0" => lang.as_str()).to_string()),
-        )
+        .output
+        .publish(OutputAction::AnswerCallback {
+            callback_id: cb.callback_id.clone(),
+            text: None,
+        })
         .await
     {
         log::error!("语言切换回调确认失败: {}", e);
@@ -89,11 +90,14 @@ async fn handle_lang(
 mod tests {
     use super::*;
 
+    use crate::app::interaction::{ActorId, ConversationId, Origin, PlatformId};
+    use crate::app::output::{BusinessOutput, NoopBotAdapter};
     use crate::app::state::AppState;
     use crate::common::{BotAdapter, MessageId, MockBotAdapter, TargetId};
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::system::host_settings::{HostSettings, SystemHostSettings};
     use crate::core::totp::TotpManager;
+    use crate::shared::commands::AdapterOutput;
     use crate::shared::types::CallbackEvent;
 
     use async_trait::async_trait;
@@ -105,6 +109,18 @@ mod tests {
     impl SelfDestructExecutor for NoopExecutor {
         fn execute(&self) -> BoxFuture<'static, anyhow::Result<()>> {
             Box::pin(async { Ok(()) })
+        }
+    }
+
+    struct NoopOutput;
+    #[async_trait]
+    impl BusinessOutput for NoopOutput {
+        async fn publish(&self, _: OutputAction) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn as_adapter(&self) -> Arc<dyn BotAdapter> {
+            NoopBotAdapter::new()
         }
     }
 
@@ -124,11 +140,23 @@ mod tests {
         )
     }
 
+    fn make_origin() -> Origin {
+        Origin {
+            platform: PlatformId::Telegram,
+            actor_id: ActorId::new("42".into()).unwrap(),
+            conversation_id: ConversationId::new("123".into()).unwrap(),
+        }
+    }
+
     #[tokio::test]
     async fn intercept_set_timeout_persists() {
         let state = make_state();
+        let adapter: Arc<dyn BotAdapter> = Arc::new(MockBotAdapter::new());
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter, TargetId("123".into())));
         let event = CallbackEvent {
-            adapter: Arc::new(MockBotAdapter::new()) as Arc<dyn BotAdapter>,
+            output,
+            origin: make_origin(),
             target: TargetId("123".into()),
             user_id: "42".into(),
             msg_id: MessageId("1".into()),
@@ -158,11 +186,10 @@ mod tests {
         let host = Arc::new(RecordingHost {
             applied: Default::default(),
         });
-        let mut adapter = MockBotAdapter::new();
-        adapter.expect_answer_callback().returning(|_, _, _| Ok(()));
-        let adapter: Arc<dyn BotAdapter> = Arc::new(adapter);
+        let output: Arc<dyn BusinessOutput> = Arc::new(NoopOutput);
         let event = CallbackEvent {
-            adapter: adapter.clone(),
+            output,
+            origin: make_origin(),
             target: TargetId("123".into()),
             user_id: "42".into(),
             msg_id: MessageId("1".into()),

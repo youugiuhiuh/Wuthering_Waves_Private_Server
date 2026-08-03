@@ -1,5 +1,6 @@
 use crate::app::interaction::{ConversationId, OutputAction, Sensitivity};
-use crate::app::output::BusinessOutput;
+use crate::app::output::{BusinessOutput, NoopBotAdapter};
+use crate::common::BotAdapter;
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 
@@ -92,6 +93,10 @@ impl BusinessOutput for FakeOutput {
         self.actions.lock().unwrap().push(action);
         Ok(())
     }
+
+    fn as_adapter(&self) -> std::sync::Arc<dyn BotAdapter> {
+        NoopBotAdapter::new()
+    }
 }
 
 pub struct FailingOutput {
@@ -108,6 +113,10 @@ impl FailingOutput {
 impl BusinessOutput for FailingOutput {
     async fn publish(&self, _action: OutputAction) -> anyhow::Result<()> {
         Err(anyhow::anyhow!(self.msg.clone()))
+    }
+
+    fn as_adapter(&self) -> std::sync::Arc<dyn BotAdapter> {
+        NoopBotAdapter::new()
     }
 }
 

@@ -1,7 +1,8 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use aegis::app::interaction::BusinessResult;
+use aegis::app::interaction::{ActorId, BusinessResult, ConversationId, Origin, PlatformId};
+use aegis::app::output::BusinessOutput;
 use aegis::app::service::ApplicationService;
 use aegis::app::state::AppState;
 use aegis::common::BotAdapter;
@@ -10,6 +11,7 @@ use aegis::gateways::discord::DiscordAdapter;
 use aegis::gateways::discord::commands::command_to_business_input;
 use aegis::gateways::discord::presenter::DiscordPresenter;
 use aegis::shared::dispatch_event;
+use aegis::shared::handlers::menu::AdapterOutput;
 use aegis::shared::types::{BotEvent, CallbackEvent, MessageEvent};
 use anyhow::{Context, Result};
 use secrecy::ExposeSecret;
@@ -146,9 +148,18 @@ impl EventHandler for DiscordHandler {
             Some(a) => (Some(a.url.to_string()), Some(a.filename.clone())),
             None => (None, None),
         };
+        let target = aegis::common::TargetId(self.admin_channel.to_string());
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(self.adapter.clone(), target.clone()));
+        let origin = Origin {
+            platform: PlatformId::Discord,
+            actor_id: ActorId::new(user_id.to_string()).unwrap(),
+            conversation_id: ConversationId::new(self.admin_channel.to_string()).unwrap(),
+        };
         let event = BotEvent::Message(MessageEvent {
-            adapter: self.adapter.clone(),
-            target: aegis::common::TargetId(self.admin_channel.to_string()),
+            output,
+            origin,
+            target,
             user_id,
             text,
             file_id,
@@ -182,9 +193,18 @@ impl EventHandler for DiscordHandler {
             Interaction::Component(ref comp) => {
                 let _ = comp.defer(&self.http).await;
                 let msg = &comp.message;
+                let target = aegis::common::TargetId(msg.channel_id.to_string());
+                let output: Arc<dyn BusinessOutput> =
+                    Arc::new(AdapterOutput::new(self.adapter.clone(), target.clone()));
+                let origin = Origin {
+                    platform: PlatformId::Discord,
+                    actor_id: ActorId::new(comp.user.id.get().to_string()).unwrap(),
+                    conversation_id: ConversationId::new(msg.channel_id.to_string()).unwrap(),
+                };
                 let event = BotEvent::Callback(CallbackEvent {
-                    adapter: self.adapter.clone(),
-                    target: aegis::common::TargetId(msg.channel_id.to_string()),
+                    output,
+                    origin,
+                    target,
                     user_id: comp.user.id.get().to_string(),
                     msg_id: aegis::common::MessageId(msg.id.to_string()),
                     data: comp.data.custom_id.clone(),

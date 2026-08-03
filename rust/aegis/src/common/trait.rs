@@ -103,3 +103,13 @@ pub trait BotAdapter: Send + Sync {
         self.send_message(target, content).await
     }
 }
+
+impl From<crate::app::interaction::PlatformId> for Platform {
+    fn from(id: crate::app::interaction::PlatformId) -> Self {
+        match id {
+            crate::app::interaction::PlatformId::Telegram => Platform::Telegram,
+            crate::app::interaction::PlatformId::Discord => Platform::Discord,
+            crate::app::interaction::PlatformId::Matrix => Platform::Matrix,
+        }
+    }
+}

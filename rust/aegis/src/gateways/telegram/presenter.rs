@@ -1,7 +1,9 @@
 use crate::app::interaction::{OutputAction, OutputPayload, Sensitivity};
-use crate::app::output::BusinessOutput;
+use crate::app::output::{BusinessOutput, NoopBotAdapter};
+use crate::common::BotAdapter;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode;
 
@@ -125,6 +127,10 @@ impl BusinessOutput for TelegramPresenter {
             }
         }
         Ok(())
+    }
+
+    fn as_adapter(&self) -> Arc<dyn BotAdapter> {
+        NoopBotAdapter::new()
     }
 }
 
@@ -304,6 +310,10 @@ mod tests {
                 }
             }
             Ok(())
+        }
+
+        fn as_adapter(&self) -> Arc<dyn BotAdapter> {
+            NoopBotAdapter::new()
         }
     }
 

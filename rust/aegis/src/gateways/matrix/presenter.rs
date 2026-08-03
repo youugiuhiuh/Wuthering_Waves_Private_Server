@@ -1,10 +1,12 @@
 use crate::app::interaction::{OutputAction, OutputPayload, Sensitivity};
-use crate::app::output::BusinessOutput;
+use crate::app::output::{BusinessOutput, NoopBotAdapter};
+use crate::common::BotAdapter;
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::room::Room;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+use std::sync::Arc;
 
 pub struct MatrixPresenter {
     room: Room,
@@ -112,6 +114,10 @@ impl BusinessOutput for MatrixPresenter {
             }
         }
         Ok(())
+    }
+
+    fn as_adapter(&self) -> Arc<dyn BotAdapter> {
+        NoopBotAdapter::new()
     }
 }
 
@@ -278,6 +284,10 @@ mod tests {
                 }
             }
             Ok(())
+        }
+
+        fn as_adapter(&self) -> Arc<dyn BotAdapter> {
+            NoopBotAdapter::new()
         }
     }
 

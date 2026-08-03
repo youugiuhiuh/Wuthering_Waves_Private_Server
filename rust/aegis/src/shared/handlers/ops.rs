@@ -69,7 +69,8 @@ fn spawn_progress_updater(
 async fn handle_reload(event: &CallbackEvent) -> HandlerResult {
     let _ = MaintenanceManager::reload_core().await;
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -81,7 +82,8 @@ async fn handle_reload(event: &CallbackEvent) -> HandlerResult {
 
 async fn handle_firewall(event: &CallbackEvent) -> HandlerResult {
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -89,7 +91,7 @@ async fn handle_firewall(event: &CallbackEvent) -> HandlerResult {
         )
         .await?;
 
-    let adapter = event.adapter.clone();
+    let adapter = event.output.as_adapter().clone();
     let target = event.target.clone();
     let msg_id = event.msg_id.clone();
 
@@ -126,7 +128,8 @@ async fn handle_firewall(event: &CallbackEvent) -> HandlerResult {
 
 async fn handle_upgrade(event: &CallbackEvent) -> HandlerResult {
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -134,7 +137,7 @@ async fn handle_upgrade(event: &CallbackEvent) -> HandlerResult {
         )
         .await?;
 
-    let adapter = event.adapter.clone();
+    let adapter = event.output.as_adapter().clone();
     let target = event.target.clone();
 
     tokio::spawn(async move {
@@ -175,7 +178,8 @@ async fn handle_upgrade(event: &CallbackEvent) -> HandlerResult {
 
 async fn handle_geo(event: &CallbackEvent) -> HandlerResult {
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -183,7 +187,7 @@ async fn handle_geo(event: &CallbackEvent) -> HandlerResult {
         )
         .await?;
 
-    let adapter = event.adapter.clone();
+    let adapter = event.output.as_adapter().clone();
     let target = event.target.clone();
     let msg_id = event.msg_id.clone();
 
@@ -233,7 +237,8 @@ async fn handle_geo(event: &CallbackEvent) -> HandlerResult {
 
 async fn handle_tune(event: &CallbackEvent) -> HandlerResult {
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -241,7 +246,7 @@ async fn handle_tune(event: &CallbackEvent) -> HandlerResult {
         )
         .await?;
 
-    let adapter = event.adapter.clone();
+    let adapter = event.output.as_adapter().clone();
     let target = event.target.clone();
     let msg_id = event.msg_id.clone();
 
@@ -269,7 +274,8 @@ async fn handle_tune(event: &CallbackEvent) -> HandlerResult {
 
 async fn handle_sys_update(event: &CallbackEvent) -> HandlerResult {
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -277,7 +283,7 @@ async fn handle_sys_update(event: &CallbackEvent) -> HandlerResult {
         )
         .await?;
 
-    let adapter = event.adapter.clone();
+    let adapter = event.output.as_adapter().clone();
     let target = event.target.clone();
     let msg_id = event.msg_id.clone();
 
@@ -322,11 +328,13 @@ async fn handle_bbr3_prompt(event: &CallbackEvent) -> HandlerResult {
         ],
     };
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(&event.target, &event.callback_id, None)
         .await?;
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -351,7 +359,8 @@ async fn send_bbr3_progress(
 
 async fn handle_bbr3_install(event: &CallbackEvent) -> HandlerResult {
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -359,7 +368,7 @@ async fn handle_bbr3_install(event: &CallbackEvent) -> HandlerResult {
         )
         .await?;
 
-    let adapter = event.adapter.clone();
+    let adapter = event.output.as_adapter().clone();
     let target = event.target.clone();
     let msg_id = event.msg_id.clone();
 
@@ -432,7 +441,8 @@ async fn handle_bbr3_install(event: &CallbackEvent) -> HandlerResult {
 
 async fn handle_bbr3_cancel(event: &CallbackEvent) -> HandlerResult {
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -444,7 +454,8 @@ async fn handle_bbr3_cancel(event: &CallbackEvent) -> HandlerResult {
 
 async fn handle_bbr3_reboot_now(event: &CallbackEvent) -> HandlerResult {
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -452,7 +463,8 @@ async fn handle_bbr3_reboot_now(event: &CallbackEvent) -> HandlerResult {
         )
         .await?;
     event
-        .adapter
+        .output
+        .as_adapter()
         .send_message(
             &event.target,
             MessageContent {
@@ -470,7 +482,8 @@ async fn handle_bbr3_reboot_now(event: &CallbackEvent) -> HandlerResult {
 
 async fn handle_bbr3_reboot_later(event: &CallbackEvent) -> HandlerResult {
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -484,7 +497,8 @@ async fn handle_bbr3_reboot_later(event: &CallbackEvent) -> HandlerResult {
         }]],
     };
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -500,7 +514,8 @@ async fn handle_bbr3_reboot_later(event: &CallbackEvent) -> HandlerResult {
 async fn handle_sys_reboot(event: &CallbackEvent) -> HandlerResult {
     if REBOOT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -511,7 +526,8 @@ async fn handle_sys_reboot(event: &CallbackEvent) -> HandlerResult {
     }
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -530,7 +546,7 @@ pub async fn run_one_click(
     _state: (),
     mode: XhttpDeployMode,
 ) -> anyhow::Result<()> {
-    let adapter = event.adapter.clone();
+    let adapter = event.output.as_adapter().clone();
     let target = event.target.clone();
     let msg_id = event.msg_id.clone();
 

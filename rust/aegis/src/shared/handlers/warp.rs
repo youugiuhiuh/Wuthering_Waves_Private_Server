@@ -26,7 +26,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     ],
                 };
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .edit_message(
                         &event.target,
                         &event.msg_id,
@@ -109,7 +110,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             };
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -136,7 +138,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 Ok(_) => Ok(HandlerAction::Redirect("m_warp".to_string())),
                 Err(e) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .answer_callback(
                             &event.target,
                             &event.callback_id,
@@ -149,7 +152,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
         "a_inst_warp" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -157,7 +161,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -171,7 +176,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             match WarpInstaller::install().await {
                 Ok(_) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .send_message(
                             &event.target,
                             MessageContent {
@@ -184,7 +190,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
                 Err(e) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .send_message(
                             &event.target,
                             MessageContent {
@@ -199,7 +206,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
         "a_warp_add_input" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .send_message(
                     &event.target,
                     MessageContent {
@@ -217,7 +225,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
             if current_rules.is_empty() {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -251,7 +260,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }]);
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -267,7 +277,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             let hash_prefix = d.strip_prefix("a_warp_del:").unwrap_or("");
             if let Err(e) = utils::validate_hash_prefix(hash_prefix) {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -302,7 +313,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 };
 
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .edit_message(
                         &event.target,
                         &event.msg_id,
@@ -314,7 +326,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     .await?;
             } else {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -329,7 +342,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             let hash_prefix = d.strip_prefix("a_warp_del_confirm:").unwrap_or("");
             if let Err(e) = utils::validate_hash_prefix(hash_prefix) {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -353,7 +367,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 match ConfigManager::remove_warp_routing_rule(&rule).await {
                     Ok(_) => {
                         event
-                            .adapter
+                            .output
+                            .as_adapter()
                             .answer_callback(
                                 &event.target,
                                 &event.callback_id,
@@ -363,7 +378,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     }
                     Err(e) => {
                         event
-                            .adapter
+                            .output
+                            .as_adapter()
                             .answer_callback(
                                 &event.target,
                                 &event.callback_id,
@@ -374,7 +390,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
             } else {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -398,7 +415,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -414,7 +432,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             match ConfigManager::update_warp_routing_rules(Vec::new(), WarpMode::Default).await {
                 Ok(_) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .answer_callback(
                             &event.target,
                             &event.callback_id,
@@ -425,7 +444,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
                 Err(e) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .answer_callback(
                             &event.target,
                             &event.callback_id,
@@ -445,7 +465,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     }]],
                 };
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .edit_message(
                         &event.target,
                         &event.msg_id,
@@ -463,7 +484,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }
             Err(e) => {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -475,7 +497,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         },
         "a_warp_restart" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -485,7 +508,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             match WarpInstaller::restart_service().await {
                 Ok(_) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .answer_callback(
                             &event.target,
                             &event.callback_id,
@@ -495,7 +519,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
                 Err(e) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .send_message(
                             &event.target,
                             MessageContent {
@@ -522,7 +547,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -536,7 +562,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
         "a_warp_uninstall_confirm" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -544,7 +571,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -558,7 +586,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             match WarpInstaller::uninstall().await {
                 Ok(_) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .send_message(
                             &event.target,
                             MessageContent {
@@ -571,7 +600,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
                 Err(e) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .send_message(
                             &event.target,
                             MessageContent {

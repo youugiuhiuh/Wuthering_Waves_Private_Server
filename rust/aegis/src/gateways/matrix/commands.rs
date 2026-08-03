@@ -3,7 +3,9 @@ use std::sync::Arc;
 use aegis::app::interaction::{
     ActorId, BusinessCommand, BusinessInput, BusinessRequest, ConversationId, Origin, PlatformId,
 };
-use aegis::common::{BotAdapter, MessageId, TargetId};
+use aegis::app::output::BusinessOutput;
+use aegis::common::{BotAdapter, MessageId, Platform, TargetId};
+use aegis::shared::handlers::menu::AdapterOutput;
 use aegis::shared::types::{BotCommand, BotEvent, CallbackEvent, CommandEvent};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -180,10 +182,23 @@ pub fn parse_to_event(
 ) -> Option<BotEvent> {
     let text = text.trim();
 
+    let output: Arc<dyn BusinessOutput> =
+        Arc::new(AdapterOutput::new(adapter.clone(), target.clone()));
+    let origin = Origin {
+        platform: match adapter.platform() {
+            Platform::Telegram => PlatformId::Telegram,
+            Platform::Discord => PlatformId::Discord,
+            Platform::Matrix => PlatformId::Matrix,
+        },
+        actor_id: ActorId::new(user_id.to_string()).unwrap(),
+        conversation_id: ConversationId::new(target.0.clone()).unwrap(),
+    };
+
     // Try basic BotCommand commands first
     if let Some(cmd) = parse_to_bot_command(text) {
         return Some(BotEvent::Command(CommandEvent {
-            adapter,
+            output,
+            origin: origin.clone(),
             target: target.clone(),
             user_id,
             command: cmd,
@@ -191,12 +206,12 @@ pub fn parse_to_event(
     }
 
     let text_lower = text.to_lowercase();
-    let target = target.clone();
 
     let event = |data: &str| -> BotEvent {
         BotEvent::Callback(CallbackEvent {
-            adapter,
-            target,
+            output: output.clone(),
+            origin: origin.clone(),
+            target: target.clone(),
             user_id: user_id.to_string(),
             msg_id: MessageId("0".into()),
             data: data.to_string(),

@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::common::{BotAdapter, MessageId, TargetId};
+use crate::app::interaction::Origin;
+use crate::app::output::BusinessOutput;
+use crate::common::{MessageId, TargetId};
 use crate::core::error::AppError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,7 +15,8 @@ pub enum TimeoutStatus {
 }
 
 pub struct CallbackEvent {
-    pub adapter: Arc<dyn BotAdapter>,
+    pub output: Arc<dyn BusinessOutput>,
+    pub origin: Origin,
     pub target: TargetId,
     pub user_id: String,
     pub msg_id: MessageId,
@@ -50,11 +53,11 @@ impl BotEvent {
         }
     }
 
-    pub fn adapter(&self) -> &Arc<dyn BotAdapter> {
+    pub fn adapter(&self) -> &Arc<dyn BusinessOutput> {
         match self {
-            BotEvent::Message(m) => &m.adapter,
-            BotEvent::Callback(c) => &c.adapter,
-            BotEvent::Command(c) => &c.adapter,
+            BotEvent::Message(m) => &m.output,
+            BotEvent::Callback(c) => &c.output,
+            BotEvent::Command(c) => &c.output,
         }
     }
 
@@ -68,7 +71,8 @@ impl BotEvent {
 }
 
 pub struct MessageEvent {
-    pub adapter: Arc<dyn BotAdapter>,
+    pub output: Arc<dyn BusinessOutput>,
+    pub origin: Origin,
     pub target: TargetId,
     pub user_id: i64,
     pub text: Option<String>,
@@ -79,7 +83,8 @@ pub struct MessageEvent {
 }
 
 pub struct CommandEvent {
-    pub adapter: Arc<dyn BotAdapter>,
+    pub output: Arc<dyn BusinessOutput>,
+    pub origin: Origin,
     pub target: TargetId,
     pub user_id: i64,
     pub command: BotCommand,
@@ -93,9 +98,20 @@ mod event_tests {
 
     #[test]
     fn message_event_constructs() {
-        // MessageEvent is a plain struct — verify fields compile
+        use crate::app::interaction::{ActorId, ConversationId, PlatformId};
+        use crate::common::BotAdapter;
+        use crate::shared::commands::AdapterOutput;
+        let adapter: Arc<dyn BotAdapter> = Arc::new(crate::common::MockBotAdapter::new());
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter, TargetId("123".into())));
+        let origin = Origin {
+            platform: PlatformId::Telegram,
+            actor_id: ActorId::new("42".into()).unwrap(),
+            conversation_id: ConversationId::new("123".into()).unwrap(),
+        };
         let _ = MessageEvent {
-            adapter: std::sync::Arc::new(crate::common::MockBotAdapter::new()),
+            output,
+            origin,
             target: TargetId("123".into()),
             user_id: 42,
             text: Some("hello".into()),
@@ -108,8 +124,20 @@ mod event_tests {
 
     #[test]
     fn command_event_constructs() {
+        use crate::app::interaction::{ActorId, ConversationId, PlatformId};
+        use crate::common::BotAdapter;
+        use crate::shared::commands::AdapterOutput;
+        let adapter: Arc<dyn BotAdapter> = Arc::new(crate::common::MockBotAdapter::new());
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter, TargetId("123".into())));
+        let origin = Origin {
+            platform: PlatformId::Telegram,
+            actor_id: ActorId::new("42".into()).unwrap(),
+            conversation_id: ConversationId::new("123".into()).unwrap(),
+        };
         let _ = CommandEvent {
-            adapter: std::sync::Arc::new(crate::common::MockBotAdapter::new()),
+            output,
+            origin,
             target: TargetId("123".into()),
             user_id: 42,
             command: BotCommand::Help,
@@ -126,8 +154,20 @@ mod event_tests {
 
     #[test]
     fn malformed_callback_user_id_returns_error() {
+        use crate::app::interaction::{ActorId, ConversationId, PlatformId};
+        use crate::common::BotAdapter;
+        use crate::shared::commands::AdapterOutput;
+        let adapter: Arc<dyn BotAdapter> = Arc::new(crate::common::MockBotAdapter::new());
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter, TargetId("123".into())));
+        let origin = Origin {
+            platform: PlatformId::Telegram,
+            actor_id: ActorId::new("not-a-number".into()).unwrap(),
+            conversation_id: ConversationId::new("123".into()).unwrap(),
+        };
         let event = BotEvent::Callback(CallbackEvent {
-            adapter: std::sync::Arc::new(crate::common::MockBotAdapter::new()),
+            output,
+            origin,
             target: TargetId("123".into()),
             user_id: "not-a-number".into(),
             msg_id: MessageId("1".into()),

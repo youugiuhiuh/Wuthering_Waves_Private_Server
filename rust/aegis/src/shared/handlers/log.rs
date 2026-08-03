@@ -27,7 +27,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -58,7 +59,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -95,7 +97,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -114,14 +117,15 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
         "l_xray_tail" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
                     Some(t!("log.fetching_xray").into()),
                 )
                 .await?;
-            let adapter = event.adapter.clone();
+            let adapter = event.output.as_adapter().clone();
             let target = event.target.clone();
             tokio::spawn(async move {
                 if let Ok(log) = LogAudit::tail_logs(SERVICE_WWPS_CORE, 50).await {
@@ -140,14 +144,15 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
         "l_box_tail" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
                     Some(t!("log.fetching_box").into()),
                 )
                 .await?;
-            let adapter = event.adapter.clone();
+            let adapter = event.output.as_adapter().clone();
             let target = event.target.clone();
             tokio::spawn(async move {
                 if let Ok(log) = LogAudit::tail_logs(SERVICE_SING_BOX, 50).await {

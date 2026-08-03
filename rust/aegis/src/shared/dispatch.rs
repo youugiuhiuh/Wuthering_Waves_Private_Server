@@ -5,11 +5,14 @@ use anyhow::Result;
 use sha2::Digest;
 
 use crate::app::auth;
+use crate::app::interaction::ConversationId;
+use crate::app::output::BusinessOutput;
 use crate::app::state::AppState;
-use crate::common::{MessageContent, MessageId};
+use crate::common::{BotAdapter, MessageContent, MessageId};
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::system::host_settings::SystemHostSettings;
 use crate::core::types::DomainFlowSource;
+use crate::shared::commands::AdapterOutput;
 use crate::shared::handlers::message::{self, MessageAction};
 use crate::shared::types::{
     BotCommand, BotEvent, CallbackEvent, CommandEvent, HandlerAction, MessageEvent, TimeoutStatus,
@@ -122,8 +125,9 @@ pub fn domain_resume_target(
 
 #[allow(dead_code)]
 async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
+    let adapter: Arc<dyn BotAdapter> = msg.output.as_adapter();
     let action = message::handle_message(
-        &*msg.adapter,
+        &*adapter,
         &msg.target,
         msg.text.as_deref(),
         msg.file_id.is_some(),
@@ -136,9 +140,12 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
     {
         let code = text.trim();
         if is_totp_code(code) && !state.is_authorized(msg.user_id).await {
+            let output = commands::AdapterOutput::new(adapter.clone(), msg.target.clone());
+            let conversation_id = ConversationId::new(msg.target.0.clone()).unwrap();
             let _ = auth::process_auth_code(
-                &*msg.adapter,
-                &msg.target,
+                &output,
+                conversation_id,
+                None,
                 msg.user_id,
                 code,
                 state,
@@ -163,9 +170,9 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
             == TimeoutStatus::Active
     {
         const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
-        let content = msg.adapter.download_file(fid).await?;
+        let content = adapter.download_file(fid).await?;
         if content.len() as u64 > MAX_FILE_SIZE {
-            msg.adapter
+            adapter
                 .send_message(
                     &msg.target,
                     MessageContent {
@@ -192,7 +199,7 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
             .as_ref()
             .map(|n| format!("{} | {}", n, &hash[..8]))
             .unwrap_or_else(|| hash[..8].to_string());
-        msg.adapter
+        adapter
             .send_message(
                 &msg.target,
                 MessageContent {
@@ -213,7 +220,7 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
         match source_val {
             DomainFlowSource::Standalone => {
                 if let XhttpDeployMode::Tls { domain, cert_paths } = mode {
-                    let adapter = msg.adapter.clone();
+                    let adapter_clone = adapter.clone();
                     let target = msg.target.clone();
                     let domain = domain.clone();
                     let cert_paths = cert_paths.clone();
@@ -222,7 +229,7 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
                             domain,
                             cert_paths,
                             DomainFlowSource::Standalone,
-                            adapter,
+                            adapter_clone,
                             target,
                         )
                         .await
@@ -234,8 +241,11 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
             }
             DomainFlowSource::OneClick => {
                 if let XhttpDeployMode::Tls { domain, cert_paths } = mode {
+                    let output: Arc<dyn BusinessOutput> =
+                        Arc::new(AdapterOutput::new(adapter.clone(), msg.target.clone()));
                     let event = CallbackEvent {
-                        adapter: msg.adapter.clone(),
+                        output,
+                        origin: msg.origin.clone(),
                         target: msg.target.clone(),
                         user_id: msg.user_id.to_string(),
                         msg_id: MessageId("".into()),
@@ -263,9 +273,11 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
 mod dispatch_security_file_tests {
     use super::*;
 
+    use crate::app::interaction::{ActorId, ConversationId, Origin, PlatformId};
     use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::core::security::self_destruct::SelfDestructExecutor;
     use crate::core::totp::TotpManager;
+    use crate::shared::commands::AdapterOutput;
     use crate::shared::types::MessageEvent;
 
     use async_trait::async_trait;
@@ -325,8 +337,17 @@ mod dispatch_security_file_tests {
             .start_security_file_input("42".into(), Instant::now())
             .await;
 
+        let adapter: Arc<dyn BotAdapter> = Arc::new(TestAdapter);
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter.clone(), TargetId("42".into())));
+        let origin = Origin {
+            platform: PlatformId::Telegram,
+            actor_id: ActorId::new("42".into()).unwrap(),
+            conversation_id: ConversationId::new("42".into()).unwrap(),
+        };
         let msg = MessageEvent {
-            adapter: Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
+            output,
+            origin,
             target: TargetId("42".into()),
             user_id: 42,
             text: None,
@@ -443,8 +464,18 @@ mod tests {
     }
 
     fn command_event(adapter: Arc<MockAdapter>, command: BotCommand) -> BotEvent {
+        use crate::app::interaction::{ActorId, ConversationId, Origin, PlatformId};
+        use crate::shared::commands::AdapterOutput;
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter.clone(), TargetId("123".into())));
+        let origin = Origin {
+            platform: PlatformId::Telegram,
+            actor_id: ActorId::new("42".into()).unwrap(),
+            conversation_id: ConversationId::new("123".into()).unwrap(),
+        };
         BotEvent::Command(CommandEvent {
-            adapter,
+            output,
+            origin,
             target: TargetId("123".into()),
             user_id: 42,
             command,
@@ -452,8 +483,18 @@ mod tests {
     }
 
     fn callback_event(adapter: Arc<MockAdapter>, data: &str) -> BotEvent {
+        use crate::app::interaction::{ActorId, ConversationId, Origin, PlatformId};
+        use crate::shared::commands::AdapterOutput;
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter.clone(), TargetId("123".into())));
+        let origin = Origin {
+            platform: PlatformId::Telegram,
+            actor_id: ActorId::new("42".into()).unwrap(),
+            conversation_id: ConversationId::new("123".into()).unwrap(),
+        };
         BotEvent::Callback(CallbackEvent {
-            adapter,
+            output,
+            origin,
             target: TargetId("123".into()),
             user_id: "42".into(),
             msg_id: MessageId("1".into()),
@@ -464,8 +505,18 @@ mod tests {
     }
 
     fn message_event(adapter: Arc<MockAdapter>, target: &str, text: Option<String>) -> BotEvent {
+        use crate::app::interaction::{ActorId, ConversationId, Origin, PlatformId};
+        use crate::shared::commands::AdapterOutput;
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter.clone(), TargetId(target.into())));
+        let origin = Origin {
+            platform: PlatformId::Telegram,
+            actor_id: ActorId::new("42".into()).unwrap(),
+            conversation_id: ConversationId::new(target.into()).unwrap(),
+        };
         BotEvent::Message(MessageEvent {
-            adapter,
+            output,
+            origin,
             target: TargetId(target.into()),
             user_id: 42,
             text,

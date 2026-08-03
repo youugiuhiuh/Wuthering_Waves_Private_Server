@@ -1,10 +1,11 @@
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use rust_i18n::t;
 use sha2::Digest;
 
-use aegis::common::{InlineButton, Markup, MessageContent};
+use aegis::common::{BotAdapter, InlineButton, Markup, MessageContent, Platform};
 use aegis::shared::types::{CallbackEvent, MessageEvent, TimeoutStatus};
 
 use crate::app::state::AppState;
@@ -88,7 +89,7 @@ fn btn(text: &str, data: &str) -> InlineButton {
 /// Returns `FlowOutcome` describing whether the message was consumed by the
 /// destruct flow.
 pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<FlowOutcome> {
-    let adapter = msg.adapter.as_ref();
+    let adapter: Arc<dyn BotAdapter> = msg.output.as_adapter();
     let platform = adapter.platform();
     let target = &msg.target;
     let chat_id_str = target.0.clone();
@@ -396,8 +397,8 @@ pub async fn intercept_message(msg: &MessageEvent, state: &AppState) -> Result<F
 }
 
 async fn callback_timeout(cb: &CallbackEvent, state: &AppState) -> Result<FlowOutcome> {
-    let adapter = cb.adapter.as_ref();
-    let platform = adapter.platform();
+    let adapter: Arc<dyn BotAdapter> = cb.output.as_adapter();
+    let platform: Platform = cb.origin.platform.into();
     let target = &cb.target;
     let chat_id_str = target.0.clone();
     match state
@@ -436,8 +437,8 @@ async fn callback_timeout(cb: &CallbackEvent, state: &AppState) -> Result<FlowOu
 }
 
 async fn callback_action(cb: &CallbackEvent, state: &AppState) -> Result<FlowOutcome> {
-    let adapter = cb.adapter.as_ref();
-    let platform = adapter.platform();
+    let adapter: Arc<dyn BotAdapter> = cb.output.as_adapter();
+    let platform: Platform = cb.origin.platform.into();
     let target = &cb.target;
     let chat_id_str = target.0.clone();
     let user_id = cb.user_id.parse::<i64>().unwrap_or(0);
@@ -619,9 +620,12 @@ pub async fn intercept_callback(cb: &CallbackEvent, state: &AppState) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aegis::app::interaction::{ActorId, ConversationId, Origin, PlatformId};
+    use aegis::app::output::BusinessOutput;
     use aegis::common::{BotAdapter, InlineButton, MessageContent, MessageId, Platform, TargetId};
     use aegis::core::security::self_destruct::SelfDestructExecutor;
     use aegis::core::totp::TotpManager;
+    use aegis::shared::commands::AdapterOutput;
     use async_trait::async_trait;
     use futures_util::future::BoxFuture;
     use secrecy::SecretString;
@@ -734,6 +738,14 @@ mod tests {
         state
     }
 
+    fn make_test_origin() -> Origin {
+        Origin {
+            platform: PlatformId::Telegram,
+            actor_id: ActorId::new("42".into()).unwrap(),
+            conversation_id: ConversationId::new("42".into()).unwrap(),
+        }
+    }
+
     #[tokio::test]
     async fn first_totp_valid_returns_confirm() {
         let secret = TotpManager::generate_new_secret();
@@ -783,8 +795,12 @@ mod tests {
     }
 
     fn callback_event(data: &str) -> CallbackEvent {
+        let adapter: Arc<dyn BotAdapter> = Arc::new(NoopAdapter);
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter, TargetId("42".into())));
         CallbackEvent {
-            adapter: Arc::new(NoopAdapter),
+            output,
+            origin: make_test_origin(),
             target: TargetId("42".into()),
             user_id: "42".into(),
             msg_id: MessageId("0".into()),
@@ -795,8 +811,11 @@ mod tests {
     }
 
     fn callback_event_with_adapter(data: &str, adapter: Arc<dyn BotAdapter>) -> CallbackEvent {
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter.clone(), TargetId("42".into())));
         CallbackEvent {
-            adapter,
+            output,
+            origin: make_test_origin(),
             target: TargetId("42".into()),
             user_id: "42".into(),
             msg_id: MessageId("0".into()),
@@ -849,8 +868,12 @@ mod tests {
             .begin_destruct(Platform::Telegram, "42".to_string(), Instant::now())
             .await;
         let totp = state.generate_current_totp().unwrap().unwrap();
+        let adapter: Arc<dyn BotAdapter> = Arc::new(NoopAdapter);
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter.clone(), TargetId("42".into())));
         let msg = MessageEvent {
-            adapter: Arc::new(NoopAdapter),
+            output,
+            origin: make_test_origin(),
             target: TargetId("42".into()),
             user_id: 42,
             text: Some(totp),
@@ -894,8 +917,12 @@ mod tests {
             )
             .await;
         let totp = state.generate_current_totp().unwrap().unwrap();
+        let adapter: Arc<dyn BotAdapter> = Arc::new(NoopAdapter);
+        let output: Arc<dyn BusinessOutput> =
+            Arc::new(AdapterOutput::new(adapter.clone(), TargetId("42".into())));
         let msg = MessageEvent {
-            adapter: Arc::new(NoopAdapter) as Arc<dyn BotAdapter>,
+            output,
+            origin: make_test_origin(),
             target: TargetId("42".into()),
             user_id: 42,
             text: Some(totp),
@@ -931,7 +958,11 @@ mod tests {
             )
             .await;
         let msg = MessageEvent {
-            adapter: Arc::new(NoopAdapter) as Arc<dyn BotAdapter>,
+            output: Arc::new(AdapterOutput::new(
+                Arc::new(NoopAdapter),
+                TargetId("42".into()),
+            )),
+            origin: make_test_origin(),
             target: TargetId("42".into()),
             user_id: 42,
             text: Some("confirm".into()),
@@ -966,7 +997,11 @@ mod tests {
             )
             .await;
         let msg = MessageEvent {
-            adapter: Arc::new(NoopAdapter) as Arc<dyn BotAdapter>,
+            output: Arc::new(AdapterOutput::new(
+                Arc::new(NoopAdapter),
+                TargetId("42".into()),
+            )),
+            origin: make_test_origin(),
             target: TargetId("42".into()),
             user_id: 42,
             text: Some("cancel".into()),
@@ -990,7 +1025,15 @@ mod tests {
         let secret = TotpManager::generate_new_secret();
         let state = make_test_state(&secret).await;
         let msg = MessageEvent {
-            adapter: Arc::new(NoopAdapter),
+            output: Arc::new(AdapterOutput::new(
+                Arc::new(NoopAdapter),
+                TargetId("99".into()),
+            )),
+            origin: Origin {
+                platform: PlatformId::Telegram,
+                actor_id: ActorId::new("42".into()).unwrap(),
+                conversation_id: ConversationId::new("99".into()).unwrap(),
+            },
             target: TargetId("99".into()),
             user_id: 42,
             text: Some("hi".into()),

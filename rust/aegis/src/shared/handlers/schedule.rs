@@ -84,7 +84,8 @@ async fn handle_sched(event: &CallbackEvent) -> HandlerResult {
     let sched_text = format!("⏰ <b>{}</b>\n\n{}", t!("schedule.title"), summary);
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -113,7 +114,8 @@ async fn handle_add_menu(event: &CallbackEvent) -> HandlerResult {
     };
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -140,14 +142,16 @@ async fn handle_add_template(event: &CallbackEvent, data: &str) -> HandlerResult
         match manager.add_new_task(task).await {
             Ok(msg) => {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(&event.target, &event.callback_id, Some(msg))
                     .await?;
                 return Ok(HandlerAction::Redirect("m_sched".to_string()));
             }
             Err(e) => {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
                     .await?;
             }
@@ -178,7 +182,8 @@ async fn handle_del_menu(event: &CallbackEvent) -> HandlerResult {
         }]);
 
         event
-            .adapter
+            .output
+            .as_adapter()
             .edit_message(
                 &event.target,
                 &event.msg_id,
@@ -205,7 +210,8 @@ async fn handle_del_select(event: &CallbackEvent, data: &str) -> HandlerResult {
         if let Err(e) = utils::validate_idx(idx, state.tasks.len(), &t!("schedule.task_label")) {
             drop(state);
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
                 .await?;
             return Ok(HandlerAction::Redirect(data.to_string()));
@@ -226,7 +232,8 @@ async fn handle_del_select(event: &CallbackEvent, data: &str) -> HandlerResult {
             ];
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -242,7 +249,8 @@ async fn handle_del_select(event: &CallbackEvent, data: &str) -> HandlerResult {
                 .await?;
         } else {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -265,14 +273,16 @@ async fn handle_del_confirm(event: &CallbackEvent, data: &str) -> HandlerResult 
         match manager.remove_task_at(idx).await {
             Ok(msg) => {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(&event.target, &event.callback_id, Some(msg))
                     .await?;
                 return Ok(HandlerAction::Redirect("m_sched".to_string()));
             }
             Err(e) => {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
                     .await?;
             }
@@ -333,7 +343,8 @@ async fn handle_geo_sched_menu(event: &CallbackEvent) -> HandlerResult {
     };
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -362,7 +373,8 @@ async fn handle_geo_sched_off(event: &CallbackEvent) -> HandlerResult {
         let _ = manager.start_all_tasks().await;
 
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -377,7 +389,8 @@ async fn handle_geo_sched_off(event: &CallbackEvent) -> HandlerResult {
         return Ok(HandlerAction::Redirect("a_geo_sched_menu".to_string()));
     } else {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,

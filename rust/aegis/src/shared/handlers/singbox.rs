@@ -104,7 +104,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     data: "sb_install".into(),
                 }]);
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .edit_message(
                         &event.target,
                         &event.msg_id,
@@ -130,7 +131,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     data: "m_usr".into(),
                 }]);
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .edit_message(
                         &event.target,
                         &event.msg_id,
@@ -167,7 +169,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     data: "m_usr".into(),
                 }]);
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .edit_message(
                         &event.target,
                         &event.msg_id,
@@ -184,7 +187,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
         "sb_install" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -192,7 +196,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            let adapter = event.adapter.clone();
+            let adapter = event.output.as_adapter().clone();
             let target = event.target.clone();
             tokio::spawn(async move {
                 match SingBoxInstaller::install().await {
@@ -246,7 +250,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }]);
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -282,7 +287,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }]);
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -339,7 +345,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             ];
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -361,7 +368,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 .collect();
             if parts.len() != 2 {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -390,7 +398,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             ];
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -417,7 +426,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 .collect();
             if parts.len() != 3 {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -458,7 +468,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             ];
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -511,7 +522,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             ];
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -533,7 +545,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 .collect();
             if parts.len() != 4 {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -553,7 +566,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             };
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -561,7 +575,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            let adapter = event.adapter.clone();
+            let adapter = event.output.as_adapter().clone();
             let target = event.target.clone();
 
             tokio::spawn(async move {
@@ -611,7 +625,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 .collect();
             if parts.len() != 2 {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -629,7 +644,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             };
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -637,7 +653,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            let adapter = event.adapter.clone();
+            let adapter = event.output.as_adapter().clone();
             let target = event.target.clone();
 
             tokio::spawn(async move {
@@ -688,7 +704,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }],
             ];
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -714,7 +731,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }],
             ];
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -732,7 +750,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             match SingBoxConfigManager::delete_all_configurations().await {
                 Ok(count) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .answer_callback(
                             &event.target,
                             &event.callback_id,
@@ -748,7 +767,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
                 Err(e) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .answer_callback(
                             &event.target,
                             &event.callback_id,
@@ -788,7 +808,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }],
             ];
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -812,7 +833,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             match SingBoxConfigManager::delete_by_count(n).await {
                 Ok(deleted) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .answer_callback(
                             &event.target,
                             &event.callback_id,
@@ -828,7 +850,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
                 Err(e) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .answer_callback(
                             &event.target,
                             &event.callback_id,
@@ -848,7 +871,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
             if inbounds.is_empty() {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -869,7 +893,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     data: "sb_del_cfg".into(),
                 }]);
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .edit_message(
                         &event.target,
                         &event.msg_id,
@@ -904,7 +929,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     Ok(()) => {
                         let filename = path.split('/').next_back().unwrap_or("Unknown");
                         event
-                            .adapter
+                            .output
+                            .as_adapter()
                             .answer_callback(
                                 &event.target,
                                 &event.callback_id,
@@ -920,7 +946,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     }
                     Err(e) => {
                         event
-                            .adapter
+                            .output
+                            .as_adapter()
                             .answer_callback(
                                 &event.target,
                                 &event.callback_id,
@@ -933,7 +960,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
             } else {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,

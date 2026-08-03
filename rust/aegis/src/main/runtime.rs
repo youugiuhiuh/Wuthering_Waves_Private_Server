@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+use aegis::app::interaction::{
+    ActorId, BusinessCommand, BusinessResult, ConversationId, Origin, PlatformId,
+};
+use aegis::app::output::BusinessOutput;
 use aegis::common::{BotAdapter, MessageId, TargetId};
 use aegis::core::i18n;
 use aegis::shared::dispatch_event;
@@ -20,8 +24,6 @@ use teloxide::utils::command::BotCommands;
 use tokio_util::sync::CancellationToken;
 
 use crate::bootstrap::config_dir;
-#[cfg(feature = "telegram")]
-use aegis::app::interaction::{BusinessCommand, BusinessResult};
 use aegis::app::service::ApplicationService;
 use aegis::app::state::AppState;
 use aegis::gateways::matrix::commands::command_to_business_input;
@@ -33,7 +35,7 @@ use aegis::gateways::telegram::mapping;
 #[cfg(feature = "telegram")]
 use aegis::gateways::telegram::presenter::TelegramPresenter;
 #[cfg(feature = "telegram")]
-use aegis::shared::handlers::menu::send_main_menu;
+use aegis::shared::handlers::menu::{AdapterOutput, send_main_menu};
 
 #[cfg(feature = "telegram")]
 #[derive(BotCommands, Clone)]
@@ -271,11 +273,21 @@ pub async fn run(
             match cmd {
                 TeloxideCommand::Auth(code) => {
                     let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
+                    let target = TargetId(msg.chat.id.0.to_string());
+                    let user_id = msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
+                    let output: Arc<dyn BusinessOutput> =
+                        Arc::new(AdapterOutput::new(adapter.clone(), target.clone()));
+                    let origin = Origin {
+                        platform: PlatformId::Telegram,
+                        actor_id: ActorId::new(user_id.to_string()).unwrap(),
+                        conversation_id: ConversationId::new(target.0.clone()).unwrap(),
+                    };
                     let _ = dispatch_event(
                         BotEvent::Command(CommandEvent {
-                            adapter,
-                            target: TargetId(msg.chat.id.0.to_string()),
-                            user_id: msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0),
+                            output,
+                            origin,
+                            target,
+                            user_id,
                             command: BotCommand::Auth { code },
                         }),
                         &state,
@@ -292,7 +304,9 @@ pub async fn run(
                         {
                             let adapter: Arc<dyn BotAdapter> =
                                 Arc::new(TelegramAdapter::new(bot.clone()));
-                            let _ = send_main_menu(&*adapter, &target).await;
+                            let output = AdapterOutput::new(adapter, target.clone());
+                            let conversation_id = ConversationId::new(target.0).unwrap();
+                            let _ = send_main_menu(&output, &conversation_id).await;
                         }
                     }
                 }
@@ -329,10 +343,19 @@ pub async fn run(
             }
             let user_id = msg.from.as_ref().map(|f| f.id.0 as i64).unwrap_or(0);
             let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
+            let target = TargetId(msg.chat.id.0.to_string());
+            let output: Arc<dyn BusinessOutput> =
+                Arc::new(AdapterOutput::new(adapter.clone(), target.clone()));
+            let origin = Origin {
+                platform: PlatformId::Telegram,
+                actor_id: ActorId::new(user_id.to_string()).unwrap(),
+                conversation_id: ConversationId::new(target.0.clone()).unwrap(),
+            };
             let _ = dispatch_event(
                 BotEvent::Message(MessageEvent {
-                    adapter,
-                    target: TargetId(msg.chat.id.0.to_string()),
+                    output,
+                    origin,
+                    target,
                     user_id,
                     text: msg.text().map(|s| s.to_string()),
                     file_id: msg.document().map(|d| d.file.id.clone()).or_else(|| {
@@ -365,11 +388,21 @@ pub async fn run(
             let chat_id = q.message.as_ref().map(|m| m.chat().id).unwrap_or(ChatId(0));
             let msg_id = q.message.as_ref().map(|m| m.id()).unwrap_or_default();
             let adapter: Arc<dyn BotAdapter> = Arc::new(TelegramAdapter::new(bot.clone()));
+            let target = TargetId(chat_id.0.to_string());
+            let user_id_str = q.from.id.0.to_string();
+            let output: Arc<dyn BusinessOutput> =
+                Arc::new(AdapterOutput::new(adapter.clone(), target.clone()));
+            let origin = Origin {
+                platform: PlatformId::Telegram,
+                actor_id: ActorId::new(user_id_str.clone()).unwrap(),
+                conversation_id: ConversationId::new(target.0.clone()).unwrap(),
+            };
             let _ = dispatch_event(
                 BotEvent::Callback(CallbackEvent {
-                    adapter,
-                    target: TargetId(chat_id.0.to_string()),
-                    user_id: q.from.id.0.to_string(),
+                    output,
+                    origin,
+                    target,
+                    user_id: user_id_str,
                     msg_id: MessageId(msg_id.0.to_string()),
                     data: q.data.clone().unwrap_or_default(),
                     callback_id: q.id.clone(),

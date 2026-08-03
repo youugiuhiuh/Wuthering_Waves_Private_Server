@@ -1,4 +1,8 @@
-use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
+pub use crate::shared::commands::AdapterOutput;
+
+use crate::app::interaction::{ConversationId, OutputAction, OutputPayload, Sensitivity};
+use crate::app::output::BusinessOutput;
+use crate::common::{InlineButton, Markup, MessageContent};
 use crate::core::paths::{singbox, xray};
 use crate::core::singbox::SingBoxInstaller;
 use crate::core::system::SystemMonitor;
@@ -11,7 +15,10 @@ use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 const DEFAULT_SESSION_TIMEOUT_SECS: u64 = 10 * 60;
 const BOT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub async fn send_main_menu(adapter: &dyn BotAdapter, target: &TargetId) -> anyhow::Result<()> {
+pub async fn send_main_menu(
+    output: &dyn BusinessOutput,
+    conversation_id: &ConversationId,
+) -> anyhow::Result<()> {
     let mut rows = vec![
         vec![
             InlineButton {
@@ -52,15 +59,15 @@ pub async fn send_main_menu(adapter: &dyn BotAdapter, target: &TargetId) -> anyh
             },
         ]);
     }
-    let markup = Markup { buttons: rows };
-    adapter
-        .send_message(
-            target,
-            MessageContent {
+    let _markup = Markup { buttons: rows };
+    output
+        .publish(OutputAction::SendText {
+            target_conversation: conversation_id.clone(),
+            payload: OutputPayload::Text {
                 text: format!("{}\n{}", t!("menu.title"), t!("menu.prompt")),
-                markup: Some(markup),
             },
-        )
+            sensitivity: Sensitivity::default(),
+        })
         .await?;
     Ok(())
 }
@@ -97,7 +104,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }]);
             let markup = Markup { buttons: kb_rows };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -148,7 +156,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -206,7 +215,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -231,7 +241,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -260,7 +271,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -291,7 +303,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -320,7 +333,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -360,7 +374,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -382,7 +397,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     data: "a_inst_base".into(),
                 }]);
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .edit_message(
                         &event.target,
                         &event.msg_id,
@@ -411,7 +427,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     data: "m_main".into(),
                 }]);
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .edit_message(
                         &event.target,
                         &event.msg_id,
@@ -453,7 +470,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 data: "m_settings".into(),
             }]);
 
-            event.adapter.edit_message(&event.target, &event.msg_id, MessageContent {
+            event.output.as_adapter().edit_message(&event.target, &event.msg_id, MessageContent {
                 text: format!(
                     "{}\n\n<b>{}</b>: {}\n\n{}",
                     t!("menu.session_timeout", "0" => crate::utils::format_duration_human(current)),
@@ -471,7 +488,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 .parse()
                 .unwrap_or(DEFAULT_SESSION_TIMEOUT_SECS);
 
-            event.adapter.answer_callback(
+            event.output.as_adapter().answer_callback(
                 &event.target,
                 &event.callback_id,
                 Some(t!("callback.session_timeout_set", "0" => crate::utils::format_duration_human(secs)).into_owned()),
@@ -493,7 +510,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 ],
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -527,7 +545,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             };
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -540,14 +559,15 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
         "a_wwps_core_latest" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
                     Some(t!("ops.upgrade_start").into_owned()),
                 )
                 .await?;
-            let adapter = event.adapter.clone();
+            let adapter = event.output.as_adapter().clone();
             let target = event.target.clone();
             tokio::spawn(async move {
                 let reporter = crate::shared::reporters::StatusMessageReporter::new(
@@ -569,7 +589,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
         "a_wwps_core_tags" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -594,7 +615,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                             data: "a_wwps_core_menu".into(),
                         }]);
                         event
-                            .adapter
+                            .output
+                            .as_adapter()
                             .edit_message(
                                 &event.target,
                                 &event.msg_id,
@@ -607,7 +629,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     }
                     Ok(_) => {
                         event
-                            .adapter
+                            .output
+                            .as_adapter()
                             .edit_message(
                                 &event.target,
                                 &event.msg_id,
@@ -620,7 +643,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     }
                     Err(err) => {
                         event
-                            .adapter
+                            .output
+                            .as_adapter()
                             .edit_message(
                                 &event.target,
                                 &event.msg_id,
@@ -635,7 +659,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 },
                 Err(err) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .edit_message(
                             &event.target,
                             &event.msg_id,
@@ -650,7 +675,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
             if reply.is_err() {
                 let _ = event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .send_message(
                         &event.target,
                         MessageContent {
@@ -665,7 +691,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             let tag = d.strip_prefix("wwps_core_tag:").unwrap_or("").to_string();
             if tag.is_empty() {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -676,7 +703,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -684,7 +712,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            let adapter = event.adapter.clone();
+            let adapter = event.output.as_adapter().clone();
             let target = event.target.clone();
             tokio::spawn(async move {
                 let reporter = crate::shared::reporters::StatusMessageReporter::new(
@@ -723,7 +751,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             };
 
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -736,7 +765,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
         "a_wwps_box_restart" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -747,7 +777,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             match SingBoxInstaller::restart_service().await {
                 Ok(_) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .edit_message(
                             &event.target,
                             &event.msg_id,
@@ -760,7 +791,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
                 Err(err) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .edit_message(
                             &event.target,
                             &event.msg_id,
@@ -776,7 +808,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         }
         "a_wwps_box_status" => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -787,7 +820,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             match SingBoxInstaller::status().await {
                 Ok(status) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .edit_message(
                             &event.target,
                             &event.msg_id,
@@ -800,7 +834,8 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
                 Err(err) => {
                     event
-                        .adapter
+                        .output
+                        .as_adapter()
                         .edit_message(
                             &event.target,
                             &event.msg_id,

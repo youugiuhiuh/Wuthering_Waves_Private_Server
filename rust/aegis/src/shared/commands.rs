@@ -6,7 +6,7 @@ use crate::app::interaction::{
 use crate::app::output::BusinessOutput;
 use crate::app::service::ApplicationService;
 use crate::app::state::AppState;
-use crate::common::{BotAdapter, MessageContent, Platform, TargetId};
+use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
 use crate::shared::types::{BotCommand, CommandEvent};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -15,12 +15,17 @@ use std::time::Duration;
 
 #[allow(dead_code)]
 pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
-    // Legacy Auth path stays in the bridge; the service treats it as
-    // unreachable and returns Ok.
+    let adapter = cmd.output.as_adapter();
     if let BotCommand::Auth { code } = &cmd.command {
+        let output = AdapterOutput {
+            adapter: adapter.clone(),
+            target: cmd.target.clone(),
+        };
+        let conversation_id = ConversationId::new(cmd.target.0.clone()).unwrap();
         let _ = auth::process_auth_code(
-            &*cmd.adapter,
-            &cmd.target,
+            &output,
+            conversation_id,
+            None,
             cmd.user_id,
             code,
             state,
@@ -37,9 +42,9 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
         return Ok(());
     }
 
-    let input = bridge_input(&cmd);
+    let input = bridge_input(&cmd, &adapter);
     let output = AdapterOutput {
-        adapter: cmd.adapter.clone(),
+        adapter: adapter.clone(),
         target: cmd.target.clone(),
     };
     let result = ApplicationService
@@ -47,17 +52,18 @@ pub async fn handle(cmd: CommandEvent, state: &AppState) -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     if matches!(&cmd.command, BotCommand::Menu) && matches!(result, BusinessResult::Ok) {
-        crate::shared::handlers::menu::send_main_menu(&*cmd.adapter, &cmd.target).await?;
+        let conversation_id = ConversationId::new(cmd.target.0.clone()).unwrap();
+        crate::shared::handlers::menu::send_main_menu(&output, &conversation_id).await?;
     }
     Ok(())
 }
 
 /// Temporary dispatch bridge: converts a legacy `CommandEvent` into a
 /// `BusinessRequest` and adapts its `BotAdapter` to `BusinessOutput`.
-fn bridge_input(cmd: &CommandEvent) -> BusinessInput {
+fn bridge_input(cmd: &CommandEvent, adapter: &Arc<dyn BotAdapter>) -> BusinessInput {
     BusinessInput {
         origin: Origin {
-            platform: match cmd.adapter.platform() {
+            platform: match adapter.platform() {
                 Platform::Telegram => PlatformId::Telegram,
                 Platform::Discord => PlatformId::Discord,
                 Platform::Matrix => PlatformId::Matrix,
@@ -69,9 +75,15 @@ fn bridge_input(cmd: &CommandEvent) -> BusinessInput {
     }
 }
 
-struct AdapterOutput {
+pub struct AdapterOutput {
     adapter: Arc<dyn BotAdapter>,
     target: TargetId,
+}
+
+impl AdapterOutput {
+    pub fn new(adapter: Arc<dyn BotAdapter>, target: TargetId) -> Self {
+        Self { adapter, target }
+    }
 }
 
 #[async_trait]
@@ -98,28 +110,65 @@ impl BusinessOutput for AdapterOutput {
                         .await?;
                 }
             },
-            OutputAction::SendAttachment {
+            OutputAction::Edit {
                 target_conversation: _,
-                payload:
-                    OutputPayload::Attachment {
-                        bytes,
-                        filename,
-                        mime,
-                    },
+                message_id,
+                payload,
+            } => {
+                if let OutputPayload::Text { text } = payload {
+                    let msg_id = MessageId(message_id);
+                    self.adapter
+                        .edit_message(&self.target, &msg_id, MessageContent { text, markup: None })
+                        .await?;
+                }
+            }
+            OutputAction::Delete {
+                target_conversation: _,
+                message_id,
+            } => {
+                let msg_id = MessageId(message_id);
+                self.adapter.delete_message(&self.target, &msg_id).await?;
+            }
+            OutputAction::AnswerCallback {
+                callback_id,
+                text: _,
             } => {
                 self.adapter
-                    .send_file(&self.target, &filename, bytes, &mime)
+                    .answer_callback(&self.target, &callback_id, None)
                     .await?;
             }
-            _ => {}
+            OutputAction::SendAttachment {
+                target_conversation: _,
+                payload,
+            } => match payload {
+                OutputPayload::Text { text } => {
+                    self.adapter
+                        .send_message(&self.target, MessageContent { text, markup: None })
+                        .await?;
+                }
+                OutputPayload::Attachment {
+                    bytes,
+                    filename,
+                    mime,
+                } => {
+                    self.adapter
+                        .send_file(&self.target, &filename, bytes, &mime)
+                        .await?;
+                }
+            },
         }
         Ok(())
+    }
+
+    fn as_adapter(&self) -> Arc<dyn BotAdapter> {
+        self.adapter.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::interaction::{ActorId, ConversationId, PlatformId};
     use crate::common::{BotAdapter, MessageContent, MessageId, Platform, TargetId};
     use crate::core::totp::TotpManager;
     use async_trait::async_trait;
@@ -189,9 +238,15 @@ mod tests {
     }
 
     fn make_cmd(adapter: Arc<MockAdapter>, command: BotCommand) -> CommandEvent {
+        let target = TargetId("123".into());
         CommandEvent {
-            adapter,
-            target: TargetId("123".into()),
+            output: Arc::new(AdapterOutput::new(adapter, target.clone())),
+            origin: Origin {
+                platform: PlatformId::Telegram,
+                actor_id: ActorId::new("42".into()).unwrap(),
+                conversation_id: ConversationId::new("123".into()).unwrap(),
+            },
+            target,
             user_id: 42,
             command,
         }
@@ -344,9 +399,18 @@ mod tests {
             600,
         ));
         state.record_auth_success(42, Instant::now()).await;
+        let target = TargetId("42".into());
         let cmd = CommandEvent {
-            adapter: Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
-            target: TargetId("42".into()),
+            output: Arc::new(AdapterOutput::new(
+                Arc::new(TestAdapter) as Arc<dyn BotAdapter>,
+                target.clone(),
+            )),
+            origin: Origin {
+                platform: PlatformId::Telegram,
+                actor_id: ActorId::new("42".into()).unwrap(),
+                conversation_id: ConversationId::new("42".into()).unwrap(),
+            },
+            target,
             user_id: 42,
             command: BotCommand::SetSecurityFile,
         };

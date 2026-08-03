@@ -233,7 +233,8 @@ pub async fn show_domain_choice(event: &CallbackEvent, source: DomainFlowSource)
         }],
     ];
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -444,7 +445,8 @@ async fn handle_mgmt(event: &CallbackEvent) -> HandlerResult {
             data: "m_routing".into(),
         }]);
         event
-            .adapter
+            .output
+            .as_adapter()
             .edit_message(
                 &event.target,
                 &event.msg_id,
@@ -495,7 +497,8 @@ async fn handle_mgmt(event: &CallbackEvent) -> HandlerResult {
             data: "m_usr".into(),
         }]);
         event
-            .adapter
+            .output
+            .as_adapter()
             .edit_message(
                 &event.target,
                 &event.msg_id,
@@ -532,7 +535,8 @@ async fn handle_pq_mgmt(event: &CallbackEvent) -> HandlerResult {
         }],
     ];
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -550,7 +554,8 @@ async fn handle_pq_del(event: &CallbackEvent) -> HandlerResult {
     match ConfigManager::delete_reality_pq().await {
         Ok(()) => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -560,7 +565,8 @@ async fn handle_pq_del(event: &CallbackEvent) -> HandlerResult {
         }
         Err(e) => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -576,7 +582,8 @@ async fn handle_pq_init(event: &CallbackEvent) -> HandlerResult {
     match ConfigManager::generate_reality_pq_keys().await {
         Ok(()) => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -586,7 +593,8 @@ async fn handle_pq_init(event: &CallbackEvent) -> HandlerResult {
         }
         Err(e) => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -631,7 +639,8 @@ async fn handle_routing_menu(event: &CallbackEvent) -> HandlerResult {
     }]);
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -662,13 +671,15 @@ async fn handle_routing_toggle(event: &CallbackEvent) -> HandlerResult {
                 t!("xray.routing_toggled_off", "name" => name)
             };
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(&event.target, &event.callback_id, Some(msg.into()))
                 .await?;
         }
         Err(e) => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -722,7 +733,8 @@ async fn handle_del_cfg(event: &CallbackEvent) -> HandlerResult {
     ];
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -783,7 +795,8 @@ async fn handle_cfg_filter(event: &CallbackEvent) -> HandlerResult {
     ];
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -818,7 +831,8 @@ async fn handle_cfg_del_all_confirm(event: &CallbackEvent) -> HandlerResult {
     ];
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -846,7 +860,8 @@ async fn handle_cfg_del_all_exec(event: &CallbackEvent) -> HandlerResult {
             "kcp" => Proto::Kcp,
             _ => {
                 event
-                    .adapter
+                    .output
+                    .as_adapter()
                     .answer_callback(
                         &event.target,
                         &event.callback_id,
@@ -869,7 +884,8 @@ async fn handle_cfg_del_all_exec(event: &CallbackEvent) -> HandlerResult {
         count
     };
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -919,7 +935,8 @@ async fn handle_cfg_del_count(event: &CallbackEvent) -> HandlerResult {
     ];
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -976,7 +993,8 @@ async fn handle_cfg_del_exec_count(event: &CallbackEvent) -> HandlerResult {
         let _ = MaintenanceManager::reload_core().await;
     }
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -1027,7 +1045,8 @@ async fn handle_cfg_del_select(event: &CallbackEvent) -> HandlerResult {
     }]);
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -1076,7 +1095,8 @@ async fn handle_cfg_del_file(event: &CallbackEvent) -> HandlerResult {
             }],
         ];
         event
-            .adapter
+            .output
+            .as_adapter()
             .edit_message(
                 &event.target,
                 &event.msg_id,
@@ -1089,7 +1109,8 @@ async fn handle_cfg_del_file(event: &CallbackEvent) -> HandlerResult {
             .await?;
     } else {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -1125,7 +1146,8 @@ async fn handle_cfg_del_confirm(event: &CallbackEvent) -> HandlerResult {
 
     if let Err(e) = utils::validate_idx(idx, files.len(), &t!("xray.del_label")) {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
             .await?;
         return Ok(HandlerAction::Done);
@@ -1134,7 +1156,8 @@ async fn handle_cfg_del_confirm(event: &CallbackEvent) -> HandlerResult {
     if let Some(path) = files.get(idx) {
         let _ = ConfigManager::delete_specific_configuration(path).await;
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -1143,7 +1166,8 @@ async fn handle_cfg_del_confirm(event: &CallbackEvent) -> HandlerResult {
             .await?;
     } else {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -1161,12 +1185,13 @@ async fn handle_cfg_del_confirm(event: &CallbackEvent) -> HandlerResult {
 // ── batch ────────────────────────────────────────────────────────────
 
 async fn handle_batch_init(event: &CallbackEvent) -> HandlerResult {
+    let adapter = event.output.as_adapter().clone();
     if MaintenanceManager::is_reality_base_ready().await {
-        show_reality_batch_prompt(&*event.adapter, &event.target, &event.msg_id, Proto::Vision)
-            .await?;
+        show_reality_batch_prompt(&*adapter, &event.target, &event.msg_id, Proto::Vision).await?;
     } else {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -1174,7 +1199,8 @@ async fn handle_batch_init(event: &CallbackEvent) -> HandlerResult {
             )
             .await?;
         event
-            .adapter
+            .output
+            .as_adapter()
             .edit_message(
                 &event.target,
                 &event.msg_id,
@@ -1185,7 +1211,7 @@ async fn handle_batch_init(event: &CallbackEvent) -> HandlerResult {
             )
             .await?;
         trigger_reality_auto_init(
-            event.adapter.clone(),
+            event.output.as_adapter().clone(),
             event.target.clone(),
             event.msg_id.clone(),
         );
@@ -1199,6 +1225,7 @@ async fn handle_xhttp_batch_init(event: &CallbackEvent) -> HandlerResult {
 }
 
 async fn handle_batch_ip_init(event: &CallbackEvent) -> HandlerResult {
+    let adapter = event.output.as_adapter().clone();
     let data = event.data.as_str();
     let prefix = "u_batch_ip_init:";
     let proto = Proto::Vision;
@@ -1209,18 +1236,12 @@ async fn handle_batch_ip_init(event: &CallbackEvent) -> HandlerResult {
         "s4" => IpVersion::SplitStackV4Primary,
         _ => IpVersion::IPv4,
     };
-    show_reality_qty_prompt(
-        &*event.adapter,
-        &event.target,
-        &event.msg_id,
-        ip_version,
-        proto,
-    )
-    .await?;
+    show_reality_qty_prompt(&*adapter, &event.target, &event.msg_id, ip_version, proto).await?;
     Ok(HandlerAction::Done)
 }
 
 async fn handle_xhttp_batch_ip_init(event: &CallbackEvent) -> HandlerResult {
+    let adapter = event.output.as_adapter().clone();
     let data = event.data.as_str();
     let prefix = "u_xhttp_batch_ip_init:";
     let proto = Proto::XHTTP;
@@ -1231,14 +1252,7 @@ async fn handle_xhttp_batch_ip_init(event: &CallbackEvent) -> HandlerResult {
         "s4" => IpVersion::SplitStackV4Primary,
         _ => IpVersion::IPv4,
     };
-    show_reality_qty_prompt(
-        &*event.adapter,
-        &event.target,
-        &event.msg_id,
-        ip_version,
-        proto,
-    )
-    .await?;
+    show_reality_qty_prompt(&*adapter, &event.target, &event.msg_id, ip_version, proto).await?;
     Ok(HandlerAction::Done)
 }
 
@@ -1266,7 +1280,8 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
 
     if !MaintenanceManager::is_reality_base_ready().await {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -1274,7 +1289,7 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
             )
             .await?;
         trigger_reality_auto_init(
-            event.adapter.clone(),
+            event.output.as_adapter().clone(),
             event.target.clone(),
             event.msg_id.clone(),
         );
@@ -1295,7 +1310,8 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
     };
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -1314,7 +1330,7 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
     };
 
-    let adapter = event.adapter.clone();
+    let adapter = event.output.as_adapter().clone();
     let target = event.target.clone();
 
     match res {
@@ -1399,7 +1415,7 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
                     )
                     .await;
                 trigger_reality_auto_init(
-                    event.adapter.clone(),
+                    event.output.as_adapter().clone(),
                     event.target.clone(),
                     event.msg_id.clone(),
                 );
@@ -1444,7 +1460,8 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
 
     if !MaintenanceManager::is_reality_base_ready().await {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -1452,7 +1469,7 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
             )
             .await?;
         trigger_reality_auto_init(
-            event.adapter.clone(),
+            event.output.as_adapter().clone(),
             event.target.clone(),
             event.msg_id.clone(),
         );
@@ -1473,7 +1490,8 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
     };
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -1492,7 +1510,7 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
     };
 
-    let adapter = event.adapter.clone();
+    let adapter = event.output.as_adapter().clone();
     let target = event.target.clone();
 
     match res {
@@ -1577,7 +1595,7 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
                     )
                     .await;
                 trigger_reality_auto_init(
-                    event.adapter.clone(),
+                    event.output.as_adapter().clone(),
                     event.target.clone(),
                     event.msg_id.clone(),
                 );
@@ -1629,7 +1647,8 @@ async fn handle_kcp_init(event: &CallbackEvent) -> HandlerResult {
     ];
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -1670,7 +1689,8 @@ async fn handle_kcp_cat(event: &CallbackEvent) -> HandlerResult {
         .join("\n\n");
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -1693,7 +1713,8 @@ async fn handle_kcp_add(event: &CallbackEvent) -> HandlerResult {
     let code = data.strip_prefix("u_kcp_add:").unwrap_or("ml");
     if code == "rl" {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -1717,7 +1738,8 @@ async fn handle_kcp_add(event: &CallbackEvent) -> HandlerResult {
             }],
         ];
         event
-            .adapter
+            .output
+            .as_adapter()
             .edit_message(
                 &event.target,
                 &event.msg_id,
@@ -1736,7 +1758,8 @@ async fn handle_kcp_add(event: &CallbackEvent) -> HandlerResult {
     if let Some(m) = KcpMask::from_code(code) {
         if let Err(e) = m.is_compatible_with(&[]) {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
                 .await?;
             return Ok(HandlerAction::Done);
@@ -1757,7 +1780,8 @@ async fn handle_kcp_add(event: &CallbackEvent) -> HandlerResult {
             }],
         ];
         event
-            .adapter
+            .output
+            .as_adapter()
             .edit_message(
                 &event.target,
                 &event.msg_id,
@@ -1863,7 +1887,8 @@ async fn handle_kcp_more(event: &CallbackEvent) -> HandlerResult {
     }]);
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -1958,7 +1983,8 @@ async fn handle_kcp_mcat(event: &CallbackEvent) -> HandlerResult {
         .join("\n\n");
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -2004,7 +2030,8 @@ async fn handle_kcp_push(event: &CallbackEvent) -> HandlerResult {
         Some(m) => m,
         None => {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -2017,7 +2044,8 @@ async fn handle_kcp_push(event: &CallbackEvent) -> HandlerResult {
 
     if let Err(e) = new_mask.is_compatible_with(&current_masks) {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
             .await?;
         return Ok(HandlerAction::Done);
@@ -2055,7 +2083,8 @@ async fn handle_kcp_push(event: &CallbackEvent) -> HandlerResult {
     ];
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -2076,7 +2105,8 @@ async fn handle_kcp_done(event: &CallbackEvent) -> HandlerResult {
 
     if codes.is_empty() {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -2092,7 +2122,8 @@ async fn handle_kcp_done(event: &CallbackEvent) -> HandlerResult {
 
     if let Err(e) = KcpMask::validate_stack(&ordered) {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
             .await?;
         return Ok(HandlerAction::Done);
@@ -2138,7 +2169,8 @@ async fn handle_kcp_done(event: &CallbackEvent) -> HandlerResult {
     };
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -2224,7 +2256,8 @@ async fn handle_kcp_ip(event: &CallbackEvent) -> HandlerResult {
     ];
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .edit_message(
             &event.target,
             &event.msg_id,
@@ -2279,7 +2312,8 @@ async fn handle_kcp_ok(event: &CallbackEvent) -> HandlerResult {
     let mask_label = mask_names.join("+");
 
     event
-        .adapter
+        .output
+        .as_adapter()
         .answer_callback(
             &event.target,
             &event.callback_id,
@@ -2289,7 +2323,7 @@ async fn handle_kcp_ok(event: &CallbackEvent) -> HandlerResult {
 
     let res = ConfigManager::batch_create_kcp(n, ip_version, &mask_codes).await;
 
-    let adapter = event.adapter.clone();
+    let adapter = event.output.as_adapter().clone();
     let target = event.target.clone();
 
     match res {
@@ -2385,7 +2419,8 @@ async fn handle_user_list(event: &CallbackEvent) -> HandlerResult {
         .unwrap_or_default();
     if let Err(e) = utils::validate_idx(idx, inbounds.len(), &t!("xray.user_label")) {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(&event.target, &event.callback_id, Some(format!("❌ {}", e)))
             .await?;
         return Ok(HandlerAction::Done);
@@ -2410,7 +2445,8 @@ async fn handle_user_list(event: &CallbackEvent) -> HandlerResult {
             data: "m_usr".into(),
         }]);
         event
-            .adapter
+            .output
+            .as_adapter()
             .edit_message(
                 &event.target,
                 &event.msg_id,
@@ -2455,7 +2491,8 @@ async fn handle_user_del(event: &CallbackEvent) -> HandlerResult {
                 }],
             ];
             event
-                .adapter
+                .output
+                .as_adapter()
                 .edit_message(
                     &event.target,
                     &event.msg_id,
@@ -2471,7 +2508,8 @@ async fn handle_user_del(event: &CallbackEvent) -> HandlerResult {
                 .await?;
         } else {
             event
-                .adapter
+                .output
+                .as_adapter()
                 .answer_callback(
                     &event.target,
                     &event.callback_id,
@@ -2494,7 +2532,8 @@ async fn handle_user_del_confirm(event: &CallbackEvent) -> HandlerResult {
     if parts.len() == 2 {
         let email = parts[1];
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -2574,7 +2613,7 @@ async fn handle_domain_yes(event: &CallbackEvent, state: &AppState, data: &str) 
         return Ok(HandlerAction::Done);
     }
     let source = source.unwrap();
-    let platform = event.adapter.platform();
+    let platform = event.output.as_adapter().platform();
     state
         .start_domain_input(
             platform,
@@ -2584,7 +2623,8 @@ async fn handle_domain_yes(event: &CallbackEvent, state: &AppState, data: &str) 
         )
         .await;
     event
-        .adapter
+        .output
+        .as_adapter()
         .send_message(
             &event.target,
             MessageContent {
@@ -2599,7 +2639,8 @@ async fn handle_domain_yes(event: &CallbackEvent, state: &AppState, data: &str) 
 async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
     if let Some(mode) = one_click_domain_no_mode(data) {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -2607,7 +2648,8 @@ async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
             )
             .await?;
         let event = CallbackEvent {
-            adapter: event.adapter.clone(),
+            output: event.output.clone(),
+            origin: event.origin.clone(),
             target: event.target.clone(),
             user_id: event.user_id.clone(),
             msg_id: event.msg_id.clone(),
@@ -2623,12 +2665,13 @@ async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
         return Ok(HandlerAction::Done);
     }
 
+    let adapter = event.output.as_adapter().clone();
     if MaintenanceManager::is_reality_base_ready().await {
-        show_reality_batch_prompt(&*event.adapter, &event.target, &event.msg_id, Proto::XHTTP)
-            .await?;
+        show_reality_batch_prompt(&*adapter, &event.target, &event.msg_id, Proto::XHTTP).await?;
     } else {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -2636,7 +2679,8 @@ async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
             )
             .await?;
         event
-            .adapter
+            .output
+            .as_adapter()
             .edit_message(
                 &event.target,
                 &event.msg_id,
@@ -2647,7 +2691,7 @@ async fn handle_domain_no(event: &CallbackEvent, data: &str) -> HandlerResult {
             )
             .await?;
         trigger_reality_auto_init(
-            event.adapter.clone(),
+            event.output.as_adapter().clone(),
             event.target.clone(),
             event.msg_id.clone(),
         );
@@ -2666,7 +2710,7 @@ async fn handle_domain_provider(
     }
     let provider = provider.unwrap();
     let target_str = &event.target.0;
-    let platform = event.adapter.platform();
+    let platform = event.output.as_adapter().platform();
     let transitioned = state
         .transition_domain_input(
             platform,
@@ -2678,7 +2722,8 @@ async fn handle_domain_provider(
         .await;
     if !transitioned {
         event
-            .adapter
+            .output
+            .as_adapter()
             .answer_callback(
                 &event.target,
                 &event.callback_id,
@@ -2688,7 +2733,8 @@ async fn handle_domain_provider(
         return Ok(HandlerAction::Done);
     }
     event
-        .adapter
+        .output
+        .as_adapter()
         .send_message(
             &event.target,
             MessageContent {
