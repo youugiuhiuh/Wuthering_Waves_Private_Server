@@ -6,6 +6,8 @@ use serde_json::{Value, json};
 
 use super::config::ConfigManager;
 use super::kcp_mask::KcpMask;
+use crate::core::paths::singbox;
+use crate::core::singbox::config::SingBoxConfigManager;
 use crate::core::types::BatchCreationResult;
 
 impl ConfigManager {
@@ -42,7 +44,13 @@ impl ConfigManager {
             },
             "streamSettings": {
                 "network": "kcp",
-                "security": "none",
+                "security": "tls",
+                "tlsSettings": {
+                    "certificates": [{
+                        "certificateFile": singbox::TLS_CERT,
+                        "keyFile": singbox::TLS_KEY
+                    }]
+                },
                 "finalmask": {
                     "udp": udp_array
                 },
@@ -70,6 +78,7 @@ impl ConfigManager {
         email: &str,
         ip_version: crate::core::types::IpVersion,
         masks: &[KcpMask],
+        pin: &str,
     ) -> String {
         let udp_array: Vec<Value> = masks.iter().map(|m| m.as_json()).collect();
         let finalmask_json = json!({"udp": udp_array});
@@ -83,10 +92,11 @@ impl ConfigManager {
             | crate::core::types::IpVersion::SplitStackV4Primary => host.to_string(),
         };
         let encoded_email = utf8_percent_encode(email, NON_ALPHANUMERIC).to_string();
+        let encoded_pin = utf8_percent_encode(pin, NON_ALPHANUMERIC).to_string();
 
         format!(
-            "vless://{}@{}:{}?encryption=none&type=kcp&security=none&fm={}#{}",
-            uuid, fmt_host, port, fm_encoded, encoded_email
+            "vless://{}@{}:{}?encryption=none&type=kcp&security=tls&pcs={}&fm={}#{}",
+            uuid, fmt_host, port, encoded_pin, fm_encoded, encoded_email
         )
     }
 
@@ -96,6 +106,8 @@ impl ConfigManager {
         mask_codes: &[&str],
     ) -> Result<BatchCreationResult> {
         let masks = KcpMask::parse_codes(mask_codes).map_err(|e| anyhow!("{}", e))?;
+        SingBoxConfigManager::ensure_tls_certificates().await?;
+        let cert_pin = SingBoxConfigManager::compute_cert_sha256_pin(singbox::TLS_CERT).await?;
 
         let mask_types: Vec<&str> = masks.iter().map(|m| m.type_str()).collect();
         let mask_label = mask_types.join("+");
@@ -134,8 +146,9 @@ impl ConfigManager {
             let config = Self::build_kcp_inbound(&tag, port, &uuid, &email, ip_version, &masks);
             batch_configs.push(config);
 
-            let link =
-                Self::generate_kcp_client_link(&uuid, &host, port, &email, ip_version, &masks);
+            let link = Self::generate_kcp_client_link(
+                &uuid, &host, port, &email, ip_version, &masks, &cert_pin,
+            );
             links.push(link);
 
             let _ =
@@ -150,57 +163,77 @@ impl ConfigManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::paths::singbox;
     use crate::core::types::IpVersion;
     use serde_json::json;
-    use std::process::Command;
-
-    fn xray_available() -> bool {
-        Command::new("xray")
-            .arg("version")
-            .output()
-            .is_ok_and(|o| o.status.success())
-    }
-
-    fn validate_inbound(config: &Value, name: &str) {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let config_path = dir.path().join(format!("kcp_test_{name}.json"));
-        let full = json!({"inbounds": [config]});
-        let file = std::fs::File::create(&config_path).unwrap();
-        serde_json::to_writer_pretty(file, &full).unwrap();
-
-        let output = Command::new("xray")
-            .args(["convert", "pb", "-outpbfile", "/dev/null"])
-            .arg(config_path.to_str().unwrap())
-            .output()
-            .expect("xray convert pb failed");
-
-        assert!(
-            output.status.success(),
-            "xray rejected mask '{name}': {}",
-            String::from_utf8_lossy(&output.stderr)
-                .lines()
-                .last()
-                .unwrap_or("")
+    fn assert_finalmask(config: &Value, expected: Value) {
+        assert_eq!(
+            config["streamSettings"]["finalmask"]["udp"],
+            json!([expected])
         );
     }
 
-    #[test]
-    fn test_kcp_finalmask_xray_available() {
-        assert!(
-            xray_available(),
-            "xray not found — install xray-core v26.6.1+"
-        );
-    }
-
-    #[test]
-    fn test_kcp_finalmask_mkcp_legacy_with_xray() {
-        if !xray_available() {
-            return;
+    fn expected_mask(mask_type: &str, settings: Value) -> Value {
+        let mut mask = json!({"type": mask_type});
+        if settings != json!({}) {
+            mask["settings"] = settings;
         }
+        mask
+    }
 
-        for (variant, header, value) in [
+    #[test]
+    fn test_kcp_inbound_always_uses_shared_tls_certificate() {
+        let config = ConfigManager::build_kcp_inbound(
+            "test",
+            9999,
+            "550e8400-e29b-41d4-a716-446655440000",
+            "test@test",
+            IpVersion::IPv4,
+            &[KcpMask::Noise],
+        );
+
+        assert_eq!(config["streamSettings"]["security"], "tls");
+        assert_eq!(
+            config["streamSettings"]["tlsSettings"]["certificates"][0]["certificateFile"],
+            singbox::TLS_CERT,
+        );
+        assert_eq!(
+            config["streamSettings"]["tlsSettings"]["certificates"][0]["keyFile"],
+            singbox::TLS_KEY,
+        );
+    }
+
+    #[test]
+    fn test_kcp_link_uses_percent_encoded_pinned_tls_without_insecure_bypass() {
+        let link = ConfigManager::generate_kcp_client_link(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "203.0.113.1",
+            9999,
+            "test@test",
+            IpVersion::IPv4,
+            &[KcpMask::Noise],
+            "AA:BB:CC:DD",
+        );
+
+        assert!(link.contains("type=kcp"));
+        assert!(link.contains("security=tls"));
+        assert!(link.contains("pcs=AA%3ABB%3ACC%3ADD"));
+        assert!(!link.contains("allowInsecure"));
+        assert!(!link.contains("security=none"));
+        assert!(!link.contains("vcn"));
+    }
+
+    #[test]
+    fn test_kcp_finalmask_mkcp_legacy() {
+        for (_variant, header, value) in [
             ("header+dns+value", Some("dns"), Some("example.com")),
             ("header+wechat+value", Some("wechat"), Some("123456")),
+            ("header-only-dns", Some("dns"), None),
+            ("header-only-wechat", Some("wechat"), None),
+            ("header-only-srtp", Some("srtp"), None),
+            ("header-only-utp", Some("utp"), None),
+            ("header-only-dtls", Some("dtls"), None),
+            ("header-only-wireguard", Some("wireguard"), None),
             ("value-only", None, Some("pwd")),
             ("no-settings", None, None),
         ] {
@@ -216,16 +249,18 @@ mod tests {
                 IpVersion::IPv4,
                 &[mask],
             );
-            validate_inbound(&config, &format!("mkcp-legacy-{variant}"));
+            let settings = match (header, value) {
+                (Some(header), Some(value)) => json!({"header": header, "value": value}),
+                (None, Some(value)) => json!({"value": value}),
+                (None, None) => json!({}),
+                (Some(header), None) => json!({"header": header}),
+            };
+            assert_finalmask(&config, expected_mask("mkcp-legacy", settings));
         }
     }
 
     #[test]
-    fn test_kcp_finalmask_noise_with_xray() {
-        if !xray_available() {
-            return;
-        }
-
+    fn test_kcp_finalmask_noise() {
         let config = ConfigManager::build_kcp_inbound(
             "test",
             9999,
@@ -234,16 +269,12 @@ mod tests {
             IpVersion::IPv4,
             &[KcpMask::Noise],
         );
-        validate_inbound(&config, "noise");
+        assert_finalmask(&config, json!({"type": "noise"}));
     }
 
     #[test]
-    fn test_kcp_finalmask_salamander_with_xray() {
-        if !xray_available() {
-            return;
-        }
-
-        for (variant, packet_size) in [
+    fn test_kcp_finalmask_salamander() {
+        for (_variant, packet_size) in [
             ("with-packet-size", Some((512, 1200))),
             ("no-packet-size", None),
         ] {
@@ -259,16 +290,19 @@ mod tests {
                 IpVersion::IPv4,
                 &[mask],
             );
-            validate_inbound(&config, &format!("salamander-{variant}"));
+            let settings = match packet_size {
+                Some((min, max)) => json!({
+                    "password": "test",
+                    "packetSize": format!("{min}-{max}"),
+                }),
+                None => json!({"password": "test"}),
+            };
+            assert_finalmask(&config, expected_mask("salamander", settings));
         }
     }
 
     #[test]
-    fn test_kcp_finalmask_sudoku_with_xray() {
-        if !xray_available() {
-            return;
-        }
-
+    fn test_kcp_finalmask_sudoku() {
         let config = ConfigManager::build_kcp_inbound(
             "test",
             9999,
@@ -279,15 +313,14 @@ mod tests {
                 password: "test".into(),
             }],
         );
-        validate_inbound(&config, "sudoku");
+        assert_finalmask(
+            &config,
+            json!({"type": "sudoku", "settings": {"password": "test"}}),
+        );
     }
 
     #[test]
-    fn test_kcp_finalmask_xdns_with_xray() {
-        if !xray_available() {
-            return;
-        }
-
+    fn test_kcp_finalmask_xdns() {
         let config = ConfigManager::build_kcp_inbound(
             "test",
             9999,
@@ -299,16 +332,21 @@ mod tests {
                 resolvers: vec!["example.com+udp://8.8.8.8:53".into()],
             }],
         );
-        validate_inbound(&config, "xdns");
+        assert_finalmask(
+            &config,
+            json!({
+                "type": "xdns",
+                "settings": {
+                    "domains": ["example.com"],
+                    "resolvers": ["example.com+udp://8.8.8.8:53"],
+                },
+            }),
+        );
     }
 
     #[test]
-    fn test_kcp_finalmask_xicmp_with_xray() {
-        if !xray_available() {
-            return;
-        }
-
-        for (variant, dgram, ips) in [
+    fn test_kcp_finalmask_xicmp() {
+        for (_variant, dgram, ips) in [
             ("dgram+ips", true, &["1.2.3.4", "5.6.7.8"] as &[&str]),
             ("no-settings", false, &[] as &[&str]),
         ] {
@@ -323,16 +361,17 @@ mod tests {
                     ips: ips.iter().map(|s| s.to_string()).collect(),
                 }],
             );
-            validate_inbound(&config, &format!("xicmp-{variant}"));
+            let settings = if dgram || !ips.is_empty() {
+                json!({"dgram": dgram, "ips": ips})
+            } else {
+                json!({})
+            };
+            assert_finalmask(&config, expected_mask("xicmp", settings));
         }
     }
 
     #[test]
-    fn test_kcp_finalmask_realm_with_xray() {
-        if !xray_available() {
-            return;
-        }
-
+    fn test_kcp_finalmask_realm() {
         let config = ConfigManager::build_kcp_inbound(
             "test",
             9999,
@@ -344,15 +383,20 @@ mod tests {
                 stun_servers: vec!["stun.l.google.com:19302".into()],
             }],
         );
-        validate_inbound(&config, "realm");
+        assert_finalmask(
+            &config,
+            json!({
+                "type": "realm",
+                "settings": {
+                    "url": "realm://token@example.com:443/id",
+                    "stunServers": ["stun.l.google.com:19302"],
+                },
+            }),
+        );
     }
 
     #[test]
-    fn test_kcp_finalmask_combined_with_xray() {
-        if !xray_available() {
-            return;
-        }
-
+    fn test_kcp_finalmask_combined() {
         let config = ConfigManager::build_kcp_inbound(
             "test",
             9999,
@@ -382,6 +426,31 @@ mod tests {
                 },
             ],
         );
-        validate_inbound(&config, "combined");
+        assert_eq!(
+            config["streamSettings"]["finalmask"]["udp"],
+            json!([
+                {
+                    "type": "mkcp-legacy",
+                    "settings": {"header": "dns", "value": "example.com"},
+                },
+                {"type": "noise"},
+                {
+                    "type": "salamander",
+                    "settings": {"password": "test", "packetSize": "512-1200"},
+                },
+                {"type": "sudoku", "settings": {"password": "test"}},
+                {
+                    "type": "xicmp",
+                    "settings": {"dgram": true, "ips": ["1.2.3.4"]},
+                },
+                {
+                    "type": "realm",
+                    "settings": {
+                        "url": "realm://token@example.com:443/id",
+                        "stunServers": ["stun.l.google.com:19302"],
+                    },
+                },
+            ])
+        );
     }
 }
