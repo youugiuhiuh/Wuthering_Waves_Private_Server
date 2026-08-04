@@ -228,6 +228,12 @@ mod tests {
         for (_variant, header, value) in [
             ("header+dns+value", Some("dns"), Some("example.com")),
             ("header+wechat+value", Some("wechat"), Some("123456")),
+            ("header-only-dns", Some("dns"), None),
+            ("header-only-wechat", Some("wechat"), None),
+            ("header-only-srtp", Some("srtp"), None),
+            ("header-only-utp", Some("utp"), None),
+            ("header-only-dtls", Some("dtls"), None),
+            ("header-only-wireguard", Some("wireguard"), None),
             ("value-only", None, Some("pwd")),
             ("no-settings", None, None),
         ] {
