@@ -164,9 +164,11 @@ impl ConfigManager {
 mod tests {
     use super::*;
     use crate::core::paths::singbox;
+    use crate::core::singbox::config::SingBoxConfigManager;
     use crate::core::types::IpVersion;
     use serde_json::json;
     use std::process::Command;
+    use std::sync::OnceLock;
 
     fn xray_available() -> bool {
         Command::new("xray")
@@ -176,6 +178,17 @@ mod tests {
     }
 
     fn validate_inbound(config: &Value, name: &str) {
+        static TLS_CERTIFICATES: OnceLock<Result<(), String>> = OnceLock::new();
+        TLS_CERTIFICATES
+            .get_or_init(|| {
+                tokio::runtime::Runtime::new()
+                    .map_err(|error| error.to_string())?
+                    .block_on(SingBoxConfigManager::ensure_tls_certificates())
+                    .map_err(|error| error.to_string())
+            })
+            .as_ref()
+            .expect("shared TLS certificate setup");
+
         let dir = tempfile::tempdir().expect("tempdir");
         let config_path = dir.path().join(format!("kcp_test_{name}.json"));
         let full = json!({"inbounds": [config]});
@@ -245,6 +258,7 @@ mod tests {
         assert!(link.contains("pcs=AA%3ABB%3ACC%3ADD"));
         assert!(!link.contains("allowInsecure"));
         assert!(!link.contains("security=none"));
+        assert!(!link.contains("vcn"));
     }
 
     #[test]
