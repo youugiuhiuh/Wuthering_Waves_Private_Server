@@ -6,6 +6,8 @@ use serde_json::{Value, json};
 
 use super::config::ConfigManager;
 use super::kcp_mask::KcpMask;
+use crate::core::paths::singbox;
+use crate::core::singbox::config::SingBoxConfigManager;
 use crate::core::types::BatchCreationResult;
 
 impl ConfigManager {
@@ -42,7 +44,13 @@ impl ConfigManager {
             },
             "streamSettings": {
                 "network": "kcp",
-                "security": "none",
+                "security": "tls",
+                "tlsSettings": {
+                    "certificates": [{
+                        "certificateFile": singbox::TLS_CERT,
+                        "keyFile": singbox::TLS_KEY
+                    }]
+                },
                 "finalmask": {
                     "udp": udp_array
                 },
@@ -70,6 +78,7 @@ impl ConfigManager {
         email: &str,
         ip_version: crate::core::types::IpVersion,
         masks: &[KcpMask],
+        pin: &str,
     ) -> String {
         let udp_array: Vec<Value> = masks.iter().map(|m| m.as_json()).collect();
         let finalmask_json = json!({"udp": udp_array});
@@ -83,10 +92,11 @@ impl ConfigManager {
             | crate::core::types::IpVersion::SplitStackV4Primary => host.to_string(),
         };
         let encoded_email = utf8_percent_encode(email, NON_ALPHANUMERIC).to_string();
+        let encoded_pin = utf8_percent_encode(pin, NON_ALPHANUMERIC).to_string();
 
         format!(
-            "vless://{}@{}:{}?encryption=none&type=kcp&security=none&fm={}#{}",
-            uuid, fmt_host, port, fm_encoded, encoded_email
+            "vless://{}@{}:{}?encryption=none&type=kcp&security=tls&pcs={}&fm={}#{}",
+            uuid, fmt_host, port, encoded_pin, fm_encoded, encoded_email
         )
     }
 
@@ -96,6 +106,8 @@ impl ConfigManager {
         mask_codes: &[&str],
     ) -> Result<BatchCreationResult> {
         let masks = KcpMask::parse_codes(mask_codes).map_err(|e| anyhow!("{}", e))?;
+        SingBoxConfigManager::ensure_tls_certificates().await?;
+        let cert_pin = SingBoxConfigManager::compute_cert_sha256_pin(singbox::TLS_CERT).await?;
 
         let mask_types: Vec<&str> = masks.iter().map(|m| m.type_str()).collect();
         let mask_label = mask_types.join("+");
@@ -134,8 +146,9 @@ impl ConfigManager {
             let config = Self::build_kcp_inbound(&tag, port, &uuid, &email, ip_version, &masks);
             batch_configs.push(config);
 
-            let link =
-                Self::generate_kcp_client_link(&uuid, &host, port, &email, ip_version, &masks);
+            let link = Self::generate_kcp_client_link(
+                &uuid, &host, port, &email, ip_version, &masks, &cert_pin,
+            );
             links.push(link);
 
             let _ =
@@ -150,6 +163,7 @@ impl ConfigManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::paths::singbox;
     use crate::core::types::IpVersion;
     use serde_json::json;
     use std::process::Command;
@@ -190,6 +204,47 @@ mod tests {
             xray_available(),
             "xray not found — install xray-core v26.6.1+"
         );
+    }
+
+    #[test]
+    fn test_kcp_inbound_always_uses_shared_tls_certificate() {
+        let config = ConfigManager::build_kcp_inbound(
+            "test",
+            9999,
+            "550e8400-e29b-41d4-a716-446655440000",
+            "test@test",
+            IpVersion::IPv4,
+            &[KcpMask::Noise],
+        );
+
+        assert_eq!(config["streamSettings"]["security"], "tls");
+        assert_eq!(
+            config["streamSettings"]["tlsSettings"]["certificates"][0]["certificateFile"],
+            singbox::TLS_CERT,
+        );
+        assert_eq!(
+            config["streamSettings"]["tlsSettings"]["certificates"][0]["keyFile"],
+            singbox::TLS_KEY,
+        );
+    }
+
+    #[test]
+    fn test_kcp_link_uses_percent_encoded_pinned_tls_without_insecure_bypass() {
+        let link = ConfigManager::generate_kcp_client_link(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "203.0.113.1",
+            9999,
+            "test@test",
+            IpVersion::IPv4,
+            &[KcpMask::Noise],
+            "AA:BB:CC:DD",
+        );
+
+        assert!(link.contains("type=kcp"));
+        assert!(link.contains("security=tls"));
+        assert!(link.contains("pcs=AA%3ABB%3ACC%3ADD"));
+        assert!(!link.contains("allowInsecure"));
+        assert!(!link.contains("security=none"));
     }
 
     #[test]
