@@ -24,6 +24,33 @@ pub enum Proto {
 #[derive(Debug, Clone)]
 pub struct ConfigManager;
 
+const XHTTP_PATH_BASES: &[&str] = &[
+    "/events",
+    "/event-stream",
+    "/stream",
+    "/live",
+    "/updates",
+    "/notifications",
+    "/subscribe",
+    "/subscriptions",
+    "/realtime",
+    "/feed",
+    "/activity",
+    "/changes",
+    "/sync",
+    "/messages",
+    "/channels",
+    "/sessions",
+    "/presence",
+    "/api/events",
+    "/api/stream",
+    "/api/updates",
+    "/api/notifications",
+    "/v1/events",
+    "/v1/stream",
+    "/v1/updates",
+];
+
 impl ConfigManager {
     #[allow(dead_code)]
     const CONFIG_BASE_PATH: &'static str = xray::DIR;
@@ -137,14 +164,15 @@ impl ConfigManager {
 
     pub(crate) fn generate_random_path() -> String {
         let mut rng = StdRng::from_entropy();
-        let suffix: String = (0..5)
+        let base = XHTTP_PATH_BASES[rng.gen_range(0..XHTTP_PATH_BASES.len())];
+        let id: String = (0..10)
             .map(|_| {
                 let charset = b"abcdefghijklmnopqrstuvwxyz0123456789";
                 let idx = rng.gen_range(0..charset.len());
                 charset[idx] as char
             })
             .collect();
-        format!("/xhttp_{}", suffix)
+        format!("{base}/{id}")
     }
 
     pub async fn generate_secure_batch_filename(proto: Proto) -> Result<String> {
@@ -761,6 +789,32 @@ mod tests {
             vless["streamSettings"]["realitySettings"]["minClientVer"],
             "1.0.0"
         );
+    }
+
+    #[test]
+    fn generated_xhttp_paths_use_realistic_resource_format() {
+        for _ in 0..128 {
+            let path = ConfigManager::generate_random_path();
+            let (base, id) = path
+                .rsplit_once('/')
+                .expect("path must contain a resource ID");
+
+            assert!(
+                XHTTP_PATH_BASES.contains(&base),
+                "unexpected path base: {path}"
+            );
+            assert_eq!(id.len(), 10, "resource ID must be 10 characters: {path}");
+            assert!(
+                id.bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit()),
+                "resource ID must be lowercase ASCII alphanumeric: {path}"
+            );
+            assert!(!path.contains('?'), "path must not contain a query: {path}");
+            assert!(
+                !path.starts_with("/xhttp_"),
+                "legacy prefix remains: {path}"
+            );
+        }
     }
 
     #[test]
