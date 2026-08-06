@@ -7,6 +7,40 @@ import (
 	"testing"
 )
 
+func TestValidateAdminID(t *testing.T) {
+	for _, id := range []string{"0", "9223372036854775807", "-9223372036854775808"} {
+		if err := validateAdminID(id); err != nil {
+			t.Errorf("validateAdminID(%q) unexpected error: %v", id, err)
+		}
+	}
+
+	for _, id := range []string{"", "not-a-number", "9223372036854775808"} {
+		if err := validateAdminID(id); err == nil {
+			t.Errorf("validateAdminID(%q) expected error", id)
+		}
+	}
+}
+
+func TestRunSetupCommandReturnsFailure(t *testing.T) {
+	if err := runSetupCommand("/bin/false", []byte(`{}`)); err == nil {
+		t.Fatal("runSetupCommand() expected error")
+	}
+}
+
+func TestPlatformFromService(t *testing.T) {
+	tests := map[string]string{
+		"ExecStart=/etc/wwps/aegis/aegis":           "tg",
+		"ExecStart=/etc/wwps/aegis/aegis --matrix":  "matrix",
+		"ExecStart=/etc/wwps/aegis/aegis --discord": "discord",
+		"ExecStart=/etc/wwps/aegis/aegis --all":     "tg-matrix",
+	}
+	for service, want := range tests {
+		if got := platformFromService([]byte(service)); got != want {
+			t.Errorf("platformFromService(%q) = %q, want %q", service, got, want)
+		}
+	}
+}
+
 func TestUninstallManifestIncludesRustArtifacts(t *testing.T) {
 	wantServices := []string{"wwps-aegis", "wwps-core", "wwps-box"}
 	wantPaths := []string{
