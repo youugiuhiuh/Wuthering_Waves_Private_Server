@@ -603,9 +603,7 @@ func helperMemguardCleanup() {
 		os.Exit(1)
 	}
 
-	zeroBytes(slices[0])
-	zeroBytes(slices[1])
-	zeroBytes(slices[2])
+	_ = slices // Destroy() wipes these buffers; do not zeroBytes frozen memory
 
 	fmt.Println("CONTINUED")
 	os.Exit(0)

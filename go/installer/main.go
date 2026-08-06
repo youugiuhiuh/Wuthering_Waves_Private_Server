@@ -1235,10 +1235,6 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		return "", err
 	}
 
-	zeroBytes(bTokenBytes)
-	zeroBytes(aIDBytes)
-	zeroBytes(tSecretBytes)
-
 	return servicePlatformForSetup(enableTG, enableMatrix, enableDiscord), nil
 }
 
