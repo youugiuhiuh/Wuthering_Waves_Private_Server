@@ -41,6 +41,51 @@ func TestPlatformFromService(t *testing.T) {
 	}
 }
 
+func TestPlatformSetupForChoice(t *testing.T) {
+	tests := map[string]struct {
+		tg      bool
+		matrix  bool
+		discord bool
+	}{
+		"1": {tg: true},
+		"2": {matrix: true},
+		"3": {discord: true},
+		"4": {tg: true, matrix: true},
+	}
+
+	for choice, want := range tests {
+		tg, matrix, discord, err := platformSetupForChoice(choice)
+		if err != nil {
+			t.Errorf("platformSetupForChoice(%q) unexpected error: %v", choice, err)
+		}
+		if tg != want.tg || matrix != want.matrix || discord != want.discord {
+			t.Errorf("platformSetupForChoice(%q) = (%t, %t, %t), want (%t, %t, %t)", choice, tg, matrix, discord, want.tg, want.matrix, want.discord)
+		}
+	}
+
+	if _, _, _, err := platformSetupForChoice("0"); err == nil {
+		t.Error("platformSetupForChoice(\"0\") expected error")
+	}
+}
+
+func TestServicePlatformForSetup(t *testing.T) {
+	tests := []struct {
+		tg, matrix, discord bool
+		want                string
+	}{
+		{tg: true, want: "tg"},
+		{matrix: true, want: "matrix"},
+		{discord: true, want: "discord"},
+		{tg: true, matrix: true, want: "tg-matrix"},
+	}
+
+	for _, test := range tests {
+		if got := servicePlatformForSetup(test.tg, test.matrix, test.discord); got != test.want {
+			t.Errorf("servicePlatformForSetup(%t, %t, %t) = %q, want %q", test.tg, test.matrix, test.discord, got, test.want)
+		}
+	}
+}
+
 func TestUninstallManifestIncludesRustArtifacts(t *testing.T) {
 	wantServices := []string{"wwps-aegis", "wwps-core", "wwps-box"}
 	wantPaths := []string{
