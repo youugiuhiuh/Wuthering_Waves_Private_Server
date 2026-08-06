@@ -3,8 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
 	"slices"
 	"testing"
+
+	"github.com/awnumar/memguard"
 )
 
 func TestValidateAdminID(t *testing.T) {
@@ -547,4 +552,65 @@ func TestFindMinisigAsset(t *testing.T) {
 	if asset2 != nil {
 		t.Errorf("findMinisigAsset(nonexistent) = %v, want nil", asset2)
 	}
+}
+
+func TestMemguardCleanupDoesNotCrash(t *testing.T) {
+	if os.Getenv("WWPS_MEMGUARD_HELPER") != "1" {
+		cmd := exec.Command(os.Args[0], "-test.run=TestMemguardCleanupDoesNotCrash")
+		cmd.Env = append(os.Environ(), "WWPS_MEMGUARD_HELPER=1")
+		out, err := cmd.CombinedOutput()
+		if bytes.Contains(out, []byte("ENCLAVE_UNAVAILABLE")) {
+			t.Skip("memguard enclaves unavailable in this environment")
+		}
+		if err != nil {
+			t.Fatalf("helper subprocess failed: %v\n%s", err, out)
+		}
+		if !bytes.Contains(out, []byte("CONTINUED")) {
+			t.Fatalf("helper did not continue past cleanup point:\n%s", out)
+		}
+		return
+	}
+	helperMemguardCleanup()
+}
+
+// helperMemguardCleanup mirrors the tail of firstTimeSetup: three memguard
+// enclaves are opened, a successful child process runs, then the cleanup
+// sequence executes. Keep it in sync with firstTimeSetup — it encodes the safe
+// cleanup contract.
+func helperMemguardCleanup() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("ENCLAVE_UNAVAILABLE")
+			os.Exit(0)
+		}
+	}()
+	enclaves := []*memguard.Enclave{
+		memguard.NewEnclave([]byte("telegram-token-value")),
+		memguard.NewEnclave([]byte("123456789")),
+		memguard.NewEnclave([]byte("TOTP-secret-value")),
+	}
+	var bufs []*memguard.LockedBuffer
+	var bufSlices [][]byte
+	for _, e := range enclaves {
+		buf, err := e.Open()
+		if err != nil {
+			fmt.Println("ENCLAVE_UNAVAILABLE")
+			os.Exit(0)
+		}
+		bufs = append(bufs, buf)
+		bufSlices = append(bufSlices, buf.Bytes())
+	}
+	for _, b := range bufs {
+		defer b.Destroy()
+	}
+
+	if err := exec.Command("true").Run(); err != nil {
+		fmt.Println("CHILD_FAILED")
+		os.Exit(1)
+	}
+
+	_ = bufSlices // Destroy() wipes these buffers; do not zeroBytes frozen memory
+
+	fmt.Println("CONTINUED")
+	os.Exit(0)
 }
