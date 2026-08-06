@@ -41,6 +41,29 @@ func TestPlatformFromService(t *testing.T) {
 	}
 }
 
+func TestRecoveryPlatformForService(t *testing.T) {
+	cases := []struct {
+		name     string
+		service  []byte
+		choice   string
+		platform string
+		rebuild  bool
+		wantErr  bool
+	}{
+		{"existing matrix", []byte("ExecStart=/aegis --matrix\n"), "", "matrix", false, false},
+		{"missing unit selection", nil, "4", "tg-matrix", true, false},
+		{"missing unit invalid selection", nil, "0", "", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			platform, rebuild, err := recoveryPlatformForService(tc.service, tc.choice)
+			if (err != nil) != tc.wantErr || platform != tc.platform || rebuild != tc.rebuild {
+				t.Fatalf("platform=%q rebuild=%t err=%v", platform, rebuild, err)
+			}
+		})
+	}
+}
+
 func TestPlatformSetupForChoice(t *testing.T) {
 	tests := map[string]struct {
 		tg      bool

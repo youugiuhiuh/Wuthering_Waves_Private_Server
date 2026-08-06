@@ -46,6 +46,7 @@
   "install.mem_protect_ok": "✓ 内存安全保护已启用",
   "install.start": "\n开始安装/更新 TG Bot…",
   "install.config_exists": "\n检测到已存在配置文件，跳过初始化设置。",
+  "install.service_missing": "无法读取服务文件。请选择平台以重建服务；凭据和加密配置不会被更改。",
   "install.service_failed": "启动服务失败: %s",
   "install.success": "\n✅ TG Bot 已成功安装并启动！",
   "install.manage_hint": "请前往 Telegram 与 Bot 对话进行管理。",
