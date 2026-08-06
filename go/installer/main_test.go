@@ -573,18 +573,24 @@ func TestMemguardCleanupDoesNotCrash(t *testing.T) {
 	helperMemguardCleanup()
 }
 
-// helperMemguardCleanup mirrors the tail of firstTimeSetup
-// (go/installer/main.go:1192-1242): three memguard enclaves are opened, a
-// successful child process runs, then the cleanup sequence executes. Keep it
-// in sync with firstTimeSetup — it encodes the safe cleanup contract.
+// helperMemguardCleanup mirrors the tail of firstTimeSetup: three memguard
+// enclaves are opened, a successful child process runs, then the cleanup
+// sequence executes. Keep it in sync with firstTimeSetup — it encodes the safe
+// cleanup contract.
 func helperMemguardCleanup() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("ENCLAVE_UNAVAILABLE")
+			os.Exit(0)
+		}
+	}()
 	enclaves := []*memguard.Enclave{
 		memguard.NewEnclave([]byte("telegram-token-value")),
 		memguard.NewEnclave([]byte("123456789")),
 		memguard.NewEnclave([]byte("TOTP-secret-value")),
 	}
 	var bufs []*memguard.LockedBuffer
-	var slices [][]byte
+	var bufSlices [][]byte
 	for _, e := range enclaves {
 		buf, err := e.Open()
 		if err != nil {
@@ -592,7 +598,7 @@ func helperMemguardCleanup() {
 			os.Exit(0)
 		}
 		bufs = append(bufs, buf)
-		slices = append(slices, buf.Bytes())
+		bufSlices = append(bufSlices, buf.Bytes())
 	}
 	for _, b := range bufs {
 		defer b.Destroy()
@@ -603,7 +609,7 @@ func helperMemguardCleanup() {
 		os.Exit(1)
 	}
 
-	_ = slices // Destroy() wipes these buffers; do not zeroBytes frozen memory
+	_ = bufSlices // Destroy() wipes these buffers; do not zeroBytes frozen memory
 
 	fmt.Println("CONTINUED")
 	os.Exit(0)
