@@ -1001,19 +1001,46 @@ func installFromKeyVal() {
 	finishDeploy(platform)
 }
 
+func platformSetupForChoice(choice string) (tg, matrix, discord bool, err error) {
+	switch choice {
+	case "1":
+		return true, false, false, nil
+	case "2":
+		return false, true, false, nil
+	case "3":
+		return false, false, true, nil
+	case "4":
+		return true, true, false, nil
+	default:
+		return false, false, false, fmt.Errorf("invalid platform")
+	}
+}
+
+func servicePlatformForSetup(tg, matrix, discord bool) string {
+	switch {
+	case tg && matrix:
+		return "tg-matrix"
+	case tg:
+		return "tg"
+	case matrix:
+		return "matrix"
+	case discord:
+		return "discord"
+	default:
+		return ""
+	}
+}
+
 func firstTimeSetup(binaryPath string) (string, error) {
 	printSkyBlue(i18n.T("firsttime.title"))
 
 	printSkyBlue(i18n.T("firsttime.section_platform"))
 	fmt.Print(i18n.T("firsttime.platform_prompt"))
 	platformChoice, _ := readLine()
-	enableTG := platformChoice == "1"
-	enableMatrix := platformChoice == "2"
-	enableDiscord := platformChoice == "3"
-
-	if platformChoice != "1" && platformChoice != "2" && platformChoice != "3" {
+	enableTG, enableMatrix, enableDiscord, err := platformSetupForChoice(platformChoice)
+	if err != nil {
 		printRed(i18n.T("firsttime.platform_invalid"))
-		return "", fmt.Errorf("invalid platform")
+		return "", err
 	}
 
 	var botTokenEnclave *memguard.Enclave
@@ -1094,22 +1121,14 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		totpSecretBuffer.Destroy()
 	}
 
-	printSkyBlue(i18n.T("firsttime.matrix_section"))
-	printYellow(i18n.T("firsttime.matrix_desc1"))
-	printYellow(i18n.T("firsttime.matrix_desc2"))
-	printYellow(i18n.T("firsttime.matrix_desc3"))
-
 	var matrixHS, matrixUser, matrixRoom, matrixRecoveryKey string
 	var matrixPassEnclave *memguard.Enclave
 
-	setupMatrix := enableMatrix
-	if !setupMatrix {
-		fmt.Print(i18n.T("firsttime.matrix_prompt_yn"))
-		choice, _ := readLine()
-		setupMatrix = choice == "y" || choice == "Y"
-	}
-
-	if setupMatrix {
+	if enableMatrix {
+		printSkyBlue(i18n.T("firsttime.matrix_section"))
+		printYellow(i18n.T("firsttime.matrix_desc1"))
+		printYellow(i18n.T("firsttime.matrix_desc2"))
+		printYellow(i18n.T("firsttime.matrix_desc3"))
 		printYellow(i18n.T("firsttime.matrix_hs_title"))
 		printYellow(i18n.T("firsttime.matrix_hs_default"))
 		printYellow(i18n.T("firsttime.matrix_hs_custom"))
@@ -1147,25 +1166,20 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		printSkyBlue(i18n.T("firsttime.discord_section"))
 		printYellow(i18n.T("firsttime.discord_desc1"))
 		printYellow(i18n.T("firsttime.discord_desc2"))
-		fmt.Print(i18n.T("firsttime.discord_prompt_yn"))
-		setupDiscord, _ := readLine()
+		printYellow(i18n.T("firsttime.discord_token_title"))
+		printYellow(i18n.T("firsttime.discord_token_help_step1"))
+		printYellow(i18n.T("firsttime.discord_token_help_step2"))
+		printYellow(i18n.T("firsttime.discord_token_help_format"))
+		discordToken = readSecureInputStr(i18n.T("firsttime.discord_token_prompt"))
 
-		if setupDiscord == "y" || setupDiscord == "Y" {
-			printYellow(i18n.T("firsttime.discord_token_title"))
-			printYellow(i18n.T("firsttime.discord_token_help_step1"))
-			printYellow(i18n.T("firsttime.discord_token_help_step2"))
-			printYellow(i18n.T("firsttime.discord_token_help_format"))
-			discordToken = readSecureInputStr(i18n.T("firsttime.discord_token_prompt"))
+		printYellow(i18n.T("firsttime.discord_admin_title"))
+		printYellow(i18n.T("firsttime.discord_admin_help_step1"))
+		printYellow(i18n.T("firsttime.discord_admin_help_step2"))
+		printYellow(i18n.T("firsttime.discord_admin_help_format"))
+		discordAdminID = readSecureInputStr(i18n.T("firsttime.discord_admin_prompt"))
 
-			printYellow(i18n.T("firsttime.discord_admin_title"))
-			printYellow(i18n.T("firsttime.discord_admin_help_step1"))
-			printYellow(i18n.T("firsttime.discord_admin_help_step2"))
-			printYellow(i18n.T("firsttime.discord_admin_help_format"))
-			discordAdminID = readSecureInputStr(i18n.T("firsttime.discord_admin_prompt"))
-
-			printYellow(i18n.T("firsttime.discord_intent_warning"))
-			printYellow(i18n.T("firsttime.discord_guild_warning"))
-		}
+		printYellow(i18n.T("firsttime.discord_intent_warning"))
+		printYellow(i18n.T("firsttime.discord_guild_warning"))
 	}
 
 	var bTokenBytes, aIDBytes, tSecretBytes []byte
@@ -1218,16 +1232,7 @@ func firstTimeSetup(binaryPath string) (string, error) {
 	zeroBytes(aIDBytes)
 	zeroBytes(tSecretBytes)
 
-	if enableDiscord {
-		return "discord", nil
-	}
-	if enableMatrix {
-		return "matrix", nil
-	}
-	if setupMatrix {
-		return "tg-matrix", nil
-	}
-	return "tg", nil
+	return servicePlatformForSetup(enableTG, enableMatrix, enableDiscord), nil
 }
 
 // readSecureInput 安全地从终端读取输入，直接返回加密的 Enclave，避免产生明文 string 垃圾

@@ -68,7 +68,7 @@
 
   "firsttime.title": "\n首次安装，开始配置 TG Bot…",
   "firsttime.section_platform": "\n========== 平台选择 ==========",
-  "firsttime.platform_prompt": "选择平台 (1=Telegram, 2=Matrix, 3=Discord): ",
+  "firsttime.platform_prompt": "选择平台 (1=Telegram, 2=Matrix, 3=Discord, 4=Telegram + Matrix): ",
   "firsttime.platform_invalid": "无效的平台选择",
   "firsttime.section_tg": "\n========== 配置 Telegram Bot ==========",
   "firsttime.tg_help_howto": "🤖 如何获取 TG Bot Token:",
@@ -91,7 +91,7 @@
   "firsttime.totp_manual_url": "手动添加链接: ",
   "firsttime.totp_clear_hint": "⚠ 绑定完成后请尽快清屏/关闭终端",
   "firsttime.totp_separator": "====================================",
-  "firsttime.matrix_section": "\n========== Matrix 敏感通知通道（可选）==========",
+  "firsttime.matrix_section": "\n========== Matrix 敏感通知通道 ==========",
   "firsttime.matrix_desc1": "💡 Matrix 可用于接收 Xray/Sing-box 的协议配置和",
   "firsttime.matrix_desc2": "   分享链接等敏感信息，避免中心化平台威胁。",
   "firsttime.matrix_desc3": "   如不配置，敏感信息将仍然通过 TG 发送。",
