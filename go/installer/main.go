@@ -742,10 +742,17 @@ func installAegis() {
 	if _, err := os.Stat(configPath); err == nil {
 		service, err := os.ReadFile(serviceFile)
 		if err != nil {
-			printRed("读取现有 systemd 服务失败: " + err.Error())
-			return
+			printYellow(i18n.T("install.service_missing"))
+			fmt.Print(i18n.T("firsttime.platform_prompt"))
+			choice, _ := readLine()
+			platform, _, err = recoveryPlatformForService(nil, choice)
+			if err != nil {
+				printRed(i18n.T("firsttime.platform_invalid"))
+				return
+			}
+		} else {
+			platform, _, _ = recoveryPlatformForService(service, "")
 		}
-		platform = platformFromService(service)
 		configExists = true
 	}
 
@@ -1274,6 +1281,17 @@ func platformFromService(service []byte) string {
 	default:
 		return "tg"
 	}
+}
+
+func recoveryPlatformForService(service []byte, choice string) (string, bool, error) {
+	if len(service) > 0 {
+		return platformFromService(service), false, nil
+	}
+	tg, matrix, discord, err := platformSetupForChoice(choice)
+	if err != nil {
+		return "", false, err
+	}
+	return servicePlatformForSetup(tg, matrix, discord), true, nil
 }
 
 func writeSystemdService(platform string) {

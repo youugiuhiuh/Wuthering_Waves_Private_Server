@@ -41,6 +41,7 @@
   "install.mem_protect_ok": "\u2713 Memory protection enabled",
   "install.start": "\nStarting install/update of TG Bot\u2026",
   "install.config_exists": "\nExisting configuration detected, skipping initialization.",
+  "install.service_missing": "The service file could not be read. Select its platform to rebuild it; credentials and encrypted configuration will not be changed.",
   "install.service_failed": "Failed to start service: %s",
   "install.success": "\n\u2705 TG Bot installed and started successfully!",
   "install.manage_hint": "Go to Telegram and talk to the Bot for management.",
