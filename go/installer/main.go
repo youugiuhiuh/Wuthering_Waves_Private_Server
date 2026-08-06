@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -735,18 +736,36 @@ func downloadAndDeployAegis() string {
 func installAegis() {
 	printSkyBlue(i18n.T("install.start"))
 
+	configPath := filepath.Join(installDir, "config.enc")
+	var platform string
+	configExists := false
+	if _, err := os.Stat(configPath); err == nil {
+		service, err := os.ReadFile(serviceFile)
+		if err != nil {
+			printRed("读取现有 systemd 服务失败: " + err.Error())
+			return
+		}
+		platform = platformFromService(service)
+		configExists = true
+	}
+
 	destPath := downloadAndDeployAegis()
 	if destPath == "" {
 		return
 	}
 
-	configPath := filepath.Join(installDir, "config.enc")
-	var platform string
-	if _, err := os.Stat(configPath); err == nil {
+	if configExists {
 		printGreen(i18n.T("install.config_exists"))
-		platform = "tg"
 	} else {
-		platform = firstTimeSetup(destPath)
+		var err error
+		platform, err = firstTimeSetup(destPath)
+		if err != nil {
+			return
+		}
+		if _, err := os.Stat(configPath); err != nil {
+			printRed(i18n.T("setup.failed", err.Error()))
+			return
+		}
 	}
 
 	writeSystemdService(platform)
@@ -780,13 +799,17 @@ func generateTOTPSecret(destPath string) string {
 	return string(rawSecret)
 }
 
-func runAegisSetup(destPath string, payload []byte) {
-	printYellow(i18n.T("setup.configuring"))
+func runSetupCommand(destPath string, payload []byte) error {
 	cmd := exec.Command(destPath, "--setup-stdin")
 	cmd.Stdin = bytes.NewReader(payload)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	return cmd.Run()
+}
+
+func runAegisSetup(destPath string, payload []byte) {
+	printYellow(i18n.T("setup.configuring"))
+	if err := runSetupCommand(destPath, payload); err != nil {
 		printRed(i18n.T("setup.failed", err.Error()))
 		os.Exit(1)
 	}
@@ -816,14 +839,21 @@ func installFromStdin() {
 		os.Exit(1)
 	}
 
-	destPath := downloadAndDeployAegis()
-	if destPath == "" {
-		os.Exit(1)
-	}
-
 	var inputData map[string]interface{}
 	if err := json.Unmarshal(payload, &inputData); err != nil {
 		printRed(i18n.T("stdin.parse_failed", err.Error()))
+		os.Exit(1)
+	}
+	if token, _ := inputData["token"].(string); token != "" {
+		adminID, ok := inputData["admin_id"].(string)
+		if !ok || validateAdminID(adminID) != nil {
+			printRed("admin_id 必须是有效的 i64")
+			os.Exit(1)
+		}
+	}
+
+	destPath := downloadAndDeployAegis()
+	if destPath == "" {
 		os.Exit(1)
 	}
 
@@ -865,6 +895,13 @@ type setupConfig struct {
 	DiscordToken          string
 	DiscordAdminID        string
 	MatrixRecoveryKey     string
+}
+
+func validateAdminID(id string) error {
+	if _, err := strconv.ParseInt(id, 10, 64); err != nil {
+		return fmt.Errorf("admin_id 必须是有效的 i64: %w", err)
+	}
+	return nil
 }
 
 func parseKeyVal(data []byte) (*setupConfig, error) {
@@ -911,6 +948,11 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 	}
 	if cfg.Token == "" && cfg.DiscordToken == "" && cfg.MatrixHS == "" {
 		return nil, fmt.Errorf("缺少必填字段: 至少需要配置 Telegram (token/admin_id)、Discord (discord_token/discord_admin_id) 或 Matrix (matrix_homeserver) 之一")
+	}
+	if cfg.Token != "" {
+		if err := validateAdminID(cfg.AdminID); err != nil {
+			return nil, err
+		}
 	}
 	return cfg, nil
 }
@@ -959,7 +1001,7 @@ func installFromKeyVal() {
 	finishDeploy(platform)
 }
 
-func firstTimeSetup(binaryPath string) string {
+func firstTimeSetup(binaryPath string) (string, error) {
 	printSkyBlue(i18n.T("firsttime.title"))
 
 	printSkyBlue(i18n.T("firsttime.section_platform"))
@@ -971,7 +1013,7 @@ func firstTimeSetup(binaryPath string) string {
 
 	if platformChoice != "1" && platformChoice != "2" && platformChoice != "3" {
 		printRed(i18n.T("firsttime.platform_invalid"))
-		return "tg"
+		return "", fmt.Errorf("invalid platform")
 	}
 
 	var botTokenEnclave *memguard.Enclave
@@ -1004,14 +1046,14 @@ func firstTimeSetup(binaryPath string) string {
 		totpSecretOutput, err := runCmdOutputBytes(binaryPath, "--generate-totp-secret")
 		if err != nil {
 			printRed(i18n.T("totp.generate_failed", err.Error()))
-			return ""
+			return "", err
 		}
 		defer zeroBytes(totpSecretOutput)
 
 		totpSecretRaw, err := extractBase32Secret(totpSecretOutput)
 		if err != nil {
 			printRed(i18n.T("totp.parse_failed", err.Error()))
-			return ""
+			return "", err
 		}
 		defer zeroBytes(totpSecretRaw)
 
@@ -1127,20 +1169,25 @@ func firstTimeSetup(binaryPath string) string {
 	}
 
 	var bTokenBytes, aIDBytes, tSecretBytes []byte
+	var bTokenBuf, aIDBuf, tSecretBuf *memguard.LockedBuffer
 	if botTokenEnclave != nil {
-		bTokenBuf, _ := botTokenEnclave.Open()
+		bTokenBuf, _ = botTokenEnclave.Open()
+		defer bTokenBuf.Destroy()
 		bTokenBytes = bTokenBuf.Bytes()
-		bTokenBuf.Destroy()
 	}
 	if adminIDEnclave != nil {
-		aIDBuf, _ := adminIDEnclave.Open()
+		aIDBuf, _ = adminIDEnclave.Open()
+		defer aIDBuf.Destroy()
 		aIDBytes = aIDBuf.Bytes()
-		aIDBuf.Destroy()
+		if err := validateAdminID(string(aIDBytes)); err != nil {
+			printRed(err.Error())
+			return "", err
+		}
 	}
 	if totpSecretEnclave != nil {
-		tSecretBuf, _ := totpSecretEnclave.Open()
+		tSecretBuf, _ = totpSecretEnclave.Open()
+		defer tSecretBuf.Destroy()
 		tSecretBytes = tSecretBuf.Bytes()
-		tSecretBuf.Destroy()
 	}
 
 	var mPassBuf *memguard.LockedBuffer
@@ -1162,13 +1209,9 @@ func firstTimeSetup(binaryPath string) string {
 	if mPassBuf != nil {
 		mPassBuf.Destroy()
 	}
-	cmd := exec.Command(binaryPath, "--setup-stdin")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = bytes.NewReader(setupPayload)
-
-	if err := cmd.Run(); err != nil {
+	if err := runSetupCommand(binaryPath, setupPayload); err != nil {
 		printRed(i18n.T("setup.failed", err.Error()))
+		return "", err
 	}
 
 	zeroBytes(bTokenBytes)
@@ -1176,15 +1219,15 @@ func firstTimeSetup(binaryPath string) string {
 	zeroBytes(tSecretBytes)
 
 	if enableDiscord {
-		return "discord"
+		return "discord", nil
 	}
 	if enableMatrix {
-		return "matrix"
+		return "matrix", nil
 	}
 	if setupMatrix {
-		return "tg-matrix"
+		return "tg-matrix", nil
 	}
-	return "tg"
+	return "tg", nil
 }
 
 // readSecureInput 安全地从终端读取输入，直接返回加密的 Enclave，避免产生明文 string 垃圾
@@ -1213,6 +1256,19 @@ func readSecureInput(prompt string) *memguard.Enclave {
 
 	// 密封到 Enclave 并返回
 	return memguard.NewEnclave(actualData)
+}
+
+func platformFromService(service []byte) string {
+	switch {
+	case bytes.Contains(service, []byte("--matrix")):
+		return "matrix"
+	case bytes.Contains(service, []byte("--discord")):
+		return "discord"
+	case bytes.Contains(service, []byte("--all")):
+		return "tg-matrix"
+	default:
+		return "tg"
+	}
 }
 
 func writeSystemdService(platform string) {
