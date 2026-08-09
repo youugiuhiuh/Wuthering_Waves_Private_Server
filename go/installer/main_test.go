@@ -756,6 +756,72 @@ func TestPlatformSelectorMakesTelegramAndDiscordExclusive(t *testing.T) {
 	}
 }
 
+func TestPlatformSelectorCursorWraps(t *testing.T) {
+	m := newPlatformSelector()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(platformSelector)
+	if m.cursor != 2 {
+		t.Fatalf("cursor after up from first row = %d, want 2", m.cursor)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(platformSelector)
+	if m.cursor != 0 {
+		t.Fatalf("cursor after down from last row = %d, want 0", m.cursor)
+	}
+}
+
+func TestPlatformSelectorTogglesMatrixAndDiscord(t *testing.T) {
+	m := newPlatformSelector()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(platformSelector)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	if !m.matrix {
+		t.Fatalf("matrix selection = %#v, want selected", m)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	if m.matrix {
+		t.Fatalf("matrix selection = %#v, want cleared", m)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(platformSelector)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	if !m.discord {
+		t.Fatalf("discord selection = %#v, want selected", m)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	if m.discord {
+		t.Fatalf("discord selection = %#v, want cleared", m)
+	}
+}
+
+func TestPlatformSelectorCtrlCQuitsWithoutConfirmation(t *testing.T) {
+	m := newPlatformSelector()
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	m = updated.(platformSelector)
+	if m.confirmed {
+		t.Fatalf("state after ctrl+c = %#v, should not confirm", m)
+	}
+	if cmd == nil {
+		t.Fatal("ctrl+c command = nil, want tea.Quit")
+	}
+	if msg := cmd(); msg == nil {
+		t.Fatal("ctrl+c command returned nil, want tea.QuitMsg")
+	} else if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("ctrl+c command = %T, want tea.QuitMsg", msg)
+	}
+}
+
 func TestParsePlatformChoice(t *testing.T) {
 	tests := map[string]struct{ tg, matrix, discord bool }{
 		"telegram":          {tg: true},
