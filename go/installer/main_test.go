@@ -105,6 +105,7 @@ func TestServicePlatformForSetup(t *testing.T) {
 		{tg: true, want: "tg"},
 		{matrix: true, want: "matrix"},
 		{discord: true, want: "discord"},
+		{matrix: true, discord: true, want: "discord"},
 		{tg: true, matrix: true, want: "tg-matrix"},
 	}
 
@@ -112,6 +113,15 @@ func TestServicePlatformForSetup(t *testing.T) {
 		if got := servicePlatformForSetup(test.tg, test.matrix, test.discord); got != test.want {
 			t.Errorf("servicePlatformForSetup(%t, %t, %t) = %q, want %q", test.tg, test.matrix, test.discord, got, test.want)
 		}
+	}
+}
+
+func TestPlatformSelectorRejectsEmptyConfirmation(t *testing.T) {
+	m := newPlatformSelector()
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(platformSelector)
+	if m.confirmed || cmd != nil {
+		t.Fatalf("empty confirmation = %#v, %v", m, cmd)
 	}
 }
 

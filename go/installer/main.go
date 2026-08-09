@@ -424,7 +424,11 @@ func (m platformSelector) View() string {
 		labels[index] = fmt.Sprintf("%s[%s] %s", prefix, marker, label)
 	}
 
-	return fmt.Sprintf("%s\n%s\n\n%s\n\n%s", i18n.T("firsttime.platform_selector_title"), i18n.T("firsttime.platform_selector_help"), strings.Join(labels, "\n"), i18n.T("firsttime.platform_selector_selected", strings.Join(selected, " + ")))
+	summary := strings.Join(selected, " + ")
+	if summary == "" {
+		summary = i18n.T("firsttime.platform_selector_none")
+	}
+	return fmt.Sprintf("%s\n%s\n\n%s\n\n%s", i18n.T("firsttime.platform_selector_title"), i18n.T("firsttime.platform_selector_help"), strings.Join(labels, "\n"), i18n.T("firsttime.platform_selector_selected", summary))
 }
 
 func parsePlatformChoice(choice string) (bool, bool, bool, error) {
@@ -446,6 +450,28 @@ func parsePlatformChoice(choice string) (bool, bool, bool, error) {
 
 func usesInteractivePlatformSelector(stdinIsTerminal, stdoutIsTerminal bool) bool {
 	return stdinIsTerminal && stdoutIsTerminal
+}
+
+func selectDeploymentPlatforms() (bool, bool, bool, error) {
+	if !usesInteractivePlatformSelector(term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd()))) {
+		fmt.Print(i18n.T("firsttime.platform_text_prompt"))
+		choice, err := readLine()
+		if err != nil {
+			return false, false, false, err
+		}
+		return parsePlatformChoice(choice)
+	}
+
+	model, err := tea.NewProgram(newPlatformSelector()).Run()
+	if err != nil {
+		return false, false, false, err
+	}
+	selector := model.(platformSelector)
+	tg, matrix, discord, valid := selector.platformSelection()
+	if !selector.confirmed || !valid {
+		return false, false, false, fmt.Errorf("platform selection cancelled")
+	}
+	return tg, matrix, discord, nil
 }
 
 func matrixHomeserverResult(selected int) string {
@@ -1224,14 +1250,14 @@ func platformSetupForChoice(choice string) (tg, matrix, discord bool, err error)
 
 func servicePlatformForSetup(tg, matrix, discord bool) string {
 	switch {
+	case discord:
+		return "discord"
 	case tg && matrix:
 		return "tg-matrix"
 	case tg:
 		return "tg"
 	case matrix:
 		return "matrix"
-	case discord:
-		return "discord"
 	default:
 		return ""
 	}
@@ -1240,10 +1266,7 @@ func servicePlatformForSetup(tg, matrix, discord bool) string {
 func firstTimeSetup(binaryPath string) (string, error) {
 	printSkyBlue(i18n.T("firsttime.title"))
 
-	printSkyBlue(i18n.T("firsttime.section_platform"))
-	fmt.Print(i18n.T("firsttime.platform_prompt"))
-	platformChoice, _ := readLine()
-	enableTG, enableMatrix, enableDiscord, err := platformSetupForChoice(platformChoice)
+	enableTG, enableMatrix, enableDiscord, err := selectDeploymentPlatforms()
 	if err != nil {
 		printRed(i18n.T("firsttime.platform_invalid"))
 		return "", err
