@@ -352,6 +352,102 @@ func usesInteractiveMatrixHomeserverSelector(stdinIsTerminal, stdoutIsTerminal b
 	return stdinIsTerminal && stdoutIsTerminal
 }
 
+type platformSelector struct {
+	cursor                               int
+	telegram, matrix, discord, confirmed bool
+}
+
+func newPlatformSelector() platformSelector { return platformSelector{} }
+
+func (m platformSelector) Init() tea.Cmd { return nil }
+
+func (m platformSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+
+	switch key.Type {
+	case tea.KeyCtrlC:
+		return m, tea.Quit
+	case tea.KeyUp:
+		m.cursor = (m.cursor + 2) % 3
+	case tea.KeyDown:
+		m.cursor = (m.cursor + 1) % 3
+	case tea.KeySpace:
+		switch m.cursor {
+		case 0:
+			m.telegram = !m.telegram
+			if m.telegram {
+				m.discord = false
+			}
+		case 1:
+			m.matrix = !m.matrix
+		case 2:
+			m.discord = !m.discord
+			if m.discord {
+				m.telegram = false
+			}
+		}
+	case tea.KeyEnter:
+		if _, _, _, valid := m.platformSelection(); valid {
+			m.confirmed = true
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+func (m platformSelector) platformSelection() (bool, bool, bool, bool) {
+	valid := (m.telegram || m.matrix || m.discord) && !(m.telegram && m.discord)
+	return m.telegram, m.matrix, m.discord, valid
+}
+
+func (m platformSelector) View() string {
+	labels := []string{
+		i18n.T("firsttime.platform_selector_telegram"),
+		i18n.T("firsttime.platform_selector_matrix"),
+		i18n.T("firsttime.platform_selector_discord"),
+	}
+	selected := make([]string, 0, 2)
+	choices := []bool{m.telegram, m.matrix, m.discord}
+	for index, label := range labels {
+		prefix := "  "
+		if index == m.cursor {
+			prefix = "> "
+		}
+		marker := " "
+		if choices[index] {
+			marker = "x"
+			selected = append(selected, label)
+		}
+		labels[index] = fmt.Sprintf("%s[%s] %s", prefix, marker, label)
+	}
+
+	return fmt.Sprintf("%s\n%s\n\n%s\n\n%s", i18n.T("firsttime.platform_selector_title"), i18n.T("firsttime.platform_selector_help"), strings.Join(labels, "\n"), i18n.T("firsttime.platform_selector_selected", strings.Join(selected, " + ")))
+}
+
+func parsePlatformChoice(choice string) (bool, bool, bool, error) {
+	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(choice), " ", "")) {
+	case "telegram":
+		return true, false, false, nil
+	case "matrix":
+		return false, true, false, nil
+	case "discord":
+		return false, false, true, nil
+	case "telegram+matrix":
+		return true, true, false, nil
+	case "discord+matrix":
+		return false, true, true, nil
+	default:
+		return false, false, false, fmt.Errorf("invalid platform")
+	}
+}
+
+func usesInteractivePlatformSelector(stdinIsTerminal, stdoutIsTerminal bool) bool {
+	return stdinIsTerminal && stdoutIsTerminal
+}
+
 func matrixHomeserverResult(selected int) string {
 	if selected < 0 || selected >= len(matrixHomeserverOptions) {
 		return "https://matrix.org"

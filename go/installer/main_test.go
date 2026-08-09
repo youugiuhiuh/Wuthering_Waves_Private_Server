@@ -717,3 +717,66 @@ func TestMatrixHomeserverResult(t *testing.T) {
 		})
 	}
 }
+
+func TestPlatformSelectorTogglesAndConfirms(t *testing.T) {
+	m := newPlatformSelector()
+	if m.cursor != 0 || m.telegram || m.matrix || m.discord || m.confirmed {
+		t.Fatalf("initial selector state = %#v", m)
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(platformSelector)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(platformSelector)
+	if !m.confirmed || !m.telegram || m.matrix || m.discord || cmd == nil {
+		t.Fatalf("confirmed selector state = %#v", m)
+	}
+}
+
+func TestPlatformSelectorMakesTelegramAndDiscordExclusive(t *testing.T) {
+	m := newPlatformSelector()
+	m.telegram = true
+	m.cursor = 2
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	if m.telegram || !m.discord || m.matrix {
+		t.Fatalf("exclusive selection = %#v", m)
+	}
+}
+
+func TestParsePlatformChoice(t *testing.T) {
+	tests := map[string]struct{ tg, matrix, discord bool }{
+		"telegram":          {tg: true},
+		"matrix":            {matrix: true},
+		"discord":           {discord: true},
+		"telegram + matrix": {tg: true, matrix: true},
+		"discord + matrix":  {matrix: true, discord: true},
+	}
+	for input, want := range tests {
+		tg, matrix, discord, err := parsePlatformChoice(input)
+		if err != nil || tg != want.tg || matrix != want.matrix || discord != want.discord {
+			t.Fatalf("parsePlatformChoice(%q) = (%t, %t, %t, %v)", input, tg, matrix, discord, err)
+		}
+	}
+	if _, _, _, err := parsePlatformChoice("telegram + discord"); err == nil {
+		t.Fatal("invalid combination accepted")
+	}
+}
+
+func TestUsesInteractivePlatformSelector(t *testing.T) {
+	for _, tt := range []struct {
+		stdinIsTerminal  bool
+		stdoutIsTerminal bool
+		want             bool
+	}{
+		{stdinIsTerminal: true, stdoutIsTerminal: true, want: true},
+		{stdinIsTerminal: false, stdoutIsTerminal: true, want: false},
+		{stdinIsTerminal: true, stdoutIsTerminal: false, want: false},
+	} {
+		if got := usesInteractivePlatformSelector(tt.stdinIsTerminal, tt.stdoutIsTerminal); got != tt.want {
+			t.Fatalf("usesInteractivePlatformSelector(%t, %t) = %t, want %t", tt.stdinIsTerminal, tt.stdoutIsTerminal, got, tt.want)
+		}
+	}
+}
