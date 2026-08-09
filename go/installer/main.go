@@ -285,7 +285,7 @@ type matrixWellKnownResponse struct {
 }
 
 func normalizeMatrixMXID(input string) (string, string, error) {
-	mxid := strings.TrimSpace(input)
+	mxid := input
 	if mxid == "" || strings.ContainsAny(mxid, " \t\r\n") {
 		return "", "", fmt.Errorf("invalid Matrix MXID")
 	}

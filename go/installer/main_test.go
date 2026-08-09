@@ -28,7 +28,7 @@ func TestNormalizeMatrixMXID(t *testing.T) {
 		}
 	}
 
-	for _, input := range []string{"", "alice", "@alice", "@alice:matrix.org extra", "@alice:matrix .org"} {
+	for _, input := range []string{"", "alice", "@alice", " @alice:matrix.org", "@alice:matrix.org ", "@alice:matrix.org extra", "@alice:matrix .org"} {
 		if _, _, err := normalizeMatrixMXID(input); err == nil {
 			t.Errorf("normalizeMatrixMXID(%q) expected error", input)
 		}
@@ -49,10 +49,9 @@ func TestValidateMatrixHomeserver(t *testing.T) {
 
 func TestDiscoverMatrixHomeserver(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
+		requestPath := make(chan string, 1)
 		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/.well-known/matrix/client" {
-				t.Fatalf("path = %q", r.URL.Path)
-			}
+			requestPath <- r.URL.Path
 			_, _ = io.WriteString(w, `{"m.homeserver":{"base_url":"https://matrix-client.example"}}`)
 		}))
 		defer server.Close()
@@ -60,6 +59,9 @@ func TestDiscoverMatrixHomeserver(t *testing.T) {
 		mxid, homeserver, err := discoverMatrixHomeserver("alice:"+strings.TrimPrefix(server.URL, "https://"), server.Client())
 		if err != nil || mxid == "" || homeserver != "https://matrix-client.example" {
 			t.Fatalf("discovery = (%q, %q, %v)", mxid, homeserver, err)
+		}
+		if got := <-requestPath; got != "/.well-known/matrix/client" {
+			t.Fatalf("path = %q", got)
 		}
 	})
 
