@@ -1245,7 +1245,10 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		}
 		if matrixHS == customMatrixHomeserver && usesInteractiveMatrixHomeserverSelector(term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd()))) {
 			fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
-			matrixHS, _ = readLine()
+			matrixHS, err = readLine()
+			if err != nil {
+				return "", err
+			}
 		}
 		if matrixHS == "" {
 			matrixHS = "https://matrix.org"
