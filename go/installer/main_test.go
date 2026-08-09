@@ -655,3 +655,19 @@ func TestMatrixHomeserverSelectorWrapsAndReturnsCustomOption(t *testing.T) {
 		t.Fatalf("custom option state = %#v", m)
 	}
 }
+
+func TestUsesInteractiveMatrixHomeserverSelector(t *testing.T) {
+	for _, tt := range []struct {
+		stdinIsTerminal  bool
+		stdoutIsTerminal bool
+		want             bool
+	}{
+		{stdinIsTerminal: true, stdoutIsTerminal: true, want: true},
+		{stdinIsTerminal: false, stdoutIsTerminal: true, want: false},
+		{stdinIsTerminal: true, stdoutIsTerminal: false, want: false},
+	} {
+		if got := usesInteractiveMatrixHomeserverSelector(tt.stdinIsTerminal, tt.stdoutIsTerminal); got != tt.want {
+			t.Fatalf("usesInteractiveMatrixHomeserverSelector(%t, %t) = %t, want %t", tt.stdinIsTerminal, tt.stdoutIsTerminal, got, tt.want)
+		}
+	}
+}

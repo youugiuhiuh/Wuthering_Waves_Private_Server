@@ -23,6 +23,7 @@ import (
 	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/go/installer/i18n"
 
 	"github.com/awnumar/memguard"
+	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/sys/unix"
 )
 
@@ -273,6 +274,81 @@ func readLine() (string, error) {
 	}
 	s := string(bytes.TrimRight(buf[:n], "\n\r"))
 	return s, nil
+}
+
+const customMatrixHomeserver = ""
+
+var matrixHomeserverOptions = []string{
+	"https://matrix.org",
+	"https://unredacted.org",
+	"https://nope.chat",
+	"https://pub.solar",
+	"https://frei.chat",
+	"https://private.coffee",
+	customMatrixHomeserver,
+}
+
+type matrixHomeserverSelector struct {
+	cursor    int
+	selected  int
+	confirmed bool
+}
+
+func newMatrixHomeserverSelector() matrixHomeserverSelector {
+	return matrixHomeserverSelector{selected: -1}
+}
+
+func (m matrixHomeserverSelector) Init() tea.Cmd { return nil }
+
+func (m matrixHomeserverSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+
+	switch key.Type {
+	case tea.KeyCtrlC:
+		return m, tea.Quit
+	case tea.KeyUp:
+		m.cursor = (m.cursor + len(matrixHomeserverOptions) - 1) % len(matrixHomeserverOptions)
+	case tea.KeyDown:
+		m.cursor = (m.cursor + 1) % len(matrixHomeserverOptions)
+	case tea.KeySpace:
+		m.selected = m.cursor
+	case tea.KeyEnter:
+		m.selected = m.cursor
+		m.confirmed = true
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m matrixHomeserverSelector) View() string {
+	var b strings.Builder
+	b.WriteString(i18n.T("firsttime.matrix_hs_selector_title"))
+	b.WriteString("\n")
+	b.WriteString(i18n.T("firsttime.matrix_hs_selector_help"))
+	b.WriteString("\n\n")
+	for index, value := range matrixHomeserverOptions {
+		label := value
+		if value == customMatrixHomeserver {
+			label = i18n.T("firsttime.matrix_hs_selector_custom")
+		}
+		prefix := "  "
+		if index == m.cursor {
+			prefix = "> "
+		}
+		marker := " "
+		if index == m.selected {
+			marker = "x"
+		}
+		fmt.Fprintf(&b, "%s[%s] %s\n", prefix, marker, label)
+	}
+	return b.String()
+}
+
+func usesInteractiveMatrixHomeserverSelector(stdinIsTerminal, stdoutIsTerminal bool) bool {
+	return stdinIsTerminal && stdoutIsTerminal
 }
 
 func readSecureInputStr(prompt string) string {
