@@ -3,15 +3,90 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/awnumar/memguard"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+func TestNormalizeMatrixMXID(t *testing.T) {
+	for _, tt := range []struct{ input, mxid, server string }{
+		{"@alice:unredacted.org", "@alice:unredacted.org", "unredacted.org"},
+		{"us-sanjose:matrix.org", "@us-sanjose:matrix.org", "matrix.org"},
+	} {
+		mxid, server, err := normalizeMatrixMXID(tt.input)
+		if err != nil || mxid != tt.mxid || server != tt.server {
+			t.Fatalf("normalizeMatrixMXID(%q) = (%q, %q, %v)", tt.input, mxid, server, err)
+		}
+	}
+
+	for _, input := range []string{"", "alice", "@alice", " @alice:matrix.org", "@alice:matrix.org ", "@alice:matrix.org extra", "@alice:matrix .org", "alice:example.com/path"} {
+		if _, _, err := normalizeMatrixMXID(input); err == nil {
+			t.Errorf("normalizeMatrixMXID(%q) expected error", input)
+		}
+	}
+}
+
+func TestValidateMatrixHomeserver(t *testing.T) {
+	if got, err := validateMatrixHomeserver("https://matrix.org/"); err != nil || got != "https://matrix.org" {
+		t.Fatalf("validateMatrixHomeserver() = (%q, %v)", got, err)
+	}
+
+	for _, raw := range []string{"", "http://matrix.org", "https://", "https://user@matrix.org", "https://matrix.org?x=1", "https://matrix.org#fragment"} {
+		if _, err := validateMatrixHomeserver(raw); err == nil {
+			t.Errorf("validateMatrixHomeserver(%q) expected error", raw)
+		}
+	}
+}
+
+func TestDiscoverMatrixHomeserver(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		requestPath := make(chan string, 1)
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestPath <- r.URL.Path
+			_, _ = io.WriteString(w, `{"m.homeserver":{"base_url":"https://matrix-client.example"}}`)
+		}))
+		defer server.Close()
+
+		mxid, homeserver, err := discoverMatrixHomeserver("alice:"+strings.TrimPrefix(server.URL, "https://"), server.Client())
+		if err != nil || mxid == "" || homeserver != "https://matrix-client.example" {
+			t.Fatalf("discovery = (%q, %q, %v)", mxid, homeserver, err)
+		}
+		if got := <-requestPath; got != "/.well-known/matrix/client" {
+			t.Fatalf("path = %q", got)
+		}
+	})
+
+	for _, tt := range []struct {
+		name, body string
+		status     int
+	}{
+		{"non-2xx response", "", http.StatusBadGateway},
+		{"malformed JSON", "{", http.StatusOK},
+		{"non-HTTPS base URL", `{"m.homeserver":{"base_url":"http://matrix-client.example"}}`, http.StatusOK},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer server.Close()
+
+			if _, _, err := discoverMatrixHomeserver("alice:"+strings.TrimPrefix(server.URL, "https://"), server.Client()); err == nil {
+				t.Fatal("discoverMatrixHomeserver() expected error")
+			}
+		})
+	}
+}
 
 func TestValidateAdminID(t *testing.T) {
 	for _, id := range []string{"0", "9223372036854775807", "-9223372036854775808"} {
@@ -626,105 +701,12 @@ func helperMemguardCleanup() {
 	os.Exit(0)
 }
 
-func TestMatrixHomeserverSelectorNavigationAndConfirmation(t *testing.T) {
-	m := newMatrixHomeserverSelector()
-	if m.cursor != 0 || m.selected != -1 || m.confirmed {
-		t.Fatalf("initial selector state = %#v", m)
+func TestUsesManualHomeserverFallback(t *testing.T) {
+	if !usesManualHomeserverFallback(true, errors.New("well-known unavailable")) {
+		t.Fatal("interactive discovery failure should fall back")
 	}
-
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = updated.(matrixHomeserverSelector)
-	if m.cursor != 1 {
-		t.Fatalf("cursor after down = %d, want 1", m.cursor)
-	}
-
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
-	m = updated.(matrixHomeserverSelector)
-	if m.selected != 1 || m.confirmed {
-		t.Fatalf("state after space = %#v", m)
-	}
-
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(matrixHomeserverSelector)
-	if !m.confirmed || m.selected != 1 {
-		t.Fatalf("state after enter = %#v", m)
-	}
-	if cmd == nil {
-		t.Fatal("enter command = nil, want tea.Quit")
-	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Fatalf("enter command = %T, want tea.QuitMsg", cmd())
-	}
-}
-
-func TestMatrixHomeserverSelectorDownWrapsAndCtrlCQuits(t *testing.T) {
-	m := newMatrixHomeserverSelector()
-	m.cursor = len(matrixHomeserverOptions) - 1
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = updated.(matrixHomeserverSelector)
-	if m.cursor != 0 {
-		t.Fatalf("cursor after down from last row = %d, want 0", m.cursor)
-	}
-
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
-	m = updated.(matrixHomeserverSelector)
-	if m.confirmed {
-		t.Fatalf("state after ctrl+c = %#v, should not confirm", m)
-	}
-	if cmd == nil {
-		t.Fatal("ctrl+c command = nil, want tea.Quit")
-	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Fatalf("ctrl+c command = %T, want tea.QuitMsg", cmd())
-	}
-}
-
-func TestMatrixHomeserverSelectorWrapsAndReturnsCustomOption(t *testing.T) {
-	m := newMatrixHomeserverSelector()
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	m = updated.(matrixHomeserverSelector)
-	if m.cursor != len(matrixHomeserverOptions)-1 {
-		t.Fatalf("cursor after up from first row = %d", m.cursor)
-	}
-
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(matrixHomeserverSelector)
-	if !m.confirmed || m.selected != len(matrixHomeserverOptions)-1 {
-		t.Fatalf("custom option state = %#v", m)
-	}
-}
-
-func TestUsesInteractiveMatrixHomeserverSelector(t *testing.T) {
-	for _, tt := range []struct {
-		stdinIsTerminal  bool
-		stdoutIsTerminal bool
-		want             bool
-	}{
-		{stdinIsTerminal: true, stdoutIsTerminal: true, want: true},
-		{stdinIsTerminal: false, stdoutIsTerminal: true, want: false},
-		{stdinIsTerminal: true, stdoutIsTerminal: false, want: false},
-	} {
-		if got := usesInteractiveMatrixHomeserverSelector(tt.stdinIsTerminal, tt.stdoutIsTerminal); got != tt.want {
-			t.Fatalf("usesInteractiveMatrixHomeserverSelector(%t, %t) = %t, want %t", tt.stdinIsTerminal, tt.stdoutIsTerminal, got, tt.want)
-		}
-	}
-}
-
-func TestMatrixHomeserverResult(t *testing.T) {
-	tests := []struct {
-		name     string
-		selected int
-		want     string
-	}{
-		{name: "public server", selected: 3, want: "https://pub.solar"},
-		{name: "custom server", selected: len(matrixHomeserverOptions) - 1, want: customMatrixHomeserver},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := matrixHomeserverResult(tt.selected); got != tt.want {
-				t.Fatalf("matrixHomeserverResult(%d) = %q, want %q", tt.selected, got, tt.want)
-			}
-		})
+	if usesManualHomeserverFallback(false, errors.New("well-known unavailable")) {
+		t.Fatal("non-TTY discovery failure must return an error")
 	}
 }
 
