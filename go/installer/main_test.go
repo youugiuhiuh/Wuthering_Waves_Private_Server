@@ -105,6 +105,7 @@ func TestServicePlatformForSetup(t *testing.T) {
 		{tg: true, want: "tg"},
 		{matrix: true, want: "matrix"},
 		{discord: true, want: "discord"},
+		{matrix: true, discord: true, want: "discord"},
 		{tg: true, matrix: true, want: "tg-matrix"},
 	}
 
@@ -112,6 +113,15 @@ func TestServicePlatformForSetup(t *testing.T) {
 		if got := servicePlatformForSetup(test.tg, test.matrix, test.discord); got != test.want {
 			t.Errorf("servicePlatformForSetup(%t, %t, %t) = %q, want %q", test.tg, test.matrix, test.discord, got, test.want)
 		}
+	}
+}
+
+func TestPlatformSelectorRejectsEmptyConfirmation(t *testing.T) {
+	m := newPlatformSelector()
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(platformSelector)
+	if m.confirmed || cmd != nil {
+		t.Fatalf("empty confirmation = %#v, %v", m, cmd)
 	}
 }
 
@@ -715,5 +725,134 @@ func TestMatrixHomeserverResult(t *testing.T) {
 				t.Fatalf("matrixHomeserverResult(%d) = %q, want %q", tt.selected, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPlatformSelectorTogglesAndConfirms(t *testing.T) {
+	m := newPlatformSelector()
+	if m.cursor != 0 || m.telegram || m.matrix || m.discord || m.confirmed {
+		t.Fatalf("initial selector state = %#v", m)
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(platformSelector)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(platformSelector)
+	if !m.confirmed || !m.telegram || m.matrix || m.discord || cmd == nil {
+		t.Fatalf("confirmed selector state = %#v", m)
+	}
+}
+
+func TestPlatformSelectorMakesTelegramAndDiscordExclusive(t *testing.T) {
+	m := newPlatformSelector()
+	m.telegram = true
+	m.cursor = 2
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	if m.telegram || !m.discord || m.matrix {
+		t.Fatalf("exclusive selection = %#v", m)
+	}
+}
+
+func TestPlatformSelectorCursorWraps(t *testing.T) {
+	m := newPlatformSelector()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(platformSelector)
+	if m.cursor != 2 {
+		t.Fatalf("cursor after up from first row = %d, want 2", m.cursor)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(platformSelector)
+	if m.cursor != 0 {
+		t.Fatalf("cursor after down from last row = %d, want 0", m.cursor)
+	}
+}
+
+func TestPlatformSelectorTogglesMatrixAndDiscord(t *testing.T) {
+	m := newPlatformSelector()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(platformSelector)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	if !m.matrix {
+		t.Fatalf("matrix selection = %#v, want selected", m)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	if m.matrix {
+		t.Fatalf("matrix selection = %#v, want cleared", m)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(platformSelector)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	if !m.discord {
+		t.Fatalf("discord selection = %#v, want selected", m)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(platformSelector)
+	if m.discord {
+		t.Fatalf("discord selection = %#v, want cleared", m)
+	}
+}
+
+func TestPlatformSelectorCtrlCQuitsWithoutConfirmation(t *testing.T) {
+	m := newPlatformSelector()
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	m = updated.(platformSelector)
+	if m.confirmed {
+		t.Fatalf("state after ctrl+c = %#v, should not confirm", m)
+	}
+	if cmd == nil {
+		t.Fatal("ctrl+c command = nil, want tea.Quit")
+	}
+	if msg := cmd(); msg == nil {
+		t.Fatal("ctrl+c command returned nil, want tea.QuitMsg")
+	} else if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("ctrl+c command = %T, want tea.QuitMsg", msg)
+	}
+}
+
+func TestParsePlatformChoice(t *testing.T) {
+	tests := map[string]struct{ tg, matrix, discord bool }{
+		"telegram":          {tg: true},
+		"matrix":            {matrix: true},
+		"discord":           {discord: true},
+		"telegram + matrix": {tg: true, matrix: true},
+		"discord + matrix":  {matrix: true, discord: true},
+	}
+	for input, want := range tests {
+		tg, matrix, discord, err := parsePlatformChoice(input)
+		if err != nil || tg != want.tg || matrix != want.matrix || discord != want.discord {
+			t.Fatalf("parsePlatformChoice(%q) = (%t, %t, %t, %v)", input, tg, matrix, discord, err)
+		}
+	}
+	if _, _, _, err := parsePlatformChoice("telegram + discord"); err == nil {
+		t.Fatal("invalid combination accepted")
+	}
+}
+
+func TestUsesInteractivePlatformSelector(t *testing.T) {
+	for _, tt := range []struct {
+		stdinIsTerminal  bool
+		stdoutIsTerminal bool
+		want             bool
+	}{
+		{stdinIsTerminal: true, stdoutIsTerminal: true, want: true},
+		{stdinIsTerminal: false, stdoutIsTerminal: true, want: false},
+		{stdinIsTerminal: true, stdoutIsTerminal: false, want: false},
+	} {
+		if got := usesInteractivePlatformSelector(tt.stdinIsTerminal, tt.stdoutIsTerminal); got != tt.want {
+			t.Fatalf("usesInteractivePlatformSelector(%t, %t) = %t, want %t", tt.stdinIsTerminal, tt.stdoutIsTerminal, got, tt.want)
+		}
 	}
 }
