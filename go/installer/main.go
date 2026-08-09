@@ -296,8 +296,8 @@ func normalizeMatrixMXID(input string) (string, string, error) {
 	if !ok || localpart == "" || server == "" {
 		return "", "", fmt.Errorf("invalid Matrix MXID")
 	}
-	if _, err := validateMatrixHomeserver("https://" + server); err != nil {
-		return "", "", fmt.Errorf("invalid Matrix MXID: %w", err)
+	if parsed, err := url.Parse("https://" + server); err != nil || parsed.Host != server {
+		return "", "", fmt.Errorf("invalid Matrix MXID")
 	}
 	return mxid, server, nil
 }
@@ -469,6 +469,7 @@ func selectMatrixHomeserver(mxid string) (normalizedMXID, homeserver string, err
 		return "", "", err
 	}
 
+	printYellow(i18n.T("firsttime.matrix_discovering"))
 	normalizedMXID, homeserver, err = discoverMatrixHomeserver(normalizedMXID, &http.Client{Timeout: 5 * time.Second})
 	if err == nil {
 		return normalizedMXID, homeserver, nil

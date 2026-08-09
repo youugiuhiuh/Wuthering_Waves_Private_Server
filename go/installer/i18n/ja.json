@@ -99,6 +99,7 @@
   "firsttime.matrix_user_desc": "   \u4e8b\u524d\u306b Matrix \u30a2\u30ab\u30a6\u30f3\u30c8\u3092\u30dc\u30c3\u30c8\u7528\u306b\u767b\u9332\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
   "firsttime.matrix_user_format": "   \u5f62\u5f0f: botname:matrix.org (\u5148\u982d\u306e @ \u306f\u7701\u7565\u53ef\u80fd)",
   "firsttime.matrix_mxid_prompt": "Matrix MXID \u3092\u5165\u529b: ",
+  "firsttime.matrix_discovering": "Homeserver \u3092\u691c\u51fa\u4e2d...",
   "firsttime.matrix_discovery_failed": "Homeserver \u306e\u691c\u51fa\u306b\u5931\u6557\u3057\u307e\u3057\u305f: %s",
   "firsttime.matrix_manual_hs_prompt": "HTTPS Homeserver URL \u3092\u5165\u529b: ",
   "firsttime.matrix_pass_prompt": "Matrix \u30d1\u30b9\u30ef\u30fc\u30c9\u3092\u5165\u529b: ",

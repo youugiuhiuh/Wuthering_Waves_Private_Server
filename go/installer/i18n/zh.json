@@ -109,6 +109,7 @@
   "firsttime.matrix_user_desc": "   需要预先注册一个 Matrix 账号作为机器人。",
   "firsttime.matrix_user_format": "   格式如: botname:matrix.org（开头的 @ 可省略）",
   "firsttime.matrix_mxid_prompt": "请输入 Matrix MXID: ",
+  "firsttime.matrix_discovering": "正在发现 Homeserver...",
   "firsttime.matrix_discovery_failed": "Homeserver 自动发现失败: %s",
   "firsttime.matrix_manual_hs_prompt": "请输入 HTTPS Homeserver URL: ",
   "firsttime.matrix_pass_prompt": "请输入 Matrix 密码: ",

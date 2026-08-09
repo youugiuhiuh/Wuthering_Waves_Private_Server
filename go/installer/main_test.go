@@ -29,7 +29,7 @@ func TestNormalizeMatrixMXID(t *testing.T) {
 		}
 	}
 
-	for _, input := range []string{"", "alice", "@alice", " @alice:matrix.org", "@alice:matrix.org ", "@alice:matrix.org extra", "@alice:matrix .org"} {
+	for _, input := range []string{"", "alice", "@alice", " @alice:matrix.org", "@alice:matrix.org ", "@alice:matrix.org extra", "@alice:matrix .org", "alice:example.com/path"} {
 		if _, _, err := normalizeMatrixMXID(input); err == nil {
 			t.Errorf("normalizeMatrixMXID(%q) expected error", input)
 		}

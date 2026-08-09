@@ -99,6 +99,7 @@
   "firsttime.matrix_user_desc": "   A pre-registered Matrix account is needed for the bot.",
   "firsttime.matrix_user_format": "   Format: botname:matrix.org (leading @ optional)",
   "firsttime.matrix_mxid_prompt": "Enter Matrix MXID: ",
+  "firsttime.matrix_discovering": "Discovering homeserver...",
   "firsttime.matrix_discovery_failed": "Homeserver discovery failed: %s",
   "firsttime.matrix_manual_hs_prompt": "Enter HTTPS Homeserver URL: ",
   "firsttime.matrix_pass_prompt": "Enter Matrix password: ",
