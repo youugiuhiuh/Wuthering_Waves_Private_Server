@@ -23,7 +23,9 @@ import (
 	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/go/installer/i18n"
 
 	"github.com/awnumar/memguard"
+	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/sys/unix"
+	"golang.org/x/term"
 )
 
 const (
@@ -273,6 +275,107 @@ func readLine() (string, error) {
 	}
 	s := string(bytes.TrimRight(buf[:n], "\n\r"))
 	return s, nil
+}
+
+const customMatrixHomeserver = ""
+
+var matrixHomeserverOptions = []string{
+	"https://matrix.org",
+	"https://unredacted.org",
+	"https://nope.chat",
+	"https://pub.solar",
+	"https://frei.chat",
+	"https://private.coffee",
+	customMatrixHomeserver,
+}
+
+type matrixHomeserverSelector struct {
+	cursor    int
+	selected  int
+	confirmed bool
+}
+
+func newMatrixHomeserverSelector() matrixHomeserverSelector {
+	return matrixHomeserverSelector{selected: -1}
+}
+
+func (m matrixHomeserverSelector) Init() tea.Cmd { return nil }
+
+func (m matrixHomeserverSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+
+	switch key.Type {
+	case tea.KeyCtrlC:
+		return m, tea.Quit
+	case tea.KeyUp:
+		m.cursor = (m.cursor + len(matrixHomeserverOptions) - 1) % len(matrixHomeserverOptions)
+	case tea.KeyDown:
+		m.cursor = (m.cursor + 1) % len(matrixHomeserverOptions)
+	case tea.KeySpace:
+		m.selected = m.cursor
+	case tea.KeyEnter:
+		m.selected = m.cursor
+		m.confirmed = true
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m matrixHomeserverSelector) View() string {
+	var b strings.Builder
+	b.WriteString(i18n.T("firsttime.matrix_hs_selector_title"))
+	b.WriteString("\n")
+	b.WriteString(i18n.T("firsttime.matrix_hs_selector_help"))
+	b.WriteString("\n\n")
+	for index, value := range matrixHomeserverOptions {
+		label := value
+		if value == customMatrixHomeserver {
+			label = i18n.T("firsttime.matrix_hs_selector_custom")
+		}
+		prefix := "  "
+		if index == m.cursor {
+			prefix = "> "
+		}
+		marker := " "
+		if index == m.selected {
+			marker = "x"
+		}
+		fmt.Fprintf(&b, "%s[%s] %s\n", prefix, marker, label)
+	}
+	return b.String()
+}
+
+func usesInteractiveMatrixHomeserverSelector(stdinIsTerminal, stdoutIsTerminal bool) bool {
+	return stdinIsTerminal && stdoutIsTerminal
+}
+
+func matrixHomeserverResult(selected int) string {
+	if selected < 0 || selected >= len(matrixHomeserverOptions) {
+		return "https://matrix.org"
+	}
+	return matrixHomeserverOptions[selected]
+}
+
+func selectMatrixHomeserver() (string, error) {
+	stdinIsTerminal := term.IsTerminal(int(os.Stdin.Fd()))
+	stdoutIsTerminal := term.IsTerminal(int(os.Stdout.Fd()))
+	if !usesInteractiveMatrixHomeserverSelector(stdinIsTerminal, stdoutIsTerminal) {
+		fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
+		return readLine()
+	}
+
+	model, err := tea.NewProgram(newMatrixHomeserverSelector()).Run()
+	if err != nil {
+		return "", err
+	}
+	selector := model.(matrixHomeserverSelector)
+	if !selector.confirmed {
+		return "", fmt.Errorf("matrix homeserver selection cancelled")
+	}
+	return matrixHomeserverResult(selector.selected), nil
 }
 
 func readSecureInputStr(prompt string) string {
@@ -1136,11 +1239,17 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		printYellow(i18n.T("firsttime.matrix_desc1"))
 		printYellow(i18n.T("firsttime.matrix_desc2"))
 		printYellow(i18n.T("firsttime.matrix_desc3"))
-		printYellow(i18n.T("firsttime.matrix_hs_title"))
-		printYellow(i18n.T("firsttime.matrix_hs_default"))
-		printYellow(i18n.T("firsttime.matrix_hs_custom"))
-		fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
-		matrixHS, _ = readLine()
+		matrixHS, err = selectMatrixHomeserver()
+		if err != nil {
+			return "", err
+		}
+		if matrixHS == customMatrixHomeserver && usesInteractiveMatrixHomeserverSelector(term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd()))) {
+			fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
+			matrixHS, err = readLine()
+			if err != nil {
+				return "", err
+			}
+		}
 		if matrixHS == "" {
 			matrixHS = "https://matrix.org"
 		}
