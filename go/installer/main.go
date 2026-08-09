@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -275,6 +276,65 @@ func readLine() (string, error) {
 	}
 	s := string(bytes.TrimRight(buf[:n], "\n\r"))
 	return s, nil
+}
+
+type matrixWellKnownResponse struct {
+	Homeserver struct {
+		BaseURL string `json:"base_url"`
+	} `json:"m.homeserver"`
+}
+
+func normalizeMatrixMXID(input string) (string, string, error) {
+	mxid := strings.TrimSpace(input)
+	if mxid == "" || strings.ContainsAny(mxid, " \t\r\n") {
+		return "", "", fmt.Errorf("invalid Matrix MXID")
+	}
+	if !strings.HasPrefix(mxid, "@") {
+		mxid = "@" + mxid
+	}
+	localpart, server, ok := strings.Cut(strings.TrimPrefix(mxid, "@"), ":")
+	if !ok || localpart == "" || server == "" {
+		return "", "", fmt.Errorf("invalid Matrix MXID")
+	}
+	if _, err := validateMatrixHomeserver("https://" + server); err != nil {
+		return "", "", fmt.Errorf("invalid Matrix MXID: %w", err)
+	}
+	return mxid, server, nil
+}
+
+func validateMatrixHomeserver(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", fmt.Errorf("invalid HTTPS homeserver URL")
+	}
+	return strings.TrimRight(u.String(), "/"), nil
+}
+
+func discoverMatrixHomeserver(mxid string, client *http.Client) (string, string, error) {
+	normalized, server, err := normalizeMatrixMXID(mxid)
+	if err != nil {
+		return "", "", err
+	}
+	if client == nil {
+		client = &http.Client{Timeout: 5 * time.Second}
+	}
+	resp, err := client.Get("https://" + server + "/.well-known/matrix/client")
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return "", "", fmt.Errorf("homeserver discovery returned HTTP %d", resp.StatusCode)
+	}
+	var body matrixWellKnownResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", "", err
+	}
+	homeserver, err := validateMatrixHomeserver(body.Homeserver.BaseURL)
+	if err != nil {
+		return "", "", err
+	}
+	return normalized, homeserver, nil
 }
 
 const customMatrixHomeserver = ""

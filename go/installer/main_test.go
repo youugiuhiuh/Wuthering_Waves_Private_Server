@@ -4,14 +4,86 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/awnumar/memguard"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+func TestNormalizeMatrixMXID(t *testing.T) {
+	for _, tt := range []struct{ input, mxid, server string }{
+		{"@alice:unredacted.org", "@alice:unredacted.org", "unredacted.org"},
+		{"us-sanjose:matrix.org", "@us-sanjose:matrix.org", "matrix.org"},
+	} {
+		mxid, server, err := normalizeMatrixMXID(tt.input)
+		if err != nil || mxid != tt.mxid || server != tt.server {
+			t.Fatalf("normalizeMatrixMXID(%q) = (%q, %q, %v)", tt.input, mxid, server, err)
+		}
+	}
+
+	for _, input := range []string{"", "alice", "@alice", "@alice:matrix.org extra", "@alice:matrix .org"} {
+		if _, _, err := normalizeMatrixMXID(input); err == nil {
+			t.Errorf("normalizeMatrixMXID(%q) expected error", input)
+		}
+	}
+}
+
+func TestValidateMatrixHomeserver(t *testing.T) {
+	if got, err := validateMatrixHomeserver("https://matrix.org/"); err != nil || got != "https://matrix.org" {
+		t.Fatalf("validateMatrixHomeserver() = (%q, %v)", got, err)
+	}
+
+	for _, raw := range []string{"", "http://matrix.org", "https://", "https://user@matrix.org", "https://matrix.org?x=1", "https://matrix.org#fragment"} {
+		if _, err := validateMatrixHomeserver(raw); err == nil {
+			t.Errorf("validateMatrixHomeserver(%q) expected error", raw)
+		}
+	}
+}
+
+func TestDiscoverMatrixHomeserver(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/.well-known/matrix/client" {
+				t.Fatalf("path = %q", r.URL.Path)
+			}
+			_, _ = io.WriteString(w, `{"m.homeserver":{"base_url":"https://matrix-client.example"}}`)
+		}))
+		defer server.Close()
+
+		mxid, homeserver, err := discoverMatrixHomeserver("alice:"+strings.TrimPrefix(server.URL, "https://"), server.Client())
+		if err != nil || mxid == "" || homeserver != "https://matrix-client.example" {
+			t.Fatalf("discovery = (%q, %q, %v)", mxid, homeserver, err)
+		}
+	})
+
+	for _, tt := range []struct {
+		name, body string
+		status     int
+	}{
+		{"non-2xx response", "", http.StatusBadGateway},
+		{"malformed JSON", "{", http.StatusOK},
+		{"non-HTTPS base URL", `{"m.homeserver":{"base_url":"http://matrix-client.example"}}`, http.StatusOK},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer server.Close()
+
+			if _, _, err := discoverMatrixHomeserver("alice:"+strings.TrimPrefix(server.URL, "https://"), server.Client()); err == nil {
+				t.Fatal("discoverMatrixHomeserver() expected error")
+			}
+		})
+	}
+}
 
 func TestValidateAdminID(t *testing.T) {
 	for _, id := range []string{"0", "9223372036854775807", "-9223372036854775808"} {
