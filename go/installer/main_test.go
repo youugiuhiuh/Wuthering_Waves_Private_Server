@@ -634,10 +634,38 @@ func TestMatrixHomeserverSelectorNavigationAndConfirmation(t *testing.T) {
 		t.Fatalf("state after space = %#v", m)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(matrixHomeserverSelector)
 	if !m.confirmed || m.selected != 1 {
 		t.Fatalf("state after enter = %#v", m)
+	}
+	if cmd == nil {
+		t.Fatal("enter command = nil, want tea.Quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("enter command = %T, want tea.QuitMsg", cmd())
+	}
+}
+
+func TestMatrixHomeserverSelectorDownWrapsAndCtrlCQuits(t *testing.T) {
+	m := newMatrixHomeserverSelector()
+	m.cursor = len(matrixHomeserverOptions) - 1
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(matrixHomeserverSelector)
+	if m.cursor != 0 {
+		t.Fatalf("cursor after down from last row = %d, want 0", m.cursor)
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	m = updated.(matrixHomeserverSelector)
+	if m.confirmed {
+		t.Fatalf("state after ctrl+c = %#v, should not confirm", m)
+	}
+	if cmd == nil {
+		t.Fatal("ctrl+c command = nil, want tea.Quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("ctrl+c command = %T, want tea.QuitMsg", cmd())
 	}
 }
 
