@@ -337,81 +337,6 @@ func discoverMatrixHomeserver(mxid string, client *http.Client) (string, string,
 	return normalized, homeserver, nil
 }
 
-const customMatrixHomeserver = ""
-
-var matrixHomeserverOptions = []string{
-	"https://matrix.org",
-	"https://unredacted.org",
-	"https://nope.chat",
-	"https://pub.solar",
-	"https://frei.chat",
-	"https://private.coffee",
-	customMatrixHomeserver,
-}
-
-type matrixHomeserverSelector struct {
-	cursor    int
-	selected  int
-	confirmed bool
-}
-
-func newMatrixHomeserverSelector() matrixHomeserverSelector {
-	return matrixHomeserverSelector{selected: -1}
-}
-
-func (m matrixHomeserverSelector) Init() tea.Cmd { return nil }
-
-func (m matrixHomeserverSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
-	if !ok {
-		return m, nil
-	}
-
-	switch key.Type {
-	case tea.KeyCtrlC:
-		return m, tea.Quit
-	case tea.KeyUp:
-		m.cursor = (m.cursor + len(matrixHomeserverOptions) - 1) % len(matrixHomeserverOptions)
-	case tea.KeyDown:
-		m.cursor = (m.cursor + 1) % len(matrixHomeserverOptions)
-	case tea.KeySpace:
-		m.selected = m.cursor
-	case tea.KeyEnter:
-		m.selected = m.cursor
-		m.confirmed = true
-		return m, tea.Quit
-	}
-	return m, nil
-}
-
-func (m matrixHomeserverSelector) View() string {
-	var b strings.Builder
-	b.WriteString(i18n.T("firsttime.matrix_hs_selector_title"))
-	b.WriteString("\n")
-	b.WriteString(i18n.T("firsttime.matrix_hs_selector_help"))
-	b.WriteString("\n\n")
-	for index, value := range matrixHomeserverOptions {
-		label := value
-		if value == customMatrixHomeserver {
-			label = i18n.T("firsttime.matrix_hs_selector_custom")
-		}
-		prefix := "  "
-		if index == m.cursor {
-			prefix = "> "
-		}
-		marker := " "
-		if index == m.selected {
-			marker = "x"
-		}
-		fmt.Fprintf(&b, "%s[%s] %s\n", prefix, marker, label)
-	}
-	return b.String()
-}
-
-func usesInteractiveMatrixHomeserverSelector(stdinIsTerminal, stdoutIsTerminal bool) bool {
-	return stdinIsTerminal && stdoutIsTerminal
-}
-
 type platformSelector struct {
 	cursor                               int
 	telegram, matrix, discord, confirmed bool
@@ -534,30 +459,35 @@ func selectDeploymentPlatforms() (bool, bool, bool, error) {
 	return tg, matrix, discord, nil
 }
 
-func matrixHomeserverResult(selected int) string {
-	if selected < 0 || selected >= len(matrixHomeserverOptions) {
-		return "https://matrix.org"
-	}
-	return matrixHomeserverOptions[selected]
+func usesManualHomeserverFallback(isTerminal bool, discoveryErr error) bool {
+	return isTerminal && discoveryErr != nil
 }
 
-func selectMatrixHomeserver() (string, error) {
-	stdinIsTerminal := term.IsTerminal(int(os.Stdin.Fd()))
-	stdoutIsTerminal := term.IsTerminal(int(os.Stdout.Fd()))
-	if !usesInteractiveMatrixHomeserverSelector(stdinIsTerminal, stdoutIsTerminal) {
-		fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
-		return readLine()
+func selectMatrixHomeserver(mxid string) (normalizedMXID, homeserver string, err error) {
+	normalizedMXID, _, err = normalizeMatrixMXID(mxid)
+	if err != nil {
+		return "", "", err
 	}
 
-	model, err := tea.NewProgram(newMatrixHomeserverSelector()).Run()
+	normalizedMXID, homeserver, err = discoverMatrixHomeserver(normalizedMXID, &http.Client{Timeout: 5 * time.Second})
+	if err == nil {
+		return normalizedMXID, homeserver, nil
+	}
+	if !usesManualHomeserverFallback(term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())), err) {
+		return "", "", err
+	}
+
+	printYellow(i18n.T("firsttime.matrix_discovery_failed", err.Error()))
+	fmt.Print(i18n.T("firsttime.matrix_manual_hs_prompt"))
+	homeserver, err = readLine()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	selector := model.(matrixHomeserverSelector)
-	if !selector.confirmed {
-		return "", fmt.Errorf("matrix homeserver selection cancelled")
+	homeserver, err = validateMatrixHomeserver(homeserver)
+	if err != nil {
+		return "", "", err
 	}
-	return matrixHomeserverResult(selector.selected), nil
+	return normalizedMXID, homeserver, nil
 }
 
 func readSecureInputStr(prompt string) string {
@@ -1418,25 +1348,14 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		printYellow(i18n.T("firsttime.matrix_desc1"))
 		printYellow(i18n.T("firsttime.matrix_desc2"))
 		printYellow(i18n.T("firsttime.matrix_desc3"))
-		matrixHS, err = selectMatrixHomeserver()
-		if err != nil {
-			return "", err
-		}
-		if matrixHS == customMatrixHomeserver && usesInteractiveMatrixHomeserverSelector(term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd()))) {
-			fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
-			matrixHS, err = readLine()
-			if err != nil {
-				return "", err
-			}
-		}
-		if matrixHS == "" {
-			matrixHS = "https://matrix.org"
-		}
-
 		printYellow(i18n.T("firsttime.matrix_user_title"))
 		printYellow(i18n.T("firsttime.matrix_user_desc"))
 		printYellow(i18n.T("firsttime.matrix_user_format"))
-		matrixUser = readSecureInputStr(i18n.T("firsttime.matrix_user_prompt"))
+		matrixUser = readSecureInputStr(i18n.T("firsttime.matrix_mxid_prompt"))
+		matrixUser, matrixHS, err = selectMatrixHomeserver(matrixUser)
+		if err != nil {
+			return "", err
+		}
 
 		matrixPassEnclave = readSecureInput(i18n.T("firsttime.matrix_pass_prompt"))
 

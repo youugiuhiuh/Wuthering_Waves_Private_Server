@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -700,105 +701,12 @@ func helperMemguardCleanup() {
 	os.Exit(0)
 }
 
-func TestMatrixHomeserverSelectorNavigationAndConfirmation(t *testing.T) {
-	m := newMatrixHomeserverSelector()
-	if m.cursor != 0 || m.selected != -1 || m.confirmed {
-		t.Fatalf("initial selector state = %#v", m)
+func TestUsesManualHomeserverFallback(t *testing.T) {
+	if !usesManualHomeserverFallback(true, errors.New("well-known unavailable")) {
+		t.Fatal("interactive discovery failure should fall back")
 	}
-
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = updated.(matrixHomeserverSelector)
-	if m.cursor != 1 {
-		t.Fatalf("cursor after down = %d, want 1", m.cursor)
-	}
-
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
-	m = updated.(matrixHomeserverSelector)
-	if m.selected != 1 || m.confirmed {
-		t.Fatalf("state after space = %#v", m)
-	}
-
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(matrixHomeserverSelector)
-	if !m.confirmed || m.selected != 1 {
-		t.Fatalf("state after enter = %#v", m)
-	}
-	if cmd == nil {
-		t.Fatal("enter command = nil, want tea.Quit")
-	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Fatalf("enter command = %T, want tea.QuitMsg", cmd())
-	}
-}
-
-func TestMatrixHomeserverSelectorDownWrapsAndCtrlCQuits(t *testing.T) {
-	m := newMatrixHomeserverSelector()
-	m.cursor = len(matrixHomeserverOptions) - 1
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = updated.(matrixHomeserverSelector)
-	if m.cursor != 0 {
-		t.Fatalf("cursor after down from last row = %d, want 0", m.cursor)
-	}
-
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
-	m = updated.(matrixHomeserverSelector)
-	if m.confirmed {
-		t.Fatalf("state after ctrl+c = %#v, should not confirm", m)
-	}
-	if cmd == nil {
-		t.Fatal("ctrl+c command = nil, want tea.Quit")
-	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Fatalf("ctrl+c command = %T, want tea.QuitMsg", cmd())
-	}
-}
-
-func TestMatrixHomeserverSelectorWrapsAndReturnsCustomOption(t *testing.T) {
-	m := newMatrixHomeserverSelector()
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	m = updated.(matrixHomeserverSelector)
-	if m.cursor != len(matrixHomeserverOptions)-1 {
-		t.Fatalf("cursor after up from first row = %d", m.cursor)
-	}
-
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(matrixHomeserverSelector)
-	if !m.confirmed || m.selected != len(matrixHomeserverOptions)-1 {
-		t.Fatalf("custom option state = %#v", m)
-	}
-}
-
-func TestUsesInteractiveMatrixHomeserverSelector(t *testing.T) {
-	for _, tt := range []struct {
-		stdinIsTerminal  bool
-		stdoutIsTerminal bool
-		want             bool
-	}{
-		{stdinIsTerminal: true, stdoutIsTerminal: true, want: true},
-		{stdinIsTerminal: false, stdoutIsTerminal: true, want: false},
-		{stdinIsTerminal: true, stdoutIsTerminal: false, want: false},
-	} {
-		if got := usesInteractiveMatrixHomeserverSelector(tt.stdinIsTerminal, tt.stdoutIsTerminal); got != tt.want {
-			t.Fatalf("usesInteractiveMatrixHomeserverSelector(%t, %t) = %t, want %t", tt.stdinIsTerminal, tt.stdoutIsTerminal, got, tt.want)
-		}
-	}
-}
-
-func TestMatrixHomeserverResult(t *testing.T) {
-	tests := []struct {
-		name     string
-		selected int
-		want     string
-	}{
-		{name: "public server", selected: 3, want: "https://pub.solar"},
-		{name: "custom server", selected: len(matrixHomeserverOptions) - 1, want: customMatrixHomeserver},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := matrixHomeserverResult(tt.selected); got != tt.want {
-				t.Fatalf("matrixHomeserverResult(%d) = %q, want %q", tt.selected, got, tt.want)
-			}
-		})
+	if usesManualHomeserverFallback(false, errors.New("well-known unavailable")) {
+		t.Fatal("non-TTY discovery failure must return an error")
 	}
 }
 
