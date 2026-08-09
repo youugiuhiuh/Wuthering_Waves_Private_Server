@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/awnumar/memguard"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestValidateAdminID(t *testing.T) {
@@ -613,4 +614,44 @@ func helperMemguardCleanup() {
 
 	fmt.Println("CONTINUED")
 	os.Exit(0)
+}
+
+func TestMatrixHomeserverSelectorNavigationAndConfirmation(t *testing.T) {
+	m := newMatrixHomeserverSelector()
+	if m.cursor != 0 || m.selected != -1 || m.confirmed {
+		t.Fatalf("initial selector state = %#v", m)
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(matrixHomeserverSelector)
+	if m.cursor != 1 {
+		t.Fatalf("cursor after down = %d, want 1", m.cursor)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = updated.(matrixHomeserverSelector)
+	if m.selected != 1 || m.confirmed {
+		t.Fatalf("state after space = %#v", m)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(matrixHomeserverSelector)
+	if !m.confirmed || m.selected != 1 {
+		t.Fatalf("state after enter = %#v", m)
+	}
+}
+
+func TestMatrixHomeserverSelectorWrapsAndReturnsCustomOption(t *testing.T) {
+	m := newMatrixHomeserverSelector()
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(matrixHomeserverSelector)
+	if m.cursor != len(matrixHomeserverOptions)-1 {
+		t.Fatalf("cursor after up from first row = %d", m.cursor)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(matrixHomeserverSelector)
+	if !m.confirmed || m.selected != len(matrixHomeserverOptions)-1 {
+		t.Fatalf("custom option state = %#v", m)
+	}
 }
