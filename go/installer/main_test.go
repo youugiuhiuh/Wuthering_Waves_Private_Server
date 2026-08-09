@@ -699,3 +699,21 @@ func TestUsesInteractiveMatrixHomeserverSelector(t *testing.T) {
 		}
 	}
 }
+
+func TestMatrixHomeserverResult(t *testing.T) {
+	tests := []struct {
+		name     string
+		selected int
+		want     string
+	}{
+		{name: "public server", selected: 3, want: "https://pub.solar"},
+		{name: "custom server", selected: len(matrixHomeserverOptions) - 1, want: customMatrixHomeserver},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matrixHomeserverResult(tt.selected); got != tt.want {
+				t.Fatalf("matrixHomeserverResult(%d) = %q, want %q", tt.selected, got, tt.want)
+			}
+		})
+	}
+}

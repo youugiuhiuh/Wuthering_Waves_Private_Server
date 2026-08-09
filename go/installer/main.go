@@ -25,6 +25,7 @@ import (
 	"github.com/awnumar/memguard"
 	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/sys/unix"
+	"golang.org/x/term"
 )
 
 const (
@@ -349,6 +350,32 @@ func (m matrixHomeserverSelector) View() string {
 
 func usesInteractiveMatrixHomeserverSelector(stdinIsTerminal, stdoutIsTerminal bool) bool {
 	return stdinIsTerminal && stdoutIsTerminal
+}
+
+func matrixHomeserverResult(selected int) string {
+	if selected < 0 || selected >= len(matrixHomeserverOptions) {
+		return "https://matrix.org"
+	}
+	return matrixHomeserverOptions[selected]
+}
+
+func selectMatrixHomeserver() (string, error) {
+	stdinIsTerminal := term.IsTerminal(int(os.Stdin.Fd()))
+	stdoutIsTerminal := term.IsTerminal(int(os.Stdout.Fd()))
+	if !usesInteractiveMatrixHomeserverSelector(stdinIsTerminal, stdoutIsTerminal) {
+		fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
+		return readLine()
+	}
+
+	model, err := tea.NewProgram(newMatrixHomeserverSelector()).Run()
+	if err != nil {
+		return "", err
+	}
+	selector := model.(matrixHomeserverSelector)
+	if !selector.confirmed {
+		return "", fmt.Errorf("matrix homeserver selection cancelled")
+	}
+	return matrixHomeserverResult(selector.selected), nil
 }
 
 func readSecureInputStr(prompt string) string {
@@ -1212,11 +1239,14 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		printYellow(i18n.T("firsttime.matrix_desc1"))
 		printYellow(i18n.T("firsttime.matrix_desc2"))
 		printYellow(i18n.T("firsttime.matrix_desc3"))
-		printYellow(i18n.T("firsttime.matrix_hs_title"))
-		printYellow(i18n.T("firsttime.matrix_hs_default"))
-		printYellow(i18n.T("firsttime.matrix_hs_custom"))
-		fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
-		matrixHS, _ = readLine()
+		matrixHS, err = selectMatrixHomeserver()
+		if err != nil {
+			return "", err
+		}
+		if matrixHS == customMatrixHomeserver && usesInteractiveMatrixHomeserverSelector(term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd()))) {
+			fmt.Print(i18n.T("firsttime.matrix_hs_prompt"))
+			matrixHS, _ = readLine()
+		}
 		if matrixHS == "" {
 			matrixHS = "https://matrix.org"
 		}
