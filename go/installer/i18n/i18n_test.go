@@ -7,20 +7,20 @@ import (
 func TestT_Basic(t *testing.T) {
 	SetLang("zh")
 	got := T("banner.title")
-	if got != "WWPS TG Bot 管理工具" {
-		t.Errorf(`T("banner.title") with zh = %q, want "WWPS TG Bot 管理工具"`, got)
+	if got != "WWPS Aegis 安装工具" {
+		t.Errorf(`T("banner.title") with zh = %q, want "WWPS Aegis 安装工具"`, got)
 	}
 
 	SetLang("en")
 	got = T("banner.title")
-	if got != "WWPS TG Bot Management Tool" {
-		t.Errorf(`T("banner.title") with en = %q, want "WWPS TG Bot Management Tool"`, got)
+	if got != "WWPS Aegis Installer" {
+		t.Errorf(`T("banner.title") with en = %q, want "WWPS Aegis Installer"`, got)
 	}
 
 	SetLang("ja")
 	got = T("banner.title")
-	if got != "WWPS TG Bot 管理ツール" {
-		t.Errorf(`T("banner.title") with ja = %q, want "WWPS TG Bot 管理ツール"`, got)
+	if got != "WWPS Aegis インストーラー" {
+		t.Errorf(`T("banner.title") with ja = %q, want "WWPS Aegis インストーラー"`, got)
 	}
 }
 
