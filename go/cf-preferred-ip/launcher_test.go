@@ -47,3 +47,20 @@ func TestReleaseArchiveVerificationSeparatesListingFromComparison(t *testing.T) 
 		}
 	}
 }
+
+func TestReleaseRenamesOfficialWindowsCFSTBinary(t *testing.T) {
+	workflow := filepath.Join("..", "..", ".github", "workflows", "public-release.yml")
+	contents, err := os.ReadFile(workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, required := range []string{
+		"unzip -j /tmp/cfst/windows.zip 'cfst.exe' -d dist/cf-win",
+		"mv dist/cf-win/cfst.exe dist/cf-win/CloudflareST.exe",
+	} {
+		if !strings.Contains(string(contents), required) {
+			t.Fatalf("release does not normalize official Windows CFST binary %q: %q", required, contents)
+		}
+	}
+}

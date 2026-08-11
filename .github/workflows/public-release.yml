@@ -119,7 +119,8 @@ jobs:
           mkdir -p dist/cf-win dist/cf-linux /tmp/cfst
           curl -fL -o /tmp/cfst/windows.zip "https://github.com/XIU2/CloudflareSpeedTest/releases/download/${CFST_VERSION}/cfst_windows_amd64.zip"
           echo '67d06a0c68b7fd6998d5e6abea1dbf850cac2c19c5d8c5980aa32fc7aba1ff5f  /tmp/cfst/windows.zip' | sha256sum -c -
-          unzip -j /tmp/cfst/windows.zip 'CloudflareST.exe' -d dist/cf-win
+          unzip -j /tmp/cfst/windows.zip 'cfst.exe' -d dist/cf-win
+          mv dist/cf-win/cfst.exe dist/cf-win/CloudflareST.exe
           GOOS=windows GOARCH=amd64 go build -C go/cf-preferred-ip -o ../../dist/cf-win/aegis-cf-preferred-ip.exe .
           cp scripts/cf-preferred-ip/run.bat dist/cf-win/run.bat
           (cd dist/cf-win && zip -q ../aegis-cf-win-amd64.zip CloudflareST.exe aegis-cf-preferred-ip.exe run.bat)
