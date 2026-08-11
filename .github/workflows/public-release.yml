@@ -126,7 +126,8 @@ jobs:
           (cd dist/cf-win && zip -q ../aegis-cf-win-amd64.zip CloudflareST.exe aegis-cf-preferred-ip.exe run.bat)
           curl -fL -o /tmp/cfst/linux.tar.gz "https://github.com/XIU2/CloudflareSpeedTest/releases/download/${CFST_VERSION}/cfst_linux_amd64.tar.gz"
           echo 'c4c8fc76b4e1bf2bdb5ced8b765956d82dda7bc4eb59df5c04053f0f7db98d90  /tmp/cfst/linux.tar.gz' | sha256sum -c -
-          tar -xzf /tmp/cfst/linux.tar.gz -C dist/cf-linux CloudflareST
+          tar -xzf /tmp/cfst/linux.tar.gz -C dist/cf-linux cfst_linux_amd64/cfst
+          mv dist/cf-linux/cfst_linux_amd64/cfst dist/cf-linux/CloudflareST
           GOOS=linux GOARCH=amd64 go build -C go/cf-preferred-ip -o ../../dist/cf-linux/aegis-cf-preferred-ip .
           cp scripts/cf-preferred-ip/run.sh dist/cf-linux/run.sh
           chmod +x dist/cf-linux/CloudflareST dist/cf-linux/aegis-cf-preferred-ip dist/cf-linux/run.sh

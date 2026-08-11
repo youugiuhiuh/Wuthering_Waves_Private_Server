@@ -64,3 +64,20 @@ func TestReleaseRenamesOfficialWindowsCFSTBinary(t *testing.T) {
 		}
 	}
 }
+
+func TestReleaseRenamesOfficialLinuxCFSTBinary(t *testing.T) {
+	workflow := filepath.Join("..", "..", ".github", "workflows", "public-release.yml")
+	contents, err := os.ReadFile(workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, required := range []string{
+		"tar -xzf /tmp/cfst/linux.tar.gz -C dist/cf-linux cfst_linux_amd64/cfst",
+		"mv dist/cf-linux/cfst_linux_amd64/cfst dist/cf-linux/CloudflareST",
+	} {
+		if !strings.Contains(string(contents), required) {
+			t.Fatalf("release does not normalize official Linux CFST binary %q: %q", required, contents)
+		}
+	}
+}
