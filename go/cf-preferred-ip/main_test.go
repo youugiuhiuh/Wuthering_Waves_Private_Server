@@ -172,6 +172,25 @@ func TestRunWritesMappingsAndRemovesTemporaryCFSTData(t *testing.T) {
 	}
 }
 
+func TestRunCFSTUsesBinaryDirectoryForDefaultIPFile(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "CloudflareST")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nprintf '%s' \"$PWD\" > \"$2\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "result.csv")
+	if err := runCFST(binary, output); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != dir {
+		t.Fatalf("CFST working directory = %q, want %q", got, dir)
+	}
+}
+
 func TestRunRestoreSkipsCFSTAndRemovesOwnedBlock(t *testing.T) {
 	dir := t.TempDir()
 	hosts := filepath.Join(dir, "hosts")

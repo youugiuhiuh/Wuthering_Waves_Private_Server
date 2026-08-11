@@ -110,6 +110,7 @@ func runCFST(binary, output string) error {
 	}
 	defer stderr.Close()
 	cmd := exec.Command(binary, "-o", output)
+	cmd.Dir = filepath.Dir(binary)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	return cmd.Run()
