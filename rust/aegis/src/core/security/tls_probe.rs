@@ -3,8 +3,9 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
-use rustls::client::{ClientConfig, ServerCertVerifier, ServerName};
-use rustls::{Certificate, Error as TlsError};
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{ClientConfig, DigitallySignedStruct, Error as TlsError, SignatureScheme};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::{Duration, timeout};
@@ -20,26 +21,60 @@ pub struct TlsProbeResult {
 
 static TLS_PROBE_CACHE: Lazy<DashMap<String, TlsProbeResult>> = Lazy::new(DashMap::new);
 
+#[derive(Debug)]
 struct NoCertificateVerification;
 
 impl ServerCertVerifier for NoCertificateVerification {
     fn verify_server_cert(
         &self,
-        _end_entity: &Certificate,
-        _intermediates: &[Certificate],
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
         _server_name: &ServerName,
-        _scts: &mut dyn Iterator<Item = &[u8]>,
         _ocsp_response: &[u8],
-        _now: std::time::SystemTime,
-    ) -> std::result::Result<rustls::client::ServerCertVerified, TlsError> {
-        Ok(rustls::client::ServerCertVerified::assertion())
+        _now: UnixTime,
+    ) -> std::result::Result<ServerCertVerified, TlsError> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> std::result::Result<HandshakeSignatureValid, TlsError> {
+        rustls::crypto::verify_tls12_signature(
+            message,
+            cert,
+            dss,
+            &rustls::crypto::ring::default_provider().signature_verification_algorithms,
+        )
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> std::result::Result<HandshakeSignatureValid, TlsError> {
+        rustls::crypto::verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &rustls::crypto::ring::default_provider().signature_verification_algorithms,
+        )
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        rustls::crypto::ring::default_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
     }
 }
 
 async fn rustls_handshake(
     domain: &str,
     port: u16,
-) -> Result<(TlsStream<TcpStream>, Vec<Certificate>)> {
+) -> Result<(TlsStream<TcpStream>, Vec<CertificateDer<'static>>)> {
     let addr = format!("{}:{}", domain, port);
 
     let stream = timeout(Duration::from_secs(5), TcpStream::connect(&addr))
@@ -47,10 +82,12 @@ async fn rustls_handshake(
         .context("TLS probe connect timeout")?
         .with_context(|| format!("TLS probe connect failed to {}", addr))?;
 
-    let config = ClientConfig::builder()
-        .with_safe_defaults()
-        .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
-        .with_no_client_auth();
+    let config =
+        ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions()?
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
+            .with_no_client_auth();
 
     let server_name =
         ServerName::try_from(domain).with_context(|| format!("invalid DNS name: {}", domain))?;
@@ -58,7 +95,7 @@ async fn rustls_handshake(
     let connector = TlsConnector::from(Arc::new(config));
     let mut tls_stream = timeout(
         Duration::from_secs(8),
-        connector.connect(server_name, stream),
+        connector.connect(server_name.to_owned(), stream),
     )
     .await
     .context("TLS probe handshake timeout")?
@@ -84,20 +121,22 @@ async fn rustls_handshake(
 pub async fn probe_tls_once(domain: &str, port: u16) -> Result<TlsProbeResult> {
     let (_, certs) = rustls_handshake(domain, port).await?;
 
-    let total_len: usize = certs.iter().map(|c| c.0.len()).sum();
+    let total_len: usize = certs.iter().map(|cert| cert.as_ref().len()).sum();
 
     let leaf_alg = certs
         .first()
         .and_then(|cert| {
-            X509Certificate::from_der(&cert.0).ok().map(|(_, parsed)| {
-                let alg = parsed.public_key().algorithm.algorithm.clone();
-                let oid_str = alg.to_id_string();
-                match oid_str.as_str() {
-                    "1.2.840.113549.1.1.1" => "RSA".to_string(),
-                    "1.2.840.10045.2.1" => "EC".to_string(),
-                    _ => oid_str,
-                }
-            })
+            X509Certificate::from_der(cert.as_ref())
+                .ok()
+                .map(|(_, parsed)| {
+                    let alg = parsed.public_key().algorithm.algorithm.clone();
+                    let oid_str = alg.to_id_string();
+                    match oid_str.as_str() {
+                        "1.2.840.113549.1.1.1" => "RSA".to_string(),
+                        "1.2.840.10045.2.1" => "EC".to_string(),
+                        _ => oid_str,
+                    }
+                })
         })
         .unwrap_or_else(|| "UNKNOWN".to_string());
 
