@@ -23,6 +23,7 @@ An experimental self-hosted server emulator project for Wuthering Waves, focused
 
 - `rust/aegis`: Telegram-based management bot
 - `go/installer`: bootstrap installer and update entrypoint
+- `go/cf-preferred-ip`: client-side Cloudflare preferred-IP utility for XHTTP TLS domains
 - `rust/version-sync`: release/version synchronization helper
 - `sni_tester`: standalone SNI and connectivity testing utility
 
@@ -78,8 +79,29 @@ Releases include:
 
 - `installer`: bootstrap program
 - `aegis`: management-side executable
+- `aegis-cf-win-amd64.zip` and `aegis-cf-linux-amd64.tar.gz`: Cloudflare preferred-IP utility bundles
 
 Use the installer first. It will prepare the runtime environment and deploy the required components automatically.
+
+### Cloudflare Preferred IP Utility
+
+For Cloudflare-proxied XHTTP TLS domains, this client-side utility runs the bundled CloudflareSpeedTest from the subscriber's network, then maps each supplied domain to a preferred Cloudflare edge IP in an owned hosts-file block. The domain remains unchanged for Xray SNI and Host routing.
+
+Download the matching archive from the release page, extract it, then run:
+
+```bash
+# Linux
+sudo ./run.sh example.com another.example.com
+
+# Windows (run Command Prompt as Administrator)
+run.bat example.com another.example.com
+```
+
+Use `--restore` to remove only the utility-owned hosts-file block without running a test:
+
+```bash
+sudo ./run.sh --restore
+```
 
 ## Operations
 
