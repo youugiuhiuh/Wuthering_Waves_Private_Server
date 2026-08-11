@@ -300,9 +300,9 @@ pub async fn run(
                     target: TargetId(msg.chat.id.0.to_string()),
                     user_id,
                     text: msg.text().map(|s| s.to_string()),
-                    file_id: msg.document().map(|d| d.file.id.clone()).or_else(|| {
+                    file_id: msg.document().map(|d| d.file.id.to_string()).or_else(|| {
                         msg.photo()
-                            .and_then(|p| p.last().map(|ph| ph.file.id.clone()))
+                            .and_then(|p| p.last().map(|ph| ph.file.id.to_string()))
                     }),
                     file_name: msg
                         .document()
@@ -336,7 +336,7 @@ pub async fn run(
                     user_id: q.from.id.0.to_string(),
                     msg_id: MessageId(msg_id.0.to_string()),
                     data: q.data.clone().unwrap_or_default(),
-                    callback_id: q.id.clone(),
+                    callback_id: q.id.to_string(),
                     session_timeout_secs: state.session_timeout_secs().await,
                 }),
                 &state,

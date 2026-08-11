@@ -78,7 +78,9 @@ impl BotAdapter for TelegramAdapter {
         callback_id: &str,
         text: Option<String>,
     ) -> Result<()> {
-        let mut answer = self.bot.answer_callback_query(callback_id);
+        let mut answer = self
+            .bot
+            .answer_callback_query(teloxide::types::CallbackQueryId(callback_id.to_owned()));
         if let Some(ref t) = text {
             answer = answer.text(t);
         }
@@ -87,7 +89,10 @@ impl BotAdapter for TelegramAdapter {
     }
 
     async fn download_file(&self, file_id: &str) -> Result<Vec<u8>> {
-        let file = self.bot.get_file(file_id).await?;
+        let file = self
+            .bot
+            .get_file(teloxide::types::FileId(file_id.to_owned()))
+            .await?;
         let mut buf = Vec::with_capacity(file.size as usize);
         self.bot.download_file(&file.path, &mut buf).await?;
         Ok(buf)

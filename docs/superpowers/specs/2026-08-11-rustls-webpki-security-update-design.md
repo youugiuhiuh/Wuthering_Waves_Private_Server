@@ -18,12 +18,16 @@ Upgrade Aegis's direct TLS and client dependencies to mutually compatible
 versions that resolve to Rustls 0.23 and `rustls-webpki 0.103.13` or later:
 
 - `reqwest`, `teloxide`, `rustls`, and `tokio-rustls`
-- `serenity` and `poise`, if their current versions retain the vulnerable Tokio
-  Tungstenite path
+
+The latest Serenity and Poise releases still depend on `tokio-tungstenite
+0.21`, which retains the vulnerable WebPKI path. Keep those crate versions but
+switch Serenity from `rustls_backend` to `native_tls_backend`, removing the
+Rustls 0.22 dependency tree. This uses the system TLS provider for Discord
+traffic.
 
 Use Cargo commands to update dependencies and regenerate the lockfile. Adapt
-only source code made incompatible by these upgrades. Do not add overrides,
-forks, or direct `rustls-webpki` dependencies.
+only source code made incompatible by the Rustls 0.23 upgrade. Do not add
+overrides, forks, or direct `rustls-webpki` dependencies.
 
 ## Verification
 
