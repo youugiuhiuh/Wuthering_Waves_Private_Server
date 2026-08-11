@@ -27,6 +27,13 @@ type HostMapping struct{ IP, Domain string }
 type commandDeps struct {
 	hostsPath, executablePath string
 	runCFST                   func(binary, output string) error
+	status                    io.Writer
+}
+
+func reportStatus(w io.Writer, format string, args ...any) {
+	if w != nil {
+		fmt.Fprintf(w, format+"\n", args...)
+	}
 }
 
 func main() {
@@ -43,7 +50,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if err := run(os.Args[1:], commandDeps{hostsPath: hostsPath, executablePath: executablePath, runCFST: runCFST}); err != nil {
+	if err := run(os.Args[1:], commandDeps{hostsPath: hostsPath, executablePath: executablePath, runCFST: runCFST, status: os.Stdout}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -59,10 +66,16 @@ func elevatedExitStatus(err error) int {
 
 func run(args []string, deps commandDeps) error {
 	if len(args) == 1 && args[0] == "--restore" {
-		return mutateHosts(deps.hostsPath, func(content string) (string, error) {
+		reportStatus(deps.status, "Removing preferred-IP hosts entries...")
+		err := mutateHosts(deps.hostsPath, func(content string) (string, error) {
 			next, _, err := removeOwnedBlock(content)
 			return next, err
 		})
+		if err != nil {
+			return fmt.Errorf("removing preferred-IP hosts entries: %w", err)
+		}
+		reportStatus(deps.status, "Completed: removed preferred-IP hosts entries.")
+		return nil
 	}
 	if len(args) == 0 {
 		return errors.New("usage: aegis-cf-preferred-ip [--restore] domain")
@@ -79,22 +92,29 @@ func run(args []string, deps commandDeps) error {
 	}
 	defer os.RemoveAll(temp)
 	output := filepath.Join(temp, "result.csv")
+	reportStatus(deps.status, "Testing Cloudflare nodes...")
 	if err := deps.runCFST(filepath.Join(filepath.Dir(deps.executablePath), cfstName), output); err != nil {
-		return err
+		return fmt.Errorf("testing Cloudflare nodes: %w", err)
 	}
+	reportStatus(deps.status, "Parsing Cloudflare test results...")
 	file, err := os.Open(output)
 	if err != nil {
-		return err
+		return fmt.Errorf("parsing Cloudflare test results: %w", err)
 	}
 	defer file.Close()
 	candidates, err := parseCandidates(file)
 	if err != nil {
-		return err
+		return fmt.Errorf("parsing Cloudflare test results: %w", err)
 	}
 	mappings := assignCandidates(candidates, args)
-	return mutateHosts(deps.hostsPath, func(content string) (string, error) {
+	reportStatus(deps.status, "Updating hosts file...")
+	if err := mutateHosts(deps.hostsPath, func(content string) (string, error) {
 		return replaceOwnedBlock(content, mappings)
-	})
+	}); err != nil {
+		return fmt.Errorf("updating hosts file: %w", err)
+	}
+	reportStatus(deps.status, "Completed: wrote preferred IPs for %d domains.", len(args))
+	return nil
 }
 
 func runCFST(binary, output string) error {

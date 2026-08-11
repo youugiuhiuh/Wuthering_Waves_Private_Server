@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -238,4 +239,137 @@ func TestCLIHelperProcess(t *testing.T) {
 	}
 	os.Args = []string{"aegis-cf-preferred-ip"}
 	main()
+}
+
+func TestRunReportsProgressAndCompletion(t *testing.T) {
+	dir := t.TempDir()
+	hosts := filepath.Join(dir, "hosts")
+	if err := os.WriteFile(hosts, []byte("127.0.0.1 localhost\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var status bytes.Buffer
+	err := run([]string{"one.example", "two.example"}, commandDeps{
+		hostsPath: hosts, executablePath: filepath.Join(dir, "tool"), status: &status,
+		runCFST: func(_, output string) error {
+			return os.WriteFile(output, []byte("IP,Sent,Recv,Loss,Latency,Speed\n1.1.1.1,4,4,0%,1 ms,1 MB/s\n"), 0600)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Testing Cloudflare nodes...\nParsing Cloudflare test results...\nUpdating hosts file...\nCompleted: wrote preferred IPs for 2 domains.\n"
+	if got := status.String(); got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+}
+
+func TestRunRestoreReportsProgressWithoutCFST(t *testing.T) {
+	dir := t.TempDir()
+	hosts := filepath.Join(dir, "hosts")
+	if err := os.WriteFile(hosts, []byte("# BEGIN aegis-cf-preferred-ip\n1.1.1.1 one.example\n# END aegis-cf-preferred-ip\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var status bytes.Buffer
+	err := run([]string{"--restore"}, commandDeps{
+		hostsPath: hosts, status: &status,
+		runCFST: func(_, _ string) error { return errors.New("CFST must not run during restore") },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Removing preferred-IP hosts entries...\nCompleted: removed preferred-IP hosts entries.\n"
+	if got := status.String(); got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+}
+
+func TestRunLabelsCFSTFailureStage(t *testing.T) {
+	var status bytes.Buffer
+	err := run([]string{"one.example"}, commandDeps{
+		hostsPath: filepath.Join(t.TempDir(), "hosts"), executablePath: "tool", status: &status,
+		runCFST: func(_, _ string) error { return errors.New("network unavailable") },
+	})
+	if err == nil || !strings.Contains(err.Error(), "testing Cloudflare nodes") {
+		t.Fatalf("error = %v, want CFST stage label", err)
+	}
+	if got := status.String(); got != "Testing Cloudflare nodes...\n" {
+		t.Fatalf("status = %q", got)
+	}
+}
+
+func TestRunLabelsMissingCFSTResultsStage(t *testing.T) {
+	var status bytes.Buffer
+	err := run([]string{"one.example"}, commandDeps{
+		hostsPath: filepath.Join(t.TempDir(), "hosts"), executablePath: "tool", status: &status,
+		runCFST: func(_, _ string) error { return nil },
+	})
+	if err == nil || !strings.Contains(err.Error(), "parsing Cloudflare test results") {
+		t.Fatalf("error = %v, want results stage label", err)
+	}
+	if got, want := status.String(), "Testing Cloudflare nodes...\nParsing Cloudflare test results...\n"; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+}
+
+func TestRunRemovesTemporaryCFSTDataAfterCFSTFailure(t *testing.T) {
+	var tempDir string
+	err := run([]string{"one.example"}, commandDeps{
+		hostsPath: filepath.Join(t.TempDir(), "hosts"), executablePath: "tool",
+		runCFST: func(_, output string) error {
+			tempDir = filepath.Dir(output)
+			return errors.New("network unavailable")
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "testing Cloudflare nodes") {
+		t.Fatalf("error = %v, want CFST stage label", err)
+	}
+	if _, err := os.Stat(tempDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary CFST data remains at %q: %v", tempDir, err)
+	}
+}
+
+func TestRunLabelsParsingFailureStageAndStatus(t *testing.T) {
+	var status bytes.Buffer
+	err := run([]string{"one.example"}, commandDeps{
+		hostsPath: filepath.Join(t.TempDir(), "hosts"), executablePath: "tool", status: &status,
+		runCFST: func(_, output string) error {
+			return os.WriteFile(output, []byte("IP,Sent,Recv,Loss,Latency,Speed\ninvalid,4,4,0%,1 ms,1 MB/s\n"), 0600)
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "parsing Cloudflare test results") {
+		t.Fatalf("error = %v, want parsing stage label", err)
+	}
+	if got, want := status.String(), "Testing Cloudflare nodes...\nParsing Cloudflare test results...\n"; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+}
+
+func TestRunLabelsHostsMutationFailureStageAndStatus(t *testing.T) {
+	var status bytes.Buffer
+	err := run([]string{"one.example"}, commandDeps{
+		hostsPath: filepath.Join(t.TempDir(), "missing", "hosts"), executablePath: "tool", status: &status,
+		runCFST: func(_, output string) error {
+			return os.WriteFile(output, []byte("IP,Sent,Recv,Loss,Latency,Speed\n1.1.1.1,4,4,0%,1 ms,1 MB/s\n"), 0600)
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "updating hosts file") {
+		t.Fatalf("error = %v, want hosts stage label", err)
+	}
+	want := "Testing Cloudflare nodes...\nParsing Cloudflare test results...\nUpdating hosts file...\n"
+	if got := status.String(); got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+}
+
+func TestRunRestoreLabelsHostsMutationFailureStageAndStatus(t *testing.T) {
+	var status bytes.Buffer
+	err := run([]string{"--restore"}, commandDeps{
+		hostsPath: filepath.Join(t.TempDir(), "missing", "hosts"), status: &status,
+	})
+	if err == nil || !strings.Contains(err.Error(), "removing preferred-IP hosts entries") {
+		t.Fatalf("error = %v, want restore stage label", err)
+	}
+	if got, want := status.String(), "Removing preferred-IP hosts entries...\n"; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
 }
