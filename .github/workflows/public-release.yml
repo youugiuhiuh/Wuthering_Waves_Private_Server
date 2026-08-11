@@ -112,6 +112,33 @@ jobs:
           cp rust/aegis/target/release/aegis dist/
           cp go/installer/installer dist/
 
+      - name: Build client Cloudflare preferred-IP packages
+        run: |
+          set -euo pipefail
+          CFST_VERSION=v2.3.5
+          mkdir -p dist/cf-win dist/cf-linux /tmp/cfst
+          curl -fL -o /tmp/cfst/windows.zip "https://github.com/XIU2/CloudflareSpeedTest/releases/download/${CFST_VERSION}/cfst_windows_amd64.zip"
+          echo '67d06a0c68b7fd6998d5e6abea1dbf850cac2c19c5d8c5980aa32fc7aba1ff5f  /tmp/cfst/windows.zip' | sha256sum -c -
+          unzip -j /tmp/cfst/windows.zip 'CloudflareST.exe' -d dist/cf-win
+          GOOS=windows GOARCH=amd64 go build -C go/cf-preferred-ip -o ../../dist/cf-win/aegis-cf-preferred-ip.exe .
+          cp scripts/cf-preferred-ip/run.bat dist/cf-win/run.bat
+          (cd dist/cf-win && zip -q ../aegis-cf-win-amd64.zip CloudflareST.exe aegis-cf-preferred-ip.exe run.bat)
+          curl -fL -o /tmp/cfst/linux.tar.gz "https://github.com/XIU2/CloudflareSpeedTest/releases/download/${CFST_VERSION}/cfst_linux_amd64.tar.gz"
+          echo 'c4c8fc76b4e1bf2bdb5ced8b765956d82dda7bc4eb59df5c04053f0f7db98d90  /tmp/cfst/linux.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/cfst/linux.tar.gz -C dist/cf-linux CloudflareST
+          GOOS=linux GOARCH=amd64 go build -C go/cf-preferred-ip -o ../../dist/cf-linux/aegis-cf-preferred-ip .
+          cp scripts/cf-preferred-ip/run.sh dist/cf-linux/run.sh
+          chmod +x dist/cf-linux/CloudflareST dist/cf-linux/aegis-cf-preferred-ip dist/cf-linux/run.sh
+          (cd dist/cf-linux && tar -czf ../aegis-cf-linux-amd64.tar.gz CloudflareST aegis-cf-preferred-ip run.sh)
+
+      - name: Verify preferred-IP archives
+        run: |
+          set -euo pipefail
+          unzip -Z1 dist/aegis-cf-win-amd64.zip > /tmp/aegis-cf-win-files
+          tar -tzf dist/aegis-cf-linux-amd64.tar.gz > /tmp/aegis-cf-linux-files
+          sort /tmp/aegis-cf-win-files | diff -u - <(printf '%s\n' 'CloudflareST.exe' 'aegis-cf-preferred-ip.exe' 'run.bat' | sort)
+          sort /tmp/aegis-cf-linux-files | diff -u - <(printf '%s\n' 'CloudflareST' 'aegis-cf-preferred-ip' 'run.sh' | sort)
+
       - name: Cleanup Old Releases (Keep Last 3)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -137,6 +164,8 @@ jobs:
           files: |
             dist/aegis
             dist/installer
+            dist/aegis-cf-win-amd64.zip
+            dist/aegis-cf-linux-amd64.tar.gz
           body: |
             Release `v${{ env.NEW_VERSION }}`.
 
