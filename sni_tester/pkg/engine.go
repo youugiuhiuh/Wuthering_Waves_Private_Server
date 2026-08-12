@@ -99,11 +99,20 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 
 	now := time.Now().Unix()
 	var toTest []string
+	var stats Stats
 	for _, d := range domains {
 		if _, skipped := skipMap[d]; skipped {
+			stats.Skipped++
+			if cb != nil {
+				cb(ProgressEvent{Type: "skipped", Domain: d, Stats: stats})
+			}
 			continue
 		}
 		if !e.cfg.ForceRetry && e.storage.IsFailedRecently(d, now) {
+			stats.Skipped++
+			if cb != nil {
+				cb(ProgressEvent{Type: "skipped", Domain: d, Stats: stats})
+			}
 			continue
 		}
 		toTest = append(toTest, d)
@@ -178,7 +187,6 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 	}()
 
 	total := len(toTest)
-	var stats Stats
 	stats.Total = total
 	countryDomains := make(map[string][]string)
 	var failedDomains []string

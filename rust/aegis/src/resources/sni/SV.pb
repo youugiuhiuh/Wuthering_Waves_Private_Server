@@ -1,3 +1,0 @@
-
-
-ufg.edu.sv

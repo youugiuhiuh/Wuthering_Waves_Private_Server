@@ -1,3 +1,0 @@
-
-
-umg.edu.gt

@@ -1,2 +1,0 @@
-
-telinet.com.pg

@@ -1,3 +1,0 @@
-
-qanet.gm
-	unique.gm

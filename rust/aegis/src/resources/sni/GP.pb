@@ -1,2 +1,0 @@
-
-dauphintelecom.com

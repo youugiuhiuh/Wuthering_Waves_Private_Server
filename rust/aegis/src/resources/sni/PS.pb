@@ -1,3 +1,0 @@
-
-alwatanieh.ps
-hnjiexi.com

@@ -1,3 +1,0 @@
-
-flujooperativo.com
-tevisat.net

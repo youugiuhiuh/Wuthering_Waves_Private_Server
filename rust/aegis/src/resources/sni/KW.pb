@@ -1,2 +1,0 @@
-
-qnethosting.com

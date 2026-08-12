@@ -91,7 +91,6 @@ func PrepareGeoDBs(geoFile, asnFile, proxyURL string) error {
 
 func downloadWithMirrors(filePath, primaryURL, proxyString string) error {
 	filename := filepath.Base(primaryURL)
-	// Try mirrors first
 	for _, mirror := range GeoDBMirrors {
 		base := mirror
 		if !strings.HasPrefix(base, "http") {
@@ -103,8 +102,7 @@ func downloadWithMirrors(filePath, primaryURL, proxyString string) error {
 			return nil
 		}
 	}
-	// Fallback to original URL
-	return tryDownload(filePath, primaryURL, proxyString)
+	return fmt.Errorf("all GeoDB mirror sources failed: %s", filename)
 }
 
 func tryDownload(filePath, urlStr, proxyString string) error {
