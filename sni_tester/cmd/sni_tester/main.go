@@ -25,6 +25,7 @@ func main() {
 	forceRetry := flag.Bool("force", false, "Re-test skipped domains")
 	resetAll := flag.Bool("reset", false, "Clear all history")
 	proxyString := flag.String("p", "", "Proxy for Geo download")
+	wifiMode := flag.Bool("wifi", true, "Route CLI network traffic through active WiFi")
 	flag.Parse()
 
 	if *inputFile == "" {
@@ -49,7 +50,14 @@ func main() {
 	cfg.DNSAddr = *dnsAddr
 	cfg.OutputDir = targetDir
 
-	if err := pkg.PrepareGeoDBs(cfg.GeoDBFile, cfg.GeoASNFile, *proxyString); err != nil {
+	network, err := pkg.NewNetwork(*wifiMode)
+	if err != nil {
+		fmt.Printf("Error initializing WiFi network isolation: %v\n", err)
+		os.Exit(1)
+	}
+	cfg.Network = network
+
+	if err := pkg.PrepareGeoDBs(cfg.GeoDBFile, cfg.GeoASNFile, *proxyString, network); err != nil {
 		fmt.Printf("Warning: GeoDB download failed: %v\n", err)
 	}
 

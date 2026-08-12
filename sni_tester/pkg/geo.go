@@ -60,7 +60,12 @@ func IsBlockedCountry(code string) bool {
 	return code == "CN" || code == "HK" || code == "MO" || code == "IR" || code == "RU" || code == "KP"
 }
 
-func PrepareGeoDBs(geoFile, asnFile, proxyURL string) error {
+func PrepareGeoDBs(geoFile, asnFile, proxyURL string, networks ...*Network) error {
+	network, err := geoDownloadNetwork(networks)
+	if err != nil {
+		return err
+	}
+
 	needCountry := false
 	needASN := false
 
@@ -76,12 +81,12 @@ func PrepareGeoDBs(geoFile, asnFile, proxyURL string) error {
 	}
 
 	if needCountry {
-		if err := downloadWithMirrors(geoFile, GeoDBURL, proxyURL); err != nil {
+		if err := downloadWithMirrors(geoFile, GeoDBURL, proxyURL, network); err != nil {
 			return fmt.Errorf("failed to download GeoLite2-Country: %w", err)
 		}
 	}
 	if needASN {
-		if err := downloadWithMirrors(asnFile, GeoASNURL, proxyURL); err != nil {
+		if err := downloadWithMirrors(asnFile, GeoASNURL, proxyURL, network); err != nil {
 			return fmt.Errorf("failed to download GeoLite2-ASN: %w", err)
 		}
 	}
@@ -89,7 +94,14 @@ func PrepareGeoDBs(geoFile, asnFile, proxyURL string) error {
 	return nil
 }
 
-func downloadWithMirrors(filePath, primaryURL, proxyString string) error {
+func geoDownloadNetwork(networks []*Network) (*Network, error) {
+	if len(networks) > 0 && networks[0] != nil {
+		return networks[0], nil
+	}
+	return NewNetwork(false)
+}
+
+func downloadWithMirrors(filePath, primaryURL, proxyString string, network *Network) error {
 	filename := filepath.Base(primaryURL)
 	// Try mirrors first
 	for _, mirror := range GeoDBMirrors {
@@ -99,25 +111,23 @@ func downloadWithMirrors(filePath, primaryURL, proxyString string) error {
 		}
 		base = strings.TrimRight(base, "/")
 		mirrorURL := base + GeoDBGitHubPath + filename
-		if err := tryDownload(filePath, mirrorURL, proxyString); err == nil {
+		if err := tryDownload(filePath, mirrorURL, proxyString, network); err == nil {
 			return nil
 		}
 	}
 	// Fallback to original URL
-	return tryDownload(filePath, primaryURL, proxyString)
+	return tryDownload(filePath, primaryURL, proxyString, network)
 }
 
-func tryDownload(filePath, urlStr, proxyString string) error {
-	transport := &http.Transport{}
-	if proxyString != "" {
-		pu, err := url.Parse(proxyString)
-		if err == nil {
-			if pu.Scheme == "http" || pu.Scheme == "https" {
-				transport.Proxy = http.ProxyURL(pu)
-			}
+func tryDownload(filePath, urlStr, proxyString string, network *Network) error {
+	client := network.HTTPClient(10*time.Minute, func(transport *http.Transport) {
+		if proxyString == "" {
+			return
 		}
-	}
-	client := &http.Client{Transport: transport, Timeout: 10 * time.Minute}
+		if proxy, err := url.Parse(proxyString); err == nil && (proxy.Scheme == "http" || proxy.Scheme == "https") {
+			transport.Proxy = http.ProxyURL(proxy)
+		}
+	})
 
 	resp, err := client.Get(urlStr)
 	if err != nil {
