@@ -221,7 +221,7 @@ func ShuffleStrings(s []string) {
 	}
 }
 
-func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
+func resolveWithUDP(ctx context.Context, domain string, network *Network) ([]string, error) {
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
 
@@ -248,6 +248,7 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 			c := &dns.Client{
 				Timeout: baseTimeout,
 				Net:     "udp4",
+				Dialer:  network.Dialer(),
 			}
 
 			start := time.Now()
@@ -345,30 +346,17 @@ func lookupHostDoHWire(client *http.Client, endpoint string, name string) ([]str
 	return ips, nil
 }
 
-func lookupHostDoT(server string, name string) ([]string, error) {
+func lookupHostDoT(server string, name string, network *Network) ([]string, error) {
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn(name), dns.TypeA)
 
-	timeout := 5 * time.Second
-
-	conn, err := dns.DialWithTLS("tcp", server, &tls.Config{
+	c := &dns.Client{Net: "tcp-tls", Timeout: 5 * time.Second, TLSConfig: &tls.Config{
 		ServerName: strings.Split(server, ":")[0],
 		MinVersion: tls.VersionTLS12,
-	})
+	}, Dialer: network.Dialer()}
+	resp, _, err := c.Exchange(msg, server)
 	if err != nil {
-		return nil, fmt.Errorf("DoT connection failed: %w", err)
-	}
-	defer conn.Close()
-
-	conn.SetDeadline(time.Now().Add(timeout))
-
-	if err := conn.WriteMsg(msg); err != nil {
-		return nil, fmt.Errorf("DoT write failed: %w", err)
-	}
-
-	resp, err := conn.ReadMsg()
-	if err != nil {
-		return nil, fmt.Errorf("DoT read failed: %w", err)
+		return nil, fmt.Errorf("DoT query failed: %w", err)
 	}
 
 	var ips []string
@@ -384,7 +372,7 @@ func lookupHostDoT(server string, name string) ([]string, error) {
 	return ips, nil
 }
 
-func resolveWithDNS(ctx context.Context, domain string) ([]string, error) {
+func resolveWithDNS(ctx context.Context, domain string, network *Network) ([]string, error) {
 	if len(DefaultDNSServers.DoH) > 0 {
 		dohServers := selectWeightedServers(DefaultDNSServers.DoH, 3)
 		for _, server := range dohServers {
@@ -392,7 +380,7 @@ func resolveWithDNS(ctx context.Context, domain string) ([]string, error) {
 				return nil, fmt.Errorf("shutting down")
 			}
 			start := time.Now()
-			ips, err := lookupHostDoHWire(nil, server, domain)
+			ips, err := lookupHostDoHWire(network.HTTPClient(5*time.Second, nil), server, domain)
 			latency := time.Since(start)
 			TimeoutCtrl.Record(latency, "dns")
 
@@ -419,7 +407,7 @@ func resolveWithDNS(ctx context.Context, domain string) ([]string, error) {
 				return nil, fmt.Errorf("shutting down")
 			}
 			start := time.Now()
-			ips, err := lookupHostDoT(server, domain)
+			ips, err := lookupHostDoT(server, domain, network)
 			latency := time.Since(start)
 			TimeoutCtrl.Record(latency, "dns")
 
@@ -439,11 +427,11 @@ func resolveWithDNS(ctx context.Context, domain string) ([]string, error) {
 		}
 	}
 
-	return resolveWithUDP(ctx, domain)
+	return resolveWithUDP(ctx, domain, network)
 }
 
-func ResolveWithFailover(ctx context.Context, domain string) ([]string, error) {
-	return resolveWithDNS(ctx, domain)
+func ResolveWithFailover(ctx context.Context, domain string, network *Network) ([]string, error) {
+	return resolveWithDNS(ctx, domain, network)
 }
 
 type TimeoutController struct {

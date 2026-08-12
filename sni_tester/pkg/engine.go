@@ -243,7 +243,7 @@ func (e *Engine) processDomain(ctx context.Context, domain string) jobResult {
 	defer cancel()
 
 	start := time.Now()
-	ips, err := ResolveWithFailover(dnsCtx, domain)
+	ips, err := ResolveWithFailover(dnsCtx, domain, e.cfg.Network)
 	e.timeoutCtrl.Record(time.Since(start), "dns")
 	if err != nil || len(ips) == 0 {
 		errMsg := "DNS resolution failed"
