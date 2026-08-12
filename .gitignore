@@ -11,11 +11,13 @@ rust/version-sync/target
 References/
 sni_tester/*.txt
 sni_tester/GeoLite2-Country.mmdb
+sni_tester/GeoLite2-ASN.mmdb
+sni_tester/GeoLite2-City.mmdb
 sni_tester/*.csv
 sni_tester/sni_tester
 go/installer/installer
 .github/workflows/SETUP.md
-sni_tester/GeoLite2-ASN.mmdb
+
 
 # BadgerDB (SNI Tester)
 badger_db/
