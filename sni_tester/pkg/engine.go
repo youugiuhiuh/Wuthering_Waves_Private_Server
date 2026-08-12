@@ -272,7 +272,7 @@ func (e *Engine) processDomain(ctx context.Context, domain string) jobResult {
 
 	tlsTimeout := e.timeoutCtrl.GetTimeout("tls")
 	start = time.Now()
-	tlsResult := GetCachedTLS(domain, ip, tlsTimeout, true)
+	tlsResult := GetCachedTLS(domain, ip, tlsTimeout, true, e.cfg.Network)
 	e.timeoutCtrl.Record(time.Since(start), "tls")
 
 	if tlsResult == nil || !tlsResult.HandshakeOK {
@@ -283,7 +283,7 @@ func (e *Engine) processDomain(ctx context.Context, domain string) jobResult {
 		return jobResult{domain: domain, success: false, ip: ip, country: country, asn: asnRes.ASN, org: asnRes.Org, info: errMsg}
 	}
 
-	success, info := ValidateDomain(tlsResult)
+	success, info := ValidateDomain(tlsResult, e.cfg.Network)
 	finalIP := tlsResult.IP
 	if finalIP == "" {
 		finalIP = ip

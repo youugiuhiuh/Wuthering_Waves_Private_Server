@@ -48,3 +48,28 @@ func TestDoHRejectsMissingNetworkClient(t *testing.T) {
 		t.Fatal("DoH request used a default client")
 	}
 }
+
+func TestPerformTLSHandshakeUsesNetworkDialer(t *testing.T) {
+	called := false
+	network := &Network{dialer: &net.Dialer{Control: func(_, _ string, _ syscall.RawConn) error {
+		called = true
+		return errors.New("bound")
+	}}}
+
+	_, err := PerformTLSHandshake("example.com", "127.0.0.1", time.Second, true, network)
+	if err == nil || !called {
+		t.Fatalf("expected bound dial attempt, got %v", err)
+	}
+}
+
+func TestCheckH3SupportUsesNetworkDialer(t *testing.T) {
+	called := false
+	network := &Network{dialer: &net.Dialer{Control: func(_, _ string, _ syscall.RawConn) error {
+		called = true
+		return errors.New("bound")
+	}}}
+
+	if CheckH3Support("example.com", "127.0.0.1", network) || !called {
+		t.Fatal("expected supplied dialer")
+	}
+}

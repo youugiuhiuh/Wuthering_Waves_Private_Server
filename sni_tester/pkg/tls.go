@@ -46,15 +46,14 @@ func IsValidKeyGroup(group utls.CurveID) bool {
 		group == utls.X25519Kyber768Draft00
 }
 
-func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duration, needTLS13 bool) (*TLSResult, error) {
+func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duration, needTLS13 bool, network *Network) (*TLSResult, error) {
 	result := &TLSResult{
 		Domain: domain,
 		IP:     targetIP,
 	}
 
-	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	addr := net.JoinHostPort(targetIP, "443")
-	rawConn, err := dialer.DialContext(context.Background(), "tcp", addr)
+	rawConn, err := network.Dialer().DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		result.Error = err.Error()
 		return result, err
@@ -100,7 +99,7 @@ func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duratio
 	return result, nil
 }
 
-func ValidateDomain(result *TLSResult) (bool, string) {
+func ValidateDomain(result *TLSResult, network *Network) (bool, string) {
 	if result.TLSVersion != utls.VersionTLS13 {
 		return false, "TLS 1.3 required"
 	}
@@ -113,7 +112,7 @@ func ValidateDomain(result *TLSResult) (bool, string) {
 		return true, "Validated (H2)"
 	}
 
-	h3Supported := CheckH3Support(result.Domain, result.IP)
+	h3Supported := CheckH3Support(result.Domain, result.IP, network)
 	if h3Supported {
 		return true, "Validated (H3)"
 	}
@@ -121,23 +120,22 @@ func ValidateDomain(result *TLSResult) (bool, string) {
 	return false, "Neither H2 nor H3 support detected"
 }
 
-func CheckH3Support(domain string, targetIP string) bool {
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
+func CheckH3Support(domain string, targetIP string, network *Network) bool {
+	client := network.HTTPClient(8*time.Second, func(transport *http.Transport) {
+		transport.TLSClientConfig = &tls.Config{
 			ServerName: domain,
 			NextProtos: PickALPNProfile(),
-		},
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		}
+		transport.DialContext = func(ctx context.Context, _, addr string) (net.Conn, error) {
 			connectAddr := addr
 			if targetIP != "" {
 				_, port, _ := net.SplitHostPort(addr)
 				connectAddr = net.JoinHostPort(targetIP, port)
 			}
-			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", connectAddr)
-		},
-		ForceAttemptHTTP2: true,
-	}
-	client := &http.Client{Transport: transport, Timeout: 8 * time.Second}
+			return network.Dialer().DialContext(ctx, "tcp", connectAddr)
+		}
+		transport.ForceAttemptHTTP2 = true
+	})
 
 	req, err := http.NewRequest("HEAD", "https://"+domain, nil)
 	if err != nil {
@@ -154,13 +152,13 @@ func CheckH3Support(domain string, targetIP string) bool {
 	return strings.Contains(altSvc, "h3")
 }
 
-func GetCachedTLS(domain, ip string, tlsTimeout time.Duration, needTLS13 bool) *TLSResult {
+func GetCachedTLS(domain, ip string, tlsTimeout time.Duration, needTLS13 bool, network *Network) *TLSResult {
 	cacheKey := domain + ":" + ip
 	if cached, ok := tlsCache.Load(cacheKey); ok {
 		return cached.(*TLSResult)
 	}
 
-	result, _ := PerformTLSHandshake(domain, ip, tlsTimeout, needTLS13)
+	result, _ := PerformTLSHandshake(domain, ip, tlsTimeout, needTLS13, network)
 	tlsCache.Store(cacheKey, result)
 	return result
 }
