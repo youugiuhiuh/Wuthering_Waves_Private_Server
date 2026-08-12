@@ -22,6 +22,7 @@ type Config struct {
 	OutputDir     string
 	Shutdown      bool
 	GeoProxy      string
+	Network       *Network
 }
 
 // DefaultConfig returns default configuration
