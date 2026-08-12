@@ -55,6 +55,13 @@ func main() {
 		fmt.Printf("Error initializing WiFi network isolation: %v\n", err)
 		os.Exit(1)
 	}
+	if *wifiMode && pkg.NeedsElevation() {
+		fmt.Println("Requesting elevated privileges for WiFi interface binding...")
+		if err := pkg.RequestElevation(); err != nil {
+			fmt.Printf("Elevation failed: %v. Using default route (no WiFi isolation).\n", err)
+			network, _ = pkg.NewNetwork(false)
+		}
+	}
 	cfg.Network = network
 
 	if err := pkg.PrepareGeoDBs(cfg.GeoDBFile, cfg.GeoASNFile, *proxyString, network); err != nil {

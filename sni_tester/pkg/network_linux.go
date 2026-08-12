@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"golang.org/x/sys/unix"
@@ -54,3 +55,22 @@ func bindInterface(fd uintptr, _ uint32, name string) error {
 	}
 	return nil
 }
+
+func NeedsElevation() bool {
+	return unix.Geteuid() != 0
+}
+
+func RequestElevation() error {
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get executable path: %w", err)
+	}
+	args := append([]string{execPath}, os.Args[1:]...)
+	cmd := exec.Command("sudo", args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+
