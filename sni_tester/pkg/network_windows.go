@@ -5,6 +5,7 @@ package pkg
 import (
 	"encoding/binary"
 	"errors"
+	"net"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -27,12 +28,16 @@ func discoverWiFi() (wifiInterface, error) {
 			continue
 		}
 		for address := adapter.FirstUnicastAddress; address != nil; address = address.Next {
-			if address.Address.IP().To4() != nil {
+			if configuredIPv4(address.Address.IP()) {
 				return wifiInterface{name: windows.UTF16PtrToString(adapter.FriendlyName), index: adapter.IfIndex}, nil
 			}
 		}
 	}
 	return wifiInterface{}, errors.New("no active WiFi interface with IPv4")
+}
+
+func configuredIPv4(ip net.IP) bool {
+	return ip.To4() != nil && !ip.IsUnspecified()
 }
 
 func bindInterface(fd uintptr, index uint32, _ string) error {
