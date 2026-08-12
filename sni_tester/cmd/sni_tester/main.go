@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -93,6 +94,9 @@ func main() {
 		result.Stats.Success, result.Stats.Failed, result.Stats.Skipped)
 
 	if *autoShutdown {
+		fmt.Println("Testing complete, shutting down...")
+		exec.Command("poweroff").Run()
+		os.Exit(0)
 	}
 }
 
