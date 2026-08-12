@@ -292,7 +292,7 @@ func resolveWithUDP(ctx context.Context, domain string, network *Network) ([]str
 
 func lookupHostDoHWire(client *http.Client, endpoint string, name string) ([]string, error) {
 	if client == nil {
-		client = &http.Client{Timeout: 5 * time.Second}
+		return nil, fmt.Errorf("DoH client is required")
 	}
 
 	msg := new(dns.Msg)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"syscall"
 	"testing"
 	"time"
@@ -28,5 +30,21 @@ func TestDoHClientUsesNetworkDialer(t *testing.T) {
 	_, err := lookupHostDoHWire(bound.HTTPClient(time.Second, nil), "http://127.0.0.1:1", "example.com")
 	if err == nil {
 		t.Fatal("expected supplied dialer error")
+	}
+}
+
+func TestDoHRejectsMissingNetworkClient(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	}))
+	defer server.Close()
+
+	_, err := lookupHostDoHWire(nil, server.URL, "example.com")
+	if err == nil {
+		t.Fatal("expected missing network client error")
+	}
+	if called {
+		t.Fatal("DoH request used a default client")
 	}
 }

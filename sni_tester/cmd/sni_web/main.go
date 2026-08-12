@@ -15,9 +15,10 @@ func main() {
 		outputDir = d
 	}
 
-	cfg := pkg.DefaultConfig()
-	cfg.OutputDir = outputDir
-	cfg.Debug = true
+	cfg, err := newConfig(outputDir)
+	if err != nil {
+		log.Fatalf("Failed to initialize network: %v", err)
+	}
 
 	if err := pkg.PrepareGeoDBs(cfg.GeoDBFile, cfg.GeoASNFile, ""); err != nil {
 		log.Printf("Warning: GeoDB download failed: %v", err)
@@ -34,4 +35,17 @@ func main() {
 
 	log.Println("SNI API: http://0.0.0.0:18080")
 	log.Fatal(http.ListenAndServe("0.0.0.0:18080", webserver.Cors(mux)))
+}
+
+func newConfig(outputDir string) (pkg.Config, error) {
+	cfg := pkg.DefaultConfig()
+	cfg.OutputDir = outputDir
+	cfg.Debug = true
+
+	network, err := pkg.NewNetwork(false)
+	if err != nil {
+		return pkg.Config{}, err
+	}
+	cfg.Network = network
+	return cfg, nil
 }
