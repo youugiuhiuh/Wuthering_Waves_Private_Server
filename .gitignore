@@ -159,3 +159,4 @@ app.*.symbols
 !/dev/ci/**/Gemfile.lock.worktrees/
 
 .codegraph
+rust/aegis/src/resources/sni/UNKNOWN.pb

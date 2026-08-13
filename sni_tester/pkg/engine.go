@@ -87,36 +87,41 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 		}
 	}
 
-	skipMap := make(map[string]struct{})
-	if !e.cfg.ForceRetry {
-		fmt.Println("Loading success/blocked history...")
-		for d := range e.storage.LoadSuccessHistory() {
-			skipMap[d] = struct{}{}
-		}
-		for d := range e.storage.LoadBlockedHistory() {
-			skipMap[d] = struct{}{}
-		}
-	}
-
 	now := time.Now().Unix()
 	var toTest []string
 	var stats Stats
-	for _, d := range domains {
-		if _, skipped := skipMap[d]; skipped {
-			stats.Skipped++
-			if cb != nil {
-				cb(ProgressEvent{Type: "skipped", Domain: d, Stats: stats})
+	countryDomains := make(map[string][]string)
+	if !e.cfg.ForceRetry {
+		fmt.Println("Loading success/blocked history...")
+		successCountry := e.storage.LoadSuccessHistory()
+		blocked := e.storage.LoadBlockedHistory()
+		for _, d := range domains {
+			if country, ok := successCountry[d]; ok {
+				countryDomains[country] = append(countryDomains[country], d)
+				stats.Skipped++
+				if cb != nil {
+					cb(ProgressEvent{Type: "skipped", Domain: d, Stats: stats})
+				}
+				continue
 			}
-			continue
-		}
-		if !e.cfg.ForceRetry && e.storage.IsFailedRecently(d, now) {
-			stats.Skipped++
-			if cb != nil {
-				cb(ProgressEvent{Type: "skipped", Domain: d, Stats: stats})
+			if _, ok := blocked[d]; ok {
+				stats.Skipped++
+				if cb != nil {
+					cb(ProgressEvent{Type: "skipped", Domain: d, Stats: stats})
+				}
+				continue
 			}
-			continue
+			if e.storage.IsFailedRecently(d, now) {
+				stats.Skipped++
+				if cb != nil {
+					cb(ProgressEvent{Type: "skipped", Domain: d, Stats: stats})
+				}
+				continue
+			}
+			toTest = append(toTest, d)
 		}
-		toTest = append(toTest, d)
+	} else {
+		toTest = append(toTest, domains...)
 	}
 	fmt.Printf("Filtering: %d total, %d to test, %d skipped\n", len(domains), len(toTest), stats.Skipped)
 
@@ -153,8 +158,13 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 				}
 
 				var domain string
+				var ok bool
 				select {
-				case domain = <-jobs:
+				case domain, ok = <-jobs:
+					if !ok {
+						workerSem <- struct{}{}
+						return
+					}
 				case <-ctx.Done():
 					workerSem <- struct{}{}
 					return
@@ -190,7 +200,6 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 
 	total := len(toTest)
 	stats.Total = total
-	countryDomains := make(map[string][]string)
 	var failedDomains []string
 	var resultList []DomainResult
 

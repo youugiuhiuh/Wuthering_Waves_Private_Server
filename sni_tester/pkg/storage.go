@@ -139,16 +139,25 @@ func (s *StorageManager) AppendFailureHistory(domains []string) {
 	}
 }
 
-func (s *StorageManager) LoadSuccessHistory() map[string]struct{} {
-	m := make(map[string]struct{})
+func (s *StorageManager) LoadSuccessHistory() map[string]string {
+	m := make(map[string]string)
 	_ = s.db.View(func(txn *badger.Txn) error {
 		iter := txn.NewIterator(badger.IteratorOptions{PrefetchValues: false})
 		defer iter.Close()
 		prefix := keyPrefixSuccess()
 		for iter.Seek(prefix); iter.ValidForPrefix(prefix); iter.Next() {
-			key := string(iter.Item().Key())
+			item := iter.Item()
+			key := string(item.Key())
 			domain := strings.TrimPrefix(key, strKeyPrefixSuccess())
-			m[domain] = struct{}{}
+			val, err := item.ValueCopy(nil)
+			if err != nil {
+				continue
+			}
+			var info SuccessInfo
+			if json.Unmarshal(val, &info) != nil {
+				continue
+			}
+			m[domain] = info.Country
 		}
 		return nil
 	})
