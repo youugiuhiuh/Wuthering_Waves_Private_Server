@@ -66,7 +66,10 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
+		fmt.Println("Interrupt received, stopping...")
 		cancel()
+		<-sigChan
+		os.Exit(130)
 	}()
 
 	domains := readDomains(*inputFile, cfg.MaxLines)

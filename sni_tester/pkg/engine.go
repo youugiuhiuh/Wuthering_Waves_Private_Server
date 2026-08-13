@@ -89,6 +89,7 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 
 	skipMap := make(map[string]struct{})
 	if !e.cfg.ForceRetry {
+		fmt.Println("Loading success/blocked history...")
 		for d := range e.storage.LoadSuccessHistory() {
 			skipMap[d] = struct{}{}
 		}
@@ -117,6 +118,7 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 		}
 		toTest = append(toTest, d)
 	}
+	fmt.Printf("Filtering: %d total, %d to test, %d skipped\n", len(domains), len(toTest), stats.Skipped)
 
 	jobs := make(chan string, 5000)
 	results := make(chan jobResult, 2000)
@@ -233,7 +235,8 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 	<-done
 
 	if !e.cfg.Debug {
-		SaveBatch(e.cfg.OutputDir, countryDomains, e.storage.DB())
+		fmt.Println("Saving results...")
+		SaveBatch(ctx, e.cfg.OutputDir, countryDomains, e.storage.DB())
 		if len(failedDomains) > 0 {
 			e.storage.AppendFailureHistory(failedDomains)
 		}

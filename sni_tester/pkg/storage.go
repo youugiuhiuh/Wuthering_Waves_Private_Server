@@ -142,7 +142,7 @@ func (s *StorageManager) AppendFailureHistory(domains []string) {
 func (s *StorageManager) LoadSuccessHistory() map[string]struct{} {
 	m := make(map[string]struct{})
 	_ = s.db.View(func(txn *badger.Txn) error {
-		iter := txn.NewIterator(badger.DefaultIteratorOptions)
+		iter := txn.NewIterator(badger.IteratorOptions{PrefetchValues: false})
 		defer iter.Close()
 		prefix := keyPrefixSuccess()
 		for iter.Seek(prefix); iter.ValidForPrefix(prefix); iter.Next() {
@@ -158,7 +158,7 @@ func (s *StorageManager) LoadSuccessHistory() map[string]struct{} {
 func (s *StorageManager) LoadBlockedHistory() map[string]struct{} {
 	m := make(map[string]struct{})
 	_ = s.db.View(func(txn *badger.Txn) error {
-		iter := txn.NewIterator(badger.DefaultIteratorOptions)
+		iter := txn.NewIterator(badger.IteratorOptions{PrefetchValues: false})
 		defer iter.Close()
 
 		prefixCountry := keyPrefixBlockedCountry()

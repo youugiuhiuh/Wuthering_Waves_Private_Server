@@ -2,12 +2,14 @@ package pkg
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
@@ -168,21 +170,46 @@ func DedupeStrings(sorted []string) []string {
 	return result
 }
 
-func SaveBatch(targetDir string, m map[string][]string, db *badger.DB) error {
+func SaveBatch(ctx context.Context, targetDir string, m map[string][]string, db *badger.DB) error {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+
 	for country, list := range m {
-		filename := fmt.Sprintf("%s.pb", strings.ToUpper(country))
-		targetPath := filepath.Join(targetDir, filename)
-		os.MkdirAll(targetDir, 0o755)
-
-		existingDomains := []string{}
-		if data, err := os.ReadFile(targetPath); err == nil {
-			existingDomains, _ = ParseProtobufDomains(data)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 
-		allDomains := append(existingDomains, list...)
-		if len(allDomains) > 0 {
-			WriteProtobufDomainFile(allDomains, targetPath)
-		}
+		wg.Add(1)
+		go func(country string, list []string) {
+			defer wg.Done()
+			filename := fmt.Sprintf("%s.pb", strings.ToUpper(country))
+			targetPath := filepath.Join(targetDir, filename)
+			os.MkdirAll(targetDir, 0o755)
+
+			existingDomains := []string{}
+			if data, err := os.ReadFile(targetPath); err == nil {
+				existingDomains, _ = ParseProtobufDomains(data)
+			}
+
+			allDomains := append(existingDomains, list...)
+			if len(allDomains) > 0 {
+				if err := WriteProtobufDomainFile(allDomains, targetPath); err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+				}
+			}
+		}(country, list)
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		return firstErr
 	}
 
 	if db != nil && len(m) > 0 {
@@ -190,9 +217,14 @@ func SaveBatch(targetDir string, m map[string][]string, db *badger.DB) error {
 		ttl := time.Duration(30) * 24 * time.Hour
 
 		wb := db.NewWriteBatch()
-		defer wb.Cancel()
 
 		for country, list := range m {
+			select {
+			case <-ctx.Done():
+				wb.Flush()
+				return ctx.Err()
+			default:
+			}
 			for _, domain := range list {
 				info := SuccessInfo{
 					Domain:   domain,

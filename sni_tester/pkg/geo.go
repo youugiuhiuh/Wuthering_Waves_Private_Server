@@ -91,13 +91,14 @@ func PrepareGeoDBs(geoFile, asnFile, proxyURL string) error {
 
 func downloadWithMirrors(filePath, primaryURL, proxyString string) error {
 	filename := filepath.Base(primaryURL)
-	for _, mirror := range GeoDBMirrors {
+	for i, mirror := range GeoDBMirrors {
 		base := mirror
 		if !strings.HasPrefix(base, "http") {
 			base = "https://" + base
 		}
 		base = strings.TrimRight(base, "/")
 		mirrorURL := base + GeoDBGitHubPath + filename
+		fmt.Printf("[GeoDB] Trying mirror %d/%d: %s\n", i+1, len(GeoDBMirrors), mirrorURL)
 		if err := tryDownload(filePath, mirrorURL, proxyString); err == nil {
 			return nil
 		}
