@@ -76,7 +76,7 @@ jobs:
           create: true
 
  mirror-codefloe:
-    name: Mirror to c  Codefloe
+    name: Mirror to Codefloe
     if: "!contains(github.event.head_commit.message, 'chore(deps)')"
     runs-on: ubuntu-latest
     timeout-minutes: 5
