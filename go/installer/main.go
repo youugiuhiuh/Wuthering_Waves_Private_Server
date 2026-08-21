@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	version     = "1.2.1"
+	version     = "1.2.2"
 	installDir  = "/etc/wwps/aegis"
 	binaryName  = "aegis"
 	serviceName = "wwps-aegis"
