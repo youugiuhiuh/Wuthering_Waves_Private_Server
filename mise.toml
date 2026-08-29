@@ -1,9 +1,9 @@
 [tools]
 rust = "latest"
-go = "1.26"
+go = "1.27"
 protoc = "latest"
 upx = "latest"
 "go:mvdan.cc/garble" = "latest"
-java = "temurin-17.0.19+10"
-gradle = "9.1.0"
-android-sdk = "22.0"
+java = "temurin-17.0.20"
+gradle = "9.7.1"
+android-sdk = "23.0"
