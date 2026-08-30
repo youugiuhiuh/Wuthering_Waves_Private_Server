@@ -108,7 +108,7 @@ impl SingBoxInstaller {
         ))
     }
 
-    fn detect_arch() -> Result<&'static str> {
+    pub(crate) fn detect_arch() -> Result<&'static str> {
         let arch = std::env::consts::ARCH;
         Self::detect_arch_for(arch)
     }
@@ -126,7 +126,7 @@ impl SingBoxInstaller {
         let output = tokio::process::Command::new("curl")
             .args([
                 "-s",
-                "https://api.github.com/repos/SagerNet/sing-box/releases/latest",
+                "https://api.github.com/repos/SagerNet/sing-box/releases?per_page=20",
             ])
             .output()
             .await
@@ -135,14 +135,29 @@ impl SingBoxInstaller {
         let json: serde_json::Value =
             serde_json::from_slice(&output.stdout).context("解析版本信息失败")?;
 
-        let tag_name = json["tag_name"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("未找到版本标签"))?;
-
-        Ok(tag_name.trim_start_matches('v').to_string())
+        Self::find_prerelease_tag(&json).ok_or_else(|| anyhow::anyhow!("未找到预发行版本"))
     }
 
-    async fn download_file(url: &str, path: &str) -> Result<()> {
+    /// Find the newest prerelease tag (version without leading `v`) in a
+    /// GitHub `releases?per_page=N` JSON array.
+    fn find_prerelease_tag(json: &serde_json::Value) -> Option<String> {
+        let releases = json.as_array()?;
+        for release in releases {
+            let prerelease = release
+                .get("prerelease")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if prerelease {
+                return release
+                    .get("tag_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim_start_matches('v').to_string());
+            }
+        }
+        None
+    }
+
+    pub(crate) async fn download_file(url: &str, path: &str) -> Result<()> {
         let output = tokio::process::Command::new("curl")
             .args(["-L", "-o", path, url])
             .output()
@@ -156,7 +171,7 @@ impl SingBoxInstaller {
         Ok(())
     }
 
-    async fn extract_archive(archive: &str, dest: &str) -> Result<()> {
+    pub(crate) async fn extract_archive(archive: &str, dest: &str) -> Result<()> {
         let output = tokio::process::Command::new("tar")
             .args(["-xzf", archive, "-C", dest])
             .output()
@@ -238,6 +253,7 @@ WantedBy=multi-user.target
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_detect_arch_x86_64() {
@@ -268,5 +284,29 @@ mod tests {
     fn test_detect_arch_s390x() {
         let result = SingBoxInstaller::detect_arch_for("s390x");
         assert!(result.is_err());
+    }
+    #[test]
+    fn test_find_prerelease_tag_picks_first_prerelease() {
+        let json = json!([
+            { "tag_name": "v1.13.20", "prerelease": false },
+            { "tag_name": "v1.14.0-rc.4", "prerelease": true },
+            { "tag_name": "v1.14.0-rc.2", "prerelease": true }
+        ]);
+        assert_eq!(
+            SingBoxInstaller::find_prerelease_tag(&json),
+            Some("1.14.0-rc.4".to_string())
+        );
+    }
+
+    #[test]
+    fn test_find_prerelease_tag_none_when_no_prerelease() {
+        let json = json!([{ "tag_name": "v1.13.20", "prerelease": false }]);
+        assert_eq!(SingBoxInstaller::find_prerelease_tag(&json), None);
+    }
+
+    #[test]
+    fn test_find_prerelease_tag_empty_or_non_array() {
+        assert_eq!(SingBoxInstaller::find_prerelease_tag(&json!([])), None);
+        assert_eq!(SingBoxInstaller::find_prerelease_tag(&json!({})), None);
     }
 }

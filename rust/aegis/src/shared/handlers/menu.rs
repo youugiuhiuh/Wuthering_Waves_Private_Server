@@ -520,6 +520,14 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                         data: "a_wwps_core_tags".into(),
                     }],
                     vec![InlineButton {
+                        text: t!("menu.wwps_core_restart").into(),
+                        data: "a_wwps_core_restart".into(),
+                    }],
+                    vec![InlineButton {
+                        text: t!("menu.wwps_core_status").into(),
+                        data: "a_wwps_core_status".into(),
+                    }],
+                    vec![InlineButton {
                         text: t!("menu.back_settings").into(),
                         data: "m_settings".into(),
                     }],
@@ -700,9 +708,96 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
             });
         }
+        "a_wwps_core_restart" => {
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(t!("menu.wwps_core_restart").into_owned()),
+                )
+                .await?;
+
+            let result =
+                match WwpsCoreUpgradeConfig::from_env().and_then(WwpsCoreUpgradeManager::new) {
+                    Ok(manager) => manager.restart_service().await,
+                    Err(err) => Err(err),
+                };
+
+            match result {
+                Ok(_) => {
+                    event
+                        .adapter
+                        .edit_message(
+                            &event.target,
+                            &event.msg_id,
+                            MessageContent {
+                                text: t!("menu.wwps_core_restart_success").into_owned(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                }
+                Err(err) => {
+                    event
+                        .adapter
+                        .edit_message(
+                            &event.target,
+                            &event.msg_id,
+                            MessageContent {
+                                text: t!(
+                                    "menu.wwps_core_restart_fail",
+                                    "0" => err.to_string()
+                                )
+                                .into_owned(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                }
+            }
+        }
+
+        "a_wwps_core_status" => {
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(t!("menu.wwps_core_status").into_owned()),
+                )
+                .await?;
+
+            let active = SystemMonitor::check_service_status(xray::DEFAULT_SERVICE).await;
+            let status_text = if active {
+                t!("menu.wwps_core_status_running")
+            } else {
+                t!("menu.wwps_core_status_stopped")
+            };
+            event
+                .adapter
+                .edit_message(
+                    &event.target,
+                    &event.msg_id,
+                    MessageContent {
+                        text: t!("menu.wwps_core_status_text", "0" => status_text).into_owned(),
+                        markup: None,
+                    },
+                )
+                .await?;
+        }
+
         "a_wwps_box_menu" => {
             let markup = Markup {
                 buttons: vec![
+                    vec![InlineButton {
+                        text: t!("menu.singbox_upgrade_latest").into(),
+                        data: "sb_upgrade_latest".into(),
+                    }],
+                    vec![InlineButton {
+                        text: t!("menu.version_tags").into(),
+                        data: "sb_upgrade_tags".into(),
+                    }],
                     vec![InlineButton {
                         text: t!("ops.singbox_restart").into(),
                         data: "a_wwps_box_restart".into(),
