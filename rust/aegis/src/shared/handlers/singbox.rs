@@ -18,15 +18,20 @@ pub async fn send_singbox_batch_result(
     target: &TargetId,
     protocol_name: &str,
     result: &BatchCreationResult,
+    note: Option<&str>,
 ) -> anyhow::Result<()> {
     let mut message_ids: Vec<String> = Vec::new();
 
-    let header_msg = format!(
+    let mut header_msg = format!(
         "✅ <b>{} 批量创建完成</b>\n\n已创建 {} 个配置:\n📁 配置文件: <code>{}</code>\n\n",
         protocol_name,
         result.created_count,
         result.config_file.as_deref().unwrap_or("未知")
     );
+    if let Some(note) = note {
+        header_msg.push_str(note);
+        header_msg.push_str("\n\n");
+    }
     if let Ok(msg) = adapter
         .send_message(
             target,
@@ -625,6 +630,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
             let adapter = event.adapter.clone();
             let target = event.target.clone();
+            let is_gecko = matches!(obfs_type, Some(Hysteria2ObfsType::Gecko));
 
             tokio::spawn(async move {
                 match SingBoxConfigManager::batch_create_hysteria2(
@@ -636,11 +642,17 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 .await
                 {
                     Ok(result) => {
+                        let note = if is_gecko {
+                            Some(t!("menu.singbox_h2_gecko_note").to_string())
+                        } else {
+                            None
+                        };
                         if let Err(e) = send_singbox_batch_result(
                             adapter.clone(),
                             &target,
                             "Hysteria2",
                             &result,
+                            note.as_deref(),
                         )
                         .await
                         {
@@ -706,7 +718,13 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
                     Ok(result) => {
                         if let Err(e) =
-                            send_singbox_batch_result(adapter.clone(), &target, "TUIC", &result)
+                            send_singbox_batch_result(
+                                adapter.clone(),
+                                &target,
+                                "TUIC",
+                                &result,
+                                None,
+                            )
                                 .await
                         {
                             log::warn!("发送批量创建结果失败: {}", e);
