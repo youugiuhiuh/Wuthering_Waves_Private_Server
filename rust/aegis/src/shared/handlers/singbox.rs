@@ -378,7 +378,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             let rows = vec![
                 vec![InlineButton {
                     text: t!("menu.singbox_h2_obfs_enable").into(),
-                    data: format!("sb_h2_hop:{}:{}:1", ip_ver, count),
+                    data: format!("sb_h2_obfs_type:{}:{}", ip_ver, count),
                 }],
                 vec![InlineButton {
                     text: t!("menu.singbox_h2_obfs_disable").into(),
@@ -398,6 +398,62 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     MessageContent {
                         text: t!(
                             "menu.singbox_h2_obfs_title",
+                            "0" => ip_display,
+                            "1" => count
+                        )
+                        .into_owned(),
+                        markup: Some(Markup { buttons: rows }),
+                    },
+                )
+                .await?;
+
+            Ok(HandlerAction::Done)
+        }
+
+        d if d.starts_with("sb_h2_obfs_type:") => {
+            let parts: Vec<&str> = d
+                .strip_prefix("sb_h2_obfs_type:")
+                .unwrap_or("")
+                .split(':')
+                .collect();
+            if parts.len() != 2 {
+                event
+                    .adapter
+                    .answer_callback(
+                        &event.target,
+                        &event.callback_id,
+                        Some(t!("menu.singbox_param_error").into_owned()),
+                    )
+                    .await?;
+                return Ok(HandlerAction::Done);
+            }
+            let ip_ver = parts[0];
+            let count = parts[1];
+            let ip_display = if ip_ver == "4" { "IPv4" } else { "IPv6" };
+
+            let rows = vec![
+                vec![InlineButton {
+                    text: t!("menu.singbox_h2_obfs_type_salamander").into(),
+                    data: format!("sb_h2_hop:{}:{}:1", ip_ver, count),
+                }],
+                vec![InlineButton {
+                    text: t!("menu.singbox_h2_obfs_type_gecko").into(),
+                    data: format!("sb_h2_hop:{}:{}:2", ip_ver, count),
+                }],
+                vec![InlineButton {
+                    text: t!("menu.back_user").into(),
+                    data: format!("sb_h2_obfs:{}:{}", ip_ver, count),
+                }],
+            ];
+
+            event
+                .adapter
+                .edit_message(
+                    &event.target,
+                    &event.msg_id,
+                    MessageContent {
+                        text: t!(
+                            "menu.singbox_h2_obfs_type_title",
                             "0" => ip_display,
                             "1" => count
                         )
@@ -431,15 +487,16 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             let count = parts[1];
             let obfs_enabled = parts[2];
             let ip_display = if ip_ver == "4" { "IPv4" } else { "IPv6" };
+            let obfs_status = match obfs_enabled {
+                "2" => t!("menu.singbox_h2_obfs_gecko").to_string(),
+                "1" => t!("menu.singbox_h2_obfs_salamander").to_string(),
+                _ => t!("menu.singbox_h2_obfs_disabled").to_string(),
+            };
             let title = format!(
                 "⚡ {} | {} {}\n\n{}",
                 ip_display,
                 t!("menu.singbox_h2_qty", "0" => count),
-                if obfs_enabled == "1" {
-                    t!("menu.singbox_h2_obfs_enabled")
-                } else {
-                    t!("menu.singbox_h2_obfs_disabled")
-                },
+                obfs_status,
                 t!("menu.singbox_h2_hop_title"),
             );
 
@@ -545,10 +602,10 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }
             let ip_ver = parts[0];
             let count: usize = parts[1].parse().unwrap_or(1);
-            let obfs_type = if parts[2] == "1" {
-                Some(Hysteria2ObfsType::Salamander)
-            } else {
-                None
+            let obfs_type = match parts[2] {
+                "1" => Some(Hysteria2ObfsType::Salamander),
+                "2" => Some(Hysteria2ObfsType::Gecko),
+                _ => None,
             };
             let hopping_enabled: bool = parts[3] == "1";
             let ip_version = if ip_ver == "6" {
