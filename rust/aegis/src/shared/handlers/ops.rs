@@ -769,7 +769,7 @@ pub async fn run_one_click(
             10,
             format!("{} ({})", t!("ops.deploy_step_h2"), ip_version.label()),
         );
-        match SingBoxConfigManager::batch_create_hysteria2(3, ip_version, false, false).await {
+        match SingBoxConfigManager::batch_create_hysteria2(3, ip_version, None, false).await {
             Ok(result) => {
                 all_links.extend(result.links);
                 let _ = adapter
