@@ -29,7 +29,7 @@ use crate::core::network::release_api::{fetch_json_from_mirrors, fetch_prereleas
 use crate::core::paths::singbox;
 use crate::core::singbox::installer::SingBoxInstaller;
 use crate::core::utils::human_readable_size;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use rust_i18n::t;
 use std::path::Path;
 use tokio::fs;
