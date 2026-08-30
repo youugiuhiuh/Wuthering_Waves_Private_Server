@@ -108,7 +108,7 @@ impl SingBoxInstaller {
         ))
     }
 
-    fn detect_arch() -> Result<&'static str> {
+    pub(crate) fn detect_arch() -> Result<&'static str> {
         let arch = std::env::consts::ARCH;
         Self::detect_arch_for(arch)
     }
@@ -142,7 +142,7 @@ impl SingBoxInstaller {
         Ok(tag_name.trim_start_matches('v').to_string())
     }
 
-    async fn download_file(url: &str, path: &str) -> Result<()> {
+    pub(crate) async fn download_file(url: &str, path: &str) -> Result<()> {
         let output = tokio::process::Command::new("curl")
             .args(["-L", "-o", path, url])
             .output()
@@ -156,7 +156,7 @@ impl SingBoxInstaller {
         Ok(())
     }
 
-    async fn extract_archive(archive: &str, dest: &str) -> Result<()> {
+    pub(crate) async fn extract_archive(archive: &str, dest: &str) -> Result<()> {
         let output = tokio::process::Command::new("tar")
             .args(["-xzf", archive, "-C", dest])
             .output()

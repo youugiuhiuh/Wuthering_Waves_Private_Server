@@ -6,6 +6,7 @@ pub mod installer;
 pub mod tuic;
 pub mod tuic_batch;
 pub mod upgrade;
+pub use upgrade::SingBoxUpgradeManager;
 
 pub use config::SingBoxConfigManager;
 pub use error::SingBoxError;
