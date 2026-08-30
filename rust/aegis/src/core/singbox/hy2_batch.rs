@@ -8,7 +8,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use super::config::SingBoxConfigManager;
-use super::hysteria2::{Hysteria2Config, Hysteria2ObfsType};
+use super::hysteria2::{Hy2LinkStyle, Hysteria2Config, Hysteria2ObfsType};
 use crate::core::paths::singbox;
 
 impl SingBoxConfigManager {
@@ -79,11 +79,16 @@ impl SingBoxConfigManager {
             };
 
             let link = if obfs_type.is_some() && enable_hopping {
-                config.to_client_link_with_hopping_and_obfs(&host, &tag, hop_range)
+                config.to_client_link_with_hopping_and_obfs(
+                    &host,
+                    &tag,
+                    hop_range,
+                    Hy2LinkStyle::Official,
+                )
             } else if obfs_type.is_some() {
                 config.to_client_link_with_obfs(&host, &tag)
             } else if enable_hopping {
-                config.to_client_link_with_hopping(&host, &tag, hop_range)
+                config.to_client_link_with_hopping(&host, &tag, hop_range, Hy2LinkStyle::Official)
             } else {
                 config.to_client_link(&host, &tag)
             };
