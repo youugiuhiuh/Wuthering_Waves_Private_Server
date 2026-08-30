@@ -8,7 +8,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use super::config::SingBoxConfigManager;
-use super::hysteria2::Hysteria2Config;
+use super::hysteria2::{Hysteria2Config, Hysteria2ObfsType};
 use crate::core::paths::singbox;
 
 impl SingBoxConfigManager {
@@ -69,7 +69,7 @@ impl SingBoxConfigManager {
                     main_port,
                     password.clone(),
                     sni.clone(),
-                    "salamander".to_string(),
+                    Hysteria2ObfsType::Salamander,
                     obfs_password,
                 )
                 .with_pin_sha256(pin_sha256.clone())

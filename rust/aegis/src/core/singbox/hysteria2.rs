@@ -3,11 +3,34 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde_json::Value;
 
+/// Hysteria2 QUIC traffic obfuscation type (`obfs.type`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Hysteria2ObfsType {
+    Salamander,
+    Gecko,
+}
+
+impl Hysteria2ObfsType {
+    /// JSON and client URI value for this obfuscation type.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Hysteria2ObfsType::Salamander => "salamander",
+            Hysteria2ObfsType::Gecko => "gecko",
+        }
+    }
+}
+
+/// Default minimum on-wire packet size in bytes for gecko (sing-box default).
+pub const GECKO_DEFAULT_MIN_PACKET_SIZE: usize = 512;
+
+/// Default maximum on-wire packet size in bytes for gecko (sing-box default).
+pub const GECKO_DEFAULT_MAX_PACKET_SIZE: usize = 1200;
+
 pub struct Hysteria2Config {
     pub port: u16,
     pub password: String,
     pub sni: String,
-    pub obfs_type: Option<String>,
+    pub obfs_type: Option<Hysteria2ObfsType>,
     pub obfs_password: Option<String>,
     pub pin_sha256: Option<String>,
 }
@@ -28,7 +51,7 @@ impl Hysteria2Config {
         port: u16,
         password: String,
         sni: String,
-        obfs_type: String,
+        obfs_type: Hysteria2ObfsType,
         obfs_password: String,
     ) -> Self {
         Self {
@@ -79,7 +102,7 @@ impl Hysteria2Config {
             && let Some(ref obfs_password) = self.obfs_password
         {
             let mut obfs_map = serde_json::Map::new();
-            obfs_map.insert("type".to_string(), serde_json::json!(obfs_type));
+            obfs_map.insert("type".to_string(), serde_json::json!(obfs_type.as_str()));
             obfs_map.insert("password".to_string(), serde_json::json!(obfs_password));
             map.insert("obfs".to_string(), serde_json::json!(obfs_map));
         }
@@ -246,13 +269,26 @@ mod tests {
             8443,
             "test_password".to_string(),
             "sni.example.com".to_string(),
-            "salamander".to_string(),
+            Hysteria2ObfsType::Salamander,
             "obfs_secret".to_string(),
         );
         assert_eq!(config.port, 8443);
-        assert_eq!(config.obfs_type, Some("salamander".to_string()));
+        assert_eq!(config.obfs_type, Some(Hysteria2ObfsType::Salamander));
         assert_eq!(config.obfs_password, Some("obfs_secret".to_string()));
         assert!(config.pin_sha256.is_none());
+    }
+
+    #[test]
+    fn test_obfs_type_as_str() {
+        assert_eq!(Hysteria2ObfsType::Salamander.as_str(), "salamander");
+        assert_eq!(Hysteria2ObfsType::Gecko.as_str(), "gecko");
+    }
+
+    #[test]
+    fn test_obfs_type_copy() {
+        let t = Hysteria2ObfsType::Gecko;
+        let t2 = t; // Copy, not move
+        assert_eq!(t, t2);
     }
 
     #[test]
@@ -274,7 +310,7 @@ mod tests {
             8443,
             "pw".to_string(),
             "sni.example.com".to_string(),
-            "salamander".to_string(),
+            Hysteria2ObfsType::Salamander,
             "obfs123".to_string(),
         );
         let json = config.to_inbound_json("test-tag");
@@ -343,7 +379,7 @@ mod tests {
             8443,
             "mypassword".to_string(),
             "sni.example.com".to_string(),
-            "salamander".to_string(),
+            Hysteria2ObfsType::Salamander,
             "obfs123".to_string(),
         )
         .with_pin_sha256("AA:BB:CC".to_string());
@@ -362,7 +398,7 @@ mod tests {
             8443,
             "mypassword".to_string(),
             "sni.example.com".to_string(),
-            "salamander".to_string(),
+            Hysteria2ObfsType::Salamander,
             "obfs123".to_string(),
         )
         .with_pin_sha256("AA:BB:CC".to_string());
