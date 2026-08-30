@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
+use crate::core::singbox::hysteria2::Hysteria2ObfsType;
 use crate::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use crate::core::system::SystemMonitor;
 use crate::core::types::{BatchCreationResult, IpVersion};
@@ -17,15 +18,20 @@ pub async fn send_singbox_batch_result(
     target: &TargetId,
     protocol_name: &str,
     result: &BatchCreationResult,
+    note: Option<&str>,
 ) -> anyhow::Result<()> {
     let mut message_ids: Vec<String> = Vec::new();
 
-    let header_msg = format!(
+    let mut header_msg = format!(
         "✅ <b>{} 批量创建完成</b>\n\n已创建 {} 个配置:\n📁 配置文件: <code>{}</code>\n\n",
         protocol_name,
         result.created_count,
         result.config_file.as_deref().unwrap_or("未知")
     );
+    if let Some(note) = note {
+        header_msg.push_str(note);
+        header_msg.push_str("\n\n");
+    }
     if let Ok(msg) = adapter
         .send_message(
             target,
@@ -377,7 +383,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             let rows = vec![
                 vec![InlineButton {
                     text: t!("menu.singbox_h2_obfs_enable").into(),
-                    data: format!("sb_h2_hop:{}:{}:1", ip_ver, count),
+                    data: format!("sb_h2_obfs_type:{}:{}", ip_ver, count),
                 }],
                 vec![InlineButton {
                     text: t!("menu.singbox_h2_obfs_disable").into(),
@@ -397,6 +403,62 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     MessageContent {
                         text: t!(
                             "menu.singbox_h2_obfs_title",
+                            "0" => ip_display,
+                            "1" => count
+                        )
+                        .into_owned(),
+                        markup: Some(Markup { buttons: rows }),
+                    },
+                )
+                .await?;
+
+            Ok(HandlerAction::Done)
+        }
+
+        d if d.starts_with("sb_h2_obfs_type:") => {
+            let parts: Vec<&str> = d
+                .strip_prefix("sb_h2_obfs_type:")
+                .unwrap_or("")
+                .split(':')
+                .collect();
+            if parts.len() != 2 {
+                event
+                    .adapter
+                    .answer_callback(
+                        &event.target,
+                        &event.callback_id,
+                        Some(t!("menu.singbox_param_error").into_owned()),
+                    )
+                    .await?;
+                return Ok(HandlerAction::Done);
+            }
+            let ip_ver = parts[0];
+            let count = parts[1];
+            let ip_display = if ip_ver == "4" { "IPv4" } else { "IPv6" };
+
+            let rows = vec![
+                vec![InlineButton {
+                    text: t!("menu.singbox_h2_obfs_type_salamander").into(),
+                    data: format!("sb_h2_hop:{}:{}:1", ip_ver, count),
+                }],
+                vec![InlineButton {
+                    text: t!("menu.singbox_h2_obfs_type_gecko").into(),
+                    data: format!("sb_h2_hop:{}:{}:2", ip_ver, count),
+                }],
+                vec![InlineButton {
+                    text: t!("menu.back_user").into(),
+                    data: format!("sb_h2_obfs:{}:{}", ip_ver, count),
+                }],
+            ];
+
+            event
+                .adapter
+                .edit_message(
+                    &event.target,
+                    &event.msg_id,
+                    MessageContent {
+                        text: t!(
+                            "menu.singbox_h2_obfs_type_title",
                             "0" => ip_display,
                             "1" => count
                         )
@@ -430,15 +492,16 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             let count = parts[1];
             let obfs_enabled = parts[2];
             let ip_display = if ip_ver == "4" { "IPv4" } else { "IPv6" };
+            let obfs_status = match obfs_enabled {
+                "2" => t!("menu.singbox_h2_obfs_gecko").to_string(),
+                "1" => t!("menu.singbox_h2_obfs_salamander").to_string(),
+                _ => t!("menu.singbox_h2_obfs_disabled").to_string(),
+            };
             let title = format!(
                 "⚡ {} | {} {}\n\n{}",
                 ip_display,
                 t!("menu.singbox_h2_qty", "0" => count),
-                if obfs_enabled == "1" {
-                    t!("menu.singbox_h2_obfs_enabled")
-                } else {
-                    t!("menu.singbox_h2_obfs_disabled")
-                },
+                obfs_status,
                 t!("menu.singbox_h2_hop_title"),
             );
 
@@ -544,7 +607,11 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }
             let ip_ver = parts[0];
             let count: usize = parts[1].parse().unwrap_or(1);
-            let obfs_enabled: bool = parts[2] == "1";
+            let obfs_type = match parts[2] {
+                "1" => Some(Hysteria2ObfsType::Salamander),
+                "2" => Some(Hysteria2ObfsType::Gecko),
+                _ => None,
+            };
             let hopping_enabled: bool = parts[3] == "1";
             let ip_version = if ip_ver == "6" {
                 IpVersion::IPv6
@@ -563,22 +630,29 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
             let adapter = event.adapter.clone();
             let target = event.target.clone();
+            let is_gecko = matches!(obfs_type, Some(Hysteria2ObfsType::Gecko));
 
             tokio::spawn(async move {
                 match SingBoxConfigManager::batch_create_hysteria2(
                     count,
                     ip_version,
-                    obfs_enabled,
+                    obfs_type,
                     hopping_enabled,
                 )
                 .await
                 {
                     Ok(result) => {
+                        let note = if is_gecko {
+                            Some(t!("menu.singbox_h2_gecko_note").to_string())
+                        } else {
+                            None
+                        };
                         if let Err(e) = send_singbox_batch_result(
                             adapter.clone(),
                             &target,
                             "Hysteria2",
                             &result,
+                            note.as_deref(),
                         )
                         .await
                         {
@@ -643,9 +717,14 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             tokio::spawn(async move {
                 match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
                     Ok(result) => {
-                        if let Err(e) =
-                            send_singbox_batch_result(adapter.clone(), &target, "TUIC", &result)
-                                .await
+                        if let Err(e) = send_singbox_batch_result(
+                            adapter.clone(),
+                            &target,
+                            "TUIC",
+                            &result,
+                            None,
+                        )
+                        .await
                         {
                             log::warn!("发送批量创建结果失败: {}", e);
                         }

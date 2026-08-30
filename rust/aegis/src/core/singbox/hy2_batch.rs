@@ -8,14 +8,14 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use super::config::SingBoxConfigManager;
-use super::hysteria2::Hysteria2Config;
+use super::hysteria2::{Hysteria2Config, Hysteria2ObfsType};
 use crate::core::paths::singbox;
 
 impl SingBoxConfigManager {
     pub async fn batch_create_hysteria2(
         count: usize,
         ip_version: IpVersion,
-        enable_obfs: bool,
+        obfs_type: Option<Hysteria2ObfsType>,
         enable_hopping: bool,
     ) -> Result<BatchCreationResult> {
         if !PortAllocator::check_hysteria2_limit().await? {
@@ -63,13 +63,13 @@ impl SingBoxConfigManager {
             let password = Hysteria2Config::generate_password();
             let tag = format!("HYSTERIA2-{}-{}", i + 1, &password[..8]);
 
-            let config = if enable_obfs {
+            let config = if let Some(obfs_type) = obfs_type {
                 let obfs_password = Hysteria2Config::generate_obfs_password();
                 Hysteria2Config::with_obfs(
                     main_port,
                     password.clone(),
                     sni.clone(),
-                    "salamander".to_string(),
+                    obfs_type,
                     obfs_password,
                 )
                 .with_pin_sha256(pin_sha256.clone())
@@ -78,9 +78,9 @@ impl SingBoxConfigManager {
                     .with_pin_sha256(pin_sha256.clone())
             };
 
-            let link = if enable_obfs && enable_hopping {
+            let link = if obfs_type.is_some() && enable_hopping {
                 config.to_client_link_with_hopping_and_obfs(&host, &tag, hop_range)
-            } else if enable_obfs {
+            } else if obfs_type.is_some() {
                 config.to_client_link_with_obfs(&host, &tag)
             } else if enable_hopping {
                 config.to_client_link_with_hopping(&host, &tag, hop_range)
