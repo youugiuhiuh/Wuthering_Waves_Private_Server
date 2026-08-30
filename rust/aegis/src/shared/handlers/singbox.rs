@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
+use crate::core::singbox::hysteria2::Hysteria2ObfsType;
 use crate::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use crate::core::system::SystemMonitor;
 use crate::core::types::{BatchCreationResult, IpVersion};
@@ -544,7 +545,11 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }
             let ip_ver = parts[0];
             let count: usize = parts[1].parse().unwrap_or(1);
-            let obfs_enabled: bool = parts[2] == "1";
+            let obfs_type = if parts[2] == "1" {
+                Some(Hysteria2ObfsType::Salamander)
+            } else {
+                None
+            };
             let hopping_enabled: bool = parts[3] == "1";
             let ip_version = if ip_ver == "6" {
                 IpVersion::IPv6
@@ -568,7 +573,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 match SingBoxConfigManager::batch_create_hysteria2(
                     count,
                     ip_version,
-                    obfs_enabled,
+                    obfs_type,
                     hopping_enabled,
                 )
                 .await
