@@ -4,7 +4,7 @@ use tokio::time::{Duration, sleep};
 
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
 use crate::core::singbox::hysteria2::{Hy2LinkStyle, Hysteria2ObfsType};
-use crate::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
+use crate::core::singbox::{SingBoxConfigManager, SingBoxInstaller, SingBoxUpgradeManager};
 use crate::core::system::SystemMonitor;
 use crate::core::types::{BatchCreationResult, IpVersion};
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
@@ -231,6 +231,161 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
             });
 
+            Ok(HandlerAction::Done)
+        }
+
+        "sb_upgrade_latest" => {
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(t!("menu.singbox_upgrade_checking").into_owned()),
+                )
+                .await?;
+            let adapter = event.adapter.clone();
+            let target = event.target.clone();
+            tokio::spawn(async move {
+                if let Err(err) =
+                    SingBoxUpgradeManager::run_upgrade(None, adapter.as_ref(), &target).await
+                {
+                    let _ = adapter
+                        .send_message(
+                            &target,
+                            MessageContent {
+                                text: t!("menu.singbox_upgrade_fail", "0" => err.to_string())
+                                    .into_owned(),
+                                markup: None,
+                            },
+                        )
+                        .await;
+                }
+            });
+            Ok(HandlerAction::Done)
+        }
+
+        "sb_upgrade_tags" => {
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(t!("menu.version_tags").into_owned()),
+                )
+                .await?;
+
+            let reply = async {
+                let manager = SingBoxUpgradeManager::new()?;
+                let current = SingBoxUpgradeManager::current_version()
+                    .await
+                    .unwrap_or_else(|| t!("menu.singbox_upgrade_unknown_size").to_string());
+                let tags = manager.fetch_recent_tags(5).await?;
+                Ok::<_, anyhow::Error>((tags, current))
+            }
+            .await;
+
+            match reply {
+                Ok((tags, current)) if !tags.is_empty() => {
+                    let mut buttons = Vec::new();
+                    for tag in &tags {
+                        buttons.push(vec![InlineButton {
+                            text: format!("⬆️ {}", tag),
+                            data: format!("sb_tag:{}", tag),
+                        }]);
+                    }
+                    buttons.push(vec![InlineButton {
+                        text: t!("menu.back_settings").into(),
+                        data: "a_wwps_box_menu".into(),
+                    }]);
+                    event
+                        .adapter
+                        .edit_message(
+                            &event.target,
+                            &event.msg_id,
+                            MessageContent {
+                                text: t!(
+                                    "menu.singbox_upgrade_tags_title",
+                                    "0" => &current
+                                )
+                                .into_owned(),
+                                markup: Some(Markup { buttons }),
+                            },
+                        )
+                        .await?;
+                }
+                Ok(_) => {
+                    event
+                        .adapter
+                        .edit_message(
+                            &event.target,
+                            &event.msg_id,
+                            MessageContent {
+                                text: t!("menu.no_version_found").into_owned(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                }
+                Err(err) => {
+                    event
+                        .adapter
+                        .edit_message(
+                            &event.target,
+                            &event.msg_id,
+                            MessageContent {
+                                text: t!("menu.singbox_upgrade_fail", "0" => err.to_string())
+                                    .into_owned(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                }
+            }
+
+            Ok(HandlerAction::Done)
+        }
+
+        d if d.starts_with("sb_tag:") => {
+            let tag = d.strip_prefix("sb_tag:").unwrap_or("").to_string();
+            if tag.is_empty() {
+                event
+                    .adapter
+                    .answer_callback(
+                        &event.target,
+                        &event.callback_id,
+                        Some(t!("menu.version_tag_empty").into_owned()),
+                    )
+                    .await?;
+                return Ok(HandlerAction::Done);
+            }
+
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(t!("menu.singbox_upgrade_checking").into_owned()),
+                )
+                .await?;
+
+            let adapter = event.adapter.clone();
+            let target = event.target.clone();
+            tokio::spawn(async move {
+                if let Err(err) =
+                    SingBoxUpgradeManager::run_upgrade(Some(tag), adapter.as_ref(), &target).await
+                {
+                    let _ = adapter
+                        .send_message(
+                            &target,
+                            MessageContent {
+                                text: t!("menu.singbox_upgrade_fail", "0" => err.to_string())
+                                    .into_owned(),
+                                markup: None,
+                            },
+                        )
+                        .await;
+                }
+            });
             Ok(HandlerAction::Done)
         }
 
