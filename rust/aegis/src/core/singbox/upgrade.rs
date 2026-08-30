@@ -73,13 +73,9 @@ impl SingBoxUpgradeManager {
             SINGBOX_RELEASE_OWNER, SINGBOX_RELEASE_REPO, limit
         );
         let bases = vec![SINGBOX_RELEASE_API_BASE.to_string()];
-        let releases: Vec<ReleaseResponse> = fetch_json_from_mirrors(
-            &self.client,
-            &bases,
-            &path,
-            self.github_token.as_deref(),
-        )
-        .await?;
+        let releases: Vec<ReleaseResponse> =
+            fetch_json_from_mirrors(&self.client, &bases, &path, self.github_token.as_deref())
+                .await?;
         Ok(tag_names(&releases).into_iter().take(limit).collect())
     }
 
@@ -262,7 +258,10 @@ mod tests {
     #[test]
     fn test_parse_version_from_output_typical() {
         let out = "sing-box version 1.14.0-rc.4\n\nEnvironment: go1.25.12 linux/amd64\n";
-        assert_eq!(parse_version_from_output(out), Some("1.14.0-rc.4".to_string()));
+        assert_eq!(
+            parse_version_from_output(out),
+            Some("1.14.0-rc.4".to_string())
+        );
     }
 
     #[test]

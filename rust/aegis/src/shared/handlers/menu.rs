@@ -718,12 +718,11 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            let result = match WwpsCoreUpgradeConfig::from_env()
-                .and_then(WwpsCoreUpgradeManager::new)
-            {
-                Ok(manager) => manager.restart_service().await,
-                Err(err) => Err(err),
-            };
+            let result =
+                match WwpsCoreUpgradeConfig::from_env().and_then(WwpsCoreUpgradeManager::new) {
+                    Ok(manager) => manager.restart_service().await,
+                    Err(err) => Err(err),
+                };
 
             match result {
                 Ok(_) => {
@@ -757,7 +756,6 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                         .await?;
                 }
             }
-
         }
 
         "a_wwps_core_status" => {
@@ -770,8 +768,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            let active = SystemMonitor::check_service_status(xray::DEFAULT_SERVICE)
-                .await;
+            let active = SystemMonitor::check_service_status(xray::DEFAULT_SERVICE).await;
             let status_text = if active {
                 t!("menu.wwps_core_status_running")
             } else {

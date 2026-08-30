@@ -292,7 +292,10 @@ mod tests {
             { "tag_name": "v1.14.0-rc.4", "prerelease": true },
             { "tag_name": "v1.14.0-rc.2", "prerelease": true }
         ]);
-        assert_eq!(SingBoxInstaller::find_prerelease_tag(&json), Some("1.14.0-rc.4".to_string()));
+        assert_eq!(
+            SingBoxInstaller::find_prerelease_tag(&json),
+            Some("1.14.0-rc.4".to_string())
+        );
     }
 
     #[test]
