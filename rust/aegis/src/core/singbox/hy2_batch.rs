@@ -17,6 +17,7 @@ impl SingBoxConfigManager {
         ip_version: IpVersion,
         obfs_type: Option<Hysteria2ObfsType>,
         enable_hopping: bool,
+        link_style: Hy2LinkStyle,
     ) -> Result<BatchCreationResult> {
         if !PortAllocator::check_hysteria2_limit().await? {
             return Err(anyhow::anyhow!("已达到最大 Hysteria2 配置数量限制（50个）"));
@@ -79,16 +80,11 @@ impl SingBoxConfigManager {
             };
 
             let link = if obfs_type.is_some() && enable_hopping {
-                config.to_client_link_with_hopping_and_obfs(
-                    &host,
-                    &tag,
-                    hop_range,
-                    Hy2LinkStyle::Official,
-                )
+                config.to_client_link_with_hopping_and_obfs(&host, &tag, hop_range, link_style)
             } else if obfs_type.is_some() {
                 config.to_client_link_with_obfs(&host, &tag)
             } else if enable_hopping {
-                config.to_client_link_with_hopping(&host, &tag, hop_range, Hy2LinkStyle::Official)
+                config.to_client_link_with_hopping(&host, &tag, hop_range, link_style)
             } else {
                 config.to_client_link(&host, &tag)
             };

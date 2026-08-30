@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
-use crate::core::singbox::hysteria2::Hysteria2ObfsType;
+use crate::core::singbox::hysteria2::{Hy2LinkStyle, Hysteria2ObfsType};
 use crate::core::singbox::{SingBoxConfigManager, SingBoxInstaller};
 use crate::core::system::SystemMonitor;
 use crate::core::types::{BatchCreationResult, IpVersion};
@@ -638,6 +638,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     ip_version,
                     obfs_type,
                     hopping_enabled,
+                    Hy2LinkStyle::Official,
                 )
                 .await
                 {
