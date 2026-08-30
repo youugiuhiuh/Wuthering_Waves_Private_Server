@@ -436,7 +436,12 @@ mod tests {
             "sni.example.com".to_string(),
         )
         .with_pin_sha256("AA:BB:CC".to_string());
-        let link = config.to_client_link_with_hopping("1.2.3.4", "MyNode", (8444, 8543), Hy2LinkStyle::Official);
+        let link = config.to_client_link_with_hopping(
+            "1.2.3.4",
+            "MyNode",
+            (8444, 8543),
+            Hy2LinkStyle::Official,
+        );
         assert!(link.contains("pinSHA256=AA:BB:CC"));
         assert!(link.contains("8444-8543"));
         assert!(link.contains("hop_interval=30s"));
@@ -490,7 +495,12 @@ mod tests {
             "obfs123".to_string(),
         )
         .with_pin_sha256("AA:BB:CC".to_string());
-        let link = config.to_client_link_with_hopping_and_obfs("1.2.3.4", "MyNode", (8444, 8543), Hy2LinkStyle::Official);
+        let link = config.to_client_link_with_hopping_and_obfs(
+            "1.2.3.4",
+            "MyNode",
+            (8444, 8543),
+            Hy2LinkStyle::Official,
+        );
         assert!(link.contains("obfs=gecko"));
         assert!(link.contains("obfs-password=obfs123"));
         assert!(link.contains("hop_interval=30s"));
@@ -507,7 +517,12 @@ mod tests {
             "obfs123".to_string(),
         )
         .with_pin_sha256("AA:BB:CC".to_string());
-        let link = config.to_client_link_with_hopping_and_obfs("1.2.3.4", "MyNode", (8444, 8543), Hy2LinkStyle::Official);
+        let link = config.to_client_link_with_hopping_and_obfs(
+            "1.2.3.4",
+            "MyNode",
+            (8444, 8543),
+            Hy2LinkStyle::Official,
+        );
         assert!(link.contains("pinSHA256=AA:BB:CC"));
         assert!(link.contains("obfs=salamander"));
         assert!(link.contains("obfs-password=obfs123"));
@@ -517,7 +532,11 @@ mod tests {
 
     #[test]
     fn test_hysteria2_to_client_link_hopping_v2rayn_style() {
-        let config = Hysteria2Config::new(8443, "test_password".to_string(), "sni.example.com".to_string());
+        let config = Hysteria2Config::new(
+            8443,
+            "test_password".to_string(),
+            "sni.example.com".to_string(),
+        );
         let link = config.to_client_link_with_hopping(
             "1.2.3.4",
             "MyNode",
@@ -559,12 +578,8 @@ mod tests {
     fn test_hysteria2_to_client_link_hopping_v2rayn_keeps_pin() {
         let config = Hysteria2Config::new(8443, "pw".to_string(), "s.example.com".to_string())
             .with_pin_sha256("AA:BB:CC".to_string());
-        let link = config.to_client_link_with_hopping(
-            "1.2.3.4",
-            "N",
-            (8444, 8543),
-            Hy2LinkStyle::V2rayN,
-        );
+        let link =
+            config.to_client_link_with_hopping("1.2.3.4", "N", (8444, 8543), Hy2LinkStyle::V2rayN);
         assert!(link.contains("pinSHA256=AA:BB:CC"));
     }
 
