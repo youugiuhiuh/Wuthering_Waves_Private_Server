@@ -717,15 +717,14 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             tokio::spawn(async move {
                 match SingBoxConfigManager::batch_create_tuic(count, ip_version).await {
                     Ok(result) => {
-                        if let Err(e) =
-                            send_singbox_batch_result(
-                                adapter.clone(),
-                                &target,
-                                "TUIC",
-                                &result,
-                                None,
-                            )
-                                .await
+                        if let Err(e) = send_singbox_batch_result(
+                            adapter.clone(),
+                            &target,
+                            "TUIC",
+                            &result,
+                            None,
+                        )
+                        .await
                         {
                             log::warn!("发送批量创建结果失败: {}", e);
                         }
