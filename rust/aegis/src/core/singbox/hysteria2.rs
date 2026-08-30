@@ -104,6 +104,16 @@ impl Hysteria2Config {
             let mut obfs_map = serde_json::Map::new();
             obfs_map.insert("type".to_string(), serde_json::json!(obfs_type.as_str()));
             obfs_map.insert("password".to_string(), serde_json::json!(obfs_password));
+            if *obfs_type == Hysteria2ObfsType::Gecko {
+                obfs_map.insert(
+                    "min_packet_size".to_string(),
+                    serde_json::json!(GECKO_DEFAULT_MIN_PACKET_SIZE),
+                );
+                obfs_map.insert(
+                    "max_packet_size".to_string(),
+                    serde_json::json!(GECKO_DEFAULT_MAX_PACKET_SIZE),
+                );
+            }
             map.insert("obfs".to_string(), serde_json::json!(obfs_map));
         }
 
@@ -317,6 +327,25 @@ mod tests {
         assert!(json["obfs"].is_object());
         assert_eq!(json["obfs"]["type"], "salamander");
         assert_eq!(json["obfs"]["password"], "obfs123");
+        assert!(json["obfs"].get("min_packet_size").is_none());
+        assert!(json["obfs"].get("max_packet_size").is_none());
+    }
+
+    #[test]
+    fn test_hysteria2_to_inbound_json_with_gecko() {
+        let config = Hysteria2Config::with_obfs(
+            8443,
+            "pw".to_string(),
+            "sni.example.com".to_string(),
+            Hysteria2ObfsType::Gecko,
+            "obfs123".to_string(),
+        );
+        let json = config.to_inbound_json("test-tag");
+        assert!(json["obfs"].is_object());
+        assert_eq!(json["obfs"]["type"], "gecko");
+        assert_eq!(json["obfs"]["password"], "obfs123");
+        assert_eq!(json["obfs"]["min_packet_size"], 512);
+        assert_eq!(json["obfs"]["max_packet_size"], 1200);
     }
 
     #[test]
