@@ -26,6 +26,15 @@ pub const GECKO_DEFAULT_MIN_PACKET_SIZE: usize = 512;
 /// Default maximum on-wire packet size in bytes for gecko (sing-box default).
 pub const GECKO_DEFAULT_MAX_PACKET_SIZE: usize = 1200;
 
+/// 端口跳跃分享链接的目标客户端格式。
+/// - `Official`: 官方 URI Scheme 的端口位置 multi-port + `hop_interval`
+/// - `V2rayN`: v2rayN 系客户端的 `mport` 查询参数
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hy2LinkStyle {
+    Official,
+    V2rayN,
+}
+
 pub struct Hysteria2Config {
     pub port: u16,
     pub password: String,
@@ -170,6 +179,7 @@ impl Hysteria2Config {
         host: &str,
         name: &str,
         hop_range: (u16, u16),
+        style: Hy2LinkStyle,
     ) -> String {
         let encoded_password = utf8_percent_encode(&self.password, NON_ALPHANUMERIC).to_string();
         let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
@@ -179,18 +189,30 @@ impl Hysteria2Config {
             .as_ref()
             .map(|p| format!("&pinSHA256={}", p))
             .unwrap_or_default();
-
-        format!(
-            "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3{}&hop_interval=30s#{}",
-            encoded_password,
-            host,
-            self.port,
-            hop_range.0,
-            hop_range.1,
-            encoded_sni,
-            pin_param,
-            encoded_name
-        )
+        match style {
+            Hy2LinkStyle::Official => format!(
+                "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3{}&hop_interval=30s#{}",
+                encoded_password,
+                host,
+                self.port,
+                hop_range.0,
+                hop_range.1,
+                encoded_sni,
+                pin_param,
+                encoded_name
+            ),
+            Hy2LinkStyle::V2rayN => format!(
+                "hysteria2://{}@{}:{}?sni={}&alpn=h3{}&mport={}-{}#{}",
+                encoded_password,
+                host,
+                self.port,
+                encoded_sni,
+                pin_param,
+                hop_range.0,
+                hop_range.1,
+                encoded_name
+            ),
+        }
     }
 
     pub fn generate_password() -> String {
@@ -222,6 +244,7 @@ impl Hysteria2Config {
         host: &str,
         name: &str,
         hop_range: (u16, u16),
+        style: Hy2LinkStyle,
     ) -> String {
         let encoded_password = utf8_percent_encode(&self.password, NON_ALPHANUMERIC).to_string();
         let encoded_sni = utf8_percent_encode(&self.sni, NON_ALPHANUMERIC).to_string();
@@ -237,20 +260,34 @@ impl Hysteria2Config {
             .as_ref()
             .map(|p| format!("&pinSHA256={}", p))
             .unwrap_or_default();
-
-        format!(
-            "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3{}&hop_interval=30s&obfs={}&obfs-password={}#{}",
-            encoded_password,
-            host,
-            self.port,
-            hop_range.0,
-            hop_range.1,
-            encoded_sni,
-            pin_param,
-            obfs_value,
-            encoded_obfs_password,
-            encoded_name
-        )
+        match style {
+            Hy2LinkStyle::Official => format!(
+                "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3{}&hop_interval=30s&obfs={}&obfs-password={}#{}",
+                encoded_password,
+                host,
+                self.port,
+                hop_range.0,
+                hop_range.1,
+                encoded_sni,
+                pin_param,
+                obfs_value,
+                encoded_obfs_password,
+                encoded_name
+            ),
+            Hy2LinkStyle::V2rayN => format!(
+                "hysteria2://{}@{}:{}?sni={}&alpn=h3{}&mport={}-{}&obfs={}&obfs-password={}#{}",
+                encoded_password,
+                host,
+                self.port,
+                encoded_sni,
+                pin_param,
+                hop_range.0,
+                hop_range.1,
+                obfs_value,
+                encoded_obfs_password,
+                encoded_name
+            ),
+        }
     }
 }
 
@@ -399,7 +436,12 @@ mod tests {
             "sni.example.com".to_string(),
         )
         .with_pin_sha256("AA:BB:CC".to_string());
-        let link = config.to_client_link_with_hopping("1.2.3.4", "MyNode", (8444, 8543));
+        let link = config.to_client_link_with_hopping(
+            "1.2.3.4",
+            "MyNode",
+            (8444, 8543),
+            Hy2LinkStyle::Official,
+        );
         assert!(link.contains("pinSHA256=AA:BB:CC"));
         assert!(link.contains("8444-8543"));
         assert!(link.contains("hop_interval=30s"));
@@ -453,7 +495,12 @@ mod tests {
             "obfs123".to_string(),
         )
         .with_pin_sha256("AA:BB:CC".to_string());
-        let link = config.to_client_link_with_hopping_and_obfs("1.2.3.4", "MyNode", (8444, 8543));
+        let link = config.to_client_link_with_hopping_and_obfs(
+            "1.2.3.4",
+            "MyNode",
+            (8444, 8543),
+            Hy2LinkStyle::Official,
+        );
         assert!(link.contains("obfs=gecko"));
         assert!(link.contains("obfs-password=obfs123"));
         assert!(link.contains("hop_interval=30s"));
@@ -470,12 +517,70 @@ mod tests {
             "obfs123".to_string(),
         )
         .with_pin_sha256("AA:BB:CC".to_string());
-        let link = config.to_client_link_with_hopping_and_obfs("1.2.3.4", "MyNode", (8444, 8543));
+        let link = config.to_client_link_with_hopping_and_obfs(
+            "1.2.3.4",
+            "MyNode",
+            (8444, 8543),
+            Hy2LinkStyle::Official,
+        );
         assert!(link.contains("pinSHA256=AA:BB:CC"));
         assert!(link.contains("obfs=salamander"));
         assert!(link.contains("obfs-password=obfs123"));
         assert!(link.contains("hop_interval=30s"));
         assert!(!link.contains("insecure=1"));
+    }
+
+    #[test]
+    fn test_hysteria2_to_client_link_hopping_v2rayn_style() {
+        let config = Hysteria2Config::new(
+            8443,
+            "test_password".to_string(),
+            "sni.example.com".to_string(),
+        );
+        let link = config.to_client_link_with_hopping(
+            "1.2.3.4",
+            "MyNode",
+            (8444, 8543),
+            Hy2LinkStyle::V2rayN,
+        );
+        assert!(link.starts_with("hysteria2://"));
+        assert!(link.contains("@1.2.3.4:8443?"));
+        assert!(!link.contains(":8443,8444"));
+        assert!(link.contains("mport=8444-8543"));
+        assert!(!link.contains("hop_interval"));
+        assert!(link.contains("sni="));
+        assert!(link.contains("#MyNode"));
+    }
+
+    #[test]
+    fn test_hysteria2_to_client_link_hopping_obfs_v2rayn_style() {
+        let config = Hysteria2Config::with_obfs(
+            8443,
+            "test_password".to_string(),
+            "sni.example.com".to_string(),
+            Hysteria2ObfsType::Salamander,
+            "obfs_secret".to_string(),
+        );
+        let link = config.to_client_link_with_hopping_and_obfs(
+            "1.2.3.4",
+            "MyNode",
+            (8444, 8543),
+            Hy2LinkStyle::V2rayN,
+        );
+        assert!(link.contains("@1.2.3.4:8443?"));
+        assert!(link.contains("mport=8444-8543"));
+        assert!(!link.contains("hop_interval"));
+        assert!(link.contains("obfs=salamander"));
+        assert!(link.contains("obfs-password="));
+    }
+
+    #[test]
+    fn test_hysteria2_to_client_link_hopping_v2rayn_keeps_pin() {
+        let config = Hysteria2Config::new(8443, "pw".to_string(), "s.example.com".to_string())
+            .with_pin_sha256("AA:BB:CC".to_string());
+        let link =
+            config.to_client_link_with_hopping("1.2.3.4", "N", (8444, 8543), Hy2LinkStyle::V2rayN);
+        assert!(link.contains("pinSHA256=AA:BB:CC"));
     }
 
     #[test]
