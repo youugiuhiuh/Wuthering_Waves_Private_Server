@@ -507,12 +507,19 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
             let rows = vec![
                 vec![InlineButton {
-                    text: t!("menu.singbox_h2_hop_enable").into(),
-                    data: format!("sb_h2_exec:{}:{}:{}:1", ip_ver, count, obfs_enabled),
+                    text: t!("menu.singbox_h2_hop_disable").into(),
+                    data: format!("sb_h2_exec:{}:{}:{}:0:", ip_ver, count, obfs_enabled),
                 }],
                 vec![InlineButton {
-                    text: t!("menu.singbox_h2_hop_disable").into(),
-                    data: format!("sb_h2_exec:{}:{}:{}:0", ip_ver, count, obfs_enabled),
+                    text: t!("menu.singbox_h2_hop_enable_singbox").into(),
+                    data: format!(
+                        "sb_h2_exec:{}:{}:{}:1:official",
+                        ip_ver, count, obfs_enabled
+                    ),
+                }],
+                vec![InlineButton {
+                    text: t!("menu.singbox_h2_hop_enable_v2rayn").into(),
+                    data: format!("sb_h2_exec:{}:{}:{}:1:v2rayn", ip_ver, count, obfs_enabled),
                 }],
                 vec![InlineButton {
                     text: t!("menu.back_user").into(),
@@ -594,7 +601,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 .unwrap_or("")
                 .split(':')
                 .collect();
-            if parts.len() != 4 {
+            if parts.len() != 5 {
                 event
                     .adapter
                     .answer_callback(
@@ -613,6 +620,10 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 _ => None,
             };
             let hopping_enabled: bool = parts[3] == "1";
+            let link_style = match parts[4] {
+                "v2rayn" => Hy2LinkStyle::V2rayN,
+                _ => Hy2LinkStyle::Official,
+            };
             let ip_version = if ip_ver == "6" {
                 IpVersion::IPv6
             } else {
@@ -638,7 +649,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     ip_version,
                     obfs_type,
                     hopping_enabled,
-                    Hy2LinkStyle::Official,
+                    link_style,
                 )
                 .await
                 {
