@@ -145,6 +145,7 @@ impl Hysteria2Config {
             NON_ALPHANUMERIC,
         )
         .to_string();
+        let obfs_value = self.obfs_type.map(|t| t.as_str()).unwrap_or("salamander");
         let pin_param = self
             .pin_sha256
             .as_ref()
@@ -152,12 +153,13 @@ impl Hysteria2Config {
             .unwrap_or_default();
 
         format!(
-            "hysteria2://{}@{}:{}?sni={}&alpn=h3{}&obfs=salamander&obfs-password={}#{}",
+            "hysteria2://{}@{}:{}?sni={}&alpn=h3{}&obfs={}&obfs-password={}#{}",
             encoded_password,
             host,
             self.port,
             encoded_sni,
             pin_param,
+            obfs_value,
             encoded_obfs_password,
             encoded_name
         )
@@ -229,6 +231,7 @@ impl Hysteria2Config {
             NON_ALPHANUMERIC,
         )
         .to_string();
+        let obfs_value = self.obfs_type.map(|t| t.as_str()).unwrap_or("salamander");
         let pin_param = self
             .pin_sha256
             .as_ref()
@@ -236,7 +239,7 @@ impl Hysteria2Config {
             .unwrap_or_default();
 
         format!(
-            "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3{}&hop_interval=30s&obfs=salamander&obfs-password={}#{}",
+            "hysteria2://{}@{}:{},{}-{}?sni={}&alpn=h3{}&hop_interval=30s&obfs={}&obfs-password={}#{}",
             encoded_password,
             host,
             self.port,
@@ -244,6 +247,7 @@ impl Hysteria2Config {
             hop_range.1,
             encoded_sni,
             pin_param,
+            obfs_value,
             encoded_obfs_password,
             encoded_name
         )
@@ -419,6 +423,41 @@ mod tests {
         assert!(link.contains("pinSHA256=AA:BB:CC"));
         assert!(!link.contains("insecure=1"));
         assert!(!link.contains("hop_interval=30s"));
+    }
+
+    #[test]
+    fn test_hysteria2_to_client_link_with_gecko_no_hopping() {
+        let config = Hysteria2Config::with_obfs(
+            8443,
+            "mypassword".to_string(),
+            "sni.example.com".to_string(),
+            Hysteria2ObfsType::Gecko,
+            "obfs123".to_string(),
+        )
+        .with_pin_sha256("AA:BB:CC".to_string());
+        let link = config.to_client_link_with_obfs("1.2.3.4", "MyNode");
+        assert!(link.starts_with("hysteria2://"));
+        assert!(link.contains("obfs=gecko"));
+        assert!(link.contains("obfs-password=obfs123"));
+        assert!(!link.contains("obfs=salamander"));
+        assert!(!link.contains("hop_interval=30s"));
+    }
+
+    #[test]
+    fn test_hysteria2_to_client_link_with_gecko_hopping() {
+        let config = Hysteria2Config::with_obfs(
+            8443,
+            "mypassword".to_string(),
+            "sni.example.com".to_string(),
+            Hysteria2ObfsType::Gecko,
+            "obfs123".to_string(),
+        )
+        .with_pin_sha256("AA:BB:CC".to_string());
+        let link = config.to_client_link_with_hopping_and_obfs("1.2.3.4", "MyNode", (8444, 8543));
+        assert!(link.contains("obfs=gecko"));
+        assert!(link.contains("obfs-password=obfs123"));
+        assert!(link.contains("hop_interval=30s"));
+        assert!(!link.contains("obfs=salamander"));
     }
 
     #[test]
