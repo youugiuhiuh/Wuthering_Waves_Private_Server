@@ -161,7 +161,9 @@ pub fn generate_reality_pq_keys_sync() -> Result<()> {
         .arg("mldsa65")
         .output()
         .or_else(|_| Command::new("xray").arg("mldsa65").output())
-        .context("执行 wwps-core/xray mldsa65 失败（请确保已安装 wwps-core 或 xray）")?;
+        .context(
+            "执行 wwps-core/xray (Xray-core) mldsa65 失败（请确保已安装 wwps-core 或 xray）",
+        )?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("mldsa65 执行失败: {}", stderr);

@@ -143,7 +143,7 @@ impl WwpsCoreUpgradeConfig {
 
     pub fn validate(&self) -> Result<()> {
         if !self.install_dir.exists() {
-            anyhow::bail!("wwps-core 安装目录不存在: {}", self.install_dir.display());
+            anyhow::bail!("Xray-core 安装目录不存在: {}", self.install_dir.display());
         }
 
         let binary_path = self.install_dir.join("wwps-core");
@@ -286,15 +286,15 @@ impl WwpsCoreUpgradeManager {
             .build_request(&release.download_url)
             .send()
             .await
-            .context("下载 wwps-core Release 失败")?
+            .context("下载 Xray-core Release 失败")?
             .error_for_status()
-            .context("wwps-core Release 下载返回错误状态")?;
+            .context("Xray-core Release 下载返回错误状态")?;
 
         let total_size = response.content_length();
         let mut stream = response.bytes_stream();
         let mut file = fs::File::create(&temp_file)
             .await
-            .context("创建 wwps-core 临时包失败")?;
+            .context("创建 Xray-core 临时包失败")?;
         let mut writer = tokio::io::BufWriter::new(&mut file);
         let mut hasher = Sha256::new();
 
@@ -310,7 +310,7 @@ impl WwpsCoreUpgradeManager {
             writer
                 .write_all(&chunk)
                 .await
-                .context("写入 wwps-core 临时包失败")?;
+                .context("写入 Xray-core 临时包失败")?;
             downloaded += chunk.len() as u64;
 
             if let (Some(adapter), Some(target), Some(msg_id)) = (adapter, target, msg_id)
@@ -337,15 +337,15 @@ impl WwpsCoreUpgradeManager {
             }
         }
 
-        writer.flush().await.context("刷新 wwps-core 临时包失败")?;
+        writer.flush().await.context("刷新 Xray-core 临时包失败")?;
         drop(writer);
-        file.sync_all().await.context("同步 wwps-core 包失败")?;
+        file.sync_all().await.context("同步 Xray-core 包失败")?;
 
         let actual_hash = hex::encode(hasher.finalize());
         if actual_hash != release.sha256 {
             fs::remove_file(&temp_file).await.ok();
             anyhow::bail!(
-                "wwps-core 包 SHA256 校验失败，期望: {} 实际: {}",
+                "Xray-core 包 SHA256 校验失败，期望: {} 实际: {}",
                 release.sha256,
                 actual_hash
             );
@@ -439,7 +439,7 @@ impl WwpsCoreUpgradeManager {
         let backup_core = backup_path.join("wwps-core");
         tokio::fs::copy(&core_path, &backup_core)
             .await
-            .with_context(|| format!("备份 wwps-core 核心失败: {}", core_path.display()))?;
+            .with_context(|| format!("备份 Xray-core 核心失败: {}", core_path.display()))?;
 
         for data in ["geoip.dat", "geosite.dat"] {
             let src = self.config.install_dir.join(data);
@@ -471,13 +471,13 @@ impl WwpsCoreUpgradeManager {
             perms.set_mode(0o755);
             fs::set_permissions(&target_core, perms)
                 .await
-                .context("设置 wwps-core 可执行权限失败")?;
+                .context("设置 Xray-core 可执行权限失败")?;
         }
 
         let final_target = self.config.install_dir.join("wwps-core");
         fs::rename(&target_core, &final_target)
             .await
-            .context("替换 wwps-core 核心失败")?;
+            .context("替换 Xray-core 核心失败")?;
 
         Ok(())
     }

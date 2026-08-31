@@ -174,7 +174,7 @@ impl<'a> RealityInstallerInternal<'a> {
         Self::step_install_core(probe.arch).await?;
         Self::step_configure_service().await?;
         if let Err(e) = crate::core::xray::config::ConfigManager::ensure_base_config().await {
-            log::warn!("创建 wwps-core 基础配置失败: {}", e);
+            log::warn!("创建 Xray-core 基础配置失败: {}", e);
         }
         if let Err(e) = crate::core::system::maintenance::MaintenanceManager::ensure_geodata().await
         {
@@ -249,10 +249,10 @@ impl<'a> RealityInstallerInternal<'a> {
         self.update_progress(1, "安装基础依赖").await?;
         self.step_install_dependencies(&probe).await?;
 
-        self.update_progress(2, "安装 wwps-core 核心").await?;
+        self.update_progress(2, "安装 Xray-core 核心").await?;
         Self::step_install_core(probe.arch).await?;
 
-        self.update_progress(3, "配置 wwps-core 服务").await?;
+        self.update_progress(3, "配置 Xray-core 服务").await?;
         Self::step_configure_service().await?;
 
         self.update_progress(4, "验证服务状态").await?;
@@ -281,7 +281,7 @@ impl<'a> RealityInstallerInternal<'a> {
     pub async fn step_configure_service() -> Result<()> {
         install_wwps_core_service()
             .await
-            .context("配置 wwps-core 服务失败")
+            .context("配置 Xray-core 服务失败")
     }
 
     pub async fn step_enable_firewall() -> Result<()> {
@@ -518,13 +518,13 @@ pub async fn install_wwps_core(arch: CpuArch) -> Result<()> {
 
     fs::create_dir_all(&install_dir)
         .await
-        .context("创建 wwps-core 安装目录失败")?;
+        .context("创建 Xray-core 安装目录失败")?;
     fs::create_dir_all(&backup_dir)
         .await
-        .context("创建 wwps-core 备份目录失败")?;
+        .context("创建 Xray-core 备份目录失败")?;
     fs::create_dir_all(&temp_dir)
         .await
-        .context("创建 wwps-core 临时目录失败")?;
+        .context("创建 Xray-core 临时目录失败")?;
 
     let config = WwpsCoreUpgradeConfig::new(
         "XTLS",
@@ -535,7 +535,7 @@ pub async fn install_wwps_core(arch: CpuArch) -> Result<()> {
         temp_dir.clone(),
         arch,
     );
-    let manager = WwpsCoreUpgradeManager::new(config).context("构建 wwps-core 升级管理器失败")?;
+    let manager = WwpsCoreUpgradeManager::new(config).context("构建 Xray-core 升级管理器失败")?;
     let release = manager.fetch_release(None).await?;
     let archive = manager.download_release(&release, None, None, None).await?;
     let unpack = manager.extract_archive(&archive).await?;

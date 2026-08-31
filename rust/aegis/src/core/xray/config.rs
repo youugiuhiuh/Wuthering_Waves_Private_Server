@@ -726,7 +726,7 @@ pub(crate) async fn run_wwps_core_cmd(args: &[&str]) -> Result<String> {
     if status.success() {
         Ok(stdout)
     } else {
-        anyhow::bail!("wwps-core {:?} 执行失败: {}", args, stderr)
+        anyhow::bail!("wwps-core (Xray-core) {:?} 执行失败: {}", args, stderr)
     }
 }
 
