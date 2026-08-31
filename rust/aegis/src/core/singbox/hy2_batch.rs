@@ -47,8 +47,13 @@ impl SingBoxConfigManager {
             let sni = selector.get_next();
 
             let (main_port, hop_range) = if enable_hopping {
+                // 端口跳跃：分配器锁定一段连续 100 端口（主端口 main + 跳跃 main+1..main+99），
+                // 下方为跳跃范围添加 iptables REDIRECT 规则（UDP → 主端口）。
+                // 删除配置时必须由 config.rs::cleanup_hysteria2_ports 释放锁定范围，
+                // 否则端口永不还原、范围无限累积（历史 bug，已修复并由测试锁定）。
                 PortAllocator::allocate_hysteria2().await?
             } else {
+                // 非跳跃：随机选端口，仅避免落入已锁定范围与在监听端口，不写入 .port_alloc
                 let port = loop {
                     let p = StdRng::from_entropy().gen_range(10000..60000);
                     if PortAllocator::is_port_in_locked_range(p).await {
