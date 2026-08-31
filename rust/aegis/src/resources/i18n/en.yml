@@ -28,7 +28,7 @@ menu:
   session_timeout_desc: "TOTP authenticated session duration. Expires and requires re-authentication."
   danger_zone: "⚠️ Danger Zone"
   danger_zone_desc: "This area contains irreversible destructive operations.\nProceed with caution!"
-  wwps_core_mgmt: "🛰️ <b>wwps-core Management</b>\nUpdate to latest version or select a specific version."
+  wwps_core_mgmt: "🛰️ <b>Xray-core Management</b>\nUpdate to latest version or select a specific version."
   version_tags: "🏷️ Select Version"
   version_tag_empty: "❌ No version info"
   no_version_found: "⚠️ No versions found"
@@ -46,14 +46,14 @@ menu:
   singbox_upgrade_success: "✅ Sing-box updated to %{0}!"
   singbox_upgrade_fail: "❌ Sing-box upgrade failed: %{0}"
   singbox_upgrade_unknown_size: "Unknown"
-  wwps_core_restart: "🔄 Restart wwps-core"
-  wwps_core_status: "📊 wwps-core Status"
-  wwps_core_restart_success: "✅ wwps-core restarted"
-  wwps_core_restart_fail: "❌ wwps-core restart failed: %{0}"
-  wwps_core_status_text: "⚙️ wwps-core Status: %{0}"
+  wwps_core_restart: "🔄 Restart Xray-core"
+  wwps_core_status: "📊 Xray-core Status"
+  wwps_core_restart_success: "✅ Xray-core restarted"
+  wwps_core_restart_fail: "❌ Xray-core restart failed: %{0}"
+  wwps_core_status_text: "⚙️ Xray-core Status: %{0}"
   wwps_core_status_running: "🟢 Running"
   wwps_core_status_stopped: "🔴 Not running"
-  wwps_core_status_fail: "❌ wwps-core status check failed: %{0}"
+  wwps_core_status_fail: "❌ Xray-core status check failed: %{0}"
   singbox_not_installed: "⚠️ <b>Sing-box Not Detected</b>\n\nSing-box is not installed. Hysteria2/TUIC protocols unavailable."
   singbox_no_config: "⚠️ <b>No Configuration Found</b>\n\nYou can create Hysteria2 or TUIC batch configurations."
   singbox_install: "🚀 Install Sing-box"
@@ -102,7 +102,7 @@ menu:
   singbox_tu_qty_title: "🚀 <b>TUIC Batch Create</b>\n\n🌐 IP Version: %{0}\n\nSelect quantity:"
   bbr3_install: "🚀 BBR3 Install"
   generic_tune: "⚙️ Network Optimization"
-  wwps_core_btn: "🛰️ wwps-core Management"
+  wwps_core_btn: "🛰️ Xray-core Management"
   singbox_mgmt_btn: "📦 Sing-box Management"
   warp_btn: "🌩 WARP Routing"
 
@@ -307,7 +307,7 @@ xray:
   batch_gen_done: "✅ Enhanced batch creation complete!\n\n📊 Count: %{0}\n🌐 IP: %{1}\n🔒 Security: Random ShortId, Dedup SNI, Unique Tags"
   pq_status_enabled: "🟢 Enabled (new Reality links include pqv/mldsa65Verify)"
   pq_status_disabled: "🔴 Not configured (Reality links lack PQ post-quantum signature)"
-  pq_mgmt_title: "🔐 <b>ML-DSA-65 Management</b>\n\nStatus: %{0}\n\n• <b>Delete & Disable</b>: Remove seed/verify files. New links won't include pqv.\n• <b>Initialize</b>: Run <code>wwps-core mldsa65</code> to generate seed/verify in /etc/wwps/.\n\n⚠️ Restart Bot or regenerate batch configs after changes."
+  pq_mgmt_title: "🔐 <b>ML-DSA-65 Management</b>\n\nStatus: %{0}\n\n• <b>Delete & Disable</b>: Remove seed/verify files. New links won't include pqv.\n• <b>Initialize</b>: Run <code>wwps-core mldsa65</code> (the deployed Xray-core binary) to generate seed/verify in /etc/wwps/.\n\n⚠️ Restart Bot or regenerate batch configs after changes."
   pq_delete: "🗑 Delete & Disable"
   pq_init: "🔄 Initialize (Generate Key Pair)"
   pq_deleted: "✅ ML-DSA-65 keys deleted. PQ disabled. Restart Bot or regenerate configs."
@@ -385,14 +385,14 @@ xray:
     Status: %{0}
 
     • <b>Delete & Disable</b>: Remove seed/verify files. New links won't include pqv.
-    • <b>Initialize</b>: Run <code>wwps-core mldsa65</code> to generate seed/verify in /etc/wwps/.
+    • <b>Initialize</b>: Run <code>wwps-core mldsa65</code> (the deployed Xray-core binary) to generate seed/verify in /etc/wwps/.
 
     ⚠️ Restart Bot or regenerate batch configs after changes.
   pq_del_btn: "🗑 Delete & Disable"
   pq_init_btn: "🔄 Initialize (Generate Key Pair)"
   pq_del_success: "✅ ML-DSA-65 keys deleted. PQ disabled. Restart Bot or regenerate configs."
   pq_del_fail: "❌ Delete failed: %{0}"
-  pq_init_success: "✅ ML-DSA-65 seed/verify generated via wwps-core mldsa65 and written to /etc/wwps/. Restart Bot or regenerate configs."
+  pq_init_success: "✅ ML-DSA-65 seed/verify generated via wwps-core mldsa65 (the deployed Xray-core binary) and written to /etc/wwps/. Restart Bot or regenerate configs."
   pq_init_fail: "❌ Initialization failed: %{0}"
   kcp_title: |
     🚀 <b>KCP (mKCP+FinalMask) Configuration</b>
@@ -583,14 +583,14 @@ bot_commands:
   security_file_prompt: "⚠️ Send a file or image with caption `/setsecurityfile`, or reply to a file message with this command."
 
 upgrade:
-  core_checking: "🛰️ Checking wwps-core environment..."
-  core_fetching: "📦 Fetching wwps-core version info..."
+  core_checking: "🛰️ Checking Xray-core environment..."
+  core_fetching: "📦 Fetching Xray-core version info..."
   core_extracting: "🗜️ Extracting core..."
   core_backing_up: "💾 Backing up current core..."
   core_replacing: "♻️ Replacing core..."
-  core_restarting: "🔁 Restarting wwps-core service..."
-  core_updated: "✅ wwps-core updated to %{0}!\nBackup: %{1}"
-  core_download_info: "📦 Ready to download wwps-core %{0}\nSize: %{1}\nSHA256: %{2}"
+  core_restarting: "🔁 Restarting Xray-core service..."
+  core_updated: "✅ Xray-core updated to %{0}!\nBackup: %{1}"
+  core_download_info: "📦 Ready to download Xray-core %{0}\nSize: %{1}\nSHA256: %{2}"
   core_unknown_size: "Unknown"
   bot_querying: "🔍 Querying latest Release..."
   bot_fetch_fail: "❌ Failed to fetch Release: %{0}"

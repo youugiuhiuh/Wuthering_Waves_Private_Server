@@ -28,7 +28,7 @@ menu:
   session_timeout_desc: "TOTP認証後のセッション有効期間。期限切れ後は再認証が必要です。"
   danger_zone: "⚠️ 危険エリア"
   danger_zone_desc: "このエリアには取り消し不能な破壊的操作が含まれます。\n注意して操作してください！"
-  wwps_core_mgmt: "🛰️ <b>wwps-core 管理</b>\n最新バージョンに更新するか、特定のバージョンを選択します。"
+  wwps_core_mgmt: "🛰️ <b>Xray-core 管理</b>\n最新バージョンに更新するか、特定のバージョンを選択します。"
   version_tags: "🏷️ バージョン選択"
   version_tag_empty: "❌ バージョン情報なし"
   no_version_found: "⚠️ バージョンが見つかりません"
@@ -46,14 +46,14 @@ menu:
   singbox_upgrade_success: "✅ Sing-box を %{0} に更新しました！"
   singbox_upgrade_fail: "❌ Sing-box のアップグレードに失敗: %{0}"
   singbox_upgrade_unknown_size: "不明"
-  wwps_core_restart: "🔄 wwps-core を再起動"
-  wwps_core_status: "📊 wwps-core ステータス"
-  wwps_core_restart_success: "✅ wwps-core を再起動しました"
-  wwps_core_restart_fail: "❌ wwps-core の再起動に失敗: %{0}"
-  wwps_core_status_text: "⚙️ wwps-core ステータス: %{0}"
+  wwps_core_restart: "🔄 Xray-core を再起動"
+  wwps_core_status: "📊 Xray-core ステータス"
+  wwps_core_restart_success: "✅ Xray-core を再起動しました"
+  wwps_core_restart_fail: "❌ Xray-core の再起動に失敗: %{0}"
+  wwps_core_status_text: "⚙️ Xray-core ステータス: %{0}"
   wwps_core_status_running: "🟢 稼働中"
   wwps_core_status_stopped: "🔴 停止中"
-  wwps_core_status_fail: "❌ wwps-core ステータス取得に失敗: %{0}"
+  wwps_core_status_fail: "❌ Xray-core ステータス取得に失敗: %{0}"
   singbox_not_installed: "⚠️ <b>Sing-box未検出</b>\n\nSing-boxがインストールされていません。Hysteria2/TUICプロトコルは使用できません。"
   singbox_no_config: "⚠️ <b>設定ファイルが見つかりません</b>\n\nHysteria2またはTUICのバッチ設定を作成できます。"
   singbox_install: "🚀 Sing-boxをインストール"
@@ -100,7 +100,7 @@ menu:
   singbox_tu_qty_title: "🚀 <b>TUIC バッチ作成</b>\n\n🌐 IPバージョン: %{0}\n\n数量を選択:"
   bbr3_install: "🚀 BBR3 インストール"
   generic_tune: "⚙️ ネットワーク最適化"
-  wwps_core_btn: "🛰️ wwps-core 管理"
+  wwps_core_btn: "🛰️ Xray-core 管理"
   singbox_mgmt_btn: "📦 Sing-box 管理"
   warp_btn: "🌩 WARP ルーティング"
 
@@ -305,7 +305,7 @@ xray:
   batch_gen_done: "✅ 強化バッチ作成完了！\n\n📊 数: %{0}\n🌐 IP: %{1}\n🔒 セキュリティ: ランダムShortId、重複排除SNI、一意のタグ"
   pq_status_enabled: "🟢 有効 (新しいRealityリンクにpqv/mldsa65Verifyが含まれます)"
   pq_status_disabled: "🔴 未設定 (RealityリンクにPQポスト量子署名が含まれません)"
-  pq_mgmt_title: "🔐 <b>ML-DSA-65 管理</b>\n\n現在の状態: %{0}\n\n• <b>削除して無効化</b>: seed/verifyファイルを削除。新しいリンクにpqvは含まれません。\n• <b>初期化</b>: <code>wwps-core mldsa65</code>を実行してseed/verifyを/etc/wwps/に生成。\n\n⚠️ 変更後は<b>Bot再起動</b>または<b>バッチ設定再生成</b>で有効になります。"
+  pq_mgmt_title: "🔐 <b>ML-DSA-65 管理</b>\n\n現在の状態: %{0}\n\n• <b>削除して無効化</b>: seed/verifyファイルを削除。新しいリンクにpqvは含まれません。\n• <b>初期化</b>: <code>wwps-core mldsa65</code>（Xray-core のデプロイ名）を実行してseed/verifyを/etc/wwps/に生成。\n\n⚠️ 変更後は<b>Bot再起動</b>または<b>バッチ設定再生成</b>で有効になります。"
   pq_delete: "🗑 削除して無効化"
   pq_init: "🔄 初期化 (鍵ペア生成)"
   pq_deleted: "✅ ML-DSA-65鍵を削除しました。PQ無効。Bot再起動または設定再生成後に反映されます。"
@@ -383,14 +383,14 @@ xray:
     現在の状態: %{0}
 
     • <b>削除して無効化</b>: seed/verifyファイルを削除。新しいリンクにpqvは含まれません。
-    • <b>初期化</b>: <code>wwps-core mldsa65</code>を実行してseed/verifyを/etc/wwps/に生成。
+    • <b>初期化</b>: <code>wwps-core mldsa65</code>（Xray-core のデプロイ名）を実行してseed/verifyを/etc/wwps/に生成。
 
     ⚠️ 変更後は<b>Bot再起動</b>または<b>バッチ設定再生成</b>で有効になります。
   pq_del_btn: "🗑 削除して無効化"
   pq_init_btn: "🔄 初期化 (鍵ペア生成)"
   pq_del_success: "✅ ML-DSA-65鍵を削除しました。PQ無効。Bot再起動または設定再生成後に反映されます。"
   pq_del_fail: "❌ 削除失敗: %{0}"
-  pq_init_success: "✅ ML-DSA-65 seed/verifyがwwps-core mldsa65を介して生成され、/etc/wwps/に書き込まれました。Bot再起動または設定再生成後に反映されます。"
+  pq_init_success: "✅ ML-DSA-65 seed/verifyがwwps-core mldsa65（Xray-core のデプロイ名）を介して生成され、/etc/wwps/に書き込まれました。Bot再起動または設定再生成後に反映されます。"
   pq_init_fail: "❌ 初期化失敗: %{0}"
   kcp_title: |
     🚀 <b>KCP (mKCP+FinalMask) 設定</b>
@@ -581,14 +581,14 @@ bot_commands:
   security_file_prompt: "⚠️ ファイルまたは画像にキャプション `/setsecurityfile` を付けて送信するか、ファイルメッセージに返信してください。"
 
 upgrade:
-  core_checking: "🛰️ wwps-core 環境を確認中..."
-  core_fetching: "📦 wwps-core バージョン情報を取得中..."
+  core_checking: "🛰️ Xray-core 環境を確認中..."
+  core_fetching: "📦 Xray-core バージョン情報を取得中..."
   core_extracting: "🗜️ コアを展開中..."
   core_backing_up: "💾 現在のコアをバックアップ中..."
   core_replacing: "♻️ コアを置き換え中..."
-  core_restarting: "🔁 wwps-core サービスを再起動中..."
-  core_updated: "✅ wwps-core が %{0} に更新されました！\nバックアップ: %{1}"
-  core_download_info: "📦 wwps-core %{0} のダウンロード準備\nサイズ: %{1}\nSHA256: %{2}"
+  core_restarting: "🔁 Xray-core サービスを再起動中..."
+  core_updated: "✅ Xray-core が %{0} に更新されました！\nバックアップ: %{1}"
+  core_download_info: "📦 Xray-core %{0} のダウンロード準備\nサイズ: %{1}\nSHA256: %{2}"
   core_unknown_size: "不明"
   bot_querying: "🔍 最新リリースを照会中..."
   bot_fetch_fail: "❌ リリースの取得に失敗: %{0}"

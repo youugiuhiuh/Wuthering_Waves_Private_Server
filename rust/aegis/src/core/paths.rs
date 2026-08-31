@@ -1,6 +1,25 @@
 //! 集中路径常量定义
 //!
 //! 所有系统路径在此定义，避免硬编码分散
+//!
+//! # 命名说明（部署改名映射）
+//!
+//! 上游代理二进制在部署时会被重命名，因此磁盘路径 / systemd 服务名 / 进程名
+//! 与上游产品名不同：
+//!
+//! | 上游产品 | 部署名 | 安装目录 | systemd 服务 |
+//! |----------|--------|----------|--------------|
+//! | Xray-core | `wwps-core` | `/etc/wwps/wwps-core/` | `wwps-core` |
+//! | Sing-box  | `wwps-box`  | `/etc/wwps/wwps-box/`  | `wwps-box`  |
+//!
+//! 即：**`wwps-core` = Xray-core，`wwps-box` = Sing-box**。
+//!
+//! - 面向用户的文案（i18n / 机器人消息 / 文档）一律使用上游产品名：Xray-core、Sing-box。
+//! - 磁盘路径、systemd 服务名、进程名、i18n 键（如 `menu.wwps_core_mgmt`）与
+//!   Rust 标识符（如 `WWPS_CORE_*`、`install_wwps_core`）保留 `wwps_*` 前缀——
+//!   已有部署 / 升级脚本 / 防火墙规则依赖它们，禁止重命名。
+//! - 命令注意：ML-DSA-65 密钥生成实际执行 `wwps-core mldsa65`（回退 `xray mldsa65`），
+//!   两者指向同一个 Xray-core 二进制（见 `bootstrap.rs` 与 `core/xray/reality.rs`）。
 
 pub const WWPS_BASE_DIR: &str = "/etc/wwps";
 

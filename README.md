@@ -26,6 +26,8 @@ An experimental self-hosted server emulator project for Wuthering Waves, focused
 - `rust/version-sync`: release/version synchronization helper
 - `sni_tester`: standalone SNI and connectivity testing utility
 
+> **Naming note:** deployed binaries are renamed — `wwps-core` is Xray-core and `wwps-box` is Sing-box. The mapping is documented in the module comment of `rust/aegis/src/core/paths.rs`.
+
 ## Quick Start
 
 Recommended environment:
