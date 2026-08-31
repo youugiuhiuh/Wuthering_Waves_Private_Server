@@ -8,6 +8,7 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use serde_json::{Value, json};
 use sha2::Digest;
+use std::path::Path;
 use tokio::fs;
 
 pub struct SingBoxConfigManager;
@@ -77,18 +78,36 @@ impl SingBoxConfigManager {
         }
     }
 
-    async fn extract_main_port_from_config(path: &str) -> Result<u16> {
+    /// 提取配置文件中所有 hysteria2 inbound 的主端口（按内容检测，跳过其他协议）
+    async fn extract_hysteria2_ports_from_config(path: &str) -> Result<Vec<u16>> {
         let content = fs::read_to_string(path).await?;
         let json: Value = serde_json::from_str(&content)?;
 
-        let port = json["inbounds"][0]["listen_port"]
-            .as_u64()
-            .ok_or_else(|| anyhow::anyhow!("无法解析主端口"))? as u16;
-
-        Ok(port)
+        let mut ports = Vec::new();
+        if let Some(inbounds) = json["inbounds"].as_array() {
+            for inbound in inbounds {
+                if inbound.get("type").and_then(|v| v.as_str()) != Some("hysteria2") {
+                    continue;
+                }
+                if let Some(p) = inbound["listen_port"]
+                    .as_u64()
+                    .and_then(|p| u16::try_from(p).ok())
+                {
+                    ports.push(p);
+                }
+            }
+        }
+        if ports.is_empty() {
+            return Err(anyhow::anyhow!("配置中未找到 hysteria2 inbound 主端口"));
+        }
+        Ok(ports)
     }
 
-    async fn cleanup_specific_hysteria2_rules(main_port: u16, hop_range: (u16, u16)) -> Result<()> {
+    async fn cleanup_specific_hysteria2_rules(
+        main_port: u16,
+        hop_range: (u16, u16),
+        has_ipv6: bool,
+    ) -> Result<()> {
         use tokio::process::Command;
 
         let range_str = format!("{}:{}", hop_range.0, hop_range.1);
@@ -110,7 +129,6 @@ impl SingBoxConfigManager {
             .output()
             .await;
 
-        let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
         if has_ipv6 {
             let _ = Command::new("ip6tables")
                 .args([
@@ -144,46 +162,64 @@ impl SingBoxConfigManager {
         Ok(())
     }
 
+    /// 清理 hysteria2 端口跳跃资源：逐端口清理防火墙规则并释放端口分配（最佳努力）。
+    /// `alloc_file` 为 Some 时，端口释放写入该分配文件（测试隔离用）；None 使用默认分配文件。
+    async fn cleanup_hysteria2_ports(ports: Vec<u16>, has_ipv6: bool, alloc_file: Option<&Path>) {
+        for main_port in ports {
+            let hop_range = (main_port + 1, main_port + 99);
+            let _ = Self::cleanup_specific_hysteria2_rules(main_port, hop_range, has_ipv6).await;
+            let release = match alloc_file {
+                Some(path) => PortAllocator::release_hysteria2_range_at(path, main_port).await,
+                None => PortAllocator::release_hysteria2_range(main_port).await,
+            };
+            let _ = release;
+        }
+    }
+
     pub async fn delete_specific_configuration(path: &str) -> Result<()> {
-        let main_port = Self::extract_main_port_from_config(path).await?;
-        let hop_range = (main_port + 1, main_port + 99);
+        Self::delete_specific_configuration_at(path, None).await
+    }
+
+    /// 同 [`delete_specific_configuration`]，但端口释放写入指定的分配文件（测试隔离用）。
+    pub async fn delete_specific_configuration_at(
+        path: &str,
+        alloc_file: Option<&Path>,
+    ) -> Result<()> {
+        // 提取 hysteria2 主端口（非 hysteria2 文件返回 Err，跳过清理）
+        let hy2_ports = Self::extract_hysteria2_ports_from_config(path).await.ok();
 
         fs::remove_file(path).await.context("删除配置文件失败")?;
 
-        Self::cleanup_specific_hysteria2_rules(main_port, hop_range).await?;
-
-        let _ = PortAllocator::release_hysteria2_range(main_port).await;
-
-        let remaining = Self::list_all_inbound_files().await?;
-        let has_hysteria2 = remaining.iter().any(|f| f.contains("hysteria2"));
-
-        if !has_hysteria2 {
-            let _ = PortAllocator::release_hysteria2_range(main_port).await;
+        // 文件删除成功后才清理规则并释放端口，避免残留文件与端口分配不一致
+        if let Some(ports) = hy2_ports {
+            let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+            Self::cleanup_hysteria2_ports(ports, has_ipv6, alloc_file).await;
         }
 
-        Self::reload_service().await?;
         Ok(())
     }
 
     pub async fn delete_all_configurations() -> Result<usize> {
         let files = Self::list_all_inbound_files().await?;
-        let count = files.len();
+        let mut deleted = 0;
+        let mut has_ipv6: Option<bool> = None;
 
         for file in &files {
-            if (file.contains("hysteria2") || file.contains("hysteria"))
-                && let Ok(main_port) = Self::extract_main_port_from_config(file).await
-            {
-                let hop_range = (main_port + 1, main_port + 99);
-                Self::cleanup_specific_hysteria2_rules(main_port, hop_range).await?;
+            // 按内容检测 hysteria2；非 hysteria2 文件 extract 返回 Err，跳过清理
+            let hy2_ports = Self::extract_hysteria2_ports_from_config(file).await.ok();
+            if fs::remove_file(file).await.is_ok() {
+                deleted += 1;
+                if let Some(ports) = hy2_ports {
+                    // 仅当存在 hysteria2 配置时才探测 IPv6（网络调用，延迟到需要时）
+                    if has_ipv6.is_none() {
+                        has_ipv6 = Some(SystemMonitor::get_public_ipv6().await.is_ok());
+                    }
+                    Self::cleanup_hysteria2_ports(ports, has_ipv6.unwrap_or(false), None).await;
+                }
             }
-
-            let _ = fs::remove_file(file).await;
         }
 
-        if count > 0 {
-            Self::reload_service().await?;
-        }
-        Ok(count)
+        Ok(deleted)
     }
 
     pub async fn delete_by_count(count: usize) -> Result<usize> {
@@ -207,15 +243,22 @@ impl SingBoxConfigManager {
 
         let delete_count = count.min(sorted_files.len());
         let mut deleted = 0;
+        let mut has_ipv6: Option<bool> = None;
 
         for (path, _) in sorted_files.iter().take(delete_count) {
+            let path_str = path.to_string_lossy().to_string();
+            let hy2_ports = Self::extract_hysteria2_ports_from_config(&path_str)
+                .await
+                .ok();
             if fs::remove_file(path).await.is_ok() {
                 deleted += 1;
+                if let Some(ports) = hy2_ports {
+                    if has_ipv6.is_none() {
+                        has_ipv6 = Some(SystemMonitor::get_public_ipv6().await.is_ok());
+                    }
+                    Self::cleanup_hysteria2_ports(ports, has_ipv6.unwrap_or(false), None).await;
+                }
             }
-        }
-
-        if deleted > 0 {
-            Self::reload_service().await?;
         }
 
         Ok(deleted)
@@ -656,6 +699,183 @@ mod port_collection_tests {
         assert!(ports.contains(&20001));
         assert!(ports.contains(&20050));
         assert!(ports.contains(&20100));
+    }
+
+    #[tokio::test]
+    async fn test_extract_hysteria2_ports_all_inbounds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("batch_hy2_test.json");
+        let json = serde_json::json!({
+            "inbounds": [
+                {"type": "hysteria2", "listen_port": 11123},
+                {"type": "hysteria2", "listen_port": 11223},
+                {"type": "tuic", "listen_port": 30001},
+                {"type": "hysteria2", "listen_port": 11323}
+            ]
+        });
+        tokio::fs::write(&path, serde_json::to_string(&json).unwrap())
+            .await
+            .unwrap();
+
+        let ports =
+            SingBoxConfigManager::extract_hysteria2_ports_from_config(path.to_str().unwrap())
+                .await
+                .unwrap();
+
+        assert_eq!(
+            ports,
+            vec![11123u16, 11223, 11323],
+            "应提取所有 hysteria2 inbound 的主端口，跳过非 hysteria2 inbound"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_extract_hysteria2_ports_none_returns_err() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("batch_tuic_test.json");
+        let json = serde_json::json!({
+            "inbounds": [
+                {"type": "tuic", "listen_port": 30001}
+            ]
+        });
+        tokio::fs::write(&path, serde_json::to_string(&json).unwrap())
+            .await
+            .unwrap();
+
+        let result =
+            SingBoxConfigManager::extract_hysteria2_ports_from_config(path.to_str().unwrap()).await;
+        assert!(result.is_err(), "无 hysteria2 inbound 时应返回 Err");
+    }
+
+    #[tokio::test]
+    async fn extract_hysteria2_ports_returns_err_for_corrupt_json() {
+        // Arrange: 故意构造截断 JSON 的 hy2 配置（模拟损坏的批量配置文件）
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("batch_hy2_corrupt.json");
+        tokio::fs::write(&path, "{\"inbounds\": [ { \"type\": \"hysteria2\", ")
+            .await
+            .unwrap();
+
+        // Act
+        let result =
+            SingBoxConfigManager::extract_hysteria2_ports_from_config(path.to_str().unwrap()).await;
+
+        // Assert
+        assert!(result.is_err(), "损坏 JSON 应返回 Err 而非 panic");
+    }
+
+    #[tokio::test]
+    async fn extract_hysteria2_ports_returns_err_for_missing_file() {
+        // Arrange: 指向不存在的文件
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("does_not_exist.json");
+
+        // Act
+        let result =
+            SingBoxConfigManager::extract_hysteria2_ports_from_config(path.to_str().unwrap()).await;
+
+        // Assert
+        assert!(result.is_err(), "文件不存在应返回 Err 而非 panic");
+    }
+
+    #[tokio::test]
+    async fn extract_hysteria2_ports_returns_err_when_listen_port_missing() {
+        // Arrange: hysteria2 inbound 缺少 listen_port 字段
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("batch_hy2_no_port.json");
+        let json = serde_json::json!({
+            "inbounds": [
+                {"type": "hysteria2", "tag": "HYSTERIA2-1-no-port"}
+            ]
+        });
+        tokio::fs::write(&path, serde_json::to_string(&json).unwrap())
+            .await
+            .unwrap();
+
+        // Act
+        let result =
+            SingBoxConfigManager::extract_hysteria2_ports_from_config(path.to_str().unwrap()).await;
+
+        // Assert
+        assert!(result.is_err(), "缺少 listen_port 应返回 Err 而非 panic");
+    }
+
+    #[tokio::test]
+    async fn cleanup_hysteria2_ports_releases_all_locked_ranges() {
+        // Arrange: 在临时分配文件中分配 3 个跳跃范围（模拟 3-inbound 批量配置）
+        let dir = tempfile::tempdir().unwrap();
+        let alloc_path = dir.path().join(".port_alloc");
+        let mut ports = Vec::new();
+        for _ in 0..3 {
+            let (main_port, _) = PortAllocator::allocate_hysteria2_at(&alloc_path)
+                .await
+                .unwrap();
+            ports.push(main_port);
+        }
+
+        // Act: 模拟删除配置后的清理，全部端口应被释放
+        SingBoxConfigManager::cleanup_hysteria2_ports(ports, false, Some(&alloc_path)).await;
+
+        // Assert: 分配文件中不再有任何锁定范围（旧代码只释放第一个端口）
+        let content = tokio::fs::read_to_string(&alloc_path).await.unwrap();
+        let data: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(
+            data["locked_ranges"].as_array().unwrap().is_empty(),
+            "多 inbound 配置删除后所有锁定范围均应释放"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_specific_configuration_removes_corrupt_file() {
+        // Arrange: 故意构造损坏 JSON 的 hy2 配置
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("batch_hy2_corrupt.json");
+        tokio::fs::write(&path, "{\"inbounds\": [ { \"type\": \"hysteria2\", ")
+            .await
+            .unwrap();
+
+        // Act: 删除路径应对解析错误宽容（跳过清理、文件照删、不崩溃）
+        let result =
+            SingBoxConfigManager::delete_specific_configuration(path.to_str().unwrap()).await;
+
+        // Assert
+        assert!(
+            result.is_ok(),
+            "损坏配置的删除应成功（错误被捕捉而非传播）：{:?}",
+            result
+        );
+        assert!(
+            !tokio::fs::try_exists(&path).await.unwrap(),
+            "损坏配置文件应被删除（文件删除不依赖解析成功）"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_specific_configuration_removes_multi_inbound_file() {
+        // Arrange: 3 个 hysteria2 inbound 的批量配置（结构同服务器 batch_hy2_*.json）
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("batch_hy2_multi.json");
+        let json = serde_json::json!({
+            "inbounds": [
+                {"type": "hysteria2", "listen_port": 20001, "tag": "HYSTERIA2-1"},
+                {"type": "hysteria2", "listen_port": 20101, "tag": "HYSTERIA2-2"},
+                {"type": "hysteria2", "listen_port": 20201, "tag": "HYSTERIA2-3"}
+            ]
+        });
+        tokio::fs::write(&path, serde_json::to_string(&json).unwrap())
+            .await
+            .unwrap();
+
+        // Act
+        let result =
+            SingBoxConfigManager::delete_specific_configuration(path.to_str().unwrap()).await;
+
+        // Assert
+        assert!(result.is_ok(), "多 inbound 删除应成功：{:?}", result);
+        assert!(
+            !tokio::fs::try_exists(&path).await.unwrap(),
+            "配置文件应被删除"
+        );
     }
 }
 

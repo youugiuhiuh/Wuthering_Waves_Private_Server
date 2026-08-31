@@ -3,7 +3,7 @@ use crate::core::security::firewall_scanner::FirewallScanner;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 const PORT_ALLOC_FILE: &str = "/etc/wwps/.port_alloc";
@@ -30,22 +30,24 @@ pub struct LockedRange {
 }
 
 async fn load_port_alloc() -> Result<PortAllocData> {
-    let path = PathBuf::from(PORT_ALLOC_FILE);
+    load_port_alloc_at(&PathBuf::from(PORT_ALLOC_FILE)).await
+}
+
+async fn load_port_alloc_at(path: &Path) -> Result<PortAllocData> {
     if !path.exists() {
         return Ok(PortAllocData::default());
     }
-    let content = fs::read_to_string(&path).await?;
+    let content = fs::read_to_string(path).await?;
     let data: PortAllocData = serde_json::from_str(&content).context("解析端口分配数据失败")?;
     Ok(data)
 }
 
-async fn save_port_alloc(data: &PortAllocData) -> Result<()> {
-    let path = PathBuf::from(PORT_ALLOC_FILE);
+async fn save_port_alloc_at(path: &Path, data: &PortAllocData) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await?;
     }
     let content = serde_json::to_string_pretty(data)?;
-    fs::write(&path, content).await?;
+    fs::write(path, content).await?;
     Ok(())
 }
 
@@ -77,7 +79,7 @@ impl PortAllocator {
         Ok(count < 50)
     }
 
-    async fn scan_all_occupied_ports() -> Result<HashSet<u16>> {
+    async fn scan_all_occupied_ports(path: &Path) -> Result<HashSet<u16>> {
         let mut occupied = HashSet::new();
 
         occupied.insert(22);
@@ -105,7 +107,7 @@ impl PortAllocator {
             }
         }
 
-        if let Ok(data) = load_port_alloc().await {
+        if let Ok(data) = load_port_alloc_at(path).await {
             for range in &data.locked_ranges {
                 for port in range.start..=range.end {
                     occupied.insert(port);
@@ -166,8 +168,16 @@ impl PortAllocator {
             .any(|(start, end)| port >= *start && port <= *end)
     }
 
+    /// 使用自定义分配文件分配一个 hysteria2 端口跳跃范围（主端口 + 99 个跳跃端口）。
+    ///
+    /// 默认使用 `/etc/wwps/.port_alloc`；此变体可指定路径，供测试隔离验证。
     pub async fn allocate_hysteria2() -> Result<(u16, (u16, u16))> {
-        let occupied = Self::scan_all_occupied_ports().await?;
+        Self::allocate_hysteria2_at(&PathBuf::from(PORT_ALLOC_FILE)).await
+    }
+
+    /// 同 [`allocate_hysteria2`]，但使用指定的分配文件路径。
+    pub async fn allocate_hysteria2_at(path: &Path) -> Result<(u16, (u16, u16))> {
+        let occupied = Self::scan_all_occupied_ports(path).await?;
         let main_port = Self::find_consecutive_range(&occupied, HOP_SIZE)?;
         let hop_end = main_port + 99;
 
@@ -175,14 +185,14 @@ impl PortAllocator {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        let mut data = load_port_alloc().await.unwrap_or_default();
+        let mut data = load_port_alloc_at(path).await.unwrap_or_default();
         data.locked_ranges.push(LockedRange {
             start: main_port,
             end: hop_end,
             protocol: "hysteria2".to_string(),
             created_at: now,
         });
-        save_port_alloc(&data).await?;
+        save_port_alloc_at(path, &data).await?;
 
         log::info!(
             "Hysteria2 端口分配: 主端口 {}, 跳跃范围 {}-{}",
@@ -194,14 +204,20 @@ impl PortAllocator {
         Ok((main_port, (main_port + 1, hop_end)))
     }
 
+    /// 释放指定主端口的 hysteria2 端口跳跃范围（从默认分配文件中移除）。
     pub async fn release_hysteria2_range(main_port: u16) -> Result<()> {
-        let mut data = load_port_alloc().await.unwrap_or_default();
+        Self::release_hysteria2_range_at(&PathBuf::from(PORT_ALLOC_FILE), main_port).await
+    }
+
+    /// 同 [`release_hysteria2_range`]，但使用指定的分配文件路径。
+    pub async fn release_hysteria2_range_at(path: &Path, main_port: u16) -> Result<()> {
+        let mut data = load_port_alloc_at(path).await.unwrap_or_default();
         let before = data.locked_ranges.len();
         data.locked_ranges
             .retain(|r| !(r.protocol == "hysteria2" && r.start == main_port));
 
         if data.locked_ranges.len() < before {
-            save_port_alloc(&data).await?;
+            save_port_alloc_at(path, &data).await?;
             log::info!("Hysteria2 端口范围已释放: 主端口 {}", main_port);
         } else {
             log::warn!(
@@ -356,5 +372,71 @@ mod tests {
             .collect();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].start, 20000);
+    }
+
+    #[tokio::test]
+    async fn test_release_then_allocate_restores_port() {
+        // 核心回归：删除释放后，重新创建应还原同一端口范围
+        let dir = tempfile::tempdir().unwrap();
+        let alloc_path = dir.path().join(".port_alloc");
+
+        let (main_port, hop) = PortAllocator::allocate_hysteria2_at(&alloc_path)
+            .await
+            .unwrap();
+        assert_eq!(main_port, 10000, "首个空闲范围应分配 10000");
+        assert_eq!(hop, (10001, 10099));
+
+        PortAllocator::release_hysteria2_range_at(&alloc_path, main_port)
+            .await
+            .unwrap();
+
+        let (main_port2, hop2) = PortAllocator::allocate_hysteria2_at(&alloc_path)
+            .await
+            .unwrap();
+        assert_eq!(
+            main_port2, main_port,
+            "删除释放后重新创建应还原同一端口范围"
+        );
+        assert_eq!(hop2, hop);
+    }
+
+    #[tokio::test]
+    async fn test_unreleased_range_is_not_reused() {
+        // 机制说明：未释放的锁定范围会被新分配跳过（这正是 bug 的表象）
+        let dir = tempfile::tempdir().unwrap();
+        let alloc_path = dir.path().join(".port_alloc");
+
+        let (main_port, _) = PortAllocator::allocate_hysteria2_at(&alloc_path)
+            .await
+            .unwrap();
+        assert_eq!(main_port, 10000);
+
+        // 不调用 release，模拟"配置已删但范围未释放"
+        let (main_port2, _) = PortAllocator::allocate_hysteria2_at(&alloc_path)
+            .await
+            .unwrap();
+        assert_eq!(main_port2, 10100, "未释放的范围应被跳过");
+    }
+
+    #[tokio::test]
+    async fn test_release_removes_range_from_file() {
+        // 文件往返：释放后文件里不再有该范围
+        let dir = tempfile::tempdir().unwrap();
+        let alloc_path = dir.path().join(".port_alloc");
+
+        let (main_port, _) = PortAllocator::allocate_hysteria2_at(&alloc_path)
+            .await
+            .unwrap();
+
+        PortAllocator::release_hysteria2_range_at(&alloc_path, main_port)
+            .await
+            .unwrap();
+
+        let data = load_port_alloc_at(&alloc_path).await.unwrap();
+        assert!(
+            data.locked_ranges.iter().all(|r| r.start != main_port),
+            "释放后文件中不应再包含该范围"
+        );
+        assert_eq!(data.locked_ranges.len(), 0);
     }
 }
