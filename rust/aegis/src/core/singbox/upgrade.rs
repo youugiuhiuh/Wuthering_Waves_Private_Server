@@ -174,6 +174,16 @@ impl SingBoxUpgradeManager {
             )
             .await;
 
+        // 先清理上次可能残留的暂存目录，避免旧文件污染新解压结果，也避免 /tmp(tmpfs)
+        // 因残留累积而耗尽空间（曾观察到 119M 残留）。
+        if tokio::fs::try_exists(SINGBOX_UPGRADE_TEMP_DIR)
+            .await
+            .unwrap_or(false)
+        {
+            tokio::fs::remove_dir_all(SINGBOX_UPGRADE_TEMP_DIR)
+                .await
+                .context("清理旧的 sing-box 升级暂存目录失败")?;
+        }
         fs::create_dir_all(SINGBOX_UPGRADE_TEMP_DIR).await?;
         let archive_path = format!("{}/sing-box.tar.gz", SINGBOX_UPGRADE_TEMP_DIR);
         SingBoxInstaller::download_file(&release.download_url, &archive_path).await?;
@@ -210,16 +220,9 @@ impl SingBoxUpgradeManager {
                 },
             )
             .await;
-        fs::copy(&unpacked_bin, singbox::BIN)
-            .await
-            .context("复制 sing-box 二进制失败")?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(singbox::BIN).await?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(singbox::BIN, perms).await?;
-        }
+        // 通过“暂存文件 + 原子 rename”替换（禁止直接 fs::copy 覆盖正在运行的二进制，
+        // 否则会触发 ETXTBSY 导致“复制 sing-box 二进制失败”）。
+        SingBoxInstaller::replace_binary(&unpacked_bin, singbox::BIN).await?;
 
         let _ = adapter
             .edit_message(
