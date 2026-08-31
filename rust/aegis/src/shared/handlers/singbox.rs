@@ -977,6 +977,12 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         "sb_del_all_exec" => {
             match SingBoxConfigManager::delete_all_configurations().await {
                 Ok(count) => {
+                    if count > 0 {
+                        // 删除与重载分离：状态变更在 delete_* 内完成，服务重载由调用方负责
+                        if let Err(e) = SingBoxConfigManager::reload_service().await {
+                            log::warn!("删除全部配置后重载 wwps-box 失败: {}", e);
+                        }
+                    }
                     event
                         .adapter
                         .answer_callback(
@@ -1057,6 +1063,12 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
             match SingBoxConfigManager::delete_by_count(n).await {
                 Ok(deleted) => {
+                    if deleted > 0 {
+                        // 删除与重载分离：状态变更在 delete_* 内完成，服务重载由调用方负责
+                        if let Err(e) = SingBoxConfigManager::reload_service().await {
+                            log::warn!("按数量删除配置后重载 wwps-box 失败: {}", e);
+                        }
+                    }
                     event
                         .adapter
                         .answer_callback(
@@ -1148,6 +1160,10 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             if let Some(path) = inbounds.get(index) {
                 match SingBoxConfigManager::delete_specific_configuration(path).await {
                     Ok(()) => {
+                        // 删除与重载分离：状态变更在 delete_* 内完成，服务重载由调用方负责
+                        if let Err(e) = SingBoxConfigManager::reload_service().await {
+                            log::warn!("删除指定配置后重载 wwps-box 失败: {}", e);
+                        }
                         let filename = path.split('/').next_back().unwrap_or("Unknown");
                         event
                             .adapter

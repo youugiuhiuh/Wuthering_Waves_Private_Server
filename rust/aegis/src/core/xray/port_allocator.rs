@@ -168,11 +168,15 @@ impl PortAllocator {
             .any(|(start, end)| port >= *start && port <= *end)
     }
 
+    /// 使用自定义分配文件分配一个 hysteria2 端口跳跃范围（主端口 + 99 个跳跃端口）。
+    ///
+    /// 默认使用 `/etc/wwps/.port_alloc`；此变体可指定路径，供测试隔离验证。
     pub async fn allocate_hysteria2() -> Result<(u16, (u16, u16))> {
         Self::allocate_hysteria2_at(&PathBuf::from(PORT_ALLOC_FILE)).await
     }
 
-    async fn allocate_hysteria2_at(path: &Path) -> Result<(u16, (u16, u16))> {
+    /// 同 [`allocate_hysteria2`]，但使用指定的分配文件路径。
+    pub async fn allocate_hysteria2_at(path: &Path) -> Result<(u16, (u16, u16))> {
         let occupied = Self::scan_all_occupied_ports(path).await?;
         let main_port = Self::find_consecutive_range(&occupied, HOP_SIZE)?;
         let hop_end = main_port + 99;
@@ -200,11 +204,13 @@ impl PortAllocator {
         Ok((main_port, (main_port + 1, hop_end)))
     }
 
+    /// 释放指定主端口的 hysteria2 端口跳跃范围（从默认分配文件中移除）。
     pub async fn release_hysteria2_range(main_port: u16) -> Result<()> {
         Self::release_hysteria2_range_at(&PathBuf::from(PORT_ALLOC_FILE), main_port).await
     }
 
-    async fn release_hysteria2_range_at(path: &Path, main_port: u16) -> Result<()> {
+    /// 同 [`release_hysteria2_range`]，但使用指定的分配文件路径。
+    pub async fn release_hysteria2_range_at(path: &Path, main_port: u16) -> Result<()> {
         let mut data = load_port_alloc_at(path).await.unwrap_or_default();
         let before = data.locked_ranges.len();
         data.locked_ranges
