@@ -161,30 +161,26 @@ impl SingBoxConfigManager {
         Ok(())
     }
 
-    /// 清理单个 hysteria2 配置文件：提取全部主端口，逐端口清理防火墙规则并释放端口分配
-    async fn cleanup_hysteria2_config(path: &str, has_ipv6: bool) -> Result<()> {
-        let ports = Self::extract_hysteria2_ports_from_config(path).await?;
+    /// 清理 hysteria2 端口跳跃资源：逐端口清理防火墙规则并释放端口分配（最佳努力）
+    async fn cleanup_hysteria2_ports(ports: Vec<u16>, has_ipv6: bool) {
         for main_port in ports {
             let hop_range = (main_port + 1, main_port + 99);
             let _ = Self::cleanup_specific_hysteria2_rules(main_port, hop_range, has_ipv6).await;
             let _ = PortAllocator::release_hysteria2_range(main_port).await;
         }
-        Ok(())
     }
 
     pub async fn delete_specific_configuration(path: &str) -> Result<()> {
-        // 按内容检测并清理 hysteria2 资源；非 hysteria2 文件（如 tuic）跳过清理
-        if let Ok(ports) = Self::extract_hysteria2_ports_from_config(path).await {
-            let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
-            for main_port in ports {
-                let hop_range = (main_port + 1, main_port + 99);
-                let _ =
-                    Self::cleanup_specific_hysteria2_rules(main_port, hop_range, has_ipv6).await;
-                let _ = PortAllocator::release_hysteria2_range(main_port).await;
-            }
-        }
+        // 提取 hysteria2 主端口（非 hysteria2 文件返回 Err，跳过清理）
+        let hy2_ports = Self::extract_hysteria2_ports_from_config(path).await.ok();
 
         fs::remove_file(path).await.context("删除配置文件失败")?;
+
+        // 文件删除成功后才清理规则并释放端口，避免残留文件与端口分配不一致
+        if let Some(ports) = hy2_ports {
+            let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
+            Self::cleanup_hysteria2_ports(ports, has_ipv6).await;
+        }
 
         Self::reload_service().await?;
         Ok(())
@@ -196,9 +192,13 @@ impl SingBoxConfigManager {
         let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
 
         for file in &files {
-            // 按内容检测 hysteria2；非 hysteria2 文件 extract 返回 Err，被 let _ 吞掉不影响删除
-            let _ = Self::cleanup_hysteria2_config(file, has_ipv6).await;
-            let _ = fs::remove_file(file).await;
+            // 按内容检测 hysteria2；非 hysteria2 文件 extract 返回 Err，跳过清理
+            let hy2_ports = Self::extract_hysteria2_ports_from_config(file).await.ok();
+            if fs::remove_file(file).await.is_ok()
+                && let Some(ports) = hy2_ports
+            {
+                Self::cleanup_hysteria2_ports(ports, has_ipv6).await;
+            }
         }
 
         if count > 0 {
@@ -232,9 +232,14 @@ impl SingBoxConfigManager {
 
         for (path, _) in sorted_files.iter().take(delete_count) {
             let path_str = path.to_string_lossy().to_string();
-            let _ = Self::cleanup_hysteria2_config(&path_str, has_ipv6).await;
+            let hy2_ports = Self::extract_hysteria2_ports_from_config(&path_str)
+                .await
+                .ok();
             if fs::remove_file(path).await.is_ok() {
                 deleted += 1;
+                if let Some(ports) = hy2_ports {
+                    Self::cleanup_hysteria2_ports(ports, has_ipv6).await;
+                }
             }
         }
 
