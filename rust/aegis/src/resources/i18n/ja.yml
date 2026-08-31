@@ -609,6 +609,7 @@ upgrade:
   bot_sha256_mismatch: "SHA256 不一致、期待値: %{0}, 実際: %{1}"
   bot_minisign_verifying: "🔐 Minisign 署名を検証中..."
   bot_minisign_ok: "✅ Minisign 署名が確認されました"
+  bot_already_latest: "すでに最新版です"
 
 help:
   text: |

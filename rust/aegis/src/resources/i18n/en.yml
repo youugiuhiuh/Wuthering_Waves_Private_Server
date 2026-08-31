@@ -611,6 +611,7 @@ upgrade:
   bot_sha256_mismatch: "SHA256 mismatch, expected: %{0}, actual: %{1}"
   bot_minisign_verifying: "🔐 Verifying Minisign signature..."
   bot_minisign_ok: "✅ Minisign signature verified"
+  bot_already_latest: "Already up to date"
 
 help:
   text: |

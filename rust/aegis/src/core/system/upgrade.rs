@@ -107,6 +107,10 @@ fn unique_update_path(exe_dir: &Path) -> PathBuf {
     ))
 }
 
+fn is_current_version(tag: &str) -> bool {
+    tag.trim().trim_start_matches('v') == env!("CARGO_PKG_VERSION")
+}
+
 pub struct UpgradeManager {
     client: reqwest::Client,
     repositories: Vec<ReleaseRepo>,
@@ -174,6 +178,20 @@ impl UpgradeManager {
                 return Err(e);
             }
         };
+
+        if is_current_version(&artifact.tag_name) {
+            let _ = adapter
+                .edit_message(
+                    target,
+                    &progress_msg_id,
+                    MessageContent {
+                        text: t!("upgrade.bot_already_latest").to_string(),
+                        markup: None,
+                    },
+                )
+                .await;
+            return Ok(());
+        }
 
         let size_str = artifact
             .size
@@ -629,6 +647,16 @@ mod tests {
     fn test_timeout_constants() {
         assert_eq!(CONNECT_TIMEOUT_SECS, 10);
         assert_eq!(REQUEST_TIMEOUT_SECS, 600);
+    }
+
+    #[test]
+    fn test_is_current_version() {
+        let current = env!("CARGO_PKG_VERSION");
+        assert!(is_current_version(&format!("v{current}")));
+        assert!(is_current_version(current));
+        assert!(!is_current_version("v9.9.9"));
+        assert!(!is_current_version("v9.9.9-rc1"));
+        assert!(!is_current_version(""));
     }
 
     #[test]
