@@ -149,7 +149,7 @@ impl WwpsCoreUpgradeConfig {
         let binary_path = self.install_dir.join("wwps-core");
         if !binary_path.exists() {
             anyhow::bail!(
-                "未找到 wwps-core 可执行文件，请先通过 install.sh 安装: {}",
+                "未找到 Xray-core 可执行文件，请先通过 install.sh 安装: {}",
                 binary_path.display()
             );
         }
