@@ -59,7 +59,7 @@ jobs:
           git push origin "v${{ env.NEW_VERSION }}" --force
 
       - name: Setup mise
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v4.3.0
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
