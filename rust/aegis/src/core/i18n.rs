@@ -186,4 +186,128 @@ mod tests {
 
         set_lang(Lang::Zh);
     }
+
+    /// 防混淆回归测试：
+    /// 机器端部署名为 `wwps-core` / `wwps-box`，但用户端显示必须用上游产品名
+    /// **Xray-core** / **Sing-box**（见 `core/paths.rs` 模块注释的命名映射）。
+    ///
+    /// 这些键名虽然带 `wwps_core_*` 前缀（历史标识符，禁止重命名），
+    /// 但它们的值不得再出现裸的部署名 `wwps-core`。
+    #[serial]
+    #[test]
+    fn user_facing_core_display_name_is_xray_core_not_wwps_core() {
+        let keys = [
+            "menu.wwps_core_mgmt",
+            "menu.wwps_core_restart",
+            "menu.wwps_core_status",
+            "menu.wwps_core_restart_success",
+            "menu.wwps_core_restart_fail",
+            "menu.wwps_core_status_text",
+            "menu.wwps_core_status_fail",
+            "menu.wwps_core_btn",
+            "upgrade.core_checking",
+            "upgrade.core_fetching",
+            "upgrade.core_restarting",
+            "upgrade.core_updated",
+            "upgrade.core_download_info",
+        ];
+
+        for lang in [Lang::Zh, Lang::En, Lang::Ja] {
+            set_lang(lang);
+            for key in &keys {
+                let value_str = rust_i18n::t!(*key).to_string();
+                assert!(
+                    value_str.contains("Xray-core"),
+                    "[{:?}] {} 应显示上游产品名 Xray-core，实际: {}",
+                    lang,
+                    key,
+                    value_str
+                );
+                assert!(
+                    !value_str.contains("wwps-core"),
+                    "[{:?}] {} 泄漏了部署名 wwps-core，实际: {}",
+                    lang,
+                    key,
+                    value_str
+                );
+            }
+        }
+
+        set_lang(Lang::Zh);
+    }
+
+    /// 防混淆回归测试：sing-box 的用户端显示必须用上游产品名 **Sing-box**，
+    /// 不得出现部署名 `wwps-box`。
+    #[serial]
+    #[test]
+    fn user_facing_singbox_display_name_is_sing_box_not_wwps_box() {
+        let keys = [
+            "menu.singbox_mgmt_title",
+            "menu.singbox_mgmt_btn",
+            "menu.singbox_status",
+            "menu.singbox_install",
+            "menu.singbox_installing",
+            "menu.singbox_install_success",
+            "ops.singbox_restart",
+            "ops.singbox_restart_success",
+        ];
+
+        for lang in [Lang::Zh, Lang::En, Lang::Ja] {
+            set_lang(lang);
+            for key in &keys {
+                let value_str = rust_i18n::t!(*key).to_string();
+                assert!(
+                    value_str.contains("Sing-box"),
+                    "[{:?}] {} 应显示上游产品名 Sing-box，实际: {}",
+                    lang,
+                    key,
+                    value_str
+                );
+                assert!(
+                    !value_str.contains("wwps-box"),
+                    "[{:?}] {} 泄漏了部署名 wwps-box，实际: {}",
+                    lang,
+                    key,
+                    value_str
+                );
+            }
+        }
+
+        set_lang(Lang::Zh);
+    }
+
+    /// 防混淆回归测试：ML-DSA-65 命令引用键**故意**包含真实命令 `wwps-core mldsa65`
+    /// （机器端实际执行的命令），但必须同时标注其身份为 Xray-core，防止用户误解。
+    #[serial]
+    #[test]
+    fn pq_command_reference_keeps_real_command_and_annotates_xray_core() {
+        let keys = [
+            "xray.pq_mgmt_title",
+            "xray.pq_title",
+            "xray.pq_init_success",
+        ];
+
+        for lang in [Lang::Zh, Lang::En, Lang::Ja] {
+            set_lang(lang);
+            for key in &keys {
+                let value_str = rust_i18n::t!(*key).to_string();
+                assert!(
+                    value_str.contains("wwps-core mldsa65"),
+                    "[{:?}] {} 应保留真实命令 wwps-core mldsa65，实际: {}",
+                    lang,
+                    key,
+                    value_str
+                );
+                assert!(
+                    value_str.contains("Xray-core"),
+                    "[{:?}] {} 应标注命令身份为 Xray-core，实际: {}",
+                    lang,
+                    key,
+                    value_str
+                );
+            }
+        }
+
+        set_lang(Lang::Zh);
+    }
 }
