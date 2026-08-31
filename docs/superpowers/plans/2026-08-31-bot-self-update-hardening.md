@@ -537,7 +537,7 @@ Expected: FAIL — 函数/结构不存在
 - [ ] **Step 3: 最小实现**（`upgrade.rs`；`paths.rs` 加常量）
 
 ```rust
-use std::io::Write;
+use tokio::io::AsyncWriteExt;
 
 pub struct UpgradeLock {
     path: PathBuf,
@@ -545,12 +545,14 @@ pub struct UpgradeLock {
 
 impl Drop for UpgradeLock {
     fn drop(&mut self) {
+        // Drop 无法 async，此处用阻塞式删除是合理例外（仅删一个小文件）
         let _ = std::fs::remove_file(&self.path);
     }
 }
 
-fn lock_is_stale(lock_path: &Path) -> bool {
-    let pid = std::fs::read_to_string(lock_path)
+async fn lock_is_stale(lock_path: &Path) -> bool {
+    let pid = tokio::fs::read_to_string(lock_path)
+        .await
         .ok()
         .and_then(|s| s.trim().parse::<u32>().ok());
     match pid {
@@ -580,7 +582,7 @@ async fn acquire_upgrade_lock(lock_path: &Path) -> Result<UpgradeLock> {
                 });
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                if lock_is_stale(lock_path) && attempt == 0 {
+                if lock_is_stale(lock_path).await && attempt == 0 {
                     fs::remove_file(lock_path).await.ok();
                     attempt += 1;
                     continue;
