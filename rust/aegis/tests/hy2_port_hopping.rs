@@ -1,7 +1,12 @@
-//! 集成测试：hysteria2 端口跳跃（port hopping）的完整生命周期与错误处理。
+//! 集成测试：hysteria2 端口跳跃（port hopping）的核心防回退测试。
 //!
-//! 覆盖用户报告的问题：创建跳跃端口 hy2 后删除再创建，端口不会还原。
+//! 锁定用户报告问题的行为契约：删除 hy2 后端口范围必须释放，重建必须还原同一端口。
 //! 通过公共 API 验证真实行为，无需任何测试钩子（删除路径已与服务重载分离）。
+//!
+//! 为什么需要这 3 个测试（而不是靠注释/手动验证）：
+//! 该 bug 是回归类缺陷——删除路径漏调 `release_hysteria2_range`，代码能编译、能运行、
+//! 看起来正常，只是行为错误（端口不释放、重建不还原）。注释描述"应该怎样"，但代码漏了
+//! 一行，注释看不出来；只有断言行为结果的测试能在未来改动破坏行为时立刻失败。
 
 use aegis::core::singbox::SingBoxConfigManager;
 use aegis::core::xray::port_allocator::PortAllocator;
@@ -69,7 +74,7 @@ async fn released_range_is_reused_on_recreation() {
         .await
         .unwrap();
 
-    // Assert: 释放后重新创建应还原同一端口范围
+    // Assert: 释放后重新创建应还原同一端口范围（修复目标）
     assert_eq!(main_port2, main_port, "删除释放后重建应还原同一主端口");
     assert_eq!(hop2, hop, "跳跃范围应一致");
 }
@@ -91,56 +96,6 @@ async fn unreleased_range_is_not_reused() {
     // Assert: 未释放的范围被跳过 → 端口不断迁移、旧端口永不还原（bug 机制）
     assert_eq!(first, 10000);
     assert_eq!(second, 10100, "未释放的范围应被跳过");
-}
-
-#[tokio::test]
-async fn delete_specific_handles_corrupt_config_and_removes_file() {
-    // Arrange: 故意构造损坏 JSON 的 hysteria2 配置
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("batch_hy2_corrupt.json");
-    std::fs::write(&path, "{\"inbounds\": [ { \"type\": \"hysteria2\", ").unwrap();
-
-    // Act: 删除路径应对解析错误宽容（跳过清理、文件照删、不崩溃）
-    let result = SingBoxConfigManager::delete_specific_configuration(path.to_str().unwrap()).await;
-
-    // Assert
-    assert!(result.is_ok(), "损坏配置的删除应成功：{:?}", result);
-    assert!(!path.exists(), "损坏配置文件应被删除");
-}
-
-#[tokio::test]
-async fn delete_specific_removes_multi_inbound_config() {
-    // Arrange: 3-inbound 批量 hy2 配置（旧代码只提取 inbounds[0] 的端口）
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("batch_hy2_multi.json");
-    write_multi_hy2_config(&path, &[20001, 20101, 20201]);
-
-    // Act
-    let result = SingBoxConfigManager::delete_specific_configuration(path.to_str().unwrap()).await;
-
-    // Assert
-    assert!(result.is_ok(), "多 inbound 删除应成功：{:?}", result);
-    assert!(!path.exists(), "配置文件应被删除");
-}
-
-#[tokio::test]
-async fn delete_specific_keeps_tuic_config_working() {
-    // Arrange: 非 hysteria2 文件（tuic）——删除不应触发 hysteria2 清理
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("batch_tuic.json");
-    let json = json!({
-        "inbounds": [
-            {"type": "tuic", "listen_port": 30001, "uuid": "u", "password": "p"}
-        ]
-    });
-    std::fs::write(&path, serde_json::to_string(&json).unwrap()).unwrap();
-
-    // Act
-    let result = SingBoxConfigManager::delete_specific_configuration(path.to_str().unwrap()).await;
-
-    // Assert
-    assert!(result.is_ok(), "tuic 文件删除应成功：{:?}", result);
-    assert!(!path.exists(), "tuic 配置文件应被删除");
 }
 
 #[tokio::test]

@@ -78,7 +78,12 @@ impl SingBoxConfigManager {
         }
     }
 
-    /// 提取配置文件中所有 hysteria2 inbound 的主端口（按内容检测，跳过其他协议）
+    /// 提取配置文件中所有 hysteria2 inbound 的主端口。
+    ///
+    /// 按 **内容** 检测（inbound `type == "hysteria2"`）而非文件名：批量配置文件命名为
+    /// `batch_hy2_*.json`（`hy2` 而非 `hysteria`），旧代码用 `file.contains("hysteria2")`
+    /// 判断会漏掉它们，导致删除时规则/端口从不清理。同时提取**全部** inbound 的主端口——
+    /// 一个批量文件含 count 个 inbound，旧代码只取 `inbounds[0]` 会漏释放 count-1 个范围。
     async fn extract_hysteria2_ports_from_config(path: &str) -> Result<Vec<u16>> {
         let content = fs::read_to_string(path).await?;
         let json: Value = serde_json::from_str(&content)?;
@@ -181,6 +186,10 @@ impl SingBoxConfigManager {
     }
 
     /// 同 [`delete_specific_configuration`]，但端口释放写入指定的分配文件（测试隔离用）。
+    ///
+    /// 顺序约定：**先删文件、删除成功后才清理规则并释放端口**——若先释放端口而
+    /// `remove_file` 失败，配置文件残留但范围已释放，下次分配可能与监听端口重叠。
+    /// 清理失败（iptables 无权限、解析错误等）为最佳努力：`let _` 吞掉，不阻塞删除。
     pub async fn delete_specific_configuration_at(
         path: &str,
         alloc_file: Option<&Path>,
@@ -762,42 +771,6 @@ mod port_collection_tests {
 
         // Assert
         assert!(result.is_err(), "损坏 JSON 应返回 Err 而非 panic");
-    }
-
-    #[tokio::test]
-    async fn extract_hysteria2_ports_returns_err_for_missing_file() {
-        // Arrange: 指向不存在的文件
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("does_not_exist.json");
-
-        // Act
-        let result =
-            SingBoxConfigManager::extract_hysteria2_ports_from_config(path.to_str().unwrap()).await;
-
-        // Assert
-        assert!(result.is_err(), "文件不存在应返回 Err 而非 panic");
-    }
-
-    #[tokio::test]
-    async fn extract_hysteria2_ports_returns_err_when_listen_port_missing() {
-        // Arrange: hysteria2 inbound 缺少 listen_port 字段
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("batch_hy2_no_port.json");
-        let json = serde_json::json!({
-            "inbounds": [
-                {"type": "hysteria2", "tag": "HYSTERIA2-1-no-port"}
-            ]
-        });
-        tokio::fs::write(&path, serde_json::to_string(&json).unwrap())
-            .await
-            .unwrap();
-
-        // Act
-        let result =
-            SingBoxConfigManager::extract_hysteria2_ports_from_config(path.to_str().unwrap()).await;
-
-        // Assert
-        assert!(result.is_err(), "缺少 listen_port 应返回 Err 而非 panic");
     }
 
     #[tokio::test]

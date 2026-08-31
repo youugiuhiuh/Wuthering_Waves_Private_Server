@@ -9,6 +9,9 @@ use tokio::fs;
 const PORT_ALLOC_FILE: &str = "/etc/wwps/.port_alloc";
 const XRAY_PORT_MIN: u16 = 10000;
 const XRAY_PORT_MAX: u16 = 60000;
+/// 端口跳跃范围大小：主端口 + 99 个跳跃端口（共 100 个连续端口）。
+/// 跳跃客户端从 main+1..main+99 中选择端口，iptables 将流量 REDIRECT 回主端口；
+/// 删除配置时必须以相同约定（main+1, main+99）清理，否则端口范围永不释放。
 const HOP_SIZE: u16 = 100;
 
 const WWPS_BOX_CONF_DIR: &str = "/etc/wwps/wwps-box/conf";
@@ -171,6 +174,10 @@ impl PortAllocator {
     /// 使用自定义分配文件分配一个 hysteria2 端口跳跃范围（主端口 + 99 个跳跃端口）。
     ///
     /// 默认使用 `/etc/wwps/.port_alloc`；此变体可指定路径，供测试隔离验证。
+    ///
+    /// 机制：扫描全部已占用端口（xray/singbox 配置 + .port_alloc 锁定范围），
+    /// 从最低空闲段（10000）开始寻找连续的 `HOP_SIZE` 个端口，锁定后返回
+    /// `(main_port, (main_port+1, main_port+99))`。
     pub async fn allocate_hysteria2() -> Result<(u16, (u16, u16))> {
         Self::allocate_hysteria2_at(&PathBuf::from(PORT_ALLOC_FILE)).await
     }
@@ -205,6 +212,10 @@ impl PortAllocator {
     }
 
     /// 释放指定主端口的 hysteria2 端口跳跃范围（从默认分配文件中移除）。
+    ///
+    /// **必须与删除路径成对调用**：创建时分配、删除配置时释放。若删除时漏调本函数，
+    /// 该范围会永久留在 .port_alloc 中并被分配器视为占用——重建时无法还原端口，
+    /// 且范围无限累积。历史遗留：服务器曾残留 11 个此类陈旧范围（见清理记录）。
     pub async fn release_hysteria2_range(main_port: u16) -> Result<()> {
         Self::release_hysteria2_range_at(&PathBuf::from(PORT_ALLOC_FILE), main_port).await
     }
