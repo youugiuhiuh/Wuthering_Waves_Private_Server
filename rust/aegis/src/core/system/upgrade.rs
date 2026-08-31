@@ -27,6 +27,9 @@ const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
 
 const RELEASE_API_BASE: &str = "https://api.github.com";
 
+const CONNECT_TIMEOUT_SECS: u64 = 10;
+const REQUEST_TIMEOUT_SECS: u64 = 600;
+
 pub use crate::core::paths::maintenance::UPGRADE_FLAG_FILE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +92,25 @@ fn configured_release_repositories() -> Vec<ReleaseRepo> {
         .collect()
 }
 
+fn now_nanos() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+}
+
+fn unique_update_path(exe_dir: &Path) -> PathBuf {
+    exe_dir.join(format!(
+        ".aegis-update-{}-{:x}.tmp",
+        std::process::id(),
+        now_nanos()
+    ))
+}
+
+fn is_current_version(tag: &str) -> bool {
+    tag.trim().trim_start_matches('v') == env!("CARGO_PKG_VERSION")
+}
+
 pub struct UpgradeManager {
     client: reqwest::Client,
     repositories: Vec<ReleaseRepo>,
@@ -115,7 +137,8 @@ impl UpgradeManager {
         let token = env::var("GITHUB_TOKEN").ok().filter(|s| !s.is_empty());
 
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
+            .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .build()
             .context("构建 HTTP 客户端失败")?;
 
@@ -155,6 +178,20 @@ impl UpgradeManager {
                 return Err(e);
             }
         };
+
+        if is_current_version(&artifact.tag_name) {
+            let _ = adapter
+                .edit_message(
+                    target,
+                    &progress_msg_id,
+                    MessageContent {
+                        text: t!("upgrade.bot_already_latest").to_string(),
+                        markup: None,
+                    },
+                )
+                .await;
+            return Ok(());
+        }
 
         let size_str = artifact
             .size
@@ -412,7 +449,11 @@ impl UpgradeManager {
         let mut stream = response.bytes_stream();
 
         let current_exe = std::env::current_exe().context("无法获取当前可执行文件路径")?;
-        let update_path = current_exe.with_extension("update");
+        let exe_dir = current_exe
+            .parent()
+            .context("无法获取可执行文件目录")?
+            .to_path_buf();
+        let update_path = unique_update_path(&exe_dir);
         let mut file = File::create(&update_path)
             .await
             .context("创建临时更新文件失败")?;
@@ -601,6 +642,39 @@ mod tests {
     use super::*;
     use crate::core::utils::PROGRESS_SIZE_STEP;
     use std::time::Duration;
+
+    #[test]
+    fn test_timeout_constants() {
+        assert_eq!(CONNECT_TIMEOUT_SECS, 10);
+        assert_eq!(REQUEST_TIMEOUT_SECS, 600);
+    }
+
+    #[test]
+    fn test_is_current_version() {
+        let current = env!("CARGO_PKG_VERSION");
+        assert!(is_current_version(&format!("v{current}")));
+        assert!(is_current_version(current));
+        assert!(!is_current_version("v9.9.9"));
+        assert!(!is_current_version("v9.9.9-rc1"));
+        assert!(!is_current_version(""));
+    }
+
+    #[test]
+    fn test_unique_update_path_is_unique_and_same_dir() {
+        let dir = Path::new("/etc/wwps/aegis");
+        let a = unique_update_path(dir);
+        let b = unique_update_path(dir);
+        assert_eq!(a.parent(), Some(dir));
+        assert_ne!(a, b);
+        assert!(
+            a.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with(".aegis-update-")
+        );
+        assert_eq!(a.extension().unwrap().to_str().unwrap(), "tmp");
+    }
 
     #[test]
     fn test_should_report_on_percent_and_size() {
