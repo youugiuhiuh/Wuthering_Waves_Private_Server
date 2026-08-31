@@ -27,6 +27,9 @@ const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
 
 const RELEASE_API_BASE: &str = "https://api.github.com";
 
+const CONNECT_TIMEOUT_SECS: u64 = 10;
+const REQUEST_TIMEOUT_SECS: u64 = 600;
+
 pub use crate::core::paths::maintenance::UPGRADE_FLAG_FILE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,7 +118,8 @@ impl UpgradeManager {
         let token = env::var("GITHUB_TOKEN").ok().filter(|s| !s.is_empty());
 
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
+            .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .build()
             .context("构建 HTTP 客户端失败")?;
 
@@ -601,6 +605,12 @@ mod tests {
     use super::*;
     use crate::core::utils::PROGRESS_SIZE_STEP;
     use std::time::Duration;
+
+    #[test]
+    fn test_timeout_constants() {
+        assert_eq!(CONNECT_TIMEOUT_SECS, 10);
+        assert_eq!(REQUEST_TIMEOUT_SECS, 600);
+    }
 
     #[test]
     fn test_should_report_on_percent_and_size() {
