@@ -28,14 +28,14 @@ pub static ROUTING_RULES: &[RuleDef] = &[
         rule_type: "ip",
         targets: &["geoip:cn"],
         outbound: "blocked",
-        default_enabled: false,
+        default_enabled: true,
     },
     RuleDef {
         id: "cn_domain",
         rule_type: "domain",
         targets: &["geosite:cn"],
         outbound: "blocked",
-        default_enabled: false,
+        default_enabled: true,
     },
     RuleDef {
         id: "private_domain",
@@ -182,6 +182,14 @@ mod tests {
     fn test_rule_def_has_private_ip_default() {
         let private = ROUTING_RULES.iter().find(|r| r.id == "private_ip").unwrap();
         assert!(private.default_enabled);
+    }
+
+    #[test]
+    fn test_rule_def_has_cn_rules_default_enabled() {
+        for id in ["cn_ip", "cn_domain"] {
+            let rule = ROUTING_RULES.iter().find(|r| r.id == id).unwrap();
+            assert!(rule.default_enabled, "{} 应默认启用（禁回国流量）", id);
+        }
     }
 
     #[test]
