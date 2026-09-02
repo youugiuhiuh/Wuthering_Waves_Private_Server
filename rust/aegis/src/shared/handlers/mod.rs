@@ -47,7 +47,11 @@ pub(crate) fn route_callback(data: &str) -> Option<CallbackRoute> {
     if data == "m_log" || data.starts_with("l_") {
         return Some(CallbackRoute::Log);
     }
-    if data == "m_singbox_mgmt" || data == "sb_install" || data.starts_with("sb_") {
+    if data == "m_singbox_mgmt"
+        || data == "m_sb_routing"
+        || data == "sb_install"
+        || data.starts_with("sb_")
+    {
         return Some(CallbackRoute::Singbox);
     }
     if data == "m_warp" || data == "a_inst_warp" || data.starts_with("a_warp_") {
@@ -179,6 +183,18 @@ mod tests {
         assert_eq!(
             route_callback("a_wwps_core_status"),
             Some(CallbackRoute::Menu)
+        );
+    }
+
+    /// Regression for sing-box routing menu: `m_sb_routing` (and the
+    /// `sb_routing_toggle:` callbacks it renders) must route to Singbox,
+    /// otherwise the buttons are silently dropped and the menu is dead code.
+    #[test]
+    fn test_singbox_routing_buttons_route_to_singbox() {
+        assert_eq!(route_callback("m_sb_routing"), Some(CallbackRoute::Singbox));
+        assert_eq!(
+            route_callback("sb_routing_toggle:cn_ip"),
+            Some(CallbackRoute::Singbox)
         );
     }
 
