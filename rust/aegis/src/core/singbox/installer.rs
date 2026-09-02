@@ -54,13 +54,15 @@ impl SingBoxInstaller {
         let bin_path = format!("{}/sing-box-{}-linux-{}/sing-box", temp_dir, version, arch);
         Self::replace_binary(&bin_path, singbox::BIN).await?;
 
-        Self::create_service().await?;
-
+        // 规则集必须在服务启动前就位（create_service 内部 enable --now 立即启动，
+        // local rule_set 缺失会导致启动校验失败并 crash-loop）
         if let Err(e) =
             crate::core::system::maintenance::MaintenanceManager::ensure_singbox_rule_sets().await
         {
             log::warn!("获取 sing-box 规则集失败（可稍后通过定时任务补齐）: {}", e);
         }
+
+        Self::create_service().await?;
 
         let _ = fs::remove_dir_all(temp_dir).await;
 
