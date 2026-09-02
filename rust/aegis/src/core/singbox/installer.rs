@@ -56,7 +56,9 @@ impl SingBoxInstaller {
 
         Self::create_service().await?;
 
-        if let Err(e) = crate::core::system::maintenance::MaintenanceManager::ensure_singbox_rule_sets().await {
+        if let Err(e) =
+            crate::core::system::maintenance::MaintenanceManager::ensure_singbox_rule_sets().await
+        {
             log::warn!("获取 sing-box 规则集失败（可稍后通过定时任务补齐）: {}", e);
         }
 
