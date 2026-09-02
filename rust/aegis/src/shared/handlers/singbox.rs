@@ -4,6 +4,7 @@ use tokio::time::{Duration, sleep};
 
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
 use crate::core::singbox::hysteria2::{Hy2LinkStyle, Hysteria2ObfsType};
+use crate::core::singbox::routing::SingBoxRoutingManager;
 use crate::core::singbox::{SingBoxConfigManager, SingBoxInstaller, SingBoxUpgradeManager};
 use crate::core::system::SystemMonitor;
 use crate::core::types::{BatchCreationResult, IpVersion};
@@ -132,6 +133,10 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     },
                 ]);
                 rows.push(vec![InlineButton {
+                    text: t!("menu.singbox_routing_mgmt_btn").into(),
+                    data: "m_sb_routing".into(),
+                }]);
+                rows.push(vec![InlineButton {
                     text: t!("menu.back_user").into(),
                     data: "m_usr".into(),
                 }]);
@@ -157,6 +162,10 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 rows.push(vec![InlineButton {
                     text: t!("menu.singbox_delete_mgmt").into(),
                     data: "sb_del_cfg".into(),
+                }]);
+                rows.push(vec![InlineButton {
+                    text: t!("menu.singbox_routing_mgmt_btn").into(),
+                    data: "m_sb_routing".into(),
                 }]);
                 rows.push(vec![
                     InlineButton {
@@ -912,6 +921,86 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             });
 
             Ok(HandlerAction::Done)
+        }
+
+        "m_sb_routing" => {
+            let rules = SingBoxRoutingManager::get_all_with_status()
+                .await
+                .map_err(|e| anyhow::anyhow!("获取路由规则失败: {}", e))?;
+            let active_count = rules.iter().filter(|(_, enabled)| *enabled).count();
+            let mut text = t!("menu.singbox_routing_title").to_string();
+            text.push_str(&format!(
+                "\n\n{}",
+                t!("menu.singbox_routing_active_count", "count" => active_count.to_string())
+            ));
+
+            let mut rows: Vec<Vec<InlineButton>> = rules
+                .iter()
+                .map(|(def, enabled)| {
+                    let i18n_key = format!("xray.routing_rule_{}", def.id);
+                    let name = t!(i18n_key.as_str());
+                    let icon = if *enabled { "✅" } else { "⬜" };
+                    vec![InlineButton {
+                        text: format!("{} {}", icon, name),
+                        data: format!("sb_routing_toggle:{}", def.id),
+                    }]
+                })
+                .collect();
+
+            rows.push(vec![InlineButton {
+                text: t!("menu.back").into(),
+                data: "m_singbox_mgmt".into(),
+            }]);
+
+            event
+                .adapter
+                .edit_message(
+                    &event.target,
+                    &event.msg_id,
+                    MessageContent {
+                        text,
+                        markup: Some(Markup { buttons: rows }),
+                    },
+                )
+                .await?;
+            Ok(HandlerAction::Done)
+        }
+
+        d if d.starts_with("sb_routing_toggle:") => {
+            let rule_id = d.strip_prefix("sb_routing_toggle:").unwrap_or("");
+            if rule_id.is_empty() {
+                return Ok(HandlerAction::Redirect("m_sb_routing".to_string()));
+            }
+            match SingBoxRoutingManager::toggle(rule_id).await {
+                Ok(enabled) => {
+                    let i18n_key = format!("xray.routing_rule_{}", rule_id);
+                    let name = t!(i18n_key.as_str());
+                    let msg = if enabled {
+                        t!("menu.singbox_routing_toggled_on", "name" => name)
+                    } else {
+                        t!("menu.singbox_routing_toggled_off", "name" => name)
+                    };
+                    event
+                        .adapter
+                        .answer_callback(&event.target, &event.callback_id, Some(msg.into()))
+                        .await?;
+                }
+                Err(e) => {
+                    event
+                        .adapter
+                        .answer_callback(
+                            &event.target,
+                            &event.callback_id,
+                            Some(format!(
+                                "{}: {}",
+                                t!("menu.singbox_routing_reload_failed"),
+                                e
+                            )),
+                        )
+                        .await?;
+                }
+            }
+            Ok(HandlerAction::Redirect("m_sb_routing".to_string()))
         }
 
         "sb_del_cfg" => {
