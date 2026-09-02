@@ -109,6 +109,8 @@ impl SingBoxRoutingManager {
 
     /// 读取 00_base.json 中当前启用的规则（语义匹配：与规范 JSON 深相等）
     pub async fn get_all_with_status() -> Result<Vec<(&'static RuleDef, bool)>> {
+        // 首次进入菜单即完成迁移（旧部署的 base 缺 rule_set 定义，幂等）
+        Self::ensure_rule_sets_in_base().await?;
         let rules = Self::read_rules().await?;
         Ok(SINGBOX_ROUTING_RULES
             .iter()
@@ -122,6 +124,8 @@ impl SingBoxRoutingManager {
 
     /// 切换规则开关（增删规范 JSON），写盘并重载
     pub async fn toggle(rule_id: &str) -> Result<bool> {
+        // 写盘前确保 rule_set 定义存在（否则引用了不存在的 tag，sing-box 启动失败）
+        Self::ensure_rule_sets_in_base().await?;
         let rule_def = SINGBOX_ROUTING_RULES
             .iter()
             .find(|r| r.id == rule_id)
