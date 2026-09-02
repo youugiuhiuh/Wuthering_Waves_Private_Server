@@ -477,6 +477,7 @@ schedule:
   input_prompt: "ℹ️ Use the buttons to select day/hour/minute, then press \"Confirm & Create Task\"."
   task_type_reboot: "System Reboot"
   task_type_geo: "GeoData Update"
+  task_type_geoip: "GeoIP Update"
   task_type_reload: "Reload Core"
   task_type_security: "Security Update"
   task_type_unknown: "Unknown Task"

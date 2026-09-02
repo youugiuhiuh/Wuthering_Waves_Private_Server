@@ -12,6 +12,7 @@ impl ScheduleUI {
             TaskType::Unknown => t!("schedule.task_type_unknown").to_string(),
             TaskType::Reboot => t!("schedule.task_type_reboot").to_string(),
             TaskType::GeoUpdate => t!("schedule.task_type_geo").to_string(),
+            TaskType::GeoIpUpdate => t!("schedule.task_type_geoip").to_string(),
             TaskType::ReloadCore => t!("schedule.task_type_reload").to_string(),
             TaskType::SecurityUpdate => t!("schedule.task_type_security").to_string(),
         }

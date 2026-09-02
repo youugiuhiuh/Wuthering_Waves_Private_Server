@@ -496,6 +496,7 @@ schedule:
   input_prompt: "ℹ️ 请通过面板按钮选择 星期/小时/分钟，然后点击「确认创建任务」。"
   task_type_reboot: "系统重启"
   task_type_geo: "GeoData 更新"
+  task_type_geoip: "GeoIP 更新"
   task_type_reload: "重载核心"
   task_type_security: "安全更新"
   task_type_unknown: "未知任务"
