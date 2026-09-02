@@ -125,7 +125,7 @@ mod tests {
         assert_eq!(singbox::BIN, "/etc/wwps/wwps-box/wwps-box");
         assert_eq!(singbox::CERTS_DIR, "/etc/wwps/wwps-box/certs");
         assert_eq!(singbox::TLS_CERT, "/etc/wwps/wwps-box/certs/tls.cer");
-    assert_eq!(singbox::RULE_SET_DIR, "/etc/wwps/wwps-box/rule-set"); // 新增
+        assert_eq!(singbox::RULE_SET_DIR, "/etc/wwps/wwps-box/rule-set"); // 新增
     }
 
     #[test]
