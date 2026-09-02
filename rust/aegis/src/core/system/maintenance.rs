@@ -403,7 +403,158 @@ impl MaintenanceManager {
             .await?;
         }
 
+        // sing-box 域名规则集（每日更新源，跟随本任务）
+        if let Err(e) = Self::update_singbox_rules(false, move |_pct, msg| {
+            progress_callback(0.0, &format!("[Sing-box] {}", msg));
+        })
+        .await
+        {
+            log::warn!("更新 sing-box 规则集失败: {}", e);
+        }
+
         Self::reload_core().await
+    }
+
+    /// sing-box 规则集：下载官方 .db → geosite/geoip export → rule-set compile 生成 .srs
+    pub async fn update_singbox_rules<F>(include_geoip: bool, progress_callback: F) -> Result<()>
+    where
+        F: Fn(f64, &str) + Send + Sync + 'static,
+    {
+        use crate::core::paths::singbox;
+
+        let rule_dir = singbox::RULE_SET_DIR;
+        std::fs::create_dir_all(rule_dir).context("创建 rule-set 目录失败")?;
+        let temp_dir = format!("{}/.update-tmp", singbox::DIR);
+        std::fs::create_dir_all(&temp_dir).context("创建临时目录失败")?;
+
+        let client = reqwest::Client::builder()
+            .timeout(TIMEOUT_LONG)
+            .build()
+            .context("构建 HTTP 客户端失败")?;
+
+        // 1. 下载 geosite.db（域名库，总是更新）
+        let geosite_db = format!("{}/geosite.db", temp_dir);
+        progress_callback(0.0, "下载 geosite.db (官方每日更新)...");
+        Self::download_file(
+            &client,
+            "https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite.db",
+            &geosite_db,
+            |_, _| {},
+        )
+        .await
+        .context("下载 geosite.db 失败")?;
+
+        // 2. 可选下载 geoip.db
+        let geoip_db = format!("{}/geoip.db", temp_dir);
+        if include_geoip {
+            progress_callback(0.0, "下载 geoip.db (官方每月更新)...");
+            Self::download_file(
+                &client,
+                "https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip.db",
+                &geoip_db,
+                |_, _| {},
+            )
+            .await
+            .context("下载 geoip.db 失败")?;
+        }
+
+        // 3. 转换 geosite 分类
+        for cat in crate::core::singbox::routing::GEOSITE_CATEGORIES {
+            let out_json = format!("{}/geosite-{}.json", temp_dir, cat);
+            let out_srs = format!("{}/geosite-{}.srs", rule_dir, cat);
+            progress_callback(0.0, &format!("转换 geosite-{}...", cat));
+            Self::run_singbox_convert(&geosite_db, &out_json, &out_srs, cat).await?;
+        }
+
+        // 4. 转换 geoip 分类
+        if include_geoip {
+            for cat in crate::core::singbox::routing::GEOIP_CATEGORIES {
+                let out_json = format!("{}/geoip-{}.json", temp_dir, cat);
+                let out_srs = format!("{}/geoip-{}.srs", rule_dir, cat);
+                progress_callback(0.0, &format!("转换 geoip-{}...", cat));
+                Self::run_singbox_convert(&geoip_db, &out_json, &out_srs, cat).await?;
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        progress_callback(1.0, "sing-box 规则集更新完成");
+        Self::reload_core().await
+    }
+
+    /// 安装时确保规则集存在（skip-if-exists）
+    pub async fn ensure_singbox_rule_sets() -> Result<()> {
+        use crate::core::paths::singbox;
+        let rule_dir = singbox::RULE_SET_DIR;
+        std::fs::create_dir_all(rule_dir).context("创建 rule-set 目录失败")?;
+        let missing = Self::singbox_missing_srs(rule_dir);
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Self::update_singbox_rules(true, |_, _| {}).await
+    }
+
+    /// 返回缺失的 (kind, category) 列表
+    pub fn singbox_missing_srs(rule_dir: &str) -> Vec<(&'static str, &'static str)> {
+        use crate::core::singbox::routing::{GEOIP_CATEGORIES, GEOSITE_CATEGORIES};
+        let mut missing = Vec::new();
+        for &cat in GEOSITE_CATEGORIES {
+            if !std::path::Path::new(&format!("{}/geosite-{}.srs", rule_dir, cat)).exists() {
+                missing.push(("geosite", cat));
+            }
+        }
+        for &cat in GEOIP_CATEGORIES {
+            if !std::path::Path::new(&format!("{}/geoip-{}.srs", rule_dir, cat)).exists() {
+                missing.push(("geoip", cat));
+            }
+        }
+        missing
+    }
+
+    /// 生成 geosite/geoip export + rule-set compile 两条命令
+    pub fn singbox_convert_args(
+        program: &str,
+        category: &str,
+        db_path: &str,
+        out_json: &str,
+        out_srs: &str,
+    ) -> Vec<Vec<String>> {
+        vec![
+            vec![
+                program.to_string(),
+                "geosite".to_string(),
+                "export".to_string(),
+                category.to_string(),
+                "-f".to_string(),
+                db_path.to_string(),
+                "-o".to_string(),
+                out_json.to_string(),
+            ],
+            vec![
+                program.to_string(),
+                "rule-set".to_string(),
+                "compile".to_string(),
+                "--output".to_string(),
+                out_srs.to_string(),
+                out_json.to_string(),
+            ],
+        ]
+    }
+
+    async fn run_singbox_convert(
+        db_path: &str,
+        out_json: &str,
+        out_srs: &str,
+        category: &str,
+    ) -> Result<()> {
+        use crate::core::paths::singbox;
+        let cmds = Self::singbox_convert_args(singbox::BIN, category, db_path, out_json, out_srs);
+        for args in &cmds {
+            let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            run_cmd_checked(arg_refs[0], &arg_refs[1..], TIMEOUT_LONG)
+                .await
+                .with_context(|| format!("sing-box 转换命令失败: {:?}", args))?;
+        }
+        Ok(())
     }
 
     async fn download_file<F>(
@@ -1162,5 +1313,62 @@ mod tests {
 
         let result = MaintenanceManager::ensure_geodata_in_dir(&dir_path).await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_singbox_convert_args() {
+        let cmds = MaintenanceManager::singbox_convert_args(
+            "/opt/wwps-box",
+            "cn",
+            "/tmp/geosite.db",
+            "/tmp/geosite-cn.json",
+            "/etc/wwps/wwps-box/rule-set/geosite-cn.srs",
+        );
+        assert_eq!(cmds.len(), 2);
+        assert_eq!(
+            cmds[0],
+            vec![
+                "/opt/wwps-box",
+                "geosite",
+                "export",
+                "cn",
+                "-f",
+                "/tmp/geosite.db",
+                "-o",
+                "/tmp/geosite-cn.json",
+            ]
+        );
+        assert_eq!(
+            cmds[1],
+            vec![
+                "/opt/wwps-box",
+                "rule-set",
+                "compile",
+                "--output",
+                "/etc/wwps/wwps-box/rule-set/geosite-cn.srs",
+                "/tmp/geosite-cn.json",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_ensure_singbox_rule_sets_skips_existing() {
+        let temp = tempfile::tempdir().unwrap();
+        let rule_dir = temp.path().join("rule-set");
+        tokio::fs::create_dir_all(&rule_dir).await.unwrap();
+        let existing = rule_dir.join("geosite-cn.srs");
+        tokio::fs::write(&existing, b"data").await.unwrap();
+        // 文件已存在 → 对应分类不应出现在待下载/转换清单
+        let missing = MaintenanceManager::singbox_missing_srs(rule_dir.to_str().unwrap());
+        assert!(
+            !missing
+                .iter()
+                .any(|(kind, cat)| *kind == "geosite" && *cat == "cn")
+        );
+        assert!(
+            missing
+                .iter()
+                .any(|(kind, cat)| *kind == "geosite" && *cat == "private")
+        );
     }
 }
