@@ -368,6 +368,12 @@ impl SingBoxConfigManager {
             .await
             .context("创建配置目录失败")?;
 
+        let default_rules: Vec<Value> = crate::core::singbox::routing::SINGBOX_ROUTING_RULES
+            .iter()
+            .filter(|r| r.default_enabled)
+            .map(crate::core::singbox::routing::SingBoxRoutingManager::rule_def_to_json)
+            .collect();
+
         let base_config = serde_json::json!({
             "log": {
                 "level": "warning"
@@ -379,7 +385,9 @@ impl SingBoxConfigManager {
                 ]
             },
             "route": {
-                "default_domain_resolver": "dns"
+                "default_domain_resolver": "dns",
+                "rule_set": crate::core::singbox::routing::SingBoxRoutingManager::rule_set_definitions(),
+                "rules": default_rules
             },
             "outbounds": [
                 {"type": "direct", "tag": "direct"},
@@ -613,7 +621,13 @@ mod tests {
                 ]
             },
             "route": {
-                "default_domain_resolver": "dns"
+                "default_domain_resolver": "dns",
+                "rule_set": crate::core::singbox::routing::SingBoxRoutingManager::rule_set_definitions(),
+                "rules": crate::core::singbox::routing::SINGBOX_ROUTING_RULES
+                    .iter()
+                    .filter(|r| r.default_enabled)
+                    .map(crate::core::singbox::routing::SingBoxRoutingManager::rule_def_to_json)
+                    .collect::<Vec<Value>>()
             },
             "outbounds": [
                 {"type": "direct", "tag": "direct"},
@@ -632,6 +646,28 @@ mod tests {
         assert!(json.get("dns").is_some());
         assert!(json.get("route").is_some());
         assert!(json.get("outbounds").is_some());
+
+        // 默认规则 3 条（private_ip / cn_ip / cn_domain）+ rule_set 5 项
+        let rules = json["route"]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 3);
+        let tags: Vec<&str> = rules
+            .iter()
+            .filter_map(|r| {
+                if r.get("ip_is_private").is_some() {
+                    Some("private_ip")
+                } else {
+                    r["rule_set"][0].as_str()
+                }
+            })
+            .collect();
+        assert_eq!(tags, vec!["private_ip", "geoip-cn", "geosite-cn"]);
+        let rule_sets = json["route"]["rule_set"].as_array().unwrap();
+        assert_eq!(rule_sets.len(), 5);
+        assert!(
+            rule_sets
+                .iter()
+                .all(|r| r["type"] == "local" && r["format"] == "binary")
+        );
     }
 
     #[tokio::test]

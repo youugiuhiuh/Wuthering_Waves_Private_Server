@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum TaskType {
     GeoUpdate,
+    GeoIpUpdate,
     Reboot,
     ReloadCore,
     SecurityUpdate,
@@ -18,6 +19,7 @@ impl TaskType {
     pub fn get_display_name(&self) -> &str {
         match self {
             TaskType::GeoUpdate => "GeoData 更新 (Update GeoData)",
+            TaskType::GeoIpUpdate => "GeoIP 更新 (Update GeoIP)",
             TaskType::Reboot => "系统重启 (Reboot)",
             TaskType::ReloadCore => "重载核心 (Reload Core)",
             TaskType::SecurityUpdate => "安全更新 (Security Update)",
@@ -49,6 +51,32 @@ impl TaskType {
                     target,
                     "GeoData 更新",
                     "✅ [定时任务] GeoData 更新完成。",
+                    result.map(|_| ()),
+                )
+                .await
+            }
+            TaskType::GeoIpUpdate => {
+                log::info!("执行 GeoIP 更新任务...");
+                let _ = adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: "⏳ [定时任务] 开始更新 sing-box GeoIP 规则集...".to_string(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+
+                let result = MaintenanceManager::update_singbox_rules(true, |_pct, msg| {
+                    log::info!("[GeoIP] {}", msg);
+                })
+                .await;
+
+                report_result(
+                    adapter,
+                    target,
+                    "GeoIP 更新",
+                    "✅ [定时任务] GeoIP 更新完成。",
                     result.map(|_| ()),
                 )
                 .await
@@ -248,6 +276,31 @@ mod tests {
         let json = r#"{"task_type":"GeoUpdate","cron_expression":"0 0 * * *","enabled":true}"#;
         let task: ScheduledTask = serde_json::from_str(json).unwrap();
         assert_eq!(task.timezone, "UTC");
+    }
+
+    #[test]
+    fn test_task_type_geoip_update_display() {
+        assert_eq!(
+            TaskType::GeoIpUpdate.get_display_name(),
+            "GeoIP 更新 (Update GeoIP)"
+        );
+    }
+
+    #[test]
+    fn test_geoip_update_serde_roundtrip() {
+        let s = serde_json::to_string(&TaskType::GeoIpUpdate).unwrap();
+        let back: TaskType = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, TaskType::GeoIpUpdate);
+    }
+
+    #[test]
+    fn test_old_state_file_still_deserializes() {
+        // 旧 state 文件只有 GeoUpdate（模拟已有部署升级）
+        let old = r#"{"tasks":[{"task_type":"GeoUpdate","cron_expression":"0 4 * * 0","timezone":"UTC","enabled":true}]}"#;
+        let state: crate::core::system::scheduler::SchedulerState =
+            serde_json::from_str(old).unwrap();
+        assert_eq!(state.tasks.len(), 1);
+        assert_eq!(state.tasks[0].task_type, TaskType::GeoUpdate);
     }
 
     #[test]

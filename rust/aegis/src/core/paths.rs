@@ -38,6 +38,7 @@ pub mod singbox {
     pub const CERTS_DIR: &str = "/etc/wwps/wwps-box/certs";
     pub const TLS_CERT: &str = "/etc/wwps/wwps-box/certs/tls.cer";
     pub const TLS_KEY: &str = "/etc/wwps/wwps-box/certs/tls.key";
+    pub const RULE_SET_DIR: &str = "/etc/wwps/wwps-box/rule-set";
 }
 
 /// Bot 相关路径
@@ -124,6 +125,7 @@ mod tests {
         assert_eq!(singbox::BIN, "/etc/wwps/wwps-box/wwps-box");
         assert_eq!(singbox::CERTS_DIR, "/etc/wwps/wwps-box/certs");
         assert_eq!(singbox::TLS_CERT, "/etc/wwps/wwps-box/certs/tls.cer");
+        assert_eq!(singbox::RULE_SET_DIR, "/etc/wwps/wwps-box/rule-set"); // 新增
     }
 
     #[test]

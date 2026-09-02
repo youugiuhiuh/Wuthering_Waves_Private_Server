@@ -26,7 +26,10 @@ impl Default for SchedulerState {
 impl SchedulerState {
     pub fn new() -> Self {
         Self {
-            tasks: vec![ScheduledTask::new(TaskType::GeoUpdate, "0 4 * * 0")],
+            tasks: vec![
+                ScheduledTask::new(TaskType::GeoUpdate, "0 4 * * 0"),
+                ScheduledTask::new(TaskType::GeoIpUpdate, "0 4 13 * *"),
+            ],
         }
     }
 
@@ -108,8 +111,14 @@ impl SchedulerManager {
     ) -> Result<Arc<Self>> {
         let path = state_path.clone();
         let state = tokio::task::spawn_blocking(move || {
-            let s =
+            let mut s =
                 SchedulerState::load_from_file(&path).unwrap_or_else(|_| SchedulerState::default());
+            // 迁移：旧 state 文件缺 GeoIpUpdate 任务时补注册（每月 13 日）
+            if !s.tasks.iter().any(|t| t.task_type == TaskType::GeoIpUpdate) {
+                s.tasks
+                    .push(ScheduledTask::new(TaskType::GeoIpUpdate, "0 4 13 * *"));
+                let _ = s.save_to_file(&path);
+            }
             if !Path::new(&path).exists() {
                 let _ = s.save_to_file(&path);
             }
@@ -395,6 +404,23 @@ mod tests {
                 .validate_cron_expression("invalid cron expression")
                 .is_err()
         );
+    }
+
+    #[test]
+    fn test_default_contains_geoip_update() {
+        let state = SchedulerState::get_default();
+        assert!(
+            state
+                .tasks
+                .iter()
+                .any(|t| t.task_type == TaskType::GeoIpUpdate)
+        );
+        let geoip = state
+            .tasks
+            .iter()
+            .find(|t| t.task_type == TaskType::GeoIpUpdate)
+            .unwrap();
+        assert_eq!(geoip.cron_expression, "0 4 13 * *");
     }
 
     #[test]
