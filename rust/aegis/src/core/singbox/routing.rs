@@ -151,6 +151,19 @@ impl SingBoxRoutingManager {
             .await
             .context("读取 00_base.json 失败")?;
         let mut v: Value = serde_json::from_str(&content).context("解析 00_base.json 失败")?;
+        if !Self::ensure_rule_sets_value(&mut v) {
+            return Ok(());
+        }
+        let new_content = serde_json::to_string_pretty(&v).context("序列化配置失败")?;
+        tokio::fs::write(&base_path, new_content)
+            .await
+            .context("写入 00_base.json 失败")?;
+        Ok(())
+    }
+
+    /// 纯函数：确保 route.rule_set 含全部规则集定义（幂等）。返回是否有变更。
+    /// 兼容 route 或 rule_set 缺失的配置（本 crate 生成的 00_base.json 模板不含 rule_set 键）。
+    pub fn ensure_rule_sets_value(v: &mut Value) -> bool {
         let defs = Self::rule_set_definitions();
 
         let existing: Vec<&str> = v["route"]["rule_set"]
@@ -162,15 +175,18 @@ impl SingBoxRoutingManager {
             .filter(|d| !existing.contains(&d["tag"].as_str().unwrap_or_default()))
             .collect();
         if missing.is_empty() {
-            return Ok(());
+            return false;
+        }
+
+        if v.get("route").map(|r| r.is_null()).unwrap_or(true) {
+            v["route"] = Value::Object(serde_json::Map::new());
+        }
+        if v["route"]["rule_set"].as_array().is_none() {
+            v["route"]["rule_set"] = Value::Array(Vec::new());
         }
         let arr = v["route"]["rule_set"].as_array_mut().unwrap();
         arr.extend(missing);
-        let new_content = serde_json::to_string_pretty(&v).context("序列化配置失败")?;
-        tokio::fs::write(&base_path, new_content)
-            .await
-            .context("写入 00_base.json 失败")?;
-        Ok(())
+        true
     }
 
     async fn read_base_json() -> Result<(Value, String)> {
@@ -279,6 +295,64 @@ mod tests {
             assert_eq!(d["format"], "binary");
             assert!(d["path"].as_str().unwrap().ends_with(".srs"));
         }
+    }
+
+    #[test]
+    fn test_ensure_rule_sets_value_adds_missing() {
+        // 本 crate 生成的 00_base.json 模板：route 存在但无 rule_set 键
+        let mut v = json!({"route": {"default_domain_resolver": "dns"}});
+        let changed = SingBoxRoutingManager::ensure_rule_sets_value(&mut v);
+        assert!(changed, "缺失 rule_set 时应产生变更");
+        let rule_sets = v["route"]["rule_set"].as_array().unwrap();
+        assert_eq!(rule_sets.len(), 5);
+        assert!(
+            rule_sets
+                .iter()
+                .all(|r| r["type"] == "local" && r["format"] == "binary")
+        );
+    }
+
+    #[test]
+    fn test_ensure_rule_sets_value_idempotent() {
+        let mut v = json!({"route": {"default_domain_resolver": "dns"}});
+        let first = SingBoxRoutingManager::ensure_rule_sets_value(&mut v);
+        let second = SingBoxRoutingManager::ensure_rule_sets_value(&mut v);
+        assert!(first);
+        assert!(!second, "重复调用应为幂等（无变更）");
+        assert_eq!(v["route"]["rule_set"].as_array().unwrap().len(), 5);
+    }
+
+    #[test]
+    fn test_ensure_rule_sets_value_handles_missing_route() {
+        let mut v = json!({"log": {"level": "warning"}});
+        let changed = SingBoxRoutingManager::ensure_rule_sets_value(&mut v);
+        assert!(changed);
+        assert_eq!(v["route"]["rule_set"].as_array().unwrap().len(), 5);
+        assert_eq!(v["route"]["default_domain_resolver"], Value::Null);
+    }
+
+    #[test]
+    fn test_ensure_rule_sets_value_preserves_existing() {
+        let mut v = json!({
+            "route": {
+                "default_domain_resolver": "dns",
+                "rule_set": [
+                    {"tag": "geoip-cn", "type": "local", "format": "binary", "path": "/x.srs"}
+                ]
+            }
+        });
+        let changed = SingBoxRoutingManager::ensure_rule_sets_value(&mut v);
+        assert!(changed);
+        let tags: Vec<&str> = v["route"]["rule_set"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r["tag"].as_str())
+            .collect();
+        assert_eq!(tags.len(), 5);
+        assert!(tags.contains(&"geoip-cn"), "已有规则集不应被重复添加");
+        // 幂等：再次调用无变更
+        assert!(!SingBoxRoutingManager::ensure_rule_sets_value(&mut v));
     }
 
     #[tokio::test]
