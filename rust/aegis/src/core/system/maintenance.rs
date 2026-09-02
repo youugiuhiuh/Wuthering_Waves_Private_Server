@@ -422,6 +422,11 @@ impl MaintenanceManager {
     {
         use crate::core::paths::singbox;
 
+        // 无 sing-box 的主机不必下载/转换（如仅部署 Xray 的机器）
+        if !std::path::Path::new(singbox::BIN).exists() {
+            return Ok(());
+        }
+
         let rule_dir = singbox::RULE_SET_DIR;
         std::fs::create_dir_all(rule_dir).context("创建 rule-set 目录失败")?;
         let temp_dir = format!("{}/.update-tmp", singbox::DIR);
@@ -463,7 +468,7 @@ impl MaintenanceManager {
             let out_json = format!("{}/geosite-{}.json", temp_dir, cat);
             let out_srs = format!("{}/geosite-{}.srs", rule_dir, cat);
             progress_callback(0.0, &format!("转换 geosite-{}...", cat));
-            Self::run_singbox_convert(&geosite_db, &out_json, &out_srs, cat).await?;
+            Self::run_singbox_convert(&geosite_db, &out_json, &out_srs, "geosite", cat).await?;
         }
 
         // 4. 转换 geoip 分类
@@ -472,7 +477,7 @@ impl MaintenanceManager {
                 let out_json = format!("{}/geoip-{}.json", temp_dir, cat);
                 let out_srs = format!("{}/geoip-{}.srs", rule_dir, cat);
                 progress_callback(0.0, &format!("转换 geoip-{}...", cat));
-                Self::run_singbox_convert(&geoip_db, &out_json, &out_srs, cat).await?;
+                Self::run_singbox_convert(&geoip_db, &out_json, &out_srs, "geoip", cat).await?;
             }
         }
 
@@ -511,8 +516,10 @@ impl MaintenanceManager {
     }
 
     /// 生成 geosite/geoip export + rule-set compile 两条命令
+    /// `kind` 为 "geosite" 或 "geoip"（决定子命令，geoip.db 必须用 `geoip export`）
     pub fn singbox_convert_args(
         program: &str,
+        kind: &str,
         category: &str,
         db_path: &str,
         out_json: &str,
@@ -521,7 +528,7 @@ impl MaintenanceManager {
         vec![
             vec![
                 program.to_string(),
-                "geosite".to_string(),
+                kind.to_string(),
                 "export".to_string(),
                 category.to_string(),
                 "-f".to_string(),
@@ -544,10 +551,12 @@ impl MaintenanceManager {
         db_path: &str,
         out_json: &str,
         out_srs: &str,
+        kind: &str,
         category: &str,
     ) -> Result<()> {
         use crate::core::paths::singbox;
-        let cmds = Self::singbox_convert_args(singbox::BIN, category, db_path, out_json, out_srs);
+        let cmds =
+            Self::singbox_convert_args(singbox::BIN, kind, category, db_path, out_json, out_srs);
         for args in &cmds {
             let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             run_cmd_checked(arg_refs[0], &arg_refs[1..], TIMEOUT_LONG)
@@ -1319,6 +1328,7 @@ mod tests {
     fn test_singbox_convert_args() {
         let cmds = MaintenanceManager::singbox_convert_args(
             "/opt/wwps-box",
+            "geosite",
             "cn",
             "/tmp/geosite.db",
             "/tmp/geosite-cn.json",
@@ -1347,6 +1357,44 @@ mod tests {
                 "--output",
                 "/etc/wwps/wwps-box/rule-set/geosite-cn.srs",
                 "/tmp/geosite-cn.json",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_singbox_convert_args_geoip_uses_geoip_export() {
+        let cmds = MaintenanceManager::singbox_convert_args(
+            "/opt/wwps-box",
+            "geoip",
+            "cn",
+            "/tmp/geoip.db",
+            "/tmp/geoip-cn.json",
+            "/etc/wwps/wwps-box/rule-set/geoip-cn.srs",
+        );
+        assert_eq!(cmds.len(), 2);
+        // geoip 分类必须用 `geoip export` 子命令（写死 geosite 会静默失败）
+        assert_eq!(
+            cmds[0],
+            vec![
+                "/opt/wwps-box",
+                "geoip",
+                "export",
+                "cn",
+                "-f",
+                "/tmp/geoip.db",
+                "-o",
+                "/tmp/geoip-cn.json",
+            ]
+        );
+        assert_eq!(
+            cmds[1],
+            vec![
+                "/opt/wwps-box",
+                "rule-set",
+                "compile",
+                "--output",
+                "/etc/wwps/wwps-box/rule-set/geoip-cn.srs",
+                "/tmp/geoip-cn.json",
             ]
         );
     }
