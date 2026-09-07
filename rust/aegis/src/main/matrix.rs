@@ -167,16 +167,34 @@ pub async fn connect_matrix(
 
     let matrix_homeserver = decrypt_matrix(&encrypted_config.matrix_homeserver)?;
     let matrix_username = decrypt_matrix(&encrypted_config.matrix_username)?;
-    let matrix_pwd = decrypt_matrix(&encrypted_config.matrix_password)?;
+    // 秘密字段：decrypt_secret 一步到位进 SecretString（trim 后），drop 即清零，
+    // 不再产生裸 String 中间拷贝；公开字段仍走 decrypt_matrix。
+    let matrix_pwd = security.decrypt_secret(
+        encrypted_config
+            .matrix_password
+            .as_ref()
+            .with_context(|| "缺少 Matrix 配置项")?,
+    )?;
     let matrix_room_id_str = decrypt_matrix(&encrypted_config.matrix_room_id)?;
-    let matrix_store_passphrase = decrypt_matrix(&encrypted_config.matrix_store_passphrase)?;
+    let matrix_store_passphrase = security.decrypt_secret(
+        encrypted_config
+            .matrix_store_passphrase
+            .as_ref()
+            .with_context(|| "缺少 Matrix 配置项")?,
+    )?;
 
     let store_path = config_dir.join("matrix_store");
     let client = MatrixClient::builder()
         .homeserver_url(&matrix_homeserver)
-        .sqlite_store(&store_path, Some(&matrix_store_passphrase))
+        .sqlite_store(
+            &store_path,
+            Some(matrix_store_passphrase.expose_secret().as_str()),
+        )
         .build()
         .await?;
+    // 用完即焚：SDK 已在 SqliteStoreConfig 内部保留 Zeroizing 拷贝（lib 自护），
+    // 我们 frame 内这份明文即刻清零释放。
+    drop(matrix_store_passphrase);
 
     // ── Session restore (P0) ──
     let session_path = config_dir.join("matrix_session.json");
@@ -198,7 +216,7 @@ pub async fn connect_matrix(
             .ok();
         client
             .matrix_auth()
-            .login_username(&matrix_username, &matrix_pwd)
+            .login_username(&matrix_username, matrix_pwd.expose_secret().as_str())
             .initial_device_display_name(&matrix_device_display_name(city.as_deref()))
             .send()
             .await?;
@@ -275,7 +293,12 @@ pub async fn connect_matrix(
                     }
                 }
                 IdentityAction::BootstrapNew => {
-                    bootstrap_new_identity(&client, &matrix_username, &matrix_pwd).await?;
+                    bootstrap_new_identity(
+                        &client,
+                        &matrix_username,
+                        matrix_pwd.expose_secret().as_str(),
+                    )
+                    .await?;
                 }
                 IdentityAction::ErrorRequiresReset => {
                     anyhow::bail!(
@@ -288,7 +311,12 @@ pub async fn connect_matrix(
         }
         IdentityAction::BootstrapNew => {
             println!("⚠ 远端无交叉签名身份，创建全新身份…");
-            bootstrap_new_identity(&client, &matrix_username, &matrix_pwd).await?;
+            bootstrap_new_identity(
+                &client,
+                &matrix_username,
+                matrix_pwd.expose_secret().as_str(),
+            )
+            .await?;
         }
         IdentityAction::ErrorRequiresReset => {
             anyhow::bail!(
