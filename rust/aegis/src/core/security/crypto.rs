@@ -6,7 +6,7 @@ use anyhow::Result;
 use libc::{mlock, munlock};
 use obfstr::obfstr;
 use rand::{RngCore, rngs::OsRng};
-use secrecy::SecretVec;
+use secrecy::{ExposeSecret, SecretString, SecretVec};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -107,6 +107,20 @@ impl SecurityManager {
         let secret_vec = SecretVec::new(decrypted_vec);
 
         Ok(secret_vec)
+    }
+
+    /// 解密为受保护字符串：decrypt → UTF-8 校验 → trim → SecretString。
+    /// 全链明文拷贝均为瞬时存在且受 Zeroizing/SecretString 保护：to_vec →
+    /// String → trim 各一次分配，drop 即清零，无游离裸拷贝。
+    pub fn decrypt_secret(&self, data: &[u8]) -> Result<SecretString> {
+        let vec = self.decrypt(data)?;
+        let s = String::from_utf8(vec.expose_secret().to_vec()).map_err(|e| {
+            // 失败路径：解出的字节在 FromUtf8Error 里，先清零再丢弃，避免泄漏到自由堆
+            Zeroizing::new(e.into_bytes());
+            anyhow::anyhow!("decrypted data contains invalid UTF-8")
+        })?;
+        let s = Zeroizing::new(s);
+        Ok(SecretString::from(s.trim().to_string()))
     }
 }
 
@@ -330,5 +344,39 @@ mod tests {
         let mut data = vec![];
         lock_memory(&mut data);
         // Should not panic on empty slice
+    }
+
+    #[test]
+    fn test_decrypt_secret_roundtrip() {
+        let temp = TempDir::new().unwrap();
+        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+
+        let encrypted = sm.encrypt(b"JBSWY3DPEHPK3PXP").unwrap();
+        let secret = sm.decrypt_secret(&encrypted).unwrap();
+
+        assert_eq!(secret.expose_secret(), "JBSWY3DPEHPK3PXP");
+    }
+
+    #[test]
+    fn test_decrypt_secret_trims_whitespace() {
+        let temp = TempDir::new().unwrap();
+        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+
+        let encrypted = sm.encrypt(b"  JBSWY3DPEHPK3PXP\n").unwrap();
+        let secret = sm.decrypt_secret(&encrypted).unwrap();
+
+        assert_eq!(secret.expose_secret(), "JBSWY3DPEHPK3PXP");
+    }
+
+    #[test]
+    fn test_decrypt_secret_rejects_invalid_utf8() {
+        let temp = TempDir::new().unwrap();
+        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+
+        // 合法密文但明文非 UTF-8（0xFF 非法字节）
+        let encrypted = sm.encrypt(&[0xff, 0xfe, 0x00, 0x80]).unwrap();
+        let result = sm.decrypt_secret(&encrypted);
+
+        assert!(result.is_err());
     }
 }
