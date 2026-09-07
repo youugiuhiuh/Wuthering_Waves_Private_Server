@@ -144,7 +144,8 @@ git commit -m "feat(security): add SecurityManager::decrypt_secret one-hop secre
 
         // 同步构造 setup 等价产物：.key 由 SecurityManager 生成，config.enc 手工加密
         // token 需通过格式校验: <数字bot_id>:<token>
-        let totp_secret = "JBSWY3DPEHPK3PXP";
+        // totp secret 用项目标准生成器（base64，兼容 validate_decrypted_config 与 TotpManager）
+        let totp_secret = TotpManager::generate_new_secret();
         let security = SecurityManager::new(&config_dir.join(KEY_FILE)).unwrap();
         let encrypted = EncryptedConfig {
             token: Some(security.encrypt(b"123456:ABCdefGHIjklMNOpqrsTUVwxyz").unwrap()),
@@ -176,7 +177,7 @@ git commit -m "feat(security): add SecurityManager::decrypt_secret one-hop secre
     }
 ```
 
-注：`SecurityManager`、`KEY_FILE`、`CONFIG_FILE`、`EncryptedConfig` 均已在本文件顶部 import（`use aegis::core::security::SecurityManager;` / `use crate::bootstrap::{... KEY_FILE, CONFIG_FILE, EncryptedConfig ...}`），`super::*` 带进测试模块。
+注：`SecurityManager`、`KEY_FILE`、`CONFIG_FILE`、`EncryptedConfig` 均已在本文件顶部 import（`use aegis::core::security::SecurityManager;` / `use crate::bootstrap::{... KEY_FILE, CONFIG_FILE, EncryptedConfig ...}`），`super::*` 带进测试模块；`TotpManager` 也在顶部 import（config.rs:4）。
 
 - [ ] **Step 2: 跑测试确认当前代码 PASS（特征钉死）**
 
