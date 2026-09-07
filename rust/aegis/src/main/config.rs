@@ -15,8 +15,6 @@ pub struct DecryptedConfig {
     pub token: Option<String>,
     pub admin_id: Option<i64>,
     #[expect(dead_code)]
-    pub totp_secret: Option<String>,
-    #[expect(dead_code)]
     pub discord_token: Option<String>,
     #[expect(dead_code)]
     pub discord_admin_id: Option<i64>,
@@ -69,16 +67,14 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
         None => None,
     };
 
-    let totp_secret = match &encrypted_config.totp_secret {
-        Some(v) => {
-            let vec = security.decrypt(v).context("解密 totp_secret 失败")?;
-            Some(
-                String::from_utf8(vec.expose_secret().to_vec())
-                    .context("totp_secret 包含无效的 UTF-8 字符")?
-                    .trim()
-                    .to_string(),
-            )
-        }
+    // totp_secret：用完即焚——仅用于构建 TotpManager，不存入任何驻留字段。
+    // SecretString 局部变量出作用域即清零。
+    let totp_secret: Option<secrecy::SecretString> = match &encrypted_config.totp_secret {
+        Some(v) => Some(
+            security
+                .decrypt_secret(v)
+                .context("解密 totp_secret 失败")?,
+        ),
         None => None,
     };
 
@@ -110,19 +106,21 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
     if let Err(e) = validator.validate_decrypted_config(
         token.as_deref(),
         admin_id,
-        totp_secret.as_deref(),
+        totp_secret.as_ref().map(|s| s.expose_secret().as_str()),
         &encrypted_config.self_destruct_key_hash,
     ) {
         anyhow::bail!("❌ 配置校验失败: {}", e);
     }
 
-    let totp_manager = match totp_secret {
-        Some(ref secret) => Some(
-            TotpManager::new(&secrecy::SecretString::from(secret.clone()))
+    let totp_manager = match totp_secret.as_ref() {
+        Some(secret) => Some(
+            TotpManager::new(secret)
                 .map_err(|e| anyhow::anyhow!("初始化 TOTP 验证器失败: {}", e))?,
         ),
         None => None,
     };
+    // 用完即焚：TotpManager 已持有受保护副本，明文局部立即清零释放，不再驻留整个进程
+    drop(totp_secret);
 
     let bot_settings = BotSettings::load();
 
@@ -131,7 +129,6 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
             decrypted: DecryptedConfig {
                 token,
                 admin_id,
-                totp_secret,
                 discord_token,
                 discord_admin_id,
                 encrypted_config,
@@ -237,5 +234,54 @@ mod tests {
             err.contains("Config file miss") || err.contains("配置文件"),
             "error should mention missing config file: {err}"
         );
+    }
+
+    #[serial]
+    #[test]
+    fn load_and_validate_builds_working_totp_manager() {
+        let dir = TempDir::new().unwrap();
+        let config_dir = dir.path().join("etc/wwps/aegis");
+        fs::create_dir_all(&config_dir).unwrap();
+        // SAFETY: test environment, single-threaded
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", config_dir.to_str().unwrap());
+        }
+
+        // 同步构造 setup 等价产物：.key 由 SecurityManager 生成，config.enc 手工加密
+        // token 需通过格式校验: <数字bot_id>:<token>
+        // totp secret 用项目标准生成器（base64，兼容 validate_decrypted_config 与 TotpManager）
+        let totp_secret = TotpManager::generate_new_secret();
+        let security = SecurityManager::new(&config_dir.join(KEY_FILE)).unwrap();
+        let encrypted = EncryptedConfig {
+            token: Some(
+                security
+                    .encrypt(b"123456:ABCdefGHIjklMNOpqrsTUVwxyz")
+                    .unwrap(),
+            ),
+            admin_id: Some(security.encrypt(b"42").unwrap()),
+            totp_secret: Some(security.encrypt(totp_secret.as_bytes()).unwrap()),
+            self_destruct_key_hash: None,
+            matrix_homeserver: None,
+            matrix_username: None,
+            matrix_password: None,
+            matrix_room_id: None,
+            matrix_store_passphrase: None,
+            discord_token: None,
+            discord_admin_id: None,
+            lang: Some("zh".to_string()),
+            matrix_recovery_key: None,
+        };
+        fs::write(
+            config_dir.join(CONFIG_FILE),
+            serde_json::to_vec(&encrypted).unwrap(),
+        )
+        .unwrap();
+
+        let (app_config, _security) = load_and_validate().unwrap();
+        let manager = app_config.totp_manager.expect("totp_manager 应已构建");
+
+        // TotpManager 功能完好：自身生成的当前码能通过 verify（证明密钥正确装载且可用）
+        let code = manager.generate_current().unwrap();
+        assert!(manager.verify(&code));
     }
 }
