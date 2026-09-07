@@ -12,7 +12,6 @@ use matrix_sdk::{
     ruma::api::client::uiaa::{AuthData, MatrixUserIdentifier, Password, UserIdentifier},
 };
 use secrecy::ExposeSecret;
-use secrecy::SecretString;
 
 use crate::bootstrap::EncryptedConfig;
 
@@ -86,20 +85,17 @@ async fn try_recover_with_key(
     let Some(rk_encrypted) = encrypted_config.matrix_recovery_key.as_ref() else {
         return false; // 未配置恢复密钥——属正常路径，无需日志
     };
-    let Ok(rk_decrypted) = security.decrypt(rk_encrypted) else {
+    // 用完即焚：decrypt_secret 一步到位进 SecretString（trim 后），
+    // 不再产生 to_vec/String 裸中间拷贝；SecretString 用完 drop 即清零。
+    let Ok(rk) = security.decrypt_secret(rk_encrypted) else {
         println!("⚠ 恢复密钥解密失败（config.enc 中 matrix_recovery_key 损坏）");
         return false;
     };
-    let Some(rk_str) = String::from_utf8(rk_decrypted.expose_secret().to_vec())
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-    else {
+    if rk.expose_secret().is_empty() {
         println!("⚠ 恢复密钥为空或包含无效 UTF-8");
         return false;
-    };
+    }
 
-    let rk = SecretString::from(rk_str);
     let recovery = client.encryption().recovery();
     let result = match recovery.recover(rk.expose_secret()).await {
         Ok(_) => Ok(()),
