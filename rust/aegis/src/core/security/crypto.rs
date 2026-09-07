@@ -110,12 +110,15 @@ impl SecurityManager {
     }
 
     /// 解密为受保护字符串：decrypt → UTF-8 校验 → trim → SecretString。
-    /// 全链仅一次明文拷贝（to_vec），且经 Zeroizing 包裹后 trim 进 SecretString，
-    /// SecretString drop 时自动清零——不留任何游离裸拷贝。
+    /// 全链明文拷贝均为瞬时存在且受 Zeroizing/SecretString 保护：to_vec →
+    /// String → trim 各一次分配，drop 即清零，无游离裸拷贝。
     pub fn decrypt_secret(&self, data: &[u8]) -> Result<SecretString> {
         let vec = self.decrypt(data)?;
-        let s = String::from_utf8(vec.expose_secret().to_vec())
-            .map_err(|e| anyhow::anyhow!("decrypted data contains invalid UTF-8: {}", e))?;
+        let s = String::from_utf8(vec.expose_secret().to_vec()).map_err(|e| {
+            // 失败路径：解出的字节在 FromUtf8Error 里，先清零再丢弃，避免泄漏到自由堆
+            Zeroizing::new(e.into_bytes());
+            anyhow::anyhow!("decrypted data contains invalid UTF-8")
+        })?;
         let s = Zeroizing::new(s);
         Ok(SecretString::from(s.trim().to_string()))
     }
