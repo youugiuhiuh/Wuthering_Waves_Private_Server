@@ -436,3 +436,136 @@ git add -A rust/aegis/src
 git commit -m "style: satisfy fmt/clippy after secret-burn changes"
 ```
 （无改动则跳过）
+
+---
+
+### Task 5: `matrix.rs` — connect_matrix 的 passphrase + pwd 用完即焚（批次 2）
+
+**Files:**
+- Modify: `rust/aegis/src/main/matrix.rs`（`connect_matrix` 内）
+
+**Interfaces:**
+- Consumes: Task 1 的 `security.decrypt_secret(&[u8]) -> Result<secrecy::SecretString>`（已合并，crypto.rs）；`secrecy::ExposeSecret` trait 已 import（matrix.rs:14，Task 3 收窄后仅此项）
+- Produces: `connect_matrix` 内两个秘密局部改为 `SecretString`；公开 3 字段与 `decrypt_matrix` 闭包不变；行为不变
+
+**批次 2 目标**（spec 追加节，用户 2026-09-07 chat 批准）：matrix_store_passphrase + matrix_pwd 解密后不再以裸 String 活到函数结束——drop 即清零。SDK 侧不动。
+
+- [ ] **Step 1: 改两个秘密局部的创建（其余 3 个公开字段的 `decrypt_matrix` 调用保持）**
+
+现为（`src/main/matrix.rs`）：
+
+```rust
+    let matrix_homeserver = decrypt_matrix(&encrypted_config.matrix_homeserver)?;
+    let matrix_username = decrypt_matrix(&encrypted_config.matrix_username)?;
+    let matrix_pwd = decrypt_matrix(&encrypted_config.matrix_password)?;
+    let matrix_room_id_str = decrypt_matrix(&encrypted_config.matrix_room_id)?;
+    let matrix_store_passphrase = decrypt_matrix(&encrypted_config.matrix_store_passphrase)?;
+```
+
+改为：
+
+```rust
+    let matrix_homeserver = decrypt_matrix(&encrypted_config.matrix_homeserver)?;
+    let matrix_username = decrypt_matrix(&encrypted_config.matrix_username)?;
+    // 秘密字段：decrypt_secret 一步到位进 SecretString（trim 后），drop 即清零，
+    // 不再产生裸 String 中间拷贝；公开字段仍走 decrypt_matrix。
+    let matrix_pwd = security.decrypt_secret(
+        encrypted_config
+            .matrix_password
+            .as_ref()
+            .with_context(|| "缺少 Matrix 配置项")?,
+    )?;
+    let matrix_room_id_str = decrypt_matrix(&encrypted_config.matrix_room_id)?;
+    let matrix_store_passphrase = security.decrypt_secret(
+        encrypted_config
+            .matrix_store_passphrase
+            .as_ref()
+            .with_context(|| "缺少 Matrix 配置项")?,
+    )?;
+```
+
+- [ ] **Step 2: builder 处 passphrase 借出 + build 后即弃**
+
+现为：
+
+```rust
+    let store_path = config_dir.join("matrix_store");
+    let client = MatrixClient::builder()
+        .homeserver_url(&matrix_homeserver)
+        .sqlite_store(&store_path, Some(&matrix_store_passphrase))
+        .build()
+        .await?;
+```
+
+改为：
+
+```rust
+    let store_path = config_dir.join("matrix_store");
+    let client = MatrixClient::builder()
+        .homeserver_url(&matrix_homeserver)
+        .sqlite_store(&store_path, Some(matrix_store_passphrase.expose_secret().as_str()))
+        .build()
+        .await?;
+    // 用完即焚：SDK 已在 SqliteStoreConfig 内部保留 Zeroizing 拷贝（lib 自护），
+    // 我们 frame 内这份明文即刻清零释放。
+    drop(matrix_store_passphrase);
+```
+
+- [ ] **Step 3: login 处 pwd 借出**
+
+现为（无会话 else 分支内）：
+
+```rust
+        client
+            .matrix_auth()
+            .login_username(&matrix_username, &matrix_pwd)
+```
+
+改为：
+
+```rust
+        client
+            .matrix_auth()
+            .login_username(&matrix_username, matrix_pwd.expose_secret().as_str())
+```
+
+- [ ] **Step 4: bootstrap 两处 pwd 借出**
+
+现为（两处同文）：
+
+```rust
+                    bootstrap_new_identity(&client, &matrix_username, &matrix_pwd).await?;
+```
+与
+```rust
+            bootstrap_new_identity(&client, &matrix_username, &matrix_pwd).await?;
+```
+
+改为（各自把 `&matrix_pwd` 换成 `matrix_pwd.expose_secret().as_str()`）：
+
+```rust
+                    bootstrap_new_identity(&client, &matrix_username, matrix_pwd.expose_secret().as_str()).await?;
+```
+与
+```rust
+            bootstrap_new_identity(&client, &matrix_username, matrix_pwd.expose_secret().as_str()).await?;
+```
+
+`matrix_pwd` 保持局部 `SecretString`，不显式 drop——按批准的设计，connect_matrix 返回时自然清零（login/bootstrap 分支都可能用，无法提前焚）。
+
+- [ ] **Step 5: 编译 + 测试**
+
+Run（`rust/aegis` 下）: `cargo test -p aegis`
+Expected: 编译通过；既有全部测试 PASS（已知 flaky `xhttp_domain_provider_routes_to_xray_handler` 若失败单跑确认）
+
+- [ ] **Step 6: fmt + clippy**
+
+Run: `cargo fmt --all && cargo clippy --all-targets --all-features -- -D warnings`
+Expected: 通过（仅修本改动引入的问题；若 clippy 因 `use secrecy::ExposeSecret;` 之外的 import 报错，仅按提示处理 matrix.rs 顶部 import）
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add rust/aegis/src/main/matrix.rs
+git commit -m "refactor(security): burn matrix connect passphrase and password after hand-off (batch 2)"
+```

@@ -74,3 +74,17 @@ pub fn decrypt_secret(&self, data: &[u8]) -> Result<SecretString> {
 
 - `cargo fmt` / `cargo clippy` / `cargo nextest`（rust-lint-format 技能强制门禁）
 - 全仓 `cargo build` / 相关 integration tests（totp_trim、setup_roundtrip）
+
+## 批次 2（2026-09-07 chat 批准）：matrix connect 的 2 个秘密局部用完即焚
+
+范围：仅 `main/matrix.rs` `connect_matrix` 内 **`matrix_store_passphrase` + `matrix_pwd`** 两个秘密局部（用户裁定：公开的 homeserver/username/room_id 与 discord.rs 不在范围）。
+
+现状：两者经 `decrypt_matrix` 闭包（decrypt → to_vec → 裸 String）创建，活到 connect_matrix 结束，drop 不清零；`matrix_store_passphrase` 只用一次（`sqlite_store` :177），`matrix_pwd` 有 3 处可能 hand-off（login :~200、bootstrap :278/:294）。
+
+改动：
+1. 两个秘密局部改用 `SecurityManager::decrypt_secret`（Task 1 助手）→ 类型 `SecretString`，消除裸中间拷贝，drop 即清零。
+2. hand-off 处 `expose_secret()` 借出 &str（SDK 侧零改动——passphrase SDK 自留 Zeroizing 拷贝，已确认）。
+3. `matrix_store_passphrase` 在 `.build()` 后立即 `drop()`（最后一次 hand-off 即弃）。
+4. `matrix_pwd` 焚毁点 ruling：login 与 bootstrap 分支都可能用，无法在身份块中间提前焚——**自然 drop（connect_matrix 返回时 SecretString 清零）**，用户认可。
+
+不变：`decrypt_matrix` 闭包保留给 3 个公开字段；错误文案差异（UTF-8 提示并入 decrypt_secret）可接受，与批次 1 一致；磁盘/会话逻辑零改动。
