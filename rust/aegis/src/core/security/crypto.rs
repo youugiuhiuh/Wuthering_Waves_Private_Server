@@ -6,7 +6,7 @@ use anyhow::Result;
 use libc::{mlock, munlock};
 use obfstr::obfstr;
 use rand::{RngCore, rngs::OsRng};
-use secrecy::SecretVec;
+use secrecy::{ExposeSecret, SecretString, SecretVec};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -107,6 +107,17 @@ impl SecurityManager {
         let secret_vec = SecretVec::new(decrypted_vec);
 
         Ok(secret_vec)
+    }
+
+    /// 解密为受保护字符串：decrypt → UTF-8 校验 → trim → SecretString。
+    /// 全链仅一次明文拷贝（to_vec），且经 Zeroizing 包裹后 trim 进 SecretString，
+    /// SecretString drop 时自动清零——不留任何游离裸拷贝。
+    pub fn decrypt_secret(&self, data: &[u8]) -> Result<SecretString> {
+        let vec = self.decrypt(data)?;
+        let s = String::from_utf8(vec.expose_secret().to_vec())
+            .map_err(|e| anyhow::anyhow!("decrypted data contains invalid UTF-8: {}", e))?;
+        let s = Zeroizing::new(s);
+        Ok(SecretString::from(s.trim().to_string()))
     }
 }
 
@@ -330,5 +341,39 @@ mod tests {
         let mut data = vec![];
         lock_memory(&mut data);
         // Should not panic on empty slice
+    }
+
+    #[test]
+    fn test_decrypt_secret_roundtrip() {
+        let temp = TempDir::new().unwrap();
+        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+
+        let encrypted = sm.encrypt(b"JBSWY3DPEHPK3PXP").unwrap();
+        let secret = sm.decrypt_secret(&encrypted).unwrap();
+
+        assert_eq!(secret.expose_secret(), "JBSWY3DPEHPK3PXP");
+    }
+
+    #[test]
+    fn test_decrypt_secret_trims_whitespace() {
+        let temp = TempDir::new().unwrap();
+        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+
+        let encrypted = sm.encrypt(b"  JBSWY3DPEHPK3PXP\n").unwrap();
+        let secret = sm.decrypt_secret(&encrypted).unwrap();
+
+        assert_eq!(secret.expose_secret(), "JBSWY3DPEHPK3PXP");
+    }
+
+    #[test]
+    fn test_decrypt_secret_rejects_invalid_utf8() {
+        let temp = TempDir::new().unwrap();
+        let sm = SecurityManager::new(&temp.path().join("key")).unwrap();
+
+        // 合法密文但明文非 UTF-8（0xFF 非法字节）
+        let encrypted = sm.encrypt(&[0xff, 0xfe, 0x00, 0x80]).unwrap();
+        let result = sm.decrypt_secret(&encrypted);
+
+        assert!(result.is_err());
     }
 }
