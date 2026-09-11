@@ -3145,6 +3145,7 @@ async fn handle_domain_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn one_click_domain_no_selects_reality_backend() {
@@ -3156,6 +3157,12 @@ mod tests {
         assert!(one_click_domain_no_mode("xhttp_domain_maybe:one_click").is_none());
     }
 
+    /// Locale is process-global (`rust-i18n`'s `CURRENT_LOCALE` is a `LazyLock`),
+    /// so this must not run concurrently with the locale assertions in
+    /// `core::i18n`. The crate already serializes every other locale-mutating
+    /// test; nextest's process isolation hides the race but plain `cargo test`
+    /// does not.
+    #[serial]
     #[test]
     fn hy2_step_titles_substitute_their_placeholders() {
         // The step titles are the only hy2 keys with positional arguments; a
@@ -3171,9 +3178,12 @@ mod tests {
                 "1" => 3,
                 "2" => "OBFS"
             );
+            assert!(obfs.contains("OBFS"), "{loc} obfs title: {obfs}");
+            // Order matters: swapping %{0}/%{1} would still satisfy a plain
+            // `contains` check while rendering "3 × IPv4" to the user.
             assert!(
-                obfs.contains("IPv4") && obfs.contains('3') && obfs.contains("OBFS"),
-                "{loc} obfs title: {obfs}"
+                obfs.find("IPv4") < obfs.find('3'),
+                "{loc} obfs title has swapped placeholders: {obfs}"
             );
             assert!(
                 !obfs.contains("%{"),
@@ -3190,6 +3200,12 @@ mod tests {
             assert!(
                 hop.contains("STATUS") && hop.contains("PROMPT"),
                 "{loc} hop title: {hop}"
+            );
+            assert!(
+                hop.find("IPv4") < hop.find('3')
+                    && hop.find('3') < hop.find("STATUS")
+                    && hop.find("STATUS") < hop.find("PROMPT"),
+                "{loc} hop title has out-of-order placeholders: {hop}"
             );
             assert!(
                 !hop.contains("%{"),

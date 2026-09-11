@@ -27,7 +27,10 @@ fn parse_locale(text: &str) -> HashMap<String, String> {
         let value = value.trim().trim_matches('"');
         if indent == 0 {
             section = key.to_string();
-        } else if !section.is_empty() && !value.is_empty() {
+        } else if indent == 2 && !section.is_empty() && !value.is_empty() {
+            // Only indent-2 lines are real keys. A `key: |` block scalar puts
+            // its prose at indent 4+, and treating those lines as keys would
+            // fabricate phantom entries that could mask a missing key.
             out.insert(format!("{section}.{key}"), value.to_string());
         }
     }
@@ -89,9 +92,12 @@ fn every_hy2_key_exists_in_all_locales() {
 /// Values allowed to stay identical to English in CJK locales: brand names
 /// with no translatable words, and step-title shells that are mostly the
 /// product name plus positional placeholders (`Hysteria2 (Xray) | %{0}`).
+///
+/// Keep this minimal: every entry is a blind spot. `hy2_obfs_gecko` is NOT
+/// listed — "Gecko" is a brand name but "(fragmented)" is prose and is
+/// translated in both zh and ja, so exempting it hid a real regression.
 const BRAND_ONLY_OR_TEMPLATE: &[&str] = &[
     "xray.hy2_obfs_salamander",
-    "xray.hy2_obfs_gecko",
     "xray.hy2_obfs_step_title",
     "xray.hy2_hop_step_title",
 ];
