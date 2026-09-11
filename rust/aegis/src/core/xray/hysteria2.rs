@@ -459,7 +459,6 @@ impl ConfigManager {
     // `expect` rather than `allow` on purpose: as soon as a caller exists the
     // expectation goes unfulfilled and `-D warnings` fails until this line is
     // removed, so it cannot linger and mask a real dead-code regression.
-    #[expect(dead_code)]
     pub(crate) async fn remove_xray_hop_firewall_rules(
         main_port: u16,
         hop_range: (u16, u16),
