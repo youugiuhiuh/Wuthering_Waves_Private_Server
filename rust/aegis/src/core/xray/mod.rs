@@ -1,4 +1,5 @@
 pub mod config;
+pub mod hysteria2;
 pub mod installer;
 pub mod kcp;
 pub mod kcp_mask;
