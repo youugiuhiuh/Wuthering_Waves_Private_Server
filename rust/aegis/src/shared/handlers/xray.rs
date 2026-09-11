@@ -1740,12 +1740,13 @@ async fn handle_hy2_batch_obfs(event: &CallbackEvent) -> HandlerResult {
         }],
     ];
 
-    let title = format!(
-        "⚡ Hysteria2 (Xray) | {} × {}\n\n{}",
-        ip_display,
-        count,
-        t!("xray.hy2_obfs_title")
-    );
+    let title = t!(
+        "xray.hy2_obfs_step_title",
+        "0" => ip_display.as_str(),
+        "1" => count,
+        "2" => t!("xray.hy2_obfs_title")
+    )
+    .into_owned();
 
     event
         .adapter
@@ -1840,13 +1841,14 @@ async fn handle_hy2_batch_hop(event: &CallbackEvent) -> HandlerResult {
         }]))
         .collect();
 
-    let title = format!(
-        "⚡ Hysteria2 (Xray) | {} × {} | {}\n\n{}",
-        ip_display,
-        count,
-        obfs_status,
-        t!("xray.hy2_hop_title")
-    );
+    let title = t!(
+        "xray.hy2_hop_step_title",
+        "0" => ip_display.as_str(),
+        "1" => count,
+        "2" => obfs_status.as_str(),
+        "3" => t!("xray.hy2_hop_title")
+    )
+    .into_owned();
 
     event
         .adapter
@@ -3152,6 +3154,49 @@ mod tests {
         ));
         assert!(one_click_domain_no_mode("xhttp_domain_no:standalone").is_none());
         assert!(one_click_domain_no_mode("xhttp_domain_maybe:one_click").is_none());
+    }
+
+    #[test]
+    fn hy2_step_titles_substitute_their_placeholders() {
+        // The step titles are the only hy2 keys with positional arguments; a
+        // wrong `%{n}` would render the literal placeholder to the user while
+        // the YAML-parity checks in `tests/hy2_i18n_parity.rs` still passed.
+        let original = rust_i18n::locale();
+        for loc in ["en", "zh", "ja"] {
+            rust_i18n::set_locale(loc);
+
+            let obfs = t!(
+                "xray.hy2_obfs_step_title",
+                "0" => "IPv4",
+                "1" => 3,
+                "2" => "OBFS"
+            );
+            assert!(
+                obfs.contains("IPv4") && obfs.contains('3') && obfs.contains("OBFS"),
+                "{loc} obfs title: {obfs}"
+            );
+            assert!(
+                !obfs.contains("%{"),
+                "{loc} obfs title kept a placeholder: {obfs}"
+            );
+
+            let hop = t!(
+                "xray.hy2_hop_step_title",
+                "0" => "IPv4",
+                "1" => 3,
+                "2" => "STATUS",
+                "3" => "PROMPT"
+            );
+            assert!(
+                hop.contains("STATUS") && hop.contains("PROMPT"),
+                "{loc} hop title: {hop}"
+            );
+            assert!(
+                !hop.contains("%{"),
+                "{loc} hop title kept a placeholder: {hop}"
+            );
+        }
+        rust_i18n::set_locale(&original);
     }
 
     #[test]

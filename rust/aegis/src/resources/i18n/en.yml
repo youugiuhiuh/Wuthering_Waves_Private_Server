@@ -370,6 +370,8 @@ xray:
   hy2_hop_off: "🚫 Off"
   hy2_hop_on_official: "🔀 On · sing-box (official multi-port)"
   hy2_hop_on_v2rayn: "🔀 On · v2rayN (mport)"
+  hy2_obfs_step_title: "⚡ Hysteria2 (Xray) | %{0} × %{1}\n\n%{2}"
+  hy2_hop_step_title: "⚡ Hysteria2 (Xray) | %{0} × %{1} | %{2}\n\n%{3}"
   preparing_reality: "⏳ Preparing Reality base, please wait..."
   init_reality: "⏳ <b>Initializing Reality base environment...</b>\nPlease wait. Will auto-enter batch creation on completion."
   base_missing: "⚙️ Base config missing. Auto-initializing..."
