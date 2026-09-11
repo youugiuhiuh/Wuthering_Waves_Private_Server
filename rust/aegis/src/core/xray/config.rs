@@ -19,6 +19,10 @@ pub enum Proto {
     Vision,
     XHTTP,
     Kcp,
+    /// Xray `hysteria` inbound (Hysteria2). Distinct from sing-box Hy2, which
+    /// uses `"type": "hysteria2"` and `users[].password`; Xray uses
+    /// `"protocol": "hysteria"` and `settings.users[].auth`.
+    Hysteria2,
 }
 
 #[derive(Debug, Clone)]
@@ -112,13 +116,23 @@ impl ConfigManager {
         Ok(ports)
     }
 
-    pub async fn list_inbound_files_by_proto(proto: Proto) -> Result<Vec<String>> {
-        let all = Self::list_all_inbound_files().await?;
-        let prefix = match proto {
+    /// Filename prefix identifying the batch file family for a protocol.
+    ///
+    /// Xray Hysteria2 deliberately does NOT reuse sing-box's prefix. sing-box
+    /// writes `batch_hy2_{ts}_{rand}.json`; Xray writes `batch_xray_hysteria2_*`.
+    /// A collision would make each core list the other's configs.
+    pub(crate) fn batch_file_prefix(proto: Proto) -> &'static str {
+        match proto {
             Proto::Vision => "batch_reality",
             Proto::XHTTP => "batch_xhttp",
             Proto::Kcp => "batch_kcp",
-        };
+            Proto::Hysteria2 => "batch_xray_hysteria2",
+        }
+    }
+
+    pub async fn list_inbound_files_by_proto(proto: Proto) -> Result<Vec<String>> {
+        let all = Self::list_all_inbound_files().await?;
+        let prefix = Self::batch_file_prefix(proto);
         let filtered: Vec<String> = all
             .into_iter()
             .filter(|p| {
@@ -178,11 +192,7 @@ impl ConfigManager {
     pub async fn generate_secure_batch_filename(proto: Proto) -> Result<String> {
         let uuid = Self::generate_wwps_uuid().await?;
         let uuid_short = Self::uuid_short_prefix(&uuid);
-        let prefix = match proto {
-            Proto::Vision => "batch_reality",
-            Proto::XHTTP => "batch_xhttp",
-            Proto::Kcp => "batch_kcp",
-        };
+        let prefix = Self::batch_file_prefix(proto);
         Ok(format!("{}_{}_inbounds.json", prefix, uuid_short))
     }
 
@@ -334,6 +344,9 @@ impl ConfigManager {
                 Proto::Kcp => {
                     unreachable!("Kcp should use build_kcp_inbound")
                 }
+                Proto::Hysteria2 => {
+                    unreachable!("Hysteria2 should use build_hysteria2_inbound")
+                }
             },
             "security": "reality",
             "realitySettings": {
@@ -453,6 +466,7 @@ impl ConfigManager {
             Proto::Vision => "vless_reality_vision",
             Proto::XHTTP => "vless_xhttp_reality",
             Proto::Kcp => "vless_kcp",
+            Proto::Hysteria2 => "hysteria2",
         };
         let email = format!("{}-{}", uuid_short, suffix);
         let tag = format!(
@@ -461,6 +475,7 @@ impl ConfigManager {
                 Proto::Vision => "VLESS",
                 Proto::XHTTP => "XHTTP",
                 Proto::Kcp => "KCP",
+                Proto::Hysteria2 => "HY2",
             },
             uuid_short,
             index
@@ -569,6 +584,9 @@ impl ConfigManager {
             }
             Proto::Kcp => {
                 unreachable!("Kcp should use generate_kcp_client_link instead")
+            }
+            Proto::Hysteria2 => {
+                unreachable!("Hysteria2 should use generate_hysteria2_client_link instead")
             }
         }
     }
@@ -1125,6 +1143,43 @@ mod tests {
         assert_eq!(rules.len(), 3);
         let tags: Vec<&str> = rules.iter().filter_map(|r| r["ruleTag"].as_str()).collect();
         assert_eq!(tags, vec!["private_ip", "cn_ip", "cn_domain"]);
+    }
+
+    #[test]
+    fn test_proto_hysteria2_variant_exists_and_is_copy() {
+        let p = Proto::Hysteria2;
+        let q = p; // Copy, not move
+        assert_eq!(p, q);
+    }
+
+    #[test]
+    fn test_hysteria2_filename_prefix_is_distinct_from_singbox() {
+        use crate::core::xray::Proto;
+        // sing-box writes `batch_hy2_*` (see singbox::config::save_standalone_config).
+        // Xray must not share a prefix with it, or each core lists the other's files.
+        let hy2 = ConfigManager::batch_file_prefix(Proto::Hysteria2);
+        assert_eq!(hy2, "batch_xray_hysteria2");
+        assert!(!hy2.starts_with("batch_hy2"));
+        // The assert_eq! above is the collision guard: it pins the exact
+        // prefix, so any reused or misspelled prefix fails here.
+        // Distinct from every sibling, and none is a prefix of another
+        // (list_inbound_files_by_proto filters with starts_with).
+        let all = [
+            ConfigManager::batch_file_prefix(Proto::Vision),
+            ConfigManager::batch_file_prefix(Proto::XHTTP),
+            ConfigManager::batch_file_prefix(Proto::Kcp),
+            hy2,
+        ];
+        for (i, a) in all.iter().enumerate() {
+            for (j, b) in all.iter().enumerate() {
+                if i != j {
+                    assert!(
+                        !a.starts_with(b),
+                        "prefix {a:?} must not start with sibling prefix {b:?}"
+                    );
+                }
+            }
+        }
     }
 }
 

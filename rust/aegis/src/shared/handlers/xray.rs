@@ -163,6 +163,7 @@ async fn show_reality_batch_prompt(
         Proto::Vision => ("u_batch_ip_init:", "Reality (Vision)"),
         Proto::XHTTP => ("u_xhttp_batch_ip_init:", "Reality (XHTTP)"),
         Proto::Kcp => unreachable!("KCP uses separate UI flow"),
+        Proto::Hysteria2 => ("u_hy2_batch_ip_init:", "Hysteria2 (Xray)"),
     };
 
     let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
@@ -295,6 +296,7 @@ async fn show_reality_qty_prompt(
         Proto::Vision => ("u_batch_exec:", "Reality"),
         Proto::XHTTP => ("u_xhttp_batch_exec:", "XHTTP"),
         Proto::Kcp => unreachable!("KCP uses separate UI flow"),
+        Proto::Hysteria2 => ("u_hy2_batch_exec:", "Hysteria2"),
     };
 
     let buttons = vec![
@@ -449,6 +451,10 @@ async fn handle_mgmt(event: &CallbackEvent) -> HandlerResult {
             InlineButton {
                 text: t!("xray.batch_kcp").into(),
                 data: "u_kcp_init".into(),
+            },
+            InlineButton {
+                text: t!("xray.batch_hysteria2").into(),
+                data: "u_hy2_batch_init".into(),
             },
             InlineButton {
                 text: t!("xray.pq_mgmt").into(),
@@ -671,6 +677,10 @@ async fn handle_del_cfg(event: &CallbackEvent) -> HandlerResult {
                 text: t!("xray.filter_kcp").into(),
                 data: "cfg_filter:kcp".into(),
             },
+            InlineButton {
+                text: t!("xray.filter_hysteria2").into(),
+                data: "cfg_filter:hysteria2".into(),
+            },
         ],
         vec![InlineButton {
             text: t!("xray.del_all").into(),
@@ -712,6 +722,7 @@ async fn handle_cfg_filter(event: &CallbackEvent) -> HandlerResult {
         "reality" => t!("xray.filter_reality"),
         "xhttp" => t!("xray.filter_xhttp"),
         "kcp" => t!("xray.filter_kcp"),
+        "hysteria2" => t!("xray.filter_hysteria2"),
         _ => t!("xray.filter_all"),
     };
     let rows = vec![
@@ -731,6 +742,10 @@ async fn handle_cfg_filter(event: &CallbackEvent) -> HandlerResult {
             InlineButton {
                 text: t!("xray.filter_kcp").into(),
                 data: "cfg_filter:kcp".into(),
+            },
+            InlineButton {
+                text: t!("xray.filter_hysteria2").into(),
+                data: "cfg_filter:hysteria2".into(),
             },
         ],
         vec![InlineButton {
@@ -773,6 +788,7 @@ async fn handle_cfg_del_all_confirm(event: &CallbackEvent) -> HandlerResult {
         "reality" => t!("xray.type_reality"),
         "xhttp" => t!("xray.type_xhttp"),
         "kcp" => t!("xray.type_kcp"),
+        "hysteria2" => t!("xray.type_hysteria2"),
         _ => t!("xray.type_all"),
     };
     let rows = vec![
@@ -813,6 +829,7 @@ async fn handle_cfg_del_all_exec(event: &CallbackEvent) -> HandlerResult {
             "reality" => Proto::Vision,
             "xhttp" => Proto::XHTTP,
             "kcp" => Proto::Kcp,
+            "hysteria2" => Proto::Hysteria2,
             _ => {
                 event
                     .adapter
@@ -858,6 +875,7 @@ async fn handle_cfg_del_count(event: &CallbackEvent) -> HandlerResult {
         "reality" => t!("xray.filter_reality"),
         "xhttp" => t!("xray.filter_xhttp"),
         "kcp" => t!("xray.filter_kcp"),
+        "hysteria2" => t!("xray.filter_hysteria2"),
         _ => t!("xray.filter_all"),
     };
     let rows = vec![
@@ -917,6 +935,7 @@ async fn handle_cfg_del_exec_count(event: &CallbackEvent) -> HandlerResult {
             "reality" => Proto::Vision,
             "xhttp" => Proto::XHTTP,
             "kcp" => Proto::Kcp,
+            "hysteria2" => Proto::Hysteria2,
             _ => Proto::Vision,
         };
         ConfigManager::list_inbound_files_by_proto(proto)
@@ -970,6 +989,7 @@ async fn handle_cfg_del_select(event: &CallbackEvent) -> HandlerResult {
             "reality" => Proto::Vision,
             "xhttp" => Proto::XHTTP,
             "kcp" => Proto::Kcp,
+            "hysteria2" => Proto::Hysteria2,
             _ => Proto::Vision,
         };
         ConfigManager::list_inbound_files_by_proto(proto)
@@ -980,6 +1000,7 @@ async fn handle_cfg_del_select(event: &CallbackEvent) -> HandlerResult {
         "reality" => t!("xray.filter_reality"),
         "xhttp" => t!("xray.filter_xhttp"),
         "kcp" => t!("xray.filter_kcp"),
+        "hysteria2" => t!("xray.filter_hysteria2"),
         _ => t!("xray.filter_all"),
     };
     let mut rows = Vec::new();
@@ -1025,6 +1046,7 @@ async fn handle_cfg_del_file(event: &CallbackEvent) -> HandlerResult {
             "reality" => Proto::Vision,
             "xhttp" => Proto::XHTTP,
             "kcp" => Proto::Kcp,
+            "hysteria2" => Proto::Hysteria2,
             _ => Proto::Vision,
         };
         ConfigManager::list_inbound_files_by_proto(proto)
@@ -1085,6 +1107,7 @@ async fn handle_cfg_del_confirm(event: &CallbackEvent) -> HandlerResult {
             "reality" => Proto::Vision,
             "xhttp" => Proto::XHTTP,
             "kcp" => Proto::Kcp,
+            "hysteria2" => Proto::Hysteria2,
             _ => Proto::Vision,
         };
         ConfigManager::list_inbound_files_by_proto(proto)
@@ -1261,6 +1284,7 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
         Proto::Vision => "Reality",
         Proto::XHTTP => "XHTTP",
         Proto::Kcp => "KCP",
+        Proto::Hysteria2 => "Hysteria2",
     };
 
     event
@@ -1281,6 +1305,7 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
             ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
+        Proto::Hysteria2 => unreachable!("Hysteria2 uses its own handler"),
     };
 
     let adapter = event.adapter.clone();
@@ -1439,6 +1464,7 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
         Proto::Vision => "Reality",
         Proto::XHTTP => "XHTTP",
         Proto::Kcp => "KCP",
+        Proto::Hysteria2 => "Hysteria2",
     };
 
     event
@@ -1459,6 +1485,247 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
             ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
+        Proto::Hysteria2 => unreachable!("Hysteria2 uses its own handler"),
+    };
+
+    let adapter = event.adapter.clone();
+    let target = event.target.clone();
+
+    match res {
+        Ok(result) => {
+            let mut message_ids: Vec<String> = Vec::with_capacity(result.links.len());
+
+            let mut combined_links = String::new();
+            for link in &result.links {
+                combined_links.push_str(link);
+                combined_links.push_str("\n\n");
+            }
+            if !combined_links.is_empty()
+                && let Ok(msg) = adapter
+                    .send_message(
+                        &target,
+                        MessageContent {
+                            text: combined_links,
+                            markup: None,
+                        },
+                    )
+                    .await
+            {
+                message_ids.push(msg.0);
+            }
+
+            let mut result_msg = t!(
+                "xray.batch_done",
+                "0" => result.created_count,
+                "1" => ip_str.as_str()
+            )
+            .into_owned();
+
+            if let Some(filename) = result.config_file {
+                result_msg.push_str(&format!(
+                    "\n\n{}",
+                    t!("xray.batch_config_file", "0" => filename)
+                ));
+            }
+
+            if let Some(backup_file) = result.backup_file {
+                result_msg.push_str(&format!(
+                    "\n\n{}",
+                    t!("xray.batch_backup_file", "0" => backup_file)
+                ));
+            }
+
+            if let Ok(msg) = adapter
+                .send_message(
+                    &target,
+                    MessageContent {
+                        text: result_msg,
+                        markup: None,
+                    },
+                )
+                .await
+            {
+                message_ids.push(msg.0);
+            }
+
+            let adapter_clone = adapter.clone();
+            let target_clone = target.clone();
+            tokio::spawn(async move {
+                sleep(Duration::from_secs(60)).await;
+                for id_str in message_ids {
+                    let mid = MessageId(id_str);
+                    if let Err(e) = adapter_clone.delete_message(&target_clone, &mid).await {
+                        log::warn!("删除消息失败: {}", e);
+                    }
+                }
+            });
+        }
+        Err(e) => {
+            let err_msg = e.to_string();
+            if err_msg.contains("未找到 Reality 配置文件") {
+                let _ = adapter
+                    .send_message(
+                        &target,
+                        MessageContent {
+                            text: t!("xray.master_missing").to_string(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+                trigger_reality_auto_init(
+                    event.adapter.clone(),
+                    event.target.clone(),
+                    event.msg_id.clone(),
+                );
+            } else {
+                let _ = adapter
+                    .send_message(
+                        &target,
+                        MessageContent {
+                            text: t!("xray.gen_fail", "0" => err_msg).to_string(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+            }
+        }
+    }
+
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_hy2_batch_init(event: &CallbackEvent) -> HandlerResult {
+    if MaintenanceManager::is_reality_base_ready().await {
+        show_reality_batch_prompt(
+            &*event.adapter,
+            &event.target,
+            &event.msg_id,
+            Proto::Hysteria2,
+        )
+        .await?;
+    } else {
+        event
+            .adapter
+            .answer_callback(
+                &event.target,
+                &event.callback_id,
+                Some(t!("xray.preparing_reality").into_owned()),
+            )
+            .await?;
+        event
+            .adapter
+            .edit_message(
+                &event.target,
+                &event.msg_id,
+                MessageContent {
+                    text: t!("xray.init_reality").into_owned(),
+                    markup: None,
+                },
+            )
+            .await?;
+        trigger_reality_auto_init(
+            event.adapter.clone(),
+            event.target.clone(),
+            event.msg_id.clone(),
+        );
+    }
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_hy2_batch_ip_init(event: &CallbackEvent) -> HandlerResult {
+    let data = event.data.as_str();
+    let prefix = "u_hy2_batch_ip_init:";
+    let proto = Proto::Hysteria2;
+    let ip_ver_code = data.strip_prefix(prefix).unwrap_or("");
+    let ip_version = match ip_ver_code {
+        "6" => IpVersion::IPv6,
+        "s6" => IpVersion::SplitStackV6Primary,
+        "s4" => IpVersion::SplitStackV4Primary,
+        _ => IpVersion::IPv4,
+    };
+    show_reality_qty_prompt(
+        &*event.adapter,
+        &event.target,
+        &event.msg_id,
+        ip_version,
+        proto,
+    )
+    .await?;
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
+    let data = event.data.as_str();
+    let prefix = "u_hy2_batch_exec:";
+    let proto = Proto::Hysteria2;
+    let parts: Vec<&str> = data
+        .strip_prefix(prefix)
+        .unwrap_or(data)
+        .split(':')
+        .collect();
+    if parts.len() != 2 {
+        return Ok(HandlerAction::Done);
+    }
+    let ip_ver_code = parts[0];
+    let n: usize = parts[1].parse().unwrap_or(0);
+
+    let ip_version = match ip_ver_code {
+        "6" => IpVersion::IPv6,
+        "s6" => IpVersion::SplitStackV6Primary,
+        "s4" => IpVersion::SplitStackV4Primary,
+        _ => IpVersion::IPv4,
+    };
+
+    if !MaintenanceManager::is_reality_base_ready().await {
+        event
+            .adapter
+            .answer_callback(
+                &event.target,
+                &event.callback_id,
+                Some(t!("xray.base_missing").into_owned()),
+            )
+            .await?;
+        trigger_reality_auto_init(
+            event.adapter.clone(),
+            event.target.clone(),
+            event.msg_id.clone(),
+        );
+        return Ok(HandlerAction::Done);
+    }
+
+    let ip_str: String = match ip_version {
+        IpVersion::IPv4 => "IPv4".into(),
+        IpVersion::IPv6 => "IPv6".into(),
+        IpVersion::SplitStackV6Primary => t!("xray.split_v6_up").into(),
+        IpVersion::SplitStackV4Primary => t!("xray.split_v4_up").into(),
+    };
+
+    let proto_str = match proto {
+        Proto::Vision => "Reality",
+        Proto::XHTTP => "XHTTP",
+        Proto::Kcp => "KCP",
+        Proto::Hysteria2 => "Hysteria2",
+    };
+
+    event
+        .adapter
+        .answer_callback(
+            &event.target,
+            &event.callback_id,
+            Some(
+                t!("xray.gen_progress", "0" => n, "1" => proto_str, "2" => ip_str.as_str())
+                    .into_owned(),
+            ),
+        )
+        .await?;
+
+    let res = match proto {
+        Proto::Vision => ConfigManager::batch_create_reality_vision_enhanced(n, ip_version).await,
+        Proto::XHTTP => {
+            ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
+        }
+        Proto::Kcp => unreachable!("KCP uses separate batch handler"),
+        Proto::Hysteria2 => ConfigManager::batch_create_hysteria2_xray(n, ip_version).await,
     };
 
     let adapter = event.adapter.clone();
@@ -2511,6 +2778,9 @@ pub async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerResult {
         "u_xhttp_batch_init" => handle_xhttp_batch_init(event).await,
         d if d.starts_with("u_xhttp_batch_ip_init:") => handle_xhttp_batch_ip_init(event).await,
         d if d.starts_with("u_xhttp_batch_exec:") => handle_xhttp_batch_exec(event).await,
+        "u_hy2_batch_init" => handle_hy2_batch_init(event).await,
+        d if d.starts_with("u_hy2_batch_ip_init:") => handle_hy2_batch_ip_init(event).await,
+        d if d.starts_with("u_hy2_batch_exec:") => handle_hy2_batch_exec(event).await,
         "u_kcp_init" => handle_kcp_init(event).await,
         d if d.starts_with("u_kcp_cat:") => handle_kcp_cat(event).await,
         d if d.starts_with("u_kcp_add:") => handle_kcp_add(event).await,
