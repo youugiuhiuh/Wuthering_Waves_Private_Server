@@ -895,16 +895,14 @@ After the port is chosen, add the firewall + range allowances (only when hopping
             }
 ```
 
-Add the firewall helper. It is the same REDIRECT shape sing-box uses, with Xray log wording:
+Add the firewall helpers. The install half goes here; the removal half goes here too so install and removal stay adjacent and cannot drift apart.
 
 ```rust
-    /// Install the UDP REDIRECT rules that map a hop range back to the main port.
+    /// Install the UDP REDIRECT rule that maps a hop range back to the main port.
     ///
-    /// Best-effort: a failure here is logged, not fatal, matching the sing-box
+    /// Best-effort: a failure is logged, not fatal, matching the sing-box
     /// counterpart. `-C` checks first so a retry cannot stack duplicate rules.
     async fn add_xray_hop_firewall_rules(main_port: u16, hop_range: (u16, u16), has_ipv6: bool) {
-        use tokio::process::Command;
-
         let range_str = format!("{}:{}", hop_range.0, hop_range.1);
         Self::ensure_hop_redirect("iptables", main_port, &range_str).await;
         if has_ipv6 {
@@ -915,9 +913,10 @@ Add the firewall helper. It is the same REDIRECT shape sing-box uses, with Xray 
     async fn ensure_hop_redirect(bin: &str, main_port: u16, range_str: &str) {
         use tokio::process::Command;
 
+        let to_ports = main_port.to_string();
         let rule = [
             "-t", "nat", "-p", "udp", "--dport", range_str, "-j", "REDIRECT", "--to-ports",
-            &main_port.to_string(),
+            to_ports.as_str(),
         ];
         // Idempotency: skip if an identical rule is already installed.
         let exists = Command::new(bin)
@@ -950,7 +949,52 @@ Add the firewall helper. It is the same REDIRECT shape sing-box uses, with Xray 
             Err(e) => log::warn!("{} 执行失败 (可能需要 root 权限): {}", bin, e),
         }
     }
+
+    /// Remove everything the hopping path installed.
+    ///
+    /// Counterpart to `add_xray_hop_firewall_rules`; kept beside it so the two
+    /// cannot drift. Stale REDIRECT rules are not merely cruft: a later config
+    /// allocated into the same port range would have its traffic redirected to
+    /// a dead main port.
+    ///
+    /// Mirrors sing-box's `cleanup_specific_hysteria2_rules` (`core/singbox/config.rs:111`):
+    /// delete the REDIRECT rules, then drop the firewall allowances for the
+    /// main port and the hop range.
+    pub(crate) async fn remove_xray_hop_firewall_rules(
+        main_port: u16,
+        hop_range: (u16, u16),
+        has_ipv6: bool,
+    ) {
+        use crate::core::system::maintenance::MaintenanceManager;
+        use tokio::process::Command;
+
+        let range_str = format!("{}:{}", hop_range.0, hop_range.1);
+        let to_ports = main_port.to_string();
+        let rule = [
+            "-t", "nat", "-D", "PREROUTING", "-p", "udp", "--dport", range_str.as_str(),
+            "-j", "REDIRECT", "--to-ports", to_ports.as_str(),
+        ];
+
+        let _ = Command::new("iptables").args(rule).output().await;
+        if has_ipv6 {
+            let _ = Command::new("ip6tables").args(rule).output().await;
+            let _ = MaintenanceManager::remove_port_range_v6(hop_range.0, hop_range.1).await;
+        }
+
+        // The main port was allowed with allow_port; the hop range with
+        // allow_port_range. Both must be undone.
+        let _ = MaintenanceManager::remove_port_range(main_port, main_port).await;
+        let _ = MaintenanceManager::remove_port_range(hop_range.0, hop_range.1).await;
+
+        log::info!(
+            "已清理 Xray Hysteria2 端口跳跃规则: 主端口 {}, 范围 {}",
+            main_port,
+            range_str
+        );
+    }
 ```
+
+The non-hopping path keeps its existing `allow_port(port)` allowance. Do not remove it — the hopping branch is what adds the extra range allowances.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -973,13 +1017,13 @@ git commit -m "feat(xray): support obfs and port hopping in the hysteria2 batch 
 - Test: `rust/aegis/tests/xray_hy2_hop_cleanup.rs` (new integration test)
 
 **Interfaces:**
-- Consumes: `PortAllocator::release_xray_hysteria2_range_at` (Task 4).
+- Consumes: `PortAllocator::release_xray_hysteria2_range_at` (Task 4), `ConfigManager::remove_xray_hop_firewall_rules` (Task 5).
 - Produces:
   - `extract_xray_hy2_hop_ports(path: &str) -> Result<Vec<u16>>` (new, `pub(crate)`)
   - `pub async fn delete_specific_configuration_at(path: &str, alloc_file: Option<&Path>) -> Result<()>`
   - `delete_specific_configuration(path)` becomes a thin wrapper over `_at(path, None)`
 
-**This is the highest-risk task in the plan.** `delete_specific_configuration` is shared by Vision/XHTTP/KCP. The cleanup must fire ONLY for a file that actually contains a Hysteria2 hop config.
+**The cleanup must undo BOTH halves of what hopping installed.** Task 5 installs iptables REDIRECT rules and firewall allowances; releasing only the `.port_alloc` range is insufficient. Stale REDIRECT rules are not merely cruft: a later config allocated into the same range would get its traffic redirected to a dead main port. This task therefore removes the rules AND releases the range — exactly as sing-box's `cleanup_hysteria2_ports` does (`core/singbox/config.rs:172-182`).
 
 **Follow the existing sing-box pattern exactly.** `SingBoxConfigManager::delete_specific_configuration_at` (`core/singbox/config.rs:193-209`) is the proven shape — read it before writing this task. It does three things in a deliberate order, and the order is load-bearing:
 
@@ -1176,13 +1220,20 @@ In `rust/aegis/src/core/xray/config.rs`, add to `impl ConfigManager`:
 
         fs::remove_file(path).await.context("❌ 删除配置文件失败")?;
 
-        // Only now that the file is gone do we release. Best-effort: a cleanup
+        // Only now that the file is gone do we clean up. Best-effort: a cleanup
         // failure must not surface as a failed delete to the user.
         if !hop_ports.is_empty() {
             let alloc = alloc_file
                 .map(Path::to_path_buf)
                 .unwrap_or_else(|| PathBuf::from("/etc/wwps/.port_alloc"));
+            let has_ipv6 = crate::core::system::SystemMonitor::get_public_ipv6()
+                .await
+                .is_ok();
             for main_port in hop_ports {
+                // Firewall rules first, then the range: a rule left referring
+                // to a released port could redirect a future config's traffic.
+                Self::remove_xray_hop_firewall_rules(main_port, (main_port + 1, main_port + 99), has_ipv6)
+                    .await;
                 let _ = crate::core::xray::port_allocator::PortAllocator::release_xray_hysteria2_range_at(
                     &alloc,
                     main_port,
@@ -1426,7 +1477,7 @@ git commit -m "chore(xray): verify hysteria2 obfs and hopping against the Xray r
 | Reuse `Hy2LinkStyle` (decision A) | Task 3 |
 | Reuse `Hysteria2ObfsType`; gecko = salamander + packetSize (decision A) | Task 1 |
 | Separate Xray allocator with `"xray-hysteria2"` tag (decision A) | Task 4 |
-| Hop range released on delete (delete-after-extract order, `_at` variant) | Task 6 |
+| Hop ranges AND their firewall rules released on delete (delete-after-extract order, `_at` variant) | Task 5 (removal helper) + Task 6 (invocation) |
 | UI mirrors sing-box's obfs/hop flow | Task 7 |
 | Obligation to implement obfs + hop at all | Tasks 1-3, 5, 7 |
 
@@ -1441,6 +1492,7 @@ No TBD/TODO. Every code step carries the actual code. Task 7 Step 5 is the one s
 - `build_hysteria2_inbound(..., obfs: Option<(&Hysteria2ObfsType, &str)>, hop_range: Option<(u16,u16)>)` — Task 1 adds arg 7, Task 2 adds arg 8; Task 5 passes both.
 - `generate_hysteria2_client_link(..., obfs, hop_range, link_style)` — Task 3; Task 5 passes all.
 - `allocate_xray_hysteria2() -> Result<(u16,(u16,u16))>` / `release_xray_hysteria2_range_at(&Path, u16)` — Task 4; consumed by Task 5 and Task 6.
+- `remove_xray_hop_firewall_rules(main_port: u16, hop_range: (u16,u16), has_ipv6: bool)` — Task 5 defines, Task 6 calls.
 - `delete_specific_configuration_at(path: &str, alloc_file: Option<&Path>) -> Result<()>` — Task 6; `delete_specific_configuration(path)` is a wrapper passing `None`. Mirrors the sing-box `_at` convention (`core/singbox/config.rs:193`).
 - `extract_xray_hy2_hop_ports(path: &str) -> Result<Vec<u16>>` — Task 6, `pub(crate)`.
 - `parse_hy2_exec_params(&str) -> Option<(IpVersion, usize, Option<Hysteria2ObfsType>, bool, Hy2LinkStyle)>` — Task 7.
@@ -1448,6 +1500,7 @@ No TBD/TODO. Every code step carries the actual code. Task 7 Step 5 is the one s
 
 **4. Risk register (carried into dispatches)**
 
-- **Task 6 is the highest risk:** it edits a delete function shared by all four protocols. The guard is content-based detection (`protocol == "hysteria"` + `udpHop` present), and the test `cleanup_is_a_noop_for_a_config_without_hop` pins that a non-hopping config causes no side effect.
+- **Task 6 is the highest risk:** it edits a delete function shared by all four protocols. The guard is content-based detection (`protocol == "hysteria"` + `udpHop` present), and `delete_of_a_non_hopping_config_leaves_ranges_untouched` / `delete_of_a_non_hysteria_config_does_not_touch_xray_ranges` pin that unrelated configs cause no side effect.
+- **Cleanup is two halves, not one.** Releasing the `.port_alloc` range without deleting the iptables REDIRECT rule leaves a rule that can hijack a future config's traffic. Task 5 places install and removal side by side; Task 6 calls removal before release. A reviewer should check both happen.
 - **Task 4 must not reuse the sing-box tag.** `test_xray_release_does_not_touch_singbox_range` seeds a sing-box range at the same port number and asserts it survives — this is the isolation contract.
 - **Task 2 must build one `finalmask` object.** Assigning `finalmask` per feature would drop the earlier one; `test_hysteria2_hop_and_obfs_coexist_in_one_finalmask` pins it.
