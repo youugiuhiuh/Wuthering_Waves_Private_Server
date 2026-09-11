@@ -127,3 +127,87 @@ async fn delete_of_a_non_hysteria_config_does_not_touch_xray_ranges() {
 
     assert_eq!(xray_main_ports(&alloc), vec![keep]);
 }
+
+#[tokio::test]
+async fn hop_port_too_close_to_u16_max_is_ignored_not_panicked() {
+    // The cleanup computes `main_port + 99` in u16 arithmetic. A config whose
+    // port sits within 99 of u16::MAX would overflow: panic in debug, silent
+    // wrap in release. Creation never writes such a port, but the value is read
+    // from a file on disk, so the guard must bound it.
+    let dir = tempfile::tempdir().unwrap();
+    let alloc = dir.path().join(".port_alloc");
+    let cfg_path = dir
+        .path()
+        .join("batch_xray_hysteria2_overflow_inbounds.json");
+    std::fs::write(
+        &cfg_path,
+        json!({
+            "inbounds":[{
+                "protocol":"hysteria",
+                "port": 65535,
+                "streamSettings":{
+                    "finalmask":{"quicParams":{"udpHop":{"ports":"65536-65634"}}}
+                }
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    // Must not panic. The out-of-range port is skipped, so no cleanup occurs.
+    ConfigManager::delete_specific_configuration_at(cfg_path.to_str().unwrap(), Some(&alloc))
+        .await
+        .unwrap();
+
+    assert!(!cfg_path.exists(), "the file should still be deleted");
+    assert_eq!(xray_main_ports(&alloc), Vec::<u16>::new());
+}
+
+#[tokio::test]
+async fn hop_port_at_the_upper_bound_is_still_processed() {
+    // Boundary counterpart: the highest port that CAN carry a 99-port hop range
+    // must still be accepted, so the guard is not off by one.
+    let dir = tempfile::tempdir().unwrap();
+    let alloc = dir.path().join(".port_alloc");
+    let main: u16 = u16::MAX - 99; // 65436; +99 == 65535, the last valid hop end
+    let (allocated, _) =
+        aegis::core::xray::port_allocator::PortAllocator::allocate_xray_hysteria2_at(&alloc)
+            .await
+            .unwrap();
+    // Seed the exact range we are about to delete.
+    let data = serde_json::json!({
+        "locked_ranges": [{
+            "start": main, "end": u16::MAX, "protocol": "xray-hysteria2", "created_at": 0
+        }],
+        "initialized": true
+    });
+    std::fs::write(&alloc, data.to_string()).unwrap();
+    assert_ne!(allocated, main, "sanity: allocator returned some port");
+
+    let cfg_path = dir.path().join("batch_xray_hysteria2_upper_inbounds.json");
+    std::fs::write(
+        &cfg_path,
+        json!({
+            "inbounds":[{
+                "protocol":"hysteria",
+                "port": main,
+                "streamSettings":{
+                    "finalmask":{"quicParams":{"udpHop":{"ports":"65437-65535"}}}
+                }
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    ConfigManager::delete_specific_configuration_at(cfg_path.to_str().unwrap(), Some(&alloc))
+        .await
+        .unwrap();
+
+    // The boundary port is in range, so its range must be released.
+    assert_eq!(
+        xray_main_ports(&alloc),
+        Vec::<u16>::new(),
+        "port {main} (u16::MAX - 99) is a valid hop main port and must be cleaned up"
+    );
+}

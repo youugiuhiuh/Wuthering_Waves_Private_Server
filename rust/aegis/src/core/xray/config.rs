@@ -750,7 +750,13 @@ impl ConfigManager {
                 if is_hysteria
                     && has_hop
                     && let Some(port) = inbound.get("port").and_then(|v| v.as_u64())
-                    && port <= u16::MAX as u64
+                    // The cleanup computes `main_port + 99` in u16 arithmetic, so
+                    // a port above `u16::MAX - 99` would overflow: a panic in
+                    // debug (which is what the test suite runs) and a silent wrap
+                    // to a bogus range in release. Creation never emits such a
+                    // port, but this value comes from a file on disk, so bound it
+                    // here rather than trusting the writer.
+                    && port <= (u16::MAX - 99) as u64
                 {
                     ports.push(port as u16);
                 }
