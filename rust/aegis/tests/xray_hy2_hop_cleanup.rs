@@ -212,24 +212,92 @@ async fn hop_port_at_the_upper_bound_is_still_processed() {
     );
 }
 
-/// The helper the BULK delete paths call must release the range.
+/// A bulk delete must release the range of a config it actually removed.
 ///
-/// `delete_all_configurations` and `delete_configurations_by_count` call
-/// `fs::remove_file` directly, so they rely on `release_hop_resources_for`
-/// rather than on `delete_specific_configuration_at`. Both bulk paths read a
-/// hardcoded `/etc` conf dir and cannot be driven from a test, so this pins the
-/// helper they actually share — the same function, same contract.
+/// `delete_all_configurations` / `delete_configurations_by_count` read the
+/// hardcoded `xray::CONF_DIR`, so their loops cannot be driven from a test.
+/// What CAN be pinned is the shared decision function they now call, through
+/// the observable per-config path: a config that is deleted has its range
+/// released, and a config that is NOT deleted keeps it.
+///
+/// The ordering half of this contract — release only AFTER a successful
+/// remove — is pinned by the companion test below.
 #[tokio::test]
-async fn shared_release_helper_frees_the_range_bulk_delete_relies_on() {
+async fn deleting_a_config_releases_its_range_and_keeps_others() {
+    let dir = tempfile::tempdir().unwrap();
+    let alloc = dir.path().join(".port_alloc");
+
+    // Two hopping configs, each with its own locked range.
+    let (first, _) =
+        aegis::core::xray::port_allocator::PortAllocator::allocate_xray_hysteria2_at(&alloc)
+            .await
+            .unwrap();
+    let (second, _) =
+        aegis::core::xray::port_allocator::PortAllocator::allocate_xray_hysteria2_at(&alloc)
+            .await
+            .unwrap();
+
+    let mk = |name: &str, port: u16| {
+        let p = dir.path().join(name);
+        std::fs::write(
+            &p,
+            serde_json::json!({
+                "inbounds":[{
+                    "protocol":"hysteria",
+                    "port": port,
+                    "streamSettings":{
+                        "finalmask":{"quicParams":{"udpHop":{"ports":format!("{}-{}", port+1, port+99)}}}
+                    }
+                }]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        p
+    };
+    let first_cfg = mk("batch_xray_hysteria2_first_inbounds.json", first);
+
+    ConfigManager::delete_specific_configuration_at(first_cfg.to_str().unwrap(), Some(&alloc))
+        .await
+        .unwrap();
+
+    // The deleted config's range is gone; the surviving config keeps its own.
+    assert_eq!(
+        xray_main_ports(&alloc),
+        vec![second],
+        "deleting one config must release exactly its own range"
+    );
+    assert!(!first_cfg.exists());
+}
+
+/// A delete whose `remove_file` FAILS must not release the range.
+///
+/// This is the ordering half of the delete contract, and the bug the final
+/// review caught: `delete_specific_configuration_at` must extract → remove →
+/// cleanup, and bail before cleanup when the removal fails. Releasing first
+/// would free the ports of a config that is still live, so the next allocation
+/// could overlap a running listener.
+///
+/// The failure is forced by making the containing directory read-only, so the
+/// config file itself stays READABLE (its ports extract normally) while the
+/// unlink fails — a directory-as-file mock would make extraction return an
+/// empty list and the test would pass under either ordering.
+#[tokio::test]
+async fn failed_delete_must_not_release_the_range() {
+    use std::os::unix::fs::PermissionsExt;
+
     let dir = tempfile::tempdir().unwrap();
     let alloc = dir.path().join(".port_alloc");
     let (main, _) =
         aegis::core::xray::port_allocator::PortAllocator::allocate_xray_hysteria2_at(&alloc)
             .await
             .unwrap();
-    let cfg_path = dir.path().join("batch_xray_hysteria2_bulk_inbounds.json");
+
+    let sub = dir.path().join("conf");
+    std::fs::create_dir(&sub).unwrap();
+    let cfg = sub.join("batch_xray_hysteria2_ro_inbounds.json");
     std::fs::write(
-        &cfg_path,
+        &cfg,
         serde_json::json!({
             "inbounds":[{
                 "protocol":"hysteria",
@@ -243,14 +311,35 @@ async fn shared_release_helper_frees_the_range_bulk_delete_relies_on() {
     )
     .unwrap();
 
-    aegis::core::xray::config::ConfigManager::release_hop_resources_for(
-        cfg_path.to_str().unwrap(),
-        Some(&alloc),
-    )
-    .await;
+    // Make the directory read-only so unlink fails but the file stays readable.
+    let mut perms = std::fs::metadata(&sub).unwrap().permissions();
+    perms.set_mode(0o555);
+    std::fs::set_permissions(&sub, perms).unwrap();
 
-    assert!(
-        xray_main_ports(&alloc).is_empty(),
-        "hop range {main} leaked; the bulk delete paths share this helper"
+    let result =
+        ConfigManager::delete_specific_configuration_at(cfg.to_str().unwrap(), Some(&alloc)).await;
+
+    // Restore permissions so the tempdir can be cleaned up.
+    let mut perms = std::fs::metadata(&sub).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&sub, perms).unwrap();
+
+    // Skip rather than fail when running as root: root ignores the mode bits
+    // and the unlink would succeed, so the scenario cannot be constructed.
+    if result.is_ok() {
+        assert!(
+            !cfg.exists(),
+            "if the delete succeeded the file must be gone"
+        );
+        eprintln!("skipped ordering assertion: running as root, unlink not blocked");
+        return;
+    }
+
+    assert!(cfg.exists(), "the config file must still be present");
+    assert_eq!(
+        xray_main_ports(&alloc),
+        vec![main],
+        "a FAILED delete must NOT release range {main}; releasing first would \
+         free the ports of a live config"
     );
 }

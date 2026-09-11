@@ -631,17 +631,16 @@ impl ConfigManager {
         Ok(backup_path)
     }
 
-    /// Release the hop resources a config file owns, before it is removed.
+    /// Release already-extracted hop main ports.
     ///
-    /// Shared by every delete path. Without it, a bulk delete leaks the locked
-    /// range permanently (the allocator treats a stale range as occupied, so
-    /// the ports never come back) and leaves a REDIRECT rule pointing at a dead
-    /// main port. The allocator's own history records 11 such stale ranges from
-    /// an earlier leak of this class.
-    pub async fn release_hop_resources_for(path: &str, alloc_file: Option<&Path>) {
-        let hop_ports = Self::extract_xray_hy2_hop_ports(path)
-            .await
-            .unwrap_or_default();
+    /// Callers MUST invoke this only AFTER the file has been removed
+    /// successfully. Releasing first would free the ports of a config that is
+    /// still live (a failed `remove_file` leaves the file in place), letting
+    /// the next allocation overlap a running listener.
+    ///
+    /// Split from the extraction so a caller can read the ports while the file
+    /// still exists, delete it, then release — without re-reading a gone file.
+    async fn release_hop_ports(hop_ports: Vec<u16>, alloc_file: Option<&Path>) {
         if hop_ports.is_empty() {
             return;
         }
@@ -668,14 +667,40 @@ impl ConfigManager {
         }
     }
 
+    /// Delete one config and release its hop resources only on success.
+    ///
+    /// Extract → remove → cleanup, matching the sing-box contract. Releasing
+    /// before a failed delete would free ports belonging to a config that is
+    /// still live. Returns whether the file was actually removed.
+    async fn delete_file_then_release_hop(path: &str, alloc_file: Option<&Path>) -> bool {
+        let hop_ports = Self::extract_xray_hy2_hop_ports(path)
+            .await
+            .unwrap_or_default();
+        match fs::remove_file(path).await {
+            Ok(()) => {
+                Self::release_hop_ports(hop_ports, alloc_file).await;
+                true
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // Already absent: releasing avoids a permanent leak, and there
+                // is no live config for the ports to collide with.
+                Self::release_hop_ports(hop_ports, alloc_file).await;
+                false
+            }
+            Err(e) => {
+                // The file is still there and may still be live: do NOT free
+                // its ports or drop its REDIRECT rules.
+                log::warn!("删除配置文件失败，保留其端口跳跃资源: {} ({})", path, e);
+                false
+            }
+        }
+    }
+
     pub async fn delete_all_configurations() -> Result<usize> {
         let files = Self::list_all_inbound_files().await?;
         let count = files.len();
         for file in &files {
-            // Clean up hop resources while the file is still readable, then
-            // delete. Bulk delete must not bypass the per-config cleanup.
-            Self::release_hop_resources_for(file, None).await;
-            let _ = fs::remove_file(file).await;
+            Self::delete_file_then_release_hop(file, None).await;
         }
         if count > 0 {
             crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
@@ -703,9 +728,7 @@ impl ConfigManager {
         let to_delete = file_with_time.iter().take(count);
         let mut deleted_count = 0;
         for (f, _) in to_delete {
-            // Same order as every other path: release hop resources first.
-            Self::release_hop_resources_for(f, None).await;
-            if fs::remove_file(f).await.is_ok() {
+            if Self::delete_file_then_release_hop(f, None).await {
                 deleted_count += 1;
             }
         }
@@ -740,31 +763,10 @@ impl ConfigManager {
 
         fs::remove_file(path).await.context("❌ 删除配置文件失败")?;
 
-        // Only now that the file is gone do we clean up. Best-effort: a cleanup
+        // Only now that the file is gone do we clean up, via the same helper
+        // the bulk paths use so the three cannot drift. Best-effort: a cleanup
         // failure must not surface as a failed delete to the user.
-        if !hop_ports.is_empty() {
-            let alloc = alloc_file
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| PathBuf::from("/etc/wwps/.port_alloc"));
-            let has_ipv6 = crate::core::system::SystemMonitor::get_public_ipv6()
-                .await
-                .is_ok();
-            for main_port in hop_ports {
-                // Firewall rules first, then the range: a rule left referring
-                // to a released port could redirect a future config's traffic.
-                Self::remove_xray_hop_firewall_rules(
-                    main_port,
-                    (main_port + 1, main_port + 99),
-                    has_ipv6,
-                )
-                .await;
-                let _ = crate::core::xray::port_allocator::PortAllocator::release_xray_hysteria2_range_at(
-                    &alloc,
-                    main_port,
-                )
-                .await;
-            }
-        }
+        Self::release_hop_ports(hop_ports, alloc_file).await;
 
         crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
         Ok(())
