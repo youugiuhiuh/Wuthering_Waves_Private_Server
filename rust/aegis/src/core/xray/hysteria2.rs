@@ -1,9 +1,12 @@
+use anyhow::Result;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use serde_json::{Value, json};
 
 use super::config::ConfigManager;
 use crate::core::paths::singbox;
-use crate::core::types::IpVersion;
+use crate::core::types::{BatchCreationResult, IpVersion};
 
 impl ConfigManager {
     /// Build a single Xray `hysteria` inbound (Hysteria2).
@@ -90,6 +93,78 @@ impl ConfigManager {
             "hysteria2://{}@{}:{}?sni={}&alpn=h3&pinSHA256={}#{}",
             encoded_auth, fmt_host, port, encoded_sni, encoded_pin, encoded_email
         )
+    }
+
+    /// Batch-create `count` Xray Hysteria2 inbounds with matching share links.
+    ///
+    /// Scope is deliberately core-only: no `finalmask.udp` obfuscation and no
+    /// `quicParams.udpHop` port hopping. Both are additive follow-ups.
+    pub async fn batch_create_hysteria2_xray(
+        count: usize,
+        ip_version: IpVersion,
+    ) -> Result<BatchCreationResult> {
+        use crate::core::singbox::config::SingBoxConfigManager;
+
+        if !crate::core::xray::port_allocator::PortAllocator::check_hysteria2_limit().await? {
+            return Err(anyhow::anyhow!("已达到最大 Hysteria2 配置数量限制（50个）"));
+        }
+
+        // Shared certificate, same one sing-box Hy2 and Xray KCP use.
+        SingBoxConfigManager::ensure_tls_certificates().await?;
+        let pin = SingBoxConfigManager::compute_cert_sha256_pin(singbox::TLS_CERT).await?;
+
+        let (ip, ipv6) = tokio::join!(
+            crate::core::system::SystemMonitor::get_public_ip(),
+            crate::core::system::SystemMonitor::get_public_ipv6(),
+        );
+        let (host, _) = Self::resolve_public_hosts(ip_version, ip, ipv6)?;
+
+        let geoip = crate::core::network::geoip::GeoIPService::new();
+        let country_code = geoip.get_country_code().await;
+        let mut selector =
+            crate::core::sni::selector::SNISelector::get_for_country(&country_code).await;
+
+        let mut rng = StdRng::from_entropy();
+        let mut links = Vec::with_capacity(count);
+        let mut configs = Vec::with_capacity(count);
+
+        for i in 0..count {
+            let port = loop {
+                let p = rng.gen_range(10000..60000);
+                if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
+                    .await
+                {
+                    continue;
+                }
+                if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await
+                {
+                    break p as i32;
+                }
+            };
+
+            // Reuse the existing 32-char alphanumeric generator rather than
+            // duplicating it. Xray Hysteria2 authenticates with a password.
+            let auth = crate::core::singbox::hysteria2::Hysteria2Config::generate_password();
+            let uuid = Self::generate_wwps_uuid().await?;
+            let uuid_short = Self::uuid_short_prefix(&uuid);
+            let sni = selector.get_next();
+
+            let email = format!("{}-hysteria2", uuid_short);
+            let tag = format!("HY2-{}-{}", i + 1, uuid_short);
+
+            configs.push(Self::build_hysteria2_inbound(
+                &tag, port, &auth, &email, &sni, ip_version,
+            ));
+
+            links.push(Self::generate_hysteria2_client_link(
+                &auth, &host, port, &sni, &email, ip_version, &pin,
+            ));
+
+            let _ =
+                crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
+        }
+
+        Self::create_standalone_config(configs, links, super::config::Proto::Hysteria2).await
     }
 }
 
@@ -285,5 +360,21 @@ mod tests {
         );
         assert_eq!(inbound["settings"]["users"][0]["auth"], auth);
         assert!(link.contains(&format!("hysteria2://{auth}@")));
+    }
+
+    #[test]
+    fn test_hysteria2_batch_signature_is_constructible() {
+        // Compile-time check: the batch entry point has the shape the handler
+        // will call. `let _ = ...` avoids invoking the async body.
+        let _f: fn(usize, IpVersion) -> _ =
+            |count, ip_version| ConfigManager::batch_create_hysteria2_xray(count, ip_version);
+    }
+
+    #[test]
+    fn test_reused_password_generator_is_32_alphanumeric() {
+        use crate::core::singbox::hysteria2::Hysteria2Config;
+        let pw = Hysteria2Config::generate_password();
+        assert_eq!(pw.len(), 32);
+        assert!(pw.chars().all(|c| c.is_ascii_alphanumeric()));
     }
 }
