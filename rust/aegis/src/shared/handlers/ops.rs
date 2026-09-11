@@ -1,7 +1,6 @@
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent};
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::singbox::SingBoxInstaller;
-use crate::core::singbox::config::SingBoxConfigManager;
 use crate::core::singbox::hysteria2::Hy2LinkStyle;
 
 use crate::core::system::SystemMonitor;
@@ -770,7 +769,7 @@ pub async fn run_one_click(
             10,
             format!("{} ({})", t!("ops.deploy_step_h2"), ip_version.label()),
         );
-        match SingBoxConfigManager::batch_create_hysteria2(
+        match ConfigManager::batch_create_hysteria2_xray(
             3,
             ip_version,
             None,
