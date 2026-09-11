@@ -800,6 +800,8 @@ Expected: FAIL to compile — signature mismatch
 
 Change the signature and add the hopping branch. The hop path mirrors sing-box's `batch_create_hysteria2`, but calls the **Xray** allocator and tags the firewall rules as Xray's:
 
+**First, fix the now-stale doc comment** on this function (around line 166). It currently claims the scope excludes obfs and hopping — Task 1 made the builder obfs-capable and this task adds both features, so the comment would be actively misleading. Replace the "Scope is deliberately core-only…" paragraph with an accurate description of the two optional capabilities.
+
 ```rust
     pub async fn batch_create_hysteria2_xray(
         count: usize,
