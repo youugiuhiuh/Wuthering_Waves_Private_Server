@@ -25,7 +25,7 @@
 - **Reuse the shared TLS certificate** at `singbox::TLS_CERT` / `singbox::TLS_KEY` (i.e. `/etc/wwps/wwps-box/certs/tls.cer` / `.key`), exactly as `kcp.rs` does. Do not generate a second cert.
 - **Do not modify sing-box code.** `core/singbox/hysteria2.rs` and `core/singbox/hy2_batch.rs` stay byte-identical.
 - **Scope is core-only:** no `finalmask.udp` (obfs/salamander/gecko), no `quicParams.udpHop` (port hopping). Those are explicit follow-ups.
-- **`Proto::Hysteria2` must NOT reuse the `batch_hysteria2` file prefix** — that prefix is already taken by sing-box (`SingBoxConfigManager::save_standalone_config(configs, "hysteria2")`). Xray must use `batch_xray_hysteria2` to keep the two filter sets disjoint.
+- **`Proto::Hysteria2` must NOT reuse a sing-box file prefix.** sing-box writes `batch_hy2_{ts}_{rand}.json` for hysteria2 (verified at `core/singbox/config.rs:511`). Xray must use `batch_xray_hysteria2` so the two cores' config lists stay disjoint under `starts_with` filtering. (An earlier draft of this plan said sing-box used `batch_hysteria2`; that was wrong — corrected during Task 1 review.)
 - Quality gates (rust-lint-format skill): `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo nextest run`.
 
 ---
@@ -1091,6 +1091,10 @@ async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
 
 **Important:** `handle_xhttp_batch_exec` builds its message (including any backup/restore notice) differently from `handle_batch_exec`. Before writing `handle_hy2_batch_exec`, read `handle_xhttp_batch_exec` in full and mirror its actual result-message and redirect behaviour, substituting only the function name and proto label. The code above shows the minimum; if `handle_xhttp_batch_exec` sends a header/summary or auto-deletes, replicate that so Hysteria2 behaves consistently with its sibling proto. Do not copy `handle_batch_exec`'s Vision-specific Reality-base gating verbatim without checking that XHTTP does the same.
 
+**Edit hazard (found by the Task 1 implementer — read before editing):** `handle_batch_exec` and `handle_xhttp_batch_exec` contain **textually identical** `proto_str` and `res` match blocks. A naive `edit` with `oldText` copied from one of those blocks will match in BOTH functions, or fail as non-unique. To edit each safely, anchor `oldText` on something unique to that function — either the function signature line (`async fn handle_batch_exec(` / `async fn handle_xhttp_batch_exec(`) or the preceding `let prefix = "u_batch_exec:"` / `let prefix = "u_xhttp_batch_exec:"` line — and include enough following context to disambiguate. Verify after each edit that the other function was not touched: `rg -n "Proto::Hysteria2" rust/aegis/src/shared/handlers/xray.rs` should show the arms in the intended places only.
+
+Similarly, the two proto-label helpers at ~1260 and ~1438 and the two dispatch blocks at ~1278 and ~1456 are near-identical. Treat all four as a single coordinated edit rather than four independent ones.
+
 **2d.** Register the three routes in the dispatcher, next to the XHTTP routes (~2511):
 
 ```rust
@@ -1200,7 +1204,7 @@ git commit -m "chore(xray): verify hysteria2 against Xray reference config"
 
 | Design requirement | Task |
 |---|---|
-| `Proto::Hysteria2` + 5 match sites | Task 1 |
+| `Proto::Hysteria2` + 5 match sites (6 match expressions) | Task 1 |
 | 6 handler placeholder arms replaced with real wiring | Task 6 (verified by the `rg` check in Task 6 Step 1) |
 | Xray `"protocol": "hysteria"` (not `hysteria2`) | Task 2 |
 | `settings.users[].auth` (not `password`) | Task 2 |
@@ -1232,6 +1236,8 @@ All keys referenced by Task 6 already exist in zh/en/ja: `xray.gen_progress`, `x
 
 **3. Type consistency**
 
+- `ConfigManager::batch_file_prefix(Proto) -> &'static str` — added in Task 1 fix round 1; used by
+  `list_inbound_files_by_proto` and `generate_secure_batch_filename`. Tested directly.
 - `build_hysteria2_inbound(tag: &str, port: i32, auth: &str, email: &str, sni: &str, ip_version: IpVersion) -> Value` — used identically in Task 2 tests, Task 4 batch.
 - `generate_hysteria2_client_link(auth: &str, host: &str, port: i32, sni: &str, email: &str, ip_version: IpVersion, pin: &str) -> String` — used identically in Task 3 tests, Task 4 batch.
 - `batch_create_hysteria2_xray(count: usize, ip_version: IpVersion) -> Result<BatchCreationResult>` — Task 4 defines, Task 6 calls with `(n, ip_version)`.
