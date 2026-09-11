@@ -1160,7 +1160,8 @@ mod tests {
         let hy2 = ConfigManager::batch_file_prefix(Proto::Hysteria2);
         assert_eq!(hy2, "batch_xray_hysteria2");
         assert!(!hy2.starts_with("batch_hy2"));
-        assert!(!hy2.contains("hysteria2_") || hy2.starts_with("batch_xray_"));
+        // The assert_eq! above is the collision guard: it pins the exact
+        // prefix, so any reused or misspelled prefix fails here.
         // Distinct from every sibling, and none is a prefix of another
         // (list_inbound_files_by_proto filters with starts_with).
         let all = [
