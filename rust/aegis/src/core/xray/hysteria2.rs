@@ -445,15 +445,14 @@ mod tests {
     #[test]
     fn test_first_batch_of_50_inbounds_allowed_then_50th_file_rejected() {
         // Clean server + a 50-inbound batch = 1 file: allowed.
-        assert!(
-            ConfigManager::check_xray_hysteria2_capacity(0, ConfigManager::batch_file_delta(50))
-                .is_ok()
-        );
+        // Asserted in FILE units via an explicit literal, not through
+        // `batch_file_delta`, so this test still fails if the helper is ever
+        // reverted to return `count` (a `(0, 50)` case would still be allowed
+        // and would hide the regression).
+        assert_eq!(ConfigManager::batch_file_delta(50), 1);
+        assert!(ConfigManager::check_xray_hysteria2_capacity(0, 1).is_ok());
         // Once 50 files exist, the next single-file batch is rejected.
-        assert!(
-            ConfigManager::check_xray_hysteria2_capacity(50, ConfigManager::batch_file_delta(1))
-                .is_err()
-        );
+        assert!(ConfigManager::check_xray_hysteria2_capacity(50, 1).is_err());
     }
 
     #[test]
