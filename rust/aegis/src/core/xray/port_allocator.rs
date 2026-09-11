@@ -597,6 +597,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_xray_release_spares_other_xray_ranges() {
+        // Pins the PORT half of the release predicate. Without this, dropping
+        // `&& r.start == main_port` (leaving a tag-only match) passes every
+        // other test — so a bug that frees ALL Xray ranges on any single
+        // delete would go unnoticed.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".port_alloc");
+        let (first, _) = PortAllocator::allocate_xray_hysteria2_at(&path)
+            .await
+            .unwrap();
+        let (second, _) = PortAllocator::allocate_xray_hysteria2_at(&path)
+            .await
+            .unwrap();
+        assert_ne!(first, second, "allocator must hand out distinct ranges");
+
+        PortAllocator::release_xray_hysteria2_range_at(&path, first)
+            .await
+            .unwrap();
+
+        let after: PortAllocData =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            after.locked_ranges.len(),
+            1,
+            "releasing one range must not free the other"
+        );
+        assert_eq!(after.locked_ranges[0].start, second);
+        assert_eq!(after.locked_ranges[0].protocol, "xray-hysteria2");
+    }
+
+    #[tokio::test]
     async fn test_xray_alloc_avoids_singbox_locked_range() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(".port_alloc");
