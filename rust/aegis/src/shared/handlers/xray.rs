@@ -4,6 +4,7 @@ use tokio::time::{Duration, sleep};
 use crate::app::state::AppState;
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, MessageId, TargetId};
 use crate::core::security::acme::{AcmeManager, CertPaths, XhttpDeployMode};
+use crate::core::singbox::hysteria2::{Hy2LinkStyle, Hysteria2ObfsType};
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::types::{DomainFlowSource, IpVersion};
@@ -296,7 +297,9 @@ async fn show_reality_qty_prompt(
         Proto::Vision => ("u_batch_exec:", "Reality"),
         Proto::XHTTP => ("u_xhttp_batch_exec:", "XHTTP"),
         Proto::Kcp => unreachable!("KCP uses separate UI flow"),
-        Proto::Hysteria2 => ("u_hy2_batch_exec:", "Hysteria2"),
+        // Hysteria2 routes the quantity step through the obfs/hop choice steps
+        // before dispatch; the exec prefix is `u_hy2_batch_obfs:` here.
+        Proto::Hysteria2 => ("u_hy2_batch_obfs:", "Hysteria2"),
     };
 
     let buttons = vec![
@@ -1594,6 +1597,47 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
     Ok(HandlerAction::Done)
 }
 
+/// Parse `u_hy2_batch_exec:<ip>:<count>:<obfs>:<hop>:<style>` callback data.
+///
+/// `obfs`: 0 none, 1 salamander, 2 gecko. `hop`: "0"/"1". `style`: "v2rayn"
+/// selects the v2rayN link form, anything else the official form.
+fn parse_hy2_exec_params(
+    body: &str,
+) -> Option<(
+    IpVersion,
+    usize,
+    Option<Hysteria2ObfsType>,
+    bool,
+    Hy2LinkStyle,
+)> {
+    let parts: Vec<&str> = body.split(':').collect();
+    if parts.len() != 5 {
+        return None;
+    }
+    let ip_version = match parts[0] {
+        "6" => IpVersion::IPv6,
+        "4" => IpVersion::IPv4,
+        _ => return None,
+    };
+    let count: usize = parts[1].parse().ok()?;
+    let obfs = match parts[2] {
+        "1" => Some(Hysteria2ObfsType::Salamander),
+        "2" => Some(Hysteria2ObfsType::Gecko),
+        "0" => None,
+        _ => return None,
+    };
+    let enable_hopping = match parts[3] {
+        "1" => true,
+        "0" => false,
+        _ => return None,
+    };
+    let link_style = match parts[4] {
+        "v2rayn" => Hy2LinkStyle::V2rayN,
+        _ => Hy2LinkStyle::Official,
+    };
+    Some((ip_version, count, obfs, enable_hopping, link_style))
+}
+
 async fn handle_hy2_batch_init(event: &CallbackEvent) -> HandlerResult {
     if MaintenanceManager::is_reality_base_ready().await {
         show_reality_batch_prompt(
@@ -1654,26 +1698,179 @@ async fn handle_hy2_batch_ip_init(event: &CallbackEvent) -> HandlerResult {
     Ok(HandlerAction::Done)
 }
 
-async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
+/// Obfuscation choice step: `u_hy2_batch_obfs:<ip>:<count>`.
+///
+/// Offers none / salamander / gecko and forwards to the hop step with the
+/// chosen obfs code (0/1/2). Back returns to the quantity prompt.
+async fn handle_hy2_batch_obfs(event: &CallbackEvent) -> HandlerResult {
     let data = event.data.as_str();
-    let prefix = "u_hy2_batch_exec:";
-    let proto = Proto::Hysteria2;
     let parts: Vec<&str> = data
-        .strip_prefix(prefix)
-        .unwrap_or(data)
+        .strip_prefix("u_hy2_batch_obfs:")
+        .unwrap_or("")
         .split(':')
         .collect();
     if parts.len() != 2 {
         return Ok(HandlerAction::Done);
     }
-    let ip_ver_code = parts[0];
-    let n: usize = parts[1].parse().unwrap_or(0);
+    let ip_ver = parts[0];
+    let count = parts[1];
+    let ip_display = match ip_ver {
+        "6" => "IPv6".to_string(),
+        "s6" => t!("xray.split_v6_up").into_owned(),
+        "s4" => t!("xray.split_v4_up").into_owned(),
+        _ => "IPv4".to_string(),
+    };
 
-    let ip_version = match ip_ver_code {
-        "6" => IpVersion::IPv6,
-        "s6" => IpVersion::SplitStackV6Primary,
-        "s4" => IpVersion::SplitStackV4Primary,
-        _ => IpVersion::IPv4,
+    let rows = vec![
+        vec![InlineButton {
+            text: t!("xray.hy2_obfs_none").into(),
+            data: format!("u_hy2_batch_hop:{}:{}:0", ip_ver, count),
+        }],
+        vec![InlineButton {
+            text: t!("xray.hy2_obfs_salamander").into(),
+            data: format!("u_hy2_batch_hop:{}:{}:1", ip_ver, count),
+        }],
+        vec![InlineButton {
+            text: t!("xray.hy2_obfs_gecko").into(),
+            data: format!("u_hy2_batch_hop:{}:{}:2", ip_ver, count),
+        }],
+        vec![InlineButton {
+            text: t!("menu.back").into(),
+            data: format!("u_hy2_batch_ip_init:{}", ip_ver),
+        }],
+    ];
+
+    let title = format!(
+        "⚡ Hysteria2 (Xray) | {} × {}\n\n{}",
+        ip_display,
+        count,
+        t!("xray.hy2_obfs_title")
+    );
+
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text: title,
+                markup: Some(Markup { buttons: rows }),
+            },
+        )
+        .await?;
+
+    Ok(HandlerAction::Done)
+}
+
+/// Hop choice step: `u_hy2_batch_hop:<ip>:<count>:<obfs>`.
+///
+/// Shows the already-selected obfs state, offers hop off/on, and forwards to
+/// dispatch with the full 5-part exec encoding. Back returns to the obfs step.
+/// Exec callbacks the hop step offers: (label key, hop enabled, link style).
+///
+/// Extracted so the choice is testable without a live event: the previous
+/// `include_str!`-based check was self-satisfying (it searched the file that
+/// contained the assertion itself).
+fn hy2_hop_choices() -> [(&'static str, bool, Hy2LinkStyle); 3] {
+    [
+        ("xray.hy2_hop_off", false, Hy2LinkStyle::Official),
+        ("xray.hy2_hop_on_official", true, Hy2LinkStyle::Official),
+        ("xray.hy2_hop_on_v2rayn", true, Hy2LinkStyle::V2rayN),
+    ]
+}
+
+/// Build the hop-step callback data for one choice.
+fn hy2_hop_exec_data(
+    ip_ver: &str,
+    count: &str,
+    obfs_code: &str,
+    hop: bool,
+    style: Hy2LinkStyle,
+) -> String {
+    let style_code = match style {
+        Hy2LinkStyle::V2rayN => "v2rayn",
+        Hy2LinkStyle::Official => "official",
+    };
+    format!(
+        "u_hy2_batch_exec:{}:{}:{}:{}:{}",
+        ip_ver,
+        count,
+        obfs_code,
+        usize::from(hop),
+        style_code
+    )
+}
+
+async fn handle_hy2_batch_hop(event: &CallbackEvent) -> HandlerResult {
+    let data = event.data.as_str();
+    let parts: Vec<&str> = data
+        .strip_prefix("u_hy2_batch_hop:")
+        .unwrap_or("")
+        .split(':')
+        .collect();
+    if parts.len() != 3 {
+        return Ok(HandlerAction::Done);
+    }
+    let ip_ver = parts[0];
+    let count = parts[1];
+    let obfs_code = parts[2];
+    let ip_display = match ip_ver {
+        "6" => "IPv6".to_string(),
+        "s6" => t!("xray.split_v6_up").into_owned(),
+        "s4" => t!("xray.split_v4_up").into_owned(),
+        _ => "IPv4".to_string(),
+    };
+    let obfs_status = match obfs_code {
+        "1" => t!("xray.hy2_obfs_salamander").to_string(),
+        "2" => t!("xray.hy2_obfs_gecko").to_string(),
+        _ => t!("xray.hy2_obfs_none").to_string(),
+    };
+
+    let rows: Vec<Vec<InlineButton>> = hy2_hop_choices()
+        .into_iter()
+        .map(|(label_key, hop, style)| {
+            vec![InlineButton {
+                text: t!(label_key).into(),
+                data: hy2_hop_exec_data(ip_ver, count, obfs_code, hop, style),
+            }]
+        })
+        .chain(std::iter::once(vec![InlineButton {
+            text: t!("menu.back").into(),
+            data: format!("u_hy2_batch_obfs:{}:{}", ip_ver, count),
+        }]))
+        .collect();
+
+    let title = format!(
+        "⚡ Hysteria2 (Xray) | {} × {} | {}\n\n{}",
+        ip_display,
+        count,
+        obfs_status,
+        t!("xray.hy2_hop_title")
+    );
+
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text: title,
+                markup: Some(Markup { buttons: rows }),
+            },
+        )
+        .await?;
+
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
+    let data = event.data.as_str();
+    let prefix = "u_hy2_batch_exec:";
+    let proto = Proto::Hysteria2;
+    let Some((ip_version, n, obfs_type, enable_hopping, link_style)) =
+        parse_hy2_exec_params(data.strip_prefix(prefix).unwrap_or(""))
+    else {
+        return Ok(HandlerAction::Done);
     };
 
     if !MaintenanceManager::is_reality_base_ready().await {
@@ -1725,7 +1922,17 @@ async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
             ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
-        Proto::Hysteria2 => ConfigManager::batch_create_hysteria2_xray(n, ip_version).await,
+        // Values come from the obfs/hop choice steps via parse_hy2_exec_params.
+        Proto::Hysteria2 => {
+            ConfigManager::batch_create_hysteria2_xray(
+                n,
+                ip_version,
+                obfs_type,
+                enable_hopping,
+                link_style,
+            )
+            .await
+        }
     };
 
     let adapter = event.adapter.clone();
@@ -2780,6 +2987,8 @@ pub async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerResult {
         d if d.starts_with("u_xhttp_batch_exec:") => handle_xhttp_batch_exec(event).await,
         "u_hy2_batch_init" => handle_hy2_batch_init(event).await,
         d if d.starts_with("u_hy2_batch_ip_init:") => handle_hy2_batch_ip_init(event).await,
+        d if d.starts_with("u_hy2_batch_obfs:") => handle_hy2_batch_obfs(event).await,
+        d if d.starts_with("u_hy2_batch_hop:") => handle_hy2_batch_hop(event).await,
         d if d.starts_with("u_hy2_batch_exec:") => handle_hy2_batch_exec(event).await,
         "u_kcp_init" => handle_kcp_init(event).await,
         d if d.starts_with("u_kcp_cat:") => handle_kcp_cat(event).await,
@@ -2943,5 +3152,83 @@ mod tests {
         ));
         assert!(one_click_domain_no_mode("xhttp_domain_no:standalone").is_none());
         assert!(one_click_domain_no_mode("xhttp_domain_maybe:one_click").is_none());
+    }
+
+    #[test]
+    fn test_hy2_exec_params_parse_all_combinations() {
+        // Mirrors the sing-box encoding so users see one convention.
+        assert_eq!(
+            parse_hy2_exec_params("4:3:0:0:official"),
+            Some((IpVersion::IPv4, 3, None, false, Hy2LinkStyle::Official))
+        );
+        assert_eq!(
+            parse_hy2_exec_params("4:3:1:0:v2rayn"),
+            Some((
+                IpVersion::IPv4,
+                3,
+                Some(Hysteria2ObfsType::Salamander),
+                false,
+                Hy2LinkStyle::V2rayN
+            ))
+        );
+        assert_eq!(
+            parse_hy2_exec_params("6:5:2:1:official"),
+            Some((
+                IpVersion::IPv6,
+                5,
+                Some(Hysteria2ObfsType::Gecko),
+                true,
+                Hy2LinkStyle::Official
+            ))
+        );
+        // Malformed input must be rejected, not silently defaulted to a
+        // surprising combination.
+        assert_eq!(parse_hy2_exec_params("4:3"), None);
+        assert_eq!(parse_hy2_exec_params(""), None);
+        // Every field's rejection path, so a future relaxation of any single
+        // validator cannot pass unnoticed.
+        assert_eq!(parse_hy2_exec_params("5:3:1:0:official"), None, "bad ip");
+        assert_eq!(parse_hy2_exec_params("4:x:1:0:official"), None, "bad count");
+        assert_eq!(parse_hy2_exec_params("4:3:9:0:official"), None, "bad obfs");
+        assert_eq!(parse_hy2_exec_params("4:3:1:7:official"), None, "bad hop");
+        assert_eq!(
+            parse_hy2_exec_params("4:3:1:0:official:extra"),
+            None,
+            "too many"
+        );
+    }
+
+    #[test]
+    fn test_hy2_hop_step_offers_both_link_styles() {
+        // The parser and link generator both support Hy2LinkStyle::V2rayN and
+        // sing-box offers the equivalent choice. If no UI path produces
+        // v2rayN, the style is unreachable and the feature is half-delivered.
+        //
+        // Tested through the pure builders, NOT `include_str!`: a file search
+        // would match this very assertion and pass no matter what the handler
+        // did.
+        let styles: Vec<Hy2LinkStyle> = hy2_hop_choices()
+            .iter()
+            .filter(|(_, hop, _)| *hop)
+            .map(|(_, _, s)| *s)
+            .collect();
+        assert!(
+            styles.contains(&Hy2LinkStyle::V2rayN),
+            "hop step must offer v2rayN, got {styles:?}"
+        );
+        assert!(
+            styles.contains(&Hy2LinkStyle::Official),
+            "hop step must offer the official style, got {styles:?}"
+        );
+
+        // Every emitted callback must round-trip through the parser with the
+        // style preserved, so the button and the handler cannot drift.
+        for (label, hop, style) in hy2_hop_choices() {
+            let data = hy2_hop_exec_data("4", "3", "1", hop, style);
+            let parsed = parse_hy2_exec_params(data.strip_prefix("u_hy2_batch_exec:").unwrap())
+                .unwrap_or_else(|| panic!("choice {label} emitted unparseable data {data:?}"));
+            assert_eq!(parsed.4, style, "style lost for {label}");
+            assert_eq!(parsed.3, hop, "hop flag lost for {label}");
+        }
     }
 }

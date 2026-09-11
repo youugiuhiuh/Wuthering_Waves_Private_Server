@@ -3,6 +3,7 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::fs;
 
@@ -630,11 +631,79 @@ impl ConfigManager {
         Ok(backup_path)
     }
 
+    /// Release already-extracted hop main ports.
+    ///
+    /// Callers MUST invoke this only AFTER the file has been removed
+    /// successfully. Releasing first would free the ports of a config that is
+    /// still live (a failed `remove_file` leaves the file in place), letting
+    /// the next allocation overlap a running listener.
+    ///
+    /// Split from the extraction so a caller can read the ports while the file
+    /// still exists, delete it, then release — without re-reading a gone file.
+    async fn release_hop_ports(hop_ports: Vec<u16>, alloc_file: Option<&Path>) {
+        if hop_ports.is_empty() {
+            return;
+        }
+        let alloc = alloc_file
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("/etc/wwps/.port_alloc"));
+        let has_ipv6 = crate::core::system::SystemMonitor::get_public_ipv6()
+            .await
+            .is_ok();
+        for main_port in hop_ports {
+            // Firewall rules first, then the range: a rule left referring to a
+            // released port could redirect a future config's traffic.
+            Self::remove_xray_hop_firewall_rules(
+                main_port,
+                (main_port + 1, main_port + 99),
+                has_ipv6,
+            )
+            .await;
+            let _ =
+                crate::core::xray::port_allocator::PortAllocator::release_xray_hysteria2_range_at(
+                    &alloc, main_port,
+                )
+                .await;
+        }
+    }
+
+    /// Delete one config and release its hop resources only on success.
+    ///
+    /// Extract → remove → cleanup, matching the sing-box contract. Releasing
+    /// before a failed delete would free ports belonging to a config that is
+    /// still live. Returns whether the file was actually removed.
+    async fn delete_file_then_release_hop(path: &str, alloc_file: Option<&Path>) -> bool {
+        let hop_ports = Self::extract_xray_hy2_hop_ports(path)
+            .await
+            .unwrap_or_default();
+        match fs::remove_file(path).await {
+            Ok(()) => {
+                Self::release_hop_ports(hop_ports, alloc_file).await;
+                true
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // Raced with another deleter: the file existed when the ports
+                // were extracted but is gone now, so releasing them is safe
+                // (no live config can own them). If the file was already
+                // absent at extract time there is nothing to release and this
+                // is a no-op.
+                Self::release_hop_ports(hop_ports, alloc_file).await;
+                false
+            }
+            Err(e) => {
+                // The file is still there and may still be live: do NOT free
+                // its ports or drop its REDIRECT rules.
+                log::warn!("删除配置文件失败，保留其端口跳跃资源: {} ({})", path, e);
+                false
+            }
+        }
+    }
+
     pub async fn delete_all_configurations() -> Result<usize> {
         let files = Self::list_all_inbound_files().await?;
         let count = files.len();
         for file in &files {
-            let _ = fs::remove_file(file).await;
+            Self::delete_file_then_release_hop(file, None).await;
         }
         if count > 0 {
             crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
@@ -662,7 +731,7 @@ impl ConfigManager {
         let to_delete = file_with_time.iter().take(count);
         let mut deleted_count = 0;
         for (f, _) in to_delete {
-            if fs::remove_file(f).await.is_ok() {
+            if Self::delete_file_then_release_hop(f, None).await {
                 deleted_count += 1;
             }
         }
@@ -674,9 +743,73 @@ impl ConfigManager {
     }
 
     pub async fn delete_specific_configuration(path: &str) -> Result<()> {
+        Self::delete_specific_configuration_at(path, None).await
+    }
+
+    /// Delete a config, releasing any Hysteria2 hop ranges it owns.
+    ///
+    /// `alloc_file: None` means the production alloc file. Split from the
+    /// no-argument form so tests can isolate the alloc file.
+    ///
+    /// Order matters and follows `SingBoxConfigManager::delete_specific_configuration_at`:
+    /// read the ports while the file exists, remove it, THEN clean up. Cleaning
+    /// up before a failed delete would free ports still in use by a live config.
+    pub async fn delete_specific_configuration_at(
+        path: &str,
+        alloc_file: Option<&Path>,
+    ) -> Result<()> {
+        // Extract while the file is still readable; a non-hy2 file yields an
+        // empty list rather than an error.
+        let hop_ports = Self::extract_xray_hy2_hop_ports(path)
+            .await
+            .unwrap_or_default();
+
         fs::remove_file(path).await.context("❌ 删除配置文件失败")?;
+
+        // Only now that the file is gone do we clean up, via the same helper
+        // the bulk paths use so the three cannot drift. Best-effort: a cleanup
+        // failure must not surface as a failed delete to the user.
+        Self::release_hop_ports(hop_ports, alloc_file).await;
+
         crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
         Ok(())
+    }
+
+    /// Main ports of Xray Hysteria2 inbounds in `path` that carry a hop range.
+    ///
+    /// Detected by CONTENT (`protocol == "hysteria"` AND a
+    /// `finalmask.quicParams.udpHop` block), never by filename: cleanup must be
+    /// driven by what the config actually is, not what it is called.
+    pub(crate) async fn extract_xray_hy2_hop_ports(path: &str) -> Result<Vec<u16>> {
+        let content = fs::read_to_string(path).await?;
+        let parsed: Value = serde_json::from_str(&content).unwrap_or_default();
+        let mut ports = Vec::new();
+        if let Some(inbounds) = parsed.get("inbounds").and_then(|v| v.as_array()) {
+            for inbound in inbounds {
+                let is_hysteria =
+                    inbound.get("protocol").and_then(|v| v.as_str()) == Some("hysteria");
+                let has_hop = inbound
+                    .get("streamSettings")
+                    .and_then(|s| s.get("finalmask"))
+                    .and_then(|f| f.get("quicParams"))
+                    .and_then(|q| q.get("udpHop"))
+                    .is_some();
+                if is_hysteria
+                    && has_hop
+                    && let Some(port) = inbound.get("port").and_then(|v| v.as_u64())
+                    // The cleanup computes `main_port + 99` in u16 arithmetic, so
+                    // a port above `u16::MAX - 99` would overflow: a panic in
+                    // debug (which is what the test suite runs) and a silent wrap
+                    // to a bogus range in release. Creation never emits such a
+                    // port, but this value comes from a file on disk, so bound it
+                    // here rather than trusting the writer.
+                    && port <= (u16::MAX - 99) as u64
+                {
+                    ports.push(port as u16);
+                }
+            }
+        }
+        Ok(ports)
     }
 
     pub async fn ensure_base_config() -> Result<()> {
