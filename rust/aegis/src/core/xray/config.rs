@@ -682,8 +682,11 @@ impl ConfigManager {
                 true
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // Already absent: releasing avoids a permanent leak, and there
-                // is no live config for the ports to collide with.
+                // Raced with another deleter: the file existed when the ports
+                // were extracted but is gone now, so releasing them is safe
+                // (no live config can own them). If the file was already
+                // absent at extract time there is nothing to release and this
+                // is a no-op.
                 Self::release_hop_ports(hop_ports, alloc_file).await;
                 false
             }
