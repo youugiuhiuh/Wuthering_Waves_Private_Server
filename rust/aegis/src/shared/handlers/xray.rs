@@ -1766,6 +1766,41 @@ async fn handle_hy2_batch_obfs(event: &CallbackEvent) -> HandlerResult {
 ///
 /// Shows the already-selected obfs state, offers hop off/on, and forwards to
 /// dispatch with the full 5-part exec encoding. Back returns to the obfs step.
+/// Exec callbacks the hop step offers: (label key, hop enabled, link style).
+///
+/// Extracted so the choice is testable without a live event: the previous
+/// `include_str!`-based check was self-satisfying (it searched the file that
+/// contained the assertion itself).
+fn hy2_hop_choices() -> [(&'static str, bool, Hy2LinkStyle); 3] {
+    [
+        ("xray.hy2_hop_off", false, Hy2LinkStyle::Official),
+        ("xray.hy2_hop_on_official", true, Hy2LinkStyle::Official),
+        ("xray.hy2_hop_on_v2rayn", true, Hy2LinkStyle::V2rayN),
+    ]
+}
+
+/// Build the hop-step callback data for one choice.
+fn hy2_hop_exec_data(
+    ip_ver: &str,
+    count: &str,
+    obfs_code: &str,
+    hop: bool,
+    style: Hy2LinkStyle,
+) -> String {
+    let style_code = match style {
+        Hy2LinkStyle::V2rayN => "v2rayn",
+        Hy2LinkStyle::Official => "official",
+    };
+    format!(
+        "u_hy2_batch_exec:{}:{}:{}:{}:{}",
+        ip_ver,
+        count,
+        obfs_code,
+        usize::from(hop),
+        style_code
+    )
+}
+
 async fn handle_hy2_batch_hop(event: &CallbackEvent) -> HandlerResult {
     let data = event.data.as_str();
     let parts: Vec<&str> = data
@@ -1791,26 +1826,19 @@ async fn handle_hy2_batch_hop(event: &CallbackEvent) -> HandlerResult {
         _ => t!("xray.hy2_obfs_none").to_string(),
     };
 
-    let rows = vec![
-        vec![InlineButton {
-            text: t!("xray.hy2_hop_off").into(),
-            data: format!(
-                "u_hy2_batch_exec:{}:{}:{}:0:official",
-                ip_ver, count, obfs_code
-            ),
-        }],
-        vec![InlineButton {
-            text: t!("xray.hy2_hop_on").into(),
-            data: format!(
-                "u_hy2_batch_exec:{}:{}:{}:1:official",
-                ip_ver, count, obfs_code
-            ),
-        }],
-        vec![InlineButton {
+    let rows: Vec<Vec<InlineButton>> = hy2_hop_choices()
+        .into_iter()
+        .map(|(label_key, hop, style)| {
+            vec![InlineButton {
+                text: t!(label_key).into(),
+                data: hy2_hop_exec_data(ip_ver, count, obfs_code, hop, style),
+            }]
+        })
+        .chain(std::iter::once(vec![InlineButton {
             text: t!("menu.back").into(),
             data: format!("u_hy2_batch_obfs:{}:{}", ip_ver, count),
-        }],
-    ];
+        }]))
+        .collect();
 
     let title = format!(
         "⚡ Hysteria2 (Xray) | {} × {} | {}\n\n{}",
@@ -3158,5 +3186,39 @@ mod tests {
         // surprising combination.
         assert_eq!(parse_hy2_exec_params("4:3"), None);
         assert_eq!(parse_hy2_exec_params(""), None);
+    }
+
+    #[test]
+    fn test_hy2_hop_step_offers_both_link_styles() {
+        // The parser and link generator both support Hy2LinkStyle::V2rayN and
+        // sing-box offers the equivalent choice. If no UI path produces
+        // v2rayN, the style is unreachable and the feature is half-delivered.
+        //
+        // Tested through the pure builders, NOT `include_str!`: a file search
+        // would match this very assertion and pass no matter what the handler
+        // did.
+        let styles: Vec<Hy2LinkStyle> = hy2_hop_choices()
+            .iter()
+            .filter(|(_, hop, _)| *hop)
+            .map(|(_, _, s)| *s)
+            .collect();
+        assert!(
+            styles.contains(&Hy2LinkStyle::V2rayN),
+            "hop step must offer v2rayN, got {styles:?}"
+        );
+        assert!(
+            styles.contains(&Hy2LinkStyle::Official),
+            "hop step must offer the official style, got {styles:?}"
+        );
+
+        // Every emitted callback must round-trip through the parser with the
+        // style preserved, so the button and the handler cannot drift.
+        for (label, hop, style) in hy2_hop_choices() {
+            let data = hy2_hop_exec_data("4", "3", "1", hop, style);
+            let parsed = parse_hy2_exec_params(data.strip_prefix("u_hy2_batch_exec:").unwrap())
+                .unwrap_or_else(|| panic!("choice {label} emitted unparseable data {data:?}"));
+            assert_eq!(parsed.4, style, "style lost for {label}");
+            assert_eq!(parsed.3, hop, "hop flag lost for {label}");
+        }
     }
 }
