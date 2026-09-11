@@ -163,6 +163,8 @@ async fn show_reality_batch_prompt(
         Proto::Vision => ("u_batch_ip_init:", "Reality (Vision)"),
         Proto::XHTTP => ("u_xhttp_batch_ip_init:", "Reality (XHTTP)"),
         Proto::Kcp => unreachable!("KCP uses separate UI flow"),
+        // TODO(Task 6): replaced with real prefix/label/dispatch in the hysteria2 UI wiring task.
+        Proto::Hysteria2 => unreachable!("Hysteria2 handler wiring lands in Task 6"),
     };
 
     let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
@@ -295,6 +297,8 @@ async fn show_reality_qty_prompt(
         Proto::Vision => ("u_batch_exec:", "Reality"),
         Proto::XHTTP => ("u_xhttp_batch_exec:", "XHTTP"),
         Proto::Kcp => unreachable!("KCP uses separate UI flow"),
+        // TODO(Task 6): replaced with real prefix/label/dispatch in the hysteria2 UI wiring task.
+        Proto::Hysteria2 => unreachable!("Hysteria2 handler wiring lands in Task 6"),
     };
 
     let buttons = vec![
@@ -1261,6 +1265,8 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
         Proto::Vision => "Reality",
         Proto::XHTTP => "XHTTP",
         Proto::Kcp => "KCP",
+        // TODO(Task 6): replaced with real prefix/label/dispatch in the hysteria2 UI wiring task.
+        Proto::Hysteria2 => unreachable!("Hysteria2 handler wiring lands in Task 6"),
     };
 
     event
@@ -1281,6 +1287,8 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
             ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
+        // TODO(Task 6): replaced with real prefix/label/dispatch in the hysteria2 UI wiring task.
+        Proto::Hysteria2 => unreachable!("Hysteria2 handler wiring lands in Task 6"),
     };
 
     let adapter = event.adapter.clone();
@@ -1439,6 +1447,8 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
         Proto::Vision => "Reality",
         Proto::XHTTP => "XHTTP",
         Proto::Kcp => "KCP",
+        // TODO(Task 6): replaced with real prefix/label/dispatch in the hysteria2 UI wiring task.
+        Proto::Hysteria2 => unreachable!("Hysteria2 handler wiring lands in Task 6"),
     };
 
     event
@@ -1459,6 +1469,8 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
             ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
+        // TODO(Task 6): replaced with real prefix/label/dispatch in the hysteria2 UI wiring task.
+        Proto::Hysteria2 => unreachable!("Hysteria2 handler wiring lands in Task 6"),
     };
 
     let adapter = event.adapter.clone();

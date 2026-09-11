@@ -19,6 +19,10 @@ pub enum Proto {
     Vision,
     XHTTP,
     Kcp,
+    /// Xray `hysteria` inbound (Hysteria2). Distinct from sing-box Hy2, which
+    /// uses `"type": "hysteria2"` and `users[].password`; Xray uses
+    /// `"protocol": "hysteria"` and `settings.users[].auth`.
+    Hysteria2,
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +122,7 @@ impl ConfigManager {
             Proto::Vision => "batch_reality",
             Proto::XHTTP => "batch_xhttp",
             Proto::Kcp => "batch_kcp",
+            Proto::Hysteria2 => "batch_xray_hysteria2",
         };
         let filtered: Vec<String> = all
             .into_iter()
@@ -182,6 +187,7 @@ impl ConfigManager {
             Proto::Vision => "batch_reality",
             Proto::XHTTP => "batch_xhttp",
             Proto::Kcp => "batch_kcp",
+            Proto::Hysteria2 => "batch_xray_hysteria2",
         };
         Ok(format!("{}_{}_inbounds.json", prefix, uuid_short))
     }
@@ -334,6 +340,9 @@ impl ConfigManager {
                 Proto::Kcp => {
                     unreachable!("Kcp should use build_kcp_inbound")
                 }
+                Proto::Hysteria2 => {
+                    unreachable!("Hysteria2 should use build_hysteria2_inbound")
+                }
             },
             "security": "reality",
             "realitySettings": {
@@ -453,6 +462,7 @@ impl ConfigManager {
             Proto::Vision => "vless_reality_vision",
             Proto::XHTTP => "vless_xhttp_reality",
             Proto::Kcp => "vless_kcp",
+            Proto::Hysteria2 => "hysteria2",
         };
         let email = format!("{}-{}", uuid_short, suffix);
         let tag = format!(
@@ -461,6 +471,7 @@ impl ConfigManager {
                 Proto::Vision => "VLESS",
                 Proto::XHTTP => "XHTTP",
                 Proto::Kcp => "KCP",
+                Proto::Hysteria2 => "HY2",
             },
             uuid_short,
             index
@@ -569,6 +580,9 @@ impl ConfigManager {
             }
             Proto::Kcp => {
                 unreachable!("Kcp should use generate_kcp_client_link instead")
+            }
+            Proto::Hysteria2 => {
+                unreachable!("Hysteria2 should use generate_hysteria2_client_link instead")
             }
         }
     }
@@ -1125,6 +1139,22 @@ mod tests {
         assert_eq!(rules.len(), 3);
         let tags: Vec<&str> = rules.iter().filter_map(|r| r["ruleTag"].as_str()).collect();
         assert_eq!(tags, vec!["private_ip", "cn_ip", "cn_domain"]);
+    }
+
+    #[test]
+    fn test_proto_hysteria2_variant_exists_and_is_copy() {
+        let p = Proto::Hysteria2;
+        let q = p; // Copy, not move
+        assert_eq!(p, q);
+    }
+
+    #[test]
+    fn test_hysteria2_filename_prefix_is_distinct_from_singbox() {
+        // sing-box uses "batch_hysteria2"; Xray must not collide with it,
+        // otherwise list_inbound_files_by_proto returns sing-box files too.
+        assert_ne!(Proto::Hysteria2, Proto::Kcp);
+        assert_ne!(Proto::Hysteria2, Proto::Vision);
+        assert_ne!(Proto::Hysteria2, Proto::XHTTP);
     }
 }
 
