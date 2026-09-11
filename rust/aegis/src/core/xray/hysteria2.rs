@@ -466,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hysteria2_no_hop_omits_quicparams() {
+    fn test_hysteria2_both_features_off_omits_finalmask() {
         let cfg = ConfigManager::build_hysteria2_inbound(
             "t",
             11451,
@@ -478,6 +478,29 @@ mod tests {
             None,
         );
         assert!(cfg["streamSettings"].get("finalmask").is_none());
+    }
+
+    #[test]
+    fn test_hysteria2_obfs_only_adds_no_quicparams() {
+        // Hop is off, so `udpHop` must not appear at all. Without this, a bug
+        // that emits `quicParams` whenever obfs is on would slip through: the
+        // both-off test passes `None` for hop too and cannot see it.
+        let cfg = ConfigManager::build_hysteria2_inbound(
+            "t",
+            11451,
+            AUTH,
+            "e",
+            "www.bing.com",
+            IpVersion::IPv4,
+            Some((&Hysteria2ObfsType::Salamander, "pw")),
+            None,
+        );
+        let fm = &cfg["streamSettings"]["finalmask"];
+        assert_eq!(fm["udp"][0]["type"], "salamander");
+        assert!(
+            fm.get("quicParams").is_none(),
+            "obfs-only config must not carry quicParams: {fm}"
+        );
     }
 
     #[test]
