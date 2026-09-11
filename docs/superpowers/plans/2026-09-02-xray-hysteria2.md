@@ -77,13 +77,43 @@ Add to the existing `#[cfg(test)] mod tests` block at the bottom of `rust/aegis/
 
     #[test]
     fn test_hysteria2_filename_prefix_is_distinct_from_singbox() {
-        // sing-box uses "batch_hysteria2"; Xray must not collide with it,
-        // otherwise list_inbound_files_by_proto returns sing-box files too.
-        assert_ne!(Proto::Hysteria2, Proto::Kcp);
-        assert_ne!(Proto::Hysteria2, Proto::Vision);
-        assert_ne!(Proto::Hysteria2, Proto::XHTTP);
+        use crate::core::xray::Proto;
+        // sing-box writes `batch_hy2_*` (see singbox::config::save_standalone_config).
+        // Xray must not share a prefix with it, or each core lists the other's files.
+        let hy2 = ConfigManager::batch_file_prefix(Proto::Hysteria2);
+        assert_eq!(hy2, "batch_xray_hysteria2");
+        assert!(!hy2.starts_with("batch_hy2"));
+        // The assert_eq! above is the collision guard: it pins the exact
+        // prefix, so any reused or misspelled prefix fails here.
+        // Distinct from every sibling, and none is a prefix of another
+        // (list_inbound_files_by_proto filters with starts_with).
+        let all = [
+            ConfigManager::batch_file_prefix(Proto::Vision),
+            ConfigManager::batch_file_prefix(Proto::XHTTP),
+            ConfigManager::batch_file_prefix(Proto::Kcp),
+            hy2,
+        ];
+        for (i, a) in all.iter().enumerate() {
+            for (j, b) in all.iter().enumerate() {
+                if i != j {
+                    assert!(
+                        !a.starts_with(b),
+                        "prefix {a:?} must not start with sibling prefix {b:?}"
+                    );
+                }
+            }
+        }
     }
 ```
+
+> **As built (superseding the sample above):** this test was first written as `assert_ne!` on enum
+> variants, which review correctly identified as a tautology — variant inequality is always true and
+> says nothing about the filename prefix. The fix (Task 1 fix round 1) extracted
+> `ConfigManager::batch_file_prefix(proto) -> &'static str` and rewrote the test to assert on it, also
+> consolidating the duplicated prefix `match` at `list_inbound_files_by_proto` and
+> `generate_secure_batch_filename` into that one helper. Fix round 2 removed a second vacuous
+> assertion the controller had introduced (`!hy2.contains(..) || hy2.starts_with(..)` short-circuits
+> true). The sample above is the as-built test.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -123,7 +153,15 @@ pub enum Proto {
 Run: `cargo build --offline -p aegis 2>&1 | grep -E "not covered|^error" | head -20`
 Expected: compile errors listing each `match proto` missing the `Hysteria2` arm. This is the compiler giving us the checklist.
 
-- [ ] **Step 5: Fill the five match sites**
+- [ ] **Step 5: Fill the five match sites (as originally written)**
+
+> **As built:** the final `config.rs` has **4 match sites / 5 match expressions**, not 5/6. The
+> difference is the fix-round-1 consolidation: `list_inbound_files_by_proto` and
+> `generate_secure_batch_filename` both now call `ConfigManager::batch_file_prefix(proto)`, so their
+> two `match proto` expressions collapsed into the one inside the helper. Current locations:
+> `config.rs` lines 125 (helper body), 341 (`network`), 465 (email suffix), 474 (tag prefix), 527
+> (client-link `unreachable!`). The five arms below are all still correct and all still needed — only
+> the site count changed.
 
 > **Revised during execution (Task 1 finding).** The brief originally said "four match sites".
 > The real count is **five** — the fifth is the `network` match inside `build_reality_vless_inbound`.
@@ -1204,7 +1242,7 @@ git commit -m "chore(xray): verify hysteria2 against Xray reference config"
 
 | Design requirement | Task |
 |---|---|
-| `Proto::Hysteria2` + 5 match sites (6 match expressions) | Task 1 |
+| `Proto::Hysteria2` + 5 match expressions across 4 sites (as built) | Task 1 |
 | 6 handler placeholder arms replaced with real wiring | Task 6 (verified by the `rg` check in Task 6 Step 1) |
 | Xray `"protocol": "hysteria"` (not `hysteria2`) | Task 2 |
 | `settings.users[].auth` (not `password`) | Task 2 |
