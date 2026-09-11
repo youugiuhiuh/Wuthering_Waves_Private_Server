@@ -22,6 +22,10 @@ impl ConfigManager {
     /// `obfs` carries (type, password). Xray has no separate gecko type, so a
     /// gecko request is written as `salamander` plus a `packetSize`; plain
     /// salamander omits `packetSize`. The password must match the client's.
+    ///
+    /// `hop_range` is the inclusive (start, end) of the ports the client may
+    /// roam over; the inbound advertises it via `finalmask.quicParams.udpHop`.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn build_hysteria2_inbound(
         tag: &str,
         port: i32,
@@ -30,6 +34,7 @@ impl ConfigManager {
         sni: &str,
         ip_version: IpVersion,
         obfs: Option<(&Hysteria2ObfsType, &str)>,
+        hop_range: Option<(u16, u16)>,
     ) -> Value {
         let listen_ip = match ip_version {
             IpVersion::IPv4 | IpVersion::SplitStackV4Primary => "0.0.0.0",
@@ -73,9 +78,29 @@ impl ConfigManager {
             }
         });
 
+        // Both features live under one `finalmask` object. Build it once and
+        // insert once: assigning `finalmask` per-feature would replace the
+        // whole object and silently drop the earlier feature.
+        let mut finalmask = serde_json::Map::new();
         if let Some((obfs_type, obfs_password)) = obfs {
-            let udp_mask = Self::build_hysteria2_udp_mask(obfs_type, obfs_password);
-            inbound["streamSettings"]["finalmask"] = json!({ "udp": [udp_mask] });
+            finalmask.insert(
+                "udp".to_string(),
+                json!([Self::build_hysteria2_udp_mask(obfs_type, obfs_password)]),
+            );
+        }
+        if let Some((hop_start, hop_end)) = hop_range {
+            finalmask.insert(
+                "quicParams".to_string(),
+                json!({
+                    "udpHop": {
+                        "ports": format!("{}-{}", hop_start, hop_end),
+                        "interval": 30
+                    }
+                }),
+            );
+        }
+        if !finalmask.is_empty() {
+            inbound["streamSettings"]["finalmask"] = Value::Object(finalmask);
         }
 
         inbound
@@ -237,7 +262,7 @@ impl ConfigManager {
             let tag = format!("HY2-{}-{}", i + 1, uuid_short);
 
             configs.push(Self::build_hysteria2_inbound(
-                &tag, port, &auth, &email, &sni, ip_version, None,
+                &tag, port, &auth, &email, &sni, ip_version, None, None,
             ));
 
             links.push(Self::generate_hysteria2_client_link(
@@ -266,6 +291,7 @@ mod tests {
             "abcd1234-hysteria2",
             "www.bing.com",
             ip_version,
+            None,
             None,
         )
     }
@@ -350,6 +376,7 @@ mod tests {
             "www.bing.com",
             IpVersion::IPv4,
             Some((&Hysteria2ObfsType::Salamander, "obfspw")),
+            None,
         );
         let udp = &cfg["streamSettings"]["finalmask"]["udp"][0];
         assert_eq!(udp["type"], "salamander");
@@ -369,6 +396,7 @@ mod tests {
             "www.bing.com",
             IpVersion::IPv4,
             Some((&Hysteria2ObfsType::Gecko, "obfspw")),
+            None,
         );
         let udp = &cfg["streamSettings"]["finalmask"]["udp"][0];
         // Xray has no "gecko" type: gecko IS salamander with a packetSize.
@@ -394,9 +422,61 @@ mod tests {
             "www.bing.com",
             IpVersion::IPv4,
             None,
+            None,
         );
         // Absent, not an empty object: an empty finalmask is not the same
         // config to Xray and would be a schema surprise.
+        assert!(cfg["streamSettings"].get("finalmask").is_none());
+    }
+
+    #[test]
+    fn test_hysteria2_hop_writes_quicparams_udphop() {
+        let cfg = ConfigManager::build_hysteria2_inbound(
+            "t",
+            11451,
+            AUTH,
+            "e",
+            "www.bing.com",
+            IpVersion::IPv4,
+            None,
+            Some((11452, 11551)),
+        );
+        let hop = &cfg["streamSettings"]["finalmask"]["quicParams"]["udpHop"];
+        assert_eq!(hop["ports"], "11452-11551");
+        assert_eq!(hop["interval"], 30);
+    }
+
+    #[test]
+    fn test_hysteria2_hop_and_obfs_coexist_in_one_finalmask() {
+        let cfg = ConfigManager::build_hysteria2_inbound(
+            "t",
+            11451,
+            AUTH,
+            "e",
+            "www.bing.com",
+            IpVersion::IPv4,
+            Some((&Hysteria2ObfsType::Gecko, "pw")),
+            Some((11452, 11551)),
+        );
+        let fm = &cfg["streamSettings"]["finalmask"];
+        // Both keys must live under the SAME finalmask object. Writing either
+        // one by replacing `finalmask` wholesale would drop the other.
+        assert_eq!(fm["udp"][0]["type"], "salamander");
+        assert_eq!(fm["quicParams"]["udpHop"]["ports"], "11452-11551");
+    }
+
+    #[test]
+    fn test_hysteria2_no_hop_omits_quicparams() {
+        let cfg = ConfigManager::build_hysteria2_inbound(
+            "t",
+            11451,
+            AUTH,
+            "e",
+            "www.bing.com",
+            IpVersion::IPv4,
+            None,
+            None,
+        );
         assert!(cfg["streamSettings"].get("finalmask").is_none());
     }
 
@@ -493,6 +573,7 @@ mod tests {
             "e",
             "www.bing.com",
             IpVersion::IPv4,
+            None,
             None,
         );
         let link = ConfigManager::generate_hysteria2_client_link(
@@ -594,6 +675,7 @@ mod tests {
             "abcd1234-hysteria2",
             "www.bing.com",
             IpVersion::IPv4,
+            None,
             None,
         );
 
