@@ -570,6 +570,7 @@ mod tests {
     use crate::shared::types::TimeoutStatus;
     use anyhow::Result;
     use async_trait::async_trait;
+    use serial_test::serial;
     use std::collections::BTreeMap;
     use std::sync::{Arc, Mutex};
 
@@ -758,6 +759,9 @@ mod tests {
         }
     }
 
+    /// Mutates the process-global locale; see the note on
+    /// `empty_domain_keeps_await_domain_state`.
+    #[serial]
     #[test]
     fn acme_failures_render_safe_localized_guidance() {
         i18n::set_lang(Lang::En);
@@ -789,6 +793,9 @@ mod tests {
         assert!(!rendered.contains("untyped subprocess output"));
     }
 
+    /// Mutates the process-global locale; see the note on
+    /// `empty_domain_keeps_await_domain_state`.
+    #[serial]
     #[test]
     fn acme_install_failure_hides_arbitrary_detail() {
         i18n::set_lang(Lang::En);
@@ -951,6 +958,12 @@ mod tests {
         assert!(!adapter.last_text().contains("domain.cred_security_warning"));
     }
 
+    /// Asserts an exact localized string, so it races any concurrent
+    /// `set_lang`/`set_locale`. `rust-i18n`'s locale is process-global and
+    /// nextest's per-process isolation hides that, while plain `cargo test`
+    /// does not. Every locale writer in this crate is `#[serial]` so this
+    /// holds.
+    #[serial]
     #[tokio::test]
     async fn empty_domain_keeps_await_domain_state() {
         let adapter = RecordingAdapter::new();
@@ -970,6 +983,9 @@ mod tests {
         );
     }
 
+    /// Asserts an exact localized string; see the note on
+    /// `empty_domain_keeps_await_domain_state`.
+    #[serial]
     #[tokio::test]
     async fn credentials_require_exactly_two_nonempty_values() {
         i18n::set_lang(Lang::En);

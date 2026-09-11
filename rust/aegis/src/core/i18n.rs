@@ -48,6 +48,21 @@ pub(crate) fn reset_lang_configured() {
     LANG_CONFIGURED.store(false, Ordering::Relaxed);
 }
 
+/// Substitute `%{name}` placeholders in a raw locale string without touching
+/// the process-global locale.
+///
+/// `rust-i18n` only offers a global `set_locale`, so a test that wants to check
+/// how several locales render the same template has to either mutate shared
+/// state (racing every other locale-dependent test under plain `cargo test`) or
+/// apply the same substitution the macro applies. This is the latter, and it
+/// uses `rust_i18n`'s own `replace_patterns` so the behaviour cannot drift.
+#[cfg(test)]
+pub(crate) fn render_for_test(template: &str, args: &[(&str, &str)]) -> String {
+    let patterns: Vec<&str> = args.iter().map(|(k, _)| *k).collect();
+    let values: Vec<String> = args.iter().map(|(_, v)| (*v).to_string()).collect();
+    rust_i18n::replace_patterns(template, &patterns, &values)
+}
+
 pub fn set_lang(lang: Lang) {
     rust_i18n::set_locale(lang.as_str());
 }

@@ -1740,12 +1740,13 @@ async fn handle_hy2_batch_obfs(event: &CallbackEvent) -> HandlerResult {
         }],
     ];
 
-    let title = format!(
-        "⚡ Hysteria2 (Xray) | {} × {}\n\n{}",
-        ip_display,
-        count,
-        t!("xray.hy2_obfs_title")
-    );
+    let title = t!(
+        "xray.hy2_obfs_step_title",
+        "0" => ip_display.as_str(),
+        "1" => count,
+        "2" => t!("xray.hy2_obfs_title")
+    )
+    .into_owned();
 
     event
         .adapter
@@ -1840,13 +1841,14 @@ async fn handle_hy2_batch_hop(event: &CallbackEvent) -> HandlerResult {
         }]))
         .collect();
 
-    let title = format!(
-        "⚡ Hysteria2 (Xray) | {} × {} | {}\n\n{}",
-        ip_display,
-        count,
-        obfs_status,
-        t!("xray.hy2_hop_title")
-    );
+    let title = t!(
+        "xray.hy2_hop_step_title",
+        "0" => ip_display.as_str(),
+        "1" => count,
+        "2" => obfs_status.as_str(),
+        "3" => t!("xray.hy2_hop_title")
+    )
+    .into_owned();
 
     event
         .adapter
@@ -3152,6 +3154,68 @@ mod tests {
         ));
         assert!(one_click_domain_no_mode("xhttp_domain_no:standalone").is_none());
         assert!(one_click_domain_no_mode("xhttp_domain_maybe:one_click").is_none());
+    }
+
+    /// Asserts the placeholder order without rendering through the global
+    /// locale: `rust-i18n` has no locale-scoped lookup, so calling `t!` for
+    /// three locales would mutate process-global state and race every other
+    /// locale-dependent test. Reading the same YAML the macro reads and
+    /// running it through `replace_patterns` tests the identical contract
+    /// with no shared state.
+    #[test]
+    fn hy2_step_titles_substitute_their_placeholders() {
+        let i18n_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/resources/i18n");
+        for loc in ["en", "zh", "ja"] {
+            let text = std::fs::read_to_string(format!("{i18n_dir}/{loc}.yml"))
+                .unwrap_or_else(|e| panic!("read {loc}.yml: {e}"));
+
+            let value = |key: &str| -> String {
+                let prefix = format!("  {key}: \"");
+                let line = text
+                    .lines()
+                    .find(|l| l.starts_with(&prefix))
+                    .unwrap_or_else(|| panic!("{loc}.yml missing {key}"));
+                line[prefix.len()..].trim_end_matches('"').to_string()
+            };
+
+            let obfs = crate::core::i18n::render_for_test(
+                &value("hy2_obfs_step_title"),
+                &[("0", "IPv4"), ("1", "3"), ("2", "OBFS")],
+            );
+            assert!(
+                obfs.contains("IPv4") && obfs.contains('3') && obfs.contains("OBFS"),
+                "{loc} obfs title: {obfs}"
+            );
+            // Order matters: swapping %{0}/%{1} would still satisfy a plain
+            // `contains` check while rendering "3 × IPv4" to the user.
+            assert!(
+                obfs.find("IPv4") < obfs.find('3'),
+                "{loc} obfs title has swapped placeholders: {obfs}"
+            );
+            assert!(
+                !obfs.contains("%{"),
+                "{loc} obfs title kept a placeholder: {obfs}"
+            );
+
+            let hop = crate::core::i18n::render_for_test(
+                &value("hy2_hop_step_title"),
+                &[("0", "IPv4"), ("1", "3"), ("2", "STATUS"), ("3", "PROMPT")],
+            );
+            assert!(
+                hop.contains("STATUS") && hop.contains("PROMPT"),
+                "{loc} hop title: {hop}"
+            );
+            assert!(
+                hop.find("IPv4") < hop.find('3')
+                    && hop.find('3') < hop.find("STATUS")
+                    && hop.find("STATUS") < hop.find("PROMPT"),
+                "{loc} hop title has out-of-order placeholders: {hop}"
+            );
+            assert!(
+                !hop.contains("%{"),
+                "{loc} hop title kept a placeholder: {hop}"
+            );
+        }
     }
 
     #[test]
