@@ -95,19 +95,33 @@ impl ConfigManager {
         )
     }
 
+    /// Number of batch files a `count`-inbound batch will write: 1 for any
+    /// non-empty batch, 0 for an empty one. Each batch call serializes all of
+    /// its inbounds into a single `batch_xray_hysteria2_*_inbounds.json` file,
+    /// so the file delta is NOT `count` (which would mix inbounds with files).
+    fn batch_file_delta(count: usize) -> usize {
+        usize::from(count > 0)
+    }
+
     /// Enforce the Xray Hysteria2 config cap.
     ///
-    /// `existing + requested` may exceed `MAX` within a single batch, so the
-    /// whole batch is rejected rather than allowed to overshoot. Uses
-    /// `saturating_add` so an absurd `requested` (callback data is
+    /// Both arguments are FILE counts: `existing_files` is the number of
+    /// `batch_xray_hysteria2_*_inbounds.json` files already present, and
+    /// `requested_files` is how many files the current call will create
+    /// (1 for a non-empty batch, 0 for an empty one). The cap is on batch
+    /// files, matching the original sing-box `check_hysteria2_limit` which
+    /// also counts files — one batch writes exactly ONE file regardless of how
+    /// many inbounds it holds, so counting inbounds would mix units.
+    ///
+    /// Uses `saturating_add` so an absurd `requested_files` (callback data is
     /// attacker-influenced) cannot wrap into a small number that passes.
-    fn check_xray_hysteria2_capacity(existing: usize, requested: usize) -> Result<()> {
+    fn check_xray_hysteria2_capacity(existing_files: usize, requested_files: usize) -> Result<()> {
         const MAX_XRAY_HY2_CONFIGS: usize = 50;
-        if existing.saturating_add(requested) > MAX_XRAY_HY2_CONFIGS {
+        if existing_files.saturating_add(requested_files) > MAX_XRAY_HY2_CONFIGS {
             return Err(anyhow::anyhow!(
-                "已达到最大 Xray Hysteria2 配置数量限制（{}个），当前 {} 个",
+                "已达到最大 Xray Hysteria2 配置文件数量限制（{}个），当前 {} 个配置文件",
                 MAX_XRAY_HY2_CONFIGS,
-                existing
+                existing_files
             ));
         }
         Ok(())
@@ -128,11 +142,18 @@ impl ConfigManager {
         // "hysteria2"), so it cannot see Xray configs, which live in
         // xray::CONF_DIR and contain `"protocol": "hysteria"`. Count this
         // core's own configs instead, via the same prefix used for filtering.
-        let existing = Self::list_inbound_files_by_proto(super::config::Proto::Hysteria2)
+        let existing_files = Self::list_inbound_files_by_proto(super::config::Proto::Hysteria2)
             .await
             .map(|f| f.len())
             .unwrap_or(0);
-        Self::check_xray_hysteria2_capacity(existing, count)?;
+        // The cap counts FILES in this core's conf dir (matching the original
+        // sing-box `check_hysteria2_limit`, which also counts files). Each
+        // batch call writes exactly ONE file holding `count` inbounds, so the
+        // file delta is 1 -- not `count`, which would mix units (inbounds vs
+        // files) and both under-count existing usage and over-count the
+        // incoming request.
+        let requested_files = Self::batch_file_delta(count);
+        Self::check_xray_hysteria2_capacity(existing_files, requested_files)?;
 
         // Shared certificate, same one sing-box Hy2 and Xray KCP use.
         SingBoxConfigManager::ensure_tls_certificates().await?;
@@ -404,35 +425,57 @@ mod tests {
     }
 
     #[test]
+    fn test_batch_file_delta_maps_inbounds_to_files() {
+        // A batch writes exactly ONE file regardless of how many inbounds it
+        // holds. This is the regression guard: passing `count` (inbounds)
+        // instead of this delta is the exact bug that mixed units.
+        assert_eq!(ConfigManager::batch_file_delta(50), 1);
+        assert_eq!(ConfigManager::batch_file_delta(1), 1);
+        assert_eq!(ConfigManager::batch_file_delta(0), 0);
+    }
+
+    #[test]
     fn test_xray_hysteria2_capacity_enforces_cap_at_boundary() {
-        const MAX: usize = 50;
-        // Reaching the cap exactly is allowed...
-        assert!(ConfigManager::check_xray_hysteria2_capacity(MAX - 1, 1).is_ok());
-        assert!(ConfigManager::check_xray_hysteria2_capacity(0, MAX).is_ok());
-        // ...exceeding it by one is not. This pins the comparison to `> MAX`
-        // rather than `>= MAX` (off-by-one guard).
-        assert!(ConfigManager::check_xray_hysteria2_capacity(MAX, 1).is_err());
-        // An oversized single batch must not overshoot either. This fails if
-        // the check ignores `requested` and tests only `existing`.
-        assert!(ConfigManager::check_xray_hysteria2_capacity(0, MAX + 1).is_err());
+        // Truth table in FILE units: the cap is 50 batch files.
+        assert!(ConfigManager::check_xray_hysteria2_capacity(0, 1).is_ok()); // first file
+        assert!(ConfigManager::check_xray_hysteria2_capacity(49, 1).is_ok()); // 49 -> 50 (reaches cap)
+        assert!(ConfigManager::check_xray_hysteria2_capacity(50, 1).is_err()); // 50 -> 51 (over cap)
+    }
+
+    #[test]
+    fn test_first_batch_of_50_inbounds_allowed_then_50th_file_rejected() {
+        // Clean server + a 50-inbound batch = 1 file: allowed.
+        assert!(
+            ConfigManager::check_xray_hysteria2_capacity(0, ConfigManager::batch_file_delta(50))
+                .is_ok()
+        );
+        // Once 50 files exist, the next single-file batch is rejected.
+        assert!(
+            ConfigManager::check_xray_hysteria2_capacity(50, ConfigManager::batch_file_delta(1))
+                .is_err()
+        );
     }
 
     #[test]
     fn test_xray_hysteria2_capacity_error_names_cap_and_current_count() {
-        let err = ConfigManager::check_xray_hysteria2_capacity(50, 5)
-            .expect_err("50 existing + 5 requested must exceed the cap");
+        let err = ConfigManager::check_xray_hysteria2_capacity(50, 1)
+            .expect_err("50 existing files + 1 more must exceed the cap");
         let msg = err.to_string();
         assert!(msg.contains("50"), "error must name the cap: {msg}");
         assert!(
-            msg.contains("当前 50"),
-            "error must name the existing count: {msg}"
+            msg.contains("配置文件"),
+            "error must name the unit (config files): {msg}"
+        );
+        assert!(
+            msg.contains("50 个配置文件"),
+            "error must report the existing file count: {msg}"
         );
     }
 
     #[test]
     fn test_xray_hysteria2_capacity_rejects_without_wrapping() {
-        // Callback data is attacker-influenced; an absurd `requested` must be
-        // rejected, not wrapped into a small number that slips under the cap.
+        // Defensive: even though the call site only ever passes 0 or 1, a huge
+        // value must be rejected, not wrapped below the cap.
         assert!(ConfigManager::check_xray_hysteria2_capacity(0, usize::MAX).is_err());
         assert!(ConfigManager::check_xray_hysteria2_capacity(10, usize::MAX - 5).is_err());
     }

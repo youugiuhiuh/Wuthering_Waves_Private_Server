@@ -1305,7 +1305,7 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
             ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
-        Proto::Hysteria2 => ConfigManager::batch_create_hysteria2_xray(n, ip_version).await,
+        Proto::Hysteria2 => unreachable!("Hysteria2 uses its own handler"),
     };
 
     let adapter = event.adapter.clone();
@@ -1485,7 +1485,7 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
             ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
-        Proto::Hysteria2 => ConfigManager::batch_create_hysteria2_xray(n, ip_version).await,
+        Proto::Hysteria2 => unreachable!("Hysteria2 uses its own handler"),
     };
 
     let adapter = event.adapter.clone();
