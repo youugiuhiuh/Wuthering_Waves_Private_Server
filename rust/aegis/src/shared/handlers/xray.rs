@@ -1725,7 +1725,18 @@ async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
             ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
-        Proto::Hysteria2 => ConfigManager::batch_create_hysteria2_xray(n, ip_version).await,
+        // Intermediate wiring: preserves today's behaviour (no obfs, no hopping,
+        // official link style). Task 7 replaces this with the UI-selected values.
+        Proto::Hysteria2 => {
+            ConfigManager::batch_create_hysteria2_xray(
+                n,
+                ip_version,
+                None,
+                false,
+                crate::core::singbox::hysteria2::Hy2LinkStyle::Official,
+            )
+            .await
+        }
     };
 
     let adapter = event.adapter.clone();

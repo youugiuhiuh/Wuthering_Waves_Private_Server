@@ -227,11 +227,22 @@ impl ConfigManager {
 
     /// Batch-create `count` Xray Hysteria2 inbounds with matching share links.
     ///
-    /// Scope is deliberately core-only: no `finalmask.udp` obfuscation and no
-    /// `quicParams.udpHop` port hopping. Both are additive follow-ups.
+    /// `obfs_type` enables QUIC obfuscation: a fresh password is generated per
+    /// inbound and written to BOTH the inbound's `finalmask.udp` mask and the
+    /// share link, so the client can connect. `None` leaves the traffic
+    /// un-obfuscated.
+    ///
+    /// `enable_hopping` allocates a 100-port range from the XRAY allocator
+    /// (tagged separately from sing-box's, so a release in one core can never
+    /// free the other's ports), installs the UDP REDIRECT rules that map that
+    /// range back to the main port, and advertises the range in the link in
+    /// the form `link_style` selects.
     pub async fn batch_create_hysteria2_xray(
         count: usize,
         ip_version: IpVersion,
+        obfs_type: Option<Hysteria2ObfsType>,
+        enable_hopping: bool,
+        link_style: Hy2LinkStyle,
     ) -> Result<BatchCreationResult> {
         use crate::core::singbox::config::SingBoxConfigManager;
 
@@ -273,17 +284,29 @@ impl ConfigManager {
         let mut configs = Vec::with_capacity(count);
 
         for i in 0..count {
-            let port = loop {
-                let p = rng.gen_range(10000..60000);
-                if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
+            // Hopping takes a locked 100-port range from the XRAY allocator;
+            // the plain path keeps the original random-port search.
+            let (port, hop_range): (u16, (u16, u16)) = if enable_hopping {
+                crate::core::xray::port_allocator::PortAllocator::allocate_xray_hysteria2().await?
+            } else {
+                let p = loop {
+                    let candidate = rng.gen_range(10000..60000);
+                    if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(
+                        candidate,
+                    )
                     .await
-                {
-                    continue;
-                }
-                if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await
-                {
-                    break p as i32;
-                }
+                    {
+                        continue;
+                    }
+                    if crate::core::system::maintenance::MaintenanceManager::is_port_available(
+                        candidate,
+                    )
+                    .await
+                    {
+                        break candidate;
+                    }
+                };
+                (p, (p, p))
             };
 
             // Reuse the existing 32-char alphanumeric generator rather than
@@ -296,28 +319,183 @@ impl ConfigManager {
             let email = format!("{}-hysteria2", uuid_short);
             let tag = format!("HY2-{}-{}", i + 1, uuid_short);
 
+            // One binding for the obfs (type, password), used for BOTH the
+            // inbound and the link. Generating the password twice would let the
+            // two sides disagree, and the client would fail to connect.
+            let obfs = obfs_type.map(|t| {
+                (
+                    t,
+                    crate::core::singbox::hysteria2::Hysteria2Config::generate_obfs_password(),
+                )
+            });
+            let link_hop = enable_hopping.then_some(hop_range);
+
             configs.push(Self::build_hysteria2_inbound(
-                &tag, port, &auth, &email, &sni, ip_version, None, None,
+                &tag,
+                port as i32,
+                &auth,
+                &email,
+                &sni,
+                ip_version,
+                obfs.as_ref().map(|(t, p)| (t, p.as_str())),
+                link_hop,
             ));
 
             links.push(Self::generate_hysteria2_client_link(
                 &auth,
                 &host,
-                port,
+                port as i32,
                 &sni,
                 &email,
                 ip_version,
                 &pin,
-                None,
-                None,
-                Hy2LinkStyle::Official,
+                obfs.as_ref().map(|(t, p)| (t, p.as_str())),
+                link_hop,
+                link_style,
             ));
 
-            let _ =
-                crate::core::system::maintenance::MaintenanceManager::allow_port(port as u16).await;
+            let _ = crate::core::system::maintenance::MaintenanceManager::allow_port(port).await;
+
+            if enable_hopping {
+                let _ = crate::core::system::maintenance::MaintenanceManager::allow_port_range(
+                    hop_range.0,
+                    hop_range.1,
+                )
+                .await;
+                let has_ipv6 = crate::core::system::SystemMonitor::get_public_ipv6()
+                    .await
+                    .is_ok();
+                if has_ipv6 {
+                    let _ =
+                        crate::core::system::maintenance::MaintenanceManager::allow_port_range_v6(
+                            hop_range.0,
+                            hop_range.1,
+                        )
+                        .await;
+                }
+                Self::add_xray_hop_firewall_rules(port, hop_range, has_ipv6).await;
+            }
         }
 
         Self::create_standalone_config(configs, links, super::config::Proto::Hysteria2).await
+    }
+
+    /// Install the UDP REDIRECT rule that maps a hop range back to the main port.
+    ///
+    /// Best-effort: a failure is logged, not fatal, matching the sing-box
+    /// counterpart. `-C` checks first so a retry cannot stack duplicate rules.
+    async fn add_xray_hop_firewall_rules(main_port: u16, hop_range: (u16, u16), has_ipv6: bool) {
+        let range_str = format!("{}:{}", hop_range.0, hop_range.1);
+        Self::ensure_hop_redirect("iptables", main_port, &range_str).await;
+        if has_ipv6 {
+            Self::ensure_hop_redirect("ip6tables", main_port, &range_str).await;
+        }
+    }
+
+    async fn ensure_hop_redirect(bin: &str, main_port: u16, range_str: &str) {
+        use tokio::process::Command;
+
+        let to_ports = main_port.to_string();
+        let rule = [
+            "-t",
+            "nat",
+            "-p",
+            "udp",
+            "--dport",
+            range_str,
+            "-j",
+            "REDIRECT",
+            "--to-ports",
+            to_ports.as_str(),
+        ];
+        // Idempotency: skip if an identical rule is already installed.
+        let exists = Command::new(bin)
+            .args(["-t", "nat", "-C", "PREROUTING"])
+            .args(rule)
+            .output()
+            .await
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if exists {
+            return;
+        }
+        match Command::new(bin)
+            .args(["-t", "nat", "-A", "PREROUTING"])
+            .args(rule)
+            .output()
+            .await
+        {
+            Ok(o) if o.status.success() => log::info!(
+                "已配置 Xray Hysteria2 端口跳跃 ({}): 主端口 {}, 范围 {}",
+                bin,
+                main_port,
+                range_str
+            ),
+            Ok(o) => log::warn!(
+                "{} 规则添加失败: {}",
+                bin,
+                String::from_utf8_lossy(&o.stderr)
+            ),
+            Err(e) => log::warn!("{} 执行失败 (可能需要 root 权限): {}", bin, e),
+        }
+    }
+
+    /// Remove everything the hopping path installed.
+    ///
+    /// Counterpart to [`Self::add_xray_hop_firewall_rules`], kept beside it so
+    /// the two cannot drift apart. Stale REDIRECT rules are not merely cruft: a
+    /// later config allocated into the same port range would have its traffic
+    /// redirected to a dead main port.
+    ///
+    /// Mirrors sing-box's `cleanup_specific_hysteria2_rules`
+    /// (`core/singbox/config.rs:111`): delete the REDIRECT rules, then drop the
+    /// firewall allowances for BOTH the main port and the hop range.
+    // `dead_code` is expected only until the delete path starts calling this.
+    // `expect` rather than `allow` on purpose: as soon as a caller exists the
+    // expectation goes unfulfilled and `-D warnings` fails until this line is
+    // removed, so it cannot linger and mask a real dead-code regression.
+    #[expect(dead_code)]
+    pub(crate) async fn remove_xray_hop_firewall_rules(
+        main_port: u16,
+        hop_range: (u16, u16),
+        has_ipv6: bool,
+    ) {
+        use crate::core::system::maintenance::MaintenanceManager;
+        use tokio::process::Command;
+
+        let range_str = format!("{}:{}", hop_range.0, hop_range.1);
+        let to_ports = main_port.to_string();
+        let rule = [
+            "-t",
+            "nat",
+            "-D",
+            "PREROUTING",
+            "-p",
+            "udp",
+            "--dport",
+            range_str.as_str(),
+            "-j",
+            "REDIRECT",
+            "--to-ports",
+            to_ports.as_str(),
+        ];
+
+        let _ = Command::new("iptables").args(rule).output().await;
+        if has_ipv6 {
+            let _ = Command::new("ip6tables").args(rule).output().await;
+            let _ = MaintenanceManager::remove_port_range_v6(hop_range.0, hop_range.1).await;
+        }
+
+        // The main port was allowed with allow_port; the hop range with
+        // allow_port_range. Both must be undone.
+        let _ = MaintenanceManager::remove_port_range(main_port, main_port).await;
+        let _ = MaintenanceManager::remove_port_range(hop_range.0, hop_range.1).await;
+
+        log::info!(
+            "已清理 Xray Hysteria2 端口跳跃规则: 主端口 {}, 范围 {}",
+            main_port,
+            range_str
+        );
     }
 }
 
@@ -675,14 +853,6 @@ mod tests {
     }
 
     #[test]
-    fn test_hysteria2_batch_signature_is_constructible() {
-        // Compile-time check: the batch entry point has the shape the handler
-        // will call. `let _ = ...` avoids invoking the async body.
-        let _f: fn(usize, IpVersion) -> _ =
-            |count, ip_version| ConfigManager::batch_create_hysteria2_xray(count, ip_version);
-    }
-
-    #[test]
     fn test_reused_password_generator_is_32_alphanumeric() {
         use crate::core::singbox::hysteria2::Hysteria2Config;
         let pw = Hysteria2Config::generate_password();
@@ -912,5 +1082,35 @@ mod tests {
         // v2rayN expresses hop via mport, never the official port form.
         assert!(!link.contains("hop_interval"));
         assert!(!link.contains("11451,11452"));
+    }
+
+    #[test]
+    fn test_batch_signature_accepts_obfs_and_hopping() {
+        // Compile-time contract: the handler calls this with five arguments and
+        // receives a future resolving to Result<BatchCreationResult>.
+        //
+        // The output type is pinned as well as the inputs: a `-> _` shape would
+        // not catch a return-type drift, only an argument drift.
+        fn assert_contract<F, T>(_f: F)
+        where
+            F: FnOnce() -> T,
+            T: std::future::Future<Output = Result<BatchCreationResult>>,
+        {
+        }
+        assert_contract(|| {
+            ConfigManager::batch_create_hysteria2_xray(
+                1,
+                IpVersion::IPv4,
+                Some(Hysteria2ObfsType::Gecko),
+                true,
+                Hy2LinkStyle::V2rayN,
+            )
+        });
+
+        // And pin the exact fn-pointer shape the call site relies on.
+        let _f: fn(usize, IpVersion, Option<Hysteria2ObfsType>, bool, Hy2LinkStyle) -> _ =
+            |count, ip, obfs, hop, style| {
+                ConfigManager::batch_create_hysteria2_xray(count, ip, obfs, hop, style)
+            };
     }
 }
