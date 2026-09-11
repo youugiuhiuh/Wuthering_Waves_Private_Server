@@ -211,3 +211,46 @@ async fn hop_port_at_the_upper_bound_is_still_processed() {
         "port {main} (u16::MAX - 99) is a valid hop main port and must be cleaned up"
     );
 }
+
+/// The helper the BULK delete paths call must release the range.
+///
+/// `delete_all_configurations` and `delete_configurations_by_count` call
+/// `fs::remove_file` directly, so they rely on `release_hop_resources_for`
+/// rather than on `delete_specific_configuration_at`. Both bulk paths read a
+/// hardcoded `/etc` conf dir and cannot be driven from a test, so this pins the
+/// helper they actually share — the same function, same contract.
+#[tokio::test]
+async fn shared_release_helper_frees_the_range_bulk_delete_relies_on() {
+    let dir = tempfile::tempdir().unwrap();
+    let alloc = dir.path().join(".port_alloc");
+    let (main, _) =
+        aegis::core::xray::port_allocator::PortAllocator::allocate_xray_hysteria2_at(&alloc)
+            .await
+            .unwrap();
+    let cfg_path = dir.path().join("batch_xray_hysteria2_bulk_inbounds.json");
+    std::fs::write(
+        &cfg_path,
+        serde_json::json!({
+            "inbounds":[{
+                "protocol":"hysteria",
+                "port": main,
+                "streamSettings":{
+                    "finalmask":{"quicParams":{"udpHop":{"ports":format!("{}-{}", main+1, main+99)}}}
+                }
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    aegis::core::xray::config::ConfigManager::release_hop_resources_for(
+        cfg_path.to_str().unwrap(),
+        Some(&alloc),
+    )
+    .await;
+
+    assert!(
+        xray_main_ports(&alloc).is_empty(),
+        "hop range {main} leaked; the bulk delete paths share this helper"
+    );
+}

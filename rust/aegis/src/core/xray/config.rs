@@ -631,10 +631,50 @@ impl ConfigManager {
         Ok(backup_path)
     }
 
+    /// Release the hop resources a config file owns, before it is removed.
+    ///
+    /// Shared by every delete path. Without it, a bulk delete leaks the locked
+    /// range permanently (the allocator treats a stale range as occupied, so
+    /// the ports never come back) and leaves a REDIRECT rule pointing at a dead
+    /// main port. The allocator's own history records 11 such stale ranges from
+    /// an earlier leak of this class.
+    pub async fn release_hop_resources_for(path: &str, alloc_file: Option<&Path>) {
+        let hop_ports = Self::extract_xray_hy2_hop_ports(path)
+            .await
+            .unwrap_or_default();
+        if hop_ports.is_empty() {
+            return;
+        }
+        let alloc = alloc_file
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("/etc/wwps/.port_alloc"));
+        let has_ipv6 = crate::core::system::SystemMonitor::get_public_ipv6()
+            .await
+            .is_ok();
+        for main_port in hop_ports {
+            // Firewall rules first, then the range: a rule left referring to a
+            // released port could redirect a future config's traffic.
+            Self::remove_xray_hop_firewall_rules(
+                main_port,
+                (main_port + 1, main_port + 99),
+                has_ipv6,
+            )
+            .await;
+            let _ =
+                crate::core::xray::port_allocator::PortAllocator::release_xray_hysteria2_range_at(
+                    &alloc, main_port,
+                )
+                .await;
+        }
+    }
+
     pub async fn delete_all_configurations() -> Result<usize> {
         let files = Self::list_all_inbound_files().await?;
         let count = files.len();
         for file in &files {
+            // Clean up hop resources while the file is still readable, then
+            // delete. Bulk delete must not bypass the per-config cleanup.
+            Self::release_hop_resources_for(file, None).await;
             let _ = fs::remove_file(file).await;
         }
         if count > 0 {
@@ -663,6 +703,8 @@ impl ConfigManager {
         let to_delete = file_with_time.iter().take(count);
         let mut deleted_count = 0;
         for (f, _) in to_delete {
+            // Same order as every other path: release hop resources first.
+            Self::release_hop_resources_for(f, None).await;
             if fs::remove_file(f).await.is_ok() {
                 deleted_count += 1;
             }
