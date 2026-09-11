@@ -16,6 +16,13 @@ const HOP_SIZE: u16 = 100;
 
 const WWPS_BOX_CONF_DIR: &str = "/etc/wwps/wwps-box/conf";
 
+/// Protocol tag for Xray Hysteria2 hop ranges in `.port_alloc`.
+///
+/// Deliberately distinct from sing-box's `"hysteria2"`: the two cores keep
+/// separate ranges and separate quotas, so releasing one must never release
+/// the other even if the port numbers coincide.
+const XRAY_HY2_PROTOCOL: &str = "xray-hysteria2";
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PortAllocData {
     #[serde(default)]
@@ -252,6 +259,82 @@ impl PortAllocator {
                 (main_port, (hop_start, hop_end))
             })
     }
+
+    /// Allocate a hop range for Xray Hysteria2 (main + 99 ports), tagged so it
+    /// is distinct from sing-box's ranges.
+    pub async fn allocate_xray_hysteria2() -> Result<(u16, (u16, u16))> {
+        Self::allocate_xray_hysteria2_at(&PathBuf::from(PORT_ALLOC_FILE)).await
+    }
+
+    /// Same as [`allocate_xray_hysteria2`], with an explicit alloc file for tests.
+    ///
+    /// Uses the same scan as the sing-box variant, so it avoids ports held by
+    /// BOTH cores (config dirs and every locked range, whatever its tag).
+    pub async fn allocate_xray_hysteria2_at(path: &Path) -> Result<(u16, (u16, u16))> {
+        let occupied = Self::scan_all_occupied_ports(path).await?;
+        let main_port = Self::find_consecutive_range(&occupied, HOP_SIZE)?;
+        let hop_end = main_port + 99;
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let mut data = load_port_alloc_at(path).await.unwrap_or_default();
+        data.locked_ranges.push(LockedRange {
+            start: main_port,
+            end: hop_end,
+            protocol: XRAY_HY2_PROTOCOL.to_string(),
+            created_at: now,
+        });
+        save_port_alloc_at(path, &data).await?;
+
+        log::info!(
+            "Xray Hysteria2 端口分配: 主端口 {}, 跳跃范围 {}-{}",
+            main_port,
+            main_port + 1,
+            hop_end
+        );
+
+        Ok((main_port, (main_port + 1, hop_end)))
+    }
+
+    /// Release an Xray Hysteria2 hop range.
+    ///
+    /// Must be called by the Xray delete path. If it is not, the range stays
+    /// locked forever and accumulates — the same class of bug previously fixed
+    /// for sing-box.
+    pub async fn release_xray_hysteria2_range(main_port: u16) -> Result<()> {
+        Self::release_xray_hysteria2_range_at(&PathBuf::from(PORT_ALLOC_FILE), main_port).await
+    }
+
+    /// Same as [`release_xray_hysteria2_range`], with an explicit alloc file.
+    ///
+    /// Retains on BOTH the tag and the start port: a sing-box range that happens
+    /// to share the port number must survive.
+    pub async fn release_xray_hysteria2_range_at(path: &Path, main_port: u16) -> Result<()> {
+        let mut data = load_port_alloc_at(path).await.unwrap_or_default();
+        let before = data.locked_ranges.len();
+        data.locked_ranges
+            .retain(|r| !(r.protocol == XRAY_HY2_PROTOCOL && r.start == main_port));
+
+        if data.locked_ranges.len() < before {
+            save_port_alloc_at(path, &data).await?;
+            log::info!("Xray Hysteria2 端口范围已释放: 主端口 {}", main_port);
+        } else {
+            log::warn!("Xray Hysteria2 端口范围未找到: 主端口 {}", main_port);
+        }
+        Ok(())
+    }
+
+    /// All Xray Hysteria2 hop ranges currently locked, for cleanup scans.
+    pub async fn get_xray_hysteria2_ranges() -> Vec<(u16, (u16, u16))> {
+        let data = load_port_alloc().await.unwrap_or_default();
+        data.locked_ranges
+            .iter()
+            .filter(|r| r.protocol == XRAY_HY2_PROTOCOL)
+            .map(|r| (r.start, (r.start + 1, r.end)))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -449,5 +532,93 @@ mod tests {
             "释放后文件中不应再包含该范围"
         );
         assert_eq!(data.locked_ranges.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_xray_alloc_uses_own_protocol_tag() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".port_alloc");
+        let (main, hop) = PortAllocator::allocate_xray_hysteria2_at(&path)
+            .await
+            .unwrap();
+        assert_eq!(hop, (main + 1, main + 99));
+        let data: PortAllocData =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(data.locked_ranges.len(), 1);
+        // Must be the Xray tag, not sing-box's "hysteria2".
+        assert_eq!(data.locked_ranges[0].protocol, "xray-hysteria2");
+        assert_ne!(data.locked_ranges[0].protocol, "hysteria2");
+    }
+
+    #[tokio::test]
+    async fn test_xray_release_does_not_touch_singbox_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".port_alloc");
+        // Seed a sing-box-tagged range with the SAME main port.
+        let data = PortAllocData {
+            locked_ranges: vec![LockedRange {
+                start: 20000,
+                end: 20099,
+                protocol: "hysteria2".to_string(),
+                created_at: 0,
+            }],
+            initialized: true,
+        };
+        save_port_alloc_at(&path, &data).await.unwrap();
+
+        // Releasing an Xray range at that port must be a no-op on the sing-box
+        // range: sharing a port number across cores must not cross-release.
+        PortAllocator::release_xray_hysteria2_range_at(&path, 20000)
+            .await
+            .unwrap();
+        let after: PortAllocData =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(after.locked_ranges.len(), 1);
+        assert_eq!(after.locked_ranges[0].protocol, "hysteria2");
+    }
+
+    #[tokio::test]
+    async fn test_xray_release_removes_only_its_own_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".port_alloc");
+        let (main, _) = PortAllocator::allocate_xray_hysteria2_at(&path)
+            .await
+            .unwrap();
+        let before: PortAllocData =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(before.locked_ranges.len(), 1);
+
+        PortAllocator::release_xray_hysteria2_range_at(&path, main)
+            .await
+            .unwrap();
+        let after: PortAllocData =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(after.locked_ranges.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_xray_alloc_avoids_singbox_locked_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".port_alloc");
+        // sing-box already holds the lowest 100 ports.
+        let data = PortAllocData {
+            locked_ranges: vec![LockedRange {
+                start: XRAY_PORT_MIN,
+                end: XRAY_PORT_MIN + 99,
+                protocol: "hysteria2".to_string(),
+                created_at: 0,
+            }],
+            initialized: true,
+        };
+        save_port_alloc_at(&path, &data).await.unwrap();
+
+        let (main, _) = PortAllocator::allocate_xray_hysteria2_at(&path)
+            .await
+            .unwrap();
+        // Must not overlap another core's locked range.
+        assert!(
+            main > XRAY_PORT_MIN + 99,
+            "xray allocator returned {main}, overlapping the sing-box range"
+        );
     }
 }
