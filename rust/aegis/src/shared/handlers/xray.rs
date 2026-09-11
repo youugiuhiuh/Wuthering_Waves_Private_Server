@@ -3145,7 +3145,6 @@ async fn handle_domain_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
 
     #[test]
     fn one_click_domain_no_selects_reality_backend() {
@@ -3157,28 +3156,36 @@ mod tests {
         assert!(one_click_domain_no_mode("xhttp_domain_maybe:one_click").is_none());
     }
 
-    /// Locale is process-global (`rust-i18n`'s `CURRENT_LOCALE` is a `LazyLock`),
-    /// so this must not run concurrently with the locale assertions in
-    /// `core::i18n`. The crate already serializes every other locale-mutating
-    /// test; nextest's process isolation hides the race but plain `cargo test`
-    /// does not.
-    #[serial]
+    /// Asserts the placeholder order without rendering through the global
+    /// locale: `rust-i18n` has no locale-scoped lookup, so calling `t!` for
+    /// three locales would mutate process-global state and race every other
+    /// locale-dependent test. Reading the same YAML the macro reads and
+    /// running it through `replace_patterns` tests the identical contract
+    /// with no shared state.
     #[test]
     fn hy2_step_titles_substitute_their_placeholders() {
-        // The step titles are the only hy2 keys with positional arguments; a
-        // wrong `%{n}` would render the literal placeholder to the user while
-        // the YAML-parity checks in `tests/hy2_i18n_parity.rs` still passed.
-        let original = rust_i18n::locale();
+        let i18n_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/resources/i18n");
         for loc in ["en", "zh", "ja"] {
-            rust_i18n::set_locale(loc);
+            let text = std::fs::read_to_string(format!("{i18n_dir}/{loc}.yml"))
+                .unwrap_or_else(|e| panic!("read {loc}.yml: {e}"));
 
-            let obfs = t!(
-                "xray.hy2_obfs_step_title",
-                "0" => "IPv4",
-                "1" => 3,
-                "2" => "OBFS"
+            let value = |key: &str| -> String {
+                let prefix = format!("  {key}: \"");
+                let line = text
+                    .lines()
+                    .find(|l| l.starts_with(&prefix))
+                    .unwrap_or_else(|| panic!("{loc}.yml missing {key}"));
+                line[prefix.len()..].trim_end_matches('"').to_string()
+            };
+
+            let obfs = crate::core::i18n::render_for_test(
+                &value("hy2_obfs_step_title"),
+                &[("0", "IPv4"), ("1", "3"), ("2", "OBFS")],
             );
-            assert!(obfs.contains("OBFS"), "{loc} obfs title: {obfs}");
+            assert!(
+                obfs.contains("IPv4") && obfs.contains('3') && obfs.contains("OBFS"),
+                "{loc} obfs title: {obfs}"
+            );
             // Order matters: swapping %{0}/%{1} would still satisfy a plain
             // `contains` check while rendering "3 × IPv4" to the user.
             assert!(
@@ -3190,12 +3197,9 @@ mod tests {
                 "{loc} obfs title kept a placeholder: {obfs}"
             );
 
-            let hop = t!(
-                "xray.hy2_hop_step_title",
-                "0" => "IPv4",
-                "1" => 3,
-                "2" => "STATUS",
-                "3" => "PROMPT"
+            let hop = crate::core::i18n::render_for_test(
+                &value("hy2_hop_step_title"),
+                &[("0", "IPv4"), ("1", "3"), ("2", "STATUS"), ("3", "PROMPT")],
             );
             assert!(
                 hop.contains("STATUS") && hop.contains("PROMPT"),
@@ -3212,7 +3216,6 @@ mod tests {
                 "{loc} hop title kept a placeholder: {hop}"
             );
         }
-        rust_i18n::set_locale(&original);
     }
 
     #[test]

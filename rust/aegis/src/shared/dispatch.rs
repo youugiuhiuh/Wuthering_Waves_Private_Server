@@ -353,6 +353,7 @@ mod tests {
     use async_trait::async_trait;
     use futures_util::future::BoxFuture;
     use secrecy::SecretString;
+    use serial_test::serial;
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
 
@@ -645,6 +646,10 @@ mod tests {
         );
     }
 
+    /// Mutates the process-global locale, so it must not run concurrently
+    /// with any other test that sets or asserts the locale. nextest's
+    /// per-process isolation hides the race; plain `cargo test` does not.
+    #[serial]
     #[tokio::test]
     async fn stale_domain_provider_callback_is_rejected() {
         let prev_lang = crate::core::i18n::current_lang();
