@@ -123,7 +123,17 @@ pub enum Proto {
 Run: `cargo build --offline -p aegis 2>&1 | grep -E "not covered|^error" | head -20`
 Expected: compile errors listing each `match proto` missing the `Hysteria2` arm. This is the compiler giving us the checklist.
 
-- [ ] **Step 5: Fill the four match sites**
+- [ ] **Step 5: Fill the five match sites**
+
+> **Revised during execution (Task 1 finding).** The brief originally said "four match sites".
+> The real count is **five** — the fifth is the `network` match inside `build_reality_vless_inbound`.
+> Task 1 fills all five. Sites A–D below are as written; the fifth is:
+>
+> Site E — `build_reality_vless_inbound` (`network` match):
+>
+> ```rust
+>             Proto::Hysteria2 => unreachable!("Hysteria2 should use build_hysteria2_inbound"),
+> ```
 
 Site A — `list_inbound_files_by_proto` (config.rs:~115):
 
@@ -864,6 +874,19 @@ Because a `Proto::Hysteria2` needs its own prefix pair, it needs its own thin in
 
 - [ ] **Step 1: Add the filter / type / proto arms**
 
+> **Revised during execution (Task 1 finding).** Task 1 left **6 placeholder arms** in this file,
+> each tagged `// TODO(Task 6):` and each currently `unreachable!("Hysteria2 handler wiring lands
+> in Task 6")`. They are at approximately `show_reality_batch_prompt` (~162),
+> `show_reality_qty_prompt` (~294), `handle_batch_exec` label (~1260) and dispatch (~1278),
+> `handle_xhttp_batch_exec` label (~1438) and dispatch (~1456). Line numbers will have shifted
+> slightly once Task 1's placeholders are in — locate them by searching for the string
+> `Hysteria2 handler wiring lands in Task 6` and for `TODO(Task 6)`. **Every one of these six
+> placeholders must be replaced by this task.** None may remain in the final tree: an unreplaced
+> placeholder is a runtime `unreachable!()` panic on the Hysteria2 path.
+>
+> Verification step for the end of this task: `rg -n "Hysteria2 handler wiring lands in Task 6"`
+> must return **zero** matches.
+
 In every `match` listed above, add the `"hysteria2"` arm **before** the `_ =>` fallback. For the two `Proto`-returning helpers, the arm is `"hysteria2" => Proto::Hysteria2,`. For the label helpers, it is `"hysteria2" => t!("xray.filter_hysteria2"),` (filters) or `"hysteria2" => t!("xray.type_hysteria2"),` (the `del_all_confirm` type label).
 
 For the two `match proto { ... }` sites that carry `Proto::Kcp => unreachable!("KCP uses separate batch handler")`, add:
@@ -1177,7 +1200,8 @@ git commit -m "chore(xray): verify hysteria2 against Xray reference config"
 
 | Design requirement | Task |
 |---|---|
-| `Proto::Hysteria2` + 4 match sites | Task 1 |
+| `Proto::Hysteria2` + 5 match sites | Task 1 |
+| 6 handler placeholder arms replaced with real wiring | Task 6 (verified by the `rg` check in Task 6 Step 1) |
 | Xray `"protocol": "hysteria"` (not `hysteria2`) | Task 2 |
 | `settings.users[].auth` (not `password`) | Task 2 |
 | Dual protocol + transport layers | Task 2 |
