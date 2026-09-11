@@ -436,4 +436,55 @@ mod tests {
         assert!(ConfigManager::check_xray_hysteria2_capacity(0, usize::MAX).is_err());
         assert!(ConfigManager::check_xray_hysteria2_capacity(10, usize::MAX - 5).is_err());
     }
+
+    /// The built inbound must match the structure documented by Xray for a
+    /// `hysteria` inbound, and survive a JSON round trip (it is written to
+    /// disk as JSON and read back by Xray-core).
+    ///
+    /// Reference: https://github.com/XTLS/Xray-examples (Hysteria2/server.jsonc)
+    /// and https://xtls.github.io/config/inbounds/hysteria.html
+    #[test]
+    fn test_hysteria2_inbound_matches_xray_reference_structure_and_round_trips() {
+        let cfg = ConfigManager::build_hysteria2_inbound(
+            "IN-Hysteria2",
+            11451,
+            AUTH,
+            "abcd1234-hysteria2",
+            "www.bing.com",
+            IpVersion::IPv4,
+        );
+
+        // Round trip: this is what actually happens on disk. If a non-string
+        // key or non-serialisable value ever leaked in, this fails.
+        let serialized = serde_json::to_string(&cfg).expect("inbound must serialize");
+        let back: Value = serde_json::from_str(&serialized).expect("inbound must deserialize");
+        assert_eq!(back, cfg, "inbound must survive a JSON round trip");
+
+        // Exactly the top-level keys the reference inbound uses (plus tag and
+        // sniffing, which the reference config sets globally instead).
+        let obj = cfg.as_object().expect("inbound must be a JSON object");
+        for key in [
+            "protocol",
+            "port",
+            "listen",
+            "tag",
+            "settings",
+            "streamSettings",
+        ] {
+            assert!(obj.contains_key(key), "missing required key: {key}");
+        }
+
+        // The reference sets `settings.version` alongside the transport-level
+        // version. Both layers must agree, or Xray rejects the config.
+        assert_eq!(cfg["settings"]["version"], 2);
+        assert_eq!(cfg["streamSettings"]["hysteriaSettings"]["version"], 2);
+
+        // NOTE: we additionally set `settings.users[].auth`, which the
+        // reference config omits (it relies on transport-level `auth` alone).
+        // Both are documented as valid; we set both so `auth` stays consistent
+        // whichever layer a client keys off. Asserted deliberately, not
+        // incidentally.
+        assert_eq!(cfg["settings"]["users"][0]["auth"], AUTH);
+        assert_eq!(cfg["streamSettings"]["hysteriaSettings"]["auth"], AUTH);
+    }
 }
