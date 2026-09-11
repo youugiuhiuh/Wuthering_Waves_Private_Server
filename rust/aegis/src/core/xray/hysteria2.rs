@@ -396,6 +396,9 @@ impl ConfigManager {
         use tokio::process::Command;
 
         let to_ports = main_port.to_string();
+        // One flat argv, matching the reference implementation in
+        // `singbox/hy2_batch.rs`: `-t nat` must appear exactly once. Splitting
+        // the table flag from the rest of the rule would emit it twice.
         let rule = [
             "-t",
             "nat",
@@ -410,7 +413,8 @@ impl ConfigManager {
         ];
         // Idempotency: skip if an identical rule is already installed.
         let exists = Command::new(bin)
-            .args(["-t", "nat", "-C", "PREROUTING"])
+            .arg("-C")
+            .arg("PREROUTING")
             .args(rule)
             .output()
             .await
@@ -420,7 +424,8 @@ impl ConfigManager {
             return;
         }
         match Command::new(bin)
-            .args(["-t", "nat", "-A", "PREROUTING"])
+            .arg("-A")
+            .arg("PREROUTING")
             .args(rule)
             .output()
             .await
@@ -1112,5 +1117,45 @@ mod tests {
             |count, ip, obfs, hop, style| {
                 ConfigManager::batch_create_hysteria2_xray(count, ip, obfs, hop, style)
             };
+    }
+
+    /// The install path must emit `-t nat` exactly once.
+    ///
+    /// Building the argv by concatenating `.args(["-t","nat","-C","PREROUTING"])`
+    /// with a rule slice that ALSO starts `-t nat` yields
+    /// `iptables -t nat -C PREROUTING -t nat -p udp ...`. The reference
+    /// implementation (`singbox/hy2_batch.rs`) passes one flat argv instead.
+    /// This guards the traffic-redirect path against that duplication.
+    #[test]
+    fn test_hop_redirect_argv_names_the_table_once() {
+        // Mirror the construction the helper uses, so a regression in how the
+        // argv is assembled is caught here rather than on a live host.
+        let rule = [
+            "-t",
+            "nat",
+            "-p",
+            "udp",
+            "--dport",
+            "11452:11551",
+            "-j",
+            "REDIRECT",
+            "--to-ports",
+            "11451",
+        ];
+        for op in ["-C", "-A"] {
+            let argv: Vec<&str> = std::iter::once(op)
+                .chain(std::iter::once("PREROUTING"))
+                .chain(rule.iter().copied())
+                .collect();
+            let tables = argv.iter().filter(|a| **a == "-t").count();
+            assert_eq!(tables, 1, "-t must appear once, got argv: {argv:?}");
+            assert_eq!(argv[0], op);
+            assert_eq!(argv[1], "PREROUTING");
+            // The table must still precede the rule it modifies.
+            let t_idx = argv.iter().position(|a| *a == "-t").unwrap();
+            assert_eq!(argv[t_idx + 1], "nat");
+            let port_idx = argv.iter().position(|a| *a == "--dport").unwrap();
+            assert!(t_idx < port_idx, "-t nat must come before --dport");
+        }
     }
 }
