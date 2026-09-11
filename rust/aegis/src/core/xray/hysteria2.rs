@@ -880,4 +880,37 @@ mod tests {
         assert!(!link.contains("hop_interval"));
         assert!(!link.contains(",11452"));
     }
+
+    #[test]
+    fn test_hysteria2_link_encodes_obfs_password() {
+        // Every other obfs test uses an alphanumeric password, so the encoding
+        // of `obfs-password` was entirely unexercised: dropping the encoding
+        // left all link tests passing. A special character makes it real.
+        let link = link_with(
+            Some((&Hysteria2ObfsType::Salamander, "p@ss!w/rd")),
+            None,
+            Hy2LinkStyle::Official,
+        );
+        assert!(link.contains("obfs-password=p%40ss%21w%2Frd"));
+        // The raw form must not leak through unencoded.
+        assert!(!link.contains("obfs-password=p@ss!w/rd"));
+    }
+
+    #[test]
+    fn test_hysteria2_link_v2rayn_with_obfs_carries_both() {
+        // The only combined test pinned the Official branch; the v2rayN+obfs
+        // pairing was uncovered, so a regression that dropped obfs when the
+        // style is v2rayN would have gone unnoticed.
+        let link = link_with(
+            Some((&Hysteria2ObfsType::Salamander, "opw")),
+            Some((11452, 11551)),
+            Hy2LinkStyle::V2rayN,
+        );
+        assert!(link.contains("mport=11452-11551"));
+        assert!(link.contains("obfs=salamander"));
+        assert!(link.contains("obfs-password=opw"));
+        // v2rayN expresses hop via mport, never the official port form.
+        assert!(!link.contains("hop_interval"));
+        assert!(!link.contains("11451,11452"));
+    }
 }
