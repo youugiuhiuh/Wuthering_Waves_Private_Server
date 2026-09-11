@@ -6,6 +6,9 @@ use serde_json::{Value, json};
 
 use super::config::ConfigManager;
 use crate::core::paths::singbox;
+use crate::core::singbox::hysteria2::{
+    GECKO_DEFAULT_MAX_PACKET_SIZE, GECKO_DEFAULT_MIN_PACKET_SIZE, Hysteria2ObfsType,
+};
 use crate::core::types::{BatchCreationResult, IpVersion};
 
 impl ConfigManager {
@@ -22,13 +25,14 @@ impl ConfigManager {
         email: &str,
         sni: &str,
         ip_version: IpVersion,
+        obfs: Option<(&Hysteria2ObfsType, &str)>,
     ) -> Value {
         let listen_ip = match ip_version {
             IpVersion::IPv4 | IpVersion::SplitStackV4Primary => "0.0.0.0",
             IpVersion::IPv6 | IpVersion::SplitStackV6Primary => "::",
         };
 
-        json!({
+        let mut inbound = json!({
             "listen": listen_ip,
             "port": port,
             "protocol": "hysteria",
@@ -63,6 +67,36 @@ impl ConfigManager {
                 "destOverride": ["http", "tls", "quic"],
                 "metadataOnly": false
             }
+        });
+
+        if let Some((obfs_type, obfs_password)) = obfs {
+            let udp_mask = Self::build_hysteria2_udp_mask(obfs_type, obfs_password);
+            inbound["streamSettings"]["finalmask"] = json!({ "udp": [udp_mask] });
+        }
+
+        inbound
+    }
+
+    /// Build one UDPMask entry for Hysteria2 obfuscation.
+    ///
+    /// Xray exposes only the `salamander` type; gecko is chosen by supplying
+    /// `packetSize`, which enables extra fragmentation/padding of QUIC
+    /// long-header packets. Upper bound must not exceed 2048 per the Xray docs.
+    pub(crate) fn build_hysteria2_udp_mask(obfs_type: &Hysteria2ObfsType, password: &str) -> Value {
+        let mut settings = serde_json::Map::new();
+        settings.insert("password".to_string(), json!(password));
+        if *obfs_type == Hysteria2ObfsType::Gecko {
+            settings.insert(
+                "packetSize".to_string(),
+                json!(format!(
+                    "{}-{}",
+                    GECKO_DEFAULT_MIN_PACKET_SIZE, GECKO_DEFAULT_MAX_PACKET_SIZE
+                )),
+            );
+        }
+        json!({
+            "type": "salamander",
+            "settings": settings
         })
     }
 
@@ -199,7 +233,7 @@ impl ConfigManager {
             let tag = format!("HY2-{}-{}", i + 1, uuid_short);
 
             configs.push(Self::build_hysteria2_inbound(
-                &tag, port, &auth, &email, &sni, ip_version,
+                &tag, port, &auth, &email, &sni, ip_version, None,
             ));
 
             links.push(Self::generate_hysteria2_client_link(
@@ -228,6 +262,7 @@ mod tests {
             "abcd1234-hysteria2",
             "www.bing.com",
             ip_version,
+            None,
         )
     }
 
@@ -299,6 +334,66 @@ mod tests {
         assert_eq!(cfg["port"], 11451);
         assert_eq!(cfg["settings"]["users"][0]["email"], "abcd1234-hysteria2");
         assert_eq!(cfg["settings"]["users"][0]["level"], 0);
+    }
+
+    #[test]
+    fn test_hysteria2_obfs_salamander_writes_finalmask_udp() {
+        let cfg = ConfigManager::build_hysteria2_inbound(
+            "t",
+            11451,
+            AUTH,
+            "e",
+            "www.bing.com",
+            IpVersion::IPv4,
+            Some((&Hysteria2ObfsType::Salamander, "obfspw")),
+        );
+        let udp = &cfg["streamSettings"]["finalmask"]["udp"][0];
+        assert_eq!(udp["type"], "salamander");
+        assert_eq!(udp["settings"]["password"], "obfspw");
+        // Plain salamander must NOT carry packetSize; that is what makes it
+        // gecko. A stray packetSize here would silently enable gecko.
+        assert!(udp["settings"].get("packetSize").is_none());
+    }
+
+    #[test]
+    fn test_hysteria2_obfs_gecko_is_salamander_plus_packetsize() {
+        let cfg = ConfigManager::build_hysteria2_inbound(
+            "t",
+            11451,
+            AUTH,
+            "e",
+            "www.bing.com",
+            IpVersion::IPv4,
+            Some((&Hysteria2ObfsType::Gecko, "obfspw")),
+        );
+        let udp = &cfg["streamSettings"]["finalmask"]["udp"][0];
+        // Xray has no "gecko" type: gecko IS salamander with a packetSize.
+        assert_eq!(udp["type"], "salamander");
+        assert_ne!(udp["type"], "gecko");
+        assert_eq!(udp["settings"]["password"], "obfspw");
+        assert_eq!(
+            udp["settings"]["packetSize"],
+            format!(
+                "{}-{}",
+                GECKO_DEFAULT_MIN_PACKET_SIZE, GECKO_DEFAULT_MAX_PACKET_SIZE
+            )
+        );
+    }
+
+    #[test]
+    fn test_hysteria2_no_obfs_omits_finalmask_entirely() {
+        let cfg = ConfigManager::build_hysteria2_inbound(
+            "t",
+            11451,
+            AUTH,
+            "e",
+            "www.bing.com",
+            IpVersion::IPv4,
+            None,
+        );
+        // Absent, not an empty object: an empty finalmask is not the same
+        // config to Xray and would be a schema surprise.
+        assert!(cfg["streamSettings"].get("finalmask").is_none());
     }
 
     #[test]
@@ -394,6 +489,7 @@ mod tests {
             "e",
             "www.bing.com",
             IpVersion::IPv4,
+            None,
         );
         let link = ConfigManager::generate_hysteria2_client_link(
             auth,
@@ -494,6 +590,7 @@ mod tests {
             "abcd1234-hysteria2",
             "www.bing.com",
             IpVersion::IPv4,
+            None,
         );
 
         // Round trip: this is what actually happens on disk. If a non-string
