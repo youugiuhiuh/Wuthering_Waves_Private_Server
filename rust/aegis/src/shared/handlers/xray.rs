@@ -1922,8 +1922,7 @@ async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
             ConfigManager::batch_create_xhttp_reality_enhanced(n, ip_version, true).await
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
-        // Intermediate wiring: preserves today's behaviour (no obfs, no hopping,
-        // official link style). Task 7 replaces this with the UI-selected values.
+        // Values come from the obfs/hop choice steps via parse_hy2_exec_params.
         Proto::Hysteria2 => {
             ConfigManager::batch_create_hysteria2_xray(
                 n,
@@ -3186,6 +3185,17 @@ mod tests {
         // surprising combination.
         assert_eq!(parse_hy2_exec_params("4:3"), None);
         assert_eq!(parse_hy2_exec_params(""), None);
+        // Every field's rejection path, so a future relaxation of any single
+        // validator cannot pass unnoticed.
+        assert_eq!(parse_hy2_exec_params("5:3:1:0:official"), None, "bad ip");
+        assert_eq!(parse_hy2_exec_params("4:x:1:0:official"), None, "bad count");
+        assert_eq!(parse_hy2_exec_params("4:3:9:0:official"), None, "bad obfs");
+        assert_eq!(parse_hy2_exec_params("4:3:1:7:official"), None, "bad hop");
+        assert_eq!(
+            parse_hy2_exec_params("4:3:1:0:official:extra"),
+            None,
+            "too many"
+        );
     }
 
     #[test]
