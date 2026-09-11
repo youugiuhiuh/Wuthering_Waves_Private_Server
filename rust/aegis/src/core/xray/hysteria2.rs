@@ -18,6 +18,10 @@ impl ConfigManager {
     /// present: the protocol layer (`protocol: "hysteria"` + `settings.users`)
     /// and the transport layer (`network: "hysteria"` + `hysteriaSettings`).
     /// Either alone produces an inbound that never authenticates.
+    ///
+    /// `obfs` carries (type, password). Xray has no separate gecko type, so a
+    /// gecko request is written as `salamander` plus a `packetSize`; plain
+    /// salamander omits `packetSize`. The password must match the client's.
     pub(crate) fn build_hysteria2_inbound(
         tag: &str,
         port: i32,
