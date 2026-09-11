@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use super::config::ConfigManager;
 use crate::core::paths::singbox;
 use crate::core::singbox::hysteria2::{
-    GECKO_DEFAULT_MAX_PACKET_SIZE, GECKO_DEFAULT_MIN_PACKET_SIZE, Hysteria2ObfsType,
+    GECKO_DEFAULT_MAX_PACKET_SIZE, GECKO_DEFAULT_MIN_PACKET_SIZE, Hy2LinkStyle, Hysteria2ObfsType,
 };
 use crate::core::types::{BatchCreationResult, IpVersion};
 
@@ -133,6 +133,15 @@ impl ConfigManager {
     ///
     /// `auth` MUST be the same value used in `build_hysteria2_inbound`'s
     /// `settings.users[].auth`, otherwise the client cannot authenticate.
+    ///
+    /// `obfs` carries (type, password). The link's vocabulary deliberately
+    /// differs from the inbound's: clients see `obfs=gecko` / `obfs=salamander`,
+    /// whereas the inbound expresses gecko as `salamander` + `packetSize`.
+    ///
+    /// `hop_range` is the inclusive (start, end) the client may roam over. The
+    /// `link_style` decides where it goes: the official scheme puts the range in
+    /// the port position and adds `hop_interval`; v2rayN instead uses `mport`.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn generate_hysteria2_client_link(
         auth: &str,
         host: &str,
@@ -141,6 +150,9 @@ impl ConfigManager {
         email: &str,
         ip_version: IpVersion,
         pin: &str,
+        obfs: Option<(&Hysteria2ObfsType, &str)>,
+        hop_range: Option<(u16, u16)>,
+        link_style: Hy2LinkStyle,
     ) -> String {
         let encoded_auth = utf8_percent_encode(auth, NON_ALPHANUMERIC).to_string();
         let encoded_sni = utf8_percent_encode(sni, NON_ALPHANUMERIC).to_string();
@@ -152,9 +164,32 @@ impl ConfigManager {
             IpVersion::IPv4 | IpVersion::SplitStackV4Primary => host.to_string(),
         };
 
+        // Official puts the hop range in the port position; v2rayN uses mport.
+        let (authority, hop_param) = match (hop_range, link_style) {
+            (Some((a, b)), Hy2LinkStyle::Official) => (
+                format!("{}:{},{}-{}", fmt_host, port, a, b),
+                "&hop_interval=30s".to_string(),
+            ),
+            (Some((a, b)), Hy2LinkStyle::V2rayN) => (
+                format!("{}:{}", fmt_host, port),
+                format!("&mport={}-{}", a, b),
+            ),
+            (None, _) => (format!("{}:{}", fmt_host, port), String::new()),
+        };
+
+        let obfs_param = obfs
+            .map(|(t, pw)| {
+                format!(
+                    "&obfs={}&obfs-password={}",
+                    t.as_str(),
+                    utf8_percent_encode(pw, NON_ALPHANUMERIC)
+                )
+            })
+            .unwrap_or_default();
+
         format!(
-            "hysteria2://{}@{}:{}?sni={}&alpn=h3&pinSHA256={}#{}",
-            encoded_auth, fmt_host, port, encoded_sni, encoded_pin, encoded_email
+            "hysteria2://{}@{}?sni={}&alpn=h3&pinSHA256={}{}{}#{}",
+            encoded_auth, authority, encoded_sni, encoded_pin, hop_param, obfs_param, encoded_email
         )
     }
 
@@ -266,7 +301,16 @@ impl ConfigManager {
             ));
 
             links.push(Self::generate_hysteria2_client_link(
-                &auth, &host, port, &sni, &email, ip_version, &pin,
+                &auth,
+                &host,
+                port,
+                &sni,
+                &email,
+                ip_version,
+                &pin,
+                None,
+                None,
+                Hy2LinkStyle::Official,
             ));
 
             let _ =
@@ -513,6 +557,9 @@ mod tests {
             "abcd-hysteria2",
             IpVersion::IPv4,
             "AA:BB:CC:DD",
+            None,
+            None,
+            Hy2LinkStyle::Official,
         );
         assert!(link.starts_with("hysteria2://pw123@203.0.113.1:11451?"));
         // The brief's own format spec mandates `<pct-encoded sni>` / `<pct-encoded email>`,
@@ -533,6 +580,9 @@ mod tests {
             "n",
             IpVersion::IPv4,
             "AA:BB:CC:DD",
+            None,
+            None,
+            Hy2LinkStyle::Official,
         );
         assert!(!link.contains("insecure=1"));
         assert!(!link.contains("allowInsecure"));
@@ -549,6 +599,9 @@ mod tests {
             "n",
             IpVersion::IPv4,
             "AA:BB:CC:DD",
+            None,
+            None,
+            Hy2LinkStyle::Official,
         );
         // Colons must be escaped so they do not terminate the query value.
         assert!(link.contains("pinSHA256=AA%3ABB%3ACC%3ADD"));
@@ -564,6 +617,9 @@ mod tests {
             "n",
             IpVersion::IPv4,
             "AA",
+            None,
+            None,
+            Hy2LinkStyle::Official,
         );
         assert!(link.contains("@203.0.113.1:11451"));
         assert!(link.contains("p%40ss%21word"));
@@ -580,6 +636,9 @@ mod tests {
             "n",
             IpVersion::IPv6,
             "AA",
+            None,
+            None,
+            Hy2LinkStyle::Official,
         );
         assert!(link.contains("@[2001:db8::1]:11451?"));
     }
@@ -607,6 +666,9 @@ mod tests {
             "e",
             IpVersion::IPv4,
             "AA",
+            None,
+            None,
+            Hy2LinkStyle::Official,
         );
         assert_eq!(inbound["settings"]["users"][0]["auth"], auth);
         assert!(link.contains(&format!("hysteria2://{auth}@")));
@@ -734,5 +796,88 @@ mod tests {
         // incidentally.
         assert_eq!(cfg["settings"]["users"][0]["auth"], AUTH);
         assert_eq!(cfg["streamSettings"]["hysteriaSettings"]["auth"], AUTH);
+    }
+
+    fn link_with(
+        obfs: Option<(&Hysteria2ObfsType, &str)>,
+        hop: Option<(u16, u16)>,
+        style: Hy2LinkStyle,
+    ) -> String {
+        ConfigManager::generate_hysteria2_client_link(
+            "pw",
+            "203.0.113.1",
+            11451,
+            "www.bing.com",
+            "n",
+            IpVersion::IPv4,
+            "AA:BB",
+            obfs,
+            hop,
+            style,
+        )
+    }
+
+    #[test]
+    fn test_hysteria2_link_obfs_salamander() {
+        let link = link_with(
+            Some((&Hysteria2ObfsType::Salamander, "obfspw")),
+            None,
+            Hy2LinkStyle::Official,
+        );
+        assert!(link.contains("obfs=salamander"));
+        assert!(link.contains("obfs-password=obfspw"));
+    }
+
+    #[test]
+    fn test_hysteria2_link_gecko_is_labelled_gecko_not_salamander() {
+        let link = link_with(
+            Some((&Hysteria2ObfsType::Gecko, "obfspw")),
+            None,
+            Hy2LinkStyle::Official,
+        );
+        // The client vocabulary keeps the gecko distinction even though the
+        // inbound schema expresses it as salamander+packetSize.
+        assert!(link.contains("obfs=gecko"));
+        assert!(!link.contains("obfs=salamander"));
+    }
+
+    #[test]
+    fn test_hysteria2_link_hopping_official_puts_range_in_port_position() {
+        let link = link_with(None, Some((11452, 11551)), Hy2LinkStyle::Official);
+        assert!(link.contains("@203.0.113.1:11451,11452-11551?"));
+        assert!(link.contains("hop_interval=30s"));
+        assert!(!link.contains("mport="));
+    }
+
+    #[test]
+    fn test_hysteria2_link_hopping_v2rayn_uses_mport() {
+        let link = link_with(None, Some((11452, 11551)), Hy2LinkStyle::V2rayN);
+        assert!(link.contains("@203.0.113.1:11451?"));
+        assert!(link.contains("mport=11452-11551"));
+        assert!(!link.contains("hop_interval"));
+    }
+
+    #[test]
+    fn test_hysteria2_link_hop_and_obfs_and_pin_all_present() {
+        let link = link_with(
+            Some((&Hysteria2ObfsType::Gecko, "opw")),
+            Some((11452, 11551)),
+            Hy2LinkStyle::Official,
+        );
+        assert!(link.contains("obfs=gecko"));
+        assert!(link.contains("obfs-password=opw"));
+        assert!(link.contains("11451,11452-11551"));
+        assert!(link.contains("pinSHA256=AA%3ABB"));
+        // The security posture must not regress when features are combined.
+        assert!(!link.contains("insecure=1"));
+    }
+
+    #[test]
+    fn test_hysteria2_link_plain_has_no_obfs_or_hop_params() {
+        let link = link_with(None, None, Hy2LinkStyle::Official);
+        assert!(!link.contains("obfs="));
+        assert!(!link.contains("mport="));
+        assert!(!link.contains("hop_interval"));
+        assert!(!link.contains(",11452"));
     }
 }
