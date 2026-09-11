@@ -95,6 +95,24 @@ impl ConfigManager {
         )
     }
 
+    /// Enforce the Xray Hysteria2 config cap.
+    ///
+    /// `existing + requested` may exceed `MAX` within a single batch, so the
+    /// whole batch is rejected rather than allowed to overshoot. Uses
+    /// `saturating_add` so an absurd `requested` (callback data is
+    /// attacker-influenced) cannot wrap into a small number that passes.
+    fn check_xray_hysteria2_capacity(existing: usize, requested: usize) -> Result<()> {
+        const MAX_XRAY_HY2_CONFIGS: usize = 50;
+        if existing.saturating_add(requested) > MAX_XRAY_HY2_CONFIGS {
+            return Err(anyhow::anyhow!(
+                "已达到最大 Xray Hysteria2 配置数量限制（{}个），当前 {} 个",
+                MAX_XRAY_HY2_CONFIGS,
+                existing
+            ));
+        }
+        Ok(())
+    }
+
     /// Batch-create `count` Xray Hysteria2 inbounds with matching share links.
     ///
     /// Scope is deliberately core-only: no `finalmask.udp` obfuscation and no
@@ -105,9 +123,16 @@ impl ConfigManager {
     ) -> Result<BatchCreationResult> {
         use crate::core::singbox::config::SingBoxConfigManager;
 
-        if !crate::core::xray::port_allocator::PortAllocator::check_hysteria2_limit().await? {
-            return Err(anyhow::anyhow!("已达到最大 Hysteria2 配置数量限制（50个）"));
-        }
+        // The shared PortAllocator::check_hysteria2_limit() counts sing-box
+        // configs (it scans /etc/wwps/wwps-box/conf for the substring
+        // "hysteria2"), so it cannot see Xray configs, which live in
+        // xray::CONF_DIR and contain `"protocol": "hysteria"`. Count this
+        // core's own configs instead, via the same prefix used for filtering.
+        let existing = Self::list_inbound_files_by_proto(super::config::Proto::Hysteria2)
+            .await
+            .map(|f| f.len())
+            .unwrap_or(0);
+        Self::check_xray_hysteria2_capacity(existing, count)?;
 
         // Shared certificate, same one sing-box Hy2 and Xray KCP use.
         SingBoxConfigManager::ensure_tls_certificates().await?;
@@ -376,5 +401,39 @@ mod tests {
         let pw = Hysteria2Config::generate_password();
         assert_eq!(pw.len(), 32);
         assert!(pw.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn test_xray_hysteria2_capacity_enforces_cap_at_boundary() {
+        const MAX: usize = 50;
+        // Reaching the cap exactly is allowed...
+        assert!(ConfigManager::check_xray_hysteria2_capacity(MAX - 1, 1).is_ok());
+        assert!(ConfigManager::check_xray_hysteria2_capacity(0, MAX).is_ok());
+        // ...exceeding it by one is not. This pins the comparison to `> MAX`
+        // rather than `>= MAX` (off-by-one guard).
+        assert!(ConfigManager::check_xray_hysteria2_capacity(MAX, 1).is_err());
+        // An oversized single batch must not overshoot either. This fails if
+        // the check ignores `requested` and tests only `existing`.
+        assert!(ConfigManager::check_xray_hysteria2_capacity(0, MAX + 1).is_err());
+    }
+
+    #[test]
+    fn test_xray_hysteria2_capacity_error_names_cap_and_current_count() {
+        let err = ConfigManager::check_xray_hysteria2_capacity(50, 5)
+            .expect_err("50 existing + 5 requested must exceed the cap");
+        let msg = err.to_string();
+        assert!(msg.contains("50"), "error must name the cap: {msg}");
+        assert!(
+            msg.contains("当前 50"),
+            "error must name the existing count: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_xray_hysteria2_capacity_rejects_without_wrapping() {
+        // Callback data is attacker-influenced; an absurd `requested` must be
+        // rejected, not wrapped into a small number that slips under the cap.
+        assert!(ConfigManager::check_xray_hysteria2_capacity(0, usize::MAX).is_err());
+        assert!(ConfigManager::check_xray_hysteria2_capacity(10, usize::MAX - 5).is_err());
     }
 }
