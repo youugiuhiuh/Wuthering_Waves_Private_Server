@@ -465,6 +465,7 @@ xray:
   routing_rule_bt: "Block BitTorrent"
   routing_rule_ads: "Block Ads"
   routing_rule_openai: "OpenAI Direct"
+  routing_rule_connectivity_check: "Connectivity Check Direct"
   routing_mgmt_btn: "📋 Routing Rules"
 
 schedule:

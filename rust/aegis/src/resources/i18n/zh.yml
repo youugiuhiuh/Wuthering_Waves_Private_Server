@@ -470,6 +470,7 @@ xray:
   routing_rule_bt: "BT协议封锁"
   routing_rule_ads: "广告域名封锁"
   routing_rule_openai: "OpenAI直连"
+  routing_rule_connectivity_check: "连通性检测直连"
   routing_mgmt_btn: "📋 路由规则管理"
 
 schedule:
