@@ -17,11 +17,21 @@ pub struct RuleDef {
 
 pub static ROUTING_RULES: &[RuleDef] = &[
     // 必须位于首位：Xray routing 顺序匹配、首条命中即停。
-    // geosite:cn 收录了这些探测域名，若排在 cn_ip / cn_domain 之后即失效。
+    // geosite:cn 收录了这些 gstatic 域名，若排在 cn_ip / cn_domain 之后即失效。
+    //
+    // 注意 id 为历史命名：本规则既覆盖连通性探测端点（generate_204），
+    // 也覆盖 Google 登录必需的静态资源域名（ssl./fonts.gstatic.com 为
+    // Google 官方登录必需主机，见 ChromeOS sign-in allowlist），
+    // 后者同属 geosite:cn 的精确条目，被 cn_domain blackhole 会导致登录流程损坏。
     RuleDef {
         id: "connectivity_check",
         rule_type: "domain",
-        targets: &["www.gstatic.com", "connectivitycheck.gstatic.com"],
+        targets: &[
+            "www.gstatic.com",
+            "connectivitycheck.gstatic.com",
+            "ssl.gstatic.com",
+            "fonts.gstatic.com",
+        ],
         outbound: "direct",
         default_enabled: true,
     },
@@ -156,30 +166,40 @@ impl RoutingManager {
             v["routing"]["rules"] = Value::Array(Vec::new());
         }
 
+        let def = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == RULE_ID)
+            .expect("ROUTING_RULES 必须包含 connectivity_check");
+        let canonical = Self::rule_def_to_json(def);
+
         let rules = v["routing"]["rules"].as_array_mut().unwrap();
         let pos = rules
             .iter()
             .position(|r| r.get("ruleTag").and_then(|t| t.as_str()) == Some(RULE_ID));
 
-        // 已在首位：无变更
-        if pos == Some(0) {
-            return false;
+        match pos {
+            // 已在首位且内容与当前定义一致：无变更，无需写盘
+            Some(0) if rules[0] == canonical => false,
+            // 已在首位但内容过时（例如新增了域名）：用当前定义覆盖。
+            // 旧版本的迁移只插一次就不再更新，存量机器永远拿不到新增域名，
+            // 因此这里必须比对内容而非只看 tag 是否存在。
+            Some(0) => {
+                rules[0] = canonical;
+                true
+            }
+            // 错位：提到首位。toggle() 用 push 追加到末尾（cn_domain 之后），
+            // 那里因首条命中即停而完全失效；迁移是唯一的修复路径。
+            // 同时用当前定义覆盖，顺带修正过时内容。
+            Some(i) => {
+                rules.remove(i);
+                rules.insert(0, canonical);
+                true
+            }
+            None => {
+                rules.insert(0, canonical);
+                true
+            }
         }
-
-        // 错位：提到首位。toggle() 用 push 追加到末尾（cn_domain 之后），
-        // 那里因首条命中即停而完全失效；迁移是唯一的修复路径。
-        if let Some(i) = pos {
-            let rule = rules.remove(i);
-            rules.insert(0, rule);
-            return true;
-        }
-
-        let def = ROUTING_RULES
-            .iter()
-            .find(|r| r.id == RULE_ID)
-            .expect("ROUTING_RULES 必须包含 connectivity_check");
-        rules.insert(0, Self::rule_def_to_json(def));
-        true
     }
 
     /// 迁移：确保 00_base.json 的 routing.rules 含 connectivity_check（幂等）。
@@ -276,7 +296,8 @@ mod tests {
         );
     }
 
-    /// 域名清单必须恰为这 2 个探测端点，且不得混入资源 CDN。
+    /// 域名清单必须恰为这 4 项（连通性探测 + Google 登录必需静态资源），
+    /// 且不得混入其余 gstatic 资源 CDN 或广告/签到类域名。
     #[test]
     fn test_connectivity_check_targets_are_probe_endpoints_only() {
         let rule = ROUTING_RULES
@@ -288,8 +309,13 @@ mod tests {
         assert!(rule.default_enabled, "新规则应默认启用");
         assert_eq!(
             rule.targets,
-            &["www.gstatic.com", "connectivitycheck.gstatic.com"],
-            "域名清单必须恰为这 2 个探测端点"
+            &[
+                "www.gstatic.com",
+                "connectivitycheck.gstatic.com",
+                "ssl.gstatic.com",
+                "fonts.gstatic.com",
+            ],
+            "域名清单必须恰为这 4 项"
         );
         // 不得出现 scheme 或路径 —— Xray 只匹配 SNI / Host
         for t in rule.targets {
@@ -299,17 +325,16 @@ mod tests {
                 t
             );
         }
-        // 不得混入同家族的资源 CDN（非探测端点）
+        // 不得混入其余 gstatic 域名（非探测端点、非登录依赖）
         for t in rule.targets {
             assert!(
-                !t.starts_with("fonts.")
-                    && !t.starts_with("ssl.")
-                    && !t.starts_with("csi.")
+                !t.starts_with("csi.")
                     && !t.starts_with("g0.")
                     && !t.starts_with("g1.")
                     && !t.starts_with("g2.")
-                    && !t.starts_with("g3."),
-                "不应放行资源 CDN（非探测端点）: {}",
+                    && !t.starts_with("g3.")
+                    && !t.starts_with("checkin."),
+                "不应放行其余 gstatic 资源 CDN / 签到域名: {}",
                 t
             );
         }
@@ -475,9 +500,43 @@ mod tests {
         assert_eq!(rule["outboundTag"], "direct");
         assert_eq!(
             rule["domain"],
-            serde_json::json!(["www.gstatic.com", "connectivitycheck.gstatic.com"])
+            serde_json::json!([
+                "www.gstatic.com",
+                "connectivitycheck.gstatic.com",
+                "ssl.gstatic.com",
+                "fonts.gstatic.com"
+            ])
         );
         assert!(rule.get("ip").is_none(), "domain 规则不应带 ip 键");
+    }
+
+    /// 存量机器上规则已在首位但内容过时（缺新增域名）时必须被更新。
+    /// 旧迁移只看 tag 是否存在就早退，导致新增域名永远进不去。
+    #[test]
+    fn test_ensure_direct_rules_updates_stale_targets_at_index_zero() {
+        let mut v = base_with_rules(serde_json::json!([
+            {"type": "field", "ruleTag": "connectivity_check", "outboundTag": "direct",
+             "domain": ["www.gstatic.com"]},
+            {"type": "field", "ruleTag": "cn_ip", "outboundTag": "blocked", "ip": ["geoip:cn"]}
+        ]));
+        assert!(
+            RoutingManager::ensure_direct_rules_value(&mut v),
+            "内容过时应视为有变更"
+        );
+        let rules = v["routing"]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 2, "不得重复插入");
+        assert_eq!(rules[0]["ruleTag"], "connectivity_check");
+        assert_eq!(
+            rules[0]["domain"],
+            serde_json::json!([
+                "www.gstatic.com",
+                "connectivitycheck.gstatic.com",
+                "ssl.gstatic.com",
+                "fonts.gstatic.com"
+            ]),
+            "过时内容应被当前定义覆盖"
+        );
+        assert_eq!(rules[1]["ruleTag"], "cn_ip", "其余规则不得受影响");
     }
 
     // ── ensure_direct_rules_in_base ───────────────────────────────
