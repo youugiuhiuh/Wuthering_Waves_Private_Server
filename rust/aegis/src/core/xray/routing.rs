@@ -171,7 +171,32 @@ impl RoutingManager {
         true
     }
 
+    /// 迁移：确保 00_base.json 的 routing.rules 含 connectivity_check（幂等）。
+    ///
+    /// 只写盘，**不重载核心** —— 避免打断现有连接。由 get_all_with_status()
+    /// 在用户打开路由菜单时触发。
+    ///
+    /// 注意：00_base.json 不存在时向上传播错误（已知遗留，见 spec §5）。
+    pub async fn ensure_direct_rules_in_base() -> Result<()> {
+        let _lock = CONFIG_LOCK.lock().await;
+        let base_path = format!("{}/00_base.json", xray::CONF_DIR);
+        let content = tokio::fs::read_to_string(&base_path)
+            .await
+            .context("读取 00_base.json 失败")?;
+        let mut v: Value = serde_json::from_str(&content).context("解析 00_base.json 失败")?;
+        if !Self::ensure_direct_rules_value(&mut v) {
+            return Ok(());
+        }
+        let new_content = serde_json::to_string_pretty(&v).context("序列化配置失败")?;
+        tokio::fs::write(&base_path, new_content)
+            .await
+            .context("写入 00_base.json 失败")?;
+        Ok(())
+    }
+
     pub async fn get_all_with_status() -> Result<Vec<(&'static RuleDef, bool)>> {
+        // 首次进入菜单即完成存量迁移（旧部署的 base 缺 connectivity_check，幂等）
+        Self::ensure_direct_rules_in_base().await?;
         let rules = Self::read_rules().await?;
         let enabled_ids: Vec<&str> = rules
             .iter()
@@ -424,5 +449,22 @@ mod tests {
             serde_json::json!(["www.gstatic.com", "connectivitycheck.gstatic.com"])
         );
         assert!(rule.get("ip").is_none(), "domain 规则不应带 ip 键");
+    }
+
+    // ── ensure_direct_rules_in_base ───────────────────────────────
+
+    /// ensure_direct_rules_in_base 必须存在且返回 Result。
+    /// 参照 sing-box 既有模式：文件缺失时向上传播错误（已知遗留，spec §5）。
+    #[tokio::test]
+    async fn test_ensure_direct_rules_in_base_errors_when_base_missing() {
+        // 生产路径不存在时（CI / 未部署环境）应返回 Err，而非 panic。
+        // 若该路径恰好存在（已部署机器），则跳过此断言。
+        let base_path = format!("{}/00_base.json", crate::core::paths::xray::CONF_DIR);
+        if tokio::fs::try_exists(&base_path).await.unwrap_or(false) {
+            eprintln!("跳过：{} 已存在", base_path);
+            return;
+        }
+        let r = RoutingManager::ensure_direct_rules_in_base().await;
+        assert!(r.is_err(), "00_base.json 缺失时应返回 Err");
     }
 }
