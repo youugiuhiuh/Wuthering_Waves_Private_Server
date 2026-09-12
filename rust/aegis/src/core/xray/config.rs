@@ -1273,9 +1273,12 @@ mod tests {
         assert!(base_config.get("routing").is_some());
         assert!(base_config.get("outbounds").is_some());
         let rules = base_config["routing"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 3);
+        assert_eq!(rules.len(), 4);
         let tags: Vec<&str> = rules.iter().filter_map(|r| r["ruleTag"].as_str()).collect();
-        assert_eq!(tags, vec!["private_ip", "cn_ip", "cn_domain"]);
+        assert_eq!(
+            tags,
+            vec!["connectivity_check", "private_ip", "cn_ip", "cn_domain"]
+        );
     }
 
     #[test]

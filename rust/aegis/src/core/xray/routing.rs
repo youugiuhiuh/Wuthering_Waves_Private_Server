@@ -16,6 +16,15 @@ pub struct RuleDef {
 }
 
 pub static ROUTING_RULES: &[RuleDef] = &[
+    // 必须位于首位：Xray routing 顺序匹配、首条命中即停。
+    // geosite:cn 收录了这些探测域名，若排在 cn_ip / cn_domain 之后即失效。
+    RuleDef {
+        id: "connectivity_check",
+        rule_type: "domain",
+        targets: &["www.gstatic.com", "connectivitycheck.gstatic.com"],
+        outbound: "direct",
+        default_enabled: true,
+    },
     RuleDef {
         id: "private_ip",
         rule_type: "ip",
@@ -175,7 +184,67 @@ mod tests {
 
     #[test]
     fn test_rule_def_constants_count() {
-        assert_eq!(ROUTING_RULES.len(), 7);
+        assert_eq!(ROUTING_RULES.len(), 8);
+    }
+
+    /// 回归防线：连通性检测规则必须先于 cn_ip / cn_domain。
+    /// Xray routing 顺序匹配、首条命中即停；排在 cn 规则之后就完全不生效，
+    /// 而 cn_domain（geosite:cn）会把这些探测域名 blackhole。
+    #[test]
+    fn test_connectivity_check_must_precede_cn_rules() {
+        let pos = |id: &str| {
+            ROUTING_RULES
+                .iter()
+                .position(|r| r.id == id)
+                .unwrap_or_else(|| panic!("规则 {} 不存在", id))
+        };
+        assert!(
+            pos("connectivity_check") < pos("cn_ip"),
+            "connectivity_check 必须排在 cn_ip 之前"
+        );
+        assert!(
+            pos("connectivity_check") < pos("cn_domain"),
+            "connectivity_check 必须排在 cn_domain 之前"
+        );
+    }
+
+    /// 域名清单必须恰为这 2 个探测端点，且不得混入资源 CDN。
+    #[test]
+    fn test_connectivity_check_targets_are_probe_endpoints_only() {
+        let rule = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == "connectivity_check")
+            .expect("connectivity_check 规则必须存在");
+        assert_eq!(rule.rule_type, "domain");
+        assert_eq!(rule.outbound, "direct");
+        assert!(rule.default_enabled, "新规则应默认启用");
+        assert_eq!(
+            rule.targets,
+            &["www.gstatic.com", "connectivitycheck.gstatic.com"],
+            "域名清单必须恰为这 2 个探测端点"
+        );
+        // 不得出现 scheme 或路径 —— Xray 只匹配 SNI / Host
+        for t in rule.targets {
+            assert!(
+                !t.contains("://") && !t.contains('/'),
+                "targets 必须是纯主机名，不能含 scheme 或路径: {}",
+                t
+            );
+        }
+        // 不得混入同家族的资源 CDN（非探测端点）
+        for t in rule.targets {
+            assert!(
+                !t.starts_with("fonts.")
+                    && !t.starts_with("ssl.")
+                    && !t.starts_with("csi.")
+                    && !t.starts_with("g0.")
+                    && !t.starts_with("g1.")
+                    && !t.starts_with("g2.")
+                    && !t.starts_with("g3."),
+                "不应放行资源 CDN（非探测端点）: {}",
+                t
+            );
+        }
     }
 
     #[test]
