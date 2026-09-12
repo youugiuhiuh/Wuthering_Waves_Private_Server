@@ -139,6 +139,38 @@ impl RoutingManager {
         obj
     }
 
+    /// 纯函数：确保 routing.rules 含 connectivity_check（插在首位，幂等）。
+    /// 返回是否发生变更。不触碰文件系统，便于单测。
+    ///
+    /// 插在首位是必须的：Xray routing 顺序匹配、首条命中即停，
+    /// 排在 cn_ip / cn_domain 之后则完全不生效。
+    pub fn ensure_direct_rules_value(v: &mut Value) -> bool {
+        const RULE_ID: &str = "connectivity_check";
+
+        // 规范化 routing 与 routing.rules 的存在性
+        if v.get("routing").map(|r| r.is_null()).unwrap_or(true) {
+            v["routing"] = Value::Object(serde_json::Map::new());
+        }
+        if v["routing"]["rules"].as_array().is_none() {
+            v["routing"]["rules"] = Value::Array(Vec::new());
+        }
+
+        let rules = v["routing"]["rules"].as_array_mut().unwrap();
+        let already = rules
+            .iter()
+            .any(|r| r.get("ruleTag").and_then(|t| t.as_str()) == Some(RULE_ID));
+        if already {
+            return false;
+        }
+
+        let def = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == RULE_ID)
+            .expect("ROUTING_RULES 必须包含 connectivity_check");
+        rules.insert(0, Self::rule_def_to_json(def));
+        true
+    }
+
     pub async fn get_all_with_status() -> Result<Vec<(&'static RuleDef, bool)>> {
         let rules = Self::read_rules().await?;
         let enabled_ids: Vec<&str> = rules
@@ -302,5 +334,95 @@ mod tests {
         };
         let json = RoutingManager::rule_def_to_json(&rule);
         assert_eq!(json["protocol"][0], "bittorrent");
+    }
+
+    // ── ensure_direct_rules_value ────────────────────────────────────────
+
+    fn base_with_rules(rules: Value) -> Value {
+        serde_json::json!({
+            "routing": {
+                "domainStrategy": "IPIfNonMatch",
+                "rules": rules
+            },
+            "outbounds": [
+                {"protocol": "freedom", "settings": {}, "tag": "direct"},
+                {"protocol": "blackhole", "settings": {}, "tag": "blocked"}
+            ]
+        })
+    }
+
+    #[test]
+    fn test_ensure_direct_rules_inserts_at_index_zero() {
+        let mut v = base_with_rules(serde_json::json!([
+            {"type": "field", "ruleTag": "cn_ip", "outboundTag": "blocked", "ip": ["geoip:cn"]}
+        ]));
+        assert!(RoutingManager::ensure_direct_rules_value(&mut v));
+        let rules = v["routing"]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0]["ruleTag"], "connectivity_check");
+        assert_eq!(rules[0]["outboundTag"], "direct");
+        assert_eq!(rules[1]["ruleTag"], "cn_ip");
+    }
+
+    #[test]
+    fn test_ensure_direct_rules_is_idempotent() {
+        let mut v = base_with_rules(serde_json::json!([]));
+        assert!(
+            RoutingManager::ensure_direct_rules_value(&mut v),
+            "首次应插入"
+        );
+        let after_first = v["routing"]["rules"].clone();
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "二次应无变更"
+        );
+        assert_eq!(v["routing"]["rules"], after_first, "二次不得重复插入");
+        assert_eq!(v["routing"]["rules"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_ensure_direct_rules_handles_missing_rules_key() {
+        let mut v = serde_json::json!({"routing": {"domainStrategy": "IPIfNonMatch"}});
+        assert!(RoutingManager::ensure_direct_rules_value(&mut v));
+        let rules = v["routing"]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["ruleTag"], "connectivity_check");
+    }
+
+    #[test]
+    fn test_ensure_direct_rules_handles_missing_routing_key() {
+        let mut v = serde_json::json!({"log": {"loglevel": "warning"}});
+        assert!(RoutingManager::ensure_direct_rules_value(&mut v));
+        assert_eq!(v["routing"]["rules"][0]["ruleTag"], "connectivity_check");
+    }
+
+    #[test]
+    fn test_ensure_direct_rules_preserves_existing_rules() {
+        let mut v = base_with_rules(serde_json::json!([
+            {"type": "field", "ruleTag": "private_ip", "outboundTag": "blocked", "ip": ["geoip:private"]},
+            {"type": "field", "ruleTag": "cn_ip", "outboundTag": "blocked", "ip": ["geoip:cn"]},
+            {"type": "field", "ruleTag": "cn_domain", "outboundTag": "blocked", "domain": ["geosite:cn"]}
+        ]));
+        assert!(RoutingManager::ensure_direct_rules_value(&mut v));
+        let rules = v["routing"]["rules"].as_array().unwrap();
+        let tags: Vec<&str> = rules.iter().filter_map(|r| r["ruleTag"].as_str()).collect();
+        assert_eq!(
+            tags,
+            vec!["connectivity_check", "private_ip", "cn_ip", "cn_domain"]
+        );
+    }
+
+    #[test]
+    fn test_ensure_direct_rules_emits_expected_json_shape() {
+        let mut v = base_with_rules(serde_json::json!([]));
+        RoutingManager::ensure_direct_rules_value(&mut v);
+        let rule = &v["routing"]["rules"][0];
+        assert_eq!(rule["type"], "field");
+        assert_eq!(rule["outboundTag"], "direct");
+        assert_eq!(
+            rule["domain"],
+            serde_json::json!(["www.gstatic.com", "connectivitycheck.gstatic.com"])
+        );
+        assert!(rule.get("ip").is_none(), "domain 规则不应带 ip 键");
     }
 }
