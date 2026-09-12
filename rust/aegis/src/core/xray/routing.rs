@@ -139,11 +139,12 @@ impl RoutingManager {
         obj
     }
 
-    /// 纯函数：确保 routing.rules 含 connectivity_check（插在首位，幂等）。
+    /// 纯函数：确保 routing.rules 含 connectivity_check（位于首位，幂等）。
     /// 返回是否发生变更。不触碰文件系统，便于单测。
     ///
     /// 插在首位是必须的：Xray routing 顺序匹配、首条命中即停，
     /// 排在 cn_ip / cn_domain 之后则完全不生效。
+    /// 因此规则已存在但错位时也会被提到首位（视为有变更），而不是原样放过。
     pub fn ensure_direct_rules_value(v: &mut Value) -> bool {
         const RULE_ID: &str = "connectivity_check";
 
@@ -156,11 +157,21 @@ impl RoutingManager {
         }
 
         let rules = v["routing"]["rules"].as_array_mut().unwrap();
-        let already = rules
+        let pos = rules
             .iter()
-            .any(|r| r.get("ruleTag").and_then(|t| t.as_str()) == Some(RULE_ID));
-        if already {
+            .position(|r| r.get("ruleTag").and_then(|t| t.as_str()) == Some(RULE_ID));
+
+        // 已在首位：无变更
+        if pos == Some(0) {
             return false;
+        }
+
+        // 错位：提到首位。toggle() 用 push 追加到末尾（cn_domain 之后），
+        // 那里因首条命中即停而完全失效；迁移是唯一的修复路径。
+        if let Some(i) = pos {
+            let rule = rules.remove(i);
+            rules.insert(0, rule);
+            return true;
         }
 
         let def = ROUTING_RULES
@@ -387,6 +398,24 @@ mod tests {
         assert_eq!(rules[0]["ruleTag"], "connectivity_check");
         assert_eq!(rules[0]["outboundTag"], "direct");
         assert_eq!(rules[1]["ruleTag"], "cn_ip");
+    }
+
+    /// 迁移是错位的唯一修复路径：toggle() 用 push 把规则追加到末尾（cn_domain
+    /// 之后），那里因首条命中即停而完全失效。迁移必须把它提到首位。
+    #[test]
+    fn test_ensure_direct_rules_hoists_misplaced_rule_to_index_zero() {
+        let mut v = base_with_rules(serde_json::json!([
+            {"type": "field", "ruleTag": "cn_ip", "outboundTag": "blocked", "ip": ["geoip:cn"]},
+            {"type": "field", "ruleTag": "connectivity_check", "outboundTag": "direct", "domain": ["www.gstatic.com"]}
+        ]));
+        assert!(
+            RoutingManager::ensure_direct_rules_value(&mut v),
+            "错位的规则应被移动，视为有变更"
+        );
+        let rules = v["routing"]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 2, "移动不得产生重复条目");
+        let tags: Vec<&str> = rules.iter().filter_map(|r| r["ruleTag"].as_str()).collect();
+        assert_eq!(tags, vec!["connectivity_check", "cn_ip"]);
     }
 
     #[test]
