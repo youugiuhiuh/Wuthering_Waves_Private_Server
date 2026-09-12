@@ -9,8 +9,14 @@
 
 ## 1. 问题
 
-`https://www.gstatic.com/generate_204` 被路由到 `blocked`（blackhole），导致客户端
-连通性探测失败：节点本身可用，但客户端显示"无网络"或判定节点不可用。
+`https://www.gstatic.com/generate_204` 与
+`http://connectivitycheck.gstatic.com/generate_204` 被路由到 `blocked`
+（blackhole），导致客户端连通性探测失败：节点本身可用，但客户端显示
+"无网络"或判定节点不可用。
+
+> **关于写法**：路由匹配的是 SNI / Host 主机名，故规则中应写
+> `www.gstatic.com`，**不能**写 `https://www.gstatic.com/generate_204`。
+> `https://` 与 `/generate_204` 是 scheme 与 URL 路径，不参与 routing 匹配。
 
 ### 1.1 根因
 
@@ -51,20 +57,33 @@ Xray routing **顺序匹配、首条命中即停**。`geosite:cn` 收录了
 
 命中结果（两种数据源完全一致）：
 
-| 域名 | 在 `geosite:cn` | 匹配项 |
-|---|---|---|
-| `www.gstatic.com` | ✅ | `www.gstatic.com` |
-| `connectivitycheck.gstatic.com` | ✅ | 自身 |
-| `connect.rom.miui.com` | ✅ | `miui.com`（domain_suffix） |
-| `www.google.cn` | ✅ | `cn`（domain_suffix，即整个 `.cn` TLD） |
-| `cp.cloudflare.com` | ❌ | — |
-| `msftconnecttest.com` | ❌ | — |
-| `detectportal.firefox.com` | ❌ | — |
-| `captive.apple.com` | ❌ | — |
+| 域名 | 在 `geosite:cn` | 匹配类型 | 匹配项 |
+|---|---|---|---|
+| `www.gstatic.com` | ✅ | `Full`（精确） | `www.gstatic.com` |
+| `connectivitycheck.gstatic.com` | ✅ | `Full`（精确） | 自身 |
+| `connect.rom.miui.com` | ✅ | `Domain`（后缀） | `miui.com` |
+| `www.google.cn` | ✅ | `Domain`（后缀） | `cn`（整个 `.cn` TLD） |
+| `cp.cloudflare.com` | ❌ | — | — |
+| `msftconnecttest.com` | ❌ | — | — |
+| `detectportal.firefox.com` | ❌ | — | — |
+| `captive.apple.com` | ❌ | — | — |
 
-**注意**：初版候选清单中的 `cp.cloudflare.com`、`msftconnecttest.com`、
+**注意（1）**：初版候选清单中的 `cp.cloudflare.com`、`msftconnecttest.com`、
 `www.google.cn` 均属未经证实的推测，经验证后已剔除。本项目使用的 geosite
 库不将海外探测端点归入 `cn`。
+
+**注意（2）：gstatic 条目全部是精确（Full）匹配，不是后缀匹配。**
+
+```
+Full(exact)  www.gstatic.com
+Full(exact)  connectivitycheck.gstatic.com
+Full(exact)  fonts.gstatic.com  ssl.gstatic.com  csi.gstatic.com  g0~g3.gstatic.com
+Domain(suffix)  bbgstatic.com / elongstatic.com / lgstatic.com   ← 无关站点，非 gstatic 系
+```
+
+**裸 `gstatic.com` 本身不在 `geosite:cn` 中**（已验证 `exact: False, suffix: False`）。
+因此 `www.gstatic.com` 这条精确条目只拦该主机本身；同家族的
+`fonts.gstatic.com` / `ssl.gstatic.com` 是各自独立的精确条目。
 
 ### 1.3 附带发现（本次不处理）
 
@@ -86,6 +105,9 @@ Xray routing **顺序匹配、首条命中即停**。`geosite:cn` 收录了
 | 迁移触发时机 | `get_all_with_status()` | 用户打开路由菜单时迁移，不重载核心、不打断现有连接 |
 | `00_base.json` 不存在时 | 不处理（已知遗留） | 保持与既有 `get_all_with_status()` 行为一致，不扩大范围 |
 | `www.google.cn` | 剔除 | 其命中源于 `.cn` TLD 全域封锁，单独开洞语义不当；保持最小修复范围 |
+| `connect.rom.miui.com` | 剔除 | 非 gstatic 系；其命中源于 `miui.com` 后缀，属小米域名，与本次目标（gstatic 探测端点）无关 |
+| `connectivitycheck.gstatic.com` | 保留 | 已证为浏览器/OS 探测端点（见 §3.5），非普通资源 CDN |
+| `fonts.` / `ssl.` / `g0~g3.` / `csi.gstatic.com` | 不加 | 同属 gstatic 但是资源 CDN 而非探测端点，加了属超范围开洞 |
 
 ---
 
@@ -102,7 +124,6 @@ RuleDef {
     targets: &[
         "www.gstatic.com",
         "connectivitycheck.gstatic.com",
-        "connect.rom.miui.com",
     ],
     outbound: "direct",
     default_enabled: true,
@@ -113,10 +134,23 @@ RuleDef {
 
 ```json
 {"type":"field","ruleTag":"connectivity_check","outboundTag":"direct",
- "domain":["www.gstatic.com","connectivitycheck.gstatic.com","connect.rom.miui.com"]}
+ "domain":["www.gstatic.com","connectivitycheck.gstatic.com"]}
 ```
 
-`direct` outbound 已存在于 `config.rs:824` 生成的 outbounds 中，无需新增。
+`direct` outbound 已存在于 `config.rs:857-860` 生成的 outbounds 中，无需新增。
+
+#### 为什么写主机名而不是完整 URL
+
+Xray 的 `domain` 匹配目标是 **SNI / Host 主机名**。因此：
+
+| 写法 | 是否正确 | 说明 |
+|---|---|---|
+| `www.gstatic.com` | ✅ | 正确。`domain:` 前缀对裸主机名及其子域生效 |
+| `https://www.gstatic.com/generate_204` | ❌ | 错误。scheme 与路径不参与 routing 匹配 |
+| `domain:www.gstatic.com`（显式前缀） | ✅ | 同理，与本项目现有一致 |
+
+本项目中 `rule_type: "domain"` 生成的即 `domain` 数组，Xray 默认按域名及其子域匹配，
+与 `geosite:cn` 中的写法语义一致。
 
 ### 3.2 存量配置迁移
 
@@ -187,6 +221,21 @@ routing_rule_connectivity_check: "Connectivity Check Direct"  # en
 
 `ja.yml` 不改（缺失 key 时 i18n 层回退到 key 本身，不报错）。
 
+### 3.5 两个域名的身份（为何保留）
+
+| 域名 | 使用者 | 性质 |
+|---|---|---|
+| `www.gstatic.com/generate_204` | Chrome、历史上 Android | 探测端点；但该域同时承载其他资源 |
+| `connectivitycheck.gstatic.com/generate_204` | Chrome（captive portal 专用）、Android 6.x、Android CaptivePortalLogin、Chromecast | **专为连通性检测而设** |
+
+Chromium 曾将 captive portal 检测从 `www.gstatic.com` 迁至
+`connectivitycheck.gstatic.com`，理由之一正是 `www.gstatic.com` 还承载大量
+其他资源。因此 `connectivitycheck.gstatic.com` 是**更纯粹的探测端点**，
+两者均应保留。
+
+注：Android 部分分支后来改用 `www.google.com/generate_204`，属版本/平台差异，
+不影响本设计对上述两个 gstatic 域名的放行。
+
 ---
 
 ## 4. 明确不做
@@ -222,6 +271,7 @@ routing_rule_connectivity_check: "Connectivity Check Direct"  # en
 | `ensure_direct_rules_value` 空 `rules` 数组可用 | 单元 | `xray/routing.rs` |
 | `connectivity_check` 优先于 `cn_ip`/`cn_domain` | 单元（回归防线） | `xray/routing.rs` |
 | `rule_def_to_json` 产出 `domain` + `direct` | 单元 | `xray/routing.rs` |
+| `targets` 恰为 2 项且均为 gstatic 系 | 单元 | `xray/routing.rs` |
 | 默认规则数量与顺序 | 单元 | `xray/config.rs` |
 
 i18n key 无既有校验测试，不新增。
