@@ -176,6 +176,20 @@ jobs:
         env:
           LANG: ${{ matrix.project.language }}
           CARGO_TERM_COLOR: always
+          # sccache 必须在这里启用：仅安装 sccache 不会生效，
+          # 需要 RUSTC_WRAPPER 把 rustc 调用交给 sccache，
+          # 并用 SCCACHE_GHA_ENABLED 把存储后端从本地磁盘换成 GHA 缓存。
+          #
+          # 实测教训（run 34744157788）：之前只写了 Setup sccache 步骤
+          # 而漏了这三个变量，sccache 报告
+          #   Cache location: Local disk
+          #   compile_requests: 0 / compilations: 0
+          # 即它从未被调用，构建与冷编译完全一致（11分40秒）。
+          #
+          # go 构建不读这些变量，对所有矩阵项安全。
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
+          SCCACHE_GHA_VERSION: rust-aegis-v1
         run: |
           case "$LANG" in
             go)
