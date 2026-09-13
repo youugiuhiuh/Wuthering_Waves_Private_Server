@@ -111,7 +111,7 @@ impl SNIPersistence {
             }
         };
 
-        let decrypted_vec: Vec<u8> = decrypted.expose_secret().clone();
+        let decrypted_vec: Vec<u8> = decrypted.expose_secret().to_vec();
         match serde_json::from_slice::<SNIState>(&decrypted_vec) {
             Ok(state) => {
                 log::debug!(

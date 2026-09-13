@@ -106,7 +106,7 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
     if let Err(e) = validator.validate_decrypted_config(
         token.as_deref(),
         admin_id,
-        totp_secret.as_ref().map(|s| s.expose_secret().as_str()),
+        totp_secret.as_ref().map(|s| s.expose_secret()),
         &encrypted_config.self_destruct_key_hash,
     ) {
         anyhow::bail!("❌ 配置校验失败: {}", e);

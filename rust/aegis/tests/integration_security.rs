@@ -21,7 +21,7 @@ fn security_manager_creates_key_and_encrypt_decrypt_roundtrip() {
     assert!(encrypted.len() > 12);
 
     let decrypted = security.decrypt(&encrypted).unwrap();
-    assert_eq!(decrypted.expose_secret().as_slice(), plain);
+    assert_eq!(decrypted.expose_secret(), plain);
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn security_manager_same_key_decrypts_encrypted_data() {
 
     let security2 = SecurityManager::new(&key_path).unwrap();
     let decrypted = security2.decrypt(&encrypted).unwrap();
-    assert_eq!(decrypted.expose_secret().as_slice(), b"same_key");
+    assert_eq!(decrypted.expose_secret(), b"same_key");
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn encrypt_decrypt_roundtrip_varied_sizes() {
         let encrypted = security.encrypt(data).unwrap();
         let decrypted = security.decrypt(&encrypted).unwrap();
         assert_eq!(
-            decrypted.expose_secret().as_slice(),
+            decrypted.expose_secret(),
             data.as_slice(),
             "roundtrip failed for data length {}",
             data.len()
@@ -77,14 +77,8 @@ fn encrypt_produces_different_output_each_time() {
 
     assert_ne!(enc1, enc2);
 
-    assert_eq!(
-        security.decrypt(&enc1).unwrap().expose_secret().as_slice(),
-        plain
-    );
-    assert_eq!(
-        security.decrypt(&enc2).unwrap().expose_secret().as_slice(),
-        plain
-    );
+    assert_eq!(security.decrypt(&enc1).unwrap().expose_secret(), plain);
+    assert_eq!(security.decrypt(&enc2).unwrap().expose_secret(), plain);
 }
 
 #[test]
