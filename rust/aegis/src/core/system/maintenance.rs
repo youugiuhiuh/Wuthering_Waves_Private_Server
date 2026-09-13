@@ -2,6 +2,7 @@ use anyhow::{Context, Result, anyhow};
 
 use futures_util::StreamExt;
 use std::collections::HashSet;
+use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, Instant};
 use tokio::fs;
@@ -429,8 +430,13 @@ impl MaintenanceManager {
 
         let rule_dir = singbox::RULE_SET_DIR;
         std::fs::create_dir_all(rule_dir).context("创建 rule-set 目录失败")?;
-        let temp_dir = format!("{}/.update-tmp", singbox::DIR);
-        std::fs::create_dir_all(&temp_dir).context("创建临时目录失败")?;
+        // 每次调用使用独立临时目录：GeoUpdate(每周) 与 GeoIpUpdate(每月) 会在
+        // 同一台机上并发进入本函数，共用一个 .update-tmp 时先完成的一方
+        // remove_dir_all 会把另一方正在转换的目录删掉，导致 sing-box
+        // `geoip export -o <dir>/geoip-xx.json` 报 ENOENT
+        // (FATAL open ...geoip-cn.json: no such file or directory)。
+        let temp_dir = Self::prepare_update_temp_dir(Path::new(singbox::DIR), std::process::id())?;
+        let temp_dir = temp_dir.to_string_lossy().to_string();
 
         let client = reqwest::Client::builder()
             .timeout(TIMEOUT_LONG)
@@ -484,6 +490,17 @@ impl MaintenanceManager {
         let _ = std::fs::remove_dir_all(&temp_dir);
         progress_callback(1.0, "sing-box 规则集更新完成");
         Self::reload_core().await
+    }
+
+    /// 准备本次更新专用的临时目录：先清掉本任务上次的残留，再重新创建。
+    ///
+    /// 只操作带自己 pid 后缀的目录，因此并发运行的另一个更新任务
+    /// （GeoUpdate 每周 / GeoIpUpdate 每月）不会受影响。
+    fn prepare_update_temp_dir(base_dir: &Path, pid: u32) -> Result<std::path::PathBuf> {
+        let temp_dir = base_dir.join(format!(".update-tmp-{}", pid));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).context("创建临时目录失败")?;
+        Ok(temp_dir)
     }
 
     /// 安装时确保规则集存在（skip-if-exists）
@@ -1397,6 +1414,59 @@ mod tests {
                 "/tmp/geoip-cn.json",
             ]
         );
+    }
+
+    #[test]
+    fn test_update_temp_dir_is_per_process_and_not_shared() {
+        let base = tempfile::tempdir().unwrap();
+        let dir = MaintenanceManager::prepare_update_temp_dir(base.path(), 4242)
+            .expect("应能创建临时目录");
+        // 必须以 pid 结尾，保证两个并发更新任务不会共用（并互相删掉）同一目录
+        let dir = dir.to_string_lossy().to_string();
+        assert!(dir.starts_with(&base.path().to_string_lossy().to_string()));
+        assert!(dir.ends_with(".update-tmp-4242"));
+        assert_ne!(dir, format!("{}/.update-tmp", base.path().display()));
+    }
+
+    /// 回归测试：修复前的 bug 是 GeoUpdate 与 GeoIpUpdate 共用 `.update-tmp`，
+    /// 先完成的一方 `remove_dir_all` 会把另一方正在转换的目录删掉，导致
+    /// `geoip export -o <dir>/geoip-cn.json` 报 ENOENT
+    /// （FATAL open .../geoip-cn.json: no such file or directory）。
+    ///
+    /// 这里直接验证真实的并发场景：两个不同 pid 的更新任务各自准备目录后，
+    /// 一方的清理与重建不得移除另一方目录中的进行中文件。
+    #[test]
+    fn test_concurrent_update_dirs_do_not_delete_each_other() {
+        let base = tempfile::tempdir().unwrap();
+        let base = base.path();
+
+        // 两个并发的“任务”，各自拥有独立 pid 后缀的临时目录
+        let a = MaintenanceManager::prepare_update_temp_dir(base, 11111).unwrap();
+        let b = MaintenanceManager::prepare_update_temp_dir(base, 22222).unwrap();
+        assert_ne!(a, b, "并发任务必须使用不同临时目录");
+
+        // a 写入“进行中的转换产物”
+        let a_json = a.join("geoip-cn.json");
+        std::fs::write(&a_json, b"in-progress").unwrap();
+
+        // b 完成并清理自己的目录（旧实现会连 a 的一起删掉）
+        MaintenanceManager::prepare_update_temp_dir(base, 22222).unwrap();
+        std::fs::remove_dir_all(&b).unwrap();
+
+        // a 的转换产物必须仍然存在，否则 sing-box 的 os.Create 会 ENOENT
+        assert!(
+            a_json.exists(),
+            "并发任务的清理删除了对方目录中的文件: {}",
+            a_json.display()
+        );
+        assert_eq!(std::fs::read(&a_json).unwrap(), b"in-progress");
+
+        // 同一 pid 重入时应先清掉自己的旧产物（避免读到上次残留）
+        let a_stale = a.join("stale.json");
+        std::fs::write(&a_stale, b"stale").unwrap();
+        MaintenanceManager::prepare_update_temp_dir(base, 11111).unwrap();
+        assert!(!a_stale.exists(), "同一任务的旧残留应被清掉");
+        assert!(a.exists(), "重入后目录必须重新创建");
     }
 
     #[tokio::test]
