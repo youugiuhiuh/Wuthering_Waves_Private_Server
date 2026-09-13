@@ -78,9 +78,9 @@ jobs:
       # libc 开发文件，upx 也需要系统库。补齐环境才是治本。
       #
       # 已装则立即返回（幂等），无 apt/sudo 时只警告不阻断后续（降级策略）。
-      # 两个 job 共用 scripts/ensure-libc-dev.sh，避免同一段逻辑写两遍。
+      # 两个 job 共用 scripts/ensure-build-deps.sh，避免同一段逻辑写两遍。
       - name: Install System Build Dependencies
-        run: scripts/ensure-libc-dev.sh
+        run: scripts/ensure-build-deps.sh
 
       - name: Resolve Version
         id: ver
@@ -245,7 +245,7 @@ jobs:
       # publish 阶段的回退重建（Ensure Dist Artifacts Present）同样要编译
       # Rust + Go，所以这里也需要 libc 头文件。与 build job 共用同一脚本。
       - name: Install System Build Dependencies
-        run: scripts/ensure-libc-dev.sh
+        run: scripts/ensure-build-deps.sh
 
       - name: Download Build Artifacts
         continue-on-error: true
