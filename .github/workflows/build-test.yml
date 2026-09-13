@@ -72,6 +72,8 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       # ---------------- Go 环境与缓存 ----------------
+      # `cache: true` 只缓存模块下载（~/go/pkg/mod），不缓存编译产物。
+      # 真正花时间的是编译，所以下面另外用 actions/cache 缓存 ~/.cache/go-build。
       - name: Setup Go
         if: matrix.project.language == 'go'
         uses: actions/setup-go@v7.0.0
@@ -80,6 +82,17 @@ jobs:
           cache: true
           cache-dependency-path: ${{ matrix.project.path }}/go.sum
 
+      - name: Cache Go build outputs
+        if: matrix.project.language == 'go'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ matrix.project.name }}-go-${{ hashFiles(format('{0}/go.sum', matrix.project.path), format('{0}/go.mod', matrix.project.path)) }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.project.name }}-go-
+
       # ---------------- Rust 环境与缓存 ----------------
       - name: Setup Rust
         if: matrix.project.language == 'rust'
@@ -87,12 +100,31 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu
 
-      - name: Setup Rust Cache
+      # 显式缓存 release profile 的编译产物，与 public-release.yml 保持一致。
+      #
+      # 之前用的 Swatinem/rust-cache 完全不生效：它不是为 release 构建设计的，
+      # 且会主动清理 target/ 下的 release 产物来限制体积。实测 `Setup Rust Cache`
+      # 只耗时 2 秒（有效缓存恢复需下载解压数百 MB），而 `Build and Test`
+      # 冷编译耗时 11分37秒（PR #273，run 34741495171）。
+      #
+      # 只缓存 release 的 deps/build/.fingerprint 三个目录。
+      #
+      # 刻意不缓存 target/debug/**：本地实测 target/debug/deps 已达 54GB，
+      # 而 GitHub Actions 每仓库缓存上限为 10GB —— 加进去会导致缓存永远无法保存，
+      # 每次运行都报错且永不命中。debug 产物交由 runner 每次重建。
+      - name: Cache Rust build outputs
         if: matrix.project.language == 'rust'
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: actions/cache@v6
         with:
-          # Monorepo：显式指定工作区路径，防止多项目间缓存互相污染
-          workspaces: ${{ matrix.project.path }}
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            ${{ matrix.project.path }}/target/release/.fingerprint
+            ${{ matrix.project.path }}/target/release/build
+            ${{ matrix.project.path }}/target/release/deps
+          key: ${{ runner.os }}-${{ matrix.project.name }}-rust-${{ hashFiles(format('{0}/Cargo.lock', matrix.project.path), format('{0}/Cargo.toml', matrix.project.path)) }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.project.name }}-rust-
 
       - name: Install protoc
         if: matrix.project.language == 'rust'
