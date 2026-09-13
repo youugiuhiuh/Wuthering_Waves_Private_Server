@@ -1,0 +1,365 @@
+# Forgejo 版 Build and Release（由 .github/workflows/public-release.yml 派生）。
+# 与 GitHub 版的差异仅三处（均为平台语法）：
+#   1. permissions: 移除 —— Forgejo 忽略该键（官方差异清单明确列出）
+#   2. 移除 enable-openid-connect —— 不需要；Forgejo 自动 token 已有仓库写权限
+#   3. name 加 (Forgejo) 后缀 —— 便于在 UI 区分
+#
+# 目录优先级：存在 .forgejo/workflows 时，Forgejo 不再读取 .github/workflows。
+# 因此 Forgejo 只看到本文件；GitHub 忽略 .forgejo/，只看到 .github/ 那份。
+#
+# ⚠️ 维护约定：逻辑变更需同步改两个文件。
+#    已踩过的坑：修 public-release 的 upload_url 时漏了 sign-release 里的同一份代码。
+#
+# 本工作流刻意只使用跨平台原语：
+#   - 平台专有 @uses 仅剩本文件末尾的 actions/cache（已 continue-on-error，缺失可降级）
+#   - 工具链全部来自 mise.toml，用 curl mise.run 引导，GitHub/Forgejo 一致
+#   - 发布走 provider 抽象（见文件末尾 Publish Release 步骤注释）：
+#       RELEASE_PROVIDER=github   → api.github.com   （默认，当前行为不变）
+#       RELEASE_PROVIDER=forgejo  → api/v1（Forgejo/Gitea，自建或 Codeberg）
+#     provider 由环境变量推导，无需改本文件即可切换平台。
+#
+# 首次引导 GitHub Actions：需要在 repo secrets 中提供 GITHUB_TOKEN。
+# Forgejo：GITHUB_TOKEN 由 FORGEJO_TOKEN / GITEA_TOKEN 自动回退填充，无需改文件。
+
+name: Build and Release (Forgejo)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g., 0.4.4)"
+        required: true
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - "rust/aegis/Cargo.toml"
+
+# Forgejo 忽略 permissions:（官方差异清单所列）。
+# 写权限由 Forgejo 自动注入的 FORGEJO_TOKEN / GITHUB_TOKEN 提供（两者互为镜像）。
+# 若将来需要跨实例授权，改用 enable-openid-connect: true + Authorized Integrations。
+
+jobs:
+  # ---- 阶段 1：构建（纯只读，可在任何平台跑）----
+  # 不写仓库、不建 tag、不碰 API。只产出 dist/ 两个二进制。
+  # 因此这个 job 在 GitHub / Forgejo / 本地 行为完全一致，
+  # 也不会在镜像站上产生「自己 bump 版本」的分叉 commit。
+  build:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore(deps)')"
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      # 用原生 git 代替 actions/checkout：Forgejo 无需镜像或开启 GitHub action 拉取。
+      - name: Checkout Source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
+        run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}.git"
+          git config --local http.extraheader "Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git fetch -q --prune --no-tags origin "$GITHUB_SHA"
+          git checkout -q --force "$GITHUB_SHA"
+          git fetch -q --prune --tags origin || true
+          git config --local http.extraheader ""
+
+      - name: Resolve Version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version || github.event.inputs.tag_name }}"
+          else
+            VERSION=$(grep -m1 '^version' rust/aegis/Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          fi
+          VERSION=${VERSION#v}
+          if [ -z "$VERSION" ]; then
+            echo "::error::无法解析版本号"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "NEW_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Resolved version: $VERSION"
+
+      # 版本一致性校验：Cargo.toml 是真源，go/installer/main.go 必须跟随。
+      # 原先由 publish 阶段的 sed+commit+push 回写，但那段只改 Rust 不改 Go，
+      # 且会在运行所在的仓库造 commit（镜像站上造成分叉）。
+      # 现在改为前置校验：不一致就在构建前失败，而不是发布后才发现。
+      - name: Verify Version Sync
+        run: scripts/sync-version.sh --check
+
+      # mise 是唯一工具来源（mise.toml: rust/protoc/upx/go/garble）。
+      # 用官方安装脚本而非 jdx/mise-action，使其在 GitHub 与 Forgejo 上完全相同。
+      #
+      # 关键：.local/bin 里只有 mise 自己，安装的工具（cargo/go/protoc/upx/garble）
+      # 靠 mise 的 shim 目录暴露，必须 mise activate 后才在后继步骤的 PATH 里。
+      # 否则出现 `Could not find `protoc`` 这类错（实测 run 34751324025）。
+      - name: Setup mise
+        run: |
+          curl -fsSL https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/mise" install --yes
+          # 把 mise 的 shim 目录永久加入 PATH，供后续所有步骤使用
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+          # 当前步骤内生效，便于下面立即验证工具真实可用
+          eval "$("$HOME/.local/bin/mise" activate bash)"
+          "$HOME/.local/bin/mise" --version
+          # 工具链自检：任一缺失立即失败，不拖到构建阶段才发现
+          # （上一轮就因为在 Build 阶段才发现 protoc 不在 PATH，白跑一次构建）
+          echo "--- 工具链自检 ---"
+          for t in protoc go upx garble cargo rustc; do
+            command -v "$t" >/dev/null || { echo "::error::mise 未提供 $t"; exit 1; }
+            echo "  ✅ $t: $(command -v "$t")"
+          done
+
+      # 缓存是可选加速。continue-on-error 在 Forgejo 上【被忽略】（官方差异清单），
+      # 故该降级只在 GitHub 生效；Forgejo 侧若缓存后端不可用，此步骤会直接失败。
+      # 保持不改写，以便两平台差异最小、便于对照。
+      - name: Cache Rust build outputs
+        continue-on-error: true
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            rust/aegis/target/release/.fingerprint
+            rust/aegis/target/release/build
+            rust/aegis/target/release/deps
+          key: ${{ runner.os }}-rust-aegis-${{ hashFiles('rust/aegis/Cargo.lock', 'rust/aegis/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-aegis-
+
+      - name: Cache Go build outputs
+        continue-on-error: true
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/garble
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-installer-${{ hashFiles('go/installer/go.sum', 'go/installer/go.mod') }}
+          restore-keys: |
+            ${{ runner.os }}-go-installer-
+
+      # 刻意不使用 sccache：其唯一后端 SCCACHE_GHA_ENABLED 是 GitHub 专有，
+      # 与「跨平台」目标冲突；且 build-test.yml 已实测该后端在本仓库
+      # 命中率归零并挤掉 actions/cache 条目（见 build-test.yml 注释）。
+      # 发布频率低，直接编译即可；RUSTC_WRAPPER 留空。
+      - name: Build Runtime Binary
+        run: |
+          cd rust/aegis
+          RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" \
+          cargo build --release
+
+          ls -lh target/release/aegis
+          upx --best --lzma target/release/aegis
+
+      - name: Build Bootstrap Binary
+        run: |
+          cd go/installer
+          CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .
+
+      - name: Prepare Distribution Artifacts
+        run: |
+          mkdir -p dist
+          cp rust/aegis/target/release/aegis dist/
+          cp go/installer/installer dist/
+          ls -lh dist/
+
+      - name: Upload Build Artifacts
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ steps.ver.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+
+  # ---- 阶段 2：发布（只应在权威源上跑）----
+  # 做三件有副作用的事：回写版本 commit、推 tag、建 release。
+  # 权威源 = 本仓库真正的「上游」。默认仅 GitHub；在 Forgejo 上若也要发布，
+  # 设 repo 变量 PUBLISH_ENABLED=true 显式开启（避免镜像站分叉）。
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # 权威源守卫：
+    #   - GitHub 上始终发布（github.server_url 含 github.com）
+    #   - 非 GitHub 上默认【不】发布，避免镜像站分叉；
+    #     确实要在 Forgejo 上发布时，设 repo 变量 PUBLISH_ENABLED=true 显式开启。
+    # 故意用 !contains(...) 而非 contains(...)：若 server_url 意外为空/不可用，
+    # 表达式仍为 true → 默认发布（失败安全，不会静默永不发布）。
+    if: |
+      needs.build.result == 'success' &&
+      (!contains(github.server_url, '/') || contains(github.server_url, 'github.com') || vars.PUBLISH_ENABLED == 'true')
+    steps:
+      - name: Checkout Source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
+        run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}.git"
+          git config --local http.extraheader "Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git fetch -q --prune --no-tags origin "$GITHUB_SHA"
+          git checkout -q --force "$GITHUB_SHA"
+          git fetch -q --prune --tags origin || true
+          git config --local http.extraheader ""
+
+      - name: Download Build Artifacts
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.build.outputs.version }}
+          path: dist
+
+      # 若 artifact 后端不可用（Forgejo 无 upload/download-artifact），
+      # 回退为就地重建产物。保证 publish 不因缺 artifact 而空手发布。
+      - name: Ensure Dist Artifacts Present
+        run: |
+          if [ -f dist/aegis ] && [ -f dist/installer ]; then
+            echo "artifacts 已就绪"
+            ls -lh dist/
+            exit 0
+          fi
+          echo "::warning::dist 缺失，就地重建产物"
+          curl -fsSL https://mise.run | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          mise install --yes
+          (cd rust/aegis && RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" cargo build --release && upx --best --lzma target/release/aegis)
+          (cd go/installer && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .)
+          mkdir -p dist
+          cp rust/aegis/target/release/aegis dist/
+          cp go/installer/installer dist/
+          ls -lh dist/
+
+      # 权威源才回写版本号：避免镜像站自己 commit 造成分叉。
+      # 版本号不再由 CI 回写。发布前请确保 rust/aegis/Cargo.toml 与
+      # go/installer/main.go 已一致（本地执行 scripts/sync-version.sh --fix
+      # 或依赖 pre-commit 钩子拦截）。构建阶段的 Verify Version Sync 会校验。
+      # tag 不再单独推送：下面创建 release 时 POST 的 payload 含 tag_name，
+      # 若该 tag 不存在，API 会基于当前 commit 自行创建。
+      # （原 Sync Source Tags 用 git push --force 推 tag，是发布阶段仅剩的仓库写操作；
+      #   删掉后 publish 不再往运行所在的仓库写任何 git 对象。）
+
+      # ---- 发布抽象：一份逻辑，两个 provider ----
+      # GitHub:  POST /repos/{owner}/{repo}/releases        + /releases/{id}/assets
+      # Forgejo: POST /api/v1/repos/{owner}/{repo}/releases + 同路径 assets
+      # 两者 JSON 字段（tag_name/name/body/draft）与 asset 响应结构一致。
+      # 平台由 GITHUB_SERVER_URL 推导，未设置时默认 github。
+      - name: Resolve Release Provider
+        env:
+          RAW_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
+        run: |
+          SERVER="${GITHUB_SERVER_URL:-https://github.com}"
+          case "$SERVER" in
+            *github.com*) PROVIDER=github ;;
+            *)            PROVIDER=forgejo ;;
+          esac
+
+          case "$PROVIDER" in
+            github)
+              API_BASE="https://api.github.com"
+              ;;
+            forgejo)
+              API_BASE="${SERVER}/api/v1"
+              ;;
+            *)
+              echo "::error::未知 RELEASE_PROVIDER: $PROVIDER"; exit 1
+              ;;
+          esac
+
+          echo "RELEASE_PROVIDER=$PROVIDER" >> "$GITHUB_ENV"
+          echo "RELEASE_API_BASE=$API_BASE" >> "$GITHUB_ENV"
+          echo "RELEASE_AUTH_TOKEN=$RAW_TOKEN" >> "$GITHUB_ENV"
+          echo "release provider: $PROVIDER ($API_BASE)"
+
+      # 幂等：先删掉同 tag 的旧 release（就是修 GitHub 500 的那一步），
+      # 两个 provider 的 delete 端点均可直接用 DELETE 调用。
+      - name: Delete Existing Release For Tag
+        run: |
+          OWNER_REPO="$GITHUB_REPOSITORY"
+          EXISTING_ID=$(curl -fsS \
+            -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+            "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/tags/v${{ needs.build.outputs.version }}" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING_ID" ]; then
+            echo "deleting existing release id=$EXISTING_ID"
+            curl -fsS -X DELETE \
+              -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+              "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/$EXISTING_ID"
+          else
+            echo "no existing release for v${{ needs.build.outputs.version }}"
+          fi
+
+      - name: Create Release
+        run: |
+          OWNER_REPO="$GITHUB_REPOSITORY"
+          BODY=$(printf 'Release `v%s`.\n\n### Included Files\n- `installer`: bootstrap executable\n- `aegis`: runtime management executable\n' "${{ needs.build.outputs.version }}")
+
+          TAG="v${{ needs.build.outputs.version }}"
+          # 显式固定 tag 指向 workflow 检出的那个 commit。
+          # 不传的话 API 默认用 default branch HEAD 建 tag，
+          # 若构建后 main 又被推送，tag 会指向新 HEAD，
+          # 与二进制实际构建的 SHA 不符（自升级比对会出错）。
+          # 传 target_commitish 不需要写 git 对象，仅一个 payload 字段。
+          TARGET="$GITHUB_SHA"
+          PAYLOAD=$(BODY="$BODY" TAG="$TAG" TARGET="$TARGET" python3 -c '
+          import json,os
+          print(json.dumps({
+            "tag_name":         os.environ["TAG"],
+            "name":             os.environ["TAG"],
+            "body":             os.environ["BODY"],
+            "draft":            False,
+            "target_commitish": os.environ["TARGET"],
+          }))
+          ')
+
+          RESP=$(curl -fsS -X POST \
+            -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$RELEASE_API_BASE/repos/$OWNER_REPO/releases")
+
+          RID=$(echo "$RESP" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          echo "RELEASE_ID=$RID" >> "$GITHUB_ENV"
+
+          # 资产上传端点【因 release 而异】，必须用响应里的 upload_url。
+          # GitHub 把它指向 uploads.github.com（而不是 api.github.com），
+          # 写死 api.github.com 会拿到 404（实测 run 34751613379）。
+          # 格式为 .../assets{?name,label}，需去掉 URI 模板尾巴。
+          # Forgejo 没有单独的上传主机，也没回 upload_url，
+          # 此时回退为同主机的 /releases/{id}/assets。
+          UPLOAD_URL=$(echo "$RESP" | python3 -c '
+          import json,sys
+          r=json.load(sys.stdin)
+          u=r.get("upload_url") or ""
+          print(u.split("{")[0] if u else "")
+          ')
+          if [ -z "$UPLOAD_URL" ]; then
+            UPLOAD_URL="$RELEASE_API_BASE/repos/$OWNER_REPO/releases/$RID/assets"
+          fi
+          echo "UPLOAD_URL=$UPLOAD_URL" >> "$GITHUB_ENV"
+          echo "created release id=$RID"
+          echo "upload url: $UPLOAD_URL"
+
+      - name: Upload Release Assets
+        run: |
+          for f in dist/aegis dist/installer; do
+            [ -f "$f" ] || { echo "::error::缺少产物 $f"; exit 1; }
+            NAME=$(basename "$f")
+            echo "uploading $NAME -> $UPLOAD_URL?name=$NAME"
+            # 用 release 响应里的 upload_url（含正确主机），不用 RELEASE_API_BASE。
+            curl -fsS -X POST \
+              -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@$f" \
+              "$UPLOAD_URL?name=$NAME"
+          done
+
+      # 仅 GitHub 有独立签名的 workflow_dispatch；Forgejo 上跳过。
+      - name: Dispatch Signing Workflow
+        if: env.RELEASE_PROVIDER == 'github'
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$RELEASE_API_BASE/repos/$GITHUB_REPOSITORY/actions/workflows/sign-release.yml/dispatches" \
+            -d "{\"ref\":\"main\",\"inputs\":{\"tag_name\":\"v${{ needs.build.outputs.version }}\"}}"
