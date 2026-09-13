@@ -146,7 +146,7 @@ jobs:
       # 装到 ~/go/bin 会不在 PATH 上。
       - name: Install garble
         run: |
-          CGO_ENABLED=0 GOBIN="$(dirname "$(command -v go)")" go install "mvdan.cc/garble@v0.17.0"
+          CGO_ENABLED=0 GOBIN="$(dirname "$(command -v go)")" go install "mvdan.cc/garble@latest"
           command -v garble >/dev/null || { echo "::error::garble 未安装到 PATH"; exit 1; }
           echo "  ✅ garble: $(command -v "garble")"
           garble version
