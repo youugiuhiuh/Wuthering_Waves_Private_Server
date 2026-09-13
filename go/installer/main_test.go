@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/awnumar/memguard"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestNormalizeMatrixMXID(t *testing.T) {
@@ -193,7 +193,7 @@ func TestServicePlatformForSetup(t *testing.T) {
 
 func TestPlatformSelectorRejectsEmptyConfirmation(t *testing.T) {
 	m := newPlatformSelector()
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(platformSelector)
 	if m.confirmed || cmd != nil {
 		t.Fatalf("empty confirmation = %#v, %v", m, cmd)
@@ -716,11 +716,11 @@ func TestPlatformSelectorTogglesAndConfirms(t *testing.T) {
 		t.Fatalf("initial selector state = %#v", m)
 	}
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(platformSelector)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(platformSelector)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(platformSelector)
 	if !m.confirmed || !m.telegram || m.matrix || m.discord || cmd == nil {
 		t.Fatalf("confirmed selector state = %#v", m)
@@ -731,7 +731,7 @@ func TestPlatformSelectorMakesTelegramAndDiscordExclusive(t *testing.T) {
 	m := newPlatformSelector()
 	m.telegram = true
 	m.cursor = 2
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(platformSelector)
 	if m.telegram || !m.discord || m.matrix {
 		t.Fatalf("exclusive selection = %#v", m)
@@ -741,13 +741,13 @@ func TestPlatformSelectorMakesTelegramAndDiscordExclusive(t *testing.T) {
 func TestPlatformSelectorCursorWraps(t *testing.T) {
 	m := newPlatformSelector()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(platformSelector)
 	if m.cursor != 2 {
 		t.Fatalf("cursor after up from first row = %d, want 2", m.cursor)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(platformSelector)
 	if m.cursor != 0 {
 		t.Fatalf("cursor after down from last row = %d, want 0", m.cursor)
@@ -757,29 +757,29 @@ func TestPlatformSelectorCursorWraps(t *testing.T) {
 func TestPlatformSelectorTogglesMatrixAndDiscord(t *testing.T) {
 	m := newPlatformSelector()
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(platformSelector)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(platformSelector)
 	if !m.matrix {
 		t.Fatalf("matrix selection = %#v, want selected", m)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(platformSelector)
 	if m.matrix {
 		t.Fatalf("matrix selection = %#v, want cleared", m)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(platformSelector)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(platformSelector)
 	if !m.discord {
 		t.Fatalf("discord selection = %#v, want selected", m)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(platformSelector)
 	if m.discord {
 		t.Fatalf("discord selection = %#v, want cleared", m)
@@ -789,7 +789,7 @@ func TestPlatformSelectorTogglesMatrixAndDiscord(t *testing.T) {
 func TestPlatformSelectorCtrlCQuitsWithoutConfirmation(t *testing.T) {
 	m := newPlatformSelector()
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	m = updated.(platformSelector)
 	if m.confirmed {
 		t.Fatalf("state after ctrl+c = %#v, should not confirm", m)
