@@ -23,8 +23,8 @@ import (
 
 	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/go/installer/i18n"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/awnumar/memguard"
-	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
@@ -347,19 +347,19 @@ func newPlatformSelector() platformSelector { return platformSelector{} }
 func (m platformSelector) Init() tea.Cmd { return nil }
 
 func (m platformSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return m, nil
 	}
 
-	switch key.Type {
-	case tea.KeyCtrlC:
+	switch key.String() {
+	case "ctrl+c":
 		return m, tea.Quit
-	case tea.KeyUp:
+	case "up":
 		m.cursor = (m.cursor + 2) % 3
-	case tea.KeyDown:
+	case "down":
 		m.cursor = (m.cursor + 1) % 3
-	case tea.KeySpace:
+	case "space":
 		switch m.cursor {
 		case 0:
 			m.telegram = !m.telegram
@@ -374,7 +374,7 @@ func (m platformSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.telegram = false
 			}
 		}
-	case tea.KeyEnter:
+	case "enter":
 		if _, _, _, valid := m.platformSelection(); valid {
 			m.confirmed = true
 			return m, tea.Quit
@@ -388,7 +388,7 @@ func (m platformSelector) platformSelection() (bool, bool, bool, bool) {
 	return m.telegram, m.matrix, m.discord, valid
 }
 
-func (m platformSelector) View() string {
+func (m platformSelector) View() tea.View {
 	labels := []string{
 		i18n.T("firsttime.platform_selector_telegram"),
 		i18n.T("firsttime.platform_selector_matrix"),
@@ -413,7 +413,7 @@ func (m platformSelector) View() string {
 	if summary == "" {
 		summary = i18n.T("firsttime.platform_selector_none")
 	}
-	return fmt.Sprintf("%s\n%s\n\n%s\n\n%s", i18n.T("firsttime.platform_selector_title"), i18n.T("firsttime.platform_selector_help"), strings.Join(labels, "\n"), i18n.T("firsttime.platform_selector_selected", summary))
+	return tea.NewView(fmt.Sprintf("%s\n%s\n\n%s\n\n%s", i18n.T("firsttime.platform_selector_title"), i18n.T("firsttime.platform_selector_help"), strings.Join(labels, "\n"), i18n.T("firsttime.platform_selector_selected", summary)))
 }
 
 func parsePlatformChoice(choice string) (bool, bool, bool, error) {
