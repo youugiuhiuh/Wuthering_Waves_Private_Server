@@ -37,7 +37,7 @@ x509-parser = "0.18"
 dashmap = "6"
 
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-regex = "1"
+regex = "1.13.1"
 self-replace = "1.5"
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 zbus = { version = "5.19.0", features = ["tokio"] }
