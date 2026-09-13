@@ -15,7 +15,7 @@ concurrency:
 jobs:
   # 1. 探测任务：找出哪个项目变了。本项目矩阵固定，成本可忽略。
   detect-changes:
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -126,7 +126,7 @@ jobs:
   # 3. 统一标签管理（唯一的写权限边界，仓库是否只允许 automerge 标签合并由分支保护决定）
   update-labels:
     needs: [detect-changes, test]
-    if: always() && github.actor == 'dependabot[bot]' && github.event.pull_request.draft == false
+    if: always() && github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
