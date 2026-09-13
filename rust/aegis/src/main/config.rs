@@ -281,7 +281,7 @@ mod tests {
         let manager = app_config.totp_manager.expect("totp_manager 应已构建");
 
         // TotpManager 功能完好：自身生成的当前码能通过 verify（证明密钥正确装载且可用）
-        let code = manager.generate_current().unwrap();
+        let code = manager.generate_current();
         assert!(manager.verify(&code));
     }
 }

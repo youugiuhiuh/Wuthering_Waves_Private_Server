@@ -510,7 +510,7 @@ mod tests {
         let state = make_state();
         state.record_auth_success(42, Instant::now()).await;
         state.begin_destruct("42".to_string(), Instant::now()).await;
-        let totp = state.generate_current_totp().unwrap().unwrap();
+        let totp = state.generate_current_totp().unwrap();
         dispatch_event(message_event(adapter.clone(), "42", Some(totp)), &state)
             .await
             .unwrap();
@@ -539,7 +539,7 @@ mod tests {
         let state = make_state();
         // not authorized initially
         assert!(!state.is_authorized(42).await);
-        let code = state.generate_current_totp().unwrap().unwrap();
+        let code = state.generate_current_totp().unwrap();
         dispatch_event(message_event(adapter.clone(), "123", Some(code)), &state)
             .await
             .unwrap();

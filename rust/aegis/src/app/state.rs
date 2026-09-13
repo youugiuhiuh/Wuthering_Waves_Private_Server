@@ -135,7 +135,7 @@ impl AppState {
     }
 
     #[allow(dead_code)]
-    pub fn generate_current_totp(&self) -> Option<Result<String, std::time::SystemTimeError>> {
+    pub fn generate_current_totp(&self) -> Option<String> {
         self.totp_manager.as_ref().map(|m| m.generate_current())
     }
 

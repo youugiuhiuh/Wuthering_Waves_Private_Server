@@ -1,47 +1,60 @@
 use anyhow::Result;
 use secrecy::{ExposeSecret, SecretString};
-use totp_rs::{Algorithm, Secret, TOTP};
+use totp_rs::{Algorithm, Builder, Secret, Totp};
 
 pub struct TotpManager {
-    totp: TOTP,
+    totp: Totp,
 }
 
 impl TotpManager {
     pub fn new(secret: &SecretString) -> Result<Self> {
-        let secret_bytes = Secret::Encoded(secret.expose_secret().clone())
-            .to_bytes()
+        let secret = Secret::try_from_base32(secret.expose_secret())
             .map_err(|e| anyhow::anyhow!("❌ 无效的 TOTP 密钥: {}", e))?;
 
-        let totp = TOTP::new(
-            Algorithm::SHA512,
-            6,
-            1,
-            30,
-            secret_bytes,
-            Some("wwps".to_string()),
-            "admin".to_string(),
-        )
-        .map_err(|e| anyhow::anyhow!("❌ TOTP 初始化错误: {}", e))?;
+        let totp = Builder::new()
+            .with_algorithm(Algorithm::SHA512)
+            .with_digits(6)
+            .with_skew(1)
+            .with_step_duration(30)
+            .with_secret(secret)
+            .with_issuer(Some("wwps"))
+            .with_account_name("admin")
+            .build()
+            .map_err(|e| anyhow::anyhow!("❌ TOTP 初始化错误: {}", e))?;
 
         Ok(Self { totp })
     }
 
     pub fn verify(&self, token: &str) -> bool {
-        self.totp.check_current(token).unwrap_or(false)
+        self.totp.check_current(token).is_some()
     }
 
-    pub fn generate_current(&self) -> Result<String, std::time::SystemTimeError> {
-        self.totp.generate_current()
+    pub fn generate_current(&self) -> String {
+        self.totp.generate_current().to_string()
     }
 
     pub fn generate_new_secret() -> String {
-        Secret::generate_secret().to_encoded().to_string()
+        Secret::generate().to_base32()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 独立的参考实现：不经 TotpManager，直接按相同参数构建，用于交叉校验。
+    fn reference_totp(secret: &str) -> Totp {
+        Builder::new()
+            .with_algorithm(Algorithm::SHA512)
+            .with_digits(6)
+            .with_skew(1)
+            .with_step_duration(30)
+            .with_secret(Secret::try_from_base32(secret).unwrap())
+            .with_issuer(Some("wwps"))
+            .with_account_name("admin")
+            .build()
+            .unwrap()
+    }
 
     #[test]
     fn generate_new_secret_returns_valid_base32() {
@@ -95,18 +108,7 @@ mod tests {
         let secret = TotpManager::generate_new_secret();
         let manager = TotpManager::new(&secrecy::SecretString::from(secret.clone())).unwrap();
 
-        let secret_bytes = totp_rs::Secret::Encoded(secret).to_bytes().unwrap();
-        let totp = totp_rs::TOTP::new(
-            totp_rs::Algorithm::SHA512,
-            6,
-            1,
-            30,
-            secret_bytes,
-            Some("wwps".to_string()),
-            "admin".to_string(),
-        )
-        .unwrap();
-        let token = totp.generate_current().unwrap();
+        let token = reference_totp(&secret).generate_current().to_string();
 
         assert!(manager.verify(&token));
     }
@@ -120,29 +122,44 @@ mod tests {
 
     #[test]
     fn raw_check_rejects_token_outside_skew_window() {
-        let encoded = TotpManager::generate_new_secret();
-        let bytes = Secret::Encoded(encoded).to_bytes().unwrap();
-
-        let raw = TOTP::new(
-            Algorithm::SHA512,
-            6,
-            1,
-            30,
-            bytes,
-            Some("wwps".to_string()),
-            "admin".to_string(),
-        )
-        .unwrap();
+        let raw = reference_totp(&TotpManager::generate_new_secret());
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
 
-        let token = raw.generate(now);
+        let token = raw.generate(now).to_string();
 
-        assert!(raw.check(&token, now));
-        assert!(!raw.check(&token, now + 90));
-        assert!(!raw.check(&token, now.saturating_sub(90)));
+        assert!(raw.check(&token, now).is_some());
+        assert!(raw.check(&token, now + 90).is_none());
+        assert!(raw.check(&token, now.saturating_sub(90)).is_none());
+    }
+
+    /// 冻结向量：totp-rs 5.7.2 在 t=1_700_000_000 对固定密钥产出 `720184`。
+    /// 若升级后此处失败，说明令牌派生发生变化，现有用户密钥将全部失效。
+    #[test]
+    fn token_derivation_matches_frozen_v5_vector() {
+        let encoded = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+        let raw = reference_totp(encoded);
+
+        assert_eq!(raw.generate(1_700_000_000).to_string(), "720184");
+        assert_eq!(
+            raw.to_url().unwrap(),
+            "otpauth://totp/wwps:admin\
+             ?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP\
+             &algorithm=SHA512&issuer=wwps"
+        );
+
+        // 同一密钥经 TotpManager 装载后，与参考实现产出相同的当前码
+        // （注意：verify() 按墙钟时间校验，不能用冻结的 1_700_000_000 向量）
+        let manager = TotpManager::new(&secrecy::SecretString::from(encoded.to_string())).unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let current = raw.generate(now).to_string();
+        assert_eq!(manager.generate_current(), current);
+        assert!(manager.verify(&current));
     }
 }
