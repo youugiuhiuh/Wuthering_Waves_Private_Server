@@ -64,6 +64,24 @@ jobs:
           git fetch -q --prune --tags origin || true
           git config --local http.extraheader ""
 
+      # ---- 系统依赖：libc 开发头文件 ----
+      # codefloe 的 runner 是精简镜像：装了 gcc，但没装 libc6-dev。
+      # 于是任何启用了 cgo 的编译都会炸在 gcc 的转发头上：
+      #   /usr/lib/gcc/aarch64-linux-gnu/15/include/stdint.h:11:16:
+      #       fatal error: stdint.h: No such file or directory
+      #    11 | # include_next <stdint.h>
+      # `# include_next` 是 gcc 自带的包装头，它去下一个搜索路径找 libc 的真身，
+      # 找不到就报错。stdlib.h / stdint.h / pthread.h / errno.h / stdio.h / grp.h
+      # 全部由 libc6-dev 提供（共 482 个头文件）。
+      #
+      # 这里不能只依赖 CGO_ENABLED=0：那只修 garble。cargo/rustc 链接时同样需要
+      # libc 开发文件，upx 也需要系统库。补齐环境才是治本。
+      #
+      # 已装则立即返回（幂等），无 apt/sudo 时只警告不阻断后续（降级策略）。
+      # 两个 job 共用 scripts/ensure-libc-dev.sh，避免同一段逻辑写两遍。
+      - name: Install System Build Dependencies
+        run: scripts/ensure-libc-dev.sh
+
       - name: Resolve Version
         id: ver
         run: |
@@ -223,6 +241,11 @@ jobs:
           git checkout -q --force "$GITHUB_SHA"
           git fetch -q --prune --tags origin || true
           git config --local http.extraheader ""
+
+      # publish 阶段的回退重建（Ensure Dist Artifacts Present）同样要编译
+      # Rust + Go，所以这里也需要 libc 头文件。与 build job 共用同一脚本。
+      - name: Install System Build Dependencies
+        run: scripts/ensure-libc-dev.sh
 
       - name: Download Build Artifacts
         continue-on-error: true
