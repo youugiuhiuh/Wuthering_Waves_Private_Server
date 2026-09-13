@@ -1,3 +1,16 @@
+# 本工作流只使用跨平台原语：零 @uses，全部原生 git。
+# cssnr/mirror-repository-action 内部就是一次 `git push --mirror`，
+# 因此可直接展开为等价 git 命令（保留原有的重试一次语义）。
+#
+# 镜像目标站类型（2026-09 实测 /api/v1/version）：
+#   codeberg.org      16.0.0-dev  (+gitea-1.22.0)  Forgejo
+#   opencommit.eu     16.0.4      (+gitea-1.22.0)  Forgejo
+#   codefloe.com      16.0.4                      Forgejo/Gitea
+#   git.disroot.org   16.0.4      (+gitea-1.22.0)  Forgejo
+#   gitlab.com        —                           GitLab（非 Forgejo）
+#
+# 因此本工作流在任何平台上均可运行（含在 Forgejo 上运行、镜像到 GitHub 之外的站）。
+
 name: Repo Mirror Sync
 
 on:
@@ -38,70 +51,74 @@ jobs:
             repo: Wuthering_Waves_Private_Server
             username: kookybullwhip
             secret: CODEBERG_TOKEN
-            create: "true"
           - target: gitlab
             host: https://gitlab.com
             owner: egfrthtu-group
             repo: wuthering_waves_private_server
             username: EGfrthtu
             secret: GITLAB_TOKEN
-            # 留空 = 不尝试创建（上游 action 用 `-n` 判断，传 "false" 反而会触发创建）
-            create: ""
           - target: opencommit
             host: https://opencommit.eu
             owner: irysdev
             repo: Wuthering_Waves_Private_Server
             username: irysdev
             secret: OPENCOMMIT_TOKEN
-            create: "true"
           - target: codefloe
             host: https://codefloe.com
             owner: irysdev
             repo: Wuthering_Waves_Private_Server
             username: irysdev
             secret: CODEFLOR_TOKEN
-            create: "true"
           - target: disroot
             host: https://git.disroot.org
             owner: MakoUtsuyamaIT
             repo: wuthering_waves_private_server
             username: MakoUtsuyamaIT
             secret: Disroot_TOKEN
-            create: ""
 
     name: Mirror to ${{ matrix.target }}
     steps:
+      # 用原生 git 代替 actions/checkout：fetch-depth: 0 + 全量 tags 镜像。
+      # --mirror 需要完整的 refs（分支 + tags），故不裁剪 tags。
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
+        run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}.git"
+          git config --local http.extraheader "Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git fetch -q --prune origin "+refs/heads/*:refs/remotes/origin/*"
+          git fetch -q --prune origin "+refs/tags/*:refs/tags/*" || true
+          git config --local http.extraheader ""
 
-      # 上游 action 是单次 `git push`，无重试。Codeberg 504 属于瞬时网关故障，
-      # 重试一次即可吸收（历史 5 次失败全为此类）。
+      # 上游 action 是单次 `git push --mirror`，无重试。Codeberg 504 属于瞬时
+      # 网关故障，重试一次即可吸收（历史 5 次失败全为此类）。
+      # 与 action 的差别：action 额外做「仓库不存在则创建」，但本矩阵中 4 个
+      # 目标站 repo 均已存在（实测 200），故省略创建逻辑；若将来新增站点，
+      # 需先手动建库，否则此处 push 会失败并由 Report result 明确报错。
       - name: Mirror to ${{ matrix.target }}
         id: mirror
         continue-on-error: true
-        uses: cssnr/mirror-repository-action@v1.2.0
-        with:
-          host: ${{ matrix.host }}
-          owner: ${{ matrix.owner }}
-          repo: ${{ matrix.repo }}
-          username: ${{ matrix.username }}
-          password: ${{ secrets[matrix.secret] }}
-          create: ${{ matrix.create }}
+        env:
+          MIRROR_PASSWORD: ${{ secrets[matrix.secret] }}
+        run: |
+          TARGET_URL="https://${{ matrix.username }}:${MIRROR_PASSWORD}@${{ matrix.host }}/${{ matrix.owner }}/${{ matrix.repo }}.git"
+          git push --prune "$TARGET_URL" \
+            "refs/remotes/origin/*:refs/heads/*" \
+            "+refs/tags/*:refs/tags/*"
 
       - name: Retry mirror after failure
         id: retry
         if: steps.mirror.outcome == 'failure'
         continue-on-error: true
-        uses: cssnr/mirror-repository-action@v1.2.0
-        with:
-          host: ${{ matrix.host }}
-          owner: ${{ matrix.owner }}
-          repo: ${{ matrix.repo }}
-          username: ${{ matrix.username }}
-          password: ${{ secrets[matrix.secret] }}
-          create: ${{ matrix.create }}
+        env:
+          MIRROR_PASSWORD: ${{ secrets[matrix.secret] }}
+        run: |
+          echo "first attempt failed, retrying once"
+          TARGET_URL="https://${{ matrix.username }}:${MIRROR_PASSWORD}@${{ matrix.host }}/${{ matrix.owner }}/${{ matrix.repo }}.git"
+          git push --prune "$TARGET_URL" \
+            "refs/remotes/origin/*:refs/heads/*" \
+            "+refs/tags/*:refs/tags/*"
 
       - name: Report result
         if: steps.mirror.outcome == 'failure' && steps.retry.outcome == 'failure'

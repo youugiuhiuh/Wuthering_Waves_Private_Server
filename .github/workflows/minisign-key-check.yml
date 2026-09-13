@@ -1,3 +1,19 @@
+# 本工作流只使用跨平台原语：零 @uses，全部原生 git/curl。
+#
+# issue 操作走与 release 相同的 provider 抽象：
+#   RELEASE_PROVIDER=github   → api.github.com      （默认，当前行为不变）
+#   RELEASE_PROVIDER=forgejo  → <server>/api/v1     （Forgejo/Gitea）
+#
+# 两个平台的 issue 端点同构：
+#   GET    /repos/{owner}/{repo}/issues?labels=X&state=open
+#   POST   /repos/{owner}/{repo}/issues                        {title,body,labels}
+#   POST   /repos/{owner}/{repo}/issues/{index}/comments       {body}
+#   PATCH  /repos/{owner}/{repo}/issues/{index}                {state:"closed"}
+# 字段名一致（number 在 Forgejo 也存在），故一份逻辑两平台通用。
+#
+# 注意：Forgejo 上 label 必须已存在于仓库，否则 POST issues 会失败（GitHub 会自动建）。
+# 若在 Forgejo 运行，需先手动创建 `key-rotation` / `key-expired` 两个 label。
+
 name: Minisign Key Expiration Check
 
 on:
@@ -13,8 +29,38 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      # 用原生 git 代替 actions/checkout：只要工作树文件，不需要历史。
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
+        run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}.git"
+          git config --local http.extraheader "Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git fetch -q --depth 1 origin "$GITHUB_SHA"
+          git checkout -q --force "$GITHUB_SHA"
+          git config --local http.extraheader ""
+
+      # ---- 发布抽象：与 public-release.yml / sign-release.yml 同一套推导 ----
+      - name: Resolve Provider
+        env:
+          RAW_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
+        run: |
+          SERVER="${GITHUB_SERVER_URL:-https://github.com}"
+          case "$SERVER" in
+            *github.com*) PROVIDER=github ;;
+            *)            PROVIDER=forgejo ;;
+          esac
+
+          case "$PROVIDER" in
+            github)  API_BASE="https://api.github.com" ;;
+            forgejo) API_BASE="${SERVER}/api/v1" ;;
+            *) echo "::error::未知 provider: $PROVIDER"; exit 1 ;;
+          esac
+
+          echo "RELEASE_API_BASE=$API_BASE" >> "$GITHUB_ENV"
+          echo "RELEASE_AUTH_TOKEN=$RAW_TOKEN" >> "$GITHUB_ENV"
+          echo "provider: $PROVIDER ($API_BASE)"
 
       - name: Check key expiration dates
         id: check
@@ -45,8 +91,6 @@ jobs:
 
       - name: Create issue if key is expiring soon
         if: env.DAYS_LEFT <= 90
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$DAYS_LEFT" -le 0 ]; then
             TITLE="🚨 Minisign key has EXPIRED ($EARLIEST)"
@@ -67,23 +111,67 @@ jobs:
           ### Required action
           1. Run \`scripts/rotate-minisign-key.sh\`
           2. Commit and push the updated keys
-          3. Update \`MINISIGN_SECRET_KEY\` in GitHub Secrets"
+          3. Update \`MINISIGN_SECRET_KEY\` in CI Secrets"
 
-          EXISTING=$(gh issue list --label "$LABEL" --json number -q '.[0].number' 2>/dev/null || echo "")
+          OWNER_REPO="$GITHUB_REPOSITORY"
+
+          # 复用已有 open issue（按 label 查），避免每次 cron 重复建单
+          # isinstance 守卫：API 错误时返回的是 object 而非列表，
+          # 不加守卫会 KeyError 崩掉（GitHub/Forgejo 均如此）。
+          EXISTING=$(curl -fsS \
+            -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+            "$RELEASE_API_BASE/repos/$OWNER_REPO/issues?labels=$LABEL&state=open&limit=1" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["number"] if isinstance(d,list) and d else "")' 2>/dev/null || echo "")
+
           if [ -n "$EXISTING" ]; then
-            gh issue comment "$EXISTING" --body "🔁 Still expiring (checked $(date +%Y-%m-%d))"
+            COMMENT="🔁 Still expiring (checked $(date +%Y-%m-%d))"
+            PAYLOAD=$(COMMENT="$COMMENT" python3 -c 'import json,os; print(json.dumps({"body":os.environ["COMMENT"]}))')
+            curl -fsS -X POST \
+              -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              "$RELEASE_API_BASE/repos/$OWNER_REPO/issues/$EXISTING/comments"
+            echo "commented on existing issue #$EXISTING"
           else
-            gh issue create --title "$TITLE" --body "$BODY" --label "$LABEL"
+            PAYLOAD=$(TITLE="$TITLE" BODY="$BODY" LABEL="$LABEL" python3 -c '
+          import json,os
+          print(json.dumps({
+            "title":  os.environ["TITLE"],
+            "body":   os.environ["BODY"],
+            "labels": [os.environ["LABEL"]],
+          }))
+          ')
+            curl -fsS -X POST \
+              -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              "$RELEASE_API_BASE/repos/$OWNER_REPO/issues"
+            echo "created issue: $TITLE"
           fi
 
       - name: Close resolved issue
         if: env.DAYS_LEFT > 90
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
+          OWNER_REPO="$GITHUB_REPOSITORY"
           for LABEL in key-rotation key-expired; do
-            EXISTING=$(gh issue list --label "$LABEL" --json number -q '.[0].number' 2>/dev/null || echo "")
+            EXISTING=$(curl -fsS \
+              -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+              "$RELEASE_API_BASE/repos/$OWNER_REPO/issues?labels=$LABEL&state=open&limit=1" \
+              | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["number"] if isinstance(d,list) and d else "")' 2>/dev/null || echo "")
+
             if [ -n "$EXISTING" ]; then
-              gh issue close "$EXISTING" --comment "✅ Key has been rotated (checked $(date +%Y-%m-%d))"
+              COMMENT="✅ Key has been rotated (checked $(date +%Y-%m-%d))"
+              PAYLOAD=$(COMMENT="$COMMENT" python3 -c 'import json,os; print(json.dumps({"body":os.environ["COMMENT"]}))')
+              curl -fsS -X POST \
+                -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$PAYLOAD" \
+                "$RELEASE_API_BASE/repos/$OWNER_REPO/issues/$EXISTING/comments"
+              curl -fsS -X PATCH \
+                -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{"state":"closed"}' \
+                "$RELEASE_API_BASE/repos/$OWNER_REPO/issues/$EXISTING"
+              echo "closed issue #$EXISTING ($LABEL)"
             fi
           done

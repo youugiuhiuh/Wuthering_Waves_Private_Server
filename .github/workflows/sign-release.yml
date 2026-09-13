@@ -1,3 +1,13 @@
+# 本工作流只使用跨平台原语：
+#   - 零 @uses，全部原生 git/curl
+#   - 发布走 provider 抽象（与 public-release.yml 同一套）：
+#       RELEASE_PROVIDER=github   → api.github.com   （默认，当前行为不变）
+#       RELEASE_PROVIDER=forgejo  → <server>/api/v1
+#   - Token 自动适配：GITHUB_TOKEN / FORGEJO_TOKEN / GITEA_TOKEN 谁注入用谁
+#
+# GitHub 上 environment: production 提供 secret 门禁；Forgejo 忽略该键，
+# 密钥门禁需由 Forgejo 侧的 secret 权限控制承担。
+
 name: Minisign Sign Release
 
 on:
@@ -17,10 +27,14 @@ jobs:
     environment: production
     runs-on: ubuntu-latest
     steps:
+      # minisign 取自上游 GitHub Releases（外部下载，非平台 API，两平台均可访问）。
+      # 可通过 repo 变量 MINISIGN_URL 覆盖为镜像地址。
       - name: Install Minisign
+        env:
+          MINISIGN_URL: ${{ vars.MINISIGN_URL }}
         run: |
-          curl -fsSL "https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz" \
-            | tar xz
+          URL="${MINISIGN_URL:-https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz}"
+          curl -fsSL "$URL" | tar xz
           sudo install minisign-linux/x86_64/minisign /usr/local/bin/minisign
           minisign -v
 
@@ -29,36 +43,84 @@ jobs:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
           mkdir -p ~/.minisign
-          echo "$MINISIGN_SECRET_KEY" > ~/.minisign/minisign.key
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > ~/.minisign/minisign.key
           chmod 600 ~/.minisign/minisign.key
 
+      # 用原生 git 代替 actions/checkout（本 workflow 实际不依赖仓库内容，
+      # 仅为与其它工作流保持一致的最小检出）。
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-
-      - name: Sign and Upload Release Assets
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
         run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}.git"
+          git config --local http.extraheader "Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git fetch -q --prune --no-tags origin "$GITHUB_SHA"
+          git checkout -q --force "$GITHUB_SHA"
+          git config --local http.extraheader ""
+
+      # ---- 发布抽象：与 public-release.yml 同一套 provider 推导 ----
+      - name: Resolve Release Provider
+        env:
+          RAW_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
+        run: |
+          SERVER="${GITHUB_SERVER_URL:-https://github.com}"
+          case "$SERVER" in
+            *github.com*) PROVIDER=github ;;
+            *)            PROVIDER=forgejo ;;
+          esac
+
+          case "$PROVIDER" in
+            github)  API_BASE="https://api.github.com" ;;
+            forgejo) API_BASE="${SERVER}/api/v1" ;;
+            *) echo "::error::未知 RELEASE_PROVIDER: $PROVIDER"; exit 1 ;;
+          esac
+
+          echo "RELEASE_PROVIDER=$PROVIDER" >> "$GITHUB_ENV"
+          echo "RELEASE_API_BASE=$API_BASE" >> "$GITHUB_ENV"
+          echo "RELEASE_AUTH_TOKEN=$RAW_TOKEN" >> "$GITHUB_ENV"
+          echo "release provider: $PROVIDER ($API_BASE)"
+
+      # 列 assets → 逐个下载 → minisign 签 → 回传 .minisig。
+      # 下载用 browser_download_url（两平台均返回绝对地址）；
+      # 上传用 /releases/{id}/assets?name= ，两平台路径同构。
+      - name: Sign and Upload Release Assets
+        run: |
+          OWNER_REPO="$GITHUB_REPOSITORY"
           TAG="${{ github.event.inputs.tag_name || github.event.release.tag_name }}"
-          ASSETS=$(gh release view "$TAG" --json assets -q '.assets[].name')
+
+          REL=$(curl -fsS \
+            -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+            "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/tags/$TAG")
+
+          RID=$(echo "$REL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+
+          ASSETS=$(echo "$REL" | python3 -c '
+          import json,sys
+          for a in json.load(sys.stdin).get("assets", []):
+              print(a["name"] + "\t" + a.get("browser_download_url", ""))
+          ')
 
           if [ -z "$ASSETS" ]; then
             echo "No assets found for release $TAG"
             exit 0
           fi
 
-          echo "Signing release $TAG..."
-          for asset in $ASSETS; do
+          echo "Signing release $TAG (id=$RID)..."
+          printf '%s\n' "$ASSETS" | while IFS="$(printf '\t')" read -r asset url; do
+            [ -n "$asset" ] || continue
             case "$asset" in
               *.minisig) echo "Skipping $asset (already a signature)"; continue ;;
             esac
 
             echo "::group::Signing $asset"
-            gh release download "$TAG" --pattern "$asset" --clobber
+            curl -fsSL -H "Authorization: token $RELEASE_AUTH_TOKEN" -o "$asset" "$url"
             minisign -S -m "$asset" -t "${TAG}:${asset}" -W
-            gh release upload "$TAG" "${asset}.minisig" --clobber
+            curl -fsS -X POST \
+              -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@${asset}.minisig" \
+              "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/$RID/assets?name=${asset}.minisig"
             echo "::endgroup::"
           done
 

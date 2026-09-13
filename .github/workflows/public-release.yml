@@ -1,3 +1,14 @@
+# 本工作流刻意只使用跨平台原语：
+#   - 平台专有 @uses 仅剩本文件末尾的 actions/cache（已 continue-on-error，缺失可降级）
+#   - 工具链全部来自 mise.toml，用 curl mise.run 引导，GitHub/Forgejo 一致
+#   - 发布走 provider 抽象（见文件末尾 Publish Release 步骤注释）：
+#       RELEASE_PROVIDER=github   → api.github.com   （默认，当前行为不变）
+#       RELEASE_PROVIDER=forgejo  → api/v1（Forgejo/Gitea，自建或 Codeberg）
+#     provider 由环境变量推导，无需改本文件即可切换平台。
+#
+# 首次引导 GitHub Actions：需要在 repo secrets 中提供 GITHUB_TOKEN。
+# Forgejo：GITHUB_TOKEN 由 FORGEJO_TOKEN / GITEA_TOKEN 自动回退填充，无需改文件。
+
 name: Build and Release
 
 on:
@@ -22,11 +33,18 @@ jobs:
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore(deps)')"
     steps:
+      # 用原生 git 代替 actions/checkout：Forgejo 无需镜像或开启 GitHub action 拉取。
       - name: Checkout Source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
+        run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}.git"
+          git config --local http.extraheader "Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git fetch -q --prune --no-tags origin "$GITHUB_SHA"
+          git checkout -q --force "$GITHUB_SHA"
+          git fetch -q --prune --tags origin || true
+          git config --local http.extraheader ""
 
       - name: Resolve Version
         run: |
@@ -58,13 +76,19 @@ jobs:
           git tag -f "v${{ env.NEW_VERSION }}"
           git push origin "v${{ env.NEW_VERSION }}" --force
 
+      # mise 是唯一工具来源（mise.toml: rust/protoc/upx/go/garble）。
+      # 用官方安装脚本而非 jdx/mise-action，使其在 GitHub 与 Forgejo 上完全相同。
       - name: Setup mise
-        uses: jdx/mise-action@v4.3.0
+        run: |
+          curl -fsSL https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/mise" install --yes
+          "$HOME/.local/bin/mise" --version
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
-
+      # 缓存是可选加速，两个平台都可缺失。continue-on-error 避免 Forgejo 无
+      # actions/cache 时整条工作流失败；缓存后端不可用只是变慢，不影响产物。
       - name: Cache Rust build outputs
+        continue-on-error: true
         uses: actions/cache@v6
         with:
           path: |
@@ -78,6 +102,7 @@ jobs:
             ${{ runner.os }}-rust-aegis-
 
       - name: Cache Go build outputs
+        continue-on-error: true
         uses: actions/cache@v6
         with:
           path: |
@@ -88,11 +113,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-installer-
 
+      # 刻意不使用 sccache：其唯一后端 SCCACHE_GHA_ENABLED 是 GitHub 专有，
+      # 与本次「跨平台」目标冲突；且 build-test.yml 已实测该后端在本仓库
+      # 命中率归零并挤掉 actions/cache 条目（见 build-test.yml 注释）。
+      # 发布频率低，直接编译即可；RUSTC_WRAPPER 留空。
       - name: Build Runtime Binary
-        env:
-          RUSTC_WRAPPER: sccache
-          SCCACHE_GHA_ENABLED: "true"
-          SCCACHE_GHA_VERSION: rust-aegis-v1
         run: |
           cd rust/aegis
           RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" \
@@ -112,30 +137,108 @@ jobs:
           cp rust/aegis/target/release/aegis dist/
           cp go/installer/installer dist/
 
-      - name: Delete Existing Release For Tag
+      # ---- 发布抽象：一份逻辑，两个 provider ----
+      # GitHub:  POST /repos/{owner}/{repo}/releases        + /releases/{id}/assets
+      # Forgejo: POST /api/v1/repos/{owner}/{repo}/releases + 同路径 assets
+      # 两者 JSON 字段（tag_name/name/body/draft）与 asset 响应结构一致。
+      # 平台由 RELEASE_PROVIDER 决定，未设置时自动探测：
+      #   在 github.com 上 → github；其它（自建 Forgejo/Codeberg）→ forgejo
+      - name: Resolve Release Provider
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release delete "v${{ env.NEW_VERSION }}" --yes --cleanup-tag=false || true
+          RAW_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
+        run: |
+          SERVER="${GITHUB_SERVER_URL:-https://github.com}"
+          case "$SERVER" in
+            *github.com*) PROVIDER=github ;;
+            *)            PROVIDER=forgejo ;;
+          esac
+          if [ -n "${RELEASE_PROVIDER_OVERRIDE:-}" ]; then
+            PROVIDER="$RELEASE_PROVIDER_OVERRIDE"
+          fi
+
+          case "$PROVIDER" in
+            github)
+              API_BASE="https://api.github.com"
+              ;;
+            forgejo)
+              API_BASE="${SERVER}/api/v1"
+              ;;
+            *)
+              echo "::error::未知 RELEASE_PROVIDER: $PROVIDER"; exit 1
+              ;;
+          esac
+
+          echo "RELEASE_PROVIDER=$PROVIDER" >> "$GITHUB_ENV"
+          echo "RELEASE_API_BASE=$API_BASE" >> "$GITHUB_ENV"
+          echo "RELEASE_AUTH_TOKEN=$RAW_TOKEN" >> "$GITHUB_ENV"
+          echo "release provider: $PROVIDER ($API_BASE)"
+
+      # 幂等：先删掉同 tag 的旧 release（就是修 GitHub 500 的那一步），
+      # 两个 provider 的 delete 端点均可直接用 DELETE 调用。
+      - name: Delete Existing Release For Tag
+        run: |
+          OWNER_REPO="$GITHUB_REPOSITORY"
+          EXISTING_ID=$(curl -fsS \
+            -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+            "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/tags/v$NEW_VERSION" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING_ID" ]; then
+            echo "deleting existing release id=$EXISTING_ID"
+            curl -fsS -X DELETE \
+              -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+              "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/$EXISTING_ID"
+          else
+            echo "no existing release for v$NEW_VERSION"
+          fi
 
       - name: Create Release
-        uses: softprops/action-gh-release@7c4723f7a335432393329f8f1c564994ce50185d
-        with:
-          tag_name: v${{ env.NEW_VERSION }}
-          name: v${{ env.NEW_VERSION }}
-          draft: false
-          fail_on_unmatched_files: true
-          files: |
-            dist/aegis
-            dist/installer
-          body: |
-            Release `v${{ env.NEW_VERSION }}`.
-
-            ### Included Files
-            - `installer`: bootstrap executable
-            - `aegis`: runtime management executable
-
-      - name: Dispatch Signing Workflow
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh workflow run sign-release.yml --ref main -f tag_name=v${{ env.NEW_VERSION }}
+          OWNER_REPO="$GITHUB_REPOSITORY"
+          BODY=$(printf 'Release `v%s`.\n\n### Included Files\n- `installer`: bootstrap executable\n- `aegis`: runtime management executable\n' "$NEW_VERSION")
+
+          TAG="v$NEW_VERSION"
+          PAYLOAD=$(BODY="$BODY" TAG="$TAG" python3 -c '
+          import json,os
+          print(json.dumps({
+            "tag_name": os.environ["TAG"],
+            "name":     os.environ["TAG"],
+            "body":     os.environ["BODY"],
+            "draft":    False,
+          }))
+          ')
+
+          RESP=$(curl -fsS -X POST \
+            -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$RELEASE_API_BASE/repos/$OWNER_REPO/releases")
+
+          RID=$(echo "$RESP" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          echo "RELEASE_ID=$RID" >> "$GITHUB_ENV"
+          echo "created release id=$RID"
+
+      - name: Upload Release Assets
+        run: |
+          OWNER_REPO="$GITHUB_REPOSITORY"
+          for f in dist/aegis dist/installer; do
+            [ -f "$f" ] || { echo "::error::缺少产物 $f"; exit 1; }
+            NAME=$(basename "$f")
+            echo "uploading $NAME"
+            curl -fsS -X POST \
+              -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@$f" \
+              "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/$RELEASE_ID/assets?name=$NAME"
+          done
+
+      # 仅 GitHub 有独立签名的 workflow_dispatch；Forgejo 上跳过。
+      # sign-release.yml 仍可用手动方式在 GitHub 侧触发。
+      - name: Dispatch Signing Workflow
+        if: env.RELEASE_PROVIDER == 'github'
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$RELEASE_API_BASE/repos/$GITHUB_REPOSITORY/actions/workflows/sign-release.yml/dispatches" \
+            -d "{\"ref\":\"main\",\"inputs\":{\"tag_name\":\"v$NEW_VERSION\"}}"
