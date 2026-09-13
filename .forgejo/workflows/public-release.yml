@@ -205,7 +205,15 @@ jobs:
           cp go/installer/installer dist/
           ls -lh dist/
 
+      # @actions/artifact v2+（upload-artifact@v4）在 GHES 型 artifact 后端上直接报
+      # GHESNotSupportedError，Forgejo runner 正是这一类。continue-on-error 在 Forgejo
+      # 上【被忽略】（官方差异清单），所以这里必须显式只在 GitHub 上跑，否则每次构建
+      # 都会留下一条 ::error:: 噪音（甚至中断，视 runner 实现而定）。
+      # Forgejo 侧不传 artifact：publish job 的 Ensure Dist Artifacts Present
+      # 会在 dist 缺失时就地重建，行为已覆盖。
+      # 判据与 publish 的权威源守卫同形：server_url 为空/异常时按 GitHub 处理。
       - name: Upload Build Artifacts
+        if: "!contains(github.server_url, '/') || contains(github.server_url, 'github.com')"
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -247,7 +255,10 @@ jobs:
       - name: Install System Build Dependencies
         run: scripts/ensure-build-deps.sh
 
+      # 同上：download-artifact@v4 与 upload 同源，Forgejo 上必然失败。
+      # 跳过即走下面的就地重建回退。
       - name: Download Build Artifacts
+        if: "!contains(github.server_url, '/') || contains(github.server_url, 'github.com')"
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
