@@ -1,6 +1,6 @@
 module github.com/youugiuhiuh/Wuthering_Waves_Private_Server/go/installer
 
-go 1.27.1
+go 1.26
 
 require (
 	aead.dev/minisign v0.3.0
