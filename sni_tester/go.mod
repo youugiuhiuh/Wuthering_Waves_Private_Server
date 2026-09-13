@@ -6,6 +6,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.9.6
 	github.com/miekg/dns v1.1.73
 	github.com/oschwald/geoip2-golang v1.13.0
+	github.com/oschwald/geoip2-golang/v2 v2.4.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/schollz/progressbar/v3 v3.19.1
 	golang.org/x/time v0.16.0
