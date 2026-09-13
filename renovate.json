@@ -20,17 +20,9 @@
     "enabled": false
   },
 
+  "enabledManagers": ["cargo", "gomod", "github-actions"],
+
   "packageRules": [
-    {
-      "description": "范围限定：仅 rust/aegis、go/installer、sni_tester 及工作流自身参与依赖更新。\n仓库内其余 manifest（rust/version-sync、tools/bin2pb、sni_tester_app/go_engine、\n.agents/skills/rust-skills/checks）不在本次迁移范围内，显式禁用。",
-      "matchFileNames": [
-        "rust/version-sync/**",
-        "tools/bin2pb/**",
-        "sni_tester_app/**",
-        ".agents/**"
-      ],
-      "enabled": false
-    },
     {
       "description": "major 仅出现在 Dependency Dashboard，需人工勾选后才建 PR",
       "matchUpdateTypes": ["major"],
@@ -68,6 +60,10 @@
 
   "ignorePaths": [
     "**/node_modules/**",
+    "rust/version-sync/**",
+    "tools/bin2pb/**",
+    "sni_tester_app/**",
+    ".agents/**",
     ".worktrees/**",
     "rust/aegis/target/**"
   ]
