@@ -112,11 +112,18 @@ jobs:
           cp rust/aegis/target/release/aegis dist/
           cp go/installer/installer dist/
 
+      - name: Delete Existing Release For Tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "v${{ env.NEW_VERSION }}" --yes --cleanup-tag=false || true
+
       - name: Create Release
         uses: softprops/action-gh-release@7c4723f7a335432393329f8f1c564994ce50185d
         with:
           tag_name: v${{ env.NEW_VERSION }}
           name: v${{ env.NEW_VERSION }}
+          draft: false
+          fail_on_unmatched_files: true
           files: |
             dist/aegis
             dist/installer
