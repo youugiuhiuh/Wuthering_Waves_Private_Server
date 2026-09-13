@@ -92,18 +92,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
 
+      # 用预编译二进制，不编译 nextest（官方推荐的 CI 安装方式）。
+      # 与 rust-lint-format 技能保持一致：该技能要求的门禁是
+      # `cargo nextest run`，而非 `cargo test`。
+      - name: Install cargo-nextest
+        if: matrix.project.language == 'rust'
+        uses: taiki-e/install-action@nextest
+
       # ---------------- 构建与测试 ----------------
       # 注意：rust/aegis/src/bootstrap.rs 会调用 xray 取 mldsa65 密钥生成 Reality PQ。
       # 依赖 `youugiuhiuh/Xray-setup@1`（不可信第三方 Action，且会 sudo 执行远端脚本）已移除；
-      # aegis 在缺失该二进制时仅记录日志，不影响 cargo test。
+      # aegis 在缺失该二进制时仅记录日志，不影响测试。
       - name: Build and Test
         working-directory: ${{ matrix.project.path }}
         env:
           LANG: ${{ matrix.project.language }}
+          CARGO_TERM_COLOR: always
         run: |
           case "$LANG" in
             go)   go test ./... ;;
-            rust) cargo test ;;
+            rust) cargo nextest run ;;
             *)
               echo "🔍 检查 GitHub Actions YAML 语法..."
               python3 -c "
