@@ -307,20 +307,38 @@ jobs:
 
           RID=$(echo "$RESP" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
           echo "RELEASE_ID=$RID" >> "$GITHUB_ENV"
+
+          # 资产上传端点【因 release 而异】，必须用响应里的 upload_url。
+          # GitHub 把它指向 uploads.github.com（而不是 api.github.com），
+          # 写死 api.github.com 会拿到 404（实测 run 34751613379）。
+          # 格式为 .../assets{?name,label}，需去掉 URI 模板尾巴。
+          # Forgejo 没有单独的上传主机，也没回 upload_url，
+          # 此时回退为同主机的 /releases/{id}/assets。
+          UPLOAD_URL=$(echo "$RESP" | python3 -c '
+          import json,sys
+          r=json.load(sys.stdin)
+          u=r.get("upload_url") or ""
+          print(u.split("{")[0] if u else "")
+          ')
+          if [ -z "$UPLOAD_URL" ]; then
+            UPLOAD_URL="$RELEASE_API_BASE/repos/$OWNER_REPO/releases/$RID/assets"
+          fi
+          echo "UPLOAD_URL=$UPLOAD_URL" >> "$GITHUB_ENV"
           echo "created release id=$RID"
+          echo "upload url: $UPLOAD_URL"
 
       - name: Upload Release Assets
         run: |
-          OWNER_REPO="$GITHUB_REPOSITORY"
           for f in dist/aegis dist/installer; do
             [ -f "$f" ] || { echo "::error::缺少产物 $f"; exit 1; }
             NAME=$(basename "$f")
-            echo "uploading $NAME"
+            echo "uploading $NAME -> $UPLOAD_URL?name=$NAME"
+            # 用 release 响应里的 upload_url（含正确主机），不用 RELEASE_API_BASE。
             curl -fsS -X POST \
               -H "Authorization: token $RELEASE_AUTH_TOKEN" \
               -H "Content-Type: application/octet-stream" \
               --data-binary "@$f" \
-              "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/$RELEASE_ID/assets?name=$NAME"
+              "$UPLOAD_URL?name=$NAME"
           done
 
       # 仅 GitHub 有独立签名的 workflow_dispatch；Forgejo 上跳过。
