@@ -43,7 +43,7 @@ obfstr = "0.4.6"
 goldberg = "0.1.0"
 chrono-tz = "0.10.4"
 prost = "0.14"
-thiserror = "2.0"
+thiserror = "2.0.20"
 tempfile = "3.27"
 async-trait = "0.1.92"
 matrix-sdk = { version = "0.18", default-features = false, features = [
