@@ -69,7 +69,7 @@ impl SystemMonitor {
                     hours,
                     minutes,
                 ),
-                sys.global_cpu_info().cpu_usage(),
+                sys.global_cpu_usage(),
             )
         })
         .await?;
@@ -78,9 +78,9 @@ impl SystemMonitor {
 
         let cpu_usage = tokio::task::spawn_blocking(move || {
             let mut sys = System::new();
-            sys.refresh_cpu();
-            sys.refresh_cpu();
-            sys.global_cpu_info().cpu_usage()
+            sys.refresh_cpu_all();
+            sys.refresh_cpu_all();
+            sys.global_cpu_usage()
         })
         .await?;
 
@@ -131,7 +131,7 @@ impl SystemMonitor {
 
         tokio::task::spawn_blocking(|| {
             let mut sys = System::new();
-            sys.refresh_cpu();
+            sys.refresh_cpu_all();
         })
         .await?;
 
@@ -139,9 +139,9 @@ impl SystemMonitor {
 
         let cpu_usage = tokio::task::spawn_blocking(|| {
             let mut sys = System::new();
-            sys.refresh_cpu();
-            sys.refresh_cpu();
-            sys.global_cpu_info().cpu_usage()
+            sys.refresh_cpu_all();
+            sys.refresh_cpu_all();
+            sys.global_cpu_usage()
         })
         .await?;
 
@@ -316,7 +316,7 @@ mod tests {
     #[test]
     fn test_aggregate_network_traffic_with_data() {
         let mut networks = Networks::new_with_refreshed_list();
-        networks.refresh();
+        networks.refresh(true);
         let (_rx, _tx) = aggregate_network_traffic(&networks);
     }
 
