@@ -1,8 +1,8 @@
 version: 2
 updates:
-  # 1. 对应项目: rust-tgbot
+  # 1. 对应项目: rust-aegis
   - package-ecosystem: "cargo"
-    directory: "/rust/tgbot" # 必须以 / 开头
+    directory: "/rust/aegis" # 必须以 / 开头
     schedule:
       interval: "weekly"
 
@@ -20,6 +20,9 @@ updates:
 
   # 4. 对应项目: github-actions 自身更新
   - package-ecosystem: "github-actions"
-    directory: "/" # 保持为 "/"，它会自动识别根目录下的 .github/workflows
+    directory: "/" # 自动识别 .github/workflows 下的 workflow
     schedule:
       interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
