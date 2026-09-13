@@ -68,6 +68,13 @@ jobs:
           echo "NEW_VERSION=$VERSION" >> $GITHUB_ENV
           echo "Resolved version: $VERSION"
 
+      # 版本一致性校验：Cargo.toml 是真源，go/installer/main.go 必须跟随。
+      # 原先由 publish 阶段的 sed+commit+push 回写，但那段只改 Rust 不改 Go，
+      # 且会在运行所在的仓库造 commit（镜像站上造成分叉）。
+      # 现在改为前置校验：不一致就在构建前失败，而不是发布后才发现。
+      - name: Verify Version Sync
+        run: scripts/sync-version.sh --check
+
       # mise 是唯一工具来源（mise.toml: rust/protoc/upx/go/garble）。
       # 用官方安装脚本而非 jdx/mise-action，使其在 GitHub 与 Forgejo 上完全相同。
       - name: Setup mise
@@ -195,34 +202,13 @@ jobs:
           ls -lh dist/
 
       # 权威源才回写版本号：避免镜像站自己 commit 造成分叉。
-      - name: Sync Source Version Commit
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "CI Bot"
-
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            echo "非手动触发，跳过版本回写"
-            exit 0
-          fi
-
-          sed -i 's/^version = .*/version = "${{ needs.build.outputs.version }}"/' rust/aegis/Cargo.toml
-          if git diff --quiet -- rust/aegis/Cargo.toml; then
-            echo "版本未变化，跳过 commit"
-            exit 0
-          fi
-
-          # 本地可能处于 detached HEAD（Forgejo runner 常见），
-          # 必须显式建/更新本地分支再推，否则 `git push origin main` 会报
-          # `src refspec main does not match any`。
-          git add rust/aegis/Cargo.toml
-          git commit -m "chore: bump version to ${{ needs.build.outputs.version }} [skip ci]"
-          git branch -f main HEAD
-          git push origin main
-
-      - name: Sync Source Tags
-        run: |
-          git tag -f "v${{ needs.build.outputs.version }}"
-          git push origin "v${{ needs.build.outputs.version }}" --force
+      # 版本号不再由 CI 回写。发布前请确保 rust/aegis/Cargo.toml 与
+      # go/installer/main.go 已一致（本地执行 scripts/sync-version.sh --fix
+      # 或依赖 pre-commit 钩子拦截）。构建阶段的 Verify Version Sync 会校验。
+      # tag 不再单独推送：下面创建 release 时 POST 的 payload 含 tag_name，
+      # 若该 tag 不存在，API 会基于当前 commit 自行创建。
+      # （原 Sync Source Tags 用 git push --force 推 tag，是发布阶段仅剩的仓库写操作；
+      #   删掉后 publish 不再往运行所在的仓库写任何 git 对象。）
 
       # ---- 发布抽象：一份逻辑，两个 provider ----
       # GitHub:  POST /repos/{owner}/{repo}/releases        + /releases/{id}/assets
@@ -281,13 +267,20 @@ jobs:
           BODY=$(printf 'Release `v%s`.\n\n### Included Files\n- `installer`: bootstrap executable\n- `aegis`: runtime management executable\n' "${{ needs.build.outputs.version }}")
 
           TAG="v${{ needs.build.outputs.version }}"
-          PAYLOAD=$(BODY="$BODY" TAG="$TAG" python3 -c '
+          # 显式固定 tag 指向 workflow 检出的那个 commit。
+          # 不传的话 API 默认用 default branch HEAD 建 tag，
+          # 若构建后 main 又被推送，tag 会指向新 HEAD，
+          # 与二进制实际构建的 SHA 不符（自升级比对会出错）。
+          # 传 target_commitish 不需要写 git 对象，仅一个 payload 字段。
+          TARGET="$GITHUB_SHA"
+          PAYLOAD=$(BODY="$BODY" TAG="$TAG" TARGET="$TARGET" python3 -c '
           import json,os
           print(json.dumps({
-            "tag_name": os.environ["TAG"],
-            "name":     os.environ["TAG"],
-            "body":     os.environ["BODY"],
-            "draft":    False,
+            "tag_name":         os.environ["TAG"],
+            "name":             os.environ["TAG"],
+            "body":             os.environ["BODY"],
+            "draft":            False,
+            "target_commitish": os.environ["TARGET"],
           }))
           ')
 
