@@ -17,12 +17,13 @@ pub struct RuleDef {
 
 pub static ROUTING_RULES: &[RuleDef] = &[
     // 必须位于首位：Xray routing 顺序匹配、首条命中即停。
-    // geosite:cn 收录了这些 gstatic 域名，若排在 cn_ip / cn_domain 之后即失效。
+    // geosite:cn 收录了这些域名，若排在 cn_ip / cn_domain 之后即失效。
     //
-    // 注意 id 为历史命名：本规则既覆盖连通性探测端点（generate_204），
-    // 也覆盖 Google 登录必需的静态资源域名（ssl./fonts.gstatic.com 为
-    // Google 官方登录必需主机，见 ChromeOS sign-in allowlist），
-    // 后者同属 geosite:cn 的精确条目，被 cn_domain blackhole 会导致登录流程损坏。
+    // 注意 id 为历史命名：本规则覆盖三类被 geosite:cn 收录、被 cn_domain
+    // blackhole 的关键域名：
+    //   1. 连通性探测端点（generate_204）
+    //   2. Google 登录必需的静态资源（ssl.gstatic.com 见 ChromeOS sign-in allowlist）
+    //   3. Google Fonts 样式表与字体文件（fonts.googleapis.com 发 CSS，fonts.gstatic.com 发字体）
     RuleDef {
         id: "connectivity_check",
         rule_type: "domain",
@@ -31,6 +32,7 @@ pub static ROUTING_RULES: &[RuleDef] = &[
             "connectivitycheck.gstatic.com",
             "ssl.gstatic.com",
             "fonts.gstatic.com",
+            "fonts.googleapis.com",
         ],
         outbound: "direct",
         default_enabled: true,
@@ -296,8 +298,9 @@ mod tests {
         );
     }
 
-    /// 域名清单必须恰为这 4 项（连通性探测 + Google 登录必需静态资源），
-    /// 且不得混入其余 gstatic 资源 CDN 或广告/签到类域名。
+    /// 域名清单必须恰为这 5 项（连通性探测 + Google 登录必需静态资源 +
+    /// Google Fonts 样式表），且不得混入其余被 geosite:cn 收录的 gstatic/
+    /// googleapis 资源域名。
     #[test]
     fn test_connectivity_check_targets_are_probe_endpoints_only() {
         let rule = ROUTING_RULES
@@ -314,8 +317,9 @@ mod tests {
                 "connectivitycheck.gstatic.com",
                 "ssl.gstatic.com",
                 "fonts.gstatic.com",
+                "fonts.googleapis.com",
             ],
-            "域名清单必须恰为这 4 项"
+            "域名清单必须恰为这 5 项"
         );
         // 不得出现 scheme 或路径 —— Xray 只匹配 SNI / Host
         for t in rule.targets {
@@ -325,7 +329,7 @@ mod tests {
                 t
             );
         }
-        // 不得混入其余 gstatic 域名（非探测端点、非登录依赖）
+        // 不得混入其余被 geosite:cn 收录的资源 CDN / 签到 / 遥测域名
         for t in rule.targets {
             assert!(
                 !t.starts_with("csi.")
@@ -333,8 +337,14 @@ mod tests {
                     && !t.starts_with("g1.")
                     && !t.starts_with("g2.")
                     && !t.starts_with("g3.")
-                    && !t.starts_with("checkin."),
-                "不应放行其余 gstatic 资源 CDN / 签到域名: {}",
+                    && !t.starts_with("checkin.")
+                    && !t.starts_with("fontfiles.")
+                    && !t.starts_with("update.")
+                    && !t.starts_with("tac.")
+                    && !t.starts_with("clientservices.")
+                    && !t.starts_with("safebrowsing.")
+                    && !t.starts_with("wear."),
+                "不应放行其余资源 CDN / 遥测域名: {}",
                 t
             );
         }
@@ -504,7 +514,8 @@ mod tests {
                 "www.gstatic.com",
                 "connectivitycheck.gstatic.com",
                 "ssl.gstatic.com",
-                "fonts.gstatic.com"
+                "fonts.gstatic.com",
+                "fonts.googleapis.com"
             ])
         );
         assert!(rule.get("ip").is_none(), "domain 规则不应带 ip 键");
@@ -532,7 +543,8 @@ mod tests {
                 "www.gstatic.com",
                 "connectivitycheck.gstatic.com",
                 "ssl.gstatic.com",
-                "fonts.gstatic.com"
+                "fonts.gstatic.com",
+                "fonts.googleapis.com"
             ]),
             "过时内容应被当前定义覆盖"
         );

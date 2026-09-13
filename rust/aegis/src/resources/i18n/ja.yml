@@ -465,7 +465,7 @@ xray:
   routing_rule_bt: "BitTorrentをブロック"
   routing_rule_ads: "広告をブロック"
   routing_rule_openai: "OpenAI ダイレクト"
-  routing_rule_connectivity_check: "接続確認をダイレクト"
+  routing_rule_connectivity_check: "Google サービスをダイレクト"
   routing_mgmt_btn: "📋 ルーティングルール"
 
 schedule:
