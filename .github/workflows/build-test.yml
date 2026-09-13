@@ -11,12 +11,17 @@ name: Build and Test
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  # 合并到 main 后再跑一次，作为 target 缓存的唯一写入路径（B3 策略）。
+  # PR 上只读缓存，避免每个依赖更新 PR 各写一份 677MB 把 10GB 配额挤爆。
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-test-${{ github.event.pull_request.number }}
+  # push 分支下 github.event.pull_request.number 为空，回退到 run_id 避免所有 main 运行互相取消
+  group: build-test-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -35,8 +40,8 @@ jobs:
       - name: Generate Dynamic Matrix
         id: set-matrix
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           PROJECTS='[
             {"name": "rust-aegis", "path": "rust/aegis", "language": "rust"},
@@ -82,16 +87,18 @@ jobs:
           cache: true
           cache-dependency-path: ${{ matrix.project.path }}/go.sum
 
-      - name: Cache Go build outputs
+      # `setup-go` 的 `cache: true` 已负责 ~/go/pkg/mod（模块下载）。
+      # 这里只补它不做的部分：编译产物 ~/.cache/go-build。
+      # 刻意不重复包含 ~/go/pkg/mod —— 两套机制用不同 key 写同一路径会双重占用 10GB 配额。
+      - name: Restore Go build outputs
         if: matrix.project.language == 'go'
-        uses: actions/cache@v6
+        id: go-build-cache
+        uses: actions/cache/restore@v6
         with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ matrix.project.name }}-go-${{ hashFiles(format('{0}/go.sum', matrix.project.path), format('{0}/go.mod', matrix.project.path)) }}
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-${{ matrix.project.name }}-gobuild-${{ hashFiles(format('{0}/go.sum', matrix.project.path), format('{0}/go.mod', matrix.project.path)) }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.project.name }}-go-
+            ${{ runner.os }}-${{ matrix.project.name }}-gobuild-
 
       # ---------------- Rust 环境与缓存 ----------------
       - name: Setup Rust
@@ -100,21 +107,32 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu
 
-      # 显式缓存 release profile 的编译产物，与 public-release.yml 保持一致。
+      # sccache：按编译单元（每个 crate）缓存 rustc 结果，走独立的 GHA 缓存命名空间。
       #
-      # 之前用的 Swatinem/rust-cache 完全不生效：它不是为 release 构建设计的，
-      # 且会主动清理 target/ 下的 release 产物来限制体积。实测 `Setup Rust Cache`
-      # 只耗时 2 秒（有效缓存恢复需下载解压数百 MB），而 `Build and Test`
-      # 冷编译耗时 11分37秒（PR #273，run 34741495171）。
+      # 它是针对「依赖更新」场景的关键：更新一个依赖时，Cargo.lock 变化导致
+      # target 缓存的 key 完全改变，整份 677MB 得重新下载；而 sccache 按 crate
+      # 内容寻址，只有真正变了的那一个 crate miss，其余全部命中。
       #
-      # 只缓存 release 的 deps/build/.fingerprint 三个目录。
-      #
-      # 刻意不缓存 target/debug/**：本地实测 target/debug/deps 已达 54GB，
-      # 而 GitHub Actions 每仓库缓存上限为 10GB —— 加进去会导致缓存永远无法保存，
-      # 每次运行都报错且永不命中。debug 产物交由 runner 每次重建。
-      - name: Cache Rust build outputs
+      # 与 public-release.yml 使用同一套配置，SCCACHE_GHA_VERSION 故意保持
+      # 一致，使两个工作流能互相复用编译结果。
+      - name: Setup sccache
         if: matrix.project.language == 'rust'
-        uses: actions/cache@v6
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      # target 缓存：只在 main 上写，PR 上只读（B3 策略）。
+      #
+      # 背景：每个依赖更新 PR 的 Cargo.lock 都不同 → hashFiles 不同 → key 每次全新。
+      # 每个 PR 写 677MB，十来个 PR 就会撞上 GitHub 每仓库 10GB 上限，
+      # 触发 LRU 淘汰，导致后续 PR 反而无可用缓存（实测总量曾达 11.3GB）。
+      #
+      # 让 PR 只读、main 写，缓存总量就只随依赖变更增长，不随 PR 数量增长。
+      #
+      # 只缓存 release 的 deps/build/.fingerprint 三个目录，不碰 target/debug/**：
+      # 本地实测 target/debug/deps 达 54GB，超出 10GB 上限，加进去会永远存不进。
+      - name: Restore Rust build outputs
+        if: matrix.project.language == 'rust'
+        id: rust-target-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/git
@@ -186,6 +204,30 @@ jobs:
           "
               ;;
           esac
+
+      # 缓存写入：仅在 main 上（B3 策略）。
+      #
+      # 必须放在构建之后，才能把本次编译产物存进去。
+      # `actions/cache/restore` 不会自动保存，需要显式调 save。
+      # 用 `github.ref == refs/heads/main` 判定：PR 运行只读，不消耗 10GB 配额。
+      - name: Save Rust build outputs
+        if: matrix.project.language == 'rust' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            ${{ matrix.project.path }}/target/release/.fingerprint
+            ${{ matrix.project.path }}/target/release/build
+            ${{ matrix.project.path }}/target/release/deps
+          key: ${{ steps.rust-target-cache.outputs.cache-primary-key }}
+
+      - name: Save Go build outputs
+        if: matrix.project.language == 'go' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/go-build
+          key: ${{ steps.go-build-cache.outputs.cache-primary-key }}
 
   # 分支保护的 required status check 指向本 job，而非矩阵 job `build-test`。
   #
