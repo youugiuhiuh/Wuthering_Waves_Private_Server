@@ -95,6 +95,21 @@ jobs:
 
           RID=$(echo "$REL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
 
+          # 资产上传端点【因 release 而异】，必须用响应里的 upload_url。
+          # GitHub 指向 uploads.github.com，写死 api.github.com 会 404
+          # （实测 run 34752290176 就挂在这里）。
+          # 格式为 .../assets{?name,label}，需剥掉模板尾巴。
+          # Forgejo 无独立上传主机也不回该字段，回退为 API 同主机路径。
+          UPLOAD_URL=$(echo "$REL" | python3 -c '
+          import json,sys
+          u=json.load(sys.stdin).get("upload_url") or ""
+          print(u.split("{")[0] if u else "")
+          ')
+          if [ -z "$UPLOAD_URL" ]; then
+            UPLOAD_URL="$RELEASE_API_BASE/repos/$OWNER_REPO/releases/$RID/assets"
+          fi
+          echo "upload url: $UPLOAD_URL"
+
           ASSETS=$(echo "$REL" | python3 -c '
           import json,sys
           for a in json.load(sys.stdin).get("assets", []):
@@ -116,11 +131,12 @@ jobs:
             echo "::group::Signing $asset"
             curl -fsSL -H "Authorization: token $RELEASE_AUTH_TOKEN" -o "$asset" "$url"
             minisign -S -m "$asset" -t "${TAG}:${asset}" -W
+            # 用 release 响应里的 upload_url（含正确主机），不用 RELEASE_API_BASE。
             curl -fsS -X POST \
               -H "Authorization: token $RELEASE_AUTH_TOKEN" \
               -H "Content-Type: application/octet-stream" \
               --data-binary "@${asset}.minisig" \
-              "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/$RID/assets?name=${asset}.minisig"
+              "$UPLOAD_URL?name=${asset}.minisig"
             echo "::endgroup::"
           done
 
