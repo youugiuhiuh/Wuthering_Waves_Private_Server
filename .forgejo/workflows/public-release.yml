@@ -113,12 +113,22 @@ jobs:
           done
 
       # garble 刻意不走 mise（见 mise.toml 注释）：`go:` 后端会剥离模块
-      # 路径要求的 v 前缀（重试 0.17.0 → unknown revision），且走 cgo 编译。
-      # 用 Go 自己装，并显式把 GOBIN 指到 mise 的 Go bin 目录：
-      # CI 里 GOBIN 默认未设，装到 ~/go/bin 会不在 PATH 上。
+      # 路径要求的 v 前缀（重试 0.17.0 → unknown revision）。
+      #
+      # CGO_ENABLED=0 是必需的，不是优化：garble 依赖链里有 `net`，
+      # 而 net 在 Linux 上默认走 cgo 解析器 → 拉入 runtime/cgo → 需要 libc 头文件。
+      # 实测 `go list -deps mvdan.cc/garble` 确实包含 runtime/cgo。
+      # Forgejo runner（aarch64）没装 libc 开发头文件，于是炸在：
+      #   /usr/lib/gcc/aarch64-linux-gnu/15/include/stdint.h:11:16:
+      #       fatal error: stdint.h: No such file or directory
+      #    11 | # include_next <stdint.h>
+      # 关闭 cgo 后得到静态链接的纯 Go 二进制，完全不碰头文件。
+      #
+      # GOBIN 显式指到 mise 的 Go bin 目录：CI 里默认未设，
+      # 装到 ~/go/bin 会不在 PATH 上。
       - name: Install garble
         run: |
-          GOBIN="$(dirname "$(command -v go)")" go install "mvdan.cc/garble@v0.17.0"
+          CGO_ENABLED=0 GOBIN="$(dirname "$(command -v go)")" go install "mvdan.cc/garble@v0.17.0"
           command -v garble >/dev/null || { echo "::error::garble 未安装到 PATH"; exit 1; }
           echo "  ✅ garble: $(command -v "garble")"
           garble version
@@ -234,7 +244,7 @@ jobs:
           curl -fsSL https://mise.run | sh
           export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
           mise install --yes
-          GOBIN="$(dirname "$(command -v go)")" go install "mvdan.cc/garble@v0.17.0"
+          CGO_ENABLED=0 GOBIN="$(dirname "$(command -v go)")" go install "mvdan.cc/garble@v0.17.0"
           (cd rust/aegis && RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" cargo build --release && upx --best --lzma target/release/aegis)
           (cd go/installer && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .)
           mkdir -p dist
