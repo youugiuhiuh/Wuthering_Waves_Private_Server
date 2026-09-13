@@ -7,7 +7,7 @@ require (
 	github.com/miekg/dns v1.1.73
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/refraction-networking/utls v1.8.2
-	github.com/schollz/progressbar/v3 v3.19.0
+	github.com/schollz/progressbar/v3 v3.19.1
 	golang.org/x/time v0.16.0
 	google.golang.org/protobuf v1.36.12
 )
