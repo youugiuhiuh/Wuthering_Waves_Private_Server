@@ -7,7 +7,7 @@ edition = "2024"
 teloxide = { version = "0.17", features = ["ctrlc_handler", "macros", "rustls"], optional = true, default-features = false }
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 secrecy = { version = "0.8", features = ["serde"] }
 zeroize = { version = "1.9", features = ["derive"] }
 totp-rs = { version = "5.7", features = [
