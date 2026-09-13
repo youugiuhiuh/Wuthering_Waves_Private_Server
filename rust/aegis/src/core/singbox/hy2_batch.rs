@@ -4,8 +4,8 @@ use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::types::{BatchCreationResult, IpVersion};
 use crate::core::xray::port_allocator::PortAllocator;
 use anyhow::Result;
+use rand::RngExt;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 
 use super::config::SingBoxConfigManager;
 use super::hysteria2::{Hy2LinkStyle, Hysteria2Config, Hysteria2ObfsType};
@@ -55,7 +55,7 @@ impl SingBoxConfigManager {
             } else {
                 // 非跳跃：随机选端口，仅避免落入已锁定范围与在监听端口，不写入 .port_alloc
                 let port = loop {
-                    let p = StdRng::from_entropy().gen_range(10000..60000);
+                    let p = rand::make_rng::<StdRng>().random_range(10000..60000);
                     if PortAllocator::is_port_in_locked_range(p).await {
                         continue;
                     }

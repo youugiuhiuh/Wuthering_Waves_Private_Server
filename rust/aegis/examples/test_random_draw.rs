@@ -25,7 +25,7 @@ fn main() {
     // 模拟随机索引池
     let mut indices: Vec<usize> = (0..domains.len()).collect();
     use rand::seq::SliceRandom;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     indices.shuffle(&mut rng);
 
     println!("2. Fisher-Yates 洗牌生成索引池");

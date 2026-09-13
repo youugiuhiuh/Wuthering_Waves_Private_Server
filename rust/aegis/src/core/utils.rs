@@ -1,6 +1,6 @@
 use crate::core::error::{AppError, Result};
 use crate::core::types::IpVersion;
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, rngs::StdRng};
 use std::time::{Duration, Instant};
 
 pub const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_secs(2);
@@ -15,9 +15,9 @@ pub async fn select_available_port(preferred: Option<u16>) -> Result<u16> {
         return Ok(port);
     }
 
-    let mut rng = StdRng::from_entropy();
+    let mut rng = rand::make_rng::<StdRng>();
     for _ in 0..1000 {
-        let port = rng.gen_range(10000..60000);
+        let port = rng.random_range(10000..60000);
         if crate::core::system::maintenance::MaintenanceManager::is_port_available(port).await {
             return Ok(port);
         }
@@ -28,11 +28,11 @@ pub async fn select_available_port(preferred: Option<u16>) -> Result<u16> {
 
 /// 生成随机字符串后缀
 pub fn generate_random_suffix(length: usize) -> String {
-    let mut rng = StdRng::from_entropy();
+    let mut rng = rand::make_rng::<StdRng>();
     let chars = b"abcdefghijklmnopqrstuvwxyz0123456789";
     (0..length)
         .map(|_| {
-            let idx = rng.gen_range(0..chars.len());
+            let idx = rng.random_range(0..chars.len());
             chars[idx] as char
         })
         .collect()

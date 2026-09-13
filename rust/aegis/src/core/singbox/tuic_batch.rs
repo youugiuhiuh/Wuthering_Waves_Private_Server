@@ -5,8 +5,8 @@ use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::types::{BatchCreationResult, IpVersion};
 use anyhow::Result;
+use rand::RngExt;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 
 use super::config::SingBoxConfigManager;
 use super::tuic::TUICConfig;
@@ -45,7 +45,7 @@ impl SingBoxConfigManager {
                 443u16
             } else {
                 loop {
-                    let p = StdRng::from_entropy().gen_range(10000..60000);
+                    let p = rand::make_rng::<StdRng>().random_range(10000..60000);
                     if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
                         .await
                     {
@@ -93,14 +93,14 @@ impl SingBoxConfigManager {
         if status.success() {
             Ok(stdout.trim().to_string())
         } else {
-            let mut rng = StdRng::from_entropy();
+            let mut rng = rand::make_rng::<StdRng>();
             Ok(format!(
                 "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
-                rng.r#gen::<u32>(),
-                rng.r#gen::<u16>(),
-                rng.r#gen::<u16>(),
-                rng.r#gen::<u16>(),
-                rng.r#gen::<u64>() & 0xFFFFFFFFFFFF
+                rng.random::<u32>(),
+                rng.random::<u16>(),
+                rng.random::<u16>(),
+                rng.random::<u16>(),
+                rng.random::<u64>() & 0xFFFFFFFFFFFF
             ))
         }
     }

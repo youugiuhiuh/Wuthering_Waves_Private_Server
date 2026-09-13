@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt as _;
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone)]
@@ -30,9 +30,9 @@ pub enum KcpMask {
 }
 
 pub(crate) fn generate_aes_password() -> String {
-    let rng_len = rand::thread_rng().gen_range(16..32);
-    rand::thread_rng()
-        .sample_iter(&rand::distributions::Alphanumeric)
+    let rng_len = rand::rng().random_range(16..32);
+    rand::rng()
+        .sample_iter(&rand::distr::Alphanumeric)
         .take(rng_len)
         .map(char::from)
         .collect()
