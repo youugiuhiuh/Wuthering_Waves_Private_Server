@@ -1,6 +1,6 @@
 use anyhow::Result;
-use rand::Rng;
-use rand::SeedableRng;
+use rand::RngExt;
+
 use rand::rngs::StdRng;
 
 use super::config::{ConfigManager, Proto};
@@ -20,7 +20,7 @@ impl ConfigManager {
         );
         let (host, host_secondary) = ConfigManager::resolve_public_hosts(ip_version, ip, ipv6)?;
 
-        let mut rng = StdRng::from_entropy();
+        let mut rng = rand::make_rng::<StdRng>();
         let geoip = crate::core::network::geoip::GeoIPService::new();
 
         let (country_code, port_443_available) = tokio::join!(
@@ -111,7 +111,7 @@ impl ConfigManager {
             );
         }
 
-        let mut rng = StdRng::from_entropy();
+        let mut rng = rand::make_rng::<StdRng>();
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
 
@@ -123,7 +123,7 @@ impl ConfigManager {
                     cdn_port as i32
                 } else {
                     loop {
-                        let p = rng.gen_range(10000..60000);
+                        let p = rng.random_range(10000..60000);
                         if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
                             continue;
                         }

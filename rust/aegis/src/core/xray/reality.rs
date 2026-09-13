@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use once_cell::sync::Lazy;
-use rand::SeedableRng;
+
 use rand::rngs::StdRng;
 use std::path::Path;
 use tokio::fs;
@@ -160,7 +160,7 @@ impl ConfigManager {
         );
         let (host, _) = ConfigManager::resolve_public_hosts(ip_version, ip, ipv6)?;
 
-        let mut rng = StdRng::from_entropy();
+        let mut rng = rand::make_rng::<StdRng>();
         let geoip = crate::core::network::geoip::GeoIPService::new();
 
         let (country_code, port_443_available) = tokio::join!(

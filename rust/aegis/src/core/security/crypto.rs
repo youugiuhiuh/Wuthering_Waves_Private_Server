@@ -5,7 +5,7 @@ use aes_gcm::{
 use anyhow::Result;
 use libc::{mlock, munlock};
 use obfstr::obfstr;
-use rand::{RngCore, rngs::OsRng};
+use rand::Rng;
 use secrecy::{ExposeSecret, SecretString, SecretVec};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -22,7 +22,7 @@ impl SecurityManager {
     pub fn new(key_path: &Path) -> Result<Self> {
         if !key_path.exists() {
             let mut key = [0u8; 32];
-            OsRng.fill_bytes(&mut key);
+            rand::rng().fill_bytes(&mut key);
             if let Some(parent) = key_path.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -53,7 +53,7 @@ impl SecurityManager {
             .map_err(|e| anyhow::anyhow!("Cipher init error: {}", e))?;
 
         let mut nonce_bytes = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce_bytes);
+        rand::rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from(nonce_bytes);
 
         let ciphertext = cipher

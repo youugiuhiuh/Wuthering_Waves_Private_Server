@@ -4,7 +4,7 @@ use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::xray::port_allocator::PortAllocator;
 use anyhow::{Context, Result};
 use base64::Engine;
-use rand::SeedableRng;
+
 use rand::rngs::StdRng;
 use serde_json::{Value, json};
 use sha2::Digest;
@@ -491,18 +491,18 @@ impl SingBoxConfigManager {
         configs: Vec<Value>,
         proto: &str,
     ) -> Result<(String, String)> {
-        use rand::Rng;
+        use rand::RngExt;
 
         fs::create_dir_all(singbox::CONF_DIR)
             .await
             .context("创建配置目录失败")?;
 
-        let mut rng = StdRng::from_entropy();
+        let mut rng = rand::make_rng::<StdRng>();
         let timestamp = chrono::Utc::now().timestamp();
         let random_part: String = (0..8)
             .map(|_| {
                 let chars = b"abcdefghijklmnopqrstuvwxyz0123456789";
-                let idx = rng.gen_range(0..chars.len());
+                let idx = rng.random_range(0..chars.len());
                 chars[idx] as char
             })
             .collect();

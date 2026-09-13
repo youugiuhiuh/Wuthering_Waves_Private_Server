@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 use prost::Message;
+use rand::rng;
 use rand::seq::SliceRandom;
-use rand::thread_rng;
 use rust_embed::RustEmbed;
 
 use super::state::{SNIPersistence, SNIState};
@@ -155,7 +155,7 @@ impl SNISelector {
 
     fn reset_shuffled_indices(&mut self) {
         let mut indices: Vec<usize> = (0..self.domains.len()).collect();
-        let mut rng = thread_rng();
+        let mut rng = rng();
         indices.shuffle(&mut rng);
         self.shuffled_indices = indices;
     }

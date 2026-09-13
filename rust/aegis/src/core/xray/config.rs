@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use rand::RngExt;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -173,17 +173,17 @@ impl ConfigManager {
     }
 
     pub(crate) fn generate_random_short_id() -> String {
-        let mut rng = StdRng::from_entropy();
-        format!("{:016x}", rng.r#gen::<u64>())
+        let mut rng = rand::make_rng::<StdRng>();
+        format!("{:016x}", rng.random::<u64>())
     }
 
     pub(crate) fn generate_random_path() -> String {
-        let mut rng = StdRng::from_entropy();
-        let base = XHTTP_PATH_BASES[rng.gen_range(0..XHTTP_PATH_BASES.len())];
+        let mut rng = rand::make_rng::<StdRng>();
+        let base = XHTTP_PATH_BASES[rng.random_range(0..XHTTP_PATH_BASES.len())];
         let id: String = (0..10)
             .map(|_| {
                 let charset = b"abcdefghijklmnopqrstuvwxyz0123456789";
-                let idx = rng.gen_range(0..charset.len());
+                let idx = rng.random_range(0..charset.len());
                 charset[idx] as char
             })
             .collect();
@@ -429,7 +429,7 @@ impl ConfigManager {
                 pp as i32
             } else {
                 loop {
-                    let p = rng.gen_range(10000..60000);
+                    let p = rng.random_range(10000..60000);
                     if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
                         .await
                     {
@@ -444,7 +444,7 @@ impl ConfigManager {
             }
         } else {
             loop {
-                let p = rng.gen_range(10000..60000);
+                let p = rng.random_range(10000..60000);
                 if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
                     .await
                 {

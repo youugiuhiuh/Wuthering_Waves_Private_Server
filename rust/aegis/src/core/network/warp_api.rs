@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use obfstr::obfstr;
-use rand::rngs::OsRng;
+use rand::RngExt as _;
 use reqwest::{Client, header};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -52,7 +52,7 @@ pub async fn register_account() -> Result<WarpAccountConfig> {
     // Generate random install_id (22 chars)
     let install_id_str: String = std::iter::repeat_with(|| {
         let charset = b"abcdefghijklmnopqrstuvwxyz0123456789";
-        let idx = rand::Rng::gen_range(&mut OsRng, 0..charset.len());
+        let idx = rand::rng().random_range(0..charset.len());
         charset[idx] as char
     })
     .take(22)

@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use rand::RngExt;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use serde_json::{Value, json};
 
 use super::config::ConfigManager;
@@ -118,14 +118,14 @@ impl ConfigManager {
         );
         let (host, _) = ConfigManager::resolve_public_hosts(ip_version, ip, ipv6)?;
 
-        let mut rng = StdRng::from_entropy();
+        let mut rng = rand::make_rng::<StdRng>();
 
         let mut links = Vec::new();
         let mut batch_configs = Vec::new();
 
         for i in 0..count {
             let port = loop {
-                let p = rng.gen_range(10000..60000);
+                let p = rng.random_range(10000..60000);
                 if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p)
                     .await
                 {

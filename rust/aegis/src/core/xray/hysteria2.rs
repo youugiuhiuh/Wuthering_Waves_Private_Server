@@ -1,7 +1,7 @@
 use anyhow::Result;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use rand::RngExt;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use serde_json::{Value, json};
 
 use super::config::ConfigManager;
@@ -279,7 +279,7 @@ impl ConfigManager {
         let mut selector =
             crate::core::sni::selector::SNISelector::get_for_country(&country_code).await;
 
-        let mut rng = StdRng::from_entropy();
+        let mut rng = rand::make_rng::<StdRng>();
         let mut links = Vec::with_capacity(count);
         let mut configs = Vec::with_capacity(count);
 
@@ -290,7 +290,7 @@ impl ConfigManager {
                 crate::core::xray::port_allocator::PortAllocator::allocate_xray_hysteria2().await?
             } else {
                 let p = loop {
-                    let candidate = rng.gen_range(10000..60000);
+                    let candidate = rng.random_range(10000..60000);
                     if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(
                         candidate,
                     )

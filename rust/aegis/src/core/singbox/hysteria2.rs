@@ -1,6 +1,6 @@
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use rand::RngExt;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use serde_json::Value;
 
 /// Hysteria2 QUIC traffic obfuscation type (`obfs.type`).
@@ -216,11 +216,11 @@ impl Hysteria2Config {
     }
 
     pub fn generate_password() -> String {
-        let mut rng = StdRng::from_entropy();
+        let mut rng = rand::make_rng::<StdRng>();
         let chars: String = (0..32)
             .map(|_| {
                 let charset = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-                let idx = rng.gen_range(0..charset.len());
+                let idx = rng.random_range(0..charset.len());
                 charset[idx] as char
             })
             .collect();
@@ -228,11 +228,11 @@ impl Hysteria2Config {
     }
 
     pub fn generate_obfs_password() -> String {
-        let mut rng = StdRng::from_entropy();
+        let mut rng = rand::make_rng::<StdRng>();
         let chars: String = (0..32)
             .map(|_| {
                 let charset = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-                let idx = rng.gen_range(0..charset.len());
+                let idx = rng.random_range(0..charset.len());
                 charset[idx] as char
             })
             .collect();
