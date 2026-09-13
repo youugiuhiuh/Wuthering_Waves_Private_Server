@@ -29,9 +29,15 @@ permissions:
   actions: write
 
 jobs:
-  build-and-release:
+  # ---- 阶段 1：构建（纯只读，可在任何平台跑）----
+  # 不写仓库、不建 tag、不碰 API。只产出 dist/ 两个二进制。
+  # 因此这个 job 在 GitHub / Forgejo / 本地 行为完全一致，
+  # 也不会在镜像站上产生「自己 bump 版本」的分叉 commit。
+  build:
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore(deps)')"
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       # 用原生 git 代替 actions/checkout：Forgejo 无需镜像或开启 GitHub action 拉取。
       - name: Checkout Source
@@ -47,34 +53,20 @@ jobs:
           git config --local http.extraheader ""
 
       - name: Resolve Version
+        id: ver
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+            VERSION="${{ github.event.inputs.version || github.event.inputs.tag_name }}"
           else
             VERSION=$(grep -m1 '^version' rust/aegis/Cargo.toml | sed 's/.*"\(.*\)"/\1/')
           fi
           VERSION=${VERSION#v}
+          if [ -z "$VERSION" ]; then
+            echo "::error::无法解析版本号"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "NEW_VERSION=$VERSION" >> $GITHUB_ENV
           echo "Resolved version: $VERSION"
-
-      - name: Update Version in Cargo.toml (Manual Trigger Only)
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          sed -i 's/^version = .*/version = "'${{ env.NEW_VERSION }}'"/' rust/aegis/Cargo.toml
-
-      - name: Sync Source Tags
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            git add rust/aegis/Cargo.toml
-            git commit -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]" || echo "No changes to commit"
-            git push origin main
-          fi
-
-          git tag -f "v${{ env.NEW_VERSION }}"
-          git push origin "v${{ env.NEW_VERSION }}" --force
 
       # mise 是唯一工具来源（mise.toml: rust/protoc/upx/go/garble）。
       # 用官方安装脚本而非 jdx/mise-action，使其在 GitHub 与 Forgejo 上完全相同。
@@ -114,7 +106,7 @@ jobs:
             ${{ runner.os }}-go-installer-
 
       # 刻意不使用 sccache：其唯一后端 SCCACHE_GHA_ENABLED 是 GitHub 专有，
-      # 与本次「跨平台」目标冲突；且 build-test.yml 已实测该后端在本仓库
+      # 与「跨平台」目标冲突；且 build-test.yml 已实测该后端在本仓库
       # 命中率归零并挤掉 actions/cache 条目（见 build-test.yml 注释）。
       # 发布频率低，直接编译即可；RUSTC_WRAPPER 留空。
       - name: Build Runtime Binary
@@ -136,13 +128,107 @@ jobs:
           mkdir -p dist
           cp rust/aegis/target/release/aegis dist/
           cp go/installer/installer dist/
+          ls -lh dist/
+
+      - name: Upload Build Artifacts
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ steps.ver.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+
+  # ---- 阶段 2：发布（只应在权威源上跑）----
+  # 做三件有副作用的事：回写版本 commit、推 tag、建 release。
+  # 权威源 = 本仓库真正的「上游」。默认仅 GitHub；在 Forgejo 上若也要发布，
+  # 设 repo 变量 PUBLISH_ENABLED=true 显式开启（避免镜像站分叉）。
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # 权威源守卫：
+    #   - GitHub 上始终发布（github.server_url 含 github.com）
+    #   - 非 GitHub 上默认【不】发布，避免镜像站分叉；
+    #     确实要在 Forgejo 上发布时，设 repo 变量 PUBLISH_ENABLED=true 显式开启。
+    # 故意用 !contains(...) 而非 contains(...)：若 server_url 意外为空/不可用，
+    # 表达式仍为 true → 默认发布（失败安全，不会静默永不发布）。
+    if: |
+      needs.build.result == 'success' &&
+      (!contains(github.server_url, '/') || contains(github.server_url, 'github.com') || vars.PUBLISH_ENABLED == 'true')
+    steps:
+      - name: Checkout Source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
+        run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}.git"
+          git config --local http.extraheader "Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git fetch -q --prune --no-tags origin "$GITHUB_SHA"
+          git checkout -q --force "$GITHUB_SHA"
+          git fetch -q --prune --tags origin || true
+          git config --local http.extraheader ""
+
+      - name: Download Build Artifacts
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.build.outputs.version }}
+          path: dist
+
+      # 若 artifact 后端不可用（Forgejo 无 upload/download-artifact），
+      # 回退为就地重建产物。保证 publish 不因缺 artifact 而空手发布。
+      - name: Ensure Dist Artifacts Present
+        run: |
+          if [ -f dist/aegis ] && [ -f dist/installer ]; then
+            echo "artifacts 已就绪"
+            ls -lh dist/
+            exit 0
+          fi
+          echo "::warning::dist 缺失，就地重建产物"
+          curl -fsSL https://mise.run | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          mise install --yes
+          (cd rust/aegis && RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" cargo build --release && upx --best --lzma target/release/aegis)
+          (cd go/installer && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .)
+          mkdir -p dist
+          cp rust/aegis/target/release/aegis dist/
+          cp go/installer/installer dist/
+          ls -lh dist/
+
+      # 权威源才回写版本号：避免镜像站自己 commit 造成分叉。
+      - name: Sync Source Version Commit
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "CI Bot"
+
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "非手动触发，跳过版本回写"
+            exit 0
+          fi
+
+          sed -i 's/^version = .*/version = "${{ needs.build.outputs.version }}"/' rust/aegis/Cargo.toml
+          if git diff --quiet -- rust/aegis/Cargo.toml; then
+            echo "版本未变化，跳过 commit"
+            exit 0
+          fi
+
+          # 本地可能处于 detached HEAD（Forgejo runner 常见），
+          # 必须显式建/更新本地分支再推，否则 `git push origin main` 会报
+          # `src refspec main does not match any`。
+          git add rust/aegis/Cargo.toml
+          git commit -m "chore: bump version to ${{ needs.build.outputs.version }} [skip ci]"
+          git branch -f main HEAD
+          git push origin main
+
+      - name: Sync Source Tags
+        run: |
+          git tag -f "v${{ needs.build.outputs.version }}"
+          git push origin "v${{ needs.build.outputs.version }}" --force
 
       # ---- 发布抽象：一份逻辑，两个 provider ----
       # GitHub:  POST /repos/{owner}/{repo}/releases        + /releases/{id}/assets
       # Forgejo: POST /api/v1/repos/{owner}/{repo}/releases + 同路径 assets
       # 两者 JSON 字段（tag_name/name/body/draft）与 asset 响应结构一致。
-      # 平台由 RELEASE_PROVIDER 决定，未设置时自动探测：
-      #   在 github.com 上 → github；其它（自建 Forgejo/Codeberg）→ forgejo
+      # 平台由 GITHUB_SERVER_URL 推导，未设置时默认 github。
       - name: Resolve Release Provider
         env:
           RAW_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.FORGEJO_TOKEN || secrets.GITEA_TOKEN }}
@@ -152,9 +238,6 @@ jobs:
             *github.com*) PROVIDER=github ;;
             *)            PROVIDER=forgejo ;;
           esac
-          if [ -n "${RELEASE_PROVIDER_OVERRIDE:-}" ]; then
-            PROVIDER="$RELEASE_PROVIDER_OVERRIDE"
-          fi
 
           case "$PROVIDER" in
             github)
@@ -180,7 +263,7 @@ jobs:
           OWNER_REPO="$GITHUB_REPOSITORY"
           EXISTING_ID=$(curl -fsS \
             -H "Authorization: token $RELEASE_AUTH_TOKEN" \
-            "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/tags/v$NEW_VERSION" \
+            "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/tags/v${{ needs.build.outputs.version }}" \
             | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || echo "")
 
           if [ -n "$EXISTING_ID" ]; then
@@ -189,15 +272,15 @@ jobs:
               -H "Authorization: token $RELEASE_AUTH_TOKEN" \
               "$RELEASE_API_BASE/repos/$OWNER_REPO/releases/$EXISTING_ID"
           else
-            echo "no existing release for v$NEW_VERSION"
+            echo "no existing release for v${{ needs.build.outputs.version }}"
           fi
 
       - name: Create Release
         run: |
           OWNER_REPO="$GITHUB_REPOSITORY"
-          BODY=$(printf 'Release `v%s`.\n\n### Included Files\n- `installer`: bootstrap executable\n- `aegis`: runtime management executable\n' "$NEW_VERSION")
+          BODY=$(printf 'Release `v%s`.\n\n### Included Files\n- `installer`: bootstrap executable\n- `aegis`: runtime management executable\n' "${{ needs.build.outputs.version }}")
 
-          TAG="v$NEW_VERSION"
+          TAG="v${{ needs.build.outputs.version }}"
           PAYLOAD=$(BODY="$BODY" TAG="$TAG" python3 -c '
           import json,os
           print(json.dumps({
@@ -233,7 +316,6 @@ jobs:
           done
 
       # 仅 GitHub 有独立签名的 workflow_dispatch；Forgejo 上跳过。
-      # sign-release.yml 仍可用手动方式在 GitHub 侧触发。
       - name: Dispatch Signing Workflow
         if: env.RELEASE_PROVIDER == 'github'
         run: |
@@ -241,4 +323,4 @@ jobs:
             -H "Authorization: token $RELEASE_AUTH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "$RELEASE_API_BASE/repos/$GITHUB_REPOSITORY/actions/workflows/sign-release.yml/dispatches" \
-            -d "{\"ref\":\"main\",\"inputs\":{\"tag_name\":\"v$NEW_VERSION\"}}"
+            -d "{\"ref\":\"main\",\"inputs\":{\"tag_name\":\"v${{ needs.build.outputs.version }}\"}}"
