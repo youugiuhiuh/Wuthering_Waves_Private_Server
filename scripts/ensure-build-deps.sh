@@ -58,11 +58,11 @@ check_deps() {
 }
 
 if check_deps; then
-  echo "构建依赖已就绪（libc 头文件 / pkg-config / openssl）跳过安装"
+  echo "构建依赖已就绪（libc 头文件 / pkg-config / openssl / libsqlite3-dev）跳过安装"
   exit 0
 fi
 
-echo "缺少构建依赖，尝试安装 libc6-dev pkg-config libssl-dev"
+echo "缺少构建依赖，尝试安装 libc6-dev pkg-config libssl-dev libsqlite3-dev"
 
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "::warning::无 apt-get，跳过安装。将依赖 CGO_ENABLED=0 降级构建"
@@ -81,7 +81,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 $SUDO apt-get update -qq || echo "::warning::apt-get update 失败，继续尝试安装"
-$SUDO apt-get install -y -qq --no-install-recommends libc6-dev pkg-config libssl-dev || {
+$SUDO apt-get install -y -qq --no-install-recommends libc6-dev pkg-config libssl-dev libsqlite3-dev || {
   echo "::warning::构建依赖安装失败。将依赖 CGO_ENABLED=0 降级构建（cargo 侧可能仍失败）"
   exit 0
 }
