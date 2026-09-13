@@ -6,112 +6,105 @@ on:
       - main
     tags: ["**"]
     paths-ignore:
+      # Dependabot 只会碰这些文件；它们影响不了源码语义，无需镜像。
+      # 注意：rust/tgbot/Cargo.lock 曾是死路径（目录已改名为 rust/aegis），
+      # 导致 aegis 的依赖 PR 反而会触发整轮镜像。
       - "go/installer/go.mod"
       - "go/installer/go.sum"
       - "sni_tester/go.mod"
       - "sni_tester/go.sum"
-      - "rust/tgbot/Cargo.lock"
+      - "rust/aegis/Cargo.lock"
+
+# 镜像只需读源码；任何 job 都不写回 GitHub
+permissions:
+  contents: read
+
+concurrency:
+  group: repo-sync
+  cancel-in-progress: false
 
 jobs:
-  mirror-codeberg:
-    name: Mirror to Codeberg
-    if: "!contains(github.event.head_commit.message, 'chore(deps)')"
+  mirror:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
+    strategy:
+      # 一个镜像站挂掉不应牵连其它站点（Codeberg 曾反复 504）
+      fail-fast: false
+      matrix:
+        include:
+          - target: codeberg
+            host: https://codeberg.org
+            owner: kookybullwhip
+            repo: Wuthering_Waves_Private_Server
+            username: kookybullwhip
+            secret: CODEBERG_TOKEN
+            create: "true"
+          - target: gitlab
+            host: https://gitlab.com
+            owner: egfrthtu-group
+            repo: wuthering_waves_private_server
+            username: EGfrthtu
+            secret: GITLAB_TOKEN
+            # 留空 = 不尝试创建（上游 action 用 `-n` 判断，传 "false" 反而会触发创建）
+            create: ""
+          - target: opencommit
+            host: https://opencommit.eu
+            owner: irysdev
+            repo: Wuthering_Waves_Private_Server
+            username: irysdev
+            secret: OPENCOMMIT_TOKEN
+            create: "true"
+          - target: codefloe
+            host: https://codefloe.com
+            owner: irysdev
+            repo: Wuthering_Waves_Private_Server
+            username: irysdev
+            secret: CODEFLOR_TOKEN
+            create: "true"
+          - target: disroot
+            host: https://git.disroot.org
+            owner: MakoUtsuyamaIT
+            repo: wuthering_waves_private_server
+            username: MakoUtsuyamaIT
+            secret: Disroot_TOKEN
+            create: ""
+
+    name: Mirror to ${{ matrix.target }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
 
-      - name: Mirror to Codeberg
+      # 上游 action 是单次 `git push`，无重试。Codeberg 504 属于瞬时网关故障，
+      # 重试一次即可吸收（历史 5 次失败全为此类）。
+      - name: Mirror to ${{ matrix.target }}
+        id: mirror
+        continue-on-error: true
         uses: cssnr/mirror-repository-action@v1.2.0
         with:
-          host: https://codeberg.org
-          owner: kookybullwhip
-          repo: Wuthering_Waves_Private_Server
-          username: kookybullwhip
-          password: ${{ secrets.CODEBERG_TOKEN }}
-          create: true
+          host: ${{ matrix.host }}
+          owner: ${{ matrix.owner }}
+          repo: ${{ matrix.repo }}
+          username: ${{ matrix.username }}
+          password: ${{ secrets[matrix.secret] }}
+          create: ${{ matrix.create }}
 
-  mirror-gitlab:
-    name: Mirror to GitLab
-    if: "!contains(github.event.head_commit.message, 'chore(deps)')"
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-
-      - name: Mirror to GitLab
+      - name: Retry mirror after failure
+        id: retry
+        if: steps.mirror.outcome == 'failure'
+        continue-on-error: true
         uses: cssnr/mirror-repository-action@v1.2.0
         with:
-          host: https://gitlab.com
-          owner: egfrthtu-group
-          repo: wuthering_waves_private_server
-          username: EGfrthtu
-          password: ${{ secrets.GITLAB_TOKEN }}
+          host: ${{ matrix.host }}
+          owner: ${{ matrix.owner }}
+          repo: ${{ matrix.repo }}
+          username: ${{ matrix.username }}
+          password: ${{ secrets[matrix.secret] }}
+          create: ${{ matrix.create }}
 
-  mirror-opencommit:
-    name: Mirror to Opencommit
-    if: "!contains(github.event.head_commit.message, 'chore(deps)')"
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-
-      - name: Mirror to Opencommit
-        uses: cssnr/mirror-repository-action@v1.2.0
-        with:
-          host: https://opencommit.eu
-          owner: irysdev
-          repo: Wuthering_Waves_Private_Server
-          username: irysdev
-          password: ${{ secrets.OPENCOMMIT_TOKEN }}
-          create: true
-
-  mirror-codefloe:
-    name: Mirror to Codefloe
-    if: "!contains(github.event.head_commit.message, 'chore(deps)')"
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-
-      - name: Mirror to Codefloe
-        uses: cssnr/mirror-repository-action@v1.2.0
-        with:
-          host: https://codefloe.com
-          owner: irysdev
-          repo: Wuthering_Waves_Private_Server
-          username: irysdev
-          password: ${{ secrets.CODEFLOR_TOKEN }}
-          create: true
-
-  mirror-disroot:
-    name: Mirror to Disroot
-    if: "!contains(github.event.head_commit.message, 'chore(deps)')"
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-
-      - name: Mirror to Disroot
-        uses: cssnr/mirror-repository-action@v1.2.0
-        with:
-          host: https://git.disroot.org
-          owner: MakoUtsuyamaIT
-          repo: wuthering_waves_private_server
-          username: MakoUtsuyamaIT
-          password: ${{ secrets.Disroot_TOKEN }}
+      - name: Report result
+        if: steps.mirror.outcome == 'failure' && steps.retry.outcome == 'failure'
+        run: |
+          echo "::error::Mirror to ${{ matrix.target }} failed twice (attempt + retry)."
+          exit 1
