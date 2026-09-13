@@ -107,18 +107,29 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu
 
-      # sccache：按编译单元（每个 crate）缓存 rustc 结果，走独立的 GHA 缓存命名空间。
+      # 刻意不使用 sccache，实测它与本仓库不兼容：
       #
-      # 它是针对「依赖更新」场景的关键：更新一个依赖时，Cargo.lock 变化导致
-      # target 缓存的 key 完全改变，整份 677MB 得重新下载；而 sccache 按 crate
-      # 内容寻址，只有真正变了的那一个 crate miss，其余全部命中。
+      # sccache 的 GHA 后端把【每个编译产物】存成独立的缓存条目，
+      # 单次 run 就产生数百个小条目（实测 run 34744829678：851 次写入）。
+      # 这些细粒度条目会通过 LRU 把粗粒度缓存挤光，实测后果：
+      #   sccache 条目 30 个 / 141MB
+      #   actions/cache 条目 0 个        ← target 缓存被完全挤掉
+      #   总用量 141MB / 10GB            ← 远未超限，纯粹是互相淘汰
       #
-      # 与 public-release.yml 使用同一套配置，SCCACHE_GHA_VERSION 故意保持
-      # 一致，使两个工作流能互相复用编译结果。
-      - name: Setup sccache
-        if: matrix.project.language == 'rust'
-        uses: mozilla-actions/sccache-action@v0.0.11
-
+      # 命中率也因此归零（同一次 run）：
+      #   compile_requests 1099 / cache_writes 851
+      #   cache_hits       C/C++ 3
+      #   cache_misses     Rust 517, Assembler 140, C/C++ 273
+      # 即 Rust 517 次编译全部 miss。原因是 GitHub 托管 runner 是一次性的，
+      # sccache 没有持久本地磁盘兜底。
+      #
+      # 这是 sccache GHA 后端的已知缺陷（mozilla/sccache#2566、#2730）：
+      # 另有每仓库每分钟 200 次缓存上传的限流，多 PR 并发时必被打爆。
+      # 上游社区的做法就是直接关闭 SCCACHE_GHA_ENABLED。
+      #
+      # 因此改用单一条目的 target 缓存（见下），避免细粒度条目互杀。
+      # public-release.yml 仍保留 sccache：release 频率低，影响可控。
+      #
       # target 缓存：只在 main 上写，PR 上只读（B3 策略）。
       #
       # 背景：每个依赖更新 PR 的 Cargo.lock 都不同 → hashFiles 不同 → key 每次全新。
@@ -176,20 +187,6 @@ jobs:
         env:
           LANG: ${{ matrix.project.language }}
           CARGO_TERM_COLOR: always
-          # sccache 必须在这里启用：仅安装 sccache 不会生效，
-          # 需要 RUSTC_WRAPPER 把 rustc 调用交给 sccache，
-          # 并用 SCCACHE_GHA_ENABLED 把存储后端从本地磁盘换成 GHA 缓存。
-          #
-          # 实测教训（run 34744157788）：之前只写了 Setup sccache 步骤
-          # 而漏了这三个变量，sccache 报告
-          #   Cache location: Local disk
-          #   compile_requests: 0 / compilations: 0
-          # 即它从未被调用，构建与冷编译完全一致（11分40秒）。
-          #
-          # go 构建不读这些变量，对所有矩阵项安全。
-          RUSTC_WRAPPER: sccache
-          SCCACHE_GHA_ENABLED: "true"
-          SCCACHE_GHA_VERSION: rust-aegis-v1
         run: |
           case "$LANG" in
             go)
