@@ -190,14 +190,47 @@ jobs:
               return;
             }
 
-            // 开启失败只告警，不让整个流程变红 —— 标签已经贴对了。
+            // 合并策略：本仓 main 没有任何分支保护（API 返回 404 Branch not
+            // protected），也没有必需的检查项，所以验证通过后应该直接合并。
+            //
+            // 不能用 enablePullRequestAutoMerge：它只适用于「被必需检查卡住的
+            // PR」，对已经 CLEAN 的 PR 会直接报错：
+            //   "Pull request is in clean status"（实测 #255）
+            // 也因此在无保护分支上，auto-merge 永远不会真正落地。
+            //
+            // 也不能用 `gh pr merge`：本 job 没有 actions/checkout，没有 .git，
+            // gh 会报 "fatal: not a git repository" 并以 1 退出
+            // （实测 job 103648660105）。
+            //
+            // GraphQL 两者都能避开。若日后加了分支保护，先试直接合并会失败，
+            // 再回退到 auto-merge 等检查通过。
+            const prId = context.payload.pull_request.node_id;
             try {
-              await exec.exec('gh', [
-                'pr', 'merge', '--auto', '--squash', String(context.issue.number)
-              ]);
-              core.info('已开启 auto-merge（SQUASH），待必需检查通过后自动合并');
+              await github.graphql(`
+                mutation($pullRequestId: ID!) {
+                  mergePullRequest(input: {
+                    pullRequestId: $pullRequestId,
+                    mergeMethod: SQUASH
+                  }) { clientMutationId }
+                }
+              `, { pullRequestId: prId });
+              core.info('验证通过，已直接合并（SQUASH）');
             } catch (e) {
-              core.warning(`开启 auto-merge 失败: ${e.message}`);
+              // 被分支保护/必需检查拦住时，退而开启 auto-merge
+              core.info(`直接合并失败（${e.message}），尝试 auto-merge`);
+              try {
+                await github.graphql(`
+                  mutation($pullRequestId: ID!) {
+                    enablePullRequestAutoMerge(input: {
+                      pullRequestId: $pullRequestId,
+                      mergeMethod: SQUASH
+                    }) { clientMutationId }
+                  }
+                `, { pullRequestId: prId });
+                core.info('已开启 auto-merge（SQUASH）');
+              } catch (e2) {
+                core.warning(`auto-merge 也失败: ${e2.message}`);
+              }
             }
 
   # 4. 验证失败的 PR 直接关闭（原先在 dependabot-pr-handler.yml 里，同样因为
