@@ -42,7 +42,7 @@ dependencies = [
 
 [[package]]
 name = "aegis"
-version = "1.4.8"
+version = "1.4.9"
 dependencies = [
  "aes-gcm",
  "anyhow",
