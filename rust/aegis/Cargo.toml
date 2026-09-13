@@ -36,7 +36,7 @@ regex = "1.13.1"
 self-replace = "1.5"
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 zbus = { version = "5.19.0", features = ["tokio"] }
-x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+x25519-dalek = { version = "3.0.0", features = ["static_secrets", "getrandom"] }
 log = "0.4.34"
 rust-embed = "8.12.0"
 obfstr = "0.4.6"

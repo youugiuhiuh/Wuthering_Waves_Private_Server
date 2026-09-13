@@ -22,7 +22,7 @@ pub struct WarpAccountConfig {
 
 pub async fn register_account() -> Result<WarpAccountConfig> {
     // Generate keys
-    let private_key = StaticSecret::random_from_rng(OsRng);
+    let private_key = StaticSecret::random();
     let public_key = PublicKey::from(&private_key);
 
     let priv_key_b64 = general_purpose::STANDARD.encode(private_key.to_bytes());
