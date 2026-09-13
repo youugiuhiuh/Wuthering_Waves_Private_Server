@@ -3,12 +3,4 @@ rust = "latest"
 protoc = "latest"
 upx = "latest"
 go = "1.26"
-
-# NOTE: garble is intentionally NOT a mise tool here.
-# The `go:mvdan.cc/garble` backend compiles via cgo, and mise's version
-# normalisation strips the `v` that garble's module path requires
-# (it retries `0.17.0` and Go rejects it: "unknown revision").
-# Install it with Go itself instead:
-#     GOBIN="$(mise where go)/bin" go install mvdan.cc/garble@v0.17.0
-# which puts the binary in mise's Go bin dir (already on PATH via shims).
-# CI does this in the `Install garble` step of the release workflows.
+"go:mvdan.cc/garble" = "v0.17.0"
