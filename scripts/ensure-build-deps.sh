@@ -38,9 +38,14 @@ set -uo pipefail
 # 这两个是诊断时确认缺失的代表性头文件，分属 libc6-dev 的核心内容
 REQUIRED_HEADERS=(/usr/include/stdlib.h /usr/include/pthread.h)
 
-# pkg-config 是 openssl-sys 的查找工具；openssl.pc 是它的查找依据
+# pkg-config 是 openssl-sys 的查找工具。
+# openssl.pc -> libssl-dev；sqlite3.pc -> libsqlite3-dev。
+# 后者曾被漏掉：装在列表里、打印在 echo 里，却零校验，导致 sqlite3 缺失时
+# check_deps 仍返回 0 并谎报「已就绪」跳过安装。
+# 来源：rust/aegis/Cargo.toml 的 matrix-sdk sqlite feature ->
+#   matrix-sdk-sqlite -> rusqlite -> libsqlite3-sys（非 bundled 时走 pkg-config）
 REQUIRED_CMDS=(pkg-config)
-REQUIRED_PKGCONFIG_FILES=(openssl)
+REQUIRED_PKGCONFIG_FILES=(openssl sqlite3)
 
 check_deps() {
   local h c p
