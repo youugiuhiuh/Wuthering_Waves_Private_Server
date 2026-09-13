@@ -154,3 +154,54 @@ jobs:
           "
               ;;
           esac
+
+  # 分支保护的 required status check 指向本 job，而非矩阵 job `build-test`。
+  #
+  # 原因：`build-test` 是矩阵 job，GitHub 在 ruleset 的下拉里会把带矩阵参数的
+  # 形态显示成 `build-test (github-actions, .github/workflows, gha)`，但实际
+  # check 名只有 `build-test` —— 把带括号那串写进 ruleset 会永远等不到，PR 永久
+  # BLOCKED（实测 ruleset 16422308）。
+  #
+  # 另一个原因：`build-test` 在矩阵为空时（只改文档/配置的 PR）是 skipped。
+  # 而 required check 对 skipped 的处理不确定，会让这类 PR 卡死。
+  #
+  # 本 job 名字固定、`if: always()` 必定运行，把「skipped 算不算通过」
+  # 变成下面显式的一行判断，不再依赖 GitHub 的模糊行为。
+  #
+  # 它没有任何 checkout / 读写 / 秘钥，只是一个结果汇总判断，因此
+  # 作为 required check 不引入任何权限风险。
+  build-test-gate:
+    needs: [detect-changes, build-test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate build-test result
+        env:
+          DETECT: ${{ needs.detect-changes.result }}
+          BUILD: ${{ needs.build-test.result }}
+        run: |
+          echo "detect-changes: $DETECT"
+          echo "build-test:     $BUILD"
+
+          # detect-changes 必须成功，否则矩阵本身不可信
+          if [ "$DETECT" != "success" ]; then
+            echo "::error::detect-changes 未成功（$DETECT），门禁不通过"
+            exit 1
+          fi
+
+          # success: 真实跑过编译+测试并通过
+          # skipped: 本次改动不涉及四个项目（如仅改文档/renovate.json）
+          #          这是预期行为，放行
+          case "$BUILD" in
+            success)
+              echo "✅ 构建与测试通过"
+              ;;
+            skipped)
+              echo "✅ 本次改动不涉及受测项目，无需构建（预期）"
+              ;;
+            *)
+              echo "::error::build-test 未通过（$BUILD）"
+              exit 1
+              ;;
+          esac
