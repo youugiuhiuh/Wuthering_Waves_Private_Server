@@ -130,6 +130,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: write # auto-merge 需要
       issues: write
       pull-requests: write
     steps:
@@ -138,6 +139,7 @@ jobs:
         env:
           TEST_RESULT: ${{ needs.test.result }}
           DETECT_RESULT: ${{ needs.detect-changes.result }}
+          GH_TOKEN: ${{ github.token }}
         with:
           script: |
             const { TEST_RESULT, DETECT_RESULT } = process.env;
@@ -166,3 +168,60 @@ jobs:
             } catch (e) {
               core.info(`标签 ${removeLabel} 不存在，跳过移除`);
             }
+
+            // 关键：必须在本 run 内直接开启 auto-merge，不能只贴标签就指望
+            // dependabot-pr-handler.yml 接手。GitHub 规定「用 GITHUB_TOKEN 产生的
+            // 事件不会再触发新的 workflow run」（防递归），而 automerge 标签正是
+            // 本步骤用 GITHUB_TOKEN 贴的 —— 所以 handler 的
+            // `on: pull_request_target: labeled` 永远不会触发。
+            //
+            // 后果（实测）：8 个 dependabot PR 全部 autoMerge=OFF。
+            // #257 的 test 全绿、automerge 标签已贴，但 00:36:21 的贴标签事件
+            // 没有产生任何 run（同期只有 00:35:55 由 dependabot 自己贴标签的 run）。
+            if (!passed) {
+              core.info('验证未通过，不开启 auto-merge');
+              return;
+            }
+            // 仅对 dependabot 自己的 PR 操作，避免把人工 PR 也自动合并
+            // （github-script v9 已注入 `exec`，无需 require）
+            const author = context.payload.pull_request.user.login;
+            if (author !== 'dependabot[bot]') {
+              core.info(`PR 作者为 ${author}，跳过 auto-merge`);
+              return;
+            }
+
+            // 开启失败只告警，不让整个流程变红 —— 标签已经贴对了。
+            try {
+              await exec.exec('gh', [
+                'pr', 'merge', '--auto', '--squash', String(context.issue.number)
+              ]);
+              core.info('已开启 auto-merge（SQUASH），待必需检查通过后自动合并');
+            } catch (e) {
+              core.warning(`开启 auto-merge 失败: ${e.message}`);
+            }
+
+  # 4. 验证失败的 PR 直接关闭（原先在 dependabot-pr-handler.yml 里，同样因为
+  #    GITHUB_TOKEN 事件不触发 workflow 而从未执行过 —— #259~#262 长期挂着
+  #    automerge-failed 标签无人清理）
+  close-failed:
+    needs: [detect-changes, test, update-labels]
+    if: |
+      always() &&
+      needs.update-labels.result == 'success' &&
+      needs.test.result != 'success' &&
+      needs.test.result != 'skipped' &&
+      github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Close Failed PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr close "$PR_NUMBER" \
+            --comment "❌ Automated verification failed. Closing this Dependabot PR." \
+            --delete-branch
