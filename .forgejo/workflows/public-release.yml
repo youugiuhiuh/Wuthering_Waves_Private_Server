@@ -221,22 +221,22 @@ jobs:
           path: dist/
           if-no-files-found: error
 
-  # ---- 阶段 2：发布（只应在权威源上跑）----
-  # 做三件有副作用的事：回写版本 commit、推 tag、建 release。
-  # 权威源 = 本仓库真正的「上游」。默认仅 GitHub；在 Forgejo 上若也要发布，
-  # 设 repo 变量 PUBLISH_ENABLED=true 显式开启（避免镜像站分叉）。
+  # ---- 阶段 2：发布 ----
+  # 做两件有副作用的事：推 tag、建 release。
+  #
+  # 本文件只在 Forgejo/Codefloe 上执行，而 Codefloe 就是发行主站，
+  # 因此不再保留「非 GitHub 不发布」的权威源守卫：
+  # 该守卫的判据是 github.server_url 含 'github.com'，在本文件里恒为假，
+  # 结果是 publish 永远被跳过（build 成功却无 release）——这正是本工作流
+  # 长期「构建成功但没有发行版」的原因。
+  #
+  # 若将来本仓库退化为镜像站、需要重新禁用发布，改回判断即可：
+  #   if: needs.build.result == 'success' && vars.PUBLISH_ENABLED == 'true'
   publish:
     needs: build
     runs-on: ubuntu-latest
-    # 权威源守卫：
-    #   - GitHub 上始终发布（github.server_url 含 github.com）
-    #   - 非 GitHub 上默认【不】发布，避免镜像站分叉；
-    #     确实要在 Forgejo 上发布时，设 repo 变量 PUBLISH_ENABLED=true 显式开启。
-    # 故意用 !contains(...) 而非 contains(...)：若 server_url 意外为空/不可用，
-    # 表达式仍为 true → 默认发布（失败安全，不会静默永不发布）。
-    if: |
-      needs.build.result == 'success' &&
-      (!contains(github.server_url, '/') || contains(github.server_url, 'github.com') || vars.PUBLISH_ENABLED == 'true')
+    # 仅剩「上游构建成功」这一必要条件。
+    if: needs.build.result == 'success'
     steps:
       - name: Checkout Source
         env:
@@ -255,10 +255,12 @@ jobs:
       - name: Install System Build Dependencies
         run: scripts/ensure-build-deps.sh
 
-      # 同上：download-artifact@v4 与 upload 同源，Forgejo 上必然失败。
-      # 跳过即走下面的就地重建回退。
+      # download-artifact@v4 与 upload 同源，Forgejo 上必然失败，故仍只在
+      # GitHub 上尝试。注意本文件只在 Forgejo 上跑，此步骤实际恒被跳过：
+      # 保留是为了与 GitHub 版保持结构一致、便于对照。dist 由下面的
+      # Ensure Dist Artifacts Present 就地重建兜底。
       - name: Download Build Artifacts
-        if: "!contains(github.server_url, '/') || contains(github.server_url, 'github.com')"
+        if: "contains(github.server_url, 'github.com')"
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
