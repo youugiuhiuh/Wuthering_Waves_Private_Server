@@ -1,0 +1,156 @@
+name: Build and Test
+
+# 作者无关：人类 PR 与机器人 PR 一律走同一道门禁。
+# 这是本工作流存在的理由 —— 旧 dependabot-pr-verify.yml 把门禁绑在
+# `github.event.pull_request.user.login == 'dependabot[bot]'` 上，
+# 导致人类 PR 反而没有任何构建/测试约束。
+#
+# 本工作流是纯只读的，没有任何写操作（不贴标签、不合并、不关 PR），
+# 因此可以安全地设为分支保护的 required status check。
+# 自动合并由 Renovate 原生 platformAutomerge 完成。
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-test-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # 探测哪个项目变了。矩阵生成逻辑与作者无关，沿用旧工作流的实现。
+  detect-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Generate Dynamic Matrix
+        id: set-matrix
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          PROJECTS='[
+            {"name": "rust-aegis", "path": "rust/aegis", "language": "rust"},
+            {"name": "go-installer", "path": "go/installer", "language": "go"},
+            {"name": "sni-tester", "path": "sni_tester", "language": "go"},
+            {"name": "github-actions", "path": ".github/workflows", "language": "gha"}
+          ]'
+
+          CHANGED_JSON=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" | jq -R -s 'split("\n") | map(select(length > 0))')
+
+          FILTERED_PRJ=$(jq -c -n \
+            --argjson projs "$PROJECTS" \
+            --argjson files "$CHANGED_JSON" \
+            '$projs | [ .[] | select(.path as $p | any($files[]; startswith($p))) ]')
+
+          echo "最终需要测试的项目: $FILTERED_PRJ"
+          echo "matrix=$FILTERED_PRJ" >> "$GITHUB_OUTPUT"
+
+  # 真实编译 + 真实测试。
+  # 注意：仅改动 .github/workflows 时矩阵为空，本 job 会被 skip —— 这是预期行为，
+  # skipped 不阻塞合并。
+  build-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.matrix != '[]' && needs.detect-changes.outputs.matrix != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      # ---------------- Go 环境与缓存 ----------------
+      - name: Setup Go
+        if: matrix.project.language == 'go'
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version: "stable"
+          cache: true
+          cache-dependency-path: ${{ matrix.project.path }}/go.sum
+
+      # ---------------- Rust 环境与缓存 ----------------
+      - name: Setup Rust
+        if: matrix.project.language == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Setup Rust Cache
+        if: matrix.project.language == 'rust'
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          # Monorepo：显式指定工作区路径，防止多项目间缓存互相污染
+          workspaces: ${{ matrix.project.path }}
+
+      - name: Install protoc
+        if: matrix.project.language == 'rust'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      # 用预编译二进制，不编译 nextest（官方推荐的 CI 安装方式）。
+      # 与 rust-lint-format 技能保持一致：该技能要求的门禁是
+      # `cargo nextest run`，而非 `cargo test`。
+      - name: Install cargo-nextest
+        if: matrix.project.language == 'rust'
+        uses: taiki-e/install-action@nextest
+
+      # ---------------- 真实编译 + 真实测试 ----------------
+      # 编译门禁分两层：
+      #   Rust: `cargo build --release` 验证发布构建（nextest 只编译 test target，
+      #         不覆盖 release profile —— 而发布走的正是 release）；
+      #         `cargo nextest run` 编译并运行测试。
+      #   Go:   `go build ./...` 编译全部包；`go test ./...` 跑测试。
+      #
+      # 刻意不在此处加 `cargo clippy -- -D warnings`：依赖更新 PR 上
+      # 新版第三方依赖可能引入新 lint，会导致更新流程被永久卡死，
+      # 且无法通过修改本仓库代码解决。clippy 保持在本地按技能要求执行。
+      #
+      # 注意：rust/aegis/src/bootstrap.rs 会调用 xray 取 mldsa65 密钥生成 Reality PQ。
+      # 依赖 `youugiuhiuh/Xray-setup@1`（不可信第三方 Action，且会 sudo 执行远端脚本）已移除；
+      # aegis 在缺失该二进制时仅记录日志，不影响测试。
+      - name: Build and Test
+        working-directory: ${{ matrix.project.path }}
+        env:
+          LANG: ${{ matrix.project.language }}
+          CARGO_TERM_COLOR: always
+        run: |
+          case "$LANG" in
+            go)
+              go build ./...
+              go test ./...
+              ;;
+            rust)
+              cargo build --release
+              cargo nextest run
+              ;;
+            *)
+              echo "🔍 检查 GitHub Actions YAML 语法..."
+              python3 -c "
+          import glob, sys, yaml
+          files = sorted(glob.glob('*.yml') + glob.glob('*.yaml'))
+          if not files:
+              print('未找到工作流文件'); sys.exit(1)
+          bad = False
+          for f in files:
+              try:
+                  with open(f) as s:
+                      yaml.safe_load(s)
+              except Exception as e:
+                  print(f'{f}: {e}'); bad = True
+          sys.exit(1 if bad else 0)
+          "
+              ;;
+          esac

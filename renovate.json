@@ -1,0 +1,74 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+
+  "timezone": "Asia/Shanghai",
+  "schedule": ["before 6am on monday"],
+
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Dependency Dashboard",
+
+  "rangeStrategy": "bump",
+  "separateMajorMinor": true,
+  "separateMultipleMajor": true,
+
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+
+  "rebaseWhen": "conflicted",
+  "lockFileMaintenance": {
+    "enabled": false
+  },
+
+  "packageRules": [
+    {
+      "description": "范围限定：仅 rust/aegis、go/installer、sni_tester 及工作流自身参与依赖更新。\n仓库内其余 manifest（rust/version-sync、tools/bin2pb、sni_tester_app/go_engine、\n.agents/skills/rust-skills/checks）不在本次迁移范围内，显式禁用。",
+      "matchFileNames": [
+        "rust/version-sync/**",
+        "tools/bin2pb/**",
+        "sni_tester_app/**",
+        ".agents/**"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "major 仅出现在 Dependency Dashboard，需人工勾选后才建 PR",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "minor/patch 自动建 PR 并自动合并（依赖分支保护的 required check）",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "platformAutomerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash"
+    },
+    {
+      "description": "GitHub Actions 自身更新：分组为一个 PR，与旧 dependabot.yml 行为一致",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "platformAutomerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash"
+    },
+    {
+      "description": "github-actions 的 major 同样走 Dashboard 勾选，避免 CI 被静默破坏",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    }
+  ],
+
+  "vulnerabilityAlerts": {
+    "enabled": false
+  },
+
+  "ignorePaths": [
+    "**/node_modules/**",
+    ".worktrees/**",
+    "rust/aegis/target/**"
+  ]
+}
