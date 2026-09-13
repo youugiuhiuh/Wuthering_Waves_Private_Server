@@ -54,10 +54,10 @@ impl SecurityManager {
 
         let mut nonce_bytes = [0u8; 12];
         OsRng.fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
         let ciphertext = cipher
-            .encrypt(nonce, plaintext)
+            .encrypt(&nonce, plaintext)
             .map_err(|e| anyhow::anyhow!("{}: {}", obfstr!("Encryption error"), e))?;
 
         let mut result = Vec::with_capacity(12 + ciphertext.len());
@@ -76,11 +76,14 @@ impl SecurityManager {
         let cipher = Aes256Gcm::new_from_slice(self.key.as_slice())
             .map_err(|e| anyhow::anyhow!("{}: {}", obfstr!("Cipher init error"), e))?;
 
-        let nonce = Nonce::from_slice(&encrypted_data[..12]);
+        let nonce_bytes: [u8; 12] = encrypted_data[..12]
+            .try_into()
+            .map_err(|_| anyhow::anyhow!(obfstr!("Invalid nonce").to_string()))?;
+        let nonce = Nonce::from(nonce_bytes);
         let ciphertext = &encrypted_data[12..];
 
         let decrypted = cipher
-            .decrypt(nonce, ciphertext)
+            .decrypt(&nonce, ciphertext)
             .map_err(|e| anyhow::anyhow!("{}: {}", obfstr!("Decryption error"), e))?;
 
         // Keep decrypted bytes zeroized on early-return paths, then move ownership out
