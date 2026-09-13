@@ -25,33 +25,38 @@ repos:
       - id: cargo-check
         name: cargo check
         entry: cargo check
-        args: ["--manifest-path=rust/tgbot/Cargo.toml"]
+        args: ["--manifest-path=rust/aegis/Cargo.toml"]
         language: system
-        files: ^rust/tgbot/
+        files: ^rust/aegis/
         pass_filenames: false # cargo 必须针对整个项目运行，不能只针对单个文件
 
       - id: clippy
         name: cargo clippy
         entry: cargo clippy
         # 使用 -W warnings 显示警告但不阻止提交
-        args: ["--manifest-path=rust/tgbot/Cargo.toml", "--", "-W", "warnings"]
+        args: ["--manifest-path=rust/aegis/Cargo.toml", "--", "-W", "warnings"]
         language: system
-        files: ^rust/tgbot/
+        files: ^rust/aegis/
         pass_filenames: false
 
       - id: rustfmt
         name: cargo fmt
         entry: cargo fmt
-        args: ["--manifest-path=rust/tgbot/Cargo.toml", "--"]
+        args: ["--manifest-path=rust/aegis/Cargo.toml", "--"]
         language: system
-        files: ^rust/tgbot/
+        files: ^rust/aegis/
         pass_filenames: false
 
+      # 版本同步：以 rust/aegis/Cargo.toml 为真源，校验 go/installer/main.go。
+      # 原先由 rust/version-sync crate 承担，但该 crate 的正则要求 "v" 前缀，
+      # 与文件实际格式（无前缀）不符，导致它静默通过且从未生效；已删除并由
+      # scripts/sync-version.sh 取代。这里只校验，不就地改写 ——
+      # 修正请手动执行 scripts/sync-version.sh --fix。
       - id: sync-version
-        name: sync version to install.sh (Rust)
-        entry: cargo run --manifest-path=rust/version-sync/Cargo.toml --bin sync-version
+        name: check version sync (aegis <-> installer)
+        entry: scripts/sync-version.sh --check
         language: system
-        files: ^(rust/tgbot/Cargo.toml|install.sh)$
+        files: ^(rust/aegis/Cargo\.toml|go/installer/main\.go)$
         pass_filenames: false
 
   # 3. GitHub Actions 验证 (保持现状)
