@@ -186,10 +186,7 @@ pub async fn connect_matrix(
     let store_path = config_dir.join("matrix_store");
     let client = MatrixClient::builder()
         .homeserver_url(&matrix_homeserver)
-        .sqlite_store(
-            &store_path,
-            Some(matrix_store_passphrase.expose_secret().as_str()),
-        )
+        .sqlite_store(&store_path, Some(matrix_store_passphrase.expose_secret()))
         .build()
         .await?;
     // 用完即焚：SDK 已在 SqliteStoreConfig 内部保留 Zeroizing 拷贝（lib 自护），
@@ -216,7 +213,7 @@ pub async fn connect_matrix(
             .ok();
         client
             .matrix_auth()
-            .login_username(&matrix_username, matrix_pwd.expose_secret().as_str())
+            .login_username(&matrix_username, matrix_pwd.expose_secret())
             .initial_device_display_name(&matrix_device_display_name(city.as_deref()))
             .send()
             .await?;
@@ -293,12 +290,8 @@ pub async fn connect_matrix(
                     }
                 }
                 IdentityAction::BootstrapNew => {
-                    bootstrap_new_identity(
-                        &client,
-                        &matrix_username,
-                        matrix_pwd.expose_secret().as_str(),
-                    )
-                    .await?;
+                    bootstrap_new_identity(&client, &matrix_username, matrix_pwd.expose_secret())
+                        .await?;
                 }
                 IdentityAction::ErrorRequiresReset => {
                     anyhow::bail!(
@@ -311,12 +304,7 @@ pub async fn connect_matrix(
         }
         IdentityAction::BootstrapNew => {
             println!("⚠ 远端无交叉签名身份，创建全新身份…");
-            bootstrap_new_identity(
-                &client,
-                &matrix_username,
-                matrix_pwd.expose_secret().as_str(),
-            )
-            .await?;
+            bootstrap_new_identity(&client, &matrix_username, matrix_pwd.expose_secret()).await?;
         }
         IdentityAction::ErrorRequiresReset => {
             anyhow::bail!(
