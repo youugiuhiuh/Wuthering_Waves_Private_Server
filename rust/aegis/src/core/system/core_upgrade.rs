@@ -1,6 +1,6 @@
 use crate::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::cmd_async::run_cmd_status;
-use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
+use crate::core::crypto::minisign::{self, MINISIGN_ACTIVE_KEYS, MINISIGN_HISTORICAL_KEYS};
 use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors,
     fetch_prerelease, find_minisig_asset, parse_digest, parse_sha256_manifest,
@@ -368,8 +368,13 @@ impl WwpsCoreUpgradeManager {
                 std::str::from_utf8(&sig_bytes).context("Minisign 签名不是有效的 UTF-8")?;
             let download_data =
                 std::fs::read(&temp_file).context("读取下载文件用于 Minisign 验证失败")?;
-            let info = minisign::verify_minisign(&download_data, sig_str, MINISIGN_PUBLIC_KEYS)
-                .map_err(|e| anyhow!("Minisign 验证失败: {}", e))?;
+            let info = minisign::verify_minisign(
+                &download_data,
+                sig_str,
+                MINISIGN_ACTIVE_KEYS,
+                MINISIGN_HISTORICAL_KEYS,
+            )
+            .map_err(|e| anyhow!("Minisign 验证失败: {}", e))?;
 
             let (got_version, got_asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
             if !got_version.contains(&release.tag_name) {

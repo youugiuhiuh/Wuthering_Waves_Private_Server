@@ -13,7 +13,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::task;
 use tokio::time::sleep;
 
-use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
+use crate::core::crypto::minisign::{self, MINISIGN_ACTIVE_KEYS, MINISIGN_HISTORICAL_KEYS};
 use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors,
     find_minisig_asset, parse_digest, parse_sha256_manifest,
@@ -410,7 +410,12 @@ impl UpgradeManager {
         artifact: &ReleaseArtifact,
     ) -> Result<()> {
         let sig_str = std::str::from_utf8(sig_bytes).context("Minisign 签名不是有效的 UTF-8")?;
-        let info = minisign::verify_minisign(data, sig_str, MINISIGN_PUBLIC_KEYS)?;
+        let info = minisign::verify_minisign(
+            data,
+            sig_str,
+            MINISIGN_ACTIVE_KEYS,
+            MINISIGN_HISTORICAL_KEYS,
+        )?;
 
         let (got_version, got_asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
         if !got_version.contains(&artifact.tag_name) {
