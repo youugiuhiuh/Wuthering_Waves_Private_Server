@@ -1,7 +1,9 @@
 # Forgejo 版 Minisign Sign Release（由 .github/workflows/sign-release.yml 派生）。
-# 与 GitHub 版的差异仅两处（均为平台语法）：
+# 与 GitHub 版的差异（均为平台语法，逻辑保持同步 —— 两文件需一起改）：
 #   1. permissions: 移除 —— Forgejo 忽略该键，且自动 token 已有写权限
 #   2. name 加 (Forgejo) 后缀 —— 便于在 UI 区分
+#   3. install 不用 sudo —— Forgejo steps 以 root 运行（GitHub 托管 runner
+#      以非 root 用户运行，写 /usr/local/bin 需要 sudo）
 #
 # 注意 environment: production 在 Forgejo 上会被忽略；
 # MINISIGN_SECRET_KEY 的门禁需由 Forgejo 侧的 secret 权限控制承担。
