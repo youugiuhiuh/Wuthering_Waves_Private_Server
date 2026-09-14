@@ -870,7 +870,7 @@ func downloadAndDeployAegis() string {
 				return ""
 			}
 			printYellow(i18n.T("minisign.verify_start"))
-			info, err := verifyMinisign(binaryPath, sigPath, minisignPublicKeys)
+			info, err := verifyMinisign(binaryPath, sigPath, minisignActiveKeys, minisignHistoricalKeys)
 			if err != nil {
 				printRed(i18n.T("minisign.verify_failed", err.Error()))
 				return ""
@@ -881,12 +881,8 @@ func downloadAndDeployAegis() string {
 				printRed(i18n.T("minisign.verify_failed", err.Error()))
 				return ""
 			}
-			if !strings.HasPrefix(gotVersion, expectedVersion) {
-				printRed(i18n.T("minisign.version_mismatch", expectedVersion, gotVersion))
-				return ""
-			}
-			if gotAsset != binaryName {
-				printRed(i18n.T("minisign.asset_mismatch", binaryName, gotAsset))
+			if err := matchTrustedComment(gotVersion, gotAsset, expectedVersion, binaryName); err != nil {
+				printRed(err.Error())
 				return ""
 			}
 			printGreen(i18n.T("minisign.verify_ok"))
@@ -894,8 +890,11 @@ func downloadAndDeployAegis() string {
 			minisigPassed = true
 		}
 	}
-	if !minisigPassed {
-		printYellow(i18n.T("minisign.skipped"))
+	// 硬校验：签名缺失即拒绝，不得回退到「仅 SHA256」。
+	// 否则攻击者只需删除 .minisig 资产即可完全绕过签名验证。
+	if err := requireMinisign(minisigPassed); err != nil {
+		printRed(err.Error())
+		return ""
 	}
 
 	// --- SHA256 verification ---

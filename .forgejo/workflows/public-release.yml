@@ -413,12 +413,28 @@ jobs:
               "$UPLOAD_URL?name=$NAME"
           done
 
-      # 仅 GitHub 有独立签名的 workflow_dispatch；Forgejo 上跳过。
+      # 两平台都触发签名。
+      #
+      # 原先守卫 if: env.RELEASE_PROVIDER == 'github' 让 Codefloe 发布后不触发签名，
+      # 而 Go installer（Task 7）已改为硬校验：签名缺失即拒绝安装。
+      # 因此缺签名的 Codefloe release 会让用户无法安装 —— 本步骤必须两平台都跑。
+      #
+      # 端点已实测存在：Codefloe 的
+      #   /api/v1/repos/{owner}/{repo}/actions/workflows/sign-release.yml/dispatches
+      # 返回 HTTP 405（GET 不允许，POST 才是预期方法），与 GitHub 同构。
       - name: Dispatch Signing Workflow
-        if: env.RELEASE_PROVIDER == 'github'
         run: |
-          curl -fsS -X POST \
-            -H "Authorization: token $RELEASE_AUTH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "$RELEASE_API_BASE/repos/$GITHUB_REPOSITORY/actions/workflows/sign-release.yml/dispatches" \
-            -d "{\"ref\":\"main\",\"inputs\":{\"tag_name\":\"v${{ needs.build.outputs.version }}\"}}"
+          ENDPOINT="$RELEASE_API_BASE/repos/$GITHUB_REPOSITORY/actions/workflows/sign-release.yml/dispatches"
+          PAYLOAD="{\"ref\":\"main\",\"inputs\":{\"tag_name\":\"v${{ needs.build.outputs.version }}\"}}"
+          if [ "$RELEASE_PROVIDER" = "github" ]; then
+            curl -fsS -X POST \
+              -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -d "$PAYLOAD" "$ENDPOINT"
+          else
+            curl -fsS -X POST \
+              -H "Authorization: token $RELEASE_AUTH_TOKEN" \
+              -H "Accept: application/json" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" "$ENDPOINT"
+          fi

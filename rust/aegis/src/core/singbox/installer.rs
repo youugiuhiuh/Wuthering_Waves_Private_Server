@@ -30,11 +30,12 @@ impl SingBoxInstaller {
 
         let arch = Self::detect_arch()?;
 
-        let version = Self::fetch_latest_version().await?;
-        let download_url = format!(
-            "https://github.com/SagerNet/sing-box/releases/download/v{}/sing-box-{}-linux-{}.tar.gz",
-            version, version, arch
-        );
+        // 复用 SingBoxUpgradeManager 解析 release：它同时给出 download_url 与
+        // sha256，使首装与升级两条入径共享同一份完整性元数据与校验逻辑
+        // （原先此处自行拼 URL，无任何完整性校验）。
+        let manager = crate::core::singbox::upgrade::SingBoxUpgradeManager::new()?;
+        let release = manager.fetch_release(None).await?;
+        let version = release.tag_name.trim_start_matches('v').to_string();
 
         fs::create_dir_all(singbox::DIR)
             .await
@@ -47,7 +48,17 @@ impl SingBoxInstaller {
         fs::create_dir_all(temp_dir).await?;
 
         let archive_path = format!("{}/sing-box.tar.gz", temp_dir);
-        Self::download_file(&download_url, &archive_path).await?;
+        Self::download_file(&release.download_url, &archive_path).await?;
+
+        // 完整性校验（方案 A）：先 SHA256，再确认 GitHub 存有该 digest 的 attestation。
+        // 上游 sing-box 不提供 minisign；失败即删除已下载文件并中止安装。
+        if let Err(e) = manager
+            .verify_download(&archive_path, &release.sha256)
+            .await
+        {
+            tokio::fs::remove_file(&archive_path).await.ok();
+            return Err(e);
+        }
 
         Self::extract_archive(&archive_path, temp_dir).await?;
 
@@ -182,41 +193,6 @@ impl SingBoxInstaller {
         }
     }
 
-    async fn fetch_latest_version() -> Result<String> {
-        let output = tokio::process::Command::new("curl")
-            .args([
-                "-s",
-                "https://api.github.com/repos/SagerNet/sing-box/releases?per_page=20",
-            ])
-            .output()
-            .await
-            .context("获取版本信息失败")?;
-
-        let json: serde_json::Value =
-            serde_json::from_slice(&output.stdout).context("解析版本信息失败")?;
-
-        Self::find_prerelease_tag(&json).ok_or_else(|| anyhow::anyhow!("未找到预发行版本"))
-    }
-
-    /// Find the newest prerelease tag (version without leading `v`) in a
-    /// GitHub `releases?per_page=N` JSON array.
-    fn find_prerelease_tag(json: &serde_json::Value) -> Option<String> {
-        let releases = json.as_array()?;
-        for release in releases {
-            let prerelease = release
-                .get("prerelease")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            if prerelease {
-                return release
-                    .get("tag_name")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.trim_start_matches('v').to_string());
-            }
-        }
-        None
-    }
-
     pub(crate) async fn download_file(url: &str, path: &str) -> Result<()> {
         let output = tokio::process::Command::new("curl")
             .args(["-L", "-o", path, url])
@@ -313,7 +289,6 @@ WantedBy=multi-user.target
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn test_detect_arch_x86_64() {
@@ -345,30 +320,12 @@ mod tests {
         let result = SingBoxInstaller::detect_arch_for("s390x");
         assert!(result.is_err());
     }
-    #[test]
-    fn test_find_prerelease_tag_picks_first_prerelease() {
-        let json = json!([
-            { "tag_name": "v1.13.20", "prerelease": false },
-            { "tag_name": "v1.14.0-rc.4", "prerelease": true },
-            { "tag_name": "v1.14.0-rc.2", "prerelease": true }
-        ]);
-        assert_eq!(
-            SingBoxInstaller::find_prerelease_tag(&json),
-            Some("1.14.0-rc.4".to_string())
-        );
-    }
 
-    #[test]
-    fn test_find_prerelease_tag_none_when_no_prerelease() {
-        let json = json!([{ "tag_name": "v1.13.20", "prerelease": false }]);
-        assert_eq!(SingBoxInstaller::find_prerelease_tag(&json), None);
-    }
-
-    #[test]
-    fn test_find_prerelease_tag_empty_or_non_array() {
-        assert_eq!(SingBoxInstaller::find_prerelease_tag(&json!([])), None);
-        assert_eq!(SingBoxInstaller::find_prerelease_tag(&json!({})), None);
-    }
+    // 注：原先的 `fetch_latest_version` / `find_prerelease_tag` 及其测试已删除。
+    // install() 现改为复用 `SingBoxUpgradeManager::fetch_release`，以获得
+    // download_url + sha256 的统一来源与同一套完整性校验（方案 A）；
+    // 那两个函数因此成为死代码，其预发行版识别逻辑由 `fetch_prerelease` 承担
+    // （后者已有集成路径与类型级保证）。
 
     // ---- 回归测试：原子替换二进制（修复 ETXTBSY / "复制 sing-box 二进制失败"）----
 

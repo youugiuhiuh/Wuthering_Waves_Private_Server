@@ -34,17 +34,36 @@ jobs:
           MINISIGN_URL: ${{ vars.MINISIGN_URL }}
         run: |
           URL="${MINISIGN_URL:-https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz}"
+          # 按 uname -m 选架构（与 Forgejo 版一致）：GitHub 托管 runner 现为 amd64，
+          # 但不能依赖这一事实 —— 自托管 runner 可能是 arm64。
+          # minisign 0.12 tarball 实测含 minisign-linux/{x86_64,aarch64} 两目录。
+          case "$(uname -m)" in
+            x86_64)  MS_ARCH=x86_64 ;;
+            aarch64) MS_ARCH=aarch64 ;;
+            *) echo "::error::不支持的架构: $(uname -m)"; exit 1 ;;
+          esac
           curl -fsSL "$URL" | tar xz
-          sudo install minisign-linux/x86_64/minisign /usr/local/bin/minisign
+          # GitHub 托管 runner 以非 root 用户运行，写 /usr/local/bin 需要 sudo。
+          sudo install "minisign-linux/$MS_ARCH/minisign" /usr/local/bin/minisign
           minisign -v
 
       - name: Prepare Secret Key
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
-          mkdir -p ~/.minisign
-          printf '%s\n' "$MINISIGN_SECRET_KEY" > ~/.minisign/minisign.key
-          chmod 600 ~/.minisign/minisign.key
+          # 空值守卫：空 secret 会写成空文件并静默继续，直到签名步骤报模糊错误。
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::error::MINISIGN_SECRET_KEY 未配置" >&2
+            exit 1
+          fi
+          # 随机目录 + 700（与 Forgejo 版一致），降低固定路径的残留暴露面。
+          KEY_DIR="$(mktemp -d)"
+          chmod 700 "$KEY_DIR"
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$KEY_DIR/minisign.key"
+          chmod 600 "$KEY_DIR/minisign.key"
+          echo "MINISIGN_KEY_DIR=$KEY_DIR" >> "$GITHUB_ENV"
+          echo "MINISIGN_KEY_PATH=$KEY_DIR/minisign.key" >> "$GITHUB_ENV"
+          echo "secret key written to $KEY_DIR/minisign.key（内容不打印）"
 
       # 用原生 git 代替 actions/checkout（本 workflow 实际不依赖仓库内容，
       # 仅为与其它工作流保持一致的最小检出）。
@@ -130,7 +149,7 @@ jobs:
 
             echo "::group::Signing $asset"
             curl -fsSL -H "Authorization: token $RELEASE_AUTH_TOKEN" -o "$asset" "$url"
-            minisign -S -m "$asset" -t "${TAG}:${asset}" -W
+            minisign -S -s "$MINISIGN_KEY_PATH" -m "$asset" -t "${TAG}:${asset}" -W
             # 用 release 响应里的 upload_url（含正确主机），不用 RELEASE_API_BASE。
             curl -fsS -X POST \
               -H "Authorization: token $RELEASE_AUTH_TOKEN" \
@@ -139,5 +158,8 @@ jobs:
               "$UPLOAD_URL?name=${asset}.minisig"
             echo "::endgroup::"
           done
+
+          # 显式清理私钥（与 Forgejo 版一致；trap 不可跨 step）
+          [ -n "${MINISIGN_KEY_DIR:-}" ] && rm -rf "$MINISIGN_KEY_DIR" || true
 
           echo "✅ Signing complete for $TAG"

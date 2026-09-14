@@ -1,137 +1,349 @@
 #!/usr/bin/env bash
+# Minisign 密钥轮换。
+#
+# 硬化后的两个关键行为（见 docs/superpowers/specs/2026-09-13-minisign-hardening.md §7.1）：
+#
+#   1. 旧公钥【退役】到历史表，而不是删除。
+#      历史公钥永久保留，用于验证「用旧钥签的历史版本」。活跃/历史是两张
+#      独立的表：历史表的既有条目【跨轮换累积】，本次轮换不会覆盖掉它们。
+#      退役判据：到期日 < now + 90 天（keep_key）。
+#
+#   2. 私钥【不打印】到终端，改为写入权限 600 的独立文件。
+#      此前 `cat` 到 stdout 会把私钥写进终端回滚缓冲与 shell history。
+#
+# 实现注意（踩过的坑）：
+#   - awk 必须是 mawk 兼容写法。gawk 专有的 `match(str, re, arr)` 3 参形式
+#     在 mawk 上是语法错误，会让读取 pass 静默拿到空列表。
+#   - 区块替换用「起始行 + 收尾行」定位。收尾行形态因语言/格式化而异：
+#       Go   : 单行 `}`；单行形态 `...Entry{}`
+#       Rust : `}];`（当前）或 `];`（rustfmt 后）；单行形态 `...&[];`
+#   - 写回前必须校验必需符号仍在，否则宁可中止也不写坏源码：
+#     锚点若失配，替换 pass 会从起始行一路吞到下一个收尾行，把中间的函数删光。
+#
+# 环境变量（仅测试需要，正常使用无需设置）：
+#   ROTATE_GO_FILE  Go 密钥表文件路径（默认仓库内真实文件）
+#   ROTATE_RS_FILE  Rust 密钥表文件路径（同上）
+#   ROTATE_KEY_OUT  新私钥落盘路径（默认 $HOME/minisign-new.key）
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-GO_FILE="$ROOT/go/installer/minisign_verify.go"
-RS_FILE="$ROOT/rust/aegis/src/core/crypto/minisign.rs"
+GO_FILE="${ROTATE_GO_FILE:-$ROOT/go/installer/minisign_verify.go}"
+RS_FILE="${ROTATE_RS_FILE:-$ROOT/rust/aegis/src/core/crypto/minisign.rs}"
+KEY_OUT="${ROTATE_KEY_OUT:-$HOME/minisign-new.key}"
 
 if ! command -v minisign &>/dev/null; then
     echo "请先安装 minisign: brew install minisign / apt install minisign"
     exit 1
 fi
 
+for f in "$GO_FILE" "$RS_FILE"; do
+    [ -f "$f" ] || {
+        echo "::error::找不到密钥表文件: $f" >&2
+        exit 1
+    }
+done
+
+# rustfmt 必须用项目声明的 edition，否则会引入与 cargo fmt 不一致的无关格式差异。
+# 实测：默认 edition 会把 `use anyhow::{Result, anyhow};` 重排成 `{anyhow, Result}`，
+# 导致轮换顺带改动一行与密钥无关的代码。项目当前为 2024。
+RS_EDITION="2024"
+if [ -f "$ROOT/rust/aegis/Cargo.toml" ]; then
+    _detected=$(sed -n 's/^edition *= *"\([^"]*\)".*/\1/p' "$ROOT/rust/aegis/Cargo.toml" | head -1)
+    [ -n "$_detected" ] && RS_EDITION="$_detected"
+fi
+
 TEMP_DIR=$(mktemp -d)
+# 信号需要显式 exit：bash 对已设陷阱的信号执行完 handler 后会继续执行下一条命令。
+# 用 exit 130（128+SIGINT）让 EXIT trap 去清临时目录。
 trap 'rm -rf "$TEMP_DIR"' EXIT
+trap 'exit 130' INT TERM HUP
 
 echo ">>> 生成新的 Minisign 密钥对（无密码）..."
 minisign -G -W -p "$TEMP_DIR/minisign.pub" -s "$TEMP_DIR/minisign.key"
 NEW_KEY=$(grep -v '^untrusted comment' "$TEMP_DIR/minisign.pub" | tr -d '\n')
+# 空值守卫：若 NEW_KEY 为空，validate_output 里的 `grep -qF -- ""` 对任何非空文件
+# 都返回 0，那道「新公钥已写入」检查会退化为恒真（即又变成空转）。
+if [ -z "$NEW_KEY" ]; then
+    echo "::error::从 minisign.pub 提取到的新公钥为空；已中止" >&2
+    exit 1
+fi
+# 形状校验：非 56 位 base64 会让「新公钥已写入」的校验被畸形值满足，
+# 从而打印成功却写出不可用的密钥表。
+case "$NEW_KEY" in
+    *[!A-Za-z0-9+/]* | "") echo "::error::新公钥含非法字符：$NEW_KEY" >&2; exit 1 ;;
+esac
+if [ "${#NEW_KEY}" -ne 56 ]; then
+    echo "::error::新公钥长度应为 56，实际 ${#NEW_KEY}：$NEW_KEY" >&2
+    exit 1
+fi
 echo ">>> 新公钥: $NEW_KEY"
 
-EXPIRES=$(date -d "+1 year" +%Y-%m-%d)
-echo ">>> 过期日期: $EXPIRES"
+# ---- 私钥立即落盘（在任何源码写入之前）----
+# 理由：若先写 Go、后写 Rust 时失败退出，EXIT trap 会连带删掉 TEMP_DIR，
+# 导致新私钥永久丢失 —— 而新公钥已写进源码，成为永远无法签名的孤儿。
+# 先落盘保证「只要生成了新钥，就一定拿得到它的私钥」。
+# umask 077 避免 cp 与 chmod 之间出现 644 窗口。
+mkdir -p "$(dirname "$KEY_OUT")"
+(umask 077 && cp "$TEMP_DIR/minisign.key" "$KEY_OUT")
+chmod 600 "$KEY_OUT"
 
-# 判断密钥是否仍应保留：运行脚本 = 主动轮换，≤90天到期即移除
+EXPIRES=$(date -d "+1 year" +%Y-%m-%d)
+RETIRED=$(date +%Y-%m-%d)
+echo ">>> 新密钥过期日期: $EXPIRES"
+
+# 判断某公钥是否仍应【保持活跃】。运行脚本 = 主动轮换：≤90 天到期即退役。
+# 注意：退役 ≠ 删除 —— 退役后移入历史表并永久保留。
 keep_key() {
     local expires="$1"
-    local now_epoch=$(date +%s)
-    local exp_epoch=$(date -d "$expires" +%s 2>/dev/null || return 1)
-    local keep_before=$((now_epoch + 90 * 86400))
+    local now_epoch exp_epoch keep_before
+    now_epoch=$(date +%s)
+    exp_epoch=$(date -d "$expires" +%s 2>/dev/null || return 1)
+    keep_before=$((now_epoch + 90 * 86400))
     [ "$exp_epoch" -ge "$keep_before" ]
 }
 
-# ---------- Go ----------
-mapfile -t GO_KEYS < <(awk '
-    /^var minisignPublicKeys/ {
-        if ($0 ~ /}\s*$/) exit
-        printing=1; next
-    }
-    printing && /^\s*}\s*$/ { exit }
-    printing && /PublicKey:/ {
-        line = $0
-        match(line, /PublicKey: "([^"]+)"/, a)
-        print a[1]
-        if (match(line, /ExpiresAt: "([^"]*)"/, b)) {
-            print b[1]
-        } else {
-            print ""
+# ---- 通用：从密钥表区块读出已有条目 ----
+# 输出每行 "KEY<TAB>EXPIRES<TAB>RETIRED"。
+# 兼容两种排版：三字段同行（Go、以及 rustfmt 后的 Rust），
+# 或每字段各占一行（当前 Rust 源码）。
+# 做法：按引号切分，把「标签段 → 值段」配对，而不是假定字段位置。
+read_block() {
+    local file="$1" start="$2" closeend="$3" endline="$4"
+    awk -v start="$start" -v closeend="$closeend" -v endline="$endline" '
+        function p_flush() {
+            if (pkey != "") print pkey "\t" pexp "\t" pret
+            pkey = ""; pexp = ""; pret = ""
         }
-    }
-' "$GO_FILE")
-
-GO_KEPT=0 GO_REMOVED=0
-printf 'var minisignPublicKeys = []minisignKeyEntry{\n' > "$TEMP_DIR/go_block"
-for ((i = 0; i < ${#GO_KEYS[@]}; i += 2)); do
-    KEY="${GO_KEYS[$i]}"
-    EXP="${GO_KEYS[$((i+1))]}"
-    if keep_key "$EXP"; then
-        printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$KEY" "$EXP" >> "$TEMP_DIR/go_block"
-        GO_KEPT=$((GO_KEPT + 1))
-    else
-        echo ">>> 移除旧公钥 (Go): $KEY ($EXP)"
-        GO_REMOVED=$((GO_REMOVED + 1))
-    fi
-done
-printf '\t{PublicKey: "%s", ExpiresAt: "%s"},\n' "$NEW_KEY" "$EXPIRES" >> "$TEMP_DIR/go_block"
-GO_KEPT=$((GO_KEPT + 1))
-printf '}\n' >> "$TEMP_DIR/go_block"
-
-awk -v block="$TEMP_DIR/go_block" '
-    /^var minisignPublicKeys/ {
-        if ($0 ~ /}\s*$/) { system("cat " block); next }
-        printing=1; next
-    }
-    printing && /^\s*}\s*$/ { printing=0; system("cat " block); next }
-    !printing { print }
-' "$GO_FILE" > "$TEMP_DIR/go_new.go" && cp "$TEMP_DIR/go_new.go" "$GO_FILE"
-gofmt -w "$GO_FILE"
-
-# ---------- Rust ----------
-mapfile -t RS_KEYS < <(awk '
-    /^pub const MINISIGN_PUBLIC_KEYS/ {
-        if ($0 ~ /];/) exit
-        printing=1; next
-    }
-    printing && /];\s*$/ { exit }
-    printing && /public_key:/ {
-        line = $0
-        match(line, /public_key: "([^"]+)"/, a)
-        print a[1]
-        if (match(line, /expires_at: "([^"]*)"/, b)) {
-            print b[1]
-        } else {
-            print ""
+        function p_parse(line,   parts, n, i, lbl, val) {
+            n = split(line, parts, "\"")
+            for (i = 1; i < n; i += 2) {
+                lbl = parts[i]; val = parts[i + 1]
+                if      (lbl ~ /[Pp]ublic_?[Kk]ey:/)  { p_flush(); pkey = val }
+                else if (lbl ~ /[Ee]xpires_?[Aa]t:/)  { pexp = val }
+                else if (lbl ~ /[Rr]etired_?[Aa]t:/)  { pret = val }
+            }
         }
-    }
-' "$RS_FILE")
+        $0 ~ start {
+            if ($0 ~ closeend) { p_parse($0); p_flush(); next }
+            skipping = 1; next
+        }
+        skipping && $0 ~ endline { skipping = 0; p_flush(); next }
+        skipping { p_parse($0) }
+        END { p_flush() }
+    ' "$file"
+}
 
-RS_KEPT=0 RS_REMOVED=0
-printf 'pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = &[\n' > "$TEMP_DIR/rs_block"
-for ((i = 0; i < ${#RS_KEYS[@]}; i += 2)); do
-    KEY="${RS_KEYS[$i]}"
-    EXP="${RS_KEYS[$((i+1))]}"
-    if keep_key "$EXP"; then
-        printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$KEY" "$EXP" >> "$TEMP_DIR/rs_block"
-        RS_KEPT=$((RS_KEPT + 1))
-    else
-        echo ">>> 移除旧公钥 (Rust): $KEY ($EXP)"
-        RS_REMOVED=$((RS_REMOVED + 1))
+# ---- 通用：用新内容替换某个区块 ----
+# start   : 区块起始行正则
+# closeend: 「本行即以收尾符号结束」的正则 —— 用于识别单行形态
+# endline : 多行形态的收尾行正则
+replace_block() {
+    local file="$1" start="$2" closeend="$3" endline="$4" blockfile="$5"
+    awk -v start="$start" -v closeend="$closeend" -v endline="$endline" -v blockfile="$blockfile" '
+        function p_emit() { system("cat " blockfile) }
+        $0 ~ start {
+            if ($0 ~ closeend) { p_emit(); next }
+            skipping = 1; next
+        }
+        skipping && $0 ~ endline { skipping = 0; p_emit(); next }
+        !skipping { print }
+    ' "$file"
+}
+
+# ---- 通用：写回前校验 ----
+# 直接拒绝「区块替换把源码写坏」这一后果：任何必需符号消失即中止。
+# 此时真实文件尚未被触碰，安全。
+# 旧公钥快照：必须在任何改写【之前】，且用与 read_block 无关的方式提取。
+#
+# 为什么不能靠 read_block 现读：read_block 与改写用的是同一套标签解析，
+# 一旦标签变形（如 PublicKey: 被改成 Key:），两边都采不到 → 旧钥被静默丢弃
+# 而校验「看不到」丢失。故此处用与解析器无关的 56 字符 base64 正则，
+# 分别对两个源文件做快照。
+snapshot_keys() {
+    # `|| true`：grep 无匹配时退出码为 1，在 set -e 下会静默中止脚本。
+    { grep -oE '[A-Za-z0-9+/]{56}' "$1" 2>/dev/null || true; } | LC_ALL=C sort -u
+}
+GO_KEYS_SNAPSHOT=$(snapshot_keys "$GO_FILE")
+RS_KEYS_SNAPSHOT=$(snapshot_keys "$RS_FILE")
+# 显式诊断：目标文件里一把 56 字符公钥都没有时，多半是路径指错或格式变更。
+if [ -z "$GO_KEYS_SNAPSHOT" ]; then
+    echo "::error::$GO_FILE 中未找到任何 56 字符公钥；请检查路径与密钥表格式" >&2
+    exit 1
+fi
+if [ -z "$RS_KEYS_SNAPSHOT" ]; then
+    echo "::error::$RS_FILE 中未找到任何 56 字符公钥；请检查路径与密钥表格式" >&2
+    exit 1
+fi
+
+validate_output() {
+    local file="$1" label="$2"
+    shift 2
+    local sym
+    for sym in "$@"; do
+        if ! grep -q -- "$sym" "$file"; then
+            echo "::error::$label 轮换后丢失符号 '$sym'；已中止，原文件未被修改" >&2
+            return 1
+        fi
+    done
+    # 关键：必须验证【新公钥真的写进去了】。
+    # 仅检查符号名是不够的 —— 锚点漂移（如 var→const）时两次 replace 都是 no-op，
+    # 未改动的文件同样含全部符号名，会静默通过并打印「✅ 完成」。
+    if ! grep -qF -- "$NEW_KEY" "$file"; then
+        echo "::error::$label 未写入新公钥 —— 很可能是锚点失效（脚本模板与实际代码形态不符）；已中止，原文件未被修改" >&2
+        return 1
     fi
-done
-printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s" },\n' "$NEW_KEY" "$EXPIRES" >> "$TEMP_DIR/rs_block"
-RS_KEPT=$((RS_KEPT + 1))
-printf '];\n' >> "$TEMP_DIR/rs_block"
+    # 并确认旧公钥无一丢失（防止读取 pass 读空导致旧钥被静默移除）。
+    #
+    # 关键：必须按【本文件】采集旧钥，不能用全局并集。
+    # 否则一次部分写入（先写 Go、后写 Rust 时失败）后，Go 独有的新钥会被
+    # 拿去与 Rust 文件比对 → 永远误报「丢失旧公钥」，轮换永久阻塞且无法自愈。
+    #
+    # comm 要求两侧已排序且 locale 一致：sort 与 comm 均加 LC_ALL=C。
+    local new_keys old_keys
+    if [ "$label" = "go" ]; then
+        old_keys="$GO_KEYS_SNAPSHOT"
+        new_keys=$(snapshot_keys "$file")
+    else
+        old_keys="$RS_KEYS_SNAPSHOT"
+        new_keys=$(snapshot_keys "$file")
+    fi
+    local lost
+    lost=$(LC_ALL=C comm -23 \
+        <(printf '%s\n' "$old_keys" | sed '/^$/d' | LC_ALL=C sort -u) \
+        <(printf '%s\n' "$new_keys" | sed '/^$/d' | LC_ALL=C sort -u))
+    if [ -n "$lost" ]; then
+        printf '::error::%s 轮换后丢失旧公钥:\n%s\n已中止，原文件未被修改\n' "$label" "$lost" >&2
+        return 1
+    fi
+    return 0
+}
 
-awk -v block="$TEMP_DIR/rs_block" '
-    /^pub const MINISIGN_PUBLIC_KEYS/ {
-        if ($0 ~ /];/) { system("cat " block); next }
-        printing=1; next
-    }
-    printing && /];\s*$/ { printing=0; system("cat " block); next }
-    !printing { print }
-' "$RS_FILE" > "$TEMP_DIR/rs_new.rs" && cp "$TEMP_DIR/rs_new.rs" "$RS_FILE"
-rustfmt "$RS_FILE"
+GO_END='^}$'
+GO_CLOSE='\}$'
+RS_END='^[}\]]{1,2};$'
+RS_CLOSE='\];$'
 
+# ================= Go =================
+
+GO_ACTIVE_BLOCK="$TEMP_DIR/go_active"
+GO_HIST_BLOCK="$TEMP_DIR/go_hist"
+printf 'var minisignActiveKeys = []minisignKeyEntry{\n' >"$GO_ACTIVE_BLOCK"
+printf 'var minisignHistoricalKeys = []minisignKeyEntry{\n' >"$GO_HIST_BLOCK"
+
+GO_ACTIVE_N=0
+GO_RETIRED_N=0
+GO_HIST_N=0
+
+# 原活跃表：仍有效 → 留活跃；临近/已过期 → 退役进历史
+while IFS=$'\t' read -r key exp retired; do
+    [ -n "${key:-}" ] || continue
+    if keep_key "$exp"; then
+        printf '\t{PublicKey: "%s", ExpiresAt: "%s", RetiredAt: ""},\n' \
+            "$key" "$exp" >>"$GO_ACTIVE_BLOCK"
+        GO_ACTIVE_N=$((GO_ACTIVE_N + 1))
+    else
+        printf '\t{PublicKey: "%s", ExpiresAt: "%s", RetiredAt: "%s"},\n' \
+            "$key" "$exp" "$RETIRED" >>"$GO_HIST_BLOCK"
+        GO_RETIRED_N=$((GO_RETIRED_N + 1))
+        echo ">>> 退役旧公钥 (Go): $key ($exp)"
+    fi
+done < <(read_block "$GO_FILE" '^var minisignActiveKeys' "$GO_CLOSE" "$GO_END")
+
+# 原历史表：原样累积保留（跨轮换不丢）
+while IFS=$'\t' read -r key exp retired; do
+    [ -n "${key:-}" ] || continue
+    printf '\t{PublicKey: "%s", ExpiresAt: "%s", RetiredAt: "%s"},\n' \
+        "$key" "$exp" "$retired" >>"$GO_HIST_BLOCK"
+    GO_HIST_N=$((GO_HIST_N + 1))
+done < <(read_block "$GO_FILE" '^var minisignHistoricalKeys' "$GO_CLOSE" "$GO_END")
+
+# 新公钥进活跃表
+printf '\t{PublicKey: "%s", ExpiresAt: "%s", RetiredAt: ""},\n' \
+    "$NEW_KEY" "$EXPIRES" >>"$GO_ACTIVE_BLOCK"
+GO_ACTIVE_N=$((GO_ACTIVE_N + 1))
+printf '}\n' >>"$GO_ACTIVE_BLOCK"
+printf '}\n' >>"$GO_HIST_BLOCK"
+
+replace_block "$GO_FILE" '^var minisignActiveKeys' "$GO_CLOSE" "$GO_END" "$GO_ACTIVE_BLOCK" \
+    >"$TEMP_DIR/go_step1.go"
+replace_block "$TEMP_DIR/go_step1.go" '^var minisignHistoricalKeys' "$GO_CLOSE" "$GO_END" "$GO_HIST_BLOCK" \
+    >"$TEMP_DIR/go_new.go"
+
+if command -v gofmt >/dev/null 2>&1; then
+    gofmt -w "$TEMP_DIR/go_new.go" 2>/dev/null || echo "::warning::gofmt 失败，保留未格式化内容"
+fi
+
+validate_output "$TEMP_DIR/go_new.go" "go" \
+    verifyMinisign parseTrustedComment requireMinisign matchTrustedComment \
+    minisignActiveKeys minisignHistoricalKeys || exit 1
+
+cp "$TEMP_DIR/go_new.go" "$GO_FILE"
+
+# ================= Rust =================
+RS_ACTIVE_BLOCK="$TEMP_DIR/rs_active"
+RS_HIST_BLOCK="$TEMP_DIR/rs_hist"
+printf 'pub const MINISIGN_ACTIVE_KEYS: &[MinisignKeyEntry] = &[\n' >"$RS_ACTIVE_BLOCK"
+printf 'pub const MINISIGN_HISTORICAL_KEYS: &[MinisignKeyEntry] = &[\n' >"$RS_HIST_BLOCK"
+
+RS_ACTIVE_N=0
+RS_RETIRED_N=0
+RS_HIST_N=0
+
+while IFS=$'\t' read -r key exp retired; do
+    [ -n "${key:-}" ] || continue
+    if keep_key "$exp"; then
+        printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s", retired_at: "" },\n' \
+            "$key" "$exp" >>"$RS_ACTIVE_BLOCK"
+        RS_ACTIVE_N=$((RS_ACTIVE_N + 1))
+    else
+        printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s", retired_at: "%s" },\n' \
+            "$key" "$exp" "$RETIRED" >>"$RS_HIST_BLOCK"
+        RS_RETIRED_N=$((RS_RETIRED_N + 1))
+        echo ">>> 退役旧公钥 (Rust): $key ($exp)"
+    fi
+done < <(read_block "$RS_FILE" '^pub const MINISIGN_ACTIVE_KEYS' "$RS_CLOSE" "$RS_END")
+
+while IFS=$'\t' read -r key exp retired; do
+    [ -n "${key:-}" ] || continue
+    printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s", retired_at: "%s" },\n' \
+        "$key" "$exp" "$retired" >>"$RS_HIST_BLOCK"
+    RS_HIST_N=$((RS_HIST_N + 1))
+done < <(read_block "$RS_FILE" '^pub const MINISIGN_HISTORICAL_KEYS' "$RS_CLOSE" "$RS_END")
+
+printf '    MinisignKeyEntry { public_key: "%s", expires_at: "%s", retired_at: "" },\n' \
+    "$NEW_KEY" "$EXPIRES" >>"$RS_ACTIVE_BLOCK"
+RS_ACTIVE_N=$((RS_ACTIVE_N + 1))
+printf '];\n' >>"$RS_ACTIVE_BLOCK"
+printf '];\n' >>"$RS_HIST_BLOCK"
+
+replace_block "$RS_FILE" '^pub const MINISIGN_ACTIVE_KEYS' "$RS_CLOSE" "$RS_END" "$RS_ACTIVE_BLOCK" \
+    >"$TEMP_DIR/rs_step1.rs"
+replace_block "$TEMP_DIR/rs_step1.rs" '^pub const MINISIGN_HISTORICAL_KEYS' "$RS_CLOSE" "$RS_END" "$RS_HIST_BLOCK" \
+    >"$TEMP_DIR/rs_new.rs"
+
+if command -v rustfmt >/dev/null 2>&1; then
+    rustfmt --edition "$RS_EDITION" "$TEMP_DIR/rs_new.rs" 2>/dev/null \
+        || echo "::warning::rustfmt 失败，保留未格式化内容"
+fi
+
+validate_output "$TEMP_DIR/rs_new.rs" "rust" \
+    verify_minisign parse_trusted_comment key_expired \
+    MINISIGN_ACTIVE_KEYS MINISIGN_HISTORICAL_KEYS || exit 1
+
+cp "$TEMP_DIR/rs_new.rs" "$RS_FILE"
+
+# 私钥已在上方（生成密钥后立即）落盘，此处不再重复。
 echo ""
 echo "============================================"
 echo "✅ 密钥轮换完成"
-echo "   Go:   $GO_KEPT 个有效密钥（移除 $GO_REMOVED 个过期）"
-echo "   Rust: $RS_KEPT 个有效密钥（移除 $RS_REMOVED 个过期）"
+echo "   Go:   活跃 $GO_ACTIVE_N 个（本次退役 $GO_RETIRED_N 个），历史累计 $GO_HIST_N 个"
+echo "   Rust: 活跃 $RS_ACTIVE_N 个（本次退役 $RS_RETIRED_N 个），历史累计 $RS_HIST_N 个"
 echo "   新密钥过期日期: $EXPIRES"
 echo ""
-echo "将以下私钥添加到 GitHub Secrets（production Environment → MINISIGN_SECRET_KEY）："
-echo "============================================"
-cat "$TEMP_DIR/minisign.key"
-echo "============================================"
+echo "私钥已写入: $KEY_OUT（权限 600）"
+echo "  已【不打印】其内容 —— 避免泄露到终端回滚缓冲与 shell history。"
+echo "  请手动打开该文件，把内容填入 CI Secret: MINISIGN_SECRET_KEY"
+echo "  填入后建议删除该文件: rm -f \"$KEY_OUT\""
 echo ""
-echo "!!! 请勿泄露私钥！建议运行: history -c !!!"
+echo "⚠ 历史公钥永久保留，请勿手工删除 —— 删掉后旧版本将无法通过签名校验。"
+echo "============================================"

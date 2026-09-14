@@ -13,7 +13,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::task;
 use tokio::time::sleep;
 
-use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
+use crate::core::crypto::minisign::{self, MINISIGN_ACTIVE_KEYS, MINISIGN_HISTORICAL_KEYS};
 use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors,
     find_minisig_asset, parse_digest, parse_sha256_manifest,
@@ -318,11 +318,9 @@ impl UpgradeManager {
             anyhow::bail!("Release 中缺少 SHA256 信息");
         };
 
-        let minisig = self
-            .download_minisig(&release.assets, &asset.name)
-            .await
-            .ok()
-            .flatten();
+        // 硬校验：签名缺失即整体失败（不再用 .ok().flatten() 吞掉错误）。
+        // 若允许缺签名继续，攻击者删除 .minisig 资产即可绕过验证。
+        let minisig = self.download_minisig(&release.assets, &asset.name).await?;
 
         Ok(ReleaseArtifact {
             repository: repository.display_name(),
@@ -331,7 +329,7 @@ impl UpgradeManager {
             download_url,
             sha256,
             size: asset.size,
-            minisig,
+            minisig: Some(minisig),
         })
     }
 
@@ -381,14 +379,14 @@ impl UpgradeManager {
         &self,
         assets: &[ReleaseAsset],
         target_asset: &str,
-    ) -> Result<Option<Vec<u8>>> {
-        let sig_asset = find_minisig_asset(assets, target_asset);
-        let Some(sig_asset) = sig_asset else {
-            return Ok(None);
-        };
+    ) -> Result<Vec<u8>> {
+        // 硬校验：签名缺失即失败。若此处返回 Ok(None)，攻击者只需删掉
+        // .minisig 资产即可绕过签名验证。
+        let sig_asset = find_minisig_asset(assets, target_asset)
+            .ok_or_else(|| anyhow!("Release 缺少 Minisign 签名（{}）", target_asset))?;
         let sig_url = sig_asset.download_url();
         if sig_url.is_empty() {
-            return Ok(None);
+            anyhow::bail!("Minisign 签名地址为空（{}）", target_asset);
         }
         let bytes = self
             .build_request(sig_url)
@@ -400,7 +398,7 @@ impl UpgradeManager {
             .bytes()
             .await
             .context("读取 Minisign 签名文件失败")?;
-        Ok(Some(bytes.to_vec()))
+        Ok(bytes.to_vec())
     }
 
     async fn verify_downloaded_minisign(
@@ -410,12 +408,17 @@ impl UpgradeManager {
         artifact: &ReleaseArtifact,
     ) -> Result<()> {
         let sig_str = std::str::from_utf8(sig_bytes).context("Minisign 签名不是有效的 UTF-8")?;
-        let info = minisign::verify_minisign(data, sig_str, MINISIGN_PUBLIC_KEYS)?;
+        let info = minisign::verify_minisign(
+            data,
+            sig_str,
+            MINISIGN_ACTIVE_KEYS,
+            MINISIGN_HISTORICAL_KEYS,
+        )?;
 
         let (got_version, got_asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
-        if !got_version.contains(&artifact.tag_name) {
+        if got_version != artifact.tag_name {
             anyhow::bail!(
-                "Minisign 版本不匹配: 期望包含 {}, 实际 {}",
+                "Minisign 版本不匹配: 期望 {}, 实际 {}",
                 artifact.tag_name,
                 got_version
             );
@@ -515,8 +518,12 @@ impl UpgradeManager {
             );
         }
 
-        // Minisign verification
-        if let Some(sig_bytes) = &artifact.minisig {
+        // Minisign verification（必需：缺签名不继续，否则删 .minisig 即可绕过）
+        let sig_bytes = artifact
+            .minisig
+            .as_ref()
+            .ok_or_else(|| anyhow!("缺少 Minisign 签名（{}）", artifact.asset_name))?;
+        {
             let _ = adapter
                 .edit_message(
                     target,
@@ -733,5 +740,44 @@ mod tests {
         );
         assert!(parse_release_repo("invalid").is_none());
         assert!(parse_release_repo("/missing-owner").is_none());
+    }
+
+    fn test_release_asset(name: &str, url: &str) -> ReleaseAsset {
+        ReleaseAsset {
+            name: name.to_string(),
+            browser_download_url: url.to_string(),
+            url: String::new(),
+            size: None,
+            digest: None,
+        }
+    }
+
+    // 威胁模型：防中间人替换。若签名缺失时仍继续安装/升级，
+    // 攻击者只需删掉 .minisig 资产即可绕过签名。以下测试锁定
+    // 「签名缺失 / 无下载地址」必须报错，而非静默返回 Ok(None)。
+    #[tokio::test]
+    async fn test_download_minisig_missing_asset_is_error() {
+        let manager = UpgradeManager::new().expect("构造 UpgradeManager 失败");
+        let assets = vec![test_release_asset("aegis", "https://example.com/aegis")];
+
+        let result = manager.download_minisig(&assets, "aegis").await;
+
+        assert!(
+            result.is_err(),
+            "资产列表中缺少 aegis.minisig 时必须报错，而不是静默返回 Ok(None)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_download_minisig_empty_url_is_error() {
+        let manager = UpgradeManager::new().expect("构造 UpgradeManager 失败");
+        let assets = vec![test_release_asset("aegis.minisig", "")];
+
+        let result = manager.download_minisig(&assets, "aegis").await;
+
+        assert!(
+            result.is_err(),
+            "签名资产缺下载地址时必须报错，而不是静默返回 Ok(None)"
+        );
     }
 }

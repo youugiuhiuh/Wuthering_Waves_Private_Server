@@ -1,6 +1,6 @@
 use crate::common::{BotAdapter, MessageContent, MessageId as AegisMsgId, TargetId};
 use crate::core::cmd_async::run_cmd_status;
-use crate::core::crypto::minisign::{self, MINISIGN_PUBLIC_KEYS};
+use crate::core::crypto::minisign::{self, MINISIGN_ACTIVE_KEYS, MINISIGN_HISTORICAL_KEYS};
 use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors,
     fetch_prerelease, find_minisig_asset, parse_digest, parse_sha256_manifest,
@@ -351,8 +351,27 @@ impl WwpsCoreUpgradeManager {
             );
         }
 
-        // Minisign verification
-        if let Some(sig_url) = &release.minisig_url {
+        // Minisign verification（条件启用：**存在签名则必须验证通过**）。
+        //
+        // 与 upgrade.rs 不同，本路径刻意不在签名缺失时报错。原因：
+        // core（Xray-core）的默认 release 源是**上游** XTLS/Xray-core，
+        // 而上游不提供任何 minisign 签名（实测其 release 有 64 个资产、
+        // 0 个 .minisig，只有 .dgst）。本项目无权也无能力为它签。
+        // 若在此硬性要求签名，会导致 core 安装与升级 100% 失败。
+        //
+        // 因此这里的策略是「存在即强校验」：一旦上游/镜像提供了签名，
+        // 验证失败（甚至是版本不符）一律拒绝，不得回退到 SHA256 放行。
+        // core 链路的完整性目前仅依赖 SHA256 digest（上游无签名可用）。
+        //
+        // ⚠️ 不要为了「与 upgrade.rs 统一」而把它改成硬校验。
+        let Some(sig_url) = release.minisig_url.as_ref() else {
+            log::warn!(
+                "Release {} 未提供 Minisign 签名，仅用 SHA256 校验（上游无签名）",
+                release.tag_name
+            );
+            return Ok(temp_file);
+        };
+        {
             let sig_bytes = self
                 .build_request(sig_url)
                 .send()
@@ -368,14 +387,20 @@ impl WwpsCoreUpgradeManager {
                 std::str::from_utf8(&sig_bytes).context("Minisign 签名不是有效的 UTF-8")?;
             let download_data =
                 std::fs::read(&temp_file).context("读取下载文件用于 Minisign 验证失败")?;
-            let info = minisign::verify_minisign(&download_data, sig_str, MINISIGN_PUBLIC_KEYS)
-                .map_err(|e| anyhow!("Minisign 验证失败: {}", e))?;
+            let info = minisign::verify_minisign(
+                &download_data,
+                sig_str,
+                MINISIGN_ACTIVE_KEYS,
+                MINISIGN_HISTORICAL_KEYS,
+            )
+            .map_err(|e| anyhow!("Minisign 验证失败: {}", e))?;
 
             let (got_version, got_asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
-            if !got_version.contains(&release.tag_name) {
+            // 精确相等，理由同 upgrade.rs：子串/前缀匹配可被伪造版本号绕过
+            if got_version != release.tag_name {
                 fs::remove_file(&temp_file).await.ok();
                 anyhow::bail!(
-                    "Minisign 版本不匹配: 期望包含 {}, 实际 {}",
+                    "Minisign 版本不匹配: 期望 {}, 实际 {}",
                     release.tag_name,
                     got_version
                 );
