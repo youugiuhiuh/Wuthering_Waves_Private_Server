@@ -881,7 +881,8 @@ func downloadAndDeployAegis() string {
 				printRed(i18n.T("minisign.verify_failed", err.Error()))
 				return ""
 			}
-			if !strings.HasPrefix(gotVersion, expectedVersion) {
+			// 精确相等：HasPrefix 会放行 "v1.5.3-evil"
+			if gotVersion != expectedVersion {
 				printRed(i18n.T("minisign.version_mismatch", expectedVersion, gotVersion))
 				return ""
 			}
@@ -895,7 +896,10 @@ func downloadAndDeployAegis() string {
 		}
 	}
 	if !minisigPassed {
-		printYellow(i18n.T("minisign.skipped"))
+		// 硬校验：签名缺失即拒绝，不得回退到「仅 SHA256」。
+		// 否则攻击者只需删除 .minisig 资产即可完全绕过签名验证。
+		printRed(i18n.T("minisign.missing_fatal"))
+		return ""
 	}
 
 	// --- SHA256 verification ---

@@ -301,3 +301,27 @@ func TestVerifyMinisignSkipsRetiredKeyInActiveList(t *testing.T) {
 		t.Fatal("已退役的密钥即便出现在 active 列表中也必须被跳过")
 	}
 }
+
+// TestVersionMatchMustBeExact 记录「版本号必须精确相等」这一语义约定。
+//
+// ⚠️ 本测试**不守护** main.go 里的版本校验分支：它只比较两个局部字符串变量，
+// 完全不经由被测代码。实测（2026-09-14）：把 main.go 中该处的比较改回
+// strings.HasPrefix（甚至改成恒放行），本测试**仍然通过**。
+// 真正的保证来自该处的代码改动本身 + 人工审查；该模式的静态兜底见计划 Task 12。
+func TestVersionMatchMustBeExact(t *testing.T) {
+	// 锁定语义：精确相等，禁止前缀匹配
+	cases := []struct {
+		got, expected string
+		want          bool
+	}{
+		{"v1.5.3", "v1.5.3", true},
+		{"v1.5.3-evil", "v1.5.3", false},
+		{"xv1.5.3", "v1.5.3", false},
+		{"v1.5.30", "v1.5.3", false},
+	}
+	for _, c := range cases {
+		if got := c.got == c.expected; got != c.want {
+			t.Fatalf("版本匹配 %q vs %q = %v, 期望 %v", c.got, c.expected, got, c.want)
+		}
+	}
+}
