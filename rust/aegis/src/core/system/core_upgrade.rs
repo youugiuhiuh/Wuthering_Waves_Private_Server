@@ -351,8 +351,12 @@ impl WwpsCoreUpgradeManager {
             );
         }
 
-        // Minisign verification
-        if let Some(sig_url) = &release.minisig_url {
+        // Minisign verification（必需：缺签名不继续，否则删 .minisig 即可绕过）
+        let sig_url = release
+            .minisig_url
+            .as_ref()
+            .ok_or_else(|| anyhow!("Release 缺少 Minisign 签名（{}）", release.tag_name))?;
+        {
             let sig_bytes = self
                 .build_request(sig_url)
                 .send()
