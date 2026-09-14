@@ -325,3 +325,42 @@ func TestVersionMatchMustBeExact(t *testing.T) {
 		}
 	}
 }
+
+// ---- matchTrustedComment：覆盖 main.go 版本/资产名校验的安全语义 ----
+//
+// 背景：这两项判断原先内联在 downloadAndDeployAegis 里，无注入接缝，
+// 导致把版本比较改回 HasPrefix、或把硬校验改回「警告后继续」时，
+// 全部测试仍然通过（已实测）。抽出纯函数后由下列用例守护。
+
+func TestMatchTrustedCommentAcceptsExactMatch(t *testing.T) {
+	if err := matchTrustedComment("v1.5.3", "aegis", "v1.5.3", "aegis"); err != nil {
+		t.Fatalf("精确匹配应通过，实际报错: %v", err)
+	}
+}
+
+func TestMatchTrustedCommentRejectsSubstringVersion(t *testing.T) {
+	// HasPrefix / contains 会放行这两种 —— 必须拒绝
+	for _, got := range []string{"v1.5.3-evil", "xv1.5.3", "v1.5.30"} {
+		if err := matchTrustedComment(got, "aegis", "v1.5.3", "aegis"); err == nil {
+			t.Fatalf("版本 %q 应被拒绝（子串/前缀变体）", got)
+		}
+	}
+}
+
+func TestMatchTrustedCommentRejectsWrongAsset(t *testing.T) {
+	if err := matchTrustedComment("v1.5.3", "installer", "v1.5.3", "aegis"); err == nil {
+		t.Fatal("资产名不符应被拒绝")
+	}
+}
+
+func TestMatchTrustedCommentRejectsEmpty(t *testing.T) {
+	if err := matchTrustedComment("", "", "v1.5.3", "aegis"); err == nil {
+		t.Fatal("空值应被拒绝")
+	}
+}
+
+func TestMatchTrustedCommentCaseMatters(t *testing.T) {
+	if err := matchTrustedComment("V1.5.3", "aegis", "v1.5.3", "aegis"); err == nil {
+		t.Fatal("大小写不同应被拒绝（精确相等）")
+	}
+}

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"aead.dev/minisign"
+
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/go/installer/i18n"
 )
 
 type MinisigInfo struct {
@@ -102,6 +104,23 @@ func parseTrustedComment(comment string) (version string, assetName string, err 
 		return "", "", fmt.Errorf("无效的可信注释格式: %s", comment)
 	}
 	return parts[0], parts[1], nil
+}
+
+// matchTrustedComment 校验签名 trusted comment 的版本与资产名。
+//
+// 纯函数，便于直接单测（原先这两段判断内联在 main.go 的
+// downloadAndDeployAegis 里，依赖全局与网络，无注入接缝，
+// 导致安全关键逻辑零测试覆盖 —— 注入 HasPrefix 回归时全测试仍绿）。
+//
+// 版本必须**精确相等**：HasPrefix / contains 会放行 "v1.5.3-evil"、"xv1.5.3"。
+func matchTrustedComment(gotVersion, gotAsset, expectedVersion, expectedAsset string) error {
+	if gotVersion != expectedVersion {
+		return fmt.Errorf("%s", i18n.T("minisign.version_mismatch", expectedVersion, gotVersion))
+	}
+	if gotAsset != expectedAsset {
+		return fmt.Errorf("%s", i18n.T("minisign.asset_mismatch", expectedAsset, gotAsset))
+	}
+	return nil
 }
 
 func findMinisigAsset(release *latestRelease, binaryName string) *releaseAsset {

@@ -881,13 +881,8 @@ func downloadAndDeployAegis() string {
 				printRed(i18n.T("minisign.verify_failed", err.Error()))
 				return ""
 			}
-			// 精确相等：HasPrefix 会放行 "v1.5.3-evil"
-			if gotVersion != expectedVersion {
-				printRed(i18n.T("minisign.version_mismatch", expectedVersion, gotVersion))
-				return ""
-			}
-			if gotAsset != binaryName {
-				printRed(i18n.T("minisign.asset_mismatch", binaryName, gotAsset))
+			if err := matchTrustedComment(gotVersion, gotAsset, expectedVersion, binaryName); err != nil {
+				printRed(err.Error())
 				return ""
 			}
 			printGreen(i18n.T("minisign.verify_ok"))
