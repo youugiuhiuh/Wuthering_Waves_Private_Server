@@ -1300,11 +1300,18 @@ Expected: 无输出
 Run:
 ```bash
 # upgrade.rs（自家资产）：必须硬校验，不得有静默路径。
-# 用 -E 并排除注释行（注释里会提到 .ok().flatten() 作为反例说明）；
-# 注意原回归形态是 .ok() 与 .flatten() 分行书写，故两者都要查。
-grep -rnE '^[^/]*\.(ok\(\)|flatten\(\))' --include=*.rs rust/aegis/src/core/system/upgrade.rs
+#
+# 关键模式是 .flatten() —— 原回归形态为 .ok() 与 .flatten() 分行书写，
+# 逐行 grep 无法匹配跨行的 ".ok().flatten()"，但一定能匹配到 .flatten() 那一行。
+# 用正则排除以 // 开头的注释行（第 321 行的说明注释会提到该模式）。
+grep -rn 'flatten()' --include=*.rs rust/aegis/src/core/system/upgrade.rs | grep -v ':[[:space:]]*//'
 ```
-Expected: 无输出（注释行不算）
+Expected: 无输出
+
+```bash
+grep -rn 'if let Some(sig' --include=*.rs rust/aegis/src/core/system/upgrade.rs
+```
+Expected: 无输出
 
 同时人工确认 `core_upgrade.rs` 的条件强校验结构正确：
 ```bash
