@@ -53,7 +53,7 @@ impl SingBoxInstaller {
         // 完整性校验（方案 A）：先 SHA256，再确认 GitHub 存有该 digest 的 attestation。
         // 上游 sing-box 不提供 minisign；失败即删除已下载文件并中止安装。
         if let Err(e) = manager
-            .verify_download(&archive_path, &release.sha256)
+            .verify_download_for_tag(&archive_path, &release.sha256, Some(&release.tag_name))
             .await
         {
             tokio::fs::remove_file(&archive_path).await.ok();

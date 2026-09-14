@@ -41,6 +41,50 @@ const SINGBOX_RELEASE_REPO: &str = "sing-box";
 const SINGBOX_RELEASE_API_BASE: &str = "https://api.github.com/repos";
 const SINGBOX_UPGRADE_TEMP_DIR: &str = "/tmp/sing-box-upgrade";
 
+/// 从 GitHub release 页面 HTML 片段中解析某资产的 sha256 hex。
+///
+/// 用途：作为 attestation 不可达时的**降级**证据源。该端点
+/// `github.com/{owner}/{repo}/releases/expanded_assets/{tag}` 是纯 HTML，
+/// 不走 api.github.com、不计入 60/h 限流、无需认证。
+///
+/// 实现按 `<li class="Box-row">` **逐行切分**后取同一行内的文件名与 digest ——
+/// 实测 167/167 与 API digest 完全一致；不能用全局正则乱配（会把邻居资产的
+/// digest 错配给本资产，实测过大范围搜索确实会拿到错误值）。
+fn parse_asset_digest_from_release_html(html: &str, asset_name: &str) -> Option<String> {
+    for block in html.split("Box-row") {
+        // 该行必须同时包含目标文件名与一个 sha256
+        if !block.contains(asset_name) {
+            continue;
+        }
+        // 文件名必须出现在下载链接里（避免注释/描述文本误命中）
+        if !block.contains("/releases/download/") {
+            continue;
+        }
+        if let Some(cap) = sha256_hex_in(block) {
+            return Some(cap);
+        }
+    }
+    None
+}
+
+/// 在给定字符串中取首个 64 位 hex sha256（可带 `sha256:` 前缀）。
+fn sha256_hex_in(s: &str) -> Option<String> {
+    const NEEDLE: &str = "sha256:";
+    let mut start = 0usize;
+    while let Some(pos) = s[start..].find(NEEDLE) {
+        let hex_start = start + pos + NEEDLE.len();
+        let candidate = s.get(hex_start..hex_start + 64)?;
+        if candidate.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Some(candidate.to_ascii_lowercase());
+        }
+        start = hex_start;
+        if start >= s.len() {
+            break;
+        }
+    }
+    None
+}
+
 #[derive(Debug, Clone)]
 pub struct SingBoxReleaseInfo {
     pub tag_name: String,
@@ -107,6 +151,23 @@ fn attestation_url(sha256_hex: &str) -> String {
     format!("https://api.github.com{}", path)
 }
 
+/// 纯决策：该 digest 是否被**降级证据链**接受。
+///
+/// 降级链路（方案 B）：attestation 不可达（限流/网络）时，回退到
+/// 「release API 的 digest == release 页面 HTML 的 digest」。
+/// 两者都是 GitHub 自己渲染的元数据，须**同时**拿到且相等才放行；
+/// 任一缺失或不一致 → 拒绝（fail-closed）。
+///
+/// 安全代价（必须让调用方知晓并在日志中明确标注）：这弱于 attestation。
+/// attestation 是 GitHub 用 Sigstore 对构建产物签发的证明，而 digest 元数据
+/// 只表明「GitHub 当前展示的该资产 hash 是多少」。
+fn degraded_accepts(api_digest: &str, html_digest: Option<&str>) -> bool {
+    match html_digest {
+        Some(h) => !api_digest.is_empty() && h.eq_ignore_ascii_case(api_digest),
+        None => false,
+    }
+}
+
 /// 纯决策函数：HTTP 状态码 + 已解析响应体 → 该 digest 是否有 attestation。
 ///
 /// - 404            → `Ok(false)`（该 digest 无记录）
@@ -127,6 +188,53 @@ fn attestation_decision(status: u16, body: Option<&serde_json::Value>) -> Result
         .map(|a| a.len())
         .unwrap_or(0);
     Ok(n > 0)
+}
+
+/// 该 403 是否属于 GitHub 的**速率限制**（而非权限/其他拒绝）。
+///
+/// 实测：GitHub 未认证请求超出 60 次/小时的主限流时返回 **403**（不是 429），
+/// 响应体为 `{"message":"API rate limit exceeded for <ip>..."}`。
+/// 若把它一律当致命错误，则任何与其他软件共享出口 IP 的机器都永远无法部署 ——
+/// 这正是「attestation 查询返回 HTTP 403」一键部署失败的根因。
+///
+/// 判定依据（任一成立即视为限流）：
+/// - 响应体 message 含 "rate limit"
+/// - `x-ratelimit-remaining: 0`
+/// - 存在 `retry-after`
+fn is_rate_limited(
+    status: u16,
+    body_message: Option<&str>,
+    ratelimit_remaining: Option<&str>,
+    retry_after: Option<&str>,
+) -> bool {
+    if status == 429 {
+        // 429 本身就是 Too Many Requests，无需额外证据。
+        return true;
+    }
+    if status != 403 {
+        return false;
+    }
+    if retry_after.is_some() {
+        return true;
+    }
+    if ratelimit_remaining == Some("0") {
+        return true;
+    }
+    body_message
+        .map(|m| m.to_ascii_lowercase().contains("rate limit"))
+        .unwrap_or(false)
+}
+
+/// 由限流响应头推算应等待的秒数（下限 1s，上限 60s，缺失 → 默认 5s）。
+fn retry_delay_secs(retry_after: Option<&str>, reset_epoch: Option<&str>, now_epoch: u64) -> u64 {
+    if let Some(ra) = retry_after.and_then(|v| v.trim().parse::<u64>().ok()) {
+        return ra.clamp(1, 60);
+    }
+    if let Some(reset) = reset_epoch.and_then(|v| v.trim().parse::<u64>().ok()) {
+        let wait = reset.saturating_sub(now_epoch);
+        return wait.clamp(1, 60);
+    }
+    5
 }
 
 pub struct SingBoxUpgradeManager {
@@ -155,40 +263,159 @@ impl SingBoxUpgradeManager {
     /// 造出对应 digest 的 attestation 记录。
     ///
     /// 注：本函数不验证 sigstore 签名链本身（方案 A 的已知取舍）。
+    ///
+    /// 对 GitHub 限流（403/429）做有界重试：限流是**暂时性**错误，不代表该 digest
+    /// 无 attestation；立即失败会让共享 IP 的机器永远无法部署。重试耗尽后仍 fail-closed。
     async fn has_attestation_for(&self, sha256_hex: &str) -> Result<bool> {
+        const MAX_ATTEMPTS: usize = 4;
         let url = attestation_url(sha256_hex);
         if url.is_empty() {
             anyhow::bail!("无效的 sha256: {}", sha256_hex);
         }
-        let mut req = self
-            .client
-            .get(&url)
-            .header("Accept", "application/vnd.github+json");
-        if let Some(t) = self.github_token.as_deref() {
-            req = req.header("Authorization", format!("Bearer {}", t));
-        }
-        let resp = req.send().await.context("查询 attestation 失败")?;
-        let status = resp.status().as_u16();
-        if !resp.status().is_success() {
-            // 404 → 无记录；其他错误状态 → fail-closed（attestation_decision 内部裁决）
+        let mut last_err: Option<anyhow::Error> = None;
+
+        for attempt in 1..=MAX_ATTEMPTS {
+            let mut req = self
+                .client
+                .get(&url)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "wwps-runtime-updater/1.0");
+            if let Some(t) = self.github_token.as_deref() {
+                req = req.header("Authorization", format!("Bearer {}", t));
+            }
+            let resp = req.send().await.context("查询 attestation 失败")?;
+            let status = resp.status().as_u16();
+
+            if resp.status().is_success() {
+                let json: serde_json::Value =
+                    resp.json().await.context("解析 attestation 响应失败")?;
+                return attestation_decision(status, Some(&json));
+            }
+
+            // 非 2xx：读取响应头/体以区分「限流」与「真拒绝」。
+            let hdr = |name: &str| -> Option<String> {
+                resp.headers()
+                    .get(name)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string())
+            };
+            let retry_after = hdr("retry-after");
+            let remaining = hdr("x-ratelimit-remaining");
+            let reset = hdr("x-ratelimit-reset");
+            let body_msg = resp.text().await.ok();
+
+            if is_rate_limited(
+                status,
+                body_msg.as_deref(),
+                remaining.as_deref(),
+                retry_after.as_deref(),
+            ) {
+                last_err = Some(anyhow!(
+                    "attestation 查询返回 HTTP {} (GitHub 限流)",
+                    status
+                ));
+                if attempt < MAX_ATTEMPTS {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    // GitHub 未认证主限流按小时重置，最多等 60s/轮也未必够；
+                    // 若给出 retry-after 则优先用（通常很短）。
+                    let wait = retry_delay_secs(retry_after.as_deref(), reset.as_deref(), now);
+                    log::warn!(
+                        "attestation 查询被限流 (HTTP {}), {}/{} 次, {}s 后重试",
+                        status,
+                        attempt,
+                        MAX_ATTEMPTS,
+                        wait
+                    );
+                    tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+                    continue;
+                }
+                break;
+            }
+
+            // 404 → 无记录；其他（权限等）→ fail-closed。
             return attestation_decision(status, None);
         }
-        let json: serde_json::Value = resp.json().await.context("解析 attestation 响应失败")?;
-        attestation_decision(status, Some(&json))
+        Err(last_err.unwrap_or_else(|| anyhow!("attestation 查询失败")))
     }
 
-    /// 端到端完整性校验（方案 A）：先 SHA256，再确认 GitHub 存有该 digest 的 attestation。
+    /// 从 release 页面 HTML 片段取某资产的 digest（无认证、不计限流的降级证据源）。
+    ///
+    /// 端点实测可用：`github.com/{owner}/{repo}/releases/expanded_assets/{tag}`。
+    /// 失败（网络/未找到）→ None，由调用方决定是否降级。
+    async fn html_digest_for_asset(&self, tag: &str, asset_name: &str) -> Option<String> {
+        let url = format!(
+            "https://github.com/{}/{}/releases/expanded_assets/{}",
+            SINGBOX_RELEASE_OWNER, SINGBOX_RELEASE_REPO, tag
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .header("User-Agent", "wwps-runtime-updater/1.0")
+            .send()
+            .await
+            .ok()?;
+        if !resp.status().is_success() {
+            log::warn!("release 页面 HTML 取 digest 失败: HTTP {}", resp.status());
+            return None;
+        }
+        let html = resp.text().await.ok()?;
+        parse_asset_digest_from_release_html(&html, asset_name)
+    }
+
+    /// 端到端完整性校验。
+    ///
+    /// **主路径（方案 A）**：`SHA256 文件 == 期望值` 且 GitHub 存有该 digest 的 attestation。
+    ///
+    /// **降级路径（方案 B）**：仅当 attestation 查询**不可达**（限流/网络错误，即暂时性
+    /// 基础设施问题）时，回退到「release 页面 HTML 的 digest 与期望 digest 一致」。
+    /// 无法降级的情形一律拒绝：
+    /// - attestation 明确返回 404（说明 GitHub 没为这个 digest 签过）→ 拒绝，不降级；
+    /// - HTML 取不到或与期望不一致 → 拒绝。
     ///
     /// 两条下载入径（首装 `installer.rs` 与升级 `upgrade.rs`）共用此函数。
-    pub(crate) async fn verify_download(&self, path: &str, sha256_hex: &str) -> Result<()> {
+    pub(crate) async fn verify_download_for_tag(
+        &self,
+        path: &str,
+        sha256_hex: &str,
+        tag: Option<&str>,
+    ) -> Result<()> {
         verify_sha256_file(path, sha256_hex).await?;
-        if !self.has_attestation_for(sha256_hex).await? {
-            anyhow::bail!(
+
+        match self.has_attestation_for(sha256_hex).await {
+            Ok(true) => Ok(()),
+            Ok(false) => anyhow::bail!(
                 "sing-box 完整性校验失败: {} 无 GitHub attestation 记录（可能被替换）",
                 sha256_hex
-            );
+            ),
+            Err(e) => {
+                // attestation 不可达（限流/网络）→ 尝试降级（方案 B）。
+                let Some(tag) = tag else {
+                    return Err(
+                        e.context("attestation 查询不可达且无 tag 可用于降级校验（fail-closed）")
+                    );
+                };
+                let version = tag.trim_start_matches('v');
+                let arch = SingBoxInstaller::detect_arch()?;
+                let asset_name = format!("sing-box-{}-linux-{}.tar.gz", version, arch);
+                let html_digest = self.html_digest_for_asset(tag, &asset_name).await;
+                if degraded_accepts(sha256_hex, html_digest.as_deref()) {
+                    log::warn!(
+                        "⚠️ sing-box 完整性校验已降级：attestation 不可达 ({}), 
+已改用 release 页面 digest 交叉核对（{}）。安全性弱于 attestation，请向用户明确提示。",
+                        e,
+                        asset_name
+                    );
+                    return Ok(());
+                }
+                Err(e.context(format!(
+                    "attestation 不可达且降级校验也未通过（HTML digest: {:?}），已拒绝安装（fail-closed）",
+                    html_digest
+                )))
+            }
         }
-        Ok(())
     }
 
     pub async fn fetch_recent_tags(&self, limit: usize) -> Result<Vec<String>> {
@@ -326,11 +553,12 @@ impl SingBoxUpgradeManager {
         let archive_path = format!("{}/sing-box.tar.gz", SINGBOX_UPGRADE_TEMP_DIR);
         SingBoxInstaller::download_file(&release.download_url, &archive_path).await?;
 
-        // 完整性校验（方案 A）：先验 SHA256，再确认 GitHub 为该 digest 存有 attestation。
-        // 上游 sing-box 不提供 minisign，但 GitHub 为每个 release 生成原生
-        // sigstore attestation；此处以「该 digest 是否有 attestation 记录」作为信任锚。
+        // 完整性校验（方案 A 主路径 + 方案 B 降级）：先验 SHA256，再确认 GitHub 为该
+        // digest 存有 attestation。上游 sing-box 不提供 minisign，但 GitHub 为每个
+        // release 生成原生 sigstore attestation；attestation 不可达时降级为
+        // 「release 页面 digest 与期望值一致」（带 tag 以定位 release 页面）。
         if let Err(e) = manager
-            .verify_download(&archive_path, &release.sha256)
+            .verify_download_for_tag(&archive_path, &release.sha256, Some(&release.tag_name))
             .await
         {
             // 校验失败即删除已下载文件，避免残留被后续步骤误用。
@@ -589,6 +817,105 @@ mod tests {
         // 2xx 但拿不到响应体 → 无法判定。必须 Err（fail-closed），
         // 不得当作 false 静默放过。
         assert!(attestation_decision(200, None).is_err());
+    }
+
+    // ---- GitHub 限流识别（403 的两种含义）----
+
+    #[test]
+    fn test_is_rate_limited_detects_github_rate_limit_403() {
+        // 实测响应体：GitHub 未认证限流返回 403 + "API rate limit exceeded for <ip>"
+        let msg = "API rate limit exceeded for 1.2.3.4. (But here's the good news...)";
+        assert!(is_rate_limited(403, Some(msg), None, None));
+        // 429 同理
+        assert!(is_rate_limited(429, None, None, None));
+    }
+
+    #[test]
+    fn test_is_rate_limited_via_headers() {
+        assert!(is_rate_limited(403, None, Some("0"), None));
+        assert!(is_rate_limited(403, None, None, Some("30")));
+    }
+
+    #[test]
+    fn test_is_rate_limited_false_for_real_403_and_404() {
+        // 权限类 403（无 rate limit 特征）→ 不得当作限流，必须 fail-closed
+        assert!(!is_rate_limited(
+            403,
+            Some("Resource not accessible"),
+            Some("59"),
+            None
+        ));
+        assert!(!is_rate_limited(404, None, None, None));
+        assert!(!is_rate_limited(200, None, Some("0"), None));
+        assert!(!is_rate_limited(401, Some("Bad credentials"), None, None));
+    }
+
+    #[test]
+    fn test_retry_delay_secs_prefers_retry_after_and_clamps() {
+        assert_eq!(retry_delay_secs(Some("12"), None, 0), 12);
+        // 上限 60s，避免挂死部署
+        assert_eq!(retry_delay_secs(Some("9999"), None, 0), 60);
+        // 下限 1s
+        assert_eq!(retry_delay_secs(Some("0"), None, 0), 1);
+        // 回退到 x-ratelimit-reset（future → 差值）
+        assert_eq!(retry_delay_secs(None, Some("1000"), 970), 30);
+        // reset 已过期 / 缺失 → 默认 5s
+        assert_eq!(retry_delay_secs(None, Some("900"), 1000), 1);
+        assert_eq!(retry_delay_secs(None, None, 0), 5);
+    }
+
+    // ---- 方案 B：HTML digest 解析 + 降级决策 ----
+
+    #[test]
+    fn test_parse_asset_digest_scopes_to_matching_row() {
+        // 两个 Box-row：必须取到与文件名同行的那个 digest，不得错配邻居。
+        let other = "a".repeat(64);
+        let want = "b".repeat(64);
+        let html = format!(
+            "<li class=\"Box-row\">\
+               <a href=\"/SagerNet/sing-box/releases/download/v1.14.0/sing-box-1.14.0-linux-arm64.tar.gz\">sing-box-1.14.0-linux-arm64.tar.gz</a>\
+               <span>sha256:{}</span></li>\
+             <li class=\"Box-row\">\
+               <a href=\"/SagerNet/sing-box/releases/download/v1.14.0/sing-box-1.14.0-linux-amd64.tar.gz\">sing-box-1.14.0-linux-amd64.tar.gz</a>\
+               <span>sha256:{}</span></li>",
+            other, want
+        );
+        assert_eq!(
+            parse_asset_digest_from_release_html(&html, "sing-box-1.14.0-linux-amd64.tar.gz"),
+            Some(want)
+        );
+        assert_eq!(
+            parse_asset_digest_from_release_html(&html, "sing-box-1.14.0-linux-arm64.tar.gz"),
+            Some(other)
+        );
+        // 不在列表中的资产 → None（不得随便返回一个 digest）
+        assert_eq!(
+            parse_asset_digest_from_release_html(&html, "sing-box-1.14.0-linux-mips.tar.gz"),
+            None
+        );
+        assert_eq!(parse_asset_digest_from_release_html("", "x.tar.gz"), None);
+    }
+
+    #[test]
+    fn test_sha256_hex_in_rejects_short_and_uppercases() {
+        assert_eq!(sha256_hex_in("sha256:abc"), None);
+        assert_eq!(sha256_hex_in("no hash"), None);
+        let upper = format!("sha256:{}", "A".repeat(64));
+        assert_eq!(sha256_hex_in(&upper), Some("a".repeat(64)));
+    }
+
+    #[test]
+    fn test_degraded_accepts_requires_matching_nonempty_digest() {
+        let d = "a".repeat(64);
+        // 两源一致 → 接受（含大小写不敏感）
+        assert!(degraded_accepts(&d, Some(&d)));
+        assert!(degraded_accepts(&d, Some(&d.to_ascii_uppercase())));
+        // 不一致 → 拒绝
+        assert!(!degraded_accepts(&d, Some(&"b".repeat(64))));
+        // HTML 拿不到 → 拒绝（fail-closed，不得因证据缺失而放行）
+        assert!(!degraded_accepts(&d, None));
+        // 期望值为空 → 拒绝
+        assert!(!degraded_accepts("", Some(&d)));
     }
 
     #[tokio::test]
