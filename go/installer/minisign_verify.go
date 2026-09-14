@@ -16,6 +16,13 @@ type MinisigInfo struct {
 type minisignKeyEntry struct {
 	PublicKey string
 	ExpiresAt string // YYYY-MM-DD, empty = expired (key without date is invalid)
+	RetiredAt string // YYYY-MM-DD, empty = 仍活跃
+}
+
+// isActive 表示该密钥仍用于验证新版本（尚未退役为历史密钥）。
+// 注意：活跃 ≠ 未过期；过期判断由 expired() 单独负责。
+func (e *minisignKeyEntry) isActive() bool {
+	return e.RetiredAt == ""
 }
 
 func (e *minisignKeyEntry) expired() bool {
@@ -29,9 +36,18 @@ func (e *minisignKeyEntry) expired() bool {
 	return time.Now().After(t)
 }
 
-var minisignPublicKeys = []minisignKeyEntry{
-	{PublicKey: "RWTZPf3UsUDo9hPmWcOp+0TcwRLWHmOkNCGPw3kXcM3x5awPEzR3Y3Sf", ExpiresAt: "2027-07-02"},
+// 活跃密钥：验证新版本，会检查过期。
+var minisignActiveKeys = []minisignKeyEntry{
+	{PublicKey: "RWTZPf3UsUDo9hPmWcOp+0TcwRLWHmOkNCGPw3kXcM3x5awPEzR3Y3Sf", ExpiresAt: "2027-07-02", RetiredAt: ""},
 }
+
+// 历史密钥：仅验证用旧钥签的历史版本，刻意不检查过期。
+var minisignHistoricalKeys = []minisignKeyEntry{}
+
+// 过渡别名：迁移期保留，供尚未改用双表接口的调用点（main.go:873）继续编译。
+// 语义等同于活跃表。
+// TODO(Task 6): verifyMinisign 改为接收 active/historical 双表后删除本别名。
+var minisignPublicKeys = minisignActiveKeys
 
 func verifyMinisign(binaryPath, sigPath string, pubKeys []minisignKeyEntry) (*MinisigInfo, error) {
 	binaryData, err := os.ReadFile(binaryPath)
