@@ -65,9 +65,21 @@ jobs:
       - name: Check key expiration dates
         id: check
         run: |
-          # 提取所有过期日期
-          GO_DATES=$(grep -oP 'ExpiresAt: "\K[^"]+' go/installer/minisign_verify.go 2>/dev/null || true)
-          RS_DATES=$(grep -oP 'expires_at: "\K[^"]+' rust/aegis/src/core/crypto/minisign.rs 2>/dev/null || true)
+          # 只提取【活跃密钥表】内的过期日期。
+          #
+          # 不能整文件 grep：那会连带抓到
+          #   1) rust/.../crypto/minisign.rs 的 mod tests 夹具日期（2999-12-31）
+          #   2) 历史表的过期日期 —— 历史钥本就允许过期（spec §7.1）。一旦有钥
+          #      退役进历史表，最早日期会落在过去 → 立刻误报「密钥已过期」。
+          #
+          # 结束模式与 scripts/rotate-minisign-key.sh 的 GO_END / RS_END 保持一致：
+          #   Go   活跃表以独立 "}" 结尾
+          #   Rust 活跃表以 "}];" 结尾（**不是**独立的 "];" —— 用 "^];" 永不匹配，
+          #       范围会一路吞到文件末尾，把夹具与历史表一起抓进来）
+          GO_DATES=$(awk '/^var minisignActiveKeys/,/^}$/' go/installer/minisign_verify.go 2>/dev/null \
+            | grep -oP 'ExpiresAt: "\K[^"]+' || true)
+          RS_DATES=$(awk '/^pub const MINISIGN_ACTIVE_KEYS/,/^[}\]]{1,2};$/' rust/aegis/src/core/crypto/minisign.rs 2>/dev/null \
+            | grep -oP 'expires_at: "\K[^"]+' || true)
           ALL_DATES=$(printf '%s\n%s' "$GO_DATES" "$RS_DATES" | grep -v '^$' | sort)
 
           if [ -z "$ALL_DATES" ]; then
