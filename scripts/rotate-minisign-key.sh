@@ -67,6 +67,15 @@ if [ -z "$NEW_KEY" ]; then
     echo "::error::从 minisign.pub 提取到的新公钥为空；已中止" >&2
     exit 1
 fi
+# 形状校验：非 56 位 base64 会让「新公钥已写入」的校验被畸形值满足，
+# 从而打印成功却写出不可用的密钥表。
+case "$NEW_KEY" in
+    *[!A-Za-z0-9+/]* | "") echo "::error::新公钥含非法字符：$NEW_KEY" >&2; exit 1 ;;
+esac
+if [ "${#NEW_KEY}" -ne 56 ]; then
+    echo "::error::新公钥长度应为 56，实际 ${#NEW_KEY}：$NEW_KEY" >&2
+    exit 1
+fi
 echo ">>> 新公钥: $NEW_KEY"
 
 # ---- 私钥立即落盘（在任何源码写入之前）----
@@ -151,10 +160,20 @@ replace_block() {
 # 而校验「看不到」丢失。故此处用与解析器无关的 56 字符 base64 正则，
 # 分别对两个源文件做快照。
 snapshot_keys() {
-    grep -oE '[A-Za-z0-9+/]{56}' "$1" 2>/dev/null | LC_ALL=C sort -u
+    # `|| true`：grep 无匹配时退出码为 1，在 set -e 下会静默中止脚本。
+    { grep -oE '[A-Za-z0-9+/]{56}' "$1" 2>/dev/null || true; } | LC_ALL=C sort -u
 }
 GO_KEYS_SNAPSHOT=$(snapshot_keys "$GO_FILE")
 RS_KEYS_SNAPSHOT=$(snapshot_keys "$RS_FILE")
+# 显式诊断：目标文件里一把 56 字符公钥都没有时，多半是路径指错或格式变更。
+if [ -z "$GO_KEYS_SNAPSHOT" ]; then
+    echo "::error::$GO_FILE 中未找到任何 56 字符公钥；请检查路径与密钥表格式" >&2
+    exit 1
+fi
+if [ -z "$RS_KEYS_SNAPSHOT" ]; then
+    echo "::error::$RS_FILE 中未找到任何 56 字符公钥；请检查路径与密钥表格式" >&2
+    exit 1
+fi
 
 validate_output() {
     local file="$1" label="$2"

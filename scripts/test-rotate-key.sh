@@ -47,7 +47,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 if [ -n "$pub" ]; then
-    printf 'untrusted comment: minisign public key DEADBEEF\nRWQtestNEWKEYtestNEWKEYtestNEWKEYtestNEWKEYtestNEWKEY\n' >"$pub"
+    printf 'untrusted comment: minisign public key DEADBEEF\nRWQtestNEWKEYtestNEWKEYtestNEWKEYtestNEWKEYtestNEWKEYABC\n' >"$pub"
 fi
 if [ -n "$sec" ]; then
     printf 'untrusted comment: minisign encrypted secret key\nRWQtestSECRETKEY\n' >"$sec"
@@ -192,8 +192,8 @@ GO_LINE=$(grep -n 'cp "$TEMP_DIR/go_new.go"' "$ROTATE" | head -1 | cut -d: -f1)
 RS_LINE=$(grep -n 'cp "$TEMP_DIR/rs_new.rs"' "$ROTATE" | head -1 | cut -d: -f1)
 check "私钥落盘行号小于 Go 写入行号" "[ -n \"$KEY_LINE\" ] && [ -n \"$GO_LINE\" ] && [ \"$KEY_LINE\" -lt \"$GO_LINE\" ]"
 check "私钥落盘行号小于 Rust 写入行号" "[ -n \"$KEY_LINE\" ] && [ -n \"$RS_LINE\" ] && [ \"$KEY_LINE\" -lt \"$RS_LINE\" ]"
-check "私钥落盘使用 umask 077（整行，注释不算）" \
-    "grep -qF '(umask 077 && cp \"\$TEMP_DIR/minisign.key\"' \"\$ROTATE\""
+check "私钥落盘使用 umask 077（行首锚定，注释不算）" \
+    "grep -qE '^\\(umask 077 && cp \"\\\$TEMP_DIR/minisign.key\"' \"\$ROTATE\""
 
 # ---- 8b. 负路径：旧钥读取不到时必须报「丢失旧公钥」（P2-4 真值覆盖）----
 # 场景：锚点仍在、符号仍在、新钥能写入，但读取 pass 采不到旧钥
@@ -219,6 +219,28 @@ check "读取不到旧钥时必须非零退出" "[ $RC_LOST -ne 0 ]"
 check "读取不到旧钥时必须报告丢失" "grep -q '丢失旧公钥' '$TMP/lost.log'"
 check "读取不到旧钥时不得改动目标文件" \
     "[ \"$LOST_SHA\" = \"\$(sha256sum '$GO_LOST' | awk '{print \$1}')\" ]"
+
+# ---- 8c. 负路径：Rust 侧同样必须拦截（与 8b 对称）----
+echo
+echo "=== 8c. 负路径：Rust 读取不到旧钥时必须拦截 ==="
+GO_LOST2="$TMP/lost2_go.go"
+RS_LOST2="$TMP/lost2_rs.rs"
+cp "$GO_FILE" "$GO_LOST2"
+cp "$RS_FILE" "$RS_LOST2"
+sed -i 's/public_key:/pk:/' "$RS_LOST2"
+RS_LOST_SHA=$(sha256sum "$RS_LOST2" | awk '{print $1}')
+set +e
+env PATH="$TMP/bin:$PATH" \
+    ROTATE_GO_FILE="$GO_LOST2" \
+    ROTATE_RS_FILE="$RS_LOST2" \
+    ROTATE_KEY_OUT="$TMP/lost2/new.key" \
+    bash "$ROTATE" >"$TMP/lost2.log" 2>&1
+RC_LOST2=$?
+set -e
+check "Rust 读取不到旧钥时必须非零退出" "[ $RC_LOST2 -ne 0 ]"
+check "Rust 读取不到旧钥时必须报告 rust 丢失" "grep -q 'rust 轮换后丢失旧公钥' '$TMP/lost2.log'"
+check "Rust 读取不到旧钥时不得改动 Rust 文件" \
+    "[ \"$RS_LOST_SHA\" = \"\$(sha256sum '$RS_LOST2' | awk '{print \$1}')\" ]"
 
 # ---- 9. 校验必须真的校验新公钥 ----
 echo
