@@ -855,6 +855,23 @@ git commit -m "refactor(installer): 拆分 minisign 密钥为活跃/历史两组
 
 ## Task 6: Go verifyMinisign 支持双表
 
+> **承接 Task 5 审查的 F5-1（必修）**：Go 的 `expired()` 与 Rust 的 `key_expired()`
+> 在**到期日当天**语义不一致 —— Go 用 `time.Now().After(parsed)`（当天 00:00 后即过期），
+> Rust 用 `now_str > expires_at` 字符串比较（当天仍有效）。差约 24h。
+> 修法（保持畸形日期 fail-closed，只对齐边界）：
+> ```go
+> if _, err := time.Parse("2006-01-02", e.ExpiresAt); err != nil {
+>     return true
+> }
+> return time.Now().UTC().Format("2006-01-02") > e.ExpiresAt
+> ```
+> 并补边界测试：`ExpiresAt` == 今天 → **不**过期；昨天 → 过期。
+>
+> **承接 F5-2（必修）**：改完调用点后**必须显式删除**别名 `minisignPublicKeys`
+> （Go 对 package 级未使用变量**不报错**，漏删不会编译失败）。
+> 验证：`grep -rn "minisignPublicKeys" --include=*.go .` 应无输出。
+
+
 **Files:**
 - Modify: `go/installer/minisign_verify.go`
 - Modify: `go/installer/minisign_verify_test.go`
