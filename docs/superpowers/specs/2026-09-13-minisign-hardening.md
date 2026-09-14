@@ -144,10 +144,35 @@ core 安装与升级 100% 失败。core 链路的完整性目前**仅依赖 SHA2
 携带 core 的 digest 白名单），属架构决策，不在本计划范围。
 代码中已加注释警示，避免未来有人为“统一”而踩坑。
 
-## 7.2 未覆盖范围（同威胁模型下的下一个缺口）
+## 7.2 三方完整性矩阵（实测核验）
 
-`singbox/upgrade.rs` 的下载路径**完全无完整性校验**（无 SHA256、无签名），
-源为上游 `SagerNet/sing-box`。不在本计划范围内，建议单列任务。
+| 路径 | 上游 | 上游完整性元数据 | 本项目策略 |
+|------|------|-----------------|-----------|
+| `system/upgrade.rs` | 自家仓库 | ✅ minisign（我们签，26/27 release 有） | **硬校验**：缺签名即拒绝 |
+| `system/core_upgrade.rs` | `XTLS/Xray-core` | ❌ **无**（64 资产 / 0 minisig / attestation 404） | **仅 SHA256**（release API `digest`） |
+| `singbox/upgrade.rs` | `SagerNet/sing-box` | ✅ **sigstore attestation**（GitHub 原生） | **方案 A**：SHA256 + attestation 存在性校验 |
+
+### sing-box 方案 A 设计（用户批准）
+
+上游 `SagerNet/sing-box` 为每个 release 生成 GitHub 原生 attestation：
+- `mediaType: application/vnd.dev.sigstore.bundle.v0.3+json`
+- `predicateType: https://in-toto.io/attestation/release/v0.2`
+- 签名者 SAN `URI:https://dotcom.releases.github.com`（GitHub 自己）
+- 覆盖 168 个 subject，含 aegis 所需全部 linux 资产
+
+校验流程：
+1. 下载后计算本地 `sha256`
+2. `GET /repos/SagerNet/sing-box/attestations/sha256:<local_sha>`
+   （实测：已知 digest → **200**；未知 → **404**）
+3. 仅当 200 且响应含 ≥1 条 attestation 时放行；否则拒绝并删除已下载文件
+
+**安全论证**（威胁模型 = 防中间人替换，不防上游账号被盗）：
+- 纯 MITM **不可行** —— 无法让 GitHub 为一个被篡改的文件返回对应 digest 的 attestation
+- 伪造需控制 SagerNet 仓库（能改 release 并生成 attestation）→ **超出威胁模型**
+- **不验证 sigstore 签名本身**（与完整方案 B 的差别，已知且接受）
+
+**注**：sing-box 原先**连 SHA256 都没有**（`upgrade.rs` 下载后直接解压），
+本任务同时补上 digest 校验与 attestation 校验。
 
 ## 7.3 测试覆盖边界（如实披露）
 

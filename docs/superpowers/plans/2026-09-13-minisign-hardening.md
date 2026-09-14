@@ -479,6 +479,226 @@ git commit -m "feat(aegis): 升级路径签名改为硬校验，缺失即拒绝"
 
 ---
 
+## Task 4b: sing-box 完整性校验（方案 A）
+
+**背景**：上游 `SagerNet/sing-box` **无 minisign**，但为每个 release 生成
+**GitHub 原生 sigstore attestation**（`predicateType: in-toto.io/attestation/release/v0.2`，
+签名者 SAN `URI:https://dotcom.releases.github.com`，覆盖 168 个 subject）。
+当前 `singbox/upgrade.rs` **连 SHA256 都没有** —— 下载后直接解压。
+
+**方案 A（用户批准）**：本地 SHA256 + 调 GitHub attestation API 确认该 digest 有记录。
+不验证 sigstore 签名本身；信任锚定到 GitHub API（HTTPS + 该仓库 attestation 记录）。
+纯 MITM 不可行：无法让 GitHub 为篡改后的文件返回对应 digest 的 attestation。
+
+**Files:**
+- Modify: `rust/aegis/src/core/singbox/upgrade.rs`
+- Modify: `rust/aegis/src/core/singbox/installer.rs`
+- Test: `rust/aegis/src/core/singbox/upgrade.rs`（内联 `mod tests`）
+
+**Interfaces:**
+- Consumes: `crate::core::network::release_api::{ReleaseAsset, parse_digest, fetch_json_from_mirrors}`
+- Produces:
+  - `SingBoxReleaseInfo` 增加字段 `pub sha256: String`
+  - `async fn verify_sha256_file(path: &str, expected: &str) -> Result<()>`
+  - `async fn has_attestation_for(&self, sha256_hex: &str) -> Result<bool>`
+
+- [ ] **Step 1: 写失败测试**
+
+在 `rust/aegis/src/core/singbox/upgrade.rs` 的 `mod tests` 中追加：
+
+```rust
+    #[test]
+    fn test_attestation_path_is_wellformed() {
+        // 锁定 API 路径形态：/repos/{owner}/{repo}/attestations/sha256:<hex>
+        let p = attestation_path("2375de6999f4f56ab46b4fc5ddf26a6aba1d3e61a0f4e7ddec2f4690457d5f63");
+        assert_eq!(
+            p,
+            "/repos/SagerNet/sing-box/attestations/sha256:2375de6999f4f56ab46b4fc5ddf26a6aba1d3e61a0f4e7ddec2f4690457d5f63"
+        );
+    }
+
+    #[test]
+    fn test_attestation_path_rejects_non_sha256() {
+        assert!(attestation_path("").is_empty());
+        assert!(attestation_path("not-a-hash").is_empty());
+        // 长度不足 / 含非法字符 → 视为无效，不得发请求
+        assert!(attestation_path("abc").is_empty());
+        assert!(attestation_path(&"z".repeat(64)).is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_verify_sha256_file_detects_mismatch() {
+        let dir = std::env::temp_dir().join(format!("sbv-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("data.bin");
+        std::fs::write(&f, b"hello").unwrap();
+
+        // 正确值：sha256("hello")
+        let good = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+        assert!(verify_sha256_file(f.to_str().unwrap(), good).await.is_ok());
+
+        // 错误值必须失败
+        let bad = "0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(verify_sha256_file(f.to_str().unwrap(), bad).await.is_err());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `cd rust/aegis && cargo test --lib singbox::upgrade`
+Expected: 编译失败 —— `cannot find function 'attestation_path'` / `verify_sha256_file` / `SingBoxReleaseInfo has no field 'sha256'`
+
+- [ ] **Step 3: 实现 attestation 路径与 SHA256 校验**
+
+在 `rust/aegis/src/core/singbox/upgrade.rs` 中追加（放在 `build_download_url` 之后）：
+
+```rust
+/// 构造 GitHub attestation 查询路径。返回空串表示 hex 无效，调用方不得发请求。
+///
+/// API 形态（实测）：已知 digest → 200；未知 digest → 404。
+fn attestation_path(sha256_hex: &str) -> String {
+    let ok = sha256_hex.len() == 64
+        && sha256_hex.bytes().all(|b| b.is_ascii_hexdigit());
+    if !ok {
+        return String::new();
+    }
+    format!(
+        "/repos/{}/{}/attestations/sha256:{}",
+        SINGBOX_RELEASE_OWNER, SINGBOX_RELEASE_REPO, sha256_hex.to_ascii_lowercase()
+    )
+}
+
+/// 计算文件 sha256 并与期望值比对（大小写不敏感）。
+async fn verify_sha256_file(path: &str, expected_hex: &str) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    let data = fs::read(path).await.context("读取下载文件失败")?;
+    let mut h = Sha256::new();
+    h.update(&data);
+    let got = format!("{:x}", h.finalize());
+    if !got.eq_ignore_ascii_case(expected_hex) {
+        anyhow::bail!("sing-box 校验失败: SHA256 期望 {}, 实际 {}", expected_hex, got);
+    }
+    Ok(())
+}
+```
+
+在 `SingBoxReleaseInfo` 增加字段：
+
+```rust
+#[derive(Debug, Clone)]
+pub struct SingBoxReleaseInfo {
+    pub tag_name: String,
+    pub download_url: String,
+    pub size: Option<u64>,
+    /// 上游 release API 提供的资产 SHA256（hex，无前缀）。缺失则视为错误。
+    pub sha256: String,
+}
+```
+
+在 `fetch_release` 中填充 `sha256`：从匹配的 asset 取 `digest`，经 `parse_digest` 解析；
+**缺失即报错**（不能因为上游没给 digest 就跳过校验）：
+
+```rust
+        let asset = release
+            .assets
+            .iter()
+            .find(|a| a.name == tarball_name)
+            .ok_or_else(|| anyhow!("Release {} 缺少资产 {}", release.tag_name, tarball_name))?;
+        let size = asset.size;
+        let sha256 = parse_digest(asset.digest.as_deref().unwrap_or(""))
+            .ok_or_else(|| anyhow!("Release {} 资产 {} 缺少 SHA256 digest",
+                release.tag_name, tarball_name))?;
+```
+
+并在返回值中加入 `sha256`。相应地 `use` 中补 `parse_digest`。
+
+- [ ] **Step 4: 实现 attestation 查询**
+
+在 `SingBoxUpgradeManager` 的 `impl` 中追加：
+
+```rust
+    /// 调 GitHub attestation API 确认该 digest 确有 attestation 记录。
+    /// 200 且含 ≥1 条 attestation → true；404 或其他 → false。
+    async fn has_attestation_for(&self, sha256_hex: &str) -> Result<bool> {
+        let path = attestation_path(sha256_hex);
+        if path.is_empty() {
+            anyhow::bail!("无效的 sha256: {}", sha256_hex);
+        }
+        let url = format!("{}{}", SINGBOX_RELEASE_API_BASE, path);
+        let mut req = self.client.get(&url).header("Accept", "application/vnd.github+json");
+        if let Some(t) = self.github_token.as_deref() {
+            req = req.header("Authorization", format!("Bearer {}", t));
+        }
+        let resp = req.send().await.context("查询 attestation 失败")?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        if !resp.status().is_success() {
+            anyhow::bail!("attestation 查询返回 {}", resp.status());
+        }
+        let json: serde_json::Value = resp.json().await.context("解析 attestation 响应失败")?;
+        let n = json
+            .get("attestations")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        Ok(n > 0)
+    }
+```
+
+- [ ] **Step 5: 接到两个下载点**
+
+`rust/aegis/src/core/singbox/upgrade.rs:189` 附近，下载后立即校验：
+
+```rust
+        SingBoxInstaller::download_file(&release.download_url, &archive_path).await?;
+
+        // 完整性校验（方案 A）：先验 SHA256，再确认 GitHub 为该 digest 存有 attestation。
+        // 上游 sing-box 不提供 minisign，但 GitHub 为每个 release 生成原生
+        // sigstore attestation；此处以「该 digest 是否有 attestation 记录」作为信任锚。
+        verify_sha256_file(&archive_path, &release.sha256).await?;
+        if !self.has_attestation_for(&release.sha256).await? {
+            tokio::fs::remove_file(&archive_path).await.ok();
+            anyhow::bail!(
+                "sing-box 完整性校验失败: {} 无 GitHub attestation 记录（可能被替换）",
+                release.sha256
+            );
+        }
+```
+
+`rust/aegis/src/core/singbox/installer.rs:50` 是另一条下载入径，同样处理：
+先把 `download_url`/`sha256` 传递到该处（或让它复用 `SingBoxUpgradeManager` 的校验），
+确保**两条路径都校验**。若该路径拿不到 `ReleaseResponse`，最少要在
+`SingBoxInstaller` 增加 `sha256: &str` 参数并在下载后 `verify_sha256_file`。
+
+- [ ] **Step 6: 运行测试确认通过**
+
+Run: `cd rust/aegis && cargo test --lib singbox::upgrade`
+Expected: PASS
+
+- [ ] **Step 7: 质量门**
+
+Run:
+```bash
+cd rust/aegis
+cargo fmt
+cargo clippy --all-targets --all-features -- -D warnings
+cargo nextest run
+cargo test --doc
+```
+Expected: 全绿
+
+- [ ] **Step 8: 提交**
+
+```bash
+git add rust/aegis/src/core/singbox/upgrade.rs rust/aegis/src/core/singbox/installer.rs
+git commit -m "feat(aegis): sing-box 增加 SHA256 与 GitHub attestation 校验（方案 A）"
+```
+
+---
+
 ## Task 5: Go 密钥表拆分
 
 **Files:**
