@@ -418,10 +418,9 @@ impl UpgradeManager {
         )?;
 
         let (got_version, got_asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
-        // 精确相等：contains/HasPrefix 会放行 "v1.5.3-evil"、"xv1.5.3" 之类
         if got_version != artifact.tag_name {
             anyhow::bail!(
-                "Minisign 版本不匹配: 期望包含 {}, 实际 {}",
+                "Minisign 版本不匹配: 期望 {}, 实际 {}",
                 artifact.tag_name,
                 got_version
             );

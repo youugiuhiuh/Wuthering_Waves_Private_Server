@@ -381,7 +381,7 @@ impl WwpsCoreUpgradeManager {
             if got_version != release.tag_name {
                 fs::remove_file(&temp_file).await.ok();
                 anyhow::bail!(
-                    "Minisign 版本不匹配: 期望包含 {}, 实际 {}",
+                    "Minisign 版本不匹配: 期望 {}, 实际 {}",
                     release.tag_name,
                     got_version
                 );

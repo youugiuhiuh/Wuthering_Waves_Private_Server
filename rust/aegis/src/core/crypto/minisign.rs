@@ -115,16 +115,18 @@ mod tests {
         assert_eq!(name, "file:extra");
     }
 
-    /// 锁定调用方必须用 `==` 而非 `contains` / `HasPrefix` 校验版本号。
-    /// 升级路径（upgrade.rs / core_upgrade.rs）据此拒绝 `v1.5.3-evil`、`xv1.5.3` 之类。
+    /// 文档性测试：记录 trusted comment 的解析语义与格式约定。
+    ///
+    /// ⚠️ 本测试**不覆盖**升级路径的版本校验逻辑：真正的比较在
+    /// `system::upgrade::verify_downloaded_minisign`（async、需网络）
+    /// 与 `system::core_upgrade` 中，当前无单测夹具可达。
+    /// 因此把调用方改回 `contains` / `HasPrefix` 时，**本测试不会失败**。
+    /// 该模式的静态兜底见计划 Task 12 的 grep 检查。
     #[test]
     fn test_parse_trusted_comment_exact_semantics() {
         let (v, a) = parse_trusted_comment("v1.5.3:aegis").unwrap();
         assert_eq!(v, "v1.5.3");
         assert_eq!(a, "aegis");
-        // 子串/前缀变体不得被视为相等
-        assert_ne!(v, "v1.5.3-evil");
-        assert_ne!(v, "xv1.5.3");
     }
 
     #[test]
