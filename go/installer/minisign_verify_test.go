@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/youugiuhiuh/Wuthering_Waves_Private_Server/go/installer/i18n"
 )
 
 func TestKeyExpiredEmptyIsExpired(t *testing.T) {
@@ -302,30 +304,6 @@ func TestVerifyMinisignSkipsRetiredKeyInActiveList(t *testing.T) {
 	}
 }
 
-// TestVersionMatchMustBeExact 记录「版本号必须精确相等」这一语义约定。
-//
-// ⚠️ 本测试**不守护** main.go 里的版本校验分支：它只比较两个局部字符串变量，
-// 完全不经由被测代码。实测（2026-09-14）：把 main.go 中该处的比较改回
-// strings.HasPrefix（甚至改成恒放行），本测试**仍然通过**。
-// 真正的保证来自该处的代码改动本身 + 人工审查；该模式的静态兜底见计划 Task 12。
-func TestVersionMatchMustBeExact(t *testing.T) {
-	// 锁定语义：精确相等，禁止前缀匹配
-	cases := []struct {
-		got, expected string
-		want          bool
-	}{
-		{"v1.5.3", "v1.5.3", true},
-		{"v1.5.3-evil", "v1.5.3", false},
-		{"xv1.5.3", "v1.5.3", false},
-		{"v1.5.30", "v1.5.3", false},
-	}
-	for _, c := range cases {
-		if got := c.got == c.expected; got != c.want {
-			t.Fatalf("版本匹配 %q vs %q = %v, 期望 %v", c.got, c.expected, got, c.want)
-		}
-	}
-}
-
 // ---- matchTrustedComment：覆盖 main.go 版本/资产名校验的安全语义 ----
 //
 // 背景：这两项判断原先内联在 downloadAndDeployAegis 里，无注入接缝，
@@ -348,8 +326,48 @@ func TestMatchTrustedCommentRejectsSubstringVersion(t *testing.T) {
 }
 
 func TestMatchTrustedCommentRejectsWrongAsset(t *testing.T) {
-	if err := matchTrustedComment("v1.5.3", "installer", "v1.5.3", "aegis"); err == nil {
+	err := matchTrustedComment("v1.5.3", "installer", "v1.5.3", "aegis")
+	if err == nil {
 		t.Fatal("资产名不符应被拒绝")
+	}
+	// 锁定错误内容与参数顺序（expected, got）—— 防止将来把两个参数写反
+	want := i18n.T("minisign.asset_mismatch", "aegis", "installer")
+	if err.Error() != want {
+		t.Fatalf("错误消息不符，期望 %q 实际 %q", want, err.Error())
+	}
+}
+
+func TestMatchTrustedCommentRejectsVersionBeforeAsset(t *testing.T) {
+	// 版本与资产同时不符时，应报版本错（判定顺序：版本优先）
+	err := matchTrustedComment("v9.9.9", "installer", "v1.5.3", "aegis")
+	if err == nil {
+		t.Fatal("两者都不符应被拒绝")
+	}
+	want := i18n.T("minisign.version_mismatch", "v1.5.3", "v9.9.9")
+	if err.Error() != want {
+		t.Fatalf("应优先报版本不符，期望 %q 实际 %q", want, err.Error())
+	}
+}
+
+// ---- requireMinisign：签名硬校验的唯一判定点 ----
+//
+// 这是本计划在 Go 侧最重要的安全门：签名缺失/失败必须拒绝安装。
+// 原先该判定内联在 downloadAndDeployAegis，无注入接缝 ——
+// 实测把它改回「仅告警后继续」时，整个测试套件仍然全绿。
+
+func TestRequireMinisignRejectsWhenNotPassed(t *testing.T) {
+	err := requireMinisign(false)
+	if err == nil {
+		t.Fatal("签名未通过时必须返回错误（否则攻击者删掉 .minisig 即可绕过）")
+	}
+	if err.Error() != i18n.T("minisign.missing_fatal") {
+		t.Fatalf("错误消息应为 missing_fatal，实际 %q", err.Error())
+	}
+}
+
+func TestRequireMinisignAcceptsWhenPassed(t *testing.T) {
+	if err := requireMinisign(true); err != nil {
+		t.Fatalf("签名已通过时不应报错，实际: %v", err)
 	}
 }
 

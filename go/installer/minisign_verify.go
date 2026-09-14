@@ -106,6 +106,22 @@ func parseTrustedComment(comment string) (version string, assetName string, err 
 	return parts[0], parts[1], nil
 }
 
+// requireMinisign 是签名硬校验的唯一判定点。
+//
+// 签名缺失或验证失败 → 返回错误，调用方必须拒绝安装。
+// 若这里改成「仅告警后继续」，攻击者只需删除 .minisig 资产即可
+// 完全绕过签名验证（这正是本函数存在的理由）。
+//
+// 抽成纯函数是为了让这处安全关键判定成为可测单元：它原先内联在
+// downloadAndDeployAegis 中，无注入接缝。实测：去掉 return 改回
+// printYellow 后，整个测试套件仍然全绿（即无任何回归保护）。
+func requireMinisign(passed bool) error {
+	if !passed {
+		return fmt.Errorf("%s", i18n.T("minisign.missing_fatal"))
+	}
+	return nil
+}
+
 // matchTrustedComment 校验签名 trusted comment 的版本与资产名。
 //
 // 纯函数，便于直接单测（原先这两段判断内联在 main.go 的

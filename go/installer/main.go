@@ -890,10 +890,10 @@ func downloadAndDeployAegis() string {
 			minisigPassed = true
 		}
 	}
-	if !minisigPassed {
-		// 硬校验：签名缺失即拒绝，不得回退到「仅 SHA256」。
-		// 否则攻击者只需删除 .minisig 资产即可完全绕过签名验证。
-		printRed(i18n.T("minisign.missing_fatal"))
+	// 硬校验：签名缺失即拒绝，不得回退到「仅 SHA256」。
+	// 否则攻击者只需删除 .minisig 资产即可完全绕过签名验证。
+	if err := requireMinisign(minisigPassed); err != nil {
+		printRed(err.Error())
 		return ""
 	}
 

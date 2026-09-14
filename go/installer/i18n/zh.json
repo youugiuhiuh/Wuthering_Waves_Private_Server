@@ -29,8 +29,6 @@
   "minisign.verify_ok": "✅ Minisign 签名验证通过",
   "minisign.verify_failed": "❌ Minisign 签名验证失败: %s",
   "minisign.download_start": "正在下载 Minisign 签名文件...",
-  "minisign.pubkey_not_found": "Minisign 公钥未配置",
-  "minisign.skipped": "⚠ Minisign 签名不可用，仅使用 SHA256 验证",
   "minisign.missing_fatal": "❌ 签名缺失，拒绝安装（防中间人替换）",
   "minisign.trusted_comment": "可信注释: %s",
   "minisign.expected_version": "期望版本: %s",
