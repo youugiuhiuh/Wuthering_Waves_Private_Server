@@ -6,7 +6,7 @@ use anyhow::Result;
 use libc::{mlock, munlock};
 use obfstr::obfstr;
 use rand::Rng;
-use secrecy::{ExposeSecret, SecretString, SecretVec};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -66,7 +66,7 @@ impl SecurityManager {
         Ok(result)
     }
 
-    pub fn decrypt(&self, encrypted_data: &[u8]) -> Result<SecretVec<u8>> {
+    pub fn decrypt(&self, encrypted_data: &[u8]) -> Result<SecretBox<Vec<u8>>> {
         if encrypted_data.len() < 12 {
             return Err(anyhow::anyhow!(
                 obfstr!("Invalid encrypted data length").to_string()
@@ -107,7 +107,7 @@ impl SecurityManager {
             }
         }
 
-        let secret_vec = SecretVec::new(decrypted_vec);
+        let secret_vec = SecretBox::new(Box::new(decrypted_vec));
 
         Ok(secret_vec)
     }
