@@ -65,9 +65,24 @@ func TestTrustedCommentParsing(t *testing.T) {
 	if v != "v1.5.3" || a != "aegis" {
 		t.Fatalf("解析结果错误: %q %q", v, a)
 	}
-	// 精确语义锁定：这些不得等于真实版本
+}
+
+// 文档性测试：记录 trusted comment 的解析语义与格式约定。
+//
+// ⚠️ 本测试**不覆盖** main.go 里的版本校验逻辑：真正的比较在
+// installReleaseBinary（需网络与真实 release），当前无夹具可达。
+// 因此把调用方改回 strings.HasPrefix 时，**本测试不会失败**
+// （已实测：把 main.go:884 的比较注入为恒放行，本测试仍通过）。
+// 该模式的静态兜底见计划 Task 12 的 grep 检查。
+func TestTrustedCommentParsingIsNotAVersionGuard(t *testing.T) {
+	// 仅锁定「解析结果本身正确」与「子串变体不是同一个字符串」这两个事实，
+	// 不声称守护 main.go 的比较逻辑。
+	v, _, err := parseTrustedComment("v1.5.3:aegis")
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
 	if v == "v1.5.3-evil" || v == "xv1.5.3" {
-		t.Fatal("子串/前缀变体不得被视为相等")
+		t.Fatal("解析结果不可能是子串/前缀变体（若至此说明解析被改坏）")
 	}
 }
 
