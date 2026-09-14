@@ -135,6 +135,13 @@ Go 侧同构改造。
 
 原因：本项目无权也无能力为上游 Xray-core 签名，硬校验会导致
 core 安装与升级 100% 失败。core 链路的完整性目前**仅依赖 SHA256 digest**。
+
+**残留风险（须知悉）**：能编辑 upstream release 元数据者（仓库/账号被控）
+可删除 `.minisig`，从而回落到修复前的状态。纯链路 MITM **不可行** ——
+`sha256`、`minisig_url`、`download_url` 同来自一份 TLS 保护的 JSON
+（`https://api.github.com` 单一来源），要摘掉 `.minisig` 必须同时改 digest。
+彻底闭合需新增基建（自建签署镜像，或让自家已签的 aegis release manifest
+携带 core 的 digest 白名单），属架构决策，不在本计划范围。
 代码中已加注释警示，避免未来有人为“统一”而踩坑。
 
 ## 7.2 未覆盖范围（同威胁模型下的下一个缺口）
