@@ -870,7 +870,7 @@ func downloadAndDeployAegis() string {
 				return ""
 			}
 			printYellow(i18n.T("minisign.verify_start"))
-			info, err := verifyMinisign(binaryPath, sigPath, minisignPublicKeys)
+			info, err := verifyMinisign(binaryPath, sigPath, minisignActiveKeys, minisignHistoricalKeys)
 			if err != nil {
 				printRed(i18n.T("minisign.verify_failed", err.Error()))
 				return ""
