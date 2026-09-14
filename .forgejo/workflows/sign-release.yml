@@ -64,6 +64,11 @@ jobs:
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
+          # 空值守卫：空 secret 会写成空文件并静默继续，直到签名步骤报模糊错误。
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::error::MINISIGN_SECRET_KEY 未配置" >&2
+            exit 1
+          fi
           # 随机目录 + 700，降低固定路径的残留暴露面。
           KEY_DIR="$(mktemp -d)"
           chmod 700 "$KEY_DIR"
