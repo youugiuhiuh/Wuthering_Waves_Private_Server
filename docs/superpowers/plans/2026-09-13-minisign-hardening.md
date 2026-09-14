@@ -289,12 +289,16 @@ grep -n "MINISIGN_PUBLIC_KEYS" rust/aegis/src/core/crypto/minisign.rs
 Expected: 只剩定义行本身（调用点已在 Step 4 改完）。删除该行及其上方 4 行 doc 注释
 （`/// 过渡别名…` / `/// core_upgrade.rs…` / `/// TODO(Task 2)…`）。
 
-删除后确认全仓无残留：
+删除后确认 **Rust 侧**无残留（`.sh` 侧尚用旧锚点，属 Task 8 范围，本任务不动）：
 
 ```bash
-grep -rn "MINISIGN_PUBLIC_KEYS" --include=*.rs --include=*.sh . | grep -v "\.worktrees/"
+grep -rn "MINISIGN_PUBLIC_KEYS" --include=*.rs . | grep -v "\.worktrees/"
 ```
 Expected: 无输出
+
+> 注：不检查 `*.sh`。`scripts/rotate-minisign-key.sh` 的 awk 锚点直到 Task 8 才会换成
+> `MINISIGN_ACTIVE_KEYS`；在那之前该脚本会「静默空转」（锚点匹配不到 → 键列表为空 →
+> 文件不变，却仍打印「✅ 密钥轮换完成」）。**Task 8 完成前不要运行轮换脚本。**
 
 - [ ] **Step 5: 运行测试确认通过**
 
