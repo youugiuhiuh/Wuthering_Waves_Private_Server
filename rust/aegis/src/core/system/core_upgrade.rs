@@ -351,11 +351,26 @@ impl WwpsCoreUpgradeManager {
             );
         }
 
-        // Minisign verification（必需：缺签名不继续，否则删 .minisig 即可绕过）
-        let sig_url = release
-            .minisig_url
-            .as_ref()
-            .ok_or_else(|| anyhow!("Release 缺少 Minisign 签名（{}）", release.tag_name))?;
+        // Minisign verification（条件启用：**存在签名则必须验证通过**）。
+        //
+        // 与 upgrade.rs 不同，本路径刻意不在签名缺失时报错。原因：
+        // core（Xray-core）的默认 release 源是**上游** XTLS/Xray-core，
+        // 而上游不提供任何 minisign 签名（实测其 release 有 64 个资产、
+        // 0 个 .minisig，只有 .dgst）。本项目无权也无能力为它签。
+        // 若在此硬性要求签名，会导致 core 安装与升级 100% 失败。
+        //
+        // 因此这里的策略是「存在即强校验」：一旦上游/镜像提供了签名，
+        // 验证失败（甚至是版本不符）一律拒绝，不得回退到 SHA256 放行。
+        // core 链路的完整性目前仅依赖 SHA256 digest（上游无签名可用）。
+        //
+        // ⚠️ 不要为了「与 upgrade.rs 统一」而把它改成硬校验。
+        let Some(sig_url) = release.minisig_url.as_ref() else {
+            log::warn!(
+                "Release {} 未提供 Minisign 签名，仅用 SHA256 校验（上游无签名）",
+                release.tag_name
+            );
+            return Ok(temp_file);
+        };
         {
             let sig_bytes = self
                 .build_request(sig_url)
