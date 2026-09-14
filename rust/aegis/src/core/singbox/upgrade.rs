@@ -469,6 +469,32 @@ mod tests {
         );
     }
 
+    /// 反向守卫：`SINGBOX_RELEASE_API_BASE` 已经**包含** `/repos`，
+    /// `fetch_recent_tags` / `fetch_release` 把它与 `SagerNet/sing-box/releases...` 直接拼接。
+    ///
+    /// 若有人把常量改成裸主机 `https://api.github.com`（为“修” attestation 拼接而做的
+    /// 反向改动），attestation URL 会**依然正确**（另一侧多补一个 `/repos` 即可），
+    /// 9 个 attestation 测试全绿 —— 但 releases 路径会变成
+    /// `https://api.github.com/SagerNet/sing-box/releases` → 404，
+    /// 同一类 bug 换了个接缝复发。本测试锁住那个接缝。
+    #[test]
+    fn test_release_api_base_still_carries_repos_segment() {
+        let url = format!(
+            "{}/{}/{}/releases",
+            SINGBOX_RELEASE_API_BASE, SINGBOX_RELEASE_OWNER, SINGBOX_RELEASE_REPO
+        );
+        assert_eq!(
+            url,
+            "https://api.github.com/repos/SagerNet/sing-box/releases"
+        );
+        assert_eq!(
+            url.matches("/repos").count(),
+            1,
+            "releases URL 只能含一处 /repos: {}",
+            url
+        );
+    }
+
     #[test]
     fn test_attestation_path_rejects_non_sha256() {
         assert!(attestation_path("").is_empty());
