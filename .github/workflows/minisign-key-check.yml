@@ -69,16 +69,32 @@ jobs:
           #
           # 不能整文件 grep：那会连带抓到
           #   1) rust/.../crypto/minisign.rs 的 mod tests 夹具日期（2999-12-31）
-          #   2) 历史表的过期日期 —— 历史钥本就允许过期（spec §7.1）。一旦有钥
+          #   2) 历史表的过期日期 —— 历史钥本就允许过期（spec §5.1）。一旦有钥
           #      退役进历史表，最早日期会落在过去 → 立刻误报「密钥已过期」。
           #
+          # 锚点漂移防护：若密钥表被改名（Tasks 1/5 就改过一次），awk 范围匹配不到
+          # 任何内容 → ALL_DATES 为空 → DAYS_LEFT=999 → 检查**永久失效且无人察觉**。
+          # 故先确认锚点存在，不存在即报错而非静默放行。
+          for pair in \
+            "go/installer/minisign_verify.go:^var minisignActiveKeys" \
+            "rust/aegis/src/core/crypto/minisign.rs:^pub const MINISIGN_ACTIVE_KEYS"; do
+            file="${pair%%:*}"; anchor="${pair#*:}"
+            if ! grep -qE "$anchor" "$file"; then
+              echo "::error::过期检查锚点失效：$file 中找不到 $anchor —— 密钥表可能已改名，本检查会静默失效，须更新本 workflow" >&2
+              exit 1
+            fi
+          done
+
           # 结束模式与 scripts/rotate-minisign-key.sh 的 GO_END / RS_END 保持一致：
           #   Go   活跃表以独立 "}" 结尾
-          #   Rust 活跃表以 "}];" 结尾（**不是**独立的 "];" —— 用 "^];" 永不匹配，
-          #       范围会一路吞到文件末尾，把夹具与历史表一起抓进来）
+          #   Rust 活跃表结尾随条目数与格式化而变："}];"（当前单条）
+          #       或 "];"（多条 / 经 rustfmt 重排后）。
+          #       注意 "^];" 在**当前**文件上永不匹配（结尾是 "}];"），
+          #       范围会一路吞到文件末尾，把夹具与历史表一起抓进来 —— 必须用下面这个
+          #       同时覆盖两种形态的模式，不要"简化"为 ^}];$ 或 ^];$。
           GO_DATES=$(awk '/^var minisignActiveKeys/,/^}$/' go/installer/minisign_verify.go 2>/dev/null \
             | grep -oP 'ExpiresAt: "\K[^"]+' || true)
-          RS_DATES=$(awk '/^pub const MINISIGN_ACTIVE_KEYS/,/^[}\]]{1,2};$/' rust/aegis/src/core/crypto/minisign.rs 2>/dev/null \
+          RS_DATES=$(awk '/^pub const MINISIGN_ACTIVE_KEYS/,/^[]}]*;$/' rust/aegis/src/core/crypto/minisign.rs 2>/dev/null \
             | grep -oP 'expires_at: "\K[^"]+' || true)
           ALL_DATES=$(printf '%s\n%s' "$GO_DATES" "$RS_DATES" | grep -v '^$' | sort)
 
