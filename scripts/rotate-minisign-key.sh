@@ -53,12 +53,20 @@ if [ -f "$ROOT/rust/aegis/Cargo.toml" ]; then
 fi
 
 TEMP_DIR=$(mktemp -d)
-# 同时挂 INT/TERM/HUP：否则 Ctrl-C / 被 kill 时临时目录（含私钥）可能残留。
-trap 'rm -rf "$TEMP_DIR"' EXIT INT TERM HUP
+# 信号需要显式 exit：bash 对已设陷阱的信号执行完 handler 后会继续执行下一条命令。
+# 用 exit 130（128+SIGINT）让 EXIT trap 去清临时目录。
+trap 'rm -rf "$TEMP_DIR"' EXIT
+trap 'exit 130' INT TERM HUP
 
 echo ">>> 生成新的 Minisign 密钥对（无密码）..."
 minisign -G -W -p "$TEMP_DIR/minisign.pub" -s "$TEMP_DIR/minisign.key"
 NEW_KEY=$(grep -v '^untrusted comment' "$TEMP_DIR/minisign.pub" | tr -d '\n')
+# 空值守卫：若 NEW_KEY 为空，validate_output 里的 `grep -qF -- ""` 对任何非空文件
+# 都返回 0，那道「新公钥已写入」检查会退化为恒真（即又变成空转）。
+if [ -z "$NEW_KEY" ]; then
+    echo "::error::从 minisign.pub 提取到的新公钥为空；已中止" >&2
+    exit 1
+fi
 echo ">>> 新公钥: $NEW_KEY"
 
 # ---- 私钥立即落盘（在任何源码写入之前）----
@@ -136,6 +144,18 @@ replace_block() {
 # ---- 通用：写回前校验 ----
 # 直接拒绝「区块替换把源码写坏」这一后果：任何必需符号消失即中止。
 # 此时真实文件尚未被触碰，安全。
+# 旧公钥快照：必须在任何改写【之前】，且用与 read_block 无关的方式提取。
+#
+# 为什么不能靠 read_block 现读：read_block 与改写用的是同一套标签解析，
+# 一旦标签变形（如 PublicKey: 被改成 Key:），两边都采不到 → 旧钥被静默丢弃
+# 而校验「看不到」丢失。故此处用与解析器无关的 56 字符 base64 正则，
+# 分别对两个源文件做快照。
+snapshot_keys() {
+    grep -oE '[A-Za-z0-9+/]{56}' "$1" 2>/dev/null | LC_ALL=C sort -u
+}
+GO_KEYS_SNAPSHOT=$(snapshot_keys "$GO_FILE")
+RS_KEYS_SNAPSHOT=$(snapshot_keys "$RS_FILE")
+
 validate_output() {
     local file="$1" label="$2"
     shift 2
@@ -154,24 +174,23 @@ validate_output() {
         return 1
     fi
     # 并确认旧公钥无一丢失（防止读取 pass 读空导致旧钥被静默移除）。
-    # 注意：comm 要求输入已排序，否则会报 "not in sorted order" 并给出错误结论。
-    # 同时只能比对待比较范围内的 56 字符 token；因此对输出文件也用
-    # 密钥表区块做范围限定（与 OLD_KEYS 的采集方式一致）。
-    local new_keys
+    #
+    # 关键：必须按【本文件】采集旧钥，不能用全局并集。
+    # 否则一次部分写入（先写 Go、后写 Rust 时失败）后，Go 独有的新钥会被
+    # 拿去与 Rust 文件比对 → 永远误报「丢失旧公钥」，轮换永久阻塞且无法自愈。
+    #
+    # comm 要求两侧已排序且 locale 一致：sort 与 comm 均加 LC_ALL=C。
+    local new_keys old_keys
     if [ "$label" = "go" ]; then
-        new_keys=$( {
-            read_block "$file" '^var minisignActiveKeys' "$GO_CLOSE" "$GO_END" | cut -f1
-            read_block "$file" '^var minisignHistoricalKeys' "$GO_CLOSE" "$GO_END" | cut -f1
-        } 2>/dev/null)
+        old_keys="$GO_KEYS_SNAPSHOT"
+        new_keys=$(snapshot_keys "$file")
     else
-        new_keys=$( {
-            read_block "$file" '^pub const MINISIGN_ACTIVE_KEYS' "$RS_CLOSE" "$RS_END" | cut -f1
-            read_block "$file" '^pub const MINISIGN_HISTORICAL_KEYS' "$RS_CLOSE" "$RS_END" | cut -f1
-        } 2>/dev/null)
+        old_keys="$RS_KEYS_SNAPSHOT"
+        new_keys=$(snapshot_keys "$file")
     fi
     local lost
-    lost=$(comm -23 \
-        <(printf '%s\n' "$OLD_KEYS" | sed '/^$/d' | LC_ALL=C sort -u) \
+    lost=$(LC_ALL=C comm -23 \
+        <(printf '%s\n' "$old_keys" | sed '/^$/d' | LC_ALL=C sort -u) \
         <(printf '%s\n' "$new_keys" | sed '/^$/d' | LC_ALL=C sort -u))
     if [ -n "$lost" ]; then
         printf '::error::%s 轮换后丢失旧公钥:\n%s\n已中止，原文件未被修改\n' "$label" "$lost" >&2
@@ -186,15 +205,6 @@ RS_END='^[}\]]{1,2};$'
 RS_CLOSE='\];$'
 
 # ================= Go =================
-# 采集当前两个【密钥表】里的旧生产公钥（供 validate_output 做「无一丢失」检查）。
-# 只取活跃/历史表区块内的条目 —— 不能全文件扫，否则会把 Rust
-# mod tests 里的夹具钥（TEST_PUBKEY）也当成生产钥，导致误报「旧钥丢失」。
-OLD_KEYS=$( {
-    read_block "$GO_FILE" '^var minisignActiveKeys' "$GO_CLOSE" "$GO_END" | cut -f1
-    read_block "$GO_FILE" '^var minisignHistoricalKeys' "$GO_CLOSE" "$GO_END" | cut -f1
-    read_block "$RS_FILE" '^pub const MINISIGN_ACTIVE_KEYS' "$RS_CLOSE" "$RS_END" | cut -f1
-    read_block "$RS_FILE" '^pub const MINISIGN_HISTORICAL_KEYS' "$RS_CLOSE" "$RS_END" | cut -f1
-} 2>/dev/null | sed '/^$/d' | sort -u)
 
 GO_ACTIVE_BLOCK="$TEMP_DIR/go_active"
 GO_HIST_BLOCK="$TEMP_DIR/go_hist"

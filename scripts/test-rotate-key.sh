@@ -99,7 +99,8 @@ check "Go 副本保留 parseTrustedComment" "grep -q parseTrustedComment '$GO_CO
 check "Go 副本活跃表含旧钥" "awk '/^var minisignActiveKeys/,/^}/' '$GO_COPY_ACTIVE' | grep -q RWTZPf3"
 check "Go 副本活跃表含新钥" "awk '/^var minisignActiveKeys/,/^}/' '$GO_COPY_ACTIVE' | grep -q testNEWKEY"
 check "Go 副本历史表为空" "! awk '/^var minisignHistoricalKeys/,/^}/' '$GO_COPY_ACTIVE' | grep -q PublicKey"
-check "Go 副本语法有效" "[ -z \"\$(gofmt -l '$GO_COPY_ACTIVE')\" ]"
+check "Go 副本语法有效（需 gofmt）" \
+    "command -v gofmt >/dev/null && [ -z \"\$(gofmt -l '$GO_COPY_ACTIVE')\" ]"
 
 check "Rust 副本保留 verify_minisign" "grep -q verify_minisign '$RS_COPY_ACTIVE'"
 check "Rust 副本保留 parse_trusted_comment" "grep -q parse_trusted_comment '$RS_COPY_ACTIVE'"
@@ -191,13 +192,39 @@ GO_LINE=$(grep -n 'cp "$TEMP_DIR/go_new.go"' "$ROTATE" | head -1 | cut -d: -f1)
 RS_LINE=$(grep -n 'cp "$TEMP_DIR/rs_new.rs"' "$ROTATE" | head -1 | cut -d: -f1)
 check "私钥落盘行号小于 Go 写入行号" "[ -n \"$KEY_LINE\" ] && [ -n \"$GO_LINE\" ] && [ \"$KEY_LINE\" -lt \"$GO_LINE\" ]"
 check "私钥落盘行号小于 Rust 写入行号" "[ -n \"$KEY_LINE\" ] && [ -n \"$RS_LINE\" ] && [ \"$KEY_LINE\" -lt \"$RS_LINE\" ]"
-check "私钥落盘使用 umask 077（避免 644 窗口）" "grep -q 'umask 077' \"\$ROTATE\""
+check "私钥落盘使用 umask 077（整行，注释不算）" \
+    "grep -qF '(umask 077 && cp \"\$TEMP_DIR/minisign.key\"' \"\$ROTATE\""
+
+# ---- 8b. 负路径：旧钥读取不到时必须报「丢失旧公钥」（P2-4 真值覆盖）----
+# 场景：锚点仍在、符号仍在、新钥能写入，但读取 pass 采不到旧钥
+# （把标签 PublicKey: 改成解析器不认的 Key:）。
+# 此时输出活跃表只剩新钥 → 必须非零退出并报「丢失旧公钥」。
+echo
+echo "=== 8b. 负路径：读取不到旧钥时必须拦截 ==="
+GO_LOST="$TMP/lost_go.go"
+RS_LOST="$TMP/lost_rs.rs"
+cp "$GO_FILE" "$GO_LOST"
+cp "$RS_FILE" "$RS_LOST"
+sed -i 's/PublicKey:/Key:/' "$GO_LOST"
+LOST_SHA=$(sha256sum "$GO_LOST" | awk '{print $1}')
+set +e
+env PATH="$TMP/bin:$PATH" \
+    ROTATE_GO_FILE="$GO_LOST" \
+    ROTATE_RS_FILE="$RS_LOST" \
+    ROTATE_KEY_OUT="$TMP/lost/new.key" \
+    bash "$ROTATE" >"$TMP/lost.log" 2>&1
+RC_LOST=$?
+set -e
+check "读取不到旧钥时必须非零退出" "[ $RC_LOST -ne 0 ]"
+check "读取不到旧钥时必须报告丢失" "grep -q '丢失旧公钥' '$TMP/lost.log'"
+check "读取不到旧钥时不得改动目标文件" \
+    "[ \"$LOST_SHA\" = \"\$(sha256sum '$GO_LOST' | awk '{print \$1}')\" ]"
 
 # ---- 9. 校验必须真的校验新公钥 ----
 echo
 echo "=== 9. 校验逻辑必须检查新公钥 ==="
 check "validate_output 检查 NEW_KEY" "awk '/^validate_output\\(\\)/,/^}/' '$ROTATE' | grep -q 'NEW_KEY'"
-check "validate_output 检查旧钥无丢失" "awk '/^validate_output\\(\\)/,/^}/' '$ROTATE' | grep -q 'OLD_KEYS'"
+check "validate_output 检查旧钥无丢失" "awk '/^validate_output\\(\\)/,/^}/' '$ROTATE' | grep -q 'old_keys'"
 
 echo
 if [ "$fail" -ne 0 ]; then
