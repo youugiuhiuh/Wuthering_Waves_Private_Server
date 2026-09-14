@@ -22,7 +22,7 @@ Enforces running `cargo fmt`, `cargo clippy -- -D warnings`, `cargo nextest run`
 ```bash
 cargo fmt && \
 cargo clippy --all-targets --all-features -- -D warnings && \
-cargo nextest run && \
+cargo nextest run --cargo-profile fast-test && \
 cargo test --doc
 ```
 
@@ -92,7 +92,7 @@ Doc-tests FAILED
 
 - [ ] `cargo fmt`
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings`
-- [ ] `cargo nextest run`
+- [ ] `cargo nextest run --cargo-profile fast-test`
 - [ ] `cargo test --doc`
 - [ ] Zero Clippy warnings
 - [ ] All tests passing
@@ -116,15 +116,41 @@ Never skip the quality gate because:
 |---------|---------|
 | `cargo fmt` | Format code |
 | `cargo clippy --all-targets --all-features -- -D warnings` | Strict linting |
-| `cargo nextest run` | Run unit & integration tests (recommended) |
+| `cargo nextest run --cargo-profile fast-test` | Run unit & integration tests (recommended) |
 | `cargo test --doc` | Run documentation tests |
 | `cargo test` | Fallback when `cargo-nextest` is unavailable |
+
+## Fast Test Profile
+
+Projects may define a `fast-test` Cargo profile tuned for test throughput. Use it whenever it exists, because the default `dev` profile rebuilds the dependency graph with full debuginfo.
+
+```bash
+cargo nextest run --cargo-profile fast-test
+```
+
+It inherits `dev` with `opt-level = 1`, `debug = 0`, `incremental = true`, `codegen-units = 256`. `opt-level` must stay `>= 1`: `aws-lc-sys` (rustls' C dependency) mangles symbols differently at `O0` and linking fails.
+
+`nextest` 0.9.x only accepts the Cargo profile through the `--cargo-profile` CLI flag. There is no `cargo-profile` key in `.config/nextest.toml`, so there is no config-file or alias shortcut for it.
+
+### Cranelift backend
+
+A `cranelift-dev` profile exists for faster codegen. The backend must be passed through `RUSTFLAGS`, because a profile-level `codegen-backend` in `.cargo/config.toml` makes stable Cargo fail on every profile, not just that one.
+
+```bash
+rustup component add rustc-codegen-cranelift --toolchain nightly
+RUSTFLAGS="-Zcodegen-backend=cranelift" cargo +nightly check --profile cranelift-dev
+```
+
+Do not use it for builds or tests: linking fails with `undefined symbol: aws_lc_0_*_EVP_PKEY_*`. `aws-lc-sys` exports symbols with a `\u{1}` prefix that only the LLVM backend understands, and it cannot be removed from the graph because `matrix-sdk` and `serenity` force `reqwest/__rustls-aws-lc-rs` on. Cargo cannot subtract features. Until these close, Cranelift is `cargo check` only:
+
+- <https://github.com/rust-lang/rustc_codegen_cranelift/issues/1520>
+- <https://github.com/rust-lang/rust-bindgen/issues/2935>
 
 ## Common Nextest Commands
 
 | Command | Purpose |
 |---------|---------|
-| `cargo nextest run` | Run all tests |
+| `cargo nextest run --cargo-profile fast-test` | Run all tests (speed-first profile) |
 | `cargo nextest run -p <package>` | Tests for a specific package only |
 | `cargo nextest run <test_name>` | Run tests matching a name/pattern |
 | `cargo nextest run --no-fail-fast` (`--nff`) | Run all tests regardless of failures |
@@ -140,7 +166,7 @@ Never skip the quality gate because:
 ## Project-Specific Notes
 
 - Run from the workspace root.
-- Prefer `cargo nextest run` over `cargo test` for daily development.
+- Prefer `cargo nextest run --cargo-profile fast-test` over `cargo test` for daily development.
 - Always run `cargo test --doc` because `cargo-nextest` does not execute documentation tests.
 - For workspaces, execute the commands from the workspace root.
 - If feature-gated code exists, ensure the appropriate feature set is tested (typically `--all-features` where applicable).

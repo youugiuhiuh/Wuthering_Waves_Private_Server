@@ -80,6 +80,30 @@ lto = "thin"      # 启用链接时优化，减少二进制大小
 opt-level = 0
 codegen-units = 256
 
+# 开发用快速编译 profile（cranelift 后端）
+#   RUSTFLAGS="-Zcodegen-backend=cranelift" \
+#     cargo +nightly check --profile cranelift-dev
+# 需要 nightly + rustc-codegen-cranelift 组件：
+#   rustup component add rustc-codegen-cranelift --toolchain nightly
+# 后端只能用 RUSTFLAGS 指定：.cargo/config.toml 里的 profile-level
+# codegen-backend 会让 stable cargo 直接报错，即使构建的是别的 profile。
+[profile.cranelift-dev]
+inherits = "dev"
+opt-level = 1
+debug = 1
+
+# 测试用 profile：编译速度优先，供 cargo nextest run --cargo-profile fast-test 使用。
+# 不挂 cranelift：aws-lc-sys（rustls 的 C 依赖，被 matrix-sdk/serenity 强制启用）
+# 用 \u{1} 前缀导出符号，只有 LLVM 后端支持，cranelift 链接必然失败。见
+# https://github.com/rust-lang/rustc_codegen_cranelift/issues/1520
+# opt-level 必须 >= 1：aws-lc-sys 在 O0 下符号名不一致。
+[profile.fast-test]
+inherits = "dev"
+opt-level = 1
+debug = 0
+incremental = true
+codegen-units = 256
+
 [profile.release-perf]
 inherits = "release"
 opt-level = 3
