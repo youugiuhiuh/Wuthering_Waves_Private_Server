@@ -158,34 +158,63 @@ mod tests {
         }
     }
 
+    // ---- 测试夹具：minisign 官方向量 ----
+    // 取自 minisign 官方测试向量，prehashed 模式、allow_legacy=false，
+    // 与生产代码 `pub_key.verify(data, sig, false)` 的调用方式一致。
+    // 这是【测试专用】密钥，与 MINISIGN_ACTIVE_KEYS 的生产公钥无关 ——
+    // 因此生产密钥轮换后，这些用例仍然稳定有效。
+    const TEST_PUBKEY: &str = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
+    const TEST_SIG: &str = "untrusted comment: signature from minisign secret key\nRUQf6LRCGA9i559r3g7V1qNyJDApGip8MfqcadIgT9CuhV3EMhHoN1mGTkUidF/z7SrlQgXdy8ofjb7bNJJylDOocrCo8KLzZwo=\ntrusted comment: timestamp:1556193335\tfile:test\ny/rUw2y8/hOUYjZU71eHp/Wo1KZ40fGy2VJEDl34XMJM+TX48Ss/17u3IvIfbVR1FkZZSNCisQbuQY+bHwhEBg==";
+    const TEST_DATA: &[u8] = b"test";
+    const TEST_TRUSTED_COMMENT: &str = "timestamp:1556193335\tfile:test";
+
+    fn test_key_entry(expires_at: &'static str, retired_at: &'static str) -> MinisignKeyEntry {
+        MinisignKeyEntry {
+            public_key: TEST_PUBKEY,
+            expires_at,
+            retired_at,
+        }
+    }
+
+    #[test]
+    fn test_verify_accepts_valid_signature_with_active_key() {
+        let active = [test_key_entry("2999-12-31", "")];
+        let info =
+            verify_minisign(TEST_DATA, TEST_SIG, &active, &[]).expect("有效签名在活跃钥下应通过");
+        assert_eq!(info.trusted_comment, TEST_TRUSTED_COMMENT);
+    }
+
+    #[test]
+    fn test_verify_skips_expired_active_key() {
+        // 同一把钥、仍为活跃（retired_at 为空），但 expires_at 已过 → 必须被跳过
+        let active = [test_key_entry("2000-01-01", "")];
+        assert!(
+            verify_minisign(TEST_DATA, TEST_SIG, &active, &[]).is_err(),
+            "过期活跃钥必须被跳过"
+        );
+    }
+
+    #[test]
+    fn test_verify_historical_key_ignores_expiry() {
+        // 本任务核心语义：历史钥即便 expires_at 已过也必须被尝试。
+        // 若历史循环误加过期检查，此用例会失败。
+        let historical = [test_key_entry("2000-01-01", "2026-01-01")];
+        let info = verify_minisign(TEST_DATA, TEST_SIG, &[], &historical)
+            .expect("历史钥必须忽略过期并完成验证");
+        assert_eq!(info.trusted_comment, TEST_TRUSTED_COMMENT);
+    }
+
+    #[test]
+    fn test_verify_rejects_tampered_data() {
+        let active = [test_key_entry("2999-12-31", "")];
+        assert!(
+            verify_minisign(b"tampered", TEST_SIG, &active, &[]).is_err(),
+            "被篡改的数据必须被拒绝"
+        );
+    }
+
     #[test]
     fn test_verify_rejects_when_no_keys_supplied() {
-        let err = verify_minisign(b"data", "not-a-signature", &[], &[]);
-        assert!(err.is_err());
-    }
-
-    #[test]
-    fn test_verify_checks_active_keys_for_expiry() {
-        // 过期活跃钥必须被跳过 → 最终无匹配
-        let expired = [MinisignKeyEntry {
-            public_key: "RWTZPf3UsUDo9hPmWcOp+0TcwRLWHmOkNCGPw3kXcM3x5awPEzR3Y3Sf",
-            expires_at: "2000-01-01",
-            retired_at: "",
-        }];
-        let err = verify_minisign(b"data", "not-a-signature", &expired, &[]);
-        assert!(err.is_err());
-    }
-
-    #[test]
-    fn test_verify_historical_keys_ignore_expiry() {
-        // 历史钥即便 expires_at 已过也必须被尝试（此处仍无有效签名 → Err，
-        // 但关键是不能因过期而被提前跳过；用无效签名保证不 panic）
-        let historical = [MinisignKeyEntry {
-            public_key: "RWTZPf3UsUDo9hPmWcOp+0TcwRLWHmOkNCGPw3kXcM3x5awPEzR3Y3Sf",
-            expires_at: "2000-01-01",
-            retired_at: "2026-01-01",
-        }];
-        let err = verify_minisign(b"data", "not-a-signature", &[], &historical);
-        assert!(err.is_err());
+        assert!(verify_minisign(TEST_DATA, TEST_SIG, &[], &[]).is_err());
     }
 }
