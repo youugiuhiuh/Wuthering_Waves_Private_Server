@@ -1558,6 +1558,36 @@ Expected: 看到 `else { log::warn!(...); return Ok(temp_file); }`，
 且**不得**在 else 分支里跳过任何已验证内容的检查。
 参见 spec §7.1（两路径策略差异，勿为「统一」而改硬校验）。
 
+- [ ] **Step 5c: Go 侧安全门接线（静态守卫）**
+
+单元测试覆盖了 `requireMinisign` / `matchTrustedComment` 的**判定逻辑**，
+但覆盖不到「main.go 是否真的调用它们并拒绝安装」这层**接线**。
+实测：把 main.go 的调用改回内联 `if !minisigPassed { printYellow(...) }`
+（删掉 `requireMinisign` 调用），`go test ./...` **仍然全绿**。
+
+Run:
+```bash
+# 1) 硬校验门的调用点必须存在，且恰好 1 处
+test "$(grep -c 'requireMinisign(minisigPassed)' go/installer/main.go)" = "1" || {
+  echo "::error::requireMinisign 调用点缺失或被复制"; exit 1; }
+
+# 2) 调用后必须 printRed + return ""（拒绝安装），不得是 printYellow 后继续
+grep -n -A 3 'requireMinisign(minisigPassed)' go/installer/main.go
+```
+Expected: 输出含 `printRed(err.Error())` 与 `return ""`。
+
+```bash
+# 3) 版本/资产门的拒绝路径同样必须在位
+grep -n -A 3 'matchTrustedComment(gotVersion' go/installer/main.go
+```
+Expected: 输出含 `printRed(err.Error())` 与 `return ""`。
+
+```bash
+# 4) 不得残留「警告后继续」的旧形态
+grep -rn 'minisign.skipped' --include=*.go --include=*.json . | grep -v '\.worktrees/'
+```
+Expected: 无输出（该键已作为死键删除）。
+
 - [ ] **Step 6: 提交并推分支**
 
 ```bash
