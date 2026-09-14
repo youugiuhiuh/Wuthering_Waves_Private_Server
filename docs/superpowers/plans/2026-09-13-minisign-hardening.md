@@ -269,6 +269,33 @@ use crate::core::crypto::minisign::{self, MINISIGN_ACTIVE_KEYS, MINISIGN_HISTORI
 
 `rust/aegis/src/core/system/core_upgrade.rs`：同样处理（两处 import + 调用）。
 
+**Step 4b（必做，否则埋雷）：删除过渡别名 `MINISIGN_PUBLIC_KEYS`**
+
+Task 1 为保持独立可编译而保留了别名：
+
+```rust
+pub const MINISIGN_PUBLIC_KEYS: &[MinisignKeyEntry] = MINISIGN_ACTIVE_KEYS;
+```
+
+**必须在本任务内删除**，原因（实测复现）：`scripts/rotate-minisign-key.sh` 以
+`^pub const MINISIGN_PUBLIC_KEYS` 为 awk 锚点做「读取 + 重写」两遍；别名行不含 `];`，
+于是重写 pass 会从别名行扫到 EOF 并丢弃其后全部内容 —— 实测 149 行 → 22 行，
+`verify_minisign` / `parse_trusted_comment` / `MinisigInfo` / `key_expired` 悉数消失，
+而脚本仍打印「✅ 密钥轮换完成」。删除别名即拆除这颗雷。
+
+```bash
+grep -n "MINISIGN_PUBLIC_KEYS" rust/aegis/src/core/crypto/minisign.rs
+```
+Expected: 只剩定义行本身（调用点已在 Step 4 改完）。删除该行及其上方 4 行 doc 注释
+（`/// 过渡别名…` / `/// core_upgrade.rs…` / `/// TODO(Task 2)…`）。
+
+删除后确认全仓无残留：
+
+```bash
+grep -rn "MINISIGN_PUBLIC_KEYS" --include=*.rs --include=*.sh . | grep -v "\.worktrees/"
+```
+Expected: 无输出
+
 - [ ] **Step 5: 运行测试确认通过**
 
 Run: `cd rust/aegis && cargo test --lib crypto::minisign`
