@@ -1295,6 +1295,23 @@ grep -rn "\.contains(&artifact\.tag_name)\|\.contains(&release\.tag_name)\|HasPr
 ```
 Expected: 无输出
 
+- [ ] **Step 5b: 确认无静默跳过签名的路径（F4-2）**
+
+Run:
+```bash
+# upgrade.rs（自家资产）：必须硬校验，不得有静默路径
+grep -rn "\.ok()\s*\.flatten()\|if let Some(sig" --include=*.rs rust/aegis/src/core/system/upgrade.rs
+```
+Expected: 无输出
+
+同时人工确认 `core_upgrade.rs` 的条件强校验结构正确：
+```bash
+grep -n "let Some(sig_url) = release.minisig_url" -A 8 rust/aegis/src/core/system/core_upgrade.rs
+```
+Expected: 看到 `else { log::warn!(...); return Ok(temp_file); }`，
+且**不得**在 else 分支里跳过任何已验证内容的检查。
+参见 spec §7.1（两路径策略差异，勿为「统一」而改硬校验）。
+
 - [ ] **Step 6: 提交并推分支**
 
 ```bash
