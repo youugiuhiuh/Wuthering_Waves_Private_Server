@@ -377,7 +377,8 @@ impl WwpsCoreUpgradeManager {
             .map_err(|e| anyhow!("Minisign 验证失败: {}", e))?;
 
             let (got_version, got_asset) = minisign::parse_trusted_comment(&info.trusted_comment)?;
-            if !got_version.contains(&release.tag_name) {
+            // 精确相等，理由同 upgrade.rs：子串/前缀匹配可被伪造版本号绕过
+            if got_version != release.tag_name {
                 fs::remove_file(&temp_file).await.ok();
                 anyhow::bail!(
                     "Minisign 版本不匹配: 期望包含 {}, 实际 {}",

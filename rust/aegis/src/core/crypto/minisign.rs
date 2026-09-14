@@ -115,6 +115,18 @@ mod tests {
         assert_eq!(name, "file:extra");
     }
 
+    /// 锁定调用方必须用 `==` 而非 `contains` / `HasPrefix` 校验版本号。
+    /// 升级路径（upgrade.rs / core_upgrade.rs）据此拒绝 `v1.5.3-evil`、`xv1.5.3` 之类。
+    #[test]
+    fn test_parse_trusted_comment_exact_semantics() {
+        let (v, a) = parse_trusted_comment("v1.5.3:aegis").unwrap();
+        assert_eq!(v, "v1.5.3");
+        assert_eq!(a, "aegis");
+        // 子串/前缀变体不得被视为相等
+        assert_ne!(v, "v1.5.3-evil");
+        assert_ne!(v, "xv1.5.3");
+    }
+
     #[test]
     fn test_key_expired_empty_is_expired() {
         assert!(key_expired(""));
