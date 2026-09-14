@@ -155,6 +155,51 @@ check "s2 日志不含私钥内容" "! grep -q 'testSECRETKEY' '$TMP/s2/run.log'
 check "私钥已落盘且权限 600" "[ \"\$(stat -c %a '$TMP/s1/new.key')\" = '600' ]"
 
 echo
+
+# ---- 7. 负路径：锚点失效时必须中止且不写文件（P1-1 回归守卫）----
+# 背景：原先 validate_output 只 grep 符号名，而未改动的文件本就含全部符号名，
+# 于是锚点漂移（如 var→const）时两次 replace 都是 no-op，
+# 脚本仍 exit 0 并打印「✅ 完成」，新公钥从未落地。
+echo "=== 7. 负路径：锚点失效必须中止且不写文件 ==="
+GO_DRIFT="$TMP/drift_go.go"
+RS_DRIFT="$TMP/drift_rs.rs"
+cp "$GO_FILE" "$GO_DRIFT"
+cp "$RS_FILE" "$RS_DRIFT"
+# 形变锚点：名字仍在，但 '^var minisignActiveKeys' 不再匹配
+sed -i 's/^var minisignActiveKeys/const minisignActiveKeys/; s/^var minisignHistoricalKeys/const minisignHistoricalKeys/' "$GO_DRIFT"
+DRIFT_SHA=$(sha256sum "$GO_DRIFT" | awk '{print $1}')
+set +e
+env PATH="$TMP/bin:$PATH" \
+    ROTATE_GO_FILE="$GO_DRIFT" \
+    ROTATE_RS_FILE="$RS_DRIFT" \
+    ROTATE_KEY_OUT="$TMP/drift/new.key" \
+    bash "$ROTATE" >"$TMP/drift.log" 2>&1
+RC_DRIFT=$?
+set -e
+check "锚点失效时脚本必须非零退出" "[ $RC_DRIFT -ne 0 ]"
+check "锚点失效时不得改动目标文件" \
+    "[ \"$DRIFT_SHA\" = \"\$(sha256sum '$GO_DRIFT' | awk '{print \$1}')\" ]"
+check "锚点失效时不得声称完成" "! grep -q '密钥轮换完成' '$TMP/drift.log'"
+
+# ---- 8. 私钥必须在源码写入之前落盘（P1-2 回归守卫）----
+# 否则若 Rust 段失败，EXIT trap 会连同 TEMP_DIR 删掉私钥，
+# 而 Go 表已含新公钥 → 新钥永远无法签名的孤儿。
+echo
+echo "=== 8. 私钥落盘必须先于源码写入 ==="
+KEY_LINE=$(grep -n 'cp "$TEMP_DIR/minisign.key"' "$ROTATE" | head -1 | cut -d: -f1)
+GO_LINE=$(grep -n 'cp "$TEMP_DIR/go_new.go"' "$ROTATE" | head -1 | cut -d: -f1)
+RS_LINE=$(grep -n 'cp "$TEMP_DIR/rs_new.rs"' "$ROTATE" | head -1 | cut -d: -f1)
+check "私钥落盘行号小于 Go 写入行号" "[ -n \"$KEY_LINE\" ] && [ -n \"$GO_LINE\" ] && [ \"$KEY_LINE\" -lt \"$GO_LINE\" ]"
+check "私钥落盘行号小于 Rust 写入行号" "[ -n \"$KEY_LINE\" ] && [ -n \"$RS_LINE\" ] && [ \"$KEY_LINE\" -lt \"$RS_LINE\" ]"
+check "私钥落盘使用 umask 077（避免 644 窗口）" "grep -q 'umask 077' \"\$ROTATE\""
+
+# ---- 9. 校验必须真的校验新公钥 ----
+echo
+echo "=== 9. 校验逻辑必须检查新公钥 ==="
+check "validate_output 检查 NEW_KEY" "awk '/^validate_output\\(\\)/,/^}/' '$ROTATE' | grep -q 'NEW_KEY'"
+check "validate_output 检查旧钥无丢失" "awk '/^validate_output\\(\\)/,/^}/' '$ROTATE' | grep -q 'OLD_KEYS'"
+
+echo
 if [ "$fail" -ne 0 ]; then
     echo "❌ 存在失败项"
     exit 1

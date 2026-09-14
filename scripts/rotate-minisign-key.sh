@@ -53,12 +53,22 @@ if [ -f "$ROOT/rust/aegis/Cargo.toml" ]; then
 fi
 
 TEMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TEMP_DIR"' EXIT
+# 同时挂 INT/TERM/HUP：否则 Ctrl-C / 被 kill 时临时目录（含私钥）可能残留。
+trap 'rm -rf "$TEMP_DIR"' EXIT INT TERM HUP
 
 echo ">>> 生成新的 Minisign 密钥对（无密码）..."
 minisign -G -W -p "$TEMP_DIR/minisign.pub" -s "$TEMP_DIR/minisign.key"
 NEW_KEY=$(grep -v '^untrusted comment' "$TEMP_DIR/minisign.pub" | tr -d '\n')
 echo ">>> 新公钥: $NEW_KEY"
+
+# ---- 私钥立即落盘（在任何源码写入之前）----
+# 理由：若先写 Go、后写 Rust 时失败退出，EXIT trap 会连带删掉 TEMP_DIR，
+# 导致新私钥永久丢失 —— 而新公钥已写进源码，成为永远无法签名的孤儿。
+# 先落盘保证「只要生成了新钥，就一定拿得到它的私钥」。
+# umask 077 避免 cp 与 chmod 之间出现 644 窗口。
+mkdir -p "$(dirname "$KEY_OUT")"
+(umask 077 && cp "$TEMP_DIR/minisign.key" "$KEY_OUT")
+chmod 600 "$KEY_OUT"
 
 EXPIRES=$(date -d "+1 year" +%Y-%m-%d)
 RETIRED=$(date +%Y-%m-%d)
@@ -136,6 +146,37 @@ validate_output() {
             return 1
         fi
     done
+    # 关键：必须验证【新公钥真的写进去了】。
+    # 仅检查符号名是不够的 —— 锚点漂移（如 var→const）时两次 replace 都是 no-op，
+    # 未改动的文件同样含全部符号名，会静默通过并打印「✅ 完成」。
+    if ! grep -qF -- "$NEW_KEY" "$file"; then
+        echo "::error::$label 未写入新公钥 —— 很可能是锚点失效（脚本模板与实际代码形态不符）；已中止，原文件未被修改" >&2
+        return 1
+    fi
+    # 并确认旧公钥无一丢失（防止读取 pass 读空导致旧钥被静默移除）。
+    # 注意：comm 要求输入已排序，否则会报 "not in sorted order" 并给出错误结论。
+    # 同时只能比对待比较范围内的 56 字符 token；因此对输出文件也用
+    # 密钥表区块做范围限定（与 OLD_KEYS 的采集方式一致）。
+    local new_keys
+    if [ "$label" = "go" ]; then
+        new_keys=$( {
+            read_block "$file" '^var minisignActiveKeys' "$GO_CLOSE" "$GO_END" | cut -f1
+            read_block "$file" '^var minisignHistoricalKeys' "$GO_CLOSE" "$GO_END" | cut -f1
+        } 2>/dev/null)
+    else
+        new_keys=$( {
+            read_block "$file" '^pub const MINISIGN_ACTIVE_KEYS' "$RS_CLOSE" "$RS_END" | cut -f1
+            read_block "$file" '^pub const MINISIGN_HISTORICAL_KEYS' "$RS_CLOSE" "$RS_END" | cut -f1
+        } 2>/dev/null)
+    fi
+    local lost
+    lost=$(comm -23 \
+        <(printf '%s\n' "$OLD_KEYS" | sed '/^$/d' | LC_ALL=C sort -u) \
+        <(printf '%s\n' "$new_keys" | sed '/^$/d' | LC_ALL=C sort -u))
+    if [ -n "$lost" ]; then
+        printf '::error::%s 轮换后丢失旧公钥:\n%s\n已中止，原文件未被修改\n' "$label" "$lost" >&2
+        return 1
+    fi
     return 0
 }
 
@@ -145,6 +186,16 @@ RS_END='^[}\]]{1,2};$'
 RS_CLOSE='\];$'
 
 # ================= Go =================
+# 采集当前两个【密钥表】里的旧生产公钥（供 validate_output 做「无一丢失」检查）。
+# 只取活跃/历史表区块内的条目 —— 不能全文件扫，否则会把 Rust
+# mod tests 里的夹具钥（TEST_PUBKEY）也当成生产钥，导致误报「旧钥丢失」。
+OLD_KEYS=$( {
+    read_block "$GO_FILE" '^var minisignActiveKeys' "$GO_CLOSE" "$GO_END" | cut -f1
+    read_block "$GO_FILE" '^var minisignHistoricalKeys' "$GO_CLOSE" "$GO_END" | cut -f1
+    read_block "$RS_FILE" '^pub const MINISIGN_ACTIVE_KEYS' "$RS_CLOSE" "$RS_END" | cut -f1
+    read_block "$RS_FILE" '^pub const MINISIGN_HISTORICAL_KEYS' "$RS_CLOSE" "$RS_END" | cut -f1
+} 2>/dev/null | sed '/^$/d' | sort -u)
+
 GO_ACTIVE_BLOCK="$TEMP_DIR/go_active"
 GO_HIST_BLOCK="$TEMP_DIR/go_hist"
 printf 'var minisignActiveKeys = []minisignKeyEntry{\n' >"$GO_ACTIVE_BLOCK"
@@ -193,7 +244,7 @@ if command -v gofmt >/dev/null 2>&1; then
     gofmt -w "$TEMP_DIR/go_new.go" 2>/dev/null || echo "::warning::gofmt 失败，保留未格式化内容"
 fi
 
-validate_output "$TEMP_DIR/go_new.go" "go/installer/minisign_verify.go" \
+validate_output "$TEMP_DIR/go_new.go" "go" \
     verifyMinisign parseTrustedComment requireMinisign matchTrustedComment \
     minisignActiveKeys minisignHistoricalKeys || exit 1
 
@@ -246,17 +297,13 @@ if command -v rustfmt >/dev/null 2>&1; then
         || echo "::warning::rustfmt 失败，保留未格式化内容"
 fi
 
-validate_output "$TEMP_DIR/rs_new.rs" "rust/aegis/src/core/crypto/minisign.rs" \
+validate_output "$TEMP_DIR/rs_new.rs" "rust" \
     verify_minisign parse_trusted_comment key_expired \
     MINISIGN_ACTIVE_KEYS MINISIGN_HISTORICAL_KEYS || exit 1
 
 cp "$TEMP_DIR/rs_new.rs" "$RS_FILE"
 
-# ================= 私钥落盘（不打印）=================
-mkdir -p "$(dirname "$KEY_OUT")"
-cp "$TEMP_DIR/minisign.key" "$KEY_OUT"
-chmod 600 "$KEY_OUT"
-
+# 私钥已在上方（生成密钥后立即）落盘，此处不再重复。
 echo ""
 echo "============================================"
 echo "✅ 密钥轮换完成"
