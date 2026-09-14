@@ -91,6 +91,44 @@ async fn verify_sha256_file(path: &str, expected_hex: &str) -> Result<()> {
     Ok(())
 }
 
+/// 由 sha256 构造 attestation 查询的**完整** URL；hex 无效时返回空串。
+///
+/// ⚠️ 切勿改回 `format!("{}{}", SINGBOX_RELEASE_API_BASE, path)`：
+/// `SINGBOX_RELEASE_API_BASE` 已经以 `/repos` 结尾，而 `attestation_path` 的返回值
+/// 又以 `/repos` 开头，两者直接拼接会得到 `/repos/repos/...`，实测该 URL 恒为 404，
+/// 使 `has_attestation_for` 永远返回 false，进而让首装/升级 100% 失败。
+/// 故此处固定用主机名拼接（常量本身不能改：`fetch_recent_tags` / `fetch_release`
+/// 依赖它拼 `.../repos/SagerNet/sing-box/releases...`）。
+fn attestation_url(sha256_hex: &str) -> String {
+    let path = attestation_path(sha256_hex);
+    if path.is_empty() {
+        return String::new();
+    }
+    format!("https://api.github.com{}", path)
+}
+
+/// 纯决策函数：HTTP 状态码 + 已解析响应体 → 该 digest 是否有 attestation。
+///
+/// - 404            → `Ok(false)`（该 digest 无记录）
+/// - 其他非 2xx     → `Err`（fail-closed，不得当作无记录放过）
+/// - 2xx 但无 body  → `Err`（无法判定）
+/// - 2xx + body     → `Ok(attestations 数组非空)`（字段缺失或为空 → false）
+fn attestation_decision(status: u16, body: Option<&serde_json::Value>) -> Result<bool> {
+    if status == 404 {
+        return Ok(false);
+    }
+    if !(200..300).contains(&status) {
+        anyhow::bail!("attestation 查询返回 HTTP {}", status);
+    }
+    let body = body.ok_or_else(|| anyhow!("attestation 查询返回 {} 但响应体缺失", status))?;
+    let n = body
+        .get("attestations")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    Ok(n > 0)
+}
+
 pub struct SingBoxUpgradeManager {
     client: reqwest::Client,
     github_token: Option<String>,
@@ -118,11 +156,10 @@ impl SingBoxUpgradeManager {
     ///
     /// 注：本函数不验证 sigstore 签名链本身（方案 A 的已知取舍）。
     async fn has_attestation_for(&self, sha256_hex: &str) -> Result<bool> {
-        let path = attestation_path(sha256_hex);
-        if path.is_empty() {
+        let url = attestation_url(sha256_hex);
+        if url.is_empty() {
             anyhow::bail!("无效的 sha256: {}", sha256_hex);
         }
-        let url = format!("{}{}", SINGBOX_RELEASE_API_BASE, path);
         let mut req = self
             .client
             .get(&url)
@@ -131,19 +168,13 @@ impl SingBoxUpgradeManager {
             req = req.header("Authorization", format!("Bearer {}", t));
         }
         let resp = req.send().await.context("查询 attestation 失败")?;
-        if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(false);
-        }
+        let status = resp.status().as_u16();
         if !resp.status().is_success() {
-            anyhow::bail!("attestation 查询返回 {}", resp.status());
+            // 404 → 无记录；其他错误状态 → fail-closed（attestation_decision 内部裁决）
+            return attestation_decision(status, None);
         }
         let json: serde_json::Value = resp.json().await.context("解析 attestation 响应失败")?;
-        let n = json
-            .get("attestations")
-            .and_then(|v| v.as_array())
-            .map(|a| a.len())
-            .unwrap_or(0);
-        Ok(n > 0)
+        attestation_decision(status, Some(&json))
     }
 
     /// 端到端完整性校验（方案 A）：先 SHA256，再确认 GitHub 存有该 digest 的 attestation。
@@ -452,6 +483,86 @@ mod tests {
         // 上游 digest 可能给大写；路径必须以小写 hex 请求。
         let p = attestation_path(&"A".repeat(64));
         assert!(p.ends_with(&"a".repeat(64)), "路径应小写化, got: {}", p);
+    }
+
+    // ---- attestation 完整 URL（守卫：double-`/repos` 回归）----
+
+    #[test]
+    fn test_attestation_url_is_complete_and_has_single_repos() {
+        let hex = "2375de6999f4f56ab46b4fc5ddf26a6aba1d3e61a0f4e7ddec2f4690457d5f63";
+        let url = attestation_url(hex);
+
+        // 完整字面量：任何拼接错误（如双 /repos、丢主机名）都会在此爆掉。
+        assert_eq!(
+            url,
+            "https://api.github.com/repos/SagerNet/sing-box/attestations/sha256:2375de6999f4f56ab46b4fc5ddf26a6aba1d3e61a0f4e7ddec2f4690457d5f63"
+        );
+        // 防复发守卫：路径中只能出现一处 `/repos`。
+        assert_eq!(
+            url.matches("/repos").count(),
+            1,
+            "URL 只能含一处 /repos, got: {}",
+            url
+        );
+        assert!(
+            !url.contains("/repos/repos"),
+            "不得出现双重 /repos: {}",
+            url
+        );
+    }
+
+    #[test]
+    fn test_attestation_url_empty_for_invalid_hex() {
+        assert!(attestation_url("").is_empty());
+        assert!(attestation_url("not-a-hash").is_empty());
+        assert!(attestation_url("abc").is_empty());
+        assert!(attestation_url(&"z".repeat(64)).is_empty());
+    }
+
+    #[test]
+    fn test_attestation_url_lowercases_and_keeps_single_repos() {
+        let url = attestation_url(&"A".repeat(64));
+        assert!(url.ends_with(&"a".repeat(64)), "应小写: {}", url);
+        assert_eq!(url.matches("/repos").count(), 1, "单 /repos, got: {}", url);
+    }
+
+    // ---- attestation 判定分支（纯函数，无网络）----
+
+    #[test]
+    fn test_attestation_decision_404_is_false() {
+        assert!(!attestation_decision(404, None).unwrap());
+    }
+
+    #[test]
+    fn test_attestation_decision_empty_array_is_false() {
+        let body = serde_json::json!({ "attestations": [] });
+        assert!(!attestation_decision(200, Some(&body)).unwrap());
+    }
+
+    #[test]
+    fn test_attestation_decision_missing_field_is_false() {
+        let body = serde_json::json!({});
+        assert!(!attestation_decision(200, Some(&body)).unwrap());
+    }
+
+    #[test]
+    fn test_attestation_decision_nonempty_array_is_true() {
+        let body = serde_json::json!({ "attestations": [{ "bundle": {} }] });
+        assert!(attestation_decision(200, Some(&body)).unwrap());
+    }
+
+    #[test]
+    fn test_attestation_decision_server_error_is_err() {
+        assert!(attestation_decision(500, None).is_err());
+        assert!(attestation_decision(403, None).is_err());
+        assert!(attestation_decision(301, None).is_err());
+    }
+
+    #[test]
+    fn test_attestation_decision_200_without_body_is_err() {
+        // 2xx 但拿不到响应体 → 无法判定。必须 Err（fail-closed），
+        // 不得当作 false 静默放过。
+        assert!(attestation_decision(200, None).is_err());
     }
 
     #[tokio::test]
