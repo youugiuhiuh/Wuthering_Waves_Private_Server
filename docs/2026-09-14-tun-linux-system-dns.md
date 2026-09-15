@@ -15,6 +15,31 @@
 
 改动范围仅 `proxy/tun/tun_linux.go`(实现)与 `proxy/tun/tun_linux_dns_test.go`(测试)。无 proto/配置变更;`options.DNS` 与 `Gateway` 本就已贯通。
 
+## 适用范围（重要）
+
+**本实现不是通用的，只对使用 `systemd-resolved` 的系统生效。**
+
+它完全依赖 `resolvectl`，因此仅当下列条件同时成立时才真正接管系统 DNS：
+
+1. 系统是 systemd 发行版，且 `resolvectl` 在 `PATH` 中
+2. `systemd-resolved` 已启用并正在管理 DNS（装而未启动无效）
+3. `systemd-resolved` 版本 ≥ 240（`default-route` 子命令自 240 起提供）
+
+不满足时，代码走降级分支**安全跳过**（记日志、不阻塞 TUN 启动），但 **DNS 泄漏依然存在**。这是 fail-safe，不是 portable。
+
+| 环境 | 预期行为 |
+|---|---|
+| Ubuntu / Debian / Fedora / RHEL（systemd-resolved 启用） | ✅ 接管 |
+| Arch / Gentoo（自行安装并启用 systemd-resolved） | ✅ 接管 |
+| Alpine、Void、Devuan、OpenRC 系 | ❌ 无 `resolvectl` → 跳过 |
+| OpenWrt（dnsmasq） | ❌ 无 `resolvectl` → 跳过 |
+| DNS 由 dnsmasq / unbound / BIND / 静态 `/etc/resolv.conf` 管理 | ❌ `resolvectl` 改不到 |
+| NetworkManager 直管 DNS（不经 resolved） | ❌ 不生效 |
+| 容器（无 systemd-resolved 守护进程） | ❌ 不生效 |
+| systemd < 240 | ⚠️ `dns` 可能成功，`default-route` 失败 → 接管不完整 |
+
+若要覆盖非 systemd 系统，需额外实现 `resolv.conf` 写入或 dnsmasq/unbound 适配；若要覆盖应用自带 DoH，需 nftables DNAT 劫持 53 端口（更通用，因不依赖上层 DNS 管理器）。两者均不在本补丁范围。
+
 ## 失败处理
 
 DNS 配置刻意非致命,永不阻塞 TUN 启动:
