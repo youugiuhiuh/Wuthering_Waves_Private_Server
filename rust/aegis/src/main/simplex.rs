@@ -10,22 +10,20 @@ use secrecy::ExposeSecret;
 use crate::bootstrap::EncryptedConfig;
 
 /// SimpleX runtime handle: WebSocket Bot, event stream, Adapter.
-/// 接线在 Task 7（main.rs / runtime.rs）完成前，本模块暂未被引用。
-#[allow(dead_code)]
 pub struct SimplexHandle {
+    /// 与 `adapter` 内部持有的句柄指向同一连接；保留以便后续直接调用 Bot API。
+    #[expect(dead_code)]
     pub bot: simploxide_client::ws::Bot,
     pub events: simploxide_client::ws::EventStream,
     pub adapter: Arc<dyn BotAdapter>,
 }
 
-#[allow(dead_code)]
 pub fn has_simplex_config(encrypted_config: &EncryptedConfig, args: &[String]) -> bool {
     let explicit = args.iter().any(|a| a == "--simplex");
     explicit
         || (encrypted_config.simplex_port.is_some() && encrypted_config.simplex_admin_id.is_some())
 }
 
-#[allow(dead_code)]
 pub async fn connect_simplex(
     security: &SecurityManager,
     encrypted_config: &EncryptedConfig,

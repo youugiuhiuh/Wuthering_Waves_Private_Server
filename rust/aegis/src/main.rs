@@ -38,17 +38,14 @@ async fn main() -> Result<()> {
     verify_integrity().await?;
 
     // CLI 模式检测（初始; auto-detect 补充在 encrypted_config 加载后）
-    let use_matrix = args.iter().any(|a| a == "--matrix");
-    let use_discord = args.iter().any(|a| a == "--discord");
-    let use_all = args.iter().any(|a| a == "--all");
-    let enable_discord = use_discord;
-    // Discord standalone: --discord disables telegram and matrix; --all does NOT include discord
-    let mut enable_matrix = (use_matrix || use_all) && !enable_discord;
-    let enable_telegram = (!use_matrix && !use_discord) || use_all;
+    let use_simplex = args.iter().any(|a| a == "--simplex");
+    let (enable_telegram, mut enable_matrix, _standalone) = resolve_platforms(&args);
 
     let (app_config, security) = main::config::load_and_validate()?;
 
     // Auto-detect Matrix 配置
+    let use_matrix = args.iter().any(|a| a == "--matrix");
+    let use_all = args.iter().any(|a| a == "--all");
     let has_matrix = main::matrix::has_matrix_config(&app_config.decrypted.encrypted_config, &args);
     if !use_matrix && !use_all {
         enable_matrix = has_matrix && !args.iter().any(|a| a == "--tg-only");
@@ -67,7 +64,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    let discord_raw = if enable_discord {
+    let discord_raw = if args.iter().any(|a| a == "--discord") {
         Some(
             main::discord::connect_discord(
                 &security,
@@ -80,8 +77,33 @@ async fn main() -> Result<()> {
         None
     };
 
+    // SimpleX 独立平台：显式 --simplex 或配置齐备时启用。
+    // 语言必须在连接之前应用 —— connect_simplex 用 simplex.welcome 生成欢迎语，
+    // 而该文案由进程全局 locale 决定。副作用（时区/apt timer）仍只在
+    // runtime::apply_configured_language 中执行一次。
+    if let Some(lang) = main::runtime::configured_lang() {
+        aegis::core::i18n::set_lang(lang);
+    }
+
+    let has_simplex =
+        main::simplex::has_simplex_config(&app_config.decrypted.encrypted_config, &args);
+    let simplex_handle = if use_simplex || (has_simplex && !args.iter().any(|a| a == "--tg-only")) {
+        Some(
+            main::simplex::connect_simplex(
+                &security,
+                &app_config.decrypted.encrypted_config,
+                &config_dir(),
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+
     let adapter = if let Some(ref raw) = discord_raw {
         raw.adapter.clone()
+    } else if let Some(ref handle) = simplex_handle {
+        handle.adapter.clone()
     } else {
         main::adapter::build_adapter(
             app_config.decrypted.token.as_deref(),
@@ -107,16 +129,40 @@ async fn main() -> Result<()> {
         adapter,
     ));
 
+    // 同步 AppState 语言状态 + 一次性系统副作用（时区、apt-daily timer）。
+    main::runtime::apply_configured_language(&state).await;
+
     main::runtime::run(
         state,
         matrix_handle,
         enable_telegram,
         enable_matrix,
         discord_raw,
+        simplex_handle,
         app_config.decrypted.token,
         app_config.decrypted.admin_id,
     )
     .await
+}
+
+/// 解析启动参数决定启用哪些平台。
+///
+/// 返回 `(telegram, matrix, standalone)`，其中 `standalone` 表示显式请求了
+/// Discord 或 SimpleX —— 二者都是独立平台，各自禁用 Telegram 与 Matrix。
+fn resolve_platforms(args: &[String]) -> (bool, bool, bool) {
+    let use_matrix = args.iter().any(|a| a == "--matrix");
+    let use_discord = args.iter().any(|a| a == "--discord");
+    let use_simplex = args.iter().any(|a| a == "--simplex");
+    let use_all = args.iter().any(|a| a == "--all");
+    let enable_discord = use_discord;
+    let enable_simplex = use_simplex;
+    let enable_matrix = (use_matrix || use_all) && !enable_discord && !enable_simplex;
+    let enable_telegram = (!use_matrix && !use_discord && !use_simplex) || use_all;
+    (
+        enable_telegram,
+        enable_matrix,
+        enable_discord || enable_simplex,
+    )
 }
 
 async fn notify_online(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
@@ -224,6 +270,39 @@ async fn notify_bbr3_reboot_result(adapter: &dyn BotAdapter, target: &TargetId) 
         )
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod platform_resolution_tests {
+    use super::resolve_platforms;
+
+    fn v(s: &[&str]) -> Vec<String> {
+        s.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn default_is_telegram_only() {
+        assert_eq!(resolve_platforms(&v(&[])), (true, false, false));
+    }
+
+    #[test]
+    fn simplex_is_standalone() {
+        assert_eq!(resolve_platforms(&v(&["--simplex"])), (false, false, true));
+    }
+
+    #[test]
+    fn simplex_wins_over_all() {
+        assert_eq!(
+            resolve_platforms(&v(&["--all", "--simplex"])),
+            (true, false, true)
+        );
+    }
+
+    #[test]
+    fn matrix_and_discord_unchanged() {
+        assert_eq!(resolve_platforms(&v(&["--matrix"])), (false, true, false));
+        assert_eq!(resolve_platforms(&v(&["--discord"])), (false, false, true));
+    }
 }
 
 #[cfg(test)]

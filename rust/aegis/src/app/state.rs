@@ -127,6 +127,12 @@ impl AppState {
         self.admin_id
     }
 
+    /// SimpleX 管理员联系人 ID（contactId）。SimpleX 是独立平台，
+    /// 其调度器/启动通知目标必须用它，而非 Telegram 的 `admin_id`。
+    pub fn simplex_admin_id(&self) -> Option<i64> {
+        self.simplex_admin_id
+    }
+
     pub fn is_admin_user(&self, user_id: i64) -> bool {
         user_id == self.admin_id.unwrap_or(0)
             || self.discord_admin_id == Some(user_id)
