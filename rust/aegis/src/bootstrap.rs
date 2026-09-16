@@ -208,7 +208,6 @@ pub struct MatrixSetupConfig {
     store_passphrase: String,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_setup(
     token: Option<&str>,
     admin_id: Option<&str>,

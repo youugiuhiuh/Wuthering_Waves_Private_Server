@@ -99,7 +99,6 @@ pub async fn apply_configured_language(state: &Arc<AppState>) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run(
     state: Arc<AppState>,
     matrix_handle: Option<super::matrix::MatrixHandle>,

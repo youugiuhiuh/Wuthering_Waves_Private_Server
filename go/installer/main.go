@@ -1406,6 +1406,8 @@ func installFromStdin() {
 
 	platform := "tg"
 	simplexPort, _ := inputData["simplex_port"].(string)
+	// Discord 平台已移除，按「键存在」即拒绝（不只看非空值）：手写 payload 里带一个空的
+	// discord_token 也必须失败，不能静默落到 tg 默认平台。
 	if _, ok := inputData["discord_token"]; ok {
 		printRed(i18n.T("install.discord_removed"))
 		os.Exit(1)
@@ -1594,7 +1596,7 @@ func firstTimeSetup(binaryPath string) (string, string, error) {
 
 	enableTG, enableMatrix, enableSimplex, err := selectDeploymentPlatforms()
 	if err != nil {
-		printRed(i18n.T("firsttime.platform_invalid"))
+		printRed(err.Error())
 		return "", "", err
 	}
 
