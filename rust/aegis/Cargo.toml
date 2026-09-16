@@ -54,8 +54,6 @@ mime = "0.3.17"
 rust-i18n = "4.2.2"
 minisign-verify = "0.2.5"
 mockall = "0.15.0" # Needed at runtime for binary-crate tests (MockBotAdapter shared across lib/bin)
-serenity = { version = "0.12.5", default-features = false, features = ["native_tls_backend", "http", "builder"] }
-poise = { version = "0.7.0", default-features = false, features = ["cache", "chrono", "handle_panics"] }
 simploxide-client = { version = "=0.14.0", default-features = false, features = ["websocket"] }
 
 [dev-dependencies]
@@ -94,7 +92,7 @@ opt-level = 1
 debug = 1
 
 # 测试用 profile：编译速度优先，供 cargo nextest run --cargo-profile fast-test 使用。
-# 不挂 cranelift：aws-lc-sys（rustls 的 C 依赖，被 matrix-sdk/serenity 强制启用）
+# 不挂 cranelift：aws-lc-sys（rustls 的 C 依赖，被 matrix-sdk 强制启用）
 # 用 \u{1} 前缀导出符号，只有 LLVM 后端支持，cranelift 链接必然失败。见
 # https://github.com/rust-lang/rustc_codegen_cranelift/issues/1520
 # opt-level 必须 >= 1：aws-lc-sys 在 O0 下符号名不一致。
