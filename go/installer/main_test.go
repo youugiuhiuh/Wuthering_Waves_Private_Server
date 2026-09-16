@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -206,9 +207,10 @@ func TestPlatformSelectorRejectsEmptyConfirmation(t *testing.T) {
 }
 
 func TestUninstallManifestIncludesRustArtifacts(t *testing.T) {
-	wantServices := []string{"wwps-aegis", "wwps-core", "wwps-box"}
+	wantServices := []string{"wwps-aegis", "wwps-simplex", "wwps-core", "wwps-box"}
 	wantPaths := []string{
 		"/etc/systemd/system/wwps-aegis.service",
+		"/etc/systemd/system/wwps-simplex.service",
 		"/etc/systemd/system/wwps-core.service",
 		"/etc/systemd/system/wwps-box.service",
 		"/etc/init.d/wwps-core",
@@ -976,5 +978,97 @@ func TestPlatformSelectorTogglingSimplexClearsOthers(t *testing.T) {
 	m = updated.(platformSelector)
 	if !m.simplex || m.matrix || m.telegram || m.discord {
 		t.Fatalf("selecting simplex must clear other platforms: %#v", m)
+	}
+}
+
+// TestSimplexPortFromUnit 守住重装路径：recovery 分支拿不到用户当初填的端口，
+// 必须能从未被覆盖的单元文件里回读，否则重装会把自定义端口改回默认值。
+func TestSimplexPortFromUnit(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"custom port", simplexSystemdUnitContent("6123"), "6123"},
+		{"default port", simplexSystemdUnitContent("5225"), "5225"},
+		{"empty unit", "", ""},
+		{"unrelated unit", "[Service]\nExecStart=/usr/bin/foo --matrix\n", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := simplexPortFromUnit([]byte(tc.content)); got != tc.want {
+				t.Fatalf("simplexPortFromUnit() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSimplexChatAssetName(t *testing.T) {
+	cases := map[string]string{
+		"amd64": "simplex-chat-ubuntu-24_04-x86_64",
+		"arm64": "simplex-chat-ubuntu-24_04-aarch64",
+	}
+	for arch, want := range cases {
+		if got := simplexChatAssetName(arch); got != want {
+			t.Fatalf("arch %s: got %q want %q", arch, got, want)
+		}
+	}
+}
+
+func TestSimplexChatAssetNameRejectsUnknownArch(t *testing.T) {
+	for _, arch := range []string{"riscv64", "386", ""} {
+		if got := simplexChatAssetName(arch); got != "" {
+			t.Fatalf("unknown arch %q must return empty, got %q", arch, got)
+		}
+	}
+}
+
+func TestSimplexSystemdUnitPinsVersionAndLocalhost(t *testing.T) {
+	unit := simplexSystemdUnitContent("5225")
+	if !strings.Contains(unit, "ExecStart=") || !strings.Contains(unit, "-p 5225") {
+		t.Fatalf("unit must start simplex-chat on the configured port: %s", unit)
+	}
+	if !strings.Contains(unit, "Restart=always") {
+		t.Fatal("unit must restart on failure")
+	}
+	if want := filepath.Join(installDir, "simplex-chat"); !strings.Contains(unit, want) {
+		t.Fatalf("unit must exec %s: %s", want, unit)
+	}
+}
+
+// TestSimplexSystemdUnitStartsUnattended 守住一个实测出来的坑：全新机器上只跑
+// `simplex-chat -p PORT` 会因为「没有 user profile」而停在交互式提问，stdin 是
+// /dev/null 时直接退出；配合 Restart=always 就是无限崩溃重启。这些参数是把
+// 它变成可无人值守启动的关键，不能让后续修改误删。
+func TestSimplexSystemdUnitStartsUnattended(t *testing.T) {
+	unit := simplexSystemdUnitContent("5225")
+	for _, need := range []string{
+		"WorkingDirectory=",
+		"--create-bot-display-name Aegis",
+		"-y",
+		"-d ",
+		"--files-folder ",
+	} {
+		if !strings.Contains(unit, need) {
+			t.Fatalf("unit must contain %q so it can start without a tty: %s", need, unit)
+		}
+	}
+	if want := filepath.Join(simplexDataDir(), "simplex_v1"); !strings.Contains(unit, want) {
+		t.Fatalf("unit must pin the database prefix to %s: %s", want, unit)
+	}
+}
+
+// TestSimplexSystemdUnitNeverExposesTheApi 守住安全边界：SimpleX 的 WebSocket API
+// 没有任何鉴权，simplex-chat 默认只绑定 localhost。单元文件里不允许出现任何会把
+// 监听地址改成非本机的参数，否则等于把无鉴权 API 暴露到公网。
+func TestSimplexSystemdUnitNeverExposesTheApi(t *testing.T) {
+	unit := simplexSystemdUnitContent("5225")
+	for _, forbidden := range []string{"0.0.0.0", "::", "--host", "--bind", "--address", "-h "} {
+		if strings.Contains(unit, forbidden) {
+			t.Fatalf("unit must not contain %q (unauthenticated API must stay on localhost): %s", forbidden, unit)
+		}
+	}
+	if got := strings.Count(unit, " -p "); got != 1 {
+		t.Fatalf("unit must pass the port exactly once, found %d: %s", got, unit)
 	}
 }

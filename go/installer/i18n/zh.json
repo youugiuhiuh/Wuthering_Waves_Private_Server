@@ -49,6 +49,12 @@
   "install.service_failed": "启动服务失败: %s",
   "install.success": "\n✅ Aegis 已成功安装并启动！",
   "install.manage_hint": "请前往已配置的平台与 Aegis Bot 对话进行管理。",
+  "simplex.download_start": "正在下载 simplex-chat %s（%s）…",
+  "simplex.installed": "✓ simplex-chat 已安装: %s",
+  "simplex.install_failed": "SimpleX 部署失败: %s",
+  "simplex.service_failed": "启动 SimpleX 服务失败: %s",
+  "simplex.service_ok": "✅ SimpleX Chat 服务已启动",
+  "simplex.unit_write_failed": "写入 SimpleX systemd 服务文件失败: %s",
 
   "totp.generating": "正在生成 TOTP 密钥…",
   "totp.generate_failed": "生成 TOTP 密钥失败: %s",

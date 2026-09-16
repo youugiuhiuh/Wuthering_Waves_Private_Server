@@ -38,12 +38,24 @@ const (
 
 	// defaultSimplexPort 是 simplex-chat WebSocket API 的默认端口。
 	defaultSimplexPort = "5225"
+
+	// simplexChatVersion 是 simplex-chat 的锁定版本，不能跟随 /releases/latest 浮动。
+	// simploxide-client 0.14.0 的版本范围是 MIN_SUPPORTED_VERSION=7.0.0.0 ..
+	// MAX_SUPPORTED_VERSION=7.0.0.99，范围外会直接返回 VersionMismatch 拒绝连接。
+	simplexChatVersion = "v7.0.0"
+	simplexRepoOwner   = "simplex-chat"
+	simplexRepoName    = "simplex-chat"
+
+	simplexBinaryName  = "simplex-chat"
+	simplexServiceName = "wwps-simplex"
+	simplexServiceFile = "/etc/systemd/system/wwps-simplex.service"
 )
 
-var uninstallServices = []string{"wwps-aegis", "wwps-core", "wwps-box"}
+var uninstallServices = []string{"wwps-aegis", "wwps-simplex", "wwps-core", "wwps-box"}
 
 var uninstallPaths = []string{
 	"/etc/systemd/system/wwps-aegis.service",
+	"/etc/systemd/system/wwps-simplex.service",
 	"/etc/systemd/system/wwps-core.service",
 	"/etc/systemd/system/wwps-box.service",
 	"/etc/init.d/wwps-core",
@@ -847,6 +859,211 @@ func verifySHA256(path, expected string) error {
 	return nil
 }
 
+// ======================== SimpleX 部署 ========================
+
+// simplexChatAssetName 返回 simplex-chat release 中对应架构的预编译产物名。
+// 未知架构返回空串，调用方必须当作硬错误处理——静默换一个架构的二进制会装出
+// 一个根本跑不起来的服务。
+func simplexChatAssetName(arch string) string {
+	switch arch {
+	case "amd64":
+		return "simplex-chat-ubuntu-24_04-x86_64"
+	case "arm64":
+		return "simplex-chat-ubuntu-24_04-aarch64"
+	}
+	return ""
+}
+
+// simplexDataDir 是 simplex-chat 的数据库与文件目录，与 matrix_store 一样放在 installDir 下。
+func simplexDataDir() string {
+	return filepath.Join(installDir, "simplex_store")
+}
+
+// simplexSystemdUnitContent 生成 simplex-chat 的 systemd 单元。
+//
+// 安全约束：SimpleX 的 WebSocket API 不做任何鉴权，simplex-chat 默认只绑定到
+// localhost（实测 `-p` 监听 127.0.0.1，且 CLI 没有任何改监听地址的开关）。
+// 单元里只能传端口，绝不能出现任何改成对外监听的参数，否则等于把一个无鉴权的
+// API 暴露到公网。
+//
+// 无人值守约束（实测验证）：
+//   - 全新机器上直接跑 `simplex-chat -p PORT` 会因为「没有 user profile」而停在
+//     交互式提问，stdin 是 /dev/null 时直接退出；配合 Restart=always 就是无限
+//     崩溃重启。--create-bot-display-name 只在首次启动创建 profile，后续启动是
+//     空操作，因此可以常驻在 ExecStart 里。
+//   - -y/--yes-migrate 让数据库迁移不会停下来等确认。
+//   - -d/--files-folder 显式钉住数据位置，不依赖 root 的 HOME 或工作目录。
+//   - --create-bot-allow-files 让 bot 能收发文件，与客户端侧 can_send_file 能力对齐。
+func simplexSystemdUnitContent(port string) string {
+	dataDir := simplexDataDir()
+	return `[Unit]
+Description=WWPS SimpleX Chat CLI (WebSocket bot API)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=` + dataDir + `
+ExecStart=` + filepath.Join(installDir, simplexBinaryName) + ` -d ` + filepath.Join(dataDir, "simplex_v1") + ` --create-bot-display-name Aegis --create-bot-allow-files -y --files-folder ` + filepath.Join(dataDir, "files") + ` -p ` + port + `
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+`
+}
+
+func writeSimplexSystemdService(port string) {
+	if err := os.WriteFile(simplexServiceFile, []byte(simplexSystemdUnitContent(port)), 0o644); err != nil {
+		printRed(i18n.T("simplex.unit_write_failed", err.Error()))
+	}
+}
+
+// simplexPortFromUnit 从已存在的单元文件里取回端口。重装（recovery 路径）时拿不到
+// 用户当初填的端口，若不回读就会把自定义端口改回默认值，直接打断一个正在工作的部署。
+func simplexPortFromUnit(content []byte) string {
+	re := regexp.MustCompile(`(?m)^ExecStart=.*\s-p\s+(\d{1,5})\s*$`)
+	if m := re.FindSubmatch(content); len(m) == 2 {
+		return string(m[1])
+	}
+	return ""
+}
+
+// simplexReleaseInfo 拉取锁定版本的 simplex-chat release（tags/<version>，不是 latest）。
+func simplexReleaseInfo() (*latestRelease, error) {
+	client := newHTTPClient(30 * time.Second)
+	apiURL := fmt.Sprintf("%s/repos/%s/%s/releases/tags/%s", releaseAPIBase, simplexRepoOwner, simplexRepoName, simplexChatVersion)
+	resp, err := client.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("请求 simplex-chat release 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("simplex-chat release 返回状态码: %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取 simplex-chat release 失败: %w", err)
+	}
+	var release latestRelease
+	if err := json.Unmarshal(body, &release); err != nil {
+		return nil, fmt.Errorf("解析 simplex-chat release 失败: %w", err)
+	}
+	if release.TagName == "" {
+		return nil, fmt.Errorf("simplex-chat release %s 缺少 tag_name", simplexChatVersion)
+	}
+	return &release, nil
+}
+
+// installSimplexChat 下载并安装锁定版本的 simplex-chat 到 installDir，返回安装路径。
+//
+// 完整性校验复用既有 findExpectedSHA256：v7.0.0 并没有发布 <asset>.sha256 文件，
+// 但 release API 为每个资产提供了 sha256 digest，该 helper 会命中 digest 分支。
+// 上游另有 _sha256sums / _sha256sums.asc（GPG 签名），本项目未内置 SimpleX 的
+// GPG 公钥，因此不校验该签名。
+func installSimplexChat() (string, error) {
+	assetName := simplexChatAssetName(runtime.GOARCH)
+	if assetName == "" {
+		return "", fmt.Errorf("架构 %s 没有对应的 simplex-chat 预编译产物", runtime.GOARCH)
+	}
+
+	release, err := simplexReleaseInfo()
+	if err != nil {
+		return "", err
+	}
+	asset := findAsset(release, assetName)
+	if asset == nil {
+		return "", fmt.Errorf("simplex-chat %s 缺少资产 %s", simplexChatVersion, assetName)
+	}
+
+	fallback := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", simplexRepoOwner, simplexRepoName, simplexChatVersion, assetName)
+	downloadURL := assetDownloadURL(asset, fallback)
+	if downloadURL == "" {
+		return "", fmt.Errorf("资产 %s 没有下载地址", assetName)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "wwps-simplex-*")
+	if err != nil {
+		return "", fmt.Errorf("创建临时目录失败: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	printYellow(i18n.T("simplex.download_start", simplexChatVersion, assetName))
+	downloaded := filepath.Join(tmpDir, assetName)
+	if err := downloadFile(newHTTPClient(10*time.Minute), downloadURL, downloaded); err != nil {
+		return "", fmt.Errorf("下载 simplex-chat 失败: %w", err)
+	}
+	if info, err := os.Stat(downloaded); err != nil || info.Size() == 0 {
+		return "", fmt.Errorf("下载的 simplex-chat 文件无效")
+	}
+
+	expected, err := findExpectedSHA256(release, assetName)
+	if err != nil {
+		return "", fmt.Errorf("获取 simplex-chat 可信 SHA-256 失败: %w", err)
+	}
+	if err := verifySHA256(downloaded, expected); err != nil {
+		return "", fmt.Errorf("simplex-chat 校验失败: %w", err)
+	}
+
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		return "", fmt.Errorf("创建安装目录失败: %w", err)
+	}
+
+	dest := filepath.Join(installDir, simplexBinaryName)
+	src, err := os.Open(downloaded)
+	if err != nil {
+		return "", fmt.Errorf("读取 simplex-chat 失败: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return "", fmt.Errorf("写入 simplex-chat 失败: %w", err)
+	}
+	if _, err := io.Copy(dst, src); err != nil {
+		dst.Close()
+		return "", fmt.Errorf("复制 simplex-chat 失败: %w", err)
+	}
+	if err := dst.Close(); err != nil {
+		return "", fmt.Errorf("关闭 simplex-chat 失败: %w", err)
+	}
+
+	printGreen(i18n.T("simplex.installed", dest))
+	return dest, nil
+}
+
+// deploySimplexService 安装 simplex-chat 并写好它的 systemd 单元；非 simplex 平台是空操作。
+// 端口优先级：调用方显式给的 > 已存在单元里回读的 > 默认端口。
+func deploySimplexService(platform, port string) {
+	if platform != "simplex" {
+		return
+	}
+	if _, err := installSimplexChat(); err != nil {
+		printRed(i18n.T("simplex.install_failed", err.Error()))
+		os.Exit(1)
+	}
+	if port == "" {
+		if existing, err := os.ReadFile(simplexServiceFile); err == nil {
+			port = simplexPortFromUnit(existing)
+		}
+	}
+	if port == "" {
+		port = defaultSimplexPort
+	}
+	if err := os.MkdirAll(simplexDataDir(), 0o700); err != nil {
+		printRed(i18n.T("simplex.install_failed", err.Error()))
+		os.Exit(1)
+	}
+	writeSimplexSystemdService(port)
+	_ = runCmdSilent("systemctl", "daemon-reload")
+	if err := runCmdSilent("systemctl", "enable", "--now", simplexServiceName); err != nil {
+		printRed(i18n.T("simplex.service_failed", err.Error()))
+		os.Exit(1)
+	}
+	printGreen(i18n.T("simplex.service_ok"))
+}
+
 // ======================== 安装 ==============================
 
 func downloadAndDeployAegis() string {
@@ -990,6 +1207,7 @@ func installAegis() {
 
 	configPath := filepath.Join(installDir, "config.enc")
 	var platform string
+	var simplexPort string
 	configExists := false
 	if _, err := os.Stat(configPath); err == nil {
 		service, err := os.ReadFile(serviceFile)
@@ -1017,7 +1235,7 @@ func installAegis() {
 		printGreen(i18n.T("install.config_exists"))
 	} else {
 		var err error
-		platform, err = firstTimeSetup(destPath)
+		platform, simplexPort, err = firstTimeSetup(destPath)
 		if err != nil {
 			return
 		}
@@ -1028,6 +1246,7 @@ func installAegis() {
 	}
 
 	writeSystemdService(platform)
+	deploySimplexService(platform, simplexPort)
 
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = runCmdSilent("systemctl", "enable", serviceName)
@@ -1074,8 +1293,9 @@ func runAegisSetup(destPath string, payload []byte) {
 	}
 }
 
-func finishDeploy(platform string) {
+func finishDeploy(platform string, simplexPort string) {
 	writeSystemdService(platform)
+	deploySimplexService(platform, simplexPort)
 	_ = runCmdSilent("systemctl", "daemon-reload")
 	_ = runCmdSilent("systemctl", "enable", serviceName)
 	if err := runCmdSilent("systemctl", "restart", serviceName); err != nil {
@@ -1117,6 +1337,7 @@ func installFromStdin() {
 	}
 
 	platform := "tg"
+	simplexPort, _ := inputData["simplex_port"].(string)
 	if discordToken, ok := inputData["discord_token"].(string); ok && discordToken != "" {
 		platform = "discord"
 	} else if _, ok := inputData["simplex_port"].(string); ok {
@@ -1141,7 +1362,7 @@ func installFromStdin() {
 	}
 
 	runAegisSetup(destPath, payload)
-	finishDeploy(platform)
+	finishDeploy(platform, simplexPort)
 }
 
 type setupConfig struct {
@@ -1268,7 +1489,7 @@ func installFromKeyVal() {
 	)
 
 	runAegisSetup(destPath, payload)
-	finishDeploy(platform)
+	finishDeploy(platform, cfg.SimplexPort)
 }
 
 func platformSetupForChoice(choice string) (tg, matrix, discord, simplex bool, err error) {
@@ -1305,13 +1526,13 @@ func servicePlatformForSetup(tg, matrix, discord, simplex bool) string {
 	}
 }
 
-func firstTimeSetup(binaryPath string) (string, error) {
+func firstTimeSetup(binaryPath string) (string, string, error) {
 	printSkyBlue(i18n.T("firsttime.title"))
 
 	enableTG, enableMatrix, enableDiscord, enableSimplex, err := selectDeploymentPlatforms()
 	if err != nil {
 		printRed(i18n.T("firsttime.platform_invalid"))
-		return "", err
+		return "", "", err
 	}
 
 	var botTokenEnclave *memguard.Enclave
@@ -1344,14 +1565,14 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		totpSecretOutput, err := runCmdOutputBytes(binaryPath, "--generate-totp-secret")
 		if err != nil {
 			printRed(i18n.T("totp.generate_failed", err.Error()))
-			return "", err
+			return "", "", err
 		}
 		defer zeroBytes(totpSecretOutput)
 
 		totpSecretRaw, err := extractBase32Secret(totpSecretOutput)
 		if err != nil {
 			printRed(i18n.T("totp.parse_failed", err.Error()))
-			return "", err
+			return "", "", err
 		}
 		defer zeroBytes(totpSecretRaw)
 
@@ -1406,7 +1627,7 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		matrixUser = readSecureInputStr(i18n.T("firsttime.matrix_mxid_prompt"))
 		matrixUser, matrixHS, err = selectMatrixHomeserver(matrixUser)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 
 		matrixPassEnclave = readSecureInput(i18n.T("firsttime.matrix_pass_prompt"))
@@ -1481,7 +1702,7 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		aIDBytes = aIDBuf.Bytes()
 		if err := validateAdminID(string(aIDBytes)); err != nil {
 			printRed(err.Error())
-			return "", err
+			return "", "", err
 		}
 	}
 	if totpSecretEnclave != nil {
@@ -1512,10 +1733,10 @@ func firstTimeSetup(binaryPath string) (string, error) {
 	}
 	if err := runSetupCommand(binaryPath, setupPayload); err != nil {
 		printRed(i18n.T("setup.failed", err.Error()))
-		return "", err
+		return "", "", err
 	}
 
-	return servicePlatformForSetup(enableTG, enableMatrix, enableDiscord, enableSimplex), nil
+	return servicePlatformForSetup(enableTG, enableMatrix, enableDiscord, enableSimplex), simplexPort, nil
 }
 
 // readSecureInput 安全地从终端读取输入，直接返回加密的 Enclave，避免产生明文 string 垃圾
