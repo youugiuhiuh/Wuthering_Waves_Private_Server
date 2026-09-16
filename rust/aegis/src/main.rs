@@ -37,20 +37,17 @@ async fn main() -> Result<()> {
     // 正常启动：校验完整性后再加载配置
     verify_integrity().await?;
 
-    // CLI 模式检测（初始; auto-detect 补充在 encrypted_config 加载后）
-    let use_simplex = args.iter().any(|a| a == "--simplex");
-    let (mut enable_telegram, mut enable_matrix, standalone) = resolve_platforms(&args);
-
     let (app_config, security) = main::config::load_and_validate()?;
 
-    // Auto-detect Matrix 配置
-    let use_matrix = args.iter().any(|a| a == "--matrix");
-    let use_all = args.iter().any(|a| a == "--all");
-    let tg_only = args.iter().any(|a| a == "--tg-only");
     let has_matrix = main::matrix::has_matrix_config(&app_config.decrypted.encrypted_config, &args);
-    enable_matrix |= auto_enable_from_config(use_matrix, use_all, standalone, tg_only, has_matrix);
+    let has_simplex =
+        main::simplex::has_simplex_config(&app_config.decrypted.encrypted_config, &args);
 
-    let matrix_handle = if enable_matrix {
+    // 一次启动只选择一种平台部署形态（决策表见 resolve_platform_selection）。
+    let selection = resolve_platform_selection(&args, has_matrix, has_simplex)
+        .map_err(|e| anyhow::anyhow!("❌ {e}"))?;
+
+    let matrix_handle = if selection.matrix {
         Some(
             main::matrix::connect_matrix(
                 &security,
@@ -63,7 +60,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    let discord_raw = if args.iter().any(|a| a == "--discord") {
+    let discord_raw = if selection.discord {
         Some(
             main::discord::connect_discord(
                 &security,
@@ -76,24 +73,14 @@ async fn main() -> Result<()> {
         None
     };
 
-    // SimpleX 独立平台：显式 --simplex 或配置齐备时启用。
-    // 语言必须在连接之前应用 —— connect_simplex 用 simplex.welcome 生成欢迎语，
+    // 语言必须在连接 SimpleX 之前应用 —— connect_simplex 用 simplex.welcome 生成欢迎语，
     // 而该文案由进程全局 locale 决定。副作用（时区/apt timer）仍只在
     // runtime::apply_configured_language 中执行一次。
     if let Some(lang) = main::runtime::configured_lang() {
         aegis::core::i18n::set_lang(lang);
     }
 
-    let has_simplex =
-        main::simplex::has_simplex_config(&app_config.decrypted.encrypted_config, &args);
-    let simplex_enabled =
-        use_simplex || auto_enable_from_config(false, use_all, standalone, tg_only, has_simplex);
-    // SimpleX 适配器会成为主适配器，而 Telegram dispatcher 用 state.adapter 派发：
-    // 二者同时启用会把 Telegram 回复发到 SimpleX；且无 token 时 Bot::new(unwrap) 会 abort。
-    if simplex_enabled {
-        enable_telegram = false;
-    }
-    let simplex_handle = if simplex_enabled {
+    let simplex_handle = if selection.simplex {
         Some(
             main::simplex::connect_simplex(
                 &security,
@@ -113,8 +100,8 @@ async fn main() -> Result<()> {
     } else {
         main::adapter::build_adapter(
             app_config.decrypted.token.as_deref(),
-            enable_telegram,
-            enable_matrix,
+            selection.telegram,
+            selection.matrix,
             &matrix_handle,
         )
         .await?
@@ -141,8 +128,8 @@ async fn main() -> Result<()> {
     main::runtime::run(
         state,
         matrix_handle,
-        enable_telegram,
-        enable_matrix,
+        selection.telegram,
+        selection.matrix,
         discord_raw,
         simplex_handle,
         app_config.decrypted.token,
@@ -151,44 +138,120 @@ async fn main() -> Result<()> {
     .await
 }
 
-/// 解析启动参数决定启用哪些平台。
-///
-/// 返回 `(telegram, matrix, standalone)`，其中 `standalone` 表示显式请求了
-/// Discord 或 SimpleX —— 二者都是独立平台，各自禁用 Telegram 与 Matrix。
-/// 配置驱动的平台自动启用决策。
-///
-/// 显式 flag（`--matrix`/`--discord`/`--simplex`）与 `--all` 已由
-/// [`resolve_platforms`] 决定，这里只回答「仅凭配置是否应启用」。
-/// 独立平台（`--simplex`/`--discord`）和 `--tg-only` 一律不参与自动启用：
-/// 否则配置齐备时会把另一个平台悄悄拉起来，而 SimpleX 适配器是主适配器，
-/// 会劫持 Telegram 的派发，无 token 时还会 abort。
-fn auto_enable_from_config(
-    explicit: bool,
-    use_all: bool,
-    standalone: bool,
-    tg_only: bool,
-    configured: bool,
-) -> bool {
-    if explicit || use_all || standalone || tg_only {
-        return false;
-    }
-    configured
+/// 一次启动只选择一种平台部署形态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PlatformSelection {
+    telegram: bool,
+    matrix: bool,
+    discord: bool,
+    simplex: bool,
 }
 
-fn resolve_platforms(args: &[String]) -> (bool, bool, bool) {
+/// 依据显式 CLI 参数与配置存在性决定启用哪些平台。
+///
+/// `has_matrix` / `has_simplex` 表示 config.enc 中相应字段齐备（不含显式 flag）。
+/// 决策表：
+///
+/// | 显式 flag | has_matrix | has_simplex | 结果 |
+/// |---|---|---|---|
+/// | 无 | 否 | 否 | telegram |
+/// | 无 | 是 | 否 | matrix |
+/// | 无 | 否 | 是 | simplex |
+/// | 无 | 是 | 是 | 错误（配置歧义） |
+/// | `--matrix` | 任意 | 任意 | matrix（压制 simplex 自动启用） |
+/// | `--simplex` | 任意 | 任意 | simplex（压制 matrix 与 telegram） |
+/// | `--discord` | 任意 | 任意 | discord（压制 matrix/simplex/telegram） |
+/// | `--all` | 任意 | 任意 | telegram + matrix（永不包含 simplex/discord） |
+/// | `--tg-only` | 任意 | 任意 | telegram（不做自动启用） |
+/// | `--discord` + `--simplex` | 任意 | 任意 | 错误（两个独立平台） |
+///
+/// 自动探测（无 flag）最多只启用一个平台：`matrix_*` 与 `simplex_*` 同时齐备时
+/// 直接报错，而不是悄悄二选一。SimpleX 成为主适配器时必须关闭 Telegram，否则
+/// Telegram dispatcher 用同一个 `state.adapter` 派发，会把 Telegram 回复发到
+/// SimpleX；无 token 时还会触发 `Bot::new` 的 panic。
+fn resolve_platform_selection(
+    args: &[String],
+    has_matrix: bool,
+    has_simplex: bool,
+) -> Result<PlatformSelection, String> {
     let use_matrix = args.iter().any(|a| a == "--matrix");
     let use_discord = args.iter().any(|a| a == "--discord");
     let use_simplex = args.iter().any(|a| a == "--simplex");
     let use_all = args.iter().any(|a| a == "--all");
-    let enable_discord = use_discord;
-    let enable_simplex = use_simplex;
-    let enable_matrix = (use_matrix || use_all) && !enable_discord && !enable_simplex;
-    let enable_telegram = (!use_matrix && !use_discord && !use_simplex) || use_all;
-    (
-        enable_telegram,
-        enable_matrix,
-        enable_discord || enable_simplex,
-    )
+    let tg_only = args.iter().any(|a| a == "--tg-only");
+
+    if use_discord && use_simplex {
+        return Err(
+            "--discord 与 --simplex 都是独立平台，不能同时启用。请只保留其一。".to_string(),
+        );
+    }
+
+    if use_discord {
+        return Ok(PlatformSelection {
+            telegram: false,
+            matrix: false,
+            discord: true,
+            simplex: false,
+        });
+    }
+    if use_simplex {
+        return Ok(PlatformSelection {
+            telegram: false,
+            matrix: false,
+            discord: false,
+            simplex: true,
+        });
+    }
+    if use_matrix {
+        return Ok(PlatformSelection {
+            telegram: false,
+            matrix: true,
+            discord: false,
+            simplex: false,
+        });
+    }
+    if use_all {
+        return Ok(PlatformSelection {
+            telegram: true,
+            matrix: true,
+            discord: false,
+            simplex: false,
+        });
+    }
+    if tg_only {
+        return Ok(PlatformSelection {
+            telegram: true,
+            matrix: false,
+            discord: false,
+            simplex: false,
+        });
+    }
+
+    match (has_matrix, has_simplex) {
+        (true, true) => Err(
+            "config.enc 同时存在 matrix_* 与 simplex_* 配置，无法自动选择平台。\
+             请显式指定 --matrix 或 --simplex，或从 config.enc 中移除其中一份配置。"
+                .to_string(),
+        ),
+        (true, false) => Ok(PlatformSelection {
+            telegram: false,
+            matrix: true,
+            discord: false,
+            simplex: false,
+        }),
+        (false, true) => Ok(PlatformSelection {
+            telegram: false,
+            matrix: false,
+            discord: false,
+            simplex: true,
+        }),
+        (false, false) => Ok(PlatformSelection {
+            telegram: true,
+            matrix: false,
+            discord: false,
+            simplex: false,
+        }),
+    }
 }
 
 async fn notify_online(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
@@ -299,62 +362,122 @@ async fn notify_bbr3_reboot_result(adapter: &dyn BotAdapter, target: &TargetId) 
 }
 
 #[cfg(test)]
-mod platform_resolution_tests {
-    use super::{auto_enable_from_config, resolve_platforms};
+mod platform_selection_tests {
+    use super::{PlatformSelection, resolve_platform_selection};
 
     fn v(s: &[&str]) -> Vec<String> {
         s.iter().map(|x| x.to_string()).collect()
     }
 
-    #[test]
-    fn default_is_telegram_only() {
-        assert_eq!(resolve_platforms(&v(&[])), (true, false, false));
+    fn sel(telegram: bool, matrix: bool, discord: bool, simplex: bool) -> PlatformSelection {
+        PlatformSelection {
+            telegram,
+            matrix,
+            discord,
+            simplex,
+        }
     }
 
     #[test]
-    fn simplex_is_standalone() {
-        assert_eq!(resolve_platforms(&v(&["--simplex"])), (false, false, true));
-    }
-
-    #[test]
-    fn simplex_wins_over_all() {
+    fn no_flags_no_config_is_telegram() {
         assert_eq!(
-            resolve_platforms(&v(&["--all", "--simplex"])),
-            (true, false, true)
+            resolve_platform_selection(&v(&[]), false, false),
+            Ok(sel(true, false, false, false))
         );
     }
 
     #[test]
-    fn matrix_and_discord_unchanged() {
-        assert_eq!(resolve_platforms(&v(&["--matrix"])), (false, true, false));
-        assert_eq!(resolve_platforms(&v(&["--discord"])), (false, false, true));
-    }
-
-    #[test]
-    fn all_alone_enables_telegram_and_matrix() {
-        assert_eq!(resolve_platforms(&v(&["--all"])), (true, true, false));
-    }
-
-    #[test]
-    fn all_with_discord_keeps_telegram_drops_matrix() {
+    fn no_flags_matrix_config_is_matrix() {
         assert_eq!(
-            resolve_platforms(&v(&["--all", "--discord"])),
-            (true, false, true)
+            resolve_platform_selection(&v(&[]), true, false),
+            Ok(sel(false, true, false, false))
         );
     }
 
     #[test]
-    fn auto_enable_needs_config_and_no_explicit_choice() {
-        assert!(auto_enable_from_config(false, false, false, false, true));
-        assert!(!auto_enable_from_config(false, false, false, false, false));
+    fn no_flags_simplex_config_is_simplex() {
+        assert_eq!(
+            resolve_platform_selection(&v(&[]), false, true),
+            Ok(sel(false, false, false, true))
+        );
     }
 
     #[test]
-    fn auto_enable_blocked_by_explicit_all_standalone_or_tg_only() {
-        assert!(!auto_enable_from_config(true, false, false, false, true));
-        assert!(!auto_enable_from_config(false, true, false, false, true));
-        assert!(!auto_enable_from_config(false, false, true, false, true));
-        assert!(!auto_enable_from_config(false, false, false, true, true));
+    fn no_flags_both_configs_is_error() {
+        assert!(resolve_platform_selection(&v(&[]), true, true).is_err());
+    }
+
+    #[test]
+    fn matrix_flag_wins_over_simplex_config() {
+        assert_eq!(
+            resolve_platform_selection(&v(&["--matrix"]), false, true),
+            Ok(sel(false, true, false, false))
+        );
+        assert_eq!(
+            resolve_platform_selection(&v(&["--matrix"]), true, true),
+            Ok(sel(false, true, false, false))
+        );
+    }
+
+    #[test]
+    fn simplex_flag_suppresses_matrix_and_telegram() {
+        assert_eq!(
+            resolve_platform_selection(&v(&["--simplex"]), true, true),
+            Ok(sel(false, false, false, true))
+        );
+        assert_eq!(
+            resolve_platform_selection(&v(&["--simplex"]), true, false),
+            Ok(sel(false, false, false, true))
+        );
+    }
+
+    #[test]
+    fn discord_flag_is_discord_only() {
+        assert_eq!(
+            resolve_platform_selection(&v(&["--discord"]), true, true),
+            Ok(sel(false, false, true, false))
+        );
+    }
+
+    #[test]
+    fn all_flag_is_telegram_plus_matrix() {
+        assert_eq!(
+            resolve_platform_selection(&v(&["--all"]), true, true),
+            Ok(sel(true, true, false, false))
+        );
+        assert_eq!(
+            resolve_platform_selection(&v(&["--all"]), false, false),
+            Ok(sel(true, true, false, false))
+        );
+    }
+
+    #[test]
+    fn tg_only_flag_is_telegram_only() {
+        assert_eq!(
+            resolve_platform_selection(&v(&["--tg-only"]), true, true),
+            Ok(sel(true, false, false, false))
+        );
+    }
+
+    #[test]
+    fn discord_and_simplex_flags_is_error() {
+        assert!(resolve_platform_selection(&v(&["--discord", "--simplex"]), false, false).is_err());
+    }
+
+    #[test]
+    fn all_with_simplex_prefers_simplex() {
+        assert_eq!(
+            resolve_platform_selection(&v(&["--all", "--simplex"]), false, false),
+            Ok(sel(false, false, false, true))
+        );
+    }
+
+    #[test]
+    fn all_with_discord_prefers_discord() {
+        assert_eq!(
+            resolve_platform_selection(&v(&["--all", "--discord"]), false, false),
+            Ok(sel(false, false, true, false))
+        );
     }
 }
 

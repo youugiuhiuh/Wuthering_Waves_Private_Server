@@ -8,7 +8,10 @@ use simploxide_client::prelude::{
     CIDeleteMode, ChatId, ContactId, MessageId as SxMessageId, NewChatItemsResponse, Reaction,
 };
 use simploxide_client::types::{AChatItem, CIContent, CIFile, ChatInfo, MsgContent};
+use std::io::Write;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// 仅处理直聊：返回对方 contactId。群聊/本地笔记返回 None（本期不支持）。
 pub fn direct_contact_id(chat_info: &ChatInfo) -> Option<i64> {
@@ -121,12 +124,42 @@ fn parse_message_id(msg_id: &MessageId) -> Result<SxMessageId> {
     SxMessageId::try_from(raw).with_context(|| format!("SimpleX msg_id 非法(0): {}", msg_id.0))
 }
 
-/// 把字节写入临时文件（simplex-chat 与服务同机，可读到该路径）。
+/// 清理调用方提供的临时文件名：只保留最后一个路径分量，拒绝 `.`、`..` 与空名。
+///
+/// 返回值可直接拼接到临时目录下，不含路径分隔符，防止 `../` 或 `/` 逃逸目录。
+fn sanitize_file_name(name: &str) -> Option<String> {
+    let base = name.rsplit(['/', '\\']).next()?.trim().to_string();
+    if base.is_empty() || base == "." || base == ".." {
+        return None;
+    }
+    Some(base)
+}
+
+/// 把字节写入仅本进程可读的临时文件（simplex-chat 与服务同机、同 root，可读到该路径）。
+///
+/// - 目录 `/tmp/aegis-simplex/` 权限强制为 `0700`
+/// - 文件以 `0600` 创建，且用 `create_new` 保证不与既有文件冲突
+/// - 文件名含 PID 与纳秒时间戳，同一名字并发写入也不会碰撞
 fn write_temp_file(name: &str, data: &[u8]) -> Result<PathBuf> {
+    let base = sanitize_file_name(name).context("SimpleX 临时文件名非法")?;
     let dir = std::env::temp_dir().join("aegis-simplex");
     std::fs::create_dir_all(&dir).context("创建 SimpleX 临时目录失败")?;
-    let path = dir.join(format!("{}-{}", std::process::id(), name));
-    std::fs::write(&path, data).context("写入 SimpleX 临时文件失败")?;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+        .context("设置 SimpleX 临时目录权限失败")?;
+
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let path = dir.join(format!("{}-{}-{}", std::process::id(), nanos, base));
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .context("创建 SimpleX 临时文件失败")?;
+    file.write_all(data).context("写入 SimpleX 临时文件失败")?;
     Ok(path)
 }
 
@@ -457,6 +490,57 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"hello");
         std::fs::remove_file(&path).unwrap();
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn sanitize_file_name_keeps_final_component() {
+        assert_eq!(sanitize_file_name("a.txt").as_deref(), Some("a.txt"));
+        assert_eq!(
+            sanitize_file_name("dir/sub/b.txt").as_deref(),
+            Some("b.txt")
+        );
+        assert_eq!(
+            sanitize_file_name("..\\..\\c.txt").as_deref(),
+            Some("c.txt")
+        );
+        assert_eq!(sanitize_file_name("/etc/passwd").as_deref(), Some("passwd"));
+    }
+
+    #[test]
+    fn sanitize_file_name_rejects_traversal_and_empty() {
+        assert_eq!(sanitize_file_name(".."), None);
+        assert_eq!(sanitize_file_name("."), None);
+        assert_eq!(sanitize_file_name("/"), None);
+        assert_eq!(sanitize_file_name(""), None);
+        assert_eq!(sanitize_file_name("   "), None);
+    }
+
+    #[test]
+    fn write_temp_file_names_are_unique() {
+        let a = write_temp_file("same.txt", b"a").unwrap();
+        let b = write_temp_file("same.txt", b"b").unwrap();
+        assert_ne!(a, b);
+        assert!(a.exists());
+        assert!(b.exists());
+        std::fs::remove_file(&a).unwrap();
+        std::fs::remove_file(&b).unwrap();
+    }
+
+    #[test]
+    fn write_temp_file_is_private() {
+        let path = write_temp_file("unit.txt", b"x").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn temp_dir_is_private() {
+        let path = write_temp_file("unit.txt", b"x").unwrap();
+        let dir = std::env::temp_dir().join("aegis-simplex");
+        let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
+        std::fs::remove_file(&path).unwrap();
     }
 
     /// 空响应不得制造 id=0（旧实现 `unwrap_or(0)` 会返回 Ok(0)，
