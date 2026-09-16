@@ -861,6 +861,84 @@ func verifySHA256(path, expected string) error {
 
 // ======================== SimpleX 部署 ========================
 
+// validateSimplexPort 校验端口号。
+//
+// 安全边界：port 来自 key=val / stdin / 交互式输入，最终被字符串拼接进一个 root
+// 拥有的 systemd 单元。裸拼接意味着换行可以注入任意指令（例如额外的 ExecStartPre），
+// 而 "5225 --host 0.0.0.0" 会把本该只监听 localhost 的无鉴权 API 暴露出去。因此
+// 这里只接受 1-65535 的纯数字串，其它一律拒绝。
+func validateSimplexPort(port string) error {
+	if port == "" {
+		return fmt.Errorf("端口不能为空")
+	}
+	if len(port) > 5 {
+		return fmt.Errorf("端口 %q 不是 1-65535 的整数", port)
+	}
+	for _, r := range port {
+		if r < '0' || r > '9' {
+			return fmt.Errorf("端口 %q 只能包含数字", port)
+		}
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil {
+		return fmt.Errorf("端口 %q 不是合法整数: %w", port, err)
+	}
+	if n < 1 || n > 65535 {
+		return fmt.Errorf("端口 %d 超出 1-65535", n)
+	}
+	return nil
+}
+
+// replaceFileAtomically 用 src 的内容原子替换 dest：先写 dest+".new"，fsync 后再
+// rename 覆盖。任何一步失败都清理临时文件并让 dest 保持原样。
+//
+// 为什么不能用就地 O_TRUNC：simplex-chat 由本安装器自己写的 systemd 单元以
+// Restart=always 常驻，dest 通常正是那个正在被执行的 inode，Linux 会拒绝写它
+// （ETXTBSY），于是第二次及以后的重装必然失败。rename 换的是目录项，与正在被
+// 执行的 inode 无关，因此不受影响。
+func replaceFileAtomically(dest string, src io.Reader, mode os.FileMode) error {
+	tmp := dest + ".new"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	if _, err := io.Copy(out, src); err != nil {
+		out.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("写入临时文件失败: %w", err)
+	}
+	if err := out.Sync(); err != nil {
+		out.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("同步临时文件失败: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("关闭临时文件失败: %w", err)
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("替换 %s 失败: %w", dest, err)
+	}
+	return nil
+}
+
+// installSimplexBinary 把已下载（并已校验 SHA-256）的 simplex-chat 放进 destDir，
+// 返回安装路径。用原子替换而不是就地覆盖，理由见 replaceFileAtomically。
+func installSimplexBinary(downloaded, destDir string) (string, error) {
+	src, err := os.Open(downloaded)
+	if err != nil {
+		return "", fmt.Errorf("读取 simplex-chat 失败: %w", err)
+	}
+	defer src.Close()
+
+	dest := filepath.Join(destDir, simplexBinaryName)
+	if err := replaceFileAtomically(dest, src, 0o755); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
 // simplexChatAssetName 返回 simplex-chat release 中对应架构的预编译产物名。
 // 未知架构返回空串，调用方必须当作硬错误处理——静默换一个架构的二进制会装出
 // 一个根本跑不起来的服务。
@@ -913,8 +991,22 @@ WantedBy=multi-user.target
 `
 }
 
+// simplexUnitForWrite 生成可落盘的单元内容。端口非法时返回错误，调用方不得写文件——
+// 端口会被字符串拼接进一个 root 拥有的单元，这里是唯一的落盘闸门。
+func simplexUnitForWrite(port string) ([]byte, error) {
+	if err := validateSimplexPort(port); err != nil {
+		return nil, err
+	}
+	return []byte(simplexSystemdUnitContent(port)), nil
+}
+
 func writeSimplexSystemdService(port string) {
-	if err := os.WriteFile(simplexServiceFile, []byte(simplexSystemdUnitContent(port)), 0o644); err != nil {
+	content, err := simplexUnitForWrite(port)
+	if err != nil {
+		printRed(i18n.T("simplex.port_invalid", err.Error()))
+		return
+	}
+	if err := os.WriteFile(simplexServiceFile, content, 0o644); err != nil {
 		printRed(i18n.T("simplex.unit_write_failed", err.Error()))
 	}
 }
@@ -1010,23 +1102,9 @@ func installSimplexChat() (string, error) {
 		return "", fmt.Errorf("创建安装目录失败: %w", err)
 	}
 
-	dest := filepath.Join(installDir, simplexBinaryName)
-	src, err := os.Open(downloaded)
+	dest, err := installSimplexBinary(downloaded, installDir)
 	if err != nil {
-		return "", fmt.Errorf("读取 simplex-chat 失败: %w", err)
-	}
-	defer src.Close()
-
-	dst, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
-		return "", fmt.Errorf("写入 simplex-chat 失败: %w", err)
-	}
-	if _, err := io.Copy(dst, src); err != nil {
-		dst.Close()
-		return "", fmt.Errorf("复制 simplex-chat 失败: %w", err)
-	}
-	if err := dst.Close(); err != nil {
-		return "", fmt.Errorf("关闭 simplex-chat 失败: %w", err)
+		return "", err
 	}
 
 	printGreen(i18n.T("simplex.installed", dest))
@@ -1039,10 +1117,9 @@ func deploySimplexService(platform, port string) {
 	if platform != "simplex" {
 		return
 	}
-	if _, err := installSimplexChat(); err != nil {
-		printRed(i18n.T("simplex.install_failed", err.Error()))
-		os.Exit(1)
-	}
+	// 端口先解析并校验，再下载：port 来自 key=val / stdin / 交互输入，最终会拼进
+	// root 拥有的 systemd 单元，任何非纯数字值都必须在这里被挡住。先校验也避免了
+	// 下载完上百 MB 才因为端口非法而失败。
 	if port == "" {
 		if existing, err := os.ReadFile(simplexServiceFile); err == nil {
 			port = simplexPortFromUnit(existing)
@@ -1051,13 +1128,28 @@ func deploySimplexService(platform, port string) {
 	if port == "" {
 		port = defaultSimplexPort
 	}
+	if err := validateSimplexPort(port); err != nil {
+		printRed(i18n.T("simplex.port_invalid", err.Error()))
+		os.Exit(1)
+	}
+	if _, err := installSimplexChat(); err != nil {
+		printRed(i18n.T("simplex.install_failed", err.Error()))
+		os.Exit(1)
+	}
 	if err := os.MkdirAll(simplexDataDir(), 0o700); err != nil {
 		printRed(i18n.T("simplex.install_failed", err.Error()))
 		os.Exit(1)
 	}
 	writeSimplexSystemdService(port)
 	_ = runCmdSilent("systemctl", "daemon-reload")
-	if err := runCmdSilent("systemctl", "enable", "--now", simplexServiceName); err != nil {
+	if err := runCmdSilent("systemctl", "enable", simplexServiceName); err != nil {
+		printRed(i18n.T("simplex.service_failed", err.Error()))
+		os.Exit(1)
+	}
+	// 必须 restart 而不是 enable --now：--now 对一个已经在运行的单元是空操作，
+	// 升级时改了端口就会让 simplex-chat 继续监听旧端口，而随后重启的 aegis 用的是
+	// 新端口，bot 永远连不上。
+	if err := runCmdSilent("systemctl", "restart", simplexServiceName); err != nil {
 		printRed(i18n.T("simplex.service_failed", err.Error()))
 		os.Exit(1)
 	}

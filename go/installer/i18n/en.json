@@ -47,6 +47,7 @@
   "simplex.download_start": "Downloading simplex-chat %s (%s)\u2026",
   "simplex.installed": "\u2713 simplex-chat installed: %s",
   "simplex.install_failed": "SimpleX deployment failed: %s",
+  "simplex.port_invalid": "Invalid SimpleX port: %s",
   "simplex.service_failed": "Failed to start SimpleX service: %s",
   "simplex.service_ok": "\u2705 SimpleX Chat service started",
   "simplex.unit_write_failed": "Failed to write SimpleX systemd unit: %s",

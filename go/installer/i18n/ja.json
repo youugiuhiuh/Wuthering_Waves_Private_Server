@@ -47,6 +47,7 @@
   "simplex.download_start": "simplex-chat %s\uff08%s\uff09\u3092\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u4e2d\u2026",
   "simplex.installed": "\u2713 simplex-chat \u3092\u30a4\u30f3\u30b9\u30c8\u30fc\u30eb\u3057\u307e\u3057\u305f: %s",
   "simplex.install_failed": "SimpleX \u306e\u30c7\u30d7\u30ed\u30a4\u306b\u5931\u6557\u3057\u307e\u3057\u305f: %s",
+  "simplex.port_invalid": "SimpleX \u30dd\u30fc\u30c8\u304c\u4e0d\u6b63\u3067\u3059: %s",
   "simplex.service_failed": "SimpleX \u30b5\u30fc\u30d3\u30b9\u306e\u8d77\u52d5\u306b\u5931\u6557\u3057\u307e\u3057\u305f: %s",
   "simplex.service_ok": "\u2705 SimpleX Chat \u30b5\u30fc\u30d3\u30b9\u3092\u8d77\u52d5\u3057\u307e\u3057\u305f",
   "simplex.unit_write_failed": "SimpleX \u306e systemd \u30e6\u30cb\u30c3\u30c8\u306e\u66f8\u304d\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f: %s",

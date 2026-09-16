@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/awnumar/memguard"
@@ -1070,5 +1071,182 @@ func TestSimplexSystemdUnitNeverExposesTheApi(t *testing.T) {
 	}
 	if got := strings.Count(unit, " -p "); got != 1 {
 		t.Fatalf("unit must pass the port exactly once, found %d: %s", got, unit)
+	}
+}
+
+// TestValidateSimplexPortRejectsUnsafeValues 守住一条信任边界：端口来自 key=val /
+// stdin / 交互式输入，会被拼进一个 root 拥有的 systemd 单元。换行等于注入任意单元
+// 指令（如额外的 ExecStartPre），而 "5225 --host 0.0.0.0" 会把本该只监听 localhost
+// 的无鉴权 API 暴露到公网。
+func TestValidateSimplexPortRejectsUnsafeValues(t *testing.T) {
+	for _, bad := range []string{
+		"",
+		"abc",
+		"0",
+		"-1",
+		"+5225",
+		" 5225",
+		"5225 ",
+		"5225\nExecStart=/bin/sh -c 'x'",
+		"5225\r\nExecStartPre=/bin/sh -c 'x'",
+		"5225 --host 0.0.0.0",
+		"0.0.0.0",
+		"65536",
+		"70000",
+		"123456",
+		"52_25",
+		"5225;rm -rf /",
+	} {
+		if err := validateSimplexPort(bad); err == nil {
+			t.Errorf("validateSimplexPort(%q) must be rejected", bad)
+		}
+	}
+}
+
+func TestValidateSimplexPortAcceptsRealPorts(t *testing.T) {
+	for _, ok := range []string{"1", "80", "1024", "5225", "65535"} {
+		if err := validateSimplexPort(ok); err != nil {
+			t.Errorf("validateSimplexPort(%q) must be accepted, got %v", ok, err)
+		}
+	}
+}
+
+// TestReplaceFileAtomicallyKeepsDestinationWhenSourceFails 守住原子替换的核心契约：
+// 源读取中断时目标文件必须保持原样，且不能留下半截的 .new 残骸。
+func TestReplaceFileAtomicallyKeepsDestinationWhenSourceFails(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, simplexBinaryName)
+	if err := os.WriteFile(dest, []byte("old-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := replaceFileAtomically(dest, iotest.ErrReader(errors.New("boom")), 0o755)
+	if err == nil {
+		t.Fatal("replace must fail when the source errors")
+	}
+
+	got, readErr := os.ReadFile(dest)
+	if readErr != nil {
+		t.Fatalf("destination must still exist: %v", readErr)
+	}
+	if string(got) != "old-binary" {
+		t.Fatalf("destination must be untouched on failure, got %q", got)
+	}
+	if _, statErr := os.Stat(dest + ".new"); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("failed replace must not leave a .new file behind (stat err = %v)", statErr)
+	}
+}
+
+// TestReplaceFileAtomicallySwapsInodeInsteadOfTruncating 守住 ETXTBSY 的修复点：
+// 必须是 rename 换目录项（inode 变化），而不是就地 O_TRUNC。就地截断正在被执行的
+// simplex-chat 会被 Linux 以 ETXTBSY 拒绝，重装就此永远失败。
+func TestReplaceFileAtomicallySwapsInodeInsteadOfTruncating(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, simplexBinaryName)
+	if err := os.WriteFile(dest, []byte("old-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceFileAtomically(dest, strings.NewReader("new-binary"), 0o755); err != nil {
+		t.Fatalf("replace failed: %v", err)
+	}
+
+	after, err := os.Stat(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(before, after) {
+		t.Fatal("destination inode unchanged: this is an in-place truncate, which fails with ETXTBSY while the service runs")
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new-binary" {
+		t.Fatalf("destination content = %q, want %q", got, "new-binary")
+	}
+	if after.Mode().Perm()&0o100 == 0 {
+		t.Fatalf("destination must stay owner-executable, mode = %v", after.Mode().Perm())
+	}
+	if _, statErr := os.Stat(dest + ".new"); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("successful replace must not leave a .new file behind (stat err = %v)", statErr)
+	}
+}
+
+// TestInstallSimplexBinaryReplacesRunningTarget 覆盖安装路径本身：目标位置已经存在
+// 上一版 simplex-chat（即正在被服务执行的 inode）时，安装必须成功并换掉该文件。
+func TestInstallSimplexBinaryReplacesRunningTarget(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, simplexBinaryName)
+	if err := os.WriteFile(dest, []byte("old-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	downloaded := filepath.Join(t.TempDir(), "simplex-chat-download")
+	if err := os.WriteFile(downloaded, []byte("new-binary"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := installSimplexBinary(downloaded, dir)
+	if err != nil {
+		t.Fatalf("installSimplexBinary failed: %v", err)
+	}
+	if got != dest {
+		t.Fatalf("installSimplexBinary returned %q, want %q", got, dest)
+	}
+
+	after, err := os.Stat(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(before, after) {
+		t.Fatal("install must replace the target file, not truncate it in place")
+	}
+	content, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "new-binary" {
+		t.Fatalf("installed content = %q, want %q", content, "new-binary")
+	}
+	if after.Mode().Perm()&0o100 == 0 {
+		t.Fatalf("installed binary must be owner-executable, mode = %v", after.Mode().Perm())
+	}
+}
+
+// TestSimplexUnitForWriteRefusesInjectedPort 覆盖真正落盘的那道闸：writeSimplexSystemdService
+// 必须先经 simplexUnitForWrite 组装内容，注入型端口绝不能产出任何单元文本。
+func TestSimplexUnitForWriteRefusesInjectedPort(t *testing.T) {
+	for _, bad := range []string{
+		"",
+		"5225\nExecStartPre=/bin/sh -c 'x'",
+		"5225\nExecStart=/bin/sh -c 'x'",
+		"5225 --host 0.0.0.0",
+		"0.0.0.0",
+		"70000",
+	} {
+		content, err := simplexUnitForWrite(bad)
+		if err == nil {
+			t.Errorf("simplexUnitForWrite(%q) must refuse to produce unit content, got %q", bad, content)
+		}
+		if len(content) != 0 {
+			t.Errorf("simplexUnitForWrite(%q) must return no content on rejection, got %q", bad, content)
+		}
+	}
+
+	content, err := simplexUnitForWrite("5225")
+	if err != nil {
+		t.Fatalf("valid port must produce unit content: %v", err)
+	}
+	if !strings.Contains(string(content), "-p 5225") {
+		t.Fatalf("unit content must carry the port: %s", content)
 	}
 }

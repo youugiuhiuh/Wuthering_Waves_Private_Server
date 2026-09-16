@@ -52,6 +52,7 @@
   "simplex.download_start": "正在下载 simplex-chat %s（%s）…",
   "simplex.installed": "✓ simplex-chat 已安装: %s",
   "simplex.install_failed": "SimpleX 部署失败: %s",
+  "simplex.port_invalid": "SimpleX \u7aef\u53e3\u65e0\u6548: %s",
   "simplex.service_failed": "启动 SimpleX 服务失败: %s",
   "simplex.service_ok": "✅ SimpleX Chat 服务已启动",
   "simplex.unit_write_failed": "写入 SimpleX systemd 服务文件失败: %s",
