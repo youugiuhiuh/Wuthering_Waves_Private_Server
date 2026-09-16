@@ -135,7 +135,7 @@ Trigger by bumping version in `rust/aegis/Cargo.toml` and pushing to default bra
 The project focuses on:
 
 - host bootstrap and secure initialization
-- bot-driven operations and maintenance workflows over Telegram, Matrix, Discord, or SimpleX
+- bot-driven operations and maintenance workflows over Telegram, Matrix, or SimpleX
 - inbound configuration generation and lifecycle management
 - routing, geo data, certificate, and kernel/network maintenance helpers
 
@@ -145,7 +145,6 @@ Supported management platforms:
 | --- | --- | --- |
 | Telegram | _(default)_ | |
 | Matrix | `--matrix` | |
-| Discord | `--discord` | standalone |
 | SimpleX | `--simplex` | standalone; requires a local `simplex-chat` v7.0.0 — see [`docs/2026-09-16-simplex-platform.md`](docs/2026-09-16-simplex-platform.md) |
 
 ## Disclaimer
