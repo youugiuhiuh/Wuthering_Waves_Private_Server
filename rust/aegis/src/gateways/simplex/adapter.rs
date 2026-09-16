@@ -96,21 +96,29 @@ impl SimplexAdapter {
 }
 
 /// 把 TargetId 解析为 SimpleX 直聊 id。
+///
+/// 用 `try_from` 而非 `from_raw`：SimpleX id 以 NonZeroI64 表示，`from_raw(0)`
+/// 会 panic；release profile 为 `panic = "abort"`，即整个 bot 进程被终止。
 fn parse_chat_id(target: &TargetId) -> Result<ChatId> {
     let raw = target
         .0
         .parse::<i64>()
         .with_context(|| format!("SimpleX target 非整数: {}", target.0))?;
-    Ok(ContactId::from_raw(raw).into())
+    let contact_id = ContactId::try_from(raw)
+        .with_context(|| format!("SimpleX target 非法(0): {}", target.0))?;
+    Ok(contact_id.into())
 }
 
 /// 把 MessageId 解析为 SimpleX 消息 id。
+///
+/// 同上：`MessageId("0")` 由 Matrix 文本命令路径合成（`gateways/matrix/commands.rs`），
+/// SimpleX 复用该路径，因此必须在此拒绝而不是 panic。
 fn parse_message_id(msg_id: &MessageId) -> Result<SxMessageId> {
     let raw = msg_id
         .0
         .parse::<i64>()
         .with_context(|| format!("SimpleX msg_id 非整数: {}", msg_id.0))?;
-    Ok(SxMessageId::from_raw(raw))
+    SxMessageId::try_from(raw).with_context(|| format!("SimpleX msg_id 非法(0): {}", msg_id.0))
 }
 
 /// 把字节写入临时文件（simplex-chat 与服务同机，可读到该路径）。
@@ -123,11 +131,14 @@ fn write_temp_file(name: &str, data: &[u8]) -> Result<PathBuf> {
 }
 
 /// 从发送响应中取第一条 chat item 的 itemId。
-fn first_item_id(resp: &NewChatItemsResponse) -> i64 {
+///
+/// 响应不含 chat item 时返回错误：0 不是合法 SimpleX id，若把它当作
+/// `MessageId("0")` 交给后续 edit/delete 会触发 panic/abort。
+fn first_item_id(resp: &NewChatItemsResponse) -> Result<i64> {
     resp.chat_items
         .first()
         .map(|ci| ci.chat_item.meta.item_id)
-        .unwrap_or(0)
+        .context("SimpleX 发送响应缺少 chat item，无法确定消息 ID")
 }
 
 #[async_trait]
@@ -147,7 +158,7 @@ impl BotAdapter for SimplexAdapter {
             .send_msg(chat_id, text)
             .await
             .context("发送 SimpleX 消息失败")?;
-        Ok(MessageId(first_item_id(&resp).to_string()))
+        Ok(MessageId(first_item_id(&resp)?.to_string()))
     }
 
     async fn edit_message(
@@ -208,7 +219,7 @@ impl BotAdapter for SimplexAdapter {
             .await;
         let _ = std::fs::remove_file(&path);
         let resp = result.context("发送 SimpleX 文件失败")?;
-        Ok(MessageId(first_item_id(&resp).to_string()))
+        Ok(MessageId(first_item_id(&resp)?.to_string()))
     }
 
     async fn send_image(&self, target: &TargetId, data: Vec<u8>, _mime: &str) -> Result<MessageId> {
@@ -220,7 +231,7 @@ impl BotAdapter for SimplexAdapter {
             .await;
         let _ = std::fs::remove_file(&path);
         let resp = result.context("发送 SimpleX 图片失败")?;
-        Ok(MessageId(first_item_id(&resp).to_string()))
+        Ok(MessageId(first_item_id(&resp)?.to_string()))
     }
 
     fn capabilities(&self) -> PlatformCapabilities {
@@ -446,6 +457,74 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"hello");
         std::fs::remove_file(&path).unwrap();
         assert!(!path.exists());
+    }
+
+    /// 空响应不得制造 id=0（旧实现 `unwrap_or(0)` 会返回 Ok(0)，
+    /// 下游 edit/delete 再 `from_raw(0)` → panic，release 下 abort）。
+    #[test]
+    fn first_item_id_rejects_response_without_chat_items() {
+        let empty: NewChatItemsResponse = serde_json::from_value(serde_json::json!({
+            "user": {
+                "userId": 1,
+                "agentUserId": "1",
+                "userContactId": 1,
+                "localDisplayName": "aegis",
+                "profile": {
+                    "profileId": 1,
+                    "displayName": "aegis",
+                    "fullName": "aegis",
+                    "localAlias": ""
+                },
+                "fullPreferences": {
+                    "timedMessages": { "allow": "always" },
+                    "fullDelete": { "allow": "always" },
+                    "reactions": { "allow": "always" },
+                    "voice": { "allow": "always" },
+                    "files": { "allow": "always" },
+                    "calls": { "allow": "always" },
+                    "sessions": { "allow": "always" },
+                    "commands": []
+                },
+                "activeOrder": 1
+            },
+            "chatItems": []
+        }))
+        .unwrap();
+
+        assert!(first_item_id(&empty).is_err());
+    }
+
+    /// `MessageId("0")` 由 Matrix 文本命令路径合成（`gateways/matrix/commands.rs`），
+    /// SimpleX 复用该路径，因此必须返回错误而不是 panic。
+    #[test]
+    fn parse_message_id_rejects_zero() {
+        assert!(parse_message_id(&MessageId("0".to_string())).is_err());
+    }
+
+    #[test]
+    fn parse_message_id_accepts_non_zero() {
+        assert_eq!(
+            parse_message_id(&MessageId("7".to_string())).unwrap().raw(),
+            7
+        );
+    }
+
+    #[test]
+    fn parse_message_id_rejects_non_numeric() {
+        assert!(parse_message_id(&MessageId("abc".to_string())).is_err());
+    }
+
+    #[test]
+    fn parse_chat_id_rejects_zero() {
+        assert!(parse_chat_id(&TargetId("0".to_string())).is_err());
+    }
+
+    #[test]
+    fn parse_chat_id_accepts_non_zero() {
+        assert_eq!(
+            parse_chat_id(&TargetId("42".to_string())).unwrap().raw(),
+            42
+        );
     }
 
     #[test]
