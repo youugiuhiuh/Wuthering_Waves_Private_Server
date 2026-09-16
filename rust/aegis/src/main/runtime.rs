@@ -4,7 +4,6 @@ use aegis::common::{MessageId, TargetId};
 use aegis::core::i18n;
 use aegis::shared::dispatch_event;
 use aegis::shared::types::*;
-use anyhow::Context;
 use anyhow::Result;
 use futures_util::StreamExt;
 use matrix_sdk::Client as MatrixClient;
@@ -106,70 +105,12 @@ pub async fn run(
     matrix_handle: Option<super::matrix::MatrixHandle>,
     enable_telegram: bool,
     enable_matrix: bool,
-    discord_raw: Option<super::discord::DiscordRawHandle>,
     simplex_handle: Option<super::simplex::SimplexHandle>,
     token: Option<String>,
     admin_id: Option<i64>,
 ) -> Result<(), anyhow::Error> {
     // 语言已在 main.rs 中于连接任何平台之前应用（见 apply_configured_language），
     // 此处不再重复，以免时区/apt timer 副作用被执行两次。
-
-    // ── Discord 网关 ──
-    let discord_enabled = discord_raw.is_some();
-    if let Some(raw) = discord_raw {
-        let adapter_for_init = raw.adapter.clone();
-        let target_for_init = TargetId(raw.admin_channel.to_string());
-        tokio::spawn(async move {
-            if let Err(e) = aegis::core::system::scheduler::start_scheduler(
-                adapter_for_init.clone(),
-                target_for_init.clone(),
-            )
-            .await
-            {
-                log::error!("❌ 初始化调度器失败: {}", e);
-            }
-            tokio::join!(
-                async {
-                    let _ =
-                        crate::notify_upgrade_success(&*adapter_for_init, &target_for_init).await;
-                },
-                async {
-                    let _ = crate::notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init)
-                        .await;
-                },
-                async {
-                    let _ = crate::notify_online(&*adapter_for_init, &target_for_init).await;
-                },
-            );
-        });
-
-        let (mut client, _, _) = super::discord::build_handle(raw, state.clone())
-            .await
-            .context("构建 Discord 客户端失败")?;
-
-        // Discord-only: keep process alive via CancellationToken
-        if !enable_telegram && !enable_matrix {
-            let token = CancellationToken::new();
-            let token_clone = token.clone();
-            tokio::spawn(async move {
-                tokio::signal::ctrl_c().await.ok();
-                log::info!("收到关闭信号，正在优雅关闭...");
-                token.cancel();
-            });
-            tokio::spawn(async move {
-                if let Err(e) = client.start().await {
-                    log::error!("Discord 网关错误: {}", e);
-                }
-            });
-            token_clone.cancelled().await;
-        } else {
-            tokio::spawn(async move {
-                if let Err(e) = client.start().await {
-                    log::error!("Discord 网关错误: {}", e);
-                }
-            });
-        }
-    }
 
     // ── Matrix 同步循环 ──
     if let Some((client, room, matrix_adapter)) = matrix_handle {
@@ -560,7 +501,7 @@ pub async fn run(
     }
 
     // ── SimpleX-only: 保活（事件循环在 spawn 中运行）──
-    if simplex_enabled && !enable_telegram && !enable_matrix && !discord_enabled {
+    if simplex_enabled && !enable_telegram && !enable_matrix {
         let token = CancellationToken::new();
         let token_clone = token.clone();
 
