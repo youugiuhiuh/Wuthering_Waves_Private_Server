@@ -6,6 +6,7 @@ use aegis::shared::dispatch_event;
 use aegis::shared::types::*;
 use anyhow::Context;
 use anyhow::Result;
+use futures_util::StreamExt;
 use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::Room as MatrixRoom;
 use matrix_sdk::ruma::events::room::MediaSource;
@@ -54,46 +55,67 @@ fn teloxide_to_bot(cmd: TeloxideCommand) -> BotCommand {
     }
 }
 
+/// 读取 `config.enc` 中配置的语言。纯读，无副作用 —— 供需要“在任何本地化调用之前”
+/// 提前设定全局 locale 的调用点使用（如 `connect_simplex` 生成欢迎语）。
+pub fn configured_lang() -> Option<i18n::Lang> {
+    let config_data = std::fs::read(config_dir().join(crate::bootstrap::CONFIG_FILE)).ok()?;
+    let encrypted_config: crate::bootstrap::EncryptedConfig =
+        serde_json::from_slice(&config_data).ok()?;
+    encrypted_config
+        .lang
+        .as_ref()
+        .map(|lang_str| lang_str.parse().unwrap_or(i18n::Lang::Zh))
+}
+
+/// 应用 `config.enc` 中记录的语言：设置进程全局 locale、同步 AppState 语言状态，
+/// 并执行一次性的系统副作用（时区、apt-daily timer）。
+///
+/// 副作用只应执行一次，因此本函数在 `main.rs` 中只调用一次；若需要在连接平台前
+/// 提前设定 locale，用 [`configured_lang`] + `i18n::set_lang`。
+pub async fn apply_configured_language(state: &Arc<AppState>) {
+    let Some(lang) = configured_lang() else {
+        return;
+    };
+
+    i18n::set_lang(lang);
+    state.set_lang(lang).await;
+    state.mark_lang_configured().await;
+    i18n::mark_lang_configured();
+
+    let tz = i18n::lang_to_timezone(lang);
+    match tokio::process::Command::new("timedatectl")
+        .args(["set-timezone", tz])
+        .output()
+        .await
+    {
+        Ok(o) if !o.status.success() => {
+            log::warn!("设置系统时区 {} 失败: exit {:?}", tz, o.status.code());
+        }
+        Err(e) => log::warn!("设置系统时区 {} 失败: {}", tz, e),
+        _ => {}
+    }
+
+    if let Err(e) = aegis::core::system::operations::Operations::set_apt_daily_timer().await {
+        log::warn!("覆盖 apt-daily timer 失败: {}", e);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     state: Arc<AppState>,
     matrix_handle: Option<super::matrix::MatrixHandle>,
     enable_telegram: bool,
     enable_matrix: bool,
     discord_raw: Option<super::discord::DiscordRawHandle>,
+    simplex_handle: Option<super::simplex::SimplexHandle>,
     token: Option<String>,
     admin_id: Option<i64>,
 ) -> Result<(), anyhow::Error> {
-    // Initialize i18n language from config
-    if let Ok(config_data) = std::fs::read(config_dir().join(crate::bootstrap::CONFIG_FILE))
-        && let Ok(encrypted_config) =
-            serde_json::from_slice::<crate::bootstrap::EncryptedConfig>(&config_data)
-        && let Some(ref lang_str) = encrypted_config.lang
-    {
-        let lang = lang_str.parse().unwrap_or(i18n::Lang::Zh);
-        i18n::set_lang(lang);
-        state.set_lang(lang).await;
-        state.mark_lang_configured().await;
-        i18n::mark_lang_configured();
-
-        let tz = i18n::lang_to_timezone(lang);
-        match tokio::process::Command::new("timedatectl")
-            .args(["set-timezone", tz])
-            .output()
-            .await
-        {
-            Ok(o) if !o.status.success() => {
-                log::warn!("设置系统时区 {} 失败: exit {:?}", tz, o.status.code());
-            }
-            Err(e) => log::warn!("设置系统时区 {} 失败: {}", tz, e),
-            _ => {}
-        }
-
-        if let Err(e) = aegis::core::system::operations::Operations::set_apt_daily_timer().await {
-            log::warn!("覆盖 apt-daily timer 失败: {}", e);
-        }
-    }
+    // 语言已在 main.rs 中于连接任何平台之前应用（见 apply_configured_language），
+    // 此处不再重复，以免时区/apt timer 副作用被执行两次。
 
     // ── Discord 网关 ──
+    let discord_enabled = discord_raw.is_some();
     if let Some(raw) = discord_raw {
         let adapter_for_init = raw.adapter.clone();
         let target_for_init = TargetId(raw.admin_channel.to_string());
@@ -267,6 +289,111 @@ pub async fn run(
         });
     }
 
+    // ── SimpleX 网关 ──
+    let simplex_enabled = simplex_handle.is_some();
+    if let Some(handle) = simplex_handle {
+        // SimpleX 是独立平台：调度器与启动通知必须发往 SimpleX 管理员联系人，
+        // 而非 Telegram 的 admin_id（后者在纯 SimpleX 部署下为 None）。
+        let simplex_admin = state.simplex_admin_id();
+        if let Some(admin_contact) = simplex_admin {
+            let adapter_for_init = handle.adapter.clone();
+            let target_for_init = TargetId(admin_contact.to_string());
+            tokio::spawn(async move {
+                if let Err(e) = aegis::core::system::scheduler::start_scheduler(
+                    adapter_for_init.clone(),
+                    target_for_init.clone(),
+                )
+                .await
+                {
+                    log::error!("❌ 初始化调度器失败: {}", e);
+                }
+                tokio::join!(
+                    async {
+                        let _ = crate::notify_upgrade_success(&*adapter_for_init, &target_for_init)
+                            .await;
+                    },
+                    async {
+                        let _ =
+                            crate::notify_bbr3_reboot_result(&*adapter_for_init, &target_for_init)
+                                .await;
+                    },
+                    async {
+                        let _ = crate::notify_online(&*adapter_for_init, &target_for_init).await;
+                    },
+                );
+            });
+        } else {
+            log::error!(
+                "SimpleX 未配置 simplex_admin_id，调度器与启动通知不会发送；\
+                 请管理员先向 bot 发一条消息，从日志中取得 contactId 后写入配置"
+            );
+        }
+
+        let state_for_events = state.clone();
+        let adapter_for_events = handle.adapter.clone();
+
+        tokio::spawn(async move {
+            let mut events = handle.events;
+            while let Some(ev) = events.next().await {
+                let Ok(ev) = ev else {
+                    log::warn!("SimpleX 事件流解析失败，已跳过该事件");
+                    continue;
+                };
+                let simploxide_client::events::Event::NewChatItems(items) = ev else {
+                    continue;
+                };
+
+                let mapped = aegis::gateways::simplex::map_new_chat_items(&items.chat_items);
+                if mapped.is_empty() {
+                    // ChatInfo 的 untagged `Undocumented` 回退会静默丢弃未来版本/
+                    // 畸形载荷 —— 留下痕迹以便排查“消息没反应”。
+                    log::warn!(
+                        "SimpleX NewChatItems 未映射出任何消息（chatItems={}），\
+                         可能是群聊/非文本内容或协议版本不匹配",
+                        items.chat_items.len()
+                    );
+                    continue;
+                }
+
+                for msg in mapped {
+                    if simplex_admin != Some(msg.contact_id) {
+                        log::warn!(
+                            "SimpleX 未授权联系人 contactId={} 尝试发消息，已忽略",
+                            msg.contact_id
+                        );
+                        continue;
+                    }
+
+                    // 文本命令必须走与 Matrix 相同的解析器：dispatch_event 的
+                    // Message 分支不解析斜杠命令，只有 parse_to_event 会产出
+                    // BotEvent::Command / BotEvent::Callback。
+                    let text = msg.text.as_deref().unwrap_or("");
+                    let event = if let Some(ev) = aegis::gateways::matrix::commands::parse_to_event(
+                        text,
+                        adapter_for_events.clone(),
+                        &msg.target,
+                        msg.user_id,
+                    ) {
+                        ev
+                    } else {
+                        BotEvent::Message(MessageEvent {
+                            adapter: adapter_for_events.clone(),
+                            target: msg.target.clone(),
+                            user_id: msg.user_id,
+                            text: msg.text.clone(),
+                            file_id: msg.file_id.clone(),
+                            file_name: msg.file_name.clone(),
+                            reply_to_text: None,
+                            thread_root: None,
+                        })
+                    };
+                    let _ = dispatch_event(event, &state_for_events).await;
+                }
+            }
+            log::warn!("SimpleX 事件流已结束");
+        });
+    }
+
     // ── Telegram Dispatcher ──
     if enable_telegram {
         async fn handle_command(
@@ -426,6 +553,20 @@ pub async fn run(
         tokio::spawn(async move {
             tokio::signal::ctrl_c().await.ok();
             log::info!("收到关闭信号，正在优雅关闭...");
+            token.cancel();
+        });
+
+        token_clone.cancelled().await;
+    }
+
+    // ── SimpleX-only: 保活（事件循环在 spawn 中运行）──
+    if simplex_enabled && !enable_telegram && !enable_matrix && !discord_enabled {
+        let token = CancellationToken::new();
+        let token_clone = token.clone();
+
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.ok();
+            log::info!("收到关闭信号，正在优雅关闭 SimpleX...");
             token.cancel();
         });
 

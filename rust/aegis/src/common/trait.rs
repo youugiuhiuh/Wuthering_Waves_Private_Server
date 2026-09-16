@@ -31,6 +31,7 @@ pub enum Platform {
     Telegram,
     Discord,
     Matrix,
+    Simplex,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -91,6 +92,21 @@ impl PlatformCapabilities {
         can_send_voice: false,
         can_send_typing: false,
         can_send_reaction: false,
+        can_thread: false,
+        has_e2ee: true,
+    };
+
+    pub const SIMPLEX: Self = Self {
+        can_edit_message: true,
+        can_delete_message: true,
+        has_inline_keyboard: false,
+        has_slash_commands: false,
+        has_file_transfer: false,
+        can_send_file: true,
+        can_send_image: true,
+        can_send_voice: false,
+        can_send_typing: false,
+        can_send_reaction: true,
         can_thread: false,
         has_e2ee: true,
     };
@@ -181,3 +197,32 @@ pub trait BotAdapter: Send + Sync {
 // answer_callback, download_file, send_file, send_image, send_voice,
 // send_typing, send_reaction, send_message_threaded have default implementations
 // so mockall does NOT generate expect_ methods for them.
+
+#[cfg(test)]
+mod simplex_capabilities_tests {
+    use super::*;
+
+    #[test]
+    fn simplex_capabilities_are_honest() {
+        let caps = PlatformCapabilities::SIMPLEX;
+        assert!(caps.can_edit_message, "update_msg 可用");
+        assert!(caps.can_delete_message, "delete_msg 可用");
+        assert!(!caps.has_inline_keyboard, "SimpleX 无 inline keyboard");
+        assert!(!caps.has_slash_commands, "本期不做平台命令注册");
+        assert!(!caps.has_file_transfer, "本期 download_file 不支持");
+        assert!(caps.can_send_file);
+        assert!(caps.can_send_image);
+        assert!(!caps.can_send_voice);
+        assert!(!caps.can_send_typing, "未发现 typing API");
+        assert!(caps.can_send_reaction, "update_msg_reaction 可用");
+        assert!(!caps.can_thread);
+        assert!(caps.has_e2ee);
+    }
+
+    #[test]
+    fn platform_simplex_is_distinct() {
+        assert_ne!(Platform::Simplex, Platform::Telegram);
+        assert_ne!(Platform::Simplex, Platform::Discord);
+        assert_ne!(Platform::Simplex, Platform::Matrix);
+    }
+}

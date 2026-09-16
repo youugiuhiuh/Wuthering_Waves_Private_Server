@@ -1,6 +1,7 @@
+use crate::common::markup::render_markup_buttons;
 use crate::common::routing::is_sensitive;
 use crate::common::{
-    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+    BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -28,25 +29,6 @@ impl MatrixAdapter {
     pub fn inner_room(&self) -> &Room {
         &self.room
     }
-}
-
-/// Render inline keyboard markup as a text command list for Matrix clients
-/// that don't support inline keyboards.
-fn render_markup_buttons(base: String, markup: &Markup) -> String {
-    let mut body = base;
-    let mut lines: Vec<String> = Vec::new();
-    let mut idx = 1;
-    for row in &markup.buttons {
-        for btn in row {
-            lines.push(format!("{}. {} — send: `{}`", idx, btn.text, btn.data));
-            idx += 1;
-        }
-    }
-    if !lines.is_empty() {
-        body.push_str(&rust_i18n::t!("matrix.markup_header"));
-        body.push_str(&lines.join("\n"));
-    }
-    body
 }
 
 #[cfg(test)]
@@ -83,6 +65,7 @@ mod tests {
 
 #[cfg(test)]
 mod matrix_adapter_tests {
+    use crate::common::markup::render_markup_buttons;
     use crate::common::{InlineButton, Markup};
 
     #[test]
@@ -105,7 +88,7 @@ mod matrix_adapter_tests {
                 }],
             ],
         };
-        let result = super::render_markup_buttons("Hello".to_string(), &markup);
+        let result = render_markup_buttons("Hello".to_string(), &markup);
         assert!(result.contains("Hello"));
         assert!(result.contains("1. Search"));
         assert!(result.contains("/search"));
@@ -117,7 +100,7 @@ mod matrix_adapter_tests {
 
     #[test]
     fn send_message_without_markup_returns_plain_text() {
-        let result = super::render_markup_buttons("plain".into(), &Markup { buttons: vec![] });
+        let result = render_markup_buttons("plain".into(), &Markup { buttons: vec![] });
         assert_eq!(result, "plain");
     }
 }

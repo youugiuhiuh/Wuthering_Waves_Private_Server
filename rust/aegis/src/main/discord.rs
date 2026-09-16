@@ -226,6 +226,8 @@ mod tests {
             discord_admin_id: None,
             lang: None,
             matrix_recovery_key: None,
+            simplex_port: None,
+            simplex_admin_id: None,
         }
     }
 

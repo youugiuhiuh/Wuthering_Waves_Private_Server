@@ -10,9 +10,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/awnumar/memguard"
@@ -113,6 +115,7 @@ func TestPlatformFromService(t *testing.T) {
 		"ExecStart=/etc/wwps/aegis/aegis":           "tg",
 		"ExecStart=/etc/wwps/aegis/aegis --matrix":  "matrix",
 		"ExecStart=/etc/wwps/aegis/aegis --discord": "discord",
+		"ExecStart=/etc/wwps/aegis/aegis --simplex": "simplex",
 		"ExecStart=/etc/wwps/aegis/aegis --all":     "tg-matrix",
 	}
 	for service, want := range tests {
@@ -150,43 +153,47 @@ func TestPlatformSetupForChoice(t *testing.T) {
 		tg      bool
 		matrix  bool
 		discord bool
+		simplex bool
 	}{
 		"1": {tg: true},
 		"2": {matrix: true},
 		"3": {discord: true},
 		"4": {tg: true, matrix: true},
+		"5": {simplex: true},
 	}
 
 	for choice, want := range tests {
-		tg, matrix, discord, err := platformSetupForChoice(choice)
+		tg, matrix, discord, simplex, err := platformSetupForChoice(choice)
 		if err != nil {
 			t.Errorf("platformSetupForChoice(%q) unexpected error: %v", choice, err)
 		}
-		if tg != want.tg || matrix != want.matrix || discord != want.discord {
-			t.Errorf("platformSetupForChoice(%q) = (%t, %t, %t), want (%t, %t, %t)", choice, tg, matrix, discord, want.tg, want.matrix, want.discord)
+		if tg != want.tg || matrix != want.matrix || discord != want.discord || simplex != want.simplex {
+			t.Errorf("platformSetupForChoice(%q) = (%t, %t, %t, %t), want (%t, %t, %t, %t)", choice, tg, matrix, discord, simplex, want.tg, want.matrix, want.discord, want.simplex)
 		}
 	}
 
-	if _, _, _, err := platformSetupForChoice("0"); err == nil {
+	if _, _, _, _, err := platformSetupForChoice("0"); err == nil {
 		t.Error("platformSetupForChoice(\"0\") expected error")
 	}
 }
 
 func TestServicePlatformForSetup(t *testing.T) {
 	tests := []struct {
-		tg, matrix, discord bool
-		want                string
+		tg, matrix, discord, simplex bool
+		want                         string
 	}{
 		{tg: true, want: "tg"},
 		{matrix: true, want: "matrix"},
 		{discord: true, want: "discord"},
+		{simplex: true, want: "simplex"},
+		{simplex: true, matrix: true, want: "simplex"},
 		{matrix: true, discord: true, want: "discord"},
 		{tg: true, matrix: true, want: "tg-matrix"},
 	}
 
 	for _, test := range tests {
-		if got := servicePlatformForSetup(test.tg, test.matrix, test.discord); got != test.want {
-			t.Errorf("servicePlatformForSetup(%t, %t, %t) = %q, want %q", test.tg, test.matrix, test.discord, got, test.want)
+		if got := servicePlatformForSetup(test.tg, test.matrix, test.discord, test.simplex); got != test.want {
+			t.Errorf("servicePlatformForSetup(%t, %t, %t, %t) = %q, want %q", test.tg, test.matrix, test.discord, test.simplex, got, test.want)
 		}
 	}
 }
@@ -201,9 +208,10 @@ func TestPlatformSelectorRejectsEmptyConfirmation(t *testing.T) {
 }
 
 func TestUninstallManifestIncludesRustArtifacts(t *testing.T) {
-	wantServices := []string{"wwps-aegis", "wwps-core", "wwps-box"}
+	wantServices := []string{"wwps-aegis", "wwps-simplex", "wwps-core", "wwps-box"}
 	wantPaths := []string{
 		"/etc/systemd/system/wwps-aegis.service",
+		"/etc/systemd/system/wwps-simplex.service",
 		"/etc/systemd/system/wwps-core.service",
 		"/etc/systemd/system/wwps-box.service",
 		"/etc/init.d/wwps-core",
@@ -305,6 +313,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
 			"", "", "", nil, nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -322,6 +331,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
 			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", []byte("pass123"), nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -345,6 +355,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
 			"https://matrix.org", "", "", nil, nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -363,6 +374,7 @@ func TestBuildSetupPayload(t *testing.T) {
 			[]byte("t"), []byte("1"), []byte("S"),
 			"", "", "", nil, nil,
 			"MTIzLmFiYw", "123456789", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -380,6 +392,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
 			"", "", "", nil, nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -398,6 +411,7 @@ func TestBuildSetupPayload(t *testing.T) {
 			[]byte("t"), []byte("1"), []byte("S"),
 			"", "", "", nil, nil,
 			"", "", "matrix-recovery-key-value",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -412,6 +426,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
 			"", "", "", nil, nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -550,6 +565,7 @@ func TestParseKeyVal(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
 			cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -743,8 +759,8 @@ func TestPlatformSelectorCursorWraps(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(platformSelector)
-	if m.cursor != 2 {
-		t.Fatalf("cursor after up from first row = %d, want 2", m.cursor)
+	if m.cursor != 3 {
+		t.Fatalf("cursor after up from first row = %d, want 3", m.cursor)
 	}
 
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
@@ -805,21 +821,56 @@ func TestPlatformSelectorCtrlCQuitsWithoutConfirmation(t *testing.T) {
 }
 
 func TestParsePlatformChoice(t *testing.T) {
-	tests := map[string]struct{ tg, matrix, discord bool }{
+	tests := map[string]struct{ tg, matrix, discord, simplex bool }{
 		"telegram":          {tg: true},
 		"matrix":            {matrix: true},
 		"discord":           {discord: true},
+		"simplex":           {simplex: true},
 		"telegram + matrix": {tg: true, matrix: true},
 		"discord + matrix":  {matrix: true, discord: true},
 	}
 	for input, want := range tests {
-		tg, matrix, discord, err := parsePlatformChoice(input)
-		if err != nil || tg != want.tg || matrix != want.matrix || discord != want.discord {
-			t.Fatalf("parsePlatformChoice(%q) = (%t, %t, %t, %v)", input, tg, matrix, discord, err)
+		tg, matrix, discord, simplex, err := parsePlatformChoice(input)
+		if err != nil || tg != want.tg || matrix != want.matrix || discord != want.discord || simplex != want.simplex {
+			t.Fatalf("parsePlatformChoice(%q) = (%t, %t, %t, %t, %v)", input, tg, matrix, discord, simplex, err)
 		}
 	}
-	if _, _, _, err := parsePlatformChoice("telegram + discord"); err == nil {
+	if _, _, _, _, err := parsePlatformChoice("telegram + discord"); err == nil {
 		t.Fatal("invalid combination accepted")
+	}
+}
+
+func TestParsePlatformChoiceSimplex(t *testing.T) {
+	tg, matrix, discord, simplex, err := parsePlatformChoice("simplex")
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if tg || matrix || discord || !simplex {
+		t.Fatalf("simplex standalone expected, got tg=%t matrix=%t discord=%t simplex=%t", tg, matrix, discord, simplex)
+	}
+}
+
+func TestParsePlatformChoiceRejectsSimplexCombo(t *testing.T) {
+	for _, input := range []string{"simplex+matrix", "simplex+telegram", "simplex+discord"} {
+		if _, _, _, _, err := parsePlatformChoice(input); err == nil {
+			t.Fatalf("parsePlatformChoice(%q) must be rejected: SimpleX is standalone-only", input)
+		}
+	}
+}
+
+func TestWriteSystemdServiceSimplexUsesFlag(t *testing.T) {
+	// writeSystemdService 写固定路径，这里验证可测的 flag 映射函数。
+	tests := map[string]string{
+		"tg":        "",
+		"matrix":    "--matrix",
+		"discord":   "--discord",
+		"simplex":   "--simplex",
+		"tg-matrix": "--all",
+	}
+	for platform, want := range tests {
+		if got := platformFlagFor(platform); got != want {
+			t.Errorf("platformFlagFor(%q) = %q, want %q", platform, got, want)
+		}
 	}
 }
 
@@ -836,5 +887,366 @@ func TestUsesInteractivePlatformSelector(t *testing.T) {
 		if got := usesInteractivePlatformSelector(tt.stdinIsTerminal, tt.stdoutIsTerminal); got != tt.want {
 			t.Fatalf("usesInteractivePlatformSelector(%t, %t) = %t, want %t", tt.stdinIsTerminal, tt.stdoutIsTerminal, got, tt.want)
 		}
+	}
+}
+
+func TestParseKeyValSimplexFields(t *testing.T) {
+	data := []byte("simplex_port=5225\nsimplex_admin_id=42\n")
+	cfg, err := parseKeyVal(data)
+	if err != nil {
+		t.Fatalf("simplex-only config must be accepted: %v", err)
+	}
+	if cfg.SimplexPort != "5225" {
+		t.Errorf("SimplexPort = %q, want 5225", cfg.SimplexPort)
+	}
+	if cfg.SimplexAdminID != "42" {
+		t.Errorf("SimplexAdminID = %q, want 42", cfg.SimplexAdminID)
+	}
+}
+
+func TestBuildSetupPayloadSimplexFields(t *testing.T) {
+	payload := buildSetupPayload(
+		nil, nil, nil,
+		"", "", "", nil, nil, "", "", "",
+		"5225", "42",
+	)
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		t.Fatalf("无效 JSON: %v", err)
+	}
+	if parsed["simplex_port"] != "5225" {
+		t.Errorf("simplex_port = %v, want 5225", parsed["simplex_port"])
+	}
+	if parsed["simplex_admin_id"] != "42" {
+		t.Errorf("simplex_admin_id = %v, want 42", parsed["simplex_admin_id"])
+	}
+}
+
+func TestBuildSetupPayloadOmitsSimplexWhenEmpty(t *testing.T) {
+	payload := buildSetupPayload(
+		[]byte("token:abc"), []byte("123"), nil,
+		"", "", "", nil, nil, "", "", "",
+		"", "",
+	)
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		t.Fatalf("无效 JSON: %v", err)
+	}
+	if _, ok := parsed["simplex_port"]; ok {
+		t.Error("不应包含 simplex_port")
+	}
+	if _, ok := parsed["simplex_admin_id"]; ok {
+		t.Error("不应包含 simplex_admin_id")
+	}
+}
+
+func TestPlatformSelectorSimplexIsExclusive(t *testing.T) {
+	cases := []struct {
+		name                      string
+		telegram, matrix, discord bool
+		simplex                   bool
+		wantValid                 bool
+	}{
+		{"simplex alone", false, false, false, true, true},
+		{"simplex with matrix", false, true, false, true, false},
+		{"simplex with telegram", true, false, false, true, false},
+		{"simplex with discord", false, false, true, true, false},
+		{"matrix alone", false, true, false, false, true},
+		{"telegram+matrix", true, true, false, false, true},
+		{"telegram+discord", true, false, true, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := platformSelector{
+				telegram: tc.telegram,
+				matrix:   tc.matrix,
+				discord:  tc.discord,
+				simplex:  tc.simplex,
+			}
+			_, _, _, _, valid := m.platformSelection()
+			if valid != tc.wantValid {
+				t.Fatalf("platformSelection() valid = %t, want %t", valid, tc.wantValid)
+			}
+		})
+	}
+}
+
+func TestPlatformSelectorTogglingSimplexClearsOthers(t *testing.T) {
+	m := newPlatformSelector()
+	m.matrix = true
+	m.cursor = 3
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	m = updated.(platformSelector)
+	if !m.simplex || m.matrix || m.telegram || m.discord {
+		t.Fatalf("selecting simplex must clear other platforms: %#v", m)
+	}
+}
+
+// TestSimplexPortFromUnit 守住重装路径：recovery 分支拿不到用户当初填的端口，
+// 必须能从未被覆盖的单元文件里回读，否则重装会把自定义端口改回默认值。
+func TestSimplexPortFromUnit(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"custom port", simplexSystemdUnitContent("6123"), "6123"},
+		{"default port", simplexSystemdUnitContent("5225"), "5225"},
+		{"empty unit", "", ""},
+		{"unrelated unit", "[Service]\nExecStart=/usr/bin/foo --matrix\n", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := simplexPortFromUnit([]byte(tc.content)); got != tc.want {
+				t.Fatalf("simplexPortFromUnit() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSimplexChatAssetName(t *testing.T) {
+	cases := map[string]string{
+		"amd64": "simplex-chat-ubuntu-24_04-x86_64",
+		"arm64": "simplex-chat-ubuntu-24_04-aarch64",
+	}
+	for arch, want := range cases {
+		if got := simplexChatAssetName(arch); got != want {
+			t.Fatalf("arch %s: got %q want %q", arch, got, want)
+		}
+	}
+}
+
+func TestSimplexChatAssetNameRejectsUnknownArch(t *testing.T) {
+	for _, arch := range []string{"riscv64", "386", ""} {
+		if got := simplexChatAssetName(arch); got != "" {
+			t.Fatalf("unknown arch %q must return empty, got %q", arch, got)
+		}
+	}
+}
+
+func TestSimplexSystemdUnitPinsVersionAndLocalhost(t *testing.T) {
+	unit := simplexSystemdUnitContent("5225")
+	if !strings.Contains(unit, "ExecStart=") || !strings.Contains(unit, "-p 5225") {
+		t.Fatalf("unit must start simplex-chat on the configured port: %s", unit)
+	}
+	if !strings.Contains(unit, "Restart=always") {
+		t.Fatal("unit must restart on failure")
+	}
+	if want := filepath.Join(installDir, "simplex-chat"); !strings.Contains(unit, want) {
+		t.Fatalf("unit must exec %s: %s", want, unit)
+	}
+}
+
+// TestSimplexSystemdUnitStartsUnattended 守住一个实测出来的坑：全新机器上只跑
+// `simplex-chat -p PORT` 会因为「没有 user profile」而停在交互式提问，stdin 是
+// /dev/null 时直接退出；配合 Restart=always 就是无限崩溃重启。这些参数是把
+// 它变成可无人值守启动的关键，不能让后续修改误删。
+func TestSimplexSystemdUnitStartsUnattended(t *testing.T) {
+	unit := simplexSystemdUnitContent("5225")
+	for _, need := range []string{
+		"WorkingDirectory=",
+		"--create-bot-display-name Aegis",
+		"-y",
+		"-d ",
+		"--files-folder ",
+	} {
+		if !strings.Contains(unit, need) {
+			t.Fatalf("unit must contain %q so it can start without a tty: %s", need, unit)
+		}
+	}
+	if want := filepath.Join(simplexDataDir(), "simplex_v1"); !strings.Contains(unit, want) {
+		t.Fatalf("unit must pin the database prefix to %s: %s", want, unit)
+	}
+}
+
+// TestSimplexSystemdUnitNeverExposesTheApi 守住安全边界：SimpleX 的 WebSocket API
+// 没有任何鉴权，simplex-chat 默认只绑定 localhost。单元文件里不允许出现任何会把
+// 监听地址改成非本机的参数，否则等于把无鉴权 API 暴露到公网。
+func TestSimplexSystemdUnitNeverExposesTheApi(t *testing.T) {
+	unit := simplexSystemdUnitContent("5225")
+	for _, forbidden := range []string{"0.0.0.0", "::", "--host", "--bind", "--address", "-h "} {
+		if strings.Contains(unit, forbidden) {
+			t.Fatalf("unit must not contain %q (unauthenticated API must stay on localhost): %s", forbidden, unit)
+		}
+	}
+	if got := strings.Count(unit, " -p "); got != 1 {
+		t.Fatalf("unit must pass the port exactly once, found %d: %s", got, unit)
+	}
+}
+
+// TestValidateSimplexPortRejectsUnsafeValues 守住一条信任边界：端口来自 key=val /
+// stdin / 交互式输入，会被拼进一个 root 拥有的 systemd 单元。换行等于注入任意单元
+// 指令（如额外的 ExecStartPre），而 "5225 --host 0.0.0.0" 会把本该只监听 localhost
+// 的无鉴权 API 暴露到公网。
+func TestValidateSimplexPortRejectsUnsafeValues(t *testing.T) {
+	for _, bad := range []string{
+		"",
+		"abc",
+		"0",
+		"-1",
+		"+5225",
+		" 5225",
+		"5225 ",
+		"5225\nExecStart=/bin/sh -c 'x'",
+		"5225\r\nExecStartPre=/bin/sh -c 'x'",
+		"5225 --host 0.0.0.0",
+		"0.0.0.0",
+		"65536",
+		"70000",
+		"123456",
+		"52_25",
+		"5225;rm -rf /",
+	} {
+		if err := validateSimplexPort(bad); err == nil {
+			t.Errorf("validateSimplexPort(%q) must be rejected", bad)
+		}
+	}
+}
+
+func TestValidateSimplexPortAcceptsRealPorts(t *testing.T) {
+	for _, ok := range []string{"1", "80", "1024", "5225", "65535"} {
+		if err := validateSimplexPort(ok); err != nil {
+			t.Errorf("validateSimplexPort(%q) must be accepted, got %v", ok, err)
+		}
+	}
+}
+
+// TestReplaceFileAtomicallyKeepsDestinationWhenSourceFails 守住原子替换的核心契约：
+// 源读取中断时目标文件必须保持原样，且不能留下半截的 .new 残骸。
+func TestReplaceFileAtomicallyKeepsDestinationWhenSourceFails(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, simplexBinaryName)
+	if err := os.WriteFile(dest, []byte("old-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := replaceFileAtomically(dest, iotest.ErrReader(errors.New("boom")), 0o755)
+	if err == nil {
+		t.Fatal("replace must fail when the source errors")
+	}
+
+	got, readErr := os.ReadFile(dest)
+	if readErr != nil {
+		t.Fatalf("destination must still exist: %v", readErr)
+	}
+	if string(got) != "old-binary" {
+		t.Fatalf("destination must be untouched on failure, got %q", got)
+	}
+	if _, statErr := os.Stat(dest + ".new"); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("failed replace must not leave a .new file behind (stat err = %v)", statErr)
+	}
+}
+
+// TestReplaceFileAtomicallySwapsInodeInsteadOfTruncating 守住 ETXTBSY 的修复点：
+// 必须是 rename 换目录项（inode 变化），而不是就地 O_TRUNC。就地截断正在被执行的
+// simplex-chat 会被 Linux 以 ETXTBSY 拒绝，重装就此永远失败。
+func TestReplaceFileAtomicallySwapsInodeInsteadOfTruncating(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, simplexBinaryName)
+	if err := os.WriteFile(dest, []byte("old-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceFileAtomically(dest, strings.NewReader("new-binary"), 0o755); err != nil {
+		t.Fatalf("replace failed: %v", err)
+	}
+
+	after, err := os.Stat(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(before, after) {
+		t.Fatal("destination inode unchanged: this is an in-place truncate, which fails with ETXTBSY while the service runs")
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new-binary" {
+		t.Fatalf("destination content = %q, want %q", got, "new-binary")
+	}
+	if after.Mode().Perm()&0o100 == 0 {
+		t.Fatalf("destination must stay owner-executable, mode = %v", after.Mode().Perm())
+	}
+	if _, statErr := os.Stat(dest + ".new"); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("successful replace must not leave a .new file behind (stat err = %v)", statErr)
+	}
+}
+
+// TestInstallSimplexBinaryReplacesRunningTarget 覆盖安装路径本身：目标位置已经存在
+// 上一版 simplex-chat（即正在被服务执行的 inode）时，安装必须成功并换掉该文件。
+func TestInstallSimplexBinaryReplacesRunningTarget(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, simplexBinaryName)
+	if err := os.WriteFile(dest, []byte("old-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	downloaded := filepath.Join(t.TempDir(), "simplex-chat-download")
+	if err := os.WriteFile(downloaded, []byte("new-binary"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := installSimplexBinary(downloaded, dir)
+	if err != nil {
+		t.Fatalf("installSimplexBinary failed: %v", err)
+	}
+	if got != dest {
+		t.Fatalf("installSimplexBinary returned %q, want %q", got, dest)
+	}
+
+	after, err := os.Stat(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(before, after) {
+		t.Fatal("install must replace the target file, not truncate it in place")
+	}
+	content, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "new-binary" {
+		t.Fatalf("installed content = %q, want %q", content, "new-binary")
+	}
+	if after.Mode().Perm()&0o100 == 0 {
+		t.Fatalf("installed binary must be owner-executable, mode = %v", after.Mode().Perm())
+	}
+}
+
+// TestSimplexUnitForWriteRefusesInjectedPort 覆盖真正落盘的那道闸：writeSimplexSystemdService
+// 必须先经 simplexUnitForWrite 组装内容，注入型端口绝不能产出任何单元文本。
+func TestSimplexUnitForWriteRefusesInjectedPort(t *testing.T) {
+	for _, bad := range []string{
+		"",
+		"5225\nExecStartPre=/bin/sh -c 'x'",
+		"5225\nExecStart=/bin/sh -c 'x'",
+		"5225 --host 0.0.0.0",
+		"0.0.0.0",
+		"70000",
+	} {
+		content, err := simplexUnitForWrite(bad)
+		if err == nil {
+			t.Errorf("simplexUnitForWrite(%q) must refuse to produce unit content, got %q", bad, content)
+		}
+		if len(content) != 0 {
+			t.Errorf("simplexUnitForWrite(%q) must return no content on rejection, got %q", bad, content)
+		}
+	}
+
+	content, err := simplexUnitForWrite("5225")
+	if err != nil {
+		t.Fatalf("valid port must produce unit content: %v", err)
+	}
+	if !strings.Contains(string(content), "-p 5225") {
+		t.Fatalf("unit content must carry the port: %s", content)
 	}
 }

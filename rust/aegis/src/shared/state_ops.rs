@@ -99,6 +99,7 @@ mod tests {
         AppState::new(
             Some(42),
             None,
+            None,
             Some(
                 TotpManager::new(&secrecy::SecretString::from(
                     TotpManager::generate_new_secret(),

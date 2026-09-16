@@ -1,6 +1,9 @@
 package i18n
 
 import (
+	"bytes"
+	"embed"
+	"encoding/json"
 	"testing"
 )
 
@@ -54,6 +57,67 @@ func TestSetLang(t *testing.T) {
 	SetLang("en")
 	if Lang() != "en" {
 		t.Errorf(`after SetLang("en"), Lang() = %q, want "en"`, Lang())
+	}
+}
+
+// duplicateKeys reports every top-level key that appears more than once in a
+// locale file. loadJSON unmarshals into map[string]string, so duplicates are
+// silently collapsed to the last occurrence and TestAllKeysExist cannot see
+// them; this walks the raw JSON tokens instead.
+func duplicateKeys(t *testing.T, fsys embed.FS, name string) []string {
+	t.Helper()
+
+	data, err := fsys.ReadFile(name)
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(data))
+	tok, err := dec.Token()
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	if delim, ok := tok.(json.Delim); !ok || delim != '{' {
+		t.Fatalf("%s: expected a top-level object, got %v", name, tok)
+	}
+
+	seen := make(map[string]int)
+	var dups []string
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			t.Fatalf("%s: expected a string key, got %v", name, keyTok)
+		}
+		seen[key]++
+		if seen[key] == 2 {
+			dups = append(dups, key)
+		}
+
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+
+	return dups
+}
+
+func TestNoDuplicateKeys(t *testing.T) {
+	for _, locale := range []struct {
+		fsys embed.FS
+		name string
+	}{
+		{zhFS, "zh.json"},
+		{enFS, "en.json"},
+		{jaFS, "ja.json"},
+	} {
+		if dups := duplicateKeys(t, locale.fsys, locale.name); len(dups) > 0 {
+			t.Errorf("%s has duplicate keys (loadJSON keeps only the last): %v", locale.name, dups)
+		}
 	}
 }
 

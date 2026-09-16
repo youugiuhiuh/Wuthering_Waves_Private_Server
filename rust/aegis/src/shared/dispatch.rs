@@ -313,6 +313,7 @@ mod dispatch_security_file_tests {
         let state = Arc::new(AppState::new(
             Some(42),
             None,
+            None,
             Some(TotpManager::new(&secrecy::SecretString::from(secret)).unwrap()),
             Arc::new(TestExecutor),
             None,
@@ -432,6 +433,7 @@ mod tests {
     fn make_state() -> AppState {
         AppState::new(
             Some(42),
+            None,
             None,
             Some(
                 TotpManager::new(&SecretString::from(TotpManager::generate_new_secret())).unwrap(),
