@@ -73,8 +73,6 @@ mod tests {
             matrix_password: None,
             matrix_room_id: None,
             matrix_store_passphrase: None,
-            discord_token: None,
-            discord_admin_id: None,
             lang: None,
             matrix_recovery_key: None,
             simplex_port: None,
