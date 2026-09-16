@@ -680,3 +680,6 @@ help:
 
 matrix:
   markup_header: "📋 **利用可能な操作:**\n"
+
+simplex:
+  welcome: "Aegis bot の準備ができました。/menu を送信して操作一覧を表示します。"

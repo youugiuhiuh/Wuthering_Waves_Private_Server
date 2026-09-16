@@ -700,3 +700,6 @@ help:
 
 matrix:
   markup_header: "📋 **可用操作:**\n"
+
+simplex:
+  welcome: "Aegis bot 已就绪。发送 /menu 查看操作。"
