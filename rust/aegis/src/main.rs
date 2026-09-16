@@ -95,6 +95,7 @@ async fn main() -> Result<()> {
     let state = Arc::new(AppState::new(
         app_config.decrypted.admin_id,
         discord_raw.as_ref().map(|r| r.admin_id as i64),
+        app_config.decrypted.simplex_admin_id,
         app_config.totp_manager,
         production_executor(),
         app_config

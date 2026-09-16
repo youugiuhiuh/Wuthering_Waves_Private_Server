@@ -359,6 +359,8 @@ mod tests {
             discord_admin_id: None,
             lang: None,
             matrix_recovery_key: None,
+            simplex_port: None,
+            simplex_admin_id: None,
         }
     }
 
@@ -378,6 +380,8 @@ mod tests {
             discord_admin_id: None,
             lang: None,
             matrix_recovery_key: None,
+            simplex_port: None,
+            simplex_admin_id: None,
         };
         assert!(has_matrix_config(&config, &[]));
     }
@@ -416,6 +420,8 @@ mod tests {
             discord_admin_id: None,
             lang: None,
             matrix_recovery_key: None,
+            simplex_port: None,
+            simplex_admin_id: None,
         };
         assert!(!has_matrix_config(&config, &[]));
     }

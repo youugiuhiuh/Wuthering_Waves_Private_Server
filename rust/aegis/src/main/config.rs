@@ -18,6 +18,9 @@ pub struct DecryptedConfig {
     pub discord_token: Option<String>,
     #[expect(dead_code)]
     pub discord_admin_id: Option<i64>,
+    #[expect(dead_code)]
+    pub simplex_port: Option<String>,
+    pub simplex_admin_id: Option<i64>,
     pub encrypted_config: EncryptedConfig,
 }
 
@@ -102,6 +105,30 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
         None => None,
     };
 
+    let simplex_port = match &encrypted_config.simplex_port {
+        Some(v) => {
+            let vec = security.decrypt(v).context("解密 simplex_port 失败")?;
+            Some(
+                String::from_utf8(vec.expose_secret().to_vec())
+                    .map_err(|e| anyhow::anyhow!("simplex_port 包含无效的 UTF-8: {}", e))?
+                    .trim()
+                    .to_string(),
+            )
+        }
+        None => None,
+    };
+    let simplex_admin_id = match &encrypted_config.simplex_admin_id {
+        Some(v) => {
+            let vec = security.decrypt(v).context("解密 simplex_admin_id 失败")?;
+            let s = String::from_utf8(vec.expose_secret().to_vec())
+                .map_err(|e| anyhow::anyhow!("simplex_admin_id 包含无效的 UTF-8: {}", e))?
+                .trim()
+                .to_string();
+            Some(s.parse::<i64>().context("simplex_admin_id 应为整数")?)
+        }
+        None => None,
+    };
+
     let validator = ConfigValidator::new();
     if let Err(e) = validator.validate_decrypted_config(
         token.as_deref(),
@@ -131,6 +158,8 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
                 admin_id,
                 discord_token,
                 discord_admin_id,
+                simplex_port,
+                simplex_admin_id,
                 encrypted_config,
             },
             totp_manager,
@@ -270,6 +299,8 @@ mod tests {
             discord_admin_id: None,
             lang: Some("zh".to_string()),
             matrix_recovery_key: None,
+            simplex_port: None,
+            simplex_admin_id: None,
         };
         fs::write(
             config_dir.join(CONFIG_FILE),

@@ -52,6 +52,8 @@ pub async fn execute_cli_mode(mode: CliMode) -> Result<()> {
                 None,
                 None,
                 None,
+                None,
+                None,
             )
             .await
         }

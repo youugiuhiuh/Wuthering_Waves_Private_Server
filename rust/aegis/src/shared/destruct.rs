@@ -654,6 +654,7 @@ mod tests {
         let state = AppState::new(
             Some(42),
             None,
+            None,
             Some(TotpManager::new(&SecretString::from(totp_secret.to_string())).unwrap()),
             Arc::new(TestExecutor),
             None,

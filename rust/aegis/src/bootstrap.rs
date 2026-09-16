@@ -53,6 +53,10 @@ pub struct EncryptedConfig {
     pub lang: Option<String>,
     #[serde(default)]
     pub matrix_recovery_key: Option<Vec<u8>>,
+    #[serde(default)]
+    pub simplex_port: Option<Vec<u8>>,
+    #[serde(default)]
+    pub simplex_admin_id: Option<Vec<u8>>,
 }
 
 #[derive(serde::Deserialize, Zeroize, ZeroizeOnDrop)]
@@ -79,6 +83,10 @@ struct SetupInput {
     discord_admin_id: Option<String>,
     #[serde(default)]
     matrix_recovery_key: Option<String>,
+    #[serde(default)]
+    simplex_port: Option<String>,
+    #[serde(default)]
+    simplex_admin_id: Option<String>,
 }
 
 impl Drop for EncryptedConfig {
@@ -114,6 +122,12 @@ impl Drop for EncryptedConfig {
             v.zeroize();
         }
         if let Some(v) = &mut self.matrix_recovery_key {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.simplex_port {
+            v.zeroize();
+        }
+        if let Some(v) = &mut self.simplex_admin_id {
             v.zeroize();
         }
     }
@@ -208,6 +222,7 @@ pub struct MatrixSetupConfig {
     store_passphrase: String,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_setup(
     token: Option<&str>,
     admin_id: Option<&str>,
@@ -216,6 +231,8 @@ pub async fn run_setup(
     discord_token: Option<&str>,
     discord_admin_id: Option<&str>,
     matrix_recovery_key: Option<&str>,
+    simplex_port: Option<&str>,
+    simplex_admin_id: Option<&str>,
 ) -> Result<()> {
     let config_dir = config_dir();
     fs::create_dir_all(&config_dir)?;
@@ -250,6 +267,13 @@ pub async fn run_setup(
         .map(|k| security.encrypt(k.as_bytes()))
         .transpose()?;
 
+    let simplex_port = simplex_port
+        .map(|v| security.encrypt(v.trim().as_bytes()))
+        .transpose()?;
+    let simplex_admin_id = simplex_admin_id
+        .map(|v| security.encrypt(v.trim().as_bytes()))
+        .transpose()?;
+
     let encrypted_config = EncryptedConfig {
         token: token
             .map(|t| security.encrypt(t.trim().as_bytes()))
@@ -270,6 +294,8 @@ pub async fn run_setup(
         discord_admin_id,
         lang: None,
         matrix_recovery_key,
+        simplex_port,
+        simplex_admin_id,
     };
     fs::write(
         config_dir.join(CONFIG_FILE),
@@ -324,6 +350,8 @@ pub async fn run_setup_from_stdin() -> Result<()> {
     let discord_token = input.discord_token.as_deref();
     let discord_admin_id = input.discord_admin_id.as_deref();
     let matrix_recovery_key = input.matrix_recovery_key.as_deref();
+    let simplex_port = input.simplex_port.as_deref();
+    let simplex_admin_id = input.simplex_admin_id.as_deref();
 
     run_setup(
         input.token.as_deref(),
@@ -333,6 +361,8 @@ pub async fn run_setup_from_stdin() -> Result<()> {
         discord_token,
         discord_admin_id,
         matrix_recovery_key,
+        simplex_port,
+        simplex_admin_id,
     )
     .await
 }
@@ -693,10 +723,37 @@ mod config_tests {
             discord_token: Some(b"dt".to_vec()),
             discord_admin_id: Some(b"da".to_vec()),
             matrix_recovery_key: None,
+            simplex_port: None,
+            simplex_admin_id: None,
         };
         let json = serde_json::to_vec(&config).unwrap();
         let deserialized: EncryptedConfig = serde_json::from_slice(&json).unwrap();
         assert_eq!(deserialized.discord_token, Some(b"dt".to_vec()));
         assert_eq!(deserialized.discord_admin_id, Some(b"da".to_vec()));
+    }
+
+    #[test]
+    fn simplex_config_fields_round_trip() {
+        let config = EncryptedConfig {
+            token: None,
+            admin_id: None,
+            totp_secret: None,
+            self_destruct_key_hash: None,
+            matrix_homeserver: None,
+            matrix_username: None,
+            matrix_password: None,
+            matrix_room_id: None,
+            matrix_store_passphrase: None,
+            discord_token: None,
+            discord_admin_id: None,
+            lang: None,
+            matrix_recovery_key: None,
+            simplex_port: Some(b"5225".to_vec()),
+            simplex_admin_id: Some(b"42".to_vec()),
+        };
+        let json = serde_json::to_vec(&config).unwrap();
+        let back: EncryptedConfig = serde_json::from_slice(&json).unwrap();
+        assert_eq!(back.simplex_port, Some(b"5225".to_vec()));
+        assert_eq!(back.simplex_admin_id, Some(b"42".to_vec()));
     }
 }

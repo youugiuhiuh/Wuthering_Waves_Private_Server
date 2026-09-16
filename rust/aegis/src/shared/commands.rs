@@ -159,6 +159,7 @@ mod tests {
         AppState::new(
             Some(42),
             None,
+            None,
             Some(
                 TotpManager::new(&secrecy::SecretString::from(
                     TotpManager::generate_new_secret(),
@@ -324,6 +325,7 @@ mod tests {
         let secret = TotpManager::generate_new_secret();
         let state = Arc::new(AppState::new(
             Some(42),
+            None,
             None,
             Some(TotpManager::new(&secrecy::SecretString::from(secret)).unwrap()),
             Arc::new(TestExecutor),

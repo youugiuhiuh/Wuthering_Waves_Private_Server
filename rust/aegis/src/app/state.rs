@@ -73,6 +73,7 @@ pub struct AppState {
     pub adapter: Arc<dyn BotAdapter>,
     admin_id: Option<i64>,
     discord_admin_id: Option<i64>,
+    simplex_admin_id: Option<i64>,
     totp_manager: Option<TotpManager>,
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
     sessions: Mutex<HashMap<i64, Instant>>,
@@ -89,9 +90,11 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         admin_id: Option<i64>,
         discord_admin_id: Option<i64>,
+        simplex_admin_id: Option<i64>,
         totp_manager: Option<TotpManager>,
         self_destruct_executor: Arc<dyn SelfDestructExecutor>,
         self_destruct_key_hash: Option<String>,
@@ -102,6 +105,7 @@ impl AppState {
             adapter,
             admin_id,
             discord_admin_id,
+            simplex_admin_id,
             totp_manager,
             self_destruct_executor,
             sessions: Mutex::new(HashMap::new()),
@@ -124,7 +128,9 @@ impl AppState {
     }
 
     pub fn is_admin_user(&self, user_id: i64) -> bool {
-        user_id == self.admin_id.unwrap_or(0) || self.discord_admin_id == Some(user_id)
+        user_id == self.admin_id.unwrap_or(0)
+            || self.discord_admin_id == Some(user_id)
+            || self.simplex_admin_id == Some(user_id)
     }
 
     pub fn verify_totp(&self, code: &str) -> bool {
@@ -636,6 +642,7 @@ mod tests {
         AppState::new(
             Some(42),
             None,
+            None,
             Some(
                 TotpManager::new(&secrecy::SecretString::from(
                     TotpManager::generate_new_secret(),
@@ -922,6 +929,7 @@ mod tests {
         let state = AppState::new(
             Some(42),
             Some(999),
+            None,
             Some(
                 TotpManager::new(&secrecy::SecretString::from(
                     TotpManager::generate_new_secret(),
@@ -935,5 +943,21 @@ mod tests {
         );
         assert!(state.is_admin_user(999));
         assert!(!state.is_admin_user(888));
+    }
+
+    #[tokio::test]
+    async fn simplex_admin_id_is_recognized_as_admin() {
+        let state = AppState::new(
+            None,
+            None,
+            Some(777),
+            None,
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            Arc::new(MockAdapter),
+        );
+        assert!(state.is_admin_user(777));
+        assert!(!state.is_admin_user(778));
     }
 }
