@@ -15,10 +15,6 @@ pub struct DecryptedConfig {
     pub token: Option<String>,
     pub admin_id: Option<i64>,
     #[expect(dead_code)]
-    pub discord_token: Option<String>,
-    #[expect(dead_code)]
-    pub discord_admin_id: Option<i64>,
-    #[expect(dead_code)]
     pub simplex_port: Option<String>,
     pub simplex_admin_id: Option<i64>,
     pub encrypted_config: EncryptedConfig,
@@ -81,30 +77,6 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
         None => None,
     };
 
-    let discord_token = match &encrypted_config.discord_token {
-        Some(v) => {
-            let vec = security.decrypt(v).context("解密 discord_token 失败")?;
-            Some(
-                String::from_utf8(vec.expose_secret().to_vec())
-                    .map_err(|e| anyhow::anyhow!("discord_token 包含无效的 UTF-8: {}", e))?
-                    .trim()
-                    .to_string(),
-            )
-        }
-        None => None,
-    };
-    let discord_admin_id = match &encrypted_config.discord_admin_id {
-        Some(v) => {
-            let vec = security.decrypt(v).context("解密 discord_admin_id 失败")?;
-            let s = String::from_utf8(vec.expose_secret().to_vec())
-                .map_err(|e| anyhow::anyhow!("discord_admin_id 包含无效的 UTF-8: {}", e))?
-                .trim()
-                .to_string();
-            Some(s.parse::<i64>().context("discord_admin_id 应为整数")?)
-        }
-        None => None,
-    };
-
     let simplex_port = match &encrypted_config.simplex_port {
         Some(v) => {
             let vec = security.decrypt(v).context("解密 simplex_port 失败")?;
@@ -156,8 +128,6 @@ pub fn load_and_validate() -> Result<(AppConfig, SecurityManager)> {
             decrypted: DecryptedConfig {
                 token,
                 admin_id,
-                discord_token,
-                discord_admin_id,
                 simplex_port,
                 simplex_admin_id,
                 encrypted_config,
@@ -295,8 +265,6 @@ mod tests {
             matrix_password: None,
             matrix_room_id: None,
             matrix_store_passphrase: None,
-            discord_token: None,
-            discord_admin_id: None,
             lang: Some("zh".to_string()),
             matrix_recovery_key: None,
             simplex_port: None,
@@ -312,6 +280,43 @@ mod tests {
         let manager = app_config.totp_manager.expect("totp_manager 应已构建");
 
         // TotpManager 功能完好：自身生成的当前码能通过 verify（证明密钥正确装载且可用）
+        let code = manager.generate_current();
+        assert!(manager.verify(&code));
+    }
+
+    #[serial]
+    #[test]
+    fn load_and_validate_ignores_legacy_discord_fields() {
+        let dir = TempDir::new().unwrap();
+        let config_dir = dir.path().join("etc/wwps/aegis");
+        fs::create_dir_all(&config_dir).unwrap();
+        // SAFETY: test environment, single-threaded
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", config_dir.to_str().unwrap());
+        }
+
+        let totp_secret = TotpManager::generate_new_secret();
+        let security = SecurityManager::new(&config_dir.join(KEY_FILE)).unwrap();
+
+        // 手工构造含已移除 discord 字段的 config.enc：EncryptedConfig 已无这两个字段，
+        // 因此必须写原始 JSON，才能覆盖「老部署升级后仍能启动」这一承诺。
+        let legacy = serde_json::json!({
+            "token": security.encrypt(b"123456:ABCdefGHIjklMNOpqrsTUVwxyz").unwrap(),
+            "admin_id": security.encrypt(b"42").unwrap(),
+            "totp_secret": security.encrypt(totp_secret.as_bytes()).unwrap(),
+            "lang": "zh",
+            "discord_token": security.encrypt(b"MTIzLmFiYw").unwrap(),
+            "discord_admin_id": security.encrypt(b"123456789").unwrap(),
+        });
+        fs::write(
+            config_dir.join(CONFIG_FILE),
+            serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        let (app_config, _security) =
+            load_and_validate().expect("含 legacy discord 字段的 config.enc 必须仍能加载");
+        let manager = app_config.totp_manager.expect("totp_manager 应已构建");
         let code = manager.generate_current();
         assert!(manager.verify(&code));
     }

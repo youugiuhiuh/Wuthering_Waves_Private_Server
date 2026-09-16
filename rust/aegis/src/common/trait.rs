@@ -29,7 +29,6 @@ pub struct InlineButton {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {
     Telegram,
-    Discord,
     Matrix,
     Simplex,
 }
@@ -60,21 +59,6 @@ impl PlatformCapabilities {
         can_send_file: true,
         can_send_image: true,
         can_send_voice: true,
-        can_send_typing: true,
-        can_send_reaction: true,
-        can_thread: true,
-        has_e2ee: false,
-    };
-
-    pub const DISCORD: Self = Self {
-        can_edit_message: true,
-        can_delete_message: true,
-        has_inline_keyboard: true,
-        has_slash_commands: true,
-        has_file_transfer: false,
-        can_send_file: true,
-        can_send_image: true,
-        can_send_voice: false,
         can_send_typing: true,
         can_send_reaction: true,
         can_thread: true,
@@ -222,7 +206,6 @@ mod simplex_capabilities_tests {
     #[test]
     fn platform_simplex_is_distinct() {
         assert_ne!(Platform::Simplex, Platform::Telegram);
-        assert_ne!(Platform::Simplex, Platform::Discord);
         assert_ne!(Platform::Simplex, Platform::Matrix);
     }
 }

@@ -46,10 +46,6 @@ pub struct EncryptedConfig {
     #[serde(default)]
     pub matrix_store_passphrase: Option<Vec<u8>>,
     #[serde(default)]
-    pub discord_token: Option<Vec<u8>>,
-    #[serde(default)]
-    pub discord_admin_id: Option<Vec<u8>>,
-    #[serde(default)]
     pub lang: Option<String>,
     #[serde(default)]
     pub matrix_recovery_key: Option<Vec<u8>>,
@@ -77,10 +73,6 @@ struct SetupInput {
     matrix_room_id: Option<String>,
     #[serde(default)]
     matrix_store_passphrase: Option<String>,
-    #[serde(default)]
-    discord_token: Option<String>,
-    #[serde(default)]
-    discord_admin_id: Option<String>,
     #[serde(default)]
     matrix_recovery_key: Option<String>,
     #[serde(default)]
@@ -113,12 +105,6 @@ impl Drop for EncryptedConfig {
             v.zeroize();
         }
         if let Some(v) = &mut self.matrix_store_passphrase {
-            v.zeroize();
-        }
-        if let Some(v) = &mut self.discord_token {
-            v.zeroize();
-        }
-        if let Some(v) = &mut self.discord_admin_id {
             v.zeroize();
         }
         if let Some(v) = &mut self.matrix_recovery_key {
@@ -222,14 +208,11 @@ pub struct MatrixSetupConfig {
     store_passphrase: String,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_setup(
     token: Option<&str>,
     admin_id: Option<&str>,
     totp_secret: Option<&str>,
     matrix: Option<MatrixSetupConfig>,
-    discord_token: Option<&str>,
-    discord_admin_id: Option<&str>,
     matrix_recovery_key: Option<&str>,
     simplex_port: Option<&str>,
     simplex_admin_id: Option<&str>,
@@ -255,13 +238,6 @@ pub async fn run_setup(
     } else {
         (None, None, None, None, None)
     };
-
-    let discord_token = discord_token
-        .map(|t| security.encrypt(t.as_bytes()))
-        .transpose()?;
-    let discord_admin_id = discord_admin_id
-        .map(|t| security.encrypt(t.as_bytes()))
-        .transpose()?;
 
     let matrix_recovery_key = matrix_recovery_key
         .map(|k| security.encrypt(k.as_bytes()))
@@ -290,8 +266,6 @@ pub async fn run_setup(
         matrix_password,
         matrix_room_id,
         matrix_store_passphrase,
-        discord_token,
-        discord_admin_id,
         lang: None,
         matrix_recovery_key,
         simplex_port,
@@ -347,8 +321,6 @@ pub async fn run_setup_from_stdin() -> Result<()> {
         }
     };
 
-    let discord_token = input.discord_token.as_deref();
-    let discord_admin_id = input.discord_admin_id.as_deref();
     let matrix_recovery_key = input.matrix_recovery_key.as_deref();
     let simplex_port = input.simplex_port.as_deref();
     let simplex_admin_id = input.simplex_admin_id.as_deref();
@@ -358,8 +330,6 @@ pub async fn run_setup_from_stdin() -> Result<()> {
         input.admin_id.as_deref(),
         input.totp_secret.as_deref(),
         matrix,
-        discord_token,
-        discord_admin_id,
         matrix_recovery_key,
         simplex_port,
         simplex_admin_id,
@@ -708,31 +678,6 @@ mod config_tests {
     }
 
     #[test]
-    fn discord_config_fields_round_trip() {
-        let config = EncryptedConfig {
-            token: Some(b"t".to_vec()),
-            admin_id: Some(b"a".to_vec()),
-            totp_secret: Some(b"s".to_vec()),
-            self_destruct_key_hash: None,
-            matrix_homeserver: None,
-            matrix_username: None,
-            matrix_password: None,
-            matrix_room_id: None,
-            matrix_store_passphrase: None,
-            lang: None,
-            discord_token: Some(b"dt".to_vec()),
-            discord_admin_id: Some(b"da".to_vec()),
-            matrix_recovery_key: None,
-            simplex_port: None,
-            simplex_admin_id: None,
-        };
-        let json = serde_json::to_vec(&config).unwrap();
-        let deserialized: EncryptedConfig = serde_json::from_slice(&json).unwrap();
-        assert_eq!(deserialized.discord_token, Some(b"dt".to_vec()));
-        assert_eq!(deserialized.discord_admin_id, Some(b"da".to_vec()));
-    }
-
-    #[test]
     fn simplex_config_fields_round_trip() {
         let config = EncryptedConfig {
             token: None,
@@ -744,8 +689,6 @@ mod config_tests {
             matrix_password: None,
             matrix_room_id: None,
             matrix_store_passphrase: None,
-            discord_token: None,
-            discord_admin_id: None,
             lang: None,
             matrix_recovery_key: None,
             simplex_port: Some(b"5225".to_vec()),

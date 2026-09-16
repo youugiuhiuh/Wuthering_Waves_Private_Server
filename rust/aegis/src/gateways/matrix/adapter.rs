@@ -38,7 +38,7 @@ mod tests {
     #[test]
     fn platform_is_matrix() {
         // Platform() doesn't depend on Room — verify the constant
-        assert_eq!(Platform::Matrix as u8, 2);
+        assert_eq!(Platform::Matrix as u8, 1);
     }
 
     #[test]
@@ -59,7 +59,7 @@ mod tests {
     fn platform_enum_value() {
         assert_eq!(Platform::Matrix, Platform::Matrix);
         assert_ne!(Platform::Matrix, Platform::Telegram);
-        assert_ne!(Platform::Matrix, Platform::Discord);
+        assert_ne!(Platform::Matrix, Platform::Simplex);
     }
 }
 
