@@ -56,6 +56,7 @@ minisign-verify = "0.2.5"
 mockall = "0.15.0" # Needed at runtime for binary-crate tests (MockBotAdapter shared across lib/bin)
 serenity = { version = "0.12.5", default-features = false, features = ["native_tls_backend", "http", "builder"] }
 poise = { version = "0.7.0", default-features = false, features = ["cache", "chrono", "handle_panics"] }
+simploxide-client = { version = "=0.14.0", default-features = false, features = ["websocket"] }
 
 [dev-dependencies]
 env_logger = "0.11.11"
