@@ -41,7 +41,8 @@ const (
 
 	// simplexChatVersion 是 simplex-chat 的锁定版本，不能跟随 /releases/latest 浮动。
 	// simploxide-client 0.14.0 的版本范围是 MIN_SUPPORTED_VERSION=7.0.0.0 ..
-	// MAX_SUPPORTED_VERSION=7.0.0.99，范围外会直接返回 VersionMismatch 拒绝连接。
+	// MAX_SUPPORTED_VERSION=7.0.0.99，范围外 aegis 连接失败，日志形如
+	// "连接 SimpleX WebSocket 失败: Version v... is unsupported by the current client"。
 	simplexChatVersion = "v7.0.0"
 	simplexRepoOwner   = "simplex-chat"
 	simplexRepoName    = "simplex-chat"

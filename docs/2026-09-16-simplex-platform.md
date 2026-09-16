@@ -88,15 +88,26 @@ SimpleX 未配置 simplex_admin_id，调度器与启动通知不会发送；请�
 
 ## 平台互斥语义
 
-SimpleX 是**独立平台**，不能与其它平台同时运行：
+一次启动只运行**一种**平台部署形态：Telegram、Matrix、Discord、SimpleX 四选一，或 Telegram + Matrix 这一种组合。选择顺序固定，且**自动探测（无 flag）最多只启用一个平台**：
 
-```
-aegis --simplex      # 仅 SimpleX
-```
+| 命令行 | config.enc 状态 | 结果 |
+|---|---|---|
+| 无 flag | 仅 `matrix_*` | Matrix |
+| 无 flag | 仅 `simplex_*` | SimpleX |
+| 无 flag | 两者都没有 | Telegram |
+| 无 flag | 两者都有 | **启动失败**（配置歧义） |
+| `--matrix` | 任意 | 仅 Matrix（不再自动启用 SimpleX） |
+| `--simplex` | 任意 | 仅 SimpleX（同时关闭 Telegram 与 Matrix） |
+| `--discord` | 任意 | 仅 Discord（关闭其它所有平台） |
+| `--all` | 任意 | Telegram + Matrix（永远不含 SimpleX / Discord） |
+| `--tg-only` | 任意 | 仅 Telegram（不做任何自动启用） |
+| `--discord` + `--simplex` | 任意 | **启动失败**（两个独立平台） |
 
-启用 SimpleX 会强制关闭 Telegram（SimpleX 适配器成为主适配器，而 Telegram dispatcher 用同一个 `state.adapter` 派发，二者同开会把 Telegram 的回复发到 SimpleX；无 token 时还会触发 `Bot::new` 的 panic）。`--simplex` 与 `--matrix` / `--all` 组合时同样只跑 SimpleX。配置齐备时 `aegis` 也会自动启用 SimpleX，但当 `--matrix`/`--discord`/`--all`/`--tg-only` 任一出现时不再自动启用。
+要点：
 
-> ⚠️ 请勿在 `config.enc` 中**同时**保留 `matrix_*` 与 `simplex_*` 字段：两条自动启用路径互不感知，会各自启动一个网关（Matrix 同步循环与 SimpleX 事件循环并存，且调度器初始化会重复）。迁移平台时请清掉旧平台的字段。
+- 启用 SimpleX 会强制关闭 Telegram（SimpleX 适配器成为主适配器，而 Telegram dispatcher 用同一个 `state.adapter` 派发，二者同开会把 Telegram 的回复发到 SimpleX；无 token 时还会触发 `Bot::new` 的 panic）。
+- `matrix_*` 与 `simplex_*` **同时齐备**时，无显式 flag 会直接报错退出，而不是悄悄二选一。报错信息给出两条出路：显式传 `--matrix` 或 `--simplex`，或从 `config.enc` 中移除其中一份配置。迁移平台时请清掉旧平台字段。
+- `--discord` 与 `--simplex` 同属独立平台，显式同时给出也直接报错。
 
 ## 手工验收清单
 
@@ -149,7 +160,7 @@ can_thread         = false
 
 | 现象 | 可能原因 |
 |---|---|
-| 启动即失败，日志含 `VersionMismatch` | `simplex-chat` 版本不在 `7.0.0.0..=7.0.0.99`（多为被自动升级到 7.0.1+）。重跑安装器恢复锁定版本。 |
+| 启动即失败，日志含 `is unsupported` | `simplex-chat` 版本不在 `7.0.0.0..=7.0.0.99`（多为被自动升级到 7.0.1+）。重跑安装器恢复锁定版本。 |
 | 启动即失败，含 `连接 SimpleX WebSocket 失败` | `wwps-simplex` 未运行。检查 `systemctl status wwps-simplex`；同时确认 `simplex_port` 与单元里的 `-p` 端口一致。 |
 | bot 收到消息但无任何回复 | 检查日志中 `未授权联系人` —— 说明发信人 contactId 与 `simplex_admin_id` 不一致。 |
 | 消息完全无反应且日志无 `未授权联系人` | 看是否有 `NewChatItems 未映射出任何消息`（群聊/非文本/协议不匹配）。 |
