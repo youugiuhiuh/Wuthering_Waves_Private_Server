@@ -172,5 +172,19 @@
   "release.fetch_failed": "获取最新版本信息失败: %s",
   "release.target_version": "目标版本: %s",
   "release.tmpdir_failed": "创建临时目录失败: %s",
-  "input.read_failed": "\n读取输入失败: %s"
+  "input.read_failed": "\n读取输入失败: %s",
+  "firsttime.platform_selector_simplex": "SimpleX",
+  "firsttime.platform_prompt": "选择平台 (1=Telegram, 2=Matrix, 3=Discord, 4=Telegram + Matrix, 5=SimpleX): ",
+  "firsttime.platform_text_prompt": "选择平台 (Telegram, Matrix, Discord, Telegram+Matrix, Discord+Matrix, SimpleX): ",
+  "firsttime.simplex_section": "\n========== SimpleX Bot 部署 ==========",
+  "firsttime.simplex_desc1": "💡 SimpleX 以独立平台方式运行（--simplex）。",
+  "firsttime.simplex_desc2": "   需要本机运行 simplex-chat WebSocket 服务（v7.0.0）。",
+  "firsttime.simplex_desc3": "   注意：不能与 Telegram 或 Discord 同时运行。",
+  "firsttime.simplex_port_title": "\n🔌 SimpleX WebSocket 端口",
+  "firsttime.simplex_port_prompt": "请输入 SimpleX WebSocket 端口（默认 5225）：",
+  "firsttime.simplex_admin_title": "\n👤 SimpleX 管理员 contactId",
+  "firsttime.simplex_admin_help_step1": "  1. 启动 simplex-chat，让管理员联系人主动连接 bot",
+  "firsttime.simplex_admin_help_step2": "  2. 在 bot 日志中查看：未授权联系人 contactId=...",
+  "firsttime.simplex_admin_help_format": "  格式：42（整数 contactId）",
+  "firsttime.simplex_admin_prompt": "请输入 SimpleX 管理员 contactId："
 }

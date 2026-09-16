@@ -113,6 +113,7 @@ func TestPlatformFromService(t *testing.T) {
 		"ExecStart=/etc/wwps/aegis/aegis":           "tg",
 		"ExecStart=/etc/wwps/aegis/aegis --matrix":  "matrix",
 		"ExecStart=/etc/wwps/aegis/aegis --discord": "discord",
+		"ExecStart=/etc/wwps/aegis/aegis --simplex": "simplex",
 		"ExecStart=/etc/wwps/aegis/aegis --all":     "tg-matrix",
 	}
 	for service, want := range tests {
@@ -150,43 +151,47 @@ func TestPlatformSetupForChoice(t *testing.T) {
 		tg      bool
 		matrix  bool
 		discord bool
+		simplex bool
 	}{
 		"1": {tg: true},
 		"2": {matrix: true},
 		"3": {discord: true},
 		"4": {tg: true, matrix: true},
+		"5": {simplex: true},
 	}
 
 	for choice, want := range tests {
-		tg, matrix, discord, err := platformSetupForChoice(choice)
+		tg, matrix, discord, simplex, err := platformSetupForChoice(choice)
 		if err != nil {
 			t.Errorf("platformSetupForChoice(%q) unexpected error: %v", choice, err)
 		}
-		if tg != want.tg || matrix != want.matrix || discord != want.discord {
-			t.Errorf("platformSetupForChoice(%q) = (%t, %t, %t), want (%t, %t, %t)", choice, tg, matrix, discord, want.tg, want.matrix, want.discord)
+		if tg != want.tg || matrix != want.matrix || discord != want.discord || simplex != want.simplex {
+			t.Errorf("platformSetupForChoice(%q) = (%t, %t, %t, %t), want (%t, %t, %t, %t)", choice, tg, matrix, discord, simplex, want.tg, want.matrix, want.discord, want.simplex)
 		}
 	}
 
-	if _, _, _, err := platformSetupForChoice("0"); err == nil {
+	if _, _, _, _, err := platformSetupForChoice("0"); err == nil {
 		t.Error("platformSetupForChoice(\"0\") expected error")
 	}
 }
 
 func TestServicePlatformForSetup(t *testing.T) {
 	tests := []struct {
-		tg, matrix, discord bool
-		want                string
+		tg, matrix, discord, simplex bool
+		want                         string
 	}{
 		{tg: true, want: "tg"},
 		{matrix: true, want: "matrix"},
 		{discord: true, want: "discord"},
+		{simplex: true, want: "simplex"},
+		{simplex: true, matrix: true, want: "simplex"},
 		{matrix: true, discord: true, want: "discord"},
 		{tg: true, matrix: true, want: "tg-matrix"},
 	}
 
 	for _, test := range tests {
-		if got := servicePlatformForSetup(test.tg, test.matrix, test.discord); got != test.want {
-			t.Errorf("servicePlatformForSetup(%t, %t, %t) = %q, want %q", test.tg, test.matrix, test.discord, got, test.want)
+		if got := servicePlatformForSetup(test.tg, test.matrix, test.discord, test.simplex); got != test.want {
+			t.Errorf("servicePlatformForSetup(%t, %t, %t, %t) = %q, want %q", test.tg, test.matrix, test.discord, test.simplex, got, test.want)
 		}
 	}
 }
@@ -305,6 +310,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
 			"", "", "", nil, nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -322,6 +328,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
 			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", []byte("pass123"), nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -345,6 +352,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
 			"https://matrix.org", "", "", nil, nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -363,6 +371,7 @@ func TestBuildSetupPayload(t *testing.T) {
 			[]byte("t"), []byte("1"), []byte("S"),
 			"", "", "", nil, nil,
 			"MTIzLmFiYw", "123456789", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -380,6 +389,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
 			"", "", "", nil, nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -398,6 +408,7 @@ func TestBuildSetupPayload(t *testing.T) {
 			[]byte("t"), []byte("1"), []byte("S"),
 			"", "", "", nil, nil,
 			"", "", "matrix-recovery-key-value",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -412,6 +423,7 @@ func TestBuildSetupPayload(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("t"), []byte("1"), []byte("S"),
 			"", "", "", nil, nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -550,6 +562,7 @@ func TestParseKeyVal(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
 			cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), nil, "", "", "",
+			"", "",
 		)
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(payload, &parsed); err != nil {
@@ -743,8 +756,8 @@ func TestPlatformSelectorCursorWraps(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(platformSelector)
-	if m.cursor != 2 {
-		t.Fatalf("cursor after up from first row = %d, want 2", m.cursor)
+	if m.cursor != 3 {
+		t.Fatalf("cursor after up from first row = %d, want 3", m.cursor)
 	}
 
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
@@ -805,21 +818,56 @@ func TestPlatformSelectorCtrlCQuitsWithoutConfirmation(t *testing.T) {
 }
 
 func TestParsePlatformChoice(t *testing.T) {
-	tests := map[string]struct{ tg, matrix, discord bool }{
+	tests := map[string]struct{ tg, matrix, discord, simplex bool }{
 		"telegram":          {tg: true},
 		"matrix":            {matrix: true},
 		"discord":           {discord: true},
+		"simplex":           {simplex: true},
 		"telegram + matrix": {tg: true, matrix: true},
 		"discord + matrix":  {matrix: true, discord: true},
 	}
 	for input, want := range tests {
-		tg, matrix, discord, err := parsePlatformChoice(input)
-		if err != nil || tg != want.tg || matrix != want.matrix || discord != want.discord {
-			t.Fatalf("parsePlatformChoice(%q) = (%t, %t, %t, %v)", input, tg, matrix, discord, err)
+		tg, matrix, discord, simplex, err := parsePlatformChoice(input)
+		if err != nil || tg != want.tg || matrix != want.matrix || discord != want.discord || simplex != want.simplex {
+			t.Fatalf("parsePlatformChoice(%q) = (%t, %t, %t, %t, %v)", input, tg, matrix, discord, simplex, err)
 		}
 	}
-	if _, _, _, err := parsePlatformChoice("telegram + discord"); err == nil {
+	if _, _, _, _, err := parsePlatformChoice("telegram + discord"); err == nil {
 		t.Fatal("invalid combination accepted")
+	}
+}
+
+func TestParsePlatformChoiceSimplex(t *testing.T) {
+	tg, matrix, discord, simplex, err := parsePlatformChoice("simplex")
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if tg || matrix || discord || !simplex {
+		t.Fatalf("simplex standalone expected, got tg=%t matrix=%t discord=%t simplex=%t", tg, matrix, discord, simplex)
+	}
+}
+
+func TestParsePlatformChoiceRejectsSimplexCombo(t *testing.T) {
+	for _, input := range []string{"simplex+matrix", "simplex+telegram", "simplex+discord"} {
+		if _, _, _, _, err := parsePlatformChoice(input); err == nil {
+			t.Fatalf("parsePlatformChoice(%q) must be rejected: SimpleX is standalone-only", input)
+		}
+	}
+}
+
+func TestWriteSystemdServiceSimplexUsesFlag(t *testing.T) {
+	// writeSystemdService 写固定路径，这里验证可测的 flag 映射函数。
+	tests := map[string]string{
+		"tg":        "",
+		"matrix":    "--matrix",
+		"discord":   "--discord",
+		"simplex":   "--simplex",
+		"tg-matrix": "--all",
+	}
+	for platform, want := range tests {
+		if got := platformFlagFor(platform); got != want {
+			t.Errorf("platformFlagFor(%q) = %q, want %q", platform, got, want)
+		}
 	}
 }
 
@@ -836,5 +884,97 @@ func TestUsesInteractivePlatformSelector(t *testing.T) {
 		if got := usesInteractivePlatformSelector(tt.stdinIsTerminal, tt.stdoutIsTerminal); got != tt.want {
 			t.Fatalf("usesInteractivePlatformSelector(%t, %t) = %t, want %t", tt.stdinIsTerminal, tt.stdoutIsTerminal, got, tt.want)
 		}
+	}
+}
+
+func TestParseKeyValSimplexFields(t *testing.T) {
+	data := []byte("simplex_port=5225\nsimplex_admin_id=42\n")
+	cfg, err := parseKeyVal(data)
+	if err != nil {
+		t.Fatalf("simplex-only config must be accepted: %v", err)
+	}
+	if cfg.SimplexPort != "5225" {
+		t.Errorf("SimplexPort = %q, want 5225", cfg.SimplexPort)
+	}
+	if cfg.SimplexAdminID != "42" {
+		t.Errorf("SimplexAdminID = %q, want 42", cfg.SimplexAdminID)
+	}
+}
+
+func TestBuildSetupPayloadSimplexFields(t *testing.T) {
+	payload := buildSetupPayload(
+		nil, nil, nil,
+		"", "", "", nil, nil, "", "", "",
+		"5225", "42",
+	)
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		t.Fatalf("无效 JSON: %v", err)
+	}
+	if parsed["simplex_port"] != "5225" {
+		t.Errorf("simplex_port = %v, want 5225", parsed["simplex_port"])
+	}
+	if parsed["simplex_admin_id"] != "42" {
+		t.Errorf("simplex_admin_id = %v, want 42", parsed["simplex_admin_id"])
+	}
+}
+
+func TestBuildSetupPayloadOmitsSimplexWhenEmpty(t *testing.T) {
+	payload := buildSetupPayload(
+		[]byte("token:abc"), []byte("123"), nil,
+		"", "", "", nil, nil, "", "", "",
+		"", "",
+	)
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		t.Fatalf("无效 JSON: %v", err)
+	}
+	if _, ok := parsed["simplex_port"]; ok {
+		t.Error("不应包含 simplex_port")
+	}
+	if _, ok := parsed["simplex_admin_id"]; ok {
+		t.Error("不应包含 simplex_admin_id")
+	}
+}
+
+func TestPlatformSelectorSimplexIsExclusive(t *testing.T) {
+	cases := []struct {
+		name                      string
+		telegram, matrix, discord bool
+		simplex                   bool
+		wantValid                 bool
+	}{
+		{"simplex alone", false, false, false, true, true},
+		{"simplex with matrix", false, true, false, true, false},
+		{"simplex with telegram", true, false, false, true, false},
+		{"simplex with discord", false, false, true, true, false},
+		{"matrix alone", false, true, false, false, true},
+		{"telegram+matrix", true, true, false, false, true},
+		{"telegram+discord", true, false, true, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := platformSelector{
+				telegram: tc.telegram,
+				matrix:   tc.matrix,
+				discord:  tc.discord,
+				simplex:  tc.simplex,
+			}
+			_, _, _, _, valid := m.platformSelection()
+			if valid != tc.wantValid {
+				t.Fatalf("platformSelection() valid = %t, want %t", valid, tc.wantValid)
+			}
+		})
+	}
+}
+
+func TestPlatformSelectorTogglingSimplexClearsOthers(t *testing.T) {
+	m := newPlatformSelector()
+	m.matrix = true
+	m.cursor = 3
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	m = updated.(platformSelector)
+	if !m.simplex || m.matrix || m.telegram || m.discord {
+		t.Fatalf("selecting simplex must clear other platforms: %#v", m)
 	}
 }

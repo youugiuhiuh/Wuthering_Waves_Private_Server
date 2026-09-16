@@ -156,5 +156,19 @@
   "release.fetch_failed": "Failed to fetch latest release info: %s",
   "release.target_version": "Target version: %s",
   "release.tmpdir_failed": "Failed to create temp directory: %s",
-  "input.read_failed": "\nFailed to read input: %s"
+  "input.read_failed": "\nFailed to read input: %s",
+  "firsttime.platform_selector_simplex": "SimpleX",
+  "firsttime.platform_prompt": "Select platform (1=Telegram, 2=Matrix, 3=Discord, 4=Telegram + Matrix, 5=SimpleX): ",
+  "firsttime.platform_text_prompt": "Select platform (Telegram, Matrix, Discord, Telegram+Matrix, Discord+Matrix, SimpleX): ",
+  "firsttime.simplex_section": "\n========== SimpleX Bot Deployment ==========",
+  "firsttime.simplex_desc1": "💡 SimpleX runs as a standalone platform (--simplex).",
+  "firsttime.simplex_desc2": "   It connects to a local simplex-chat WebSocket service (v7.0.0).",
+  "firsttime.simplex_desc3": "   Note: Cannot run simultaneously with Telegram or Discord.",
+  "firsttime.simplex_port_title": "\n🔌 SimpleX WebSocket Port",
+  "firsttime.simplex_port_prompt": "Enter SimpleX WebSocket port (default 5225): ",
+  "firsttime.simplex_admin_title": "\n👤 SimpleX Admin contactId",
+  "firsttime.simplex_admin_help_step1": "  1. Start simplex-chat and let your admin contact connect to the bot",
+  "firsttime.simplex_admin_help_step2": "  2. Read the bot log for: 未授权联系人 contactId=...",
+  "firsttime.simplex_admin_help_format": "  Format: 42 (integer contactId)",
+  "firsttime.simplex_admin_prompt": "Enter SimpleX admin contactId: "
 }

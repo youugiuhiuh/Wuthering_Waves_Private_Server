@@ -156,5 +156,19 @@
   "release.fetch_failed": "\u6700\u65b0\u30ea\u30ea\u30fc\u30b9\u60c5\u5831\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f: %s",
   "release.target_version": "\u5bfe\u8c61\u30d0\u30fc\u30b8\u30e7\u30f3: %s",
   "release.tmpdir_failed": "\u4e00\u6642\u30c7\u30a3\u30ec\u30af\u30c8\u30ea\u306e\u4f5c\u6210\u306b\u5931\u6557\u3057\u307e\u3057\u305f: %s",
-  "input.read_failed": "\n\u5165\u529b\u306e\u8aad\u307f\u53d6\u308a\u306b\u5931\u6557\u3057\u307e\u3057\u305f: %s"
+  "input.read_failed": "\n\u5165\u529b\u306e\u8aad\u307f\u53d6\u308a\u306b\u5931\u6557\u3057\u307e\u3057\u305f: %s",
+  "firsttime.platform_selector_simplex": "SimpleX",
+  "firsttime.platform_prompt": "\u30d7\u30e9\u30c3\u30c8\u30d5\u30a9\u30fc\u30e0\u3092\u9078\u629e (1=Telegram, 2=Matrix, 3=Discord, 4=Telegram + Matrix, 5=SimpleX): ",
+  "firsttime.platform_text_prompt": "\u30d7\u30e9\u30c3\u30c8\u30d5\u30a9\u30fc\u30e0\u3092\u9078\u629e (Telegram, Matrix, Discord, Telegram+Matrix, Discord+Matrix, SimpleX): ",
+  "firsttime.simplex_section": "\n========== SimpleX Bot \u30c7\u30d7\u30ed\u30a4 ==========",
+  "firsttime.simplex_desc1": "\ud83d\udca1 SimpleX \u306f\u5358\u72ec\u30d7\u30e9\u30c3\u30c8\u30d5\u30a9\u30fc\u30e0\u3068\u3057\u3066\u52d5\u4f5c\u3057\u307e\u3059\uff08--simplex\uff09\u3002",
+  "firsttime.simplex_desc2": "   \u30ed\u30fc\u30ab\u30eb\u3067 simplex-chat WebSocket \u30b5\u30fc\u30d3\u30b9\uff08v7.0.0\uff09\u304c\u5fc5\u8981\u3067\u3059\u3002",
+  "firsttime.simplex_desc3": "   \u6ce8\u610f\uff1aTelegram \u307e\u305f\u306f Discord \u3068\u540c\u6642\u306b\u5b9f\u884c\u3067\u304d\u307e\u305b\u3093\u3002",
+  "firsttime.simplex_port_title": "\n\ud83d\udd0c SimpleX WebSocket \u30dd\u30fc\u30c8",
+  "firsttime.simplex_port_prompt": "SimpleX WebSocket \u30dd\u30fc\u30c8\u3092\u5165\u529b\uff08\u65e2\u5b9a 5225\uff09\uff1a",
+  "firsttime.simplex_admin_title": "\n\ud83d\udc64 SimpleX \u7ba1\u7406\u8005 contactId",
+  "firsttime.simplex_admin_help_step1": "  1. simplex-chat \u3092\u8d77\u52d5\u3057\u3001\u7ba1\u7406\u8005\u306e\u9023\u7d61\u5148\u304b\u3089 bot \u306b\u63a5\u7d9a\u3057\u307e\u3059",
+  "firsttime.simplex_admin_help_step2": "  2. bot \u30ed\u30b0\u3067\u78ba\u8a8d\uff1a\u672a\u6388\u6743\u8054\u7cfb\u4eba contactId=...",
+  "firsttime.simplex_admin_help_format": "  \u5f62\u5f0f\uff1a42\uff08\u6574\u6570 contactId\uff09",
+  "firsttime.simplex_admin_prompt": "SimpleX \u7ba1\u7406\u8005 contactId \u3092\u5165\u529b\uff1a"
 }

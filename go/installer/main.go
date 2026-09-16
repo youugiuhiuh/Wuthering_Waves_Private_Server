@@ -35,6 +35,9 @@ const (
 	binaryName  = "aegis"
 	serviceName = "wwps-aegis"
 	serviceFile = "/etc/systemd/system/wwps-aegis.service"
+
+	// defaultSimplexPort 是 simplex-chat WebSocket API 的默认端口。
+	defaultSimplexPort = "5225"
 )
 
 var uninstallServices = []string{"wwps-aegis", "wwps-core", "wwps-box"}
@@ -338,8 +341,8 @@ func discoverMatrixHomeserver(mxid string, client *http.Client) (string, string,
 }
 
 type platformSelector struct {
-	cursor                               int
-	telegram, matrix, discord, confirmed bool
+	cursor                                        int
+	telegram, matrix, discord, simplex, confirmed bool
 }
 
 func newPlatformSelector() platformSelector { return platformSelector{} }
@@ -356,26 +359,38 @@ func (m platformSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "up":
-		m.cursor = (m.cursor + 2) % 3
+		m.cursor = (m.cursor + 3) % 4
 	case "down":
-		m.cursor = (m.cursor + 1) % 3
+		m.cursor = (m.cursor + 1) % 4
 	case "space":
 		switch m.cursor {
 		case 0:
 			m.telegram = !m.telegram
 			if m.telegram {
 				m.discord = false
+				m.simplex = false
 			}
 		case 1:
 			m.matrix = !m.matrix
+			if m.matrix {
+				m.simplex = false
+			}
 		case 2:
 			m.discord = !m.discord
 			if m.discord {
 				m.telegram = false
+				m.simplex = false
+			}
+		case 3:
+			m.simplex = !m.simplex
+			if m.simplex {
+				m.telegram = false
+				m.matrix = false
+				m.discord = false
 			}
 		}
 	case "enter":
-		if _, _, _, valid := m.platformSelection(); valid {
+		if _, _, _, _, valid := m.platformSelection(); valid {
 			m.confirmed = true
 			return m, tea.Quit
 		}
@@ -383,9 +398,12 @@ func (m platformSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m platformSelector) platformSelection() (bool, bool, bool, bool) {
-	valid := (m.telegram || m.matrix || m.discord) && !(m.telegram && m.discord)
-	return m.telegram, m.matrix, m.discord, valid
+func (m platformSelector) platformSelection() (bool, bool, bool, bool, bool) {
+	// SimpleX 为独立平台：不得与 Telegram / Matrix / Discord 任一组合。
+	valid := (m.telegram || m.matrix || m.discord || m.simplex) &&
+		!(m.telegram && m.discord) &&
+		!(m.simplex && (m.telegram || m.matrix || m.discord))
+	return m.telegram, m.matrix, m.discord, m.simplex, valid
 }
 
 func (m platformSelector) View() tea.View {
@@ -393,9 +411,10 @@ func (m platformSelector) View() tea.View {
 		i18n.T("firsttime.platform_selector_telegram"),
 		i18n.T("firsttime.platform_selector_matrix"),
 		i18n.T("firsttime.platform_selector_discord"),
+		i18n.T("firsttime.platform_selector_simplex"),
 	}
 	selected := make([]string, 0, 2)
-	choices := []bool{m.telegram, m.matrix, m.discord}
+	choices := []bool{m.telegram, m.matrix, m.discord, m.simplex}
 	for index, label := range labels {
 		prefix := "  "
 		if index == m.cursor {
@@ -416,20 +435,22 @@ func (m platformSelector) View() tea.View {
 	return tea.NewView(fmt.Sprintf("%s\n%s\n\n%s\n\n%s", i18n.T("firsttime.platform_selector_title"), i18n.T("firsttime.platform_selector_help"), strings.Join(labels, "\n"), i18n.T("firsttime.platform_selector_selected", summary)))
 }
 
-func parsePlatformChoice(choice string) (bool, bool, bool, error) {
+func parsePlatformChoice(choice string) (bool, bool, bool, bool, error) {
 	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(choice), " ", "")) {
 	case "telegram":
-		return true, false, false, nil
+		return true, false, false, false, nil
 	case "matrix":
-		return false, true, false, nil
+		return false, true, false, false, nil
 	case "discord":
-		return false, false, true, nil
+		return false, false, true, false, nil
+	case "simplex":
+		return false, false, false, true, nil
 	case "telegram+matrix":
-		return true, true, false, nil
+		return true, true, false, false, nil
 	case "discord+matrix":
-		return false, true, true, nil
+		return false, true, true, false, nil
 	default:
-		return false, false, false, fmt.Errorf("invalid platform")
+		return false, false, false, false, fmt.Errorf("invalid platform")
 	}
 }
 
@@ -437,26 +458,26 @@ func usesInteractivePlatformSelector(stdinIsTerminal, stdoutIsTerminal bool) boo
 	return stdinIsTerminal && stdoutIsTerminal
 }
 
-func selectDeploymentPlatforms() (bool, bool, bool, error) {
+func selectDeploymentPlatforms() (bool, bool, bool, bool, error) {
 	if !usesInteractivePlatformSelector(term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd()))) {
 		fmt.Print(i18n.T("firsttime.platform_text_prompt"))
 		choice, err := readLine()
 		if err != nil {
-			return false, false, false, err
+			return false, false, false, false, err
 		}
 		return parsePlatformChoice(choice)
 	}
 
 	model, err := tea.NewProgram(newPlatformSelector()).Run()
 	if err != nil {
-		return false, false, false, err
+		return false, false, false, false, err
 	}
 	selector := model.(platformSelector)
-	tg, matrix, discord, valid := selector.platformSelection()
+	tg, matrix, discord, simplex, valid := selector.platformSelection()
 	if !selector.confirmed || !valid {
-		return false, false, false, fmt.Errorf("platform selection cancelled")
+		return false, false, false, false, fmt.Errorf("platform selection cancelled")
 	}
-	return tg, matrix, discord, nil
+	return tg, matrix, discord, simplex, nil
 }
 
 func usesManualHomeserverFallback(isTerminal bool, discoveryErr error) bool {
@@ -503,7 +524,7 @@ func readSecureInputStr(prompt string) string {
 	return s
 }
 
-func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, matrixRoom string, matrixPass, matrixStorePassphrase []byte, discordToken, discordAdminID, matrixRecoveryKey string) []byte {
+func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, matrixRoom string, matrixPass, matrixStorePassphrase []byte, discordToken, discordAdminID, matrixRecoveryKey, simplexPort, simplexAdminID string) []byte {
 	buf := make([]byte, 0, 256)
 	buf = append(buf, '{')
 	first := true
@@ -595,6 +616,22 @@ func buildSetupPayload(token, adminID, totpSecret []byte, matrixHS, matrixUser, 
 		first = false
 		buf = append(buf, []byte(`"matrix_recovery_key":`)...)
 		buf = appendJSONEscaped(buf, []byte(matrixRecoveryKey))
+	}
+	if simplexPort != "" {
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"simplex_port":`)...)
+		buf = appendJSONEscaped(buf, []byte(simplexPort))
+	}
+	if simplexAdminID != "" {
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, []byte(`"simplex_admin_id":`)...)
+		buf = appendJSONEscaped(buf, []byte(simplexAdminID))
 	}
 
 	buf = append(buf, '}')
@@ -1082,6 +1119,8 @@ func installFromStdin() {
 	platform := "tg"
 	if discordToken, ok := inputData["discord_token"].(string); ok && discordToken != "" {
 		platform = "discord"
+	} else if _, ok := inputData["simplex_port"].(string); ok {
+		platform = "simplex"
 	} else if _, ok := inputData["matrix_homeserver"].(string); ok {
 		if token, ok := inputData["token"].(string); ok && token != "" {
 			platform = "tg-matrix"
@@ -1117,6 +1156,8 @@ type setupConfig struct {
 	DiscordToken          string
 	DiscordAdminID        string
 	MatrixRecoveryKey     string
+	SimplexPort           string
+	SimplexAdminID        string
 }
 
 func validateAdminID(id string) error {
@@ -1164,12 +1205,16 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 			cfg.DiscordAdminID = val
 		case "matrix_recovery_key":
 			cfg.MatrixRecoveryKey = val
+		case "simplex_port":
+			cfg.SimplexPort = val
+		case "simplex_admin_id":
+			cfg.SimplexAdminID = val
 		default:
 			printYellow(i18n.T("keyval.unknown_field", key))
 		}
 	}
-	if cfg.Token == "" && cfg.DiscordToken == "" && cfg.MatrixHS == "" {
-		return nil, fmt.Errorf("缺少必填字段: 至少需要配置 Telegram (token/admin_id)、Discord (discord_token/discord_admin_id) 或 Matrix (matrix_homeserver) 之一")
+	if cfg.Token == "" && cfg.DiscordToken == "" && cfg.MatrixHS == "" && cfg.SimplexPort == "" {
+		return nil, fmt.Errorf("缺少必填字段: 至少需要配置 Telegram (token/admin_id)、Discord (discord_token/discord_admin_id)、Matrix (matrix_homeserver) 或 SimpleX (simplex_port/simplex_admin_id) 之一")
 	}
 	if cfg.Token != "" {
 		if err := validateAdminID(cfg.AdminID); err != nil {
@@ -1205,6 +1250,8 @@ func installFromKeyVal() {
 	if cfg.Token == "" {
 		if cfg.DiscordToken != "" {
 			platform = "discord"
+		} else if cfg.SimplexPort != "" {
+			platform = "simplex"
 		} else if cfg.MatrixHS != "" {
 			platform = "matrix"
 		}
@@ -1217,29 +1264,34 @@ func installFromKeyVal() {
 		[]byte(cfg.Token), []byte(cfg.AdminID), []byte(cfg.TOTPSecret),
 		cfg.MatrixHS, cfg.MatrixUser, cfg.MatrixRoom, []byte(cfg.MatrixPassword), []byte(cfg.MatrixStorePassphrase),
 		cfg.DiscordToken, cfg.DiscordAdminID, cfg.MatrixRecoveryKey,
+		cfg.SimplexPort, cfg.SimplexAdminID,
 	)
 
 	runAegisSetup(destPath, payload)
 	finishDeploy(platform)
 }
 
-func platformSetupForChoice(choice string) (tg, matrix, discord bool, err error) {
+func platformSetupForChoice(choice string) (tg, matrix, discord, simplex bool, err error) {
 	switch choice {
 	case "1":
-		return true, false, false, nil
+		return true, false, false, false, nil
 	case "2":
-		return false, true, false, nil
+		return false, true, false, false, nil
 	case "3":
-		return false, false, true, nil
+		return false, false, true, false, nil
 	case "4":
-		return true, true, false, nil
+		return true, true, false, false, nil
+	case "5":
+		return false, false, false, true, nil
 	default:
-		return false, false, false, fmt.Errorf("invalid platform")
+		return false, false, false, false, fmt.Errorf("invalid platform")
 	}
 }
 
-func servicePlatformForSetup(tg, matrix, discord bool) string {
+func servicePlatformForSetup(tg, matrix, discord, simplex bool) string {
 	switch {
+	case simplex:
+		return "simplex"
 	case discord:
 		return "discord"
 	case tg && matrix:
@@ -1256,7 +1308,7 @@ func servicePlatformForSetup(tg, matrix, discord bool) string {
 func firstTimeSetup(binaryPath string) (string, error) {
 	printSkyBlue(i18n.T("firsttime.title"))
 
-	enableTG, enableMatrix, enableDiscord, err := selectDeploymentPlatforms()
+	enableTG, enableMatrix, enableDiscord, enableSimplex, err := selectDeploymentPlatforms()
 	if err != nil {
 		printRed(i18n.T("firsttime.platform_invalid"))
 		return "", err
@@ -1396,6 +1448,26 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		printYellow(i18n.T("firsttime.discord_guild_warning"))
 	}
 
+	// ── SimpleX section ──
+	var simplexPort, simplexAdminID string
+	if enableSimplex {
+		printSkyBlue(i18n.T("firsttime.simplex_section"))
+		printYellow(i18n.T("firsttime.simplex_desc1"))
+		printYellow(i18n.T("firsttime.simplex_desc2"))
+		printYellow(i18n.T("firsttime.simplex_desc3"))
+		printYellow(i18n.T("firsttime.simplex_port_title"))
+		simplexPort = readSecureInputStr(i18n.T("firsttime.simplex_port_prompt"))
+		if simplexPort == "" {
+			simplexPort = defaultSimplexPort
+		}
+
+		printYellow(i18n.T("firsttime.simplex_admin_title"))
+		printYellow(i18n.T("firsttime.simplex_admin_help_step1"))
+		printYellow(i18n.T("firsttime.simplex_admin_help_step2"))
+		printYellow(i18n.T("firsttime.simplex_admin_help_format"))
+		simplexAdminID = readSecureInputStr(i18n.T("firsttime.simplex_admin_prompt"))
+	}
+
 	var bTokenBytes, aIDBytes, tSecretBytes []byte
 	var bTokenBuf, aIDBuf, tSecretBuf *memguard.LockedBuffer
 	if botTokenEnclave != nil {
@@ -1431,6 +1503,7 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		bTokenBytes, aIDBytes, tSecretBytes,
 		matrixHS, matrixUser, matrixRoom, mPassBytes, []byte(matrixStorePassphrase),
 		discordToken, discordAdminID, matrixRecoveryKey,
+		simplexPort, simplexAdminID,
 	)
 	defer zeroBytes(setupPayload)
 
@@ -1442,7 +1515,7 @@ func firstTimeSetup(binaryPath string) (string, error) {
 		return "", err
 	}
 
-	return servicePlatformForSetup(enableTG, enableMatrix, enableDiscord), nil
+	return servicePlatformForSetup(enableTG, enableMatrix, enableDiscord, enableSimplex), nil
 }
 
 // readSecureInput 安全地从终端读取输入，直接返回加密的 Enclave，避免产生明文 string 垃圾
@@ -1479,6 +1552,8 @@ func platformFromService(service []byte) string {
 		return "matrix"
 	case bytes.Contains(service, []byte("--discord")):
 		return "discord"
+	case bytes.Contains(service, []byte("--simplex")):
+		return "simplex"
 	case bytes.Contains(service, []byte("--all")):
 		return "tg-matrix"
 	default:
@@ -1490,29 +1565,39 @@ func recoveryPlatformForService(service []byte, choice string) (string, bool, er
 	if len(service) > 0 {
 		return platformFromService(service), false, nil
 	}
-	tg, matrix, discord, err := platformSetupForChoice(choice)
+	tg, matrix, discord, simplex, err := platformSetupForChoice(choice)
 	if err != nil {
 		return "", false, err
 	}
-	return servicePlatformForSetup(tg, matrix, discord), true, nil
+	return servicePlatformForSetup(tg, matrix, discord, simplex), true, nil
+}
+
+// platformFlagFor 把平台标识映射为 aegis 的启动参数。
+func platformFlagFor(platform string) string {
+	switch platform {
+	case "matrix":
+		return "--matrix"
+	case "discord":
+		return "--discord"
+	case "simplex":
+		return "--simplex"
+	case "tg-matrix":
+		return "--all"
+	}
+	return ""
 }
 
 func writeSystemdService(platform string) {
-	platformFlag := ""
+	platformFlag := platformFlagFor(platform)
+	descName := "WWPS Telegram Bot"
 	switch platform {
 	case "matrix":
-		platformFlag = "--matrix"
-	case "discord":
-		platformFlag = "--discord"
-	case "tg-matrix":
-		platformFlag = "--all"
-	}
-	descName := "WWPS Telegram Bot"
-	if platform == "matrix" {
 		descName = "WWPS Matrix Bot"
-	} else if platform == "discord" {
+	case "discord":
 		descName = "WWPS Discord Bot"
-	} else if platform == "tg-matrix" {
+	case "simplex":
+		descName = "WWPS SimpleX Bot"
+	case "tg-matrix":
 		descName = "WWPS Telegram + Matrix Bot"
 	}
 	execArgs := platformFlag
