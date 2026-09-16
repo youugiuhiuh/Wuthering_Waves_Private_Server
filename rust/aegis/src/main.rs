@@ -39,17 +39,16 @@ async fn main() -> Result<()> {
 
     // CLI 模式检测（初始; auto-detect 补充在 encrypted_config 加载后）
     let use_simplex = args.iter().any(|a| a == "--simplex");
-    let (enable_telegram, mut enable_matrix, _standalone) = resolve_platforms(&args);
+    let (mut enable_telegram, mut enable_matrix, standalone) = resolve_platforms(&args);
 
     let (app_config, security) = main::config::load_and_validate()?;
 
     // Auto-detect Matrix 配置
     let use_matrix = args.iter().any(|a| a == "--matrix");
     let use_all = args.iter().any(|a| a == "--all");
+    let tg_only = args.iter().any(|a| a == "--tg-only");
     let has_matrix = main::matrix::has_matrix_config(&app_config.decrypted.encrypted_config, &args);
-    if !use_matrix && !use_all {
-        enable_matrix = has_matrix && !args.iter().any(|a| a == "--tg-only");
-    }
+    enable_matrix |= auto_enable_from_config(use_matrix, use_all, standalone, tg_only, has_matrix);
 
     let matrix_handle = if enable_matrix {
         Some(
@@ -87,7 +86,14 @@ async fn main() -> Result<()> {
 
     let has_simplex =
         main::simplex::has_simplex_config(&app_config.decrypted.encrypted_config, &args);
-    let simplex_handle = if use_simplex || (has_simplex && !args.iter().any(|a| a == "--tg-only")) {
+    let simplex_enabled =
+        use_simplex || auto_enable_from_config(false, use_all, standalone, tg_only, has_simplex);
+    // SimpleX 适配器会成为主适配器，而 Telegram dispatcher 用 state.adapter 派发：
+    // 二者同时启用会把 Telegram 回复发到 SimpleX；且无 token 时 Bot::new(unwrap) 会 abort。
+    if simplex_enabled {
+        enable_telegram = false;
+    }
+    let simplex_handle = if simplex_enabled {
         Some(
             main::simplex::connect_simplex(
                 &security,
@@ -149,6 +155,26 @@ async fn main() -> Result<()> {
 ///
 /// 返回 `(telegram, matrix, standalone)`，其中 `standalone` 表示显式请求了
 /// Discord 或 SimpleX —— 二者都是独立平台，各自禁用 Telegram 与 Matrix。
+/// 配置驱动的平台自动启用决策。
+///
+/// 显式 flag（`--matrix`/`--discord`/`--simplex`）与 `--all` 已由
+/// [`resolve_platforms`] 决定，这里只回答「仅凭配置是否应启用」。
+/// 独立平台（`--simplex`/`--discord`）和 `--tg-only` 一律不参与自动启用：
+/// 否则配置齐备时会把另一个平台悄悄拉起来，而 SimpleX 适配器是主适配器，
+/// 会劫持 Telegram 的派发，无 token 时还会 abort。
+fn auto_enable_from_config(
+    explicit: bool,
+    use_all: bool,
+    standalone: bool,
+    tg_only: bool,
+    configured: bool,
+) -> bool {
+    if explicit || use_all || standalone || tg_only {
+        return false;
+    }
+    configured
+}
+
 fn resolve_platforms(args: &[String]) -> (bool, bool, bool) {
     let use_matrix = args.iter().any(|a| a == "--matrix");
     let use_discord = args.iter().any(|a| a == "--discord");
@@ -274,7 +300,7 @@ async fn notify_bbr3_reboot_result(adapter: &dyn BotAdapter, target: &TargetId) 
 
 #[cfg(test)]
 mod platform_resolution_tests {
-    use super::resolve_platforms;
+    use super::{auto_enable_from_config, resolve_platforms};
 
     fn v(s: &[&str]) -> Vec<String> {
         s.iter().map(|x| x.to_string()).collect()
@@ -302,6 +328,33 @@ mod platform_resolution_tests {
     fn matrix_and_discord_unchanged() {
         assert_eq!(resolve_platforms(&v(&["--matrix"])), (false, true, false));
         assert_eq!(resolve_platforms(&v(&["--discord"])), (false, false, true));
+    }
+
+    #[test]
+    fn all_alone_enables_telegram_and_matrix() {
+        assert_eq!(resolve_platforms(&v(&["--all"])), (true, true, false));
+    }
+
+    #[test]
+    fn all_with_discord_keeps_telegram_drops_matrix() {
+        assert_eq!(
+            resolve_platforms(&v(&["--all", "--discord"])),
+            (true, false, true)
+        );
+    }
+
+    #[test]
+    fn auto_enable_needs_config_and_no_explicit_choice() {
+        assert!(auto_enable_from_config(false, false, false, false, true));
+        assert!(!auto_enable_from_config(false, false, false, false, false));
+    }
+
+    #[test]
+    fn auto_enable_blocked_by_explicit_all_standalone_or_tg_only() {
+        assert!(!auto_enable_from_config(true, false, false, false, true));
+        assert!(!auto_enable_from_config(false, true, false, false, true));
+        assert!(!auto_enable_from_config(false, false, true, false, true));
+        assert!(!auto_enable_from_config(false, false, false, true, true));
     }
 }
 
