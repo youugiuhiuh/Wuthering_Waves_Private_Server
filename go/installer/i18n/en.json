@@ -41,6 +41,7 @@
   "install.start": "\nStarting install/update of Aegis\u2026",
   "install.config_exists": "\nExisting configuration detected, skipping initialization.",
   "install.service_missing": "The service file could not be read. Select its platform to rebuild it; credentials and encrypted configuration will not be changed.",
+  "install.discord_removed": "The Discord platform has been removed. Use Matrix (--matrix), SimpleX (--simplex) or Telegram instead, and remove --discord from the systemd unit.",
   "install.service_failed": "Failed to start service: %s",
   "install.success": "\n\u2705 Aegis installed and started successfully!",
   "install.manage_hint": "Use the configured platform to talk to the Aegis Bot for management.",
