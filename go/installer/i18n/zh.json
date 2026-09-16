@@ -68,7 +68,6 @@
 
   "firsttime.title": "\n首次安装，开始配置 Aegis…",
   "firsttime.section_platform": "\n========== 平台选择 ==========",
-  "firsttime.platform_prompt": "选择平台 (1=Telegram, 2=Matrix, 3=Discord, 4=Telegram + Matrix): ",
   "firsttime.platform_invalid": "无效的平台选择",
   "firsttime.platform_selector_title": "选择部署平台",
   "firsttime.platform_selector_help": "上下方向键：移动  空格：切换  Enter：确认",
@@ -77,7 +76,6 @@
   "firsttime.platform_selector_discord": "Discord",
   "firsttime.platform_selector_selected": "已选择：%s",
   "firsttime.platform_selector_none": "无",
-  "firsttime.platform_text_prompt": "选择平台 (Telegram, Matrix, Discord, Telegram+Matrix, Discord+Matrix): ",
   "firsttime.section_tg": "\n========== 配置 Telegram Bot ==========",
   "firsttime.tg_help_howto": "🤖 如何获取 TG Bot Token:",
   "firsttime.tg_help_step1": "  1. 打开 Telegram，搜索 @BotFather",
