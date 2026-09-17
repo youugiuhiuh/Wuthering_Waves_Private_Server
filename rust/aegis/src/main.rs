@@ -8,7 +8,7 @@ mod bootstrap;
 mod main;
 mod utils;
 
-use crate::bootstrap::{config_dir, harden_process, verify_integrity};
+use crate::bootstrap::{config_dir, harden_process, install_crypto_provider, verify_integrity};
 use aegis::app::state::AppState;
 use aegis::common::{BotAdapter, MessageContent, TargetId};
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
@@ -24,6 +24,9 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> Result<()> {
     harden_process();
+
+    // 必须在任何 reqwest 0.13（matrix-sdk）Client 构建之前完成，否则 panic。
+    install_crypto_provider();
 
     // 立即执行防调试检查
     aegis::core::security::anti_debug::check_debugger();

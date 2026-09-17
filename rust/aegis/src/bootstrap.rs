@@ -406,6 +406,17 @@ pub fn clear_matrix_recovery_key(config_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// 安装 rustls 的进程级 crypto provider。
+///
+/// matrix-sdk 0.19 的 HTTP 栈是 reqwest 0.13 的 `rustls-no-provider`（aegis 用
+/// `default-features = false` 关掉了 matrix-sdk 的 `rustls-aws-lc-rs` 默认特性），
+/// reqwest 构建 Client 时读 `CryptoProvider::get_default()`，读不到会直接 panic：
+/// "No rustls crypto provider is configured"（v1.5.9 线上启动即 abort）。
+/// 启动阶段装一次 ring provider；已装过时返回 Err，忽略即可。
+pub fn install_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 pub fn harden_process() {
     #[cfg(target_os = "linux")]
     {
