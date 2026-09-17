@@ -195,7 +195,7 @@ jobs:
               ;;
             rust)
               cargo build --release
-              cargo nextest run
+              cargo nextest run --cargo-profile fast-test
               ;;
             *)
               echo "🔍 检查 GitHub Actions YAML 语法..."
