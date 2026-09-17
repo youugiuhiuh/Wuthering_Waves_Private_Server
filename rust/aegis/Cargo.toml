@@ -1,6 +1,6 @@
 [package]
 name = "aegis"
-version = "1.5.9"
+version = "1.5.10"
 edition = "2024"
 
 [dependencies]
@@ -92,10 +92,11 @@ opt-level = 1
 debug = 1
 
 # 测试用 profile：编译速度优先，供 cargo nextest run --cargo-profile fast-test 使用。
-# 不挂 cranelift：aws-lc-sys（rustls 的 C 依赖，被 matrix-sdk 强制启用）
-# 用 \u{1} 前缀导出符号，只有 LLVM 后端支持，cranelift 链接必然失败。见
+# 不挂 cranelift：matrix-sdk 0.18 时代 graph 里的 aws-lc-sys（rustls 的 C 依赖）用
+# \u{1} 前缀导出符号，只有 LLVM 后端支持，cranelift 链接必然失败。见
 # https://github.com/rust-lang/rustc_codegen_cranelift/issues/1520
-# opt-level 必须 >= 1：aws-lc-sys 在 O0 下符号名不一致。
+# 注意：matrix-sdk 0.19 起改走 reqwest 0.13 的 rustls-no-provider，Cargo.lock 中已无
+# aws-lc-sys（provider 为 ring），上面这两条限制是否仍成立未重新验证。
 [profile.fast-test]
 inherits = "dev"
 opt-level = 1
