@@ -1423,3 +1423,25 @@ func TestUsesSimplexService(t *testing.T) {
 		}
 	}
 }
+
+func TestShouldReconfigure(t *testing.T) {
+	for _, tt := range []struct {
+		answer string
+		want   bool
+	}{
+		{"", false},
+		{"n", false},
+		{"N", false},
+		{"no", false},
+		{"也许", false},
+		{"y", true},
+		{"Y", true},
+		{" y ", true},
+		{"yes", true},
+		{"YES", true},
+	} {
+		if got := shouldReconfigure(tt.answer); got != tt.want {
+			t.Errorf("shouldReconfigure(%q) = %t, want %t", tt.answer, got, tt.want)
+		}
+	}
+}

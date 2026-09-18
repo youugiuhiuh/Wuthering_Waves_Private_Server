@@ -41,6 +41,8 @@
   "install.platform_ambiguous_three": "Cannot deploy three platforms at once. Use Telegram + Matrix or Telegram + SimpleX, and remove one platform's fields from the payload.",
   "install.start": "\nStarting install/update of Aegis\u2026",
   "install.config_exists": "\nExisting configuration detected, skipping initialization.",
+  "install.reconfigure_prompt": "Reconfigure now? (current platform: %s) [y/N] ",
+  "install.reconfigure_warning": "WARNING: reconfiguring regenerates the TOTP secret and re-prompts every credential (Telegram / Matrix / SimpleX); the existing 2FA entry stops working.",
   "install.service_missing": "The service file could not be read. Select its platform to rebuild it; credentials and encrypted configuration will not be changed.",
   "install.discord_removed": "The Discord platform has been removed. Use Matrix (--matrix), SimpleX (--simplex) or Telegram instead, and remove --discord from the systemd unit.",
   "install.service_failed": "Failed to start service: %s",

@@ -197,3 +197,27 @@ func TestSimplexDisableKeysExist(t *testing.T) {
 		}
 	}
 }
+
+// P4 文案守卫：installAegis 按这两个名字查询；reconfigure_prompt 带 %s（当前平台），
+// 缺占位符会让平台名被 fmt 丢弃。
+func TestInstallReconfigureKeysExist(t *testing.T) {
+	keys := []string{"install.reconfigure_prompt", "install.reconfigure_warning"}
+	for _, locale := range []struct {
+		name string
+		data map[string]string
+	}{
+		{"zh.json", loadJSON(zhFS, "zh.json")},
+		{"en.json", loadJSON(enFS, "en.json")},
+		{"ja.json", loadJSON(jaFS, "ja.json")},
+	} {
+		for _, key := range keys {
+			if v, ok := locale.data[key]; !ok || strings.TrimSpace(v) == "" {
+				t.Errorf("%s: key %q 缺失或为空", locale.name, key)
+			}
+		}
+		if !strings.Contains(locale.data["install.reconfigure_prompt"], "%s") {
+			t.Errorf("%s: install.reconfigure_prompt 缺少 %%s 占位符: %q",
+				locale.name, locale.data["install.reconfigure_prompt"])
+		}
+	}
+}

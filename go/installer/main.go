@@ -1353,6 +1353,19 @@ func downloadAndDeployAegis() string {
 	return destPath
 }
 
+// shouldReconfigure 判断交互式重跑安装时用户是否要求重新配置。
+//
+// 默认（空输入 / 直接回车）为否：重配会重新生成 TOTP 密钥并重新输入所有凭据，
+// 不能是「手滑回车」的默认结果。接受 y / Y / yes / YES（大小写与前后空白不敏感）。
+func shouldReconfigure(answer string) bool {
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
 func installAegis() {
 	printSkyBlue(i18n.T("install.start"))
 
@@ -1389,6 +1402,20 @@ func installAegis() {
 
 	if configExists {
 		printGreen(i18n.T("install.config_exists"))
+		fmt.Print(i18n.T("install.reconfigure_prompt", platform))
+		answer, _ := readLine()
+		if shouldReconfigure(answer) {
+			printYellow(i18n.T("install.reconfigure_warning"))
+			var err error
+			platform, simplexPort, err = firstTimeSetup(destPath)
+			if err != nil {
+				return
+			}
+			if _, err := os.Stat(configPath); err != nil {
+				printRed(i18n.T("setup.failed", err.Error()))
+				return
+			}
+		}
 	} else {
 		var err error
 		platform, simplexPort, err = firstTimeSetup(destPath)
