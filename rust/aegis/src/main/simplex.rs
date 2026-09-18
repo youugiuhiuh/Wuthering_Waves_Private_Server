@@ -22,11 +22,6 @@ pub struct SimplexHandle {
 ///
 /// 权限显式设置两次 —— 建 tmp 时的 `.mode()` 对**已存在**的 tmp 不生效，而
 /// `truncate(true)` 会复用它；上次崩溃残留的 tmp 若是 0644，rename 出去就是 0644。
-///
-/// 本任务的下一步（onboarding 批次 Task 2）会把它接线到 `connect_simplex`，
-/// 届时移除该 `#[allow]`。注意不能用 `#[expect]`：测试 target 里该函数被测试使用，
-/// `expect` 会变成 unfulfilled 而挂掉 `-D warnings`。
-#[allow(dead_code)]
 fn write_address_file(path: &Path, address: &str) -> std::io::Result<()> {
     use std::fs::Permissions;
     use std::io::Write;
@@ -45,6 +40,16 @@ fn write_address_file(path: &Path, address: &str) -> std::io::Result<()> {
         file.sync_all()?;
     }
     std::fs::rename(&tmp_path, path)
+}
+
+/// 记录 bot 地址：打日志 + best-effort 落盘。
+///
+/// 任何失败只 warn，不返回错误 —— 地址拿不到不应让 bot 起不来。
+fn record_address(address: &str, path: &Path) {
+    log::info!("SimpleX bot 地址: {address}");
+    if let Err(e) = write_address_file(path, address) {
+        log::warn!("写入 SimpleX 地址文件失败（不影响 bot 运行）: {e}");
+    }
 }
 
 pub fn has_simplex_config(encrypted_config: &EncryptedConfig, args: &[String]) -> bool {
@@ -78,6 +83,16 @@ pub async fn connect_simplex(
         .connect()
         .await
         .map_err(|e| anyhow::anyhow!("连接 SimpleX WebSocket 失败: {e}"))?;
+
+    // connect() 内部已走完 setup_auto_accept，因此此刻地址必然已存在。
+    // 读不到只 warn：地址缺失不应阻止 bot 启动（管理员仍可从日志排查）。
+    match bot.address().await {
+        Ok(address) => record_address(
+            &address,
+            Path::new(aegis::core::paths::bot::SIMPLEX_ADDRESS_FILE),
+        ),
+        Err(e) => log::warn!("读取 SimpleX bot 地址失败（不影响 bot 运行）: {e}"),
+    }
 
     let adapter: Arc<dyn BotAdapter> = Arc::new(SimplexAdapter::new(bot.clone()));
     Ok(SimplexHandle {
@@ -184,5 +199,25 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("no-such-dir").join("simplex_address");
         assert!(write_address_file(&path, "simplex:/x").is_err());
+    }
+
+    #[test]
+    fn record_address_writes_file() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("simplex_address");
+        record_address("simplex:/contact#/?v=2-7", &path);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "simplex:/contact#/?v=2-7\n"
+        );
+    }
+
+    /// 地址落盘失败不得影响 bot 启动 —— record_address 必须吞掉错误只 warn。
+    #[test]
+    fn record_address_swallows_io_error() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("no-such-dir").join("simplex_address");
+        record_address("simplex:/contact#/?v=2-7", &path);
+        assert!(!path.exists());
     }
 }
