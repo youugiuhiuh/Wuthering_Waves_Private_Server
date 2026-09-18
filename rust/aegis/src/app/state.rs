@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -72,7 +73,11 @@ pub struct AppState {
     #[allow(dead_code)]
     pub adapter: Arc<dyn BotAdapter>,
     admin_id: Option<i64>,
-    simplex_admin_id: Option<i64>,
+    /// 运行时可变：TOTP 验证成功后可就地重钉（见 `with_simplex_repin`）。
+    /// `0` 表示「未配置」—— 这与 `is_admin_user` 里 `admin_id.unwrap_or(0)` 的既有约定一致。
+    simplex_admin_id: AtomicI64,
+    /// 是否允许 TOTP 成功后重钉 `simplex_admin_id`。仅纯 `--simplex` 部署开启。
+    simplex_repin_enabled: bool,
     totp_manager: Option<TotpManager>,
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
     sessions: Mutex<HashMap<i64, Instant>>,
@@ -101,7 +106,8 @@ impl AppState {
         Self {
             adapter,
             admin_id,
-            simplex_admin_id,
+            simplex_admin_id: AtomicI64::new(simplex_admin_id.unwrap_or(0)),
+            simplex_repin_enabled: false,
             totp_manager,
             self_destruct_executor,
             sessions: Mutex::new(HashMap::new()),
@@ -126,11 +132,34 @@ impl AppState {
     /// SimpleX 管理员联系人 ID（contactId）。SimpleX 是独立平台，
     /// 其调度器/启动通知目标必须用它，而非 Telegram 的 `admin_id`。
     pub fn simplex_admin_id(&self) -> Option<i64> {
-        self.simplex_admin_id
+        match self.simplex_admin_id.load(Ordering::Relaxed) {
+            0 => None,
+            id => Some(id),
+        }
+    }
+
+    /// 就地重钉管理员身份（**只改内存态**；落盘由调用方负责）。
+    pub fn set_simplex_admin_id(&self, admin_id: i64) {
+        self.simplex_admin_id.store(admin_id, Ordering::Relaxed);
+    }
+
+    /// 允许 TOTP 验证成功后重钉 `simplex_admin_id`。
+    ///
+    /// **只允许在纯 `--simplex` 部署下开启。** `is_admin_user` 的 `user_id` 命名空间是
+    /// Telegram 与 SimpleX **共用**的；`--tg-simplex` 下两个平台同时在线，无差别重钉会把
+    /// `simplex_admin_id` 覆写成 Telegram 的 chat id，从而破坏「敏感内容落点」这个发送目标。
+    #[must_use]
+    pub fn with_simplex_repin(mut self) -> Self {
+        self.simplex_repin_enabled = true;
+        self
+    }
+
+    pub fn simplex_repin_enabled(&self) -> bool {
+        self.simplex_repin_enabled
     }
 
     pub fn is_admin_user(&self, user_id: i64) -> bool {
-        user_id == self.admin_id.unwrap_or(0) || self.simplex_admin_id == Some(user_id)
+        user_id == self.admin_id.unwrap_or(0) || self.simplex_admin_id() == Some(user_id)
     }
 
     pub fn verify_totp(&self, code: &str) -> bool {
@@ -921,6 +950,75 @@ mod tests {
             .await;
         assert!(state.take_domain_input("chat").await.is_some());
         assert!(state.domain_input_snapshot("chat").await.is_none());
+    }
+
+    #[test]
+    fn simplex_admin_id_can_be_repinned_at_runtime() {
+        let state = AppState::new(
+            None,
+            Some(3),
+            Some(
+                TotpManager::new(&secrecy::SecretString::from(
+                    TotpManager::generate_new_secret(),
+                ))
+                .unwrap(),
+            ),
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            Arc::new(MockAdapter),
+        );
+        assert_eq!(state.simplex_admin_id(), Some(3));
+        assert!(state.is_admin_user(3));
+        assert!(!state.is_admin_user(4));
+
+        // 就地重钉：内存态应立即反映，且 is_admin_user 跟随
+        state.set_simplex_admin_id(4);
+        assert_eq!(state.simplex_admin_id(), Some(4));
+        assert!(state.is_admin_user(4), "重钉后新身份必须被认作管理员");
+        assert!(!state.is_admin_user(3), "重钉后旧身份必须失去管理员身份");
+    }
+
+    #[test]
+    fn simplex_admin_id_none_round_trips_as_zero() {
+        let state = AppState::new(
+            None,
+            None,
+            Some(
+                TotpManager::new(&secrecy::SecretString::from(
+                    TotpManager::generate_new_secret(),
+                ))
+                .unwrap(),
+            ),
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            Arc::new(MockAdapter),
+        );
+        assert_eq!(state.simplex_admin_id(), None);
+    }
+
+    #[test]
+    fn simple_repin_is_off_by_default_and_opt_in() {
+        let state = AppState::new(
+            None,
+            None,
+            Some(
+                TotpManager::new(&secrecy::SecretString::from(
+                    TotpManager::generate_new_secret(),
+                ))
+                .unwrap(),
+            ),
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            Arc::new(MockAdapter),
+        );
+        assert!(
+            !state.simplex_repin_enabled(),
+            "默认必须关闭：tg-simplex 下重钉会把 simplex_admin_id 覆写成 TG chat id"
+        );
+        assert!(state.with_simplex_repin().simplex_repin_enabled());
     }
 
     #[tokio::test]
