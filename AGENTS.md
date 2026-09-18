@@ -1,25 +1,30 @@
-# Superpowers 强制工作流（简洁版）
+# Agent Skills 强制工作流（addyosmani/agent-skills）
 
-无论任务是「实现新功能」、「重构」还是「修复 bug」，都必须严格遵守以下顺序，不得跳过任何步骤：
+无论任务是「实现新功能」、「重构」还是「修复 bug」，都必须严格遵守以下顺序，不得跳过任何步骤。
 
-1. 先使用 **brainstorming** 技能，通过苏格拉底式提问细化需求、探索方案，分段展示设计供验证，并保存设计文档。我明确批准设计前，禁止进入后续任何步骤。
-2. 设计批准后，必须立即使用 **using-git-worktrees** 技能在新分支创建隔离工作树，运行项目初始化，并确认测试基线干净。
-3. 工作树就绪后，使用 **writing-plans** 技能将设计拆解为细粒度任务（每个任务 2-5 分钟），每个任务须包含精确文件路径、完整代码和验证步骤。
-4. 计划批准后，使用 **subagent-driven-development** 或 **executing-plans** 执行——每个任务分发独立子 Agent，经过「规格合规」与「代码质量」两阶段审查，或按批次执行并设置人工检查点。
-5. 实现阶段严格使用 **test-driven-development** 技能，执行 RED → GREEN → REFACTOR 循环：先写失败测试、确认失败，再写最小实现、确认通过，最后提交。测试前编写的代码一律删除。
-6. 每个任务完成后使用 **requesting-code-review** 对照计划审查代码，按严重程度上报问题，Critical 问题阻塞后续进展。
-7. 所有任务完成后使用 **finishing-a-development-branch** 收尾：验证测试、选择处置方式（merge / PR / keep / discard），并清理工作树。
+技能文件位于 `~/.pi/agent/git/github.com/addyosmani/agent-skills/skills/<name>/SKILL.md`；未自动加载时用 `read` 读取该文件后再执行。
+
+1. **DEFINE**：需求不清先用 **interview-me**（一次一问）或 **idea-refine**（方案探索）；需求明确则用 **spec-driven-development** 产出 `SPEC.md`（目标、命令、结构、风格、测试、边界）。我明确批准相关文档前，禁止进入后续任何步骤。
+2. **PLAN**：用 **planning-and-task-breakdown** 将设计拆成少量、可独立验证的原子任务，写入 `tasks/plan.md`，每个任务含精确文件路径、验收标准与验证步骤；计划批准后执行。
+3. **BUILD**：用 **incremental-implementation** 薄切片逐片实现，一次一片；需要对齐官方文档时用 **source-driven-development**，上下文不足用 **context-engineering**。高风险或不可逆改动（鉴权、数据迁移、支付、删除、部署）用 **doubt-driven-development** 做对抗式复核并取得明确许可。
+4. **VERIFY**：实现阶段严格使用 **test-driven-development**（RED → GREEN → REFACTOR）：先写失败测试并确认失败，再写最小实现并确认通过；测试失败或构建中断转 **debugging-and-error-recovery**（复现 → 定位 → 修复 → 加防护）。测试前编写的代码一律删除。
+5. **REVIEW**：每个任务完成后用 **code-review-and-quality** 对照计划做五轴审查，按严重程度上报，Critical 问题阻塞后续进展；过于复杂用 **code-simplification**，涉及安全用 **security-and-hardening**，涉及性能用 **performance-optimization**。
+6. **SHIP**：用 **git-workflow-and-versioning** 做原子提交与分支管理；用 **documentation-and-adrs** 记录决策；用 **shipping-and-launch** 收尾（预发布清单、监控、回滚方案）。涉及废弃/迁移用 **deprecation-and-migration**。
 
 **自动读取规则**：  
-如果任务涉及新功能、重构或修复，请在执行任何步骤前自动加载并使用对应 Superpowers 技能。如果技能未触发，请明确说明原因并尝试手动加载（use skill XXX）。
+如果任务涉及新功能、重构或修复，请在执行任何步骤前自动加载并使用对应 Agent Skills 技能（技能清单见 `using-agent-skills`）。如果技能未触发，请明确说明原因并尝试手动加载（`read` 对应 `SKILL.md`）。
 
-**模式选择规则**（由 main-workflow 技能强制执行）：
+**核心行为**（始终生效）：先显式声明假设再实现；遇到冲突或模糊立即停下澄清，不得擅自猜测；技术上有问题要直说并给出替代方案；主动抵制过度复杂（能更少行数就别更多）；只改任务要求的范围，不做无关重构；未通过验证（测试、构建、运行时证据）不得宣称完成。
 
-| 模式       | 触发条件                                                   | 工作流                                                                        |
-| ---------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **strict** | 新功能、重构、架构变更、数据库变更、安全逻辑、影响 >3 文件 | 完整流程：brainstorming → worktree → plans → subagent → TDD → review → finish |
-| **normal** | 标准 bugfix、中等复杂度任务、小功能                        | plans → executing → review（跳过 brainstorming/worktree，除非风险增加）       |
-| **rapid**  | 文档、注释、typo 修复、格式化、简单单文件修改              | implement → validate（不调用 brainstorming/worktree/TDD/subagents）           |
+**模式选择规则**：
+
+| 模式       | 触发条件                                                   | 工作流                                                                       |
+| ---------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **strict** | 新功能、重构、架构变更、数据库变更、安全逻辑、影响 >3 文件 | 完整流程：spec → plan → incremental+TDD → review → ship                      |
+| **normal** | 标准 bugfix、中等复杂度任务、小功能                        | spec(可选) → plan → incremental → TDD → review（跳过 complete DEFINE）        |
+| **rapid**  | 文档、注释、typo 修复、格式化、简单单文件修改              | implement → validate（不跑完整 spec/plan/review）                             |
+
+完整技能链（按需取用，非每项必跑）：`interview-me` → `idea-refine` → `spec-driven-development` → `planning-and-task-breakdown` → `incremental-implementation` → `test-driven-development` → `code-review-and-quality` → `git-workflow-and-versioning` → `documentation-and-adrs` → `shipping-and-launch`。
 
 **语言特定规则**：
 
