@@ -996,6 +996,7 @@ go fmt ./... && go test ./... && staticcheck ./...
 | `--tg-simplex` | 任意 | Telegram + SimpleX（TG 主，敏感内容落 SimpleX） |
 | `--all` | 任意 | Telegram + Matrix（永远不含 SimpleX） |
 | `--tg-only` | 任意 | 仅 Telegram（不做任何自动启用） |
+| `--discord` | 任意 | **启动失败**（平台已移除，错误信息给出迁移路径） |
 
 要点：
 
@@ -1012,9 +1013,22 @@ go fmt ./... && go test ./... && staticcheck ./...
 - `matrix_*` 与 `simplex_*` **同时齐备**时，无显式 flag 会直接报错退出，而不是悄悄二选一。
   报错信息给出两条出路：显式传 `--matrix` 或 `--simplex`，或从 `config.enc` 中移除其中
   一份配置。迁移平台时请清掉旧平台字段。
+- `--discord` 平台已**移除**：显式传入会在启动时硬失败，错误信息给出迁移路径（改用
+  `--matrix` / `--simplex` / `--tg-simplex` / `--tg-only`，或从 systemd 单元中移除 `--discord`）。
 - `--tg-simplex` 的判定排在 `--simplex` **之前**，因此 flag 冲突时 `--simplex --tg-simplex`
   与 `--all --tg-simplex` 都得到 Telegram + SimpleX（沿用 aegis 既有的「按判定顺序首个
   命中者胜」行为，未新增冲突校验）。
+
+- [ ] **Step 1b: 修正文档头部对 Discord 的过期列举**
+
+`docs/2026-09-16-simplex-platform.md:3` 仍把已移除的 Discord 列为受支持平台，与本任务新写的
+章节自相矛盾。把该行中的「SimpleX 与前三个平台（Telegram / Matrix / Discord）的结构差异是」
+改为「SimpleX 与 Telegram / Matrix 的结构差异是」（该行其余文字不动）：
+
+```markdown
+记录 aegis 第四个平台（SimpleX Chat）的部署结构、版本约束与手工验收清单。SimpleX 与 Telegram /
+Matrix 的结构差异是：没有中心服务器 token，身份是**本机 `simplex-chat` 数据库里的联系人**，收发全部经由该进程暴露的 **WebSocket bot API**。因此部署多出一个常驻进程与一个 systemd 单元。
+```
 ```
 
 - [ ] **Step 2: 更新 README 平台表**
