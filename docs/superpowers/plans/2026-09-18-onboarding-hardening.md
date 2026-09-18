@@ -119,7 +119,7 @@ mod tests {
 }
 ```
 
-在 `rust/aegis/src/main/mod.rs` 末尾追加（保持字母序，插在 `runtime` 与 `simplex` 之间）：
+在 `rust/aegis/src/main/mod.rs` 中按字母序插入（`config` 之后、`matrix` 之前）：
 
 ```rust
 pub mod logging;
@@ -233,7 +233,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo nextest run --cargo-profile fast-test
 cargo test --doc
 ```
-Expected: clippy 无 warning；nextest **924 passed, 1 skipped**（920 + 4）；doc test ok。
+Expected: clippy 无 warning；nextest **923 passed, 1 skipped**（920 + 3）；doc test ok。
 
 - [ ] **Step 6: 提交**
 
@@ -307,7 +307,7 @@ Expected: 全绿，含 `returns_true_when_only_port_present`、`returns_false_wh
 
 - [ ] **Step 5: 跑完整 Rust 质量门**
 
-同 Task 1 Step 5。Expected: nextest **924 passed, 1 skipped**（本任务只把 1 条测试改名并反转，**不增加**测试数量，因此仍是 Task 1 后的 924）。
+同 Task 1 Step 5。Expected: nextest **923 passed, 1 skipped**（本任务只把 1 条测试改名并反转，**不增加**测试数量，因此仍是 Task 1 后的 923）。
 
 - [ ] **Step 6: 提交**
 
@@ -442,7 +442,7 @@ Expected: 打印含「未知参数」与「可用参数」的 stderr 行，`exit
 
 - [ ] **Step 6: 跑完整 Rust 质量门**
 
-同 Task 1 Step 5。Expected: nextest **927 passed, 1 skipped**（924 + 本任务新增 3 条）。
+同 Task 1 Step 5。Expected: nextest **926 passed, 1 skipped**（923 + 本任务新增 3 条）。
 
 - [ ] **Step 7: 提交**
 
@@ -802,7 +802,7 @@ cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings \
 cd /home/ub/Dark/Wuthering_Waves_Private_Server/.worktrees/onboarding-hardening/go/installer
 gofmt -l . && go vet ./... && go test ./...
 ```
-Expected: Rust **927 passed, 1 skipped**（920 + 4 + 1 + 3 = 928 累计增量中，i18n 的 2 条属于 Go 包）；
+Expected: Rust **926 passed, 1 skipped**（920 + 3 + 0 + 3 = 926）；
 以实际 `Summary` 行为准，且**必须 0 failed / 0 skipped 增量**。Go 两包 ok。
 
 - [ ] **Step 2: 构建待测二进制**

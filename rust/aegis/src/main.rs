@@ -23,6 +23,9 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // 必须最先执行：无 logger 时 log::* 退化为 no-op，此处之前的任何日志都会被静默丢弃。
+    main::logging::init_logger();
+
     harden_process();
 
     // 必须在任何 reqwest 0.13（matrix-sdk）Client 构建之前完成，否则 panic。
