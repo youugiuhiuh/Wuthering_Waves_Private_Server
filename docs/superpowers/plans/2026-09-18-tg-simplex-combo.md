@@ -666,7 +666,7 @@ func TestPlatformSelectorSimplexKeepsTelegram(t *testing.T) {
 
 ```go
 func TestParsePlatformChoiceSimplexCombos(t *testing.T) {
-	tg, matrix, simplex, err := parsePlatformChoice("simplex+telegram")
+	tg, matrix, simplex, err := parsePlatformChoice("telegram+simplex")
 	if err != nil {
 		t.Fatalf("telegram+simplex must be accepted: %v", err)
 	}
@@ -678,6 +678,10 @@ func TestParsePlatformChoiceSimplexCombos(t *testing.T) {
 	}
 }
 ```
+
+注意：这里只接受 `telegram+simplex` 这一种 token 顺序。`parsePlatformChoice` 从不去重排序（既有代码同样
+拒绝 `matrix+telegram`），本计划不引入顺序无关语义；`simplex+matrix` 被拒是因为组合本身非法，
+与顺序无关。空格变体由 Step 6e 的 `"telegram + simplex"` 覆盖。
 
 **1c.** 把 `TestPlatformSelectorSimplexIsExclusive` 的 `cases` 字面量替换为：
 
