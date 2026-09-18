@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -72,11 +73,20 @@ pub struct AppState {
     #[allow(dead_code)]
     pub adapter: Arc<dyn BotAdapter>,
     admin_id: Option<i64>,
-    simplex_admin_id: Option<i64>,
+    /// 运行时可变：TOTP 验证成功后可就地重钉（见 `with_simplex_repin`）。
+    /// `0` 表示「未配置」—— 这与 `is_admin_user` 里 `admin_id.unwrap_or(0)` 的既有约定一致。
+    simplex_admin_id: AtomicI64,
+    /// 是否允许 TOTP 成功后重钉 `simplex_admin_id`。仅纯 `--simplex` 部署开启。
+    simplex_repin_enabled: bool,
     totp_manager: Option<TotpManager>,
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
     sessions: Mutex<HashMap<i64, Instant>>,
     failed_attempts: Mutex<HashMap<i64, FailedRecord>>,
+    /// 全局失败记录，与 per-user 记录**并存**。
+    ///
+    /// per-user 记录按身份限额；但门禁放开后攻击者可用公开地址造 N 个联系人拿到 N 份
+    /// 独立预算，因此必须有一条与身份无关的总计数把总尝试次数压住。
+    global_failed_attempts: Mutex<FailedRecord>,
     pending_destructs: Mutex<HashMap<String, DestructState>>,
     self_destruct_key_hash: Mutex<Option<String>>,
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
@@ -101,11 +111,18 @@ impl AppState {
         Self {
             adapter,
             admin_id,
-            simplex_admin_id,
+            simplex_admin_id: AtomicI64::new(simplex_admin_id.unwrap_or(0)),
+            simplex_repin_enabled: false,
             totp_manager,
             self_destruct_executor,
             sessions: Mutex::new(HashMap::new()),
             failed_attempts: Mutex::new(HashMap::new()),
+            global_failed_attempts: Mutex::new(FailedRecord {
+                count: 0,
+                first_fail: Instant::now(),
+                cooldown_until: None,
+                lock_level: 0,
+            }),
             pending_destructs: Mutex::new(HashMap::new()),
             self_destruct_key_hash: Mutex::new(self_destruct_key_hash),
             pending_warp_inputs: Mutex::new(HashMap::new()),
@@ -126,11 +143,34 @@ impl AppState {
     /// SimpleX 管理员联系人 ID（contactId）。SimpleX 是独立平台，
     /// 其调度器/启动通知目标必须用它，而非 Telegram 的 `admin_id`。
     pub fn simplex_admin_id(&self) -> Option<i64> {
-        self.simplex_admin_id
+        match self.simplex_admin_id.load(Ordering::Relaxed) {
+            0 => None,
+            id => Some(id),
+        }
+    }
+
+    /// 就地重钉管理员身份（**只改内存态**；落盘由调用方负责）。
+    pub fn set_simplex_admin_id(&self, admin_id: i64) {
+        self.simplex_admin_id.store(admin_id, Ordering::Relaxed);
+    }
+
+    /// 允许 TOTP 验证成功后重钉 `simplex_admin_id`。
+    ///
+    /// **只允许在纯 `--simplex` 部署下开启。** `is_admin_user` 的 `user_id` 命名空间是
+    /// Telegram 与 SimpleX **共用**的；`--tg-simplex` 下两个平台同时在线，无差别重钉会把
+    /// `simplex_admin_id` 覆写成 Telegram 的 chat id，从而破坏「敏感内容落点」这个发送目标。
+    #[must_use]
+    pub fn with_simplex_repin(mut self) -> Self {
+        self.simplex_repin_enabled = true;
+        self
+    }
+
+    pub fn simplex_repin_enabled(&self) -> bool {
+        self.simplex_repin_enabled
     }
 
     pub fn is_admin_user(&self, user_id: i64) -> bool {
-        user_id == self.admin_id.unwrap_or(0) || self.simplex_admin_id == Some(user_id)
+        user_id == self.admin_id.unwrap_or(0) || self.simplex_admin_id() == Some(user_id)
     }
 
     pub fn verify_totp(&self, code: &str) -> bool {
@@ -210,7 +250,58 @@ impl AppState {
     pub async fn record_auth_success(&self, user_id: i64, now: Instant) -> u64 {
         self.sessions.lock().await.insert(user_id, now);
         self.failed_attempts.lock().await.remove(&user_id);
+        {
+            let mut g = self.global_failed_attempts.lock().await;
+            g.count = 0;
+            g.cooldown_until = None;
+            g.first_fail = now;
+        }
         self.session_timeout_secs().await
+    }
+
+    /// 全局封锁的时长上限。
+    ///
+    /// **不能复用 `lockout_durations`**：`record_auth_failure` 取 `.last()` 作封顶，
+    /// 而 `dispatch.rs` 传入的最后一级是 172800 秒（48 小时）。若全局复用它，
+    /// 攻击者烧够次数就能把真管理员锁在门外 48 小时（自我 DoS）。
+    ///
+    /// 900 秒可接受，因为 `failed_attempts` 系列是**纯内存态**（本文件内 `Mutex`，
+    /// 全仓无持久化引用）：`systemctl restart wwps-aegis` 立即清零，
+    /// 而服务器管理员有 root ——「等 ≤15 分钟 / 重启」两条路都在自己手上。
+    pub const GLOBAL_LOCKOUT_CAP: Duration = Duration::from_secs(900);
+
+    /// 记录一次全局失败。达 `max_attempts` 则封锁 `GLOBAL_LOCKOUT_CAP`，不升级、不累积等级。
+    async fn record_global_failure(
+        &self,
+        now: Instant,
+        max_attempts: u32,
+        failure_window: Duration,
+    ) {
+        let mut rec = self.global_failed_attempts.lock().await;
+        if now.duration_since(rec.first_fail) > failure_window {
+            rec.count = 0;
+            rec.first_fail = now;
+            rec.cooldown_until = None;
+        }
+        rec.count += 1;
+        rec.first_fail = rec.first_fail.min(now);
+        if rec.count >= max_attempts {
+            rec.cooldown_until = Some(now + Self::GLOBAL_LOCKOUT_CAP);
+            rec.count = 0;
+            rec.first_fail = now;
+        }
+    }
+
+    /// 当前全局封锁的剩余时长（阻塞中）。过期的 `cooldown_until` 会被顺带清理。
+    async fn global_cooldown_remaining(&self, now: Instant) -> Option<Duration> {
+        let mut g = self.global_failed_attempts.lock().await;
+        let until = g.cooldown_until?;
+        if until > now {
+            Some(until - now)
+        } else {
+            g.cooldown_until = None;
+            None
+        }
     }
 
     pub async fn record_auth_failure(
@@ -221,6 +312,18 @@ impl AppState {
         failure_window: Duration,
         lockout_durations: &[Duration],
     ) -> AuthFailureOutcome {
+        // 全局锁定期间任何身份都被挡，包括从未失败过的新身份 —— 这正是
+        // 「造 N 个联系人换取 N 份独立预算」的封堵点。注意只在**已存在**全局锁时
+        // 短路；刚触发锁的那一次仍按 per-user 语义返回，以保留既有测试与文案行为。
+        if let Some(remaining) = self.global_cooldown_remaining(now).await {
+            return AuthFailureOutcome::Locked {
+                duration: remaining,
+            };
+        }
+
+        self.record_global_failure(now, max_attempts, failure_window)
+            .await;
+
         let mut fails = self.failed_attempts.lock().await;
         let rec = fails.entry(user_id).or_insert(FailedRecord {
             count: 0,
@@ -263,14 +366,32 @@ impl AppState {
     }
 
     pub async fn auth_cooldown_remaining(&self, user_id: i64, now: Instant) -> Option<Duration> {
-        let mut fails = self.failed_attempts.lock().await;
-        let rec = fails.get_mut(&user_id)?;
-        let until = rec.cooldown_until?;
-        if until > now {
-            Some(until - now)
-        } else {
-            rec.cooldown_until = None;
-            None
+        let per_user = {
+            let mut fails = self.failed_attempts.lock().await;
+            match fails.get(&user_id).and_then(|r| r.cooldown_until) {
+                Some(until) if until > now => Some(until - now),
+                Some(_) => {
+                    // 过期记录：清理后视为无 per-user 封锁。
+                    if let Some(r) = fails.get_mut(&user_id) {
+                        r.cooldown_until = None;
+                    }
+                    None
+                }
+                None => None,
+            }
+        };
+
+        // 取两者中**较长**的一个。这里是真正的执行点（`process_auth_code` 见到
+        // `Some` 就拒绝验证），因此不能只把全局当作 per-user 的兜底：否则一个持有
+        // 较短 per-user 封锁的身份会在更长的全局封锁仍然生效时被放行，继续猜码。
+        // 两个真实调用点的梯度首级恰为 900s（== `GLOBAL_LOCKOUT_CAP`），但那是跨模块
+        // 的隐式常量相等，不能作为正确性依赖 —— 这里用 `max` 把它显式化。
+        let global = self.global_cooldown_remaining(now).await;
+        match (per_user, global) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
         }
     }
 
@@ -760,8 +881,41 @@ mod tests {
                 .await;
         }
         let remaining = state.auth_cooldown_remaining(42, now).await;
-        assert!(remaining.is_some());
-        assert!(remaining.unwrap().as_secs() <= 60);
+        // 梯度是 60s，但 5 次失败同时也触发了全局计数，因此上报的是**较长的**
+        // 全局封顶（900s）而非 per-user 的 60s —— 这是刻意的：它让本测试从
+        // “弱断言”（<=60s，甚至允许少报）升级为“全局封顶丢失即失败”的回归网。
+        assert_eq!(remaining, Some(AppState::GLOBAL_LOCKOUT_CAP));
+    }
+
+    /// 修复后的排序：短 per-user 封锁与长全局封锁共存时，必须上报**较长**的那个。
+    /// 否则持有较短 per-user 封锁的身份会在全局封锁仍生效时被放行继续猜码。
+    #[tokio::test]
+    async fn auth_cooldown_remaining_takes_longer_of_per_user_and_global() {
+        let state = make_state();
+        let now = Instant::now();
+        // per-user 只封 60s；全局封 900s。
+        let short_ladder = [Duration::from_secs(60)];
+        for _ in 0..5 {
+            state
+                .record_auth_failure(42, now, 5, Duration::from_secs(600), &short_ladder)
+                .await;
+        }
+
+        // 60s 后 per-user 封锁已过期，但全局 900s 仍在生效。
+        let later = now + Duration::from_secs(60);
+        let remaining = state
+            .auth_cooldown_remaining(42, later)
+            .await
+            .expect("全局封锁仍生效，必须返回 Some");
+        assert!(
+            remaining > Duration::from_secs(60),
+            "必须上报较长的全局剩余时长，实际 {remaining:?}；\
+             只报 per-user 的 60s 会让该身份在全局封锁期间被放行"
+        );
+        assert_eq!(
+            remaining,
+            AppState::GLOBAL_LOCKOUT_CAP - Duration::from_secs(60)
+        );
     }
 
     #[tokio::test]
@@ -923,6 +1077,75 @@ mod tests {
         assert!(state.domain_input_snapshot("chat").await.is_none());
     }
 
+    #[test]
+    fn simplex_admin_id_can_be_repinned_at_runtime() {
+        let state = AppState::new(
+            None,
+            Some(3),
+            Some(
+                TotpManager::new(&secrecy::SecretString::from(
+                    TotpManager::generate_new_secret(),
+                ))
+                .unwrap(),
+            ),
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            Arc::new(MockAdapter),
+        );
+        assert_eq!(state.simplex_admin_id(), Some(3));
+        assert!(state.is_admin_user(3));
+        assert!(!state.is_admin_user(4));
+
+        // 就地重钉：内存态应立即反映，且 is_admin_user 跟随
+        state.set_simplex_admin_id(4);
+        assert_eq!(state.simplex_admin_id(), Some(4));
+        assert!(state.is_admin_user(4), "重钉后新身份必须被认作管理员");
+        assert!(!state.is_admin_user(3), "重钉后旧身份必须失去管理员身份");
+    }
+
+    #[test]
+    fn simplex_admin_id_none_round_trips_as_zero() {
+        let state = AppState::new(
+            None,
+            None,
+            Some(
+                TotpManager::new(&secrecy::SecretString::from(
+                    TotpManager::generate_new_secret(),
+                ))
+                .unwrap(),
+            ),
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            Arc::new(MockAdapter),
+        );
+        assert_eq!(state.simplex_admin_id(), None);
+    }
+
+    #[test]
+    fn simple_repin_is_off_by_default_and_opt_in() {
+        let state = AppState::new(
+            None,
+            None,
+            Some(
+                TotpManager::new(&secrecy::SecretString::from(
+                    TotpManager::generate_new_secret(),
+                ))
+                .unwrap(),
+            ),
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            Arc::new(MockAdapter),
+        );
+        assert!(
+            !state.simplex_repin_enabled(),
+            "默认必须关闭：tg-simplex 下重钉会把 simplex_admin_id 覆写成 TG chat id"
+        );
+        assert!(state.with_simplex_repin().simplex_repin_enabled());
+    }
+
     #[tokio::test]
     async fn simplex_admin_id_is_recognized_as_admin() {
         let state = AppState::new(
@@ -936,5 +1159,98 @@ mod tests {
         );
         assert!(state.is_admin_user(777));
         assert!(!state.is_admin_user(778));
+    }
+
+    /// 全局计数必须与身份无关：换一个 user_id 不能重置预算。
+    #[tokio::test]
+    async fn global_failures_are_not_reset_by_switching_identity() {
+        let state = make_state();
+        let now = Instant::now();
+        let max = 5u32;
+        let window = Duration::from_secs(600);
+        let ladder = [Duration::from_secs(900)];
+
+        // 每个身份各失败 1 次（per-user 计数永远到不了 5）
+        for uid in 1..=5 {
+            let out = state
+                .record_auth_failure(uid, now, max, window, &ladder)
+                .await;
+            assert!(
+                matches!(out, AuthFailureOutcome::Invalid { .. }),
+                "uid={uid} 单身份不应触发封锁"
+            );
+        }
+
+        // 第 6 个身份：全局已达 5 次，必须被封锁
+        let out = state
+            .record_auth_failure(6, now, max, window, &ladder)
+            .await;
+        assert!(
+            matches!(out, AuthFailureOutcome::Locked { .. }),
+            "全局计数达上限必须对任何身份封锁，否则造联系人即可无限刷码"
+        );
+    }
+
+    /// 全局封锁必须封顶 900 秒 —— 梯度最后一级是 48 小时，复用会变成自我 DoS。
+    #[tokio::test]
+    async fn global_lockout_is_capped_at_900_seconds() {
+        let state = make_state();
+        let now = Instant::now();
+        // 故意传入一条以 48 小时结尾的梯度（与 dispatch.rs 实际传入的一致）
+        let ladder = [
+            Duration::from_secs(900),
+            Duration::from_secs(3600),
+            Duration::from_secs(86400),
+            Duration::from_secs(172_800),
+        ];
+        let max = 5u32;
+        let window = Duration::from_secs(600);
+
+        let mut last = None;
+        // 反复触发封锁，逼出梯度最高级
+        for round in 0..8 {
+            for i in 0..max {
+                last = Some(
+                    state
+                        .record_auth_failure(
+                            i64::from(100 + round * 10 + i),
+                            now,
+                            max,
+                            window,
+                            &ladder,
+                        )
+                        .await,
+                );
+            }
+        }
+        match last.expect("至少触发一次封锁") {
+            AuthFailureOutcome::Locked { duration } => assert!(
+                duration <= AppState::GLOBAL_LOCKOUT_CAP,
+                "全局封锁必须封顶 900s，实际 {duration:?}；\
+                 复用梯度的 48h 会让攻击者把真管理员永久锁在门外"
+            ),
+            other => panic!("期望 Locked，得到 {other:?}"),
+        }
+    }
+
+    /// 全局冷却必须能被任何身份观察到（真的挡住了）。
+    #[tokio::test]
+    async fn global_cooldown_blocks_all_identities() {
+        let state = make_state();
+        let now = Instant::now();
+        let max = 5u32;
+        let window = Duration::from_secs(600);
+        let ladder = [Duration::from_secs(900)];
+
+        for uid in 1..=5 {
+            let _ = state
+                .record_auth_failure(uid, now, max, window, &ladder)
+                .await;
+        }
+
+        assert!(
+            state.auth_cooldown_remaining(999, now).await.is_some(),
+            "全局封锁期间，任何身份（含从未失败过的新身份）都必须被挡"
+        );
     }
 }
