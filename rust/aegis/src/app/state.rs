@@ -366,20 +366,33 @@ impl AppState {
     }
 
     pub async fn auth_cooldown_remaining(&self, user_id: i64, now: Instant) -> Option<Duration> {
-        let mut fails = self.failed_attempts.lock().await;
-        if let Some(rec) = fails.get_mut(&user_id)
-            && let Some(until) = rec.cooldown_until
-        {
-            if until > now {
-                return Some(until - now);
+        let per_user = {
+            let mut fails = self.failed_attempts.lock().await;
+            match fails.get(&user_id).and_then(|r| r.cooldown_until) {
+                Some(until) if until > now => Some(until - now),
+                Some(_) => {
+                    // 过期记录：清理后视为无 per-user 封锁。
+                    if let Some(r) = fails.get_mut(&user_id) {
+                        r.cooldown_until = None;
+                    }
+                    None
+                }
+                None => None,
             }
-            rec.cooldown_until = None;
-        }
-        drop(fails);
+        };
 
-        // per-user 无封锁 → 再看全局：全局封锁期间，任何身份（含从未失败过的
-        // 新身份，以及只有零星失败、per-user 未达上限的身份）都必须被挡。
-        self.global_cooldown_remaining(now).await
+        // 取两者中**较长**的一个。这里是真正的执行点（`process_auth_code` 见到
+        // `Some` 就拒绝验证），因此不能只把全局当作 per-user 的兜底：否则一个持有
+        // 较短 per-user 封锁的身份会在更长的全局封锁仍然生效时被放行，继续猜码。
+        // 两个真实调用点的梯度首级恰为 900s（== `GLOBAL_LOCKOUT_CAP`），但那是跨模块
+        // 的隐式常量相等，不能作为正确性依赖 —— 这里用 `max` 把它显式化。
+        let global = self.global_cooldown_remaining(now).await;
+        match (per_user, global) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
     }
 
     pub async fn begin_destruct(&self, chat_id: String, now: Instant) {
@@ -868,8 +881,41 @@ mod tests {
                 .await;
         }
         let remaining = state.auth_cooldown_remaining(42, now).await;
-        assert!(remaining.is_some());
-        assert!(remaining.unwrap().as_secs() <= 60);
+        // 梯度是 60s，但 5 次失败同时也触发了全局计数，因此上报的是**较长的**
+        // 全局封顶（900s）而非 per-user 的 60s —— 这是刻意的：它让本测试从
+        // “弱断言”（<=60s，甚至允许少报）升级为“全局封顶丢失即失败”的回归网。
+        assert_eq!(remaining, Some(AppState::GLOBAL_LOCKOUT_CAP));
+    }
+
+    /// 修复后的排序：短 per-user 封锁与长全局封锁共存时，必须上报**较长**的那个。
+    /// 否则持有较短 per-user 封锁的身份会在全局封锁仍生效时被放行继续猜码。
+    #[tokio::test]
+    async fn auth_cooldown_remaining_takes_longer_of_per_user_and_global() {
+        let state = make_state();
+        let now = Instant::now();
+        // per-user 只封 60s；全局封 900s。
+        let short_ladder = [Duration::from_secs(60)];
+        for _ in 0..5 {
+            state
+                .record_auth_failure(42, now, 5, Duration::from_secs(600), &short_ladder)
+                .await;
+        }
+
+        // 60s 后 per-user 封锁已过期，但全局 900s 仍在生效。
+        let later = now + Duration::from_secs(60);
+        let remaining = state
+            .auth_cooldown_remaining(42, later)
+            .await
+            .expect("全局封锁仍生效，必须返回 Some");
+        assert!(
+            remaining > Duration::from_secs(60),
+            "必须上报较长的全局剩余时长，实际 {remaining:?}；\
+             只报 per-user 的 60s 会让该身份在全局封锁期间被放行"
+        );
+        assert_eq!(
+            remaining,
+            AppState::GLOBAL_LOCKOUT_CAP - Duration::from_secs(60)
+        );
     }
 
     #[tokio::test]
