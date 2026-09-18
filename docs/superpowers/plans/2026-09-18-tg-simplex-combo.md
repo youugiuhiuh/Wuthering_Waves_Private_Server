@@ -1158,7 +1158,9 @@ git status --short
 git log --oneline main..HEAD
 ```
 
-期望：`git status --short` 无输出（无未提交改动）；`git log` 显示 6 个提交（设计文档 1 + 本计划新增 5）。
+期望：`git status --short` 无输出（无未提交改动）；`git log --oneline main..HEAD` 至少包含 5 个功能提交
+（Task 1-5）与 1 个 Task 5 修复提交，另有若干「计划/记账」文档提交。**不要断言固定提交数**：
+计划修订与修复环会产生额外的文档提交，数量不是本计划的验收对象。
 
 - [ ] **Step 7: 报告**
 
