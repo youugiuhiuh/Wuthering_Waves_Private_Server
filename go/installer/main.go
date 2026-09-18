@@ -1595,7 +1595,7 @@ func servicePlatformForSetup(tg, matrix, simplex bool) string {
 // missingPlatformFieldsMsg 由非交互安装的两条路径与 parseKeyVal 共用同一条文案。
 const missingPlatformFieldsMsg = "缺少必填字段: 至少需要配置 Telegram (token/admin_id)、Matrix (matrix_homeserver) 或 SimpleX (simplex_port/simplex_admin_id) 之一"
 
-// platformForNonInteractive 由非交互安装（stdin JSON / key=value）的字段存在性推导部署形态。
+// platformForNonInteractive 由非交互安装（stdin JSON / key=value）的字段是否非空推导部署形态。
 // 组合必须显式：只有 token 与 simplex_port 同时存在才是 tg-simplex；三个平台字段齐备
 // 直接报错而不猜优先级，与 aegis 侧「配置歧义」的立场一致。
 func platformForNonInteractive(hasToken, hasMatrix, hasSimplex bool) (string, error) {

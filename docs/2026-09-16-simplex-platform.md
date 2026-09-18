@@ -1,6 +1,6 @@
 # SimpleX Chat 平台接入 — 部署与验收
 
-记录 aegis 第四个平台（SimpleX Chat）的部署结构、版本约束与手工验收清单。SimpleX 与 Telegram / Matrix 的结构差异是：没有中心服务器 token，身份是**本机 `simplex-chat` 数据库里的联系人**，收发全部经由该进程暴露的 **WebSocket bot API**。因此部署多出一个常驻进程与一个 systemd 单元。
+记录 aegis 第三个平台（SimpleX Chat）的部署结构、版本约束与手工验收清单。SimpleX 与 Telegram / Matrix 的结构差异是：没有中心服务器 token，身份是**本机 `simplex-chat` 数据库里的联系人**，收发全部经由该进程暴露的 **WebSocket bot API**。因此部署多出一个常驻进程与一个 systemd 单元。
 
 ## 组成
 
@@ -84,7 +84,7 @@ SimpleX 未配置 simplex_admin_id，调度器与启动通知不会发送；请�
 - key=value：`simplex_port=5225`、`simplex_admin_id=42`
 - 交互式安装：平台选择器选 SimpleX，随后提示端口与管理员 contactId
 
-`config.enc` 中对这两个字段存的是密文（与 `discord_admin_id` 一致的加密存储约定）。
+`config.enc` 中对这两个字段存的是密文。
 
 ## 平台选择语义
 
@@ -121,7 +121,7 @@ SimpleX 未配置 simplex_admin_id，调度器与启动通知不会发送；请�
   报错信息给出两条出路：显式传 `--matrix` 或 `--simplex`，或从 `config.enc` 中移除其中
   一份配置。迁移平台时请清掉旧平台字段。
 - `--discord` 平台已**移除**：显式传入会在启动时硬失败，错误信息给出迁移路径（改用
-  `--matrix` / `--simplex` / `--tg-simplex` / `--tg-only`，或从 systemd 单元中移除 `--discord`）。
+  `--matrix` / `--simplex` / `--tg-only`，或从 systemd 单元中移除 `--discord`）。
 - `--tg-simplex` 的判定排在 `--simplex` **之前**，因此 flag 冲突时 `--simplex --tg-simplex`
   与 `--all --tg-simplex` 都得到 Telegram + SimpleX（沿用 aegis 既有的「按判定顺序首个
   命中者胜」行为，未新增冲突校验）。
