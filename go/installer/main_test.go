@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"testing/iotest"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/awnumar/memguard"
@@ -1304,4 +1305,80 @@ func TestDiscordPlatformIsRejected(t *testing.T) {
 			t.Fatal("parsePlatformChoice(\"telegram + discord\") 必须报错")
 		}
 	})
+}
+
+func TestReadSimplexAddress(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want string
+		ok   bool
+	}{
+		{"normal", writeFile("a", "simplex:/contact#/?v=2-7\n"), "simplex:/contact#/?v=2-7", true},
+		{"no trailing newline", writeFile("b", "simplex:/x"), "simplex:/x", true},
+		{"surrounding whitespace", writeFile("c", "  simplex:/y  \n"), "simplex:/y", true},
+		{"empty", writeFile("d", ""), "", false},
+		{"whitespace only", writeFile("e", "  \n\t "), "", false},
+		{"missing", filepath.Join(dir, "nope"), "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := readSimplexAddress(tt.path)
+			if got != tt.want || ok != tt.ok {
+				t.Fatalf("readSimplexAddress(%q) = (%q, %v), want (%q, %v)", tt.path, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func TestPollSimplexAddressHitsImmediatelyWhenPresent(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "simplex_address")
+	if err := os.WriteFile(p, []byte("simplex:/z\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := pollSimplexAddress(p, 1, time.Millisecond)
+	if !ok || got != "simplex:/z" {
+		t.Fatalf("pollSimplexAddress = (%q, %v), want (simplex:/z, true)", got, ok)
+	}
+}
+
+func TestPollSimplexAddressGivesUpWithoutPanic(t *testing.T) {
+	got, ok := pollSimplexAddress(filepath.Join(t.TempDir(), "nope"), 1, time.Millisecond)
+	if ok || got != "" {
+		t.Fatalf("pollSimplexAddress = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+// attempts<=0 必须立刻放弃，不得进入无条件循环。
+func TestPollSimplexAddressZeroAttempts(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "simplex_address")
+	if err := os.WriteFile(p, []byte("simplex:/z\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := pollSimplexAddress(p, 0, time.Millisecond); ok || got != "" {
+		t.Fatalf("pollSimplexAddress(attempts=0) = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+// 文件延迟出现时轮询必须等到它 —— 这是真实场景（aegis 刚 fork，地址稍后才落盘）。
+func TestPollSimplexAddressWaitsForLateFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "simplex_address")
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		_ = os.WriteFile(p, []byte("simplex:/late\n"), 0o600)
+	}()
+	got, ok := pollSimplexAddress(p, 100, 5*time.Millisecond)
+	if !ok || got != "simplex:/late" {
+		t.Fatalf("pollSimplexAddress = (%q, %v), want (simplex:/late, true)", got, ok)
+	}
 }
