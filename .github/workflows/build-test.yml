@@ -101,11 +101,14 @@ jobs:
             ${{ runner.os }}-${{ matrix.project.name }}-gobuild-
 
       # ---------------- Rust 环境与缓存 ----------------
-      - name: Setup Rust
+      # 本工作流只用 Cranelift 后端，所以只需要 nightly（cranelift 不进 stable）。
+      # 组件用 action 一起装，避免与 toolchain 版本错配。
+      - name: Setup Rust nightly (Cranelift codegen backend)
         if: matrix.project.language == 'rust'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
         with:
           targets: x86_64-unknown-linux-gnu
+          components: rustc-codegen-cranelift
 
       # 刻意不使用 sccache，实测它与本仓库不兼容：
       #
@@ -155,11 +158,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.project.name }}-rust-
 
-      - name: Install protoc
+      # protoc: prost-build 消费 proto/sni.proto 需要。
+      # mold: 并行链接器，替换默认的 ld.bfd。Ubuntu 24.04 universe 自带 2.30.0，
+      #       不需要 PPA，也不需要引入第三方 action（本仓库对后者很克制）。
+      #       gcc 13 支持 -fuse-ld=mold。
+      - name: Install protoc and mold
         if: matrix.project.language == 'rust'
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          sudo apt-get install -y protobuf-compiler mold
 
       # 用预编译二进制，不编译 nextest（官方推荐的 CI 安装方式）。
       # 与 rust-lint-format 技能保持一致：该技能要求的门禁是
@@ -174,6 +181,24 @@ jobs:
       #         不覆盖 release profile —— 而发布走的正是 release）；
       #         `cargo nextest run` 编译并运行测试。
       #   Go:   `go build ./...` 编译全部包；`go test ./...` 跑测试。
+      #
+      # Rust 只跑 Cranelift 后端（nightly），没有 LLVM 回退：
+      #   cargo build --release            → cranelift + mold
+      #   cargo nextest run                → cranelift + mold（fast-test profile）
+      #
+      # 两个代价必须知情：
+      #   1) cranelift 不支持 LTO（`error: LTO is not supported by
+      #      rustc_codegen_cranelift`），所以用 CARGO_PROFILE_RELEASE_LTO=false
+      #      覆盖掉 release 的 lto="thin"。⇒ 本工作流**不再验证发布时的 LTO
+      #      链接配置**，那一层交给 public-release.yml 的 stable 构建。
+      #   2) nightly-only ⇒ 本工作流**不再验证 stable 兼容性**。
+      #
+      # 实测（16 核，干净 target，含全部 test target）：
+      #   cranelift release (lto off) + mold   91s / 1.7GB
+      #   cranelift + fast-test profile + mold 97s / 5.9GB  ← CI 采用这档
+      #   cranelift-dev + mold debug=1        103s / 11GB   ← 托管 runner 只有 ~14GB，会写满
+      # 后端由 RUSTFLAGS 决定，与 profile 名无关：测试用 fast-test（debug=0），
+      # 不用 cranelift-dev（debug=1，会多吐 5GB debuginfo）。
       #
       # 刻意不在此处加 `cargo clippy -- -D warnings`：依赖更新 PR 上
       # 新版第三方依赖可能引入新 lint，会导致更新流程被永久卡死，
@@ -194,8 +219,14 @@ jobs:
               go test ./...
               ;;
             rust)
-              cargo build --release
-              cargo nextest run --cargo-profile fast-test
+              # 唯一后端：Cranelift。两处都需要显式带上 mold。
+              export RUSTFLAGS="-Zcodegen-backend=cranelift -C link-arg=-fuse-ld=mold"
+
+              # 发布 profile 编译门禁。cranelift 不支持 LTO，必须关掉（见上）。
+              CARGO_PROFILE_RELEASE_LTO=false cargo +nightly build --release
+
+              # 测试：fast-test profile（debug=0，无需额外压 debuginfo）。失败即失败，没有回退。
+              cargo +nightly nextest run --cargo-profile fast-test
               ;;
             *)
               echo "🔍 检查 GitHub Actions YAML 语法..."
