@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -137,6 +138,37 @@ func TestAllKeysExist(t *testing.T) {
 		}
 		if _, ok := ja[k]; !ok {
 			t.Errorf("ja.json missing key: %s", k)
+		}
+	}
+}
+
+// simplex onboarding 文案守卫。
+// Task 5 的 main.go 已按这四个 key 名查询，任何一处拼错都会在安装器输出里以裸 key
+// 名暴露，而 TestAllKeysExist 只检查 zh ⊆ en/ja，无法发现「三个语言文件同时拼错」。
+// 另外 address_ready 是带参文案，必须保留 %s 占位符，否则 i18n.T 的实参会被 fmt 丢弃。
+func TestSimplexAddressKeysKeepFormatVerb(t *testing.T) {
+	newKeys := []string{
+		"simplex.address_ready",
+		"simplex.address_paste_hint",
+		"simplex.address_pending",
+		"simplex.admin_fill_hint",
+	}
+	for _, locale := range []struct {
+		name string
+		data map[string]string
+	}{
+		{"zh.json", loadJSON(zhFS, "zh.json")},
+		{"en.json", loadJSON(enFS, "en.json")},
+		{"ja.json", loadJSON(jaFS, "ja.json")},
+	} {
+		for _, key := range newKeys {
+			if v, ok := locale.data[key]; !ok || strings.TrimSpace(v) == "" {
+				t.Errorf("%s: key %q 缺失或为空（main.go 会按这个名字查找）", locale.name, key)
+			}
+		}
+		if !strings.Contains(locale.data["simplex.address_ready"], "%s") {
+			t.Errorf("%s: simplex.address_ready 缺少 %%s 占位符: %q",
+				locale.name, locale.data["simplex.address_ready"])
 		}
 	}
 }
