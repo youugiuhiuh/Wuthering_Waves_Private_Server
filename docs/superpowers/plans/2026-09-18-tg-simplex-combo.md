@@ -382,7 +382,7 @@ cargo nextest run --cargo-profile fast-test && \
 cargo test --doc
 ```
 
-期望：`fmt` 无输出；`clippy` 无 warning；`nextest` 的 `Summary` 显示 `0 failed`（基线为 890 passed / 1 skipped，本任务后应为 892 passed）；`doc` 全部 ok。
+期望：`fmt` 无输出；`clippy` 无 warning；`nextest` 的 `Summary` 显示 `0 failed`（基线 890 passed / 1 skipped；Task 1 新增 2 个，本任务新增 2 个，应为 894 passed）；`doc` 全部 ok。
 
 - [ ] **Step 9: 提交**
 
@@ -946,8 +946,9 @@ git commit -m "feat(installer): 平台选择器与单元映射支持 telegram+si
 - `matrix_*` 与 `simplex_*` **同时齐备**时，无显式 flag 会直接报错退出，而不是悄悄二选一。
   报错信息给出两条出路：显式传 `--matrix` 或 `--simplex`，或从 `config.enc` 中移除其中
   一份配置。迁移平台时请清掉旧平台字段。
-- `--simplex` 判定先于 `--tg-simplex` 之后的其余 flag？否 —— `--tg-simplex` 判定最靠前，
-  因此 `--simplex --tg-simplex` 与 `--all --tg-simplex` 都得到 Telegram + SimpleX。
+- `--tg-simplex` 的判定排在 `--simplex` **之前**，因此 flag 冲突时 `--simplex --tg-simplex`
+  与 `--all --tg-simplex` 都得到 Telegram + SimpleX（沿用 aegis 既有的「按判定顺序首个
+  命中者胜」行为，未新增冲突校验）。
 ```
 
 - [ ] **Step 2: 更新 README 平台表**
@@ -1019,8 +1020,8 @@ cargo test --doc
 ```
 
 期望：`fmt --check` 无输出（干净）；`clippy` 无 warning；`nextest` 的 `Summary` 为
-`892 tests run: 892 passed, 1 skipped`（基线 890 passed + 本计划新增 2 个）；`doc` 全部 ok。
-把 `Summary` 一行原样记录到完成报告里。
+`894 tests run: 894 passed, 1 skipped`（基线 890 passed + Task 1 新增 2 个 + Task 2 新增 2 个）；
+`doc` 全部 ok。把 `Summary` 一行原样记录到完成报告里。
 
 - [ ] **Step 2: Go 门禁**
 
