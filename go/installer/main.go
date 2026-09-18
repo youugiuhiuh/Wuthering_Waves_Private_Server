@@ -991,6 +991,63 @@ func simplexPortFromUnit(content []byte) string {
 	return ""
 }
 
+// simplexAddressFile 是 aegis 落盘的 bot 连接地址。
+// 必须与 rust/aegis/src/core/paths.rs::bot::SIMPLEX_ADDRESS_FILE 保持一致。
+var simplexAddressFile = filepath.Join(installDir, "simplex_address")
+
+// removeStaleSimplexAddress 删除上一次运行留下的地址文件，确保安装器打印的
+// 地址只来自本次运行（旧身份/上次连接失败留下的文件会误导管理员连到死链）。
+// 文件不存在视为已清理。
+func removeStaleSimplexAddress() error {
+	if err := os.Remove(simplexAddressFile); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// readSimplexAddress 读取并校验地址文件；不存在 / 空 / 仅空白视为未命中。
+func readSimplexAddress(path string) (string, bool) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	addr := strings.TrimSpace(string(raw))
+	if addr == "" {
+		return "", false
+	}
+	return addr, true
+}
+
+// pollSimplexAddress 有界轮询地址文件；attempts <= 0 视为不轮询。
+// 只在两次尝试之间 sleep，因此 attempts=1 是零等待的即时探测。
+func pollSimplexAddress(path string, attempts int, interval time.Duration) (string, bool) {
+	for i := 0; i < attempts; i++ {
+		if addr, ok := readSimplexAddress(path); ok {
+			return addr, true
+		}
+		if i < attempts-1 {
+			time.Sleep(interval)
+		}
+	}
+	return "", false
+}
+
+// printSimplexOnboarding 在部署收尾后打印 bot 地址与后续补填步骤。
+// 平台不含 simplex 时为空操作。取不到地址只提示、不失败 —— aegis 的启动不应
+// 因为地址文件写入慢而让安装以非 0 退出。
+func printSimplexOnboarding(platform string) {
+	if platform != "simplex" && platform != "tg-simplex" {
+		return
+	}
+	if addr, ok := pollSimplexAddress(simplexAddressFile, 20, 500*time.Millisecond); ok {
+		printGreen(i18n.T("simplex.address_ready", addr))
+		printYellow(i18n.T("simplex.address_paste_hint"))
+	} else {
+		printYellow(i18n.T("simplex.address_pending"))
+	}
+	printYellow(i18n.T("simplex.admin_fill_hint"))
+}
+
 // simplexReleaseInfo 拉取锁定版本的 simplex-chat release（tags/<version>，不是 latest）。
 func simplexReleaseInfo() (*latestRelease, error) {
 	client := newHTTPClient(30 * time.Second)
@@ -1086,6 +1143,12 @@ func installSimplexChat() (string, error) {
 func deploySimplexService(platform, port string) {
 	if platform != "simplex" && platform != "tg-simplex" {
 		return
+	}
+	// 地址文件只能由本次运行的 aegis 写入（重启发生在 installAegis / finishDeploy），
+	// 先清掉旧文件，避免打印上一身份的地址。
+	if err := removeStaleSimplexAddress(); err != nil {
+		printRed(i18n.T("simplex.install_failed", err.Error()))
+		os.Exit(1)
 	}
 	// 端口先解析并校验，再下载：port 来自 key=val / stdin / 交互输入，最终会拼进
 	// root 拥有的 systemd 单元，任何非纯数字值都必须在这里被挡住。先校验也避免了
@@ -1323,6 +1386,7 @@ func installAegis() {
 	}
 
 	printGreen(i18n.T("install.success"))
+	printSimplexOnboarding(platform)
 	printSkyBlue(i18n.T("install.manage_hint"))
 }
 
@@ -1370,6 +1434,7 @@ func finishDeploy(platform string, simplexPort string) {
 		os.Exit(1)
 	}
 	printGreen(i18n.T("install.success"))
+	printSimplexOnboarding(platform)
 	printSkyBlue(i18n.T("install.manage_hint"))
 }
 

@@ -97,8 +97,9 @@ async fn main() -> Result<()> {
             &matrix_handle,
         )
         .await?;
-        // connect_simplex 在装配之前已强制校验 simplex_port / simplex_admin_id 齐备，
-        // 这里的 context 仅为防御性写法，正常路径不可达。
+        // 独立 --simplex 形态允许无管理员启动（首次安装时 contactId 尚不存在）；
+        // 但 TG+SimpleX 形态下 SimpleX 是敏感内容落点，必须已有投递目标，
+        // 因此这里的 context 是真正的硬校验。
         let simplex_admin_id = app_config
             .decrypted
             .simplex_admin_id

@@ -52,6 +52,10 @@
   "simplex.port_invalid": "Invalid SimpleX port: %s",
   "simplex.service_failed": "Failed to start SimpleX service: %s",
   "simplex.service_ok": "\u2705 SimpleX Chat service started",
+  "simplex.address_ready": "✅ Bot address: %s",
+  "simplex.address_paste_hint": "   Copy the line above and paste it into your SimpleX client to connect (or send /c <address>)",
+  "simplex.address_pending": "⏳ Bot address not available yet (aegis may still be starting). Later run: journalctl -u wwps-aegis | grep \"bot 地址\"",
+  "simplex.admin_fill_hint": "   After connecting, send any message to the bot, then run: aegis --set-simplex-admin <ID> and systemctl restart wwps-aegis (find the ID via journalctl -u wwps-aegis | grep 未授权联系人)",
   "simplex.unit_write_failed": "Failed to write SimpleX systemd unit: %s",
   "totp.generating": "Generating TOTP secret\u2026",
   "totp.generate_failed": "Failed to generate TOTP secret: %s",
@@ -156,9 +160,9 @@
   "firsttime.simplex_desc3": "   Note: SimpleX cannot be combined with Matrix, and all three at once is not supported.",
   "firsttime.simplex_port_title": "\n🔌 SimpleX WebSocket Port",
   "firsttime.simplex_port_prompt": "Enter SimpleX WebSocket port (default 5225): ",
-  "firsttime.simplex_admin_title": "\n👤 SimpleX Admin contactId",
-  "firsttime.simplex_admin_help_step1": "  1. Start simplex-chat and let your admin contact connect to the bot",
-  "firsttime.simplex_admin_help_step2": "  2. Read the bot log for: 未授权联系人 contactId=...",
+  "firsttime.simplex_admin_title": "\n👤 SimpleX admin contactId (leave empty on first install)",
+  "firsttime.simplex_admin_help_step1": "  On first install the bot is not running yet, so no contactId exists — just press Enter to leave it empty.",
+  "firsttime.simplex_admin_help_step2": "  After install the installer prints the bot address; connect, send one message, then fill it in with aegis --set-simplex-admin.",
   "firsttime.simplex_admin_help_format": "  Format: 42 (integer contactId)",
-  "firsttime.simplex_admin_prompt": "Enter SimpleX admin contactId: "
+  "firsttime.simplex_admin_prompt": "SimpleX admin contactId (leave empty, fill in later): "
 }

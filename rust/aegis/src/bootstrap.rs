@@ -406,6 +406,52 @@ pub fn clear_matrix_recovery_key(config_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// 就地更新配置中的 `simplex_admin_id`，保留其余字段（含各自的密文）不变。
+///
+/// 与 `run_setup` 的区别：`run_setup` 从参数从零构造 `EncryptedConfig`，未传字段一律写
+/// `None`；本函数以磁盘上的现有配置为底做定点替换，因此不会清空 `simplex_port` /
+/// `totp_secret` / `matrix_*`，也不会轮换 TOTP。
+///
+/// 原子写（tmp + fsync + rename），权限显式钉 0600 —— 不能沿用
+/// `clear_matrix_recovery_key` 里 `File::create` 落成 0644 的写法。
+pub fn set_simplex_admin_id(config_dir: &Path, admin_id: i64) -> Result<()> {
+    use std::io::Write;
+
+    if admin_id <= 0 {
+        anyhow::bail!("contactId 必须是正整数，收到 {admin_id}");
+    }
+
+    let config_path = config_dir.join(CONFIG_FILE);
+    let data = fs::read(&config_path).context("读取 config.enc 失败")?;
+    let mut enc: EncryptedConfig = serde_json::from_slice(&data).context("解析 config.enc 失败")?;
+
+    let security = SecurityManager::new(&config_dir.join(KEY_FILE))?;
+    enc.simplex_admin_id = Some(security.encrypt(admin_id.to_string().as_bytes())?);
+
+    let new_data = serde_json::to_vec(&enc).context("序列化 config.enc 失败")?;
+    let tmp_path = config_path.with_extension("enc.tmp");
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp_path)
+            .context("创建临时文件失败")?;
+        f.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .context("设置临时文件权限失败")?;
+        f.write_all(&new_data).context("写入临时文件失败")?;
+        f.sync_all().context("fsync 临时文件失败")?;
+    }
+    fs::rename(&tmp_path, &config_path).context("rename config.enc 失败")?;
+
+    println!(
+        "✅ SimpleX 管理员 contactId 已写入配置: {admin_id}（重启生效：systemctl restart wwps-aegis）"
+    );
+    Ok(())
+}
+
 /// 安装 rustls 的进程级 crypto provider。
 ///
 /// matrix-sdk 0.19 的 HTTP 栈是 reqwest 0.13 的 `rustls-no-provider`（aegis 用
@@ -682,6 +728,7 @@ mod config_validator_tests {
 #[cfg(test)]
 mod config_tests {
     use super::*;
+    use secrecy::ExposeSecret;
 
     #[test]
     fn save_self_destruct_hash_compiles() {
@@ -709,5 +756,106 @@ mod config_tests {
         let back: EncryptedConfig = serde_json::from_slice(&json).unwrap();
         assert_eq!(back.simplex_port, Some(b"5225".to_vec()));
         assert_eq!(back.simplex_admin_id, Some(b"42".to_vec()));
+    }
+
+    /// 造一份填满所有字段的配置，用于验证定点替换不会碰到别的字段。
+    fn seed_full_config(dir: &Path) -> EncryptedConfig {
+        let seeded = EncryptedConfig {
+            token: Some(b"123456:AA".to_vec()),
+            admin_id: Some(b"777".to_vec()),
+            totp_secret: Some(b"JBSWY3DPEHPK3PXP".to_vec()),
+            self_destruct_key_hash: Some("a".repeat(64)),
+            matrix_homeserver: Some(b"https://m.example".to_vec()),
+            matrix_username: Some(b"@a:m.example".to_vec()),
+            matrix_password: Some(b"pw".to_vec()),
+            matrix_room_id: Some(b"!r:m.example".to_vec()),
+            matrix_store_passphrase: Some(b"sp".to_vec()),
+            lang: Some("zh".to_string()),
+            matrix_recovery_key: Some(b"rk".to_vec()),
+            simplex_port: Some(b"5225".to_vec()),
+            simplex_admin_id: None,
+        };
+        fs::write(dir.join(CONFIG_FILE), serde_json::to_vec(&seeded).unwrap()).unwrap();
+        seeded
+    }
+
+    fn read_config(dir: &Path) -> EncryptedConfig {
+        serde_json::from_slice(&fs::read(dir.join(CONFIG_FILE)).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn set_simplex_admin_id_preserves_every_other_field() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let before = seed_full_config(dir.path());
+
+        set_simplex_admin_id(dir.path(), 42).unwrap();
+
+        let after = read_config(dir.path());
+        assert_eq!(after.token, before.token);
+        assert_eq!(after.admin_id, before.admin_id);
+        assert_eq!(after.totp_secret, before.totp_secret, "TOTP 不得被轮换");
+        assert_eq!(after.self_destruct_key_hash, before.self_destruct_key_hash);
+        assert_eq!(after.matrix_homeserver, before.matrix_homeserver);
+        assert_eq!(after.matrix_username, before.matrix_username);
+        assert_eq!(after.matrix_password, before.matrix_password);
+        assert_eq!(after.matrix_room_id, before.matrix_room_id);
+        assert_eq!(
+            after.matrix_store_passphrase,
+            before.matrix_store_passphrase
+        );
+        assert_eq!(after.lang, before.lang);
+        assert_eq!(after.matrix_recovery_key, before.matrix_recovery_key);
+        assert_eq!(
+            after.simplex_port, before.simplex_port,
+            "simplex_port 不得被清空"
+        );
+        assert!(after.simplex_admin_id.is_some(), "新值必须被写入");
+    }
+
+    #[test]
+    fn set_simplex_admin_id_stores_decryptable_value() {
+        let dir = tempfile::TempDir::new().unwrap();
+        seed_full_config(dir.path());
+
+        set_simplex_admin_id(dir.path(), 42).unwrap();
+
+        let security = SecurityManager::new(&dir.path().join(KEY_FILE)).unwrap();
+        let raw = read_config(dir.path()).simplex_admin_id.clone().unwrap();
+        let plain = security.decrypt(&raw).unwrap();
+        assert_eq!(
+            String::from_utf8(plain.expose_secret().to_vec()).unwrap(),
+            "42"
+        );
+    }
+
+    #[test]
+    fn set_simplex_admin_id_rejects_non_positive() {
+        let dir = tempfile::TempDir::new().unwrap();
+        seed_full_config(dir.path());
+        assert!(set_simplex_admin_id(dir.path(), 0).is_err());
+        assert!(set_simplex_admin_id(dir.path(), -1).is_err());
+    }
+
+    #[test]
+    fn set_simplex_admin_id_errors_when_config_missing() {
+        let dir = tempfile::TempDir::new().unwrap();
+        assert!(set_simplex_admin_id(dir.path(), 42).is_err());
+    }
+
+    #[test]
+    fn set_simplex_admin_id_leaves_no_tmp_and_keeps_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::TempDir::new().unwrap();
+        seed_full_config(dir.path());
+
+        set_simplex_admin_id(dir.path(), 42).unwrap();
+
+        assert!(!dir.path().join("config.enc.tmp").exists());
+        let mode = std::fs::metadata(dir.path().join(CONFIG_FILE))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
     }
 }

@@ -57,6 +57,10 @@
   "simplex.port_invalid": "SimpleX \u7aef\u53e3\u65e0\u6548: %s",
   "simplex.service_failed": "启动 SimpleX 服务失败: %s",
   "simplex.service_ok": "✅ SimpleX Chat 服务已启动",
+  "simplex.address_ready": "✅ bot 地址: %s",
+  "simplex.address_paste_hint": "   复制上面这一行，粘到 SimpleX 客户端的输入框里连接 bot（或发 /c <地址>）",
+  "simplex.address_pending": "⏳ 暂未取到 bot 地址（aegis 可能仍在启动）。稍后执行：journalctl -u wwps-aegis | grep \"bot 地址\"",
+  "simplex.admin_fill_hint": "   连上后给 bot 发任意一条消息，再执行：aegis --set-simplex-admin <ID>，然后 systemctl restart wwps-aegis（ID 见 journalctl -u wwps-aegis | grep 未授权联系人）",
   "simplex.unit_write_failed": "写入 SimpleX systemd 服务文件失败: %s",
 
   "totp.generating": "正在生成 TOTP 密钥…",
@@ -172,9 +176,9 @@
   "firsttime.simplex_desc3": "   注意：SimpleX 不能与 Matrix 组合，也不支持三者同时运行。",
   "firsttime.simplex_port_title": "\n🔌 SimpleX WebSocket 端口",
   "firsttime.simplex_port_prompt": "请输入 SimpleX WebSocket 端口（默认 5225）：",
-  "firsttime.simplex_admin_title": "\n👤 SimpleX 管理员 contactId",
-  "firsttime.simplex_admin_help_step1": "  1. 启动 simplex-chat，让管理员联系人主动连接 bot",
-  "firsttime.simplex_admin_help_step2": "  2. 在 bot 日志中查看：未授权联系人 contactId=...",
+  "firsttime.simplex_admin_title": "\n👤 SimpleX 管理员 contactId（首次安装请留空）",
+  "firsttime.simplex_admin_help_step1": "  首次安装时 bot 还没启动，拿不到 contactId —— 直接回车留空即可。",
+  "firsttime.simplex_admin_help_step2": "  安装完成后安装器会打印 bot 地址；连上并发送一条消息后，用 aegis --set-simplex-admin 补填。",
   "firsttime.simplex_admin_help_format": "  格式：42（整数 contactId）",
-  "firsttime.simplex_admin_prompt": "请输入 SimpleX 管理员 contactId："
+  "firsttime.simplex_admin_prompt": "请输入 SimpleX 管理员 contactId（留空即可，稍后补填）："
 }
