@@ -414,10 +414,6 @@ pub fn clear_matrix_recovery_key(config_dir: &Path) -> Result<()> {
 ///
 /// 原子写（tmp + fsync + rename），权限显式钉 0600 —— 不能沿用
 /// `clear_matrix_recovery_key` 里 `File::create` 落成 0644 的写法。
-///
-/// bin target 里 `pub` 不对外可见，Task 4（`--set-simplex-admin` CLI 接线）落地前
-/// 在非测试构建中属于死代码；届时删掉这个 allow。
-#[allow(dead_code)]
 pub fn set_simplex_admin_id(config_dir: &Path, admin_id: i64) -> Result<()> {
     use std::io::Write;
 
