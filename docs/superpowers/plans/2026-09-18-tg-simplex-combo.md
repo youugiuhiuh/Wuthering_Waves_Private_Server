@@ -918,15 +918,61 @@ git commit -m "feat(installer): 平台选择器与单元映射支持 telegram+si
 
 ---
 
-### Task 5: 文档更新
+### Task 5: 文档、i18n 文案与注释与新契约对齐
 
 **Files:**
 - Modify: `docs/2026-09-16-simplex-platform.md:89-113`
-- Modify: `README.md:144-149`
+- Modify: `README.md:47`、`README.md:144-149`
+- Modify: `go/installer/i18n/en.json`、`zh.json`、`ja.json`（`firsttime.simplex_desc1` / `firsttime.simplex_desc3`）
+- Modify: `go/installer/main.go:1084`（`deploySimplexService` 注释）
+- Modify: `go/installer/main_test.go`（重命名一个已失真的测试名）
 
 **Interfaces:**
 - Consumes: Task 2 的 flag 名与 Task 4 的平台标识
-- Produces: 无（纯文档）
+- Produces: 无（纯文字）
+
+**为什么一个任务：** 本任务的主题是单一的——**所有文字（文档、用户可见 i18n、代码注释、测试名）都必须停止声称 SimpleX 是 standalone-only**。这些残留都是 Task 4 审查发现的同类项，合并处理比分成四次修正波更省。
+
+- [ ] **Step 0: 修正已失真的 i18n 说明文案**
+
+`firsttime.simplex_desc1` / `firsttime.simplex_desc3` 目前写的是「SimpleX 以独立平台方式运行」与「**不能**与 Telegram 或 Matrix 同时运行」，而它们在交互安装选中 SimpleX 时直接展示给用户，已被 `--tg-simplex` 证伪。三个 locale 全部替换（`desc2` 仍准确，不动）：
+
+- en：`firsttime.simplex_desc1` → `"💡 SimpleX can run standalone (--simplex) or as the sensitive-content sink for Telegram (--tg-simplex)."`；`firsttime.simplex_desc3` → `"   Note: SimpleX cannot be combined with Matrix, and all three at once is not supported."`
+- zh：`firsttime.simplex_desc1` → `"💡 SimpleX 可独立运行（--simplex），也可作为 Telegram 的敏感内容落点（--tg-simplex）。"`；`firsttime.simplex_desc3` → `"   注意：SimpleX 不能与 Matrix 组合，也不支持三者同时运行。"`
+- ja：`firsttime.simplex_desc1` → `"💡 SimpleX は単独（--simplex）でも、Telegram の機密内容の宛先（--tg-simplex）としても動作します。"`；`firsttime.simplex_desc3` → `"   注意：Matrix との併用はできず、3 つ同時の実行もサポートされません。"`
+
+注意：`ja.json` 全部使用 `\uXXXX` 转义（既有约定），新值必须按同样方式转义。
+
+- [ ] **Step 0b: 修正已失真的代码注释**
+
+`go/installer/main.go:1084` 的：
+
+```go
+// deploySimplexService 安装 simplex-chat 并写好它的 systemd 单元；非 simplex 平台是空操作。
+```
+
+改为：
+
+```go
+// deploySimplexService 安装 simplex-chat 并写好它的 systemd 单元；非 simplex / tg-simplex 平台是空操作。
+```
+
+- [ ] **Step 0c: 重命名已失真的测试名**
+
+`TestPlatformSelectorSimplexIsExclusive` 已不再准确（SimpleX 现在可合法与 Telegram 组合，只是仍与 Matrix 互斥）。仅改函数名，不动任何用例体：
+
+```go
+func TestPlatformSelectorValidityMatrix(t *testing.T) {
+```
+
+- [ ] **Step 0d: 跑 Go 门禁**
+
+```bash
+cd /home/ub/Dark/Wuthering_Waves_Private_Server/.worktrees/tg-simplex/go/installer
+go fmt ./... && go test ./... && staticcheck ./...
+```
+
+期望：`go fmt` 无输出；两个包 `ok`（含跨 locale 键齐测试）；`staticcheck` 无输出。
 
 - [ ] **Step 1: 重写 SimpleX 文档的「平台互斥语义」**
 
@@ -1013,8 +1059,8 @@ Follow the prompts to enter your Telegram Bot Token and Admin ID. Optionally con
 
 ```bash
 cd /home/ub/Dark/Wuthering_Waves_Private_Server/.worktrees/tg-simplex
-git add docs/2026-09-16-simplex-platform.md README.md
-git commit -m "docs(simplex): 补充 telegram+simplex 组合与平台选择语义"
+git add docs/2026-09-16-simplex-platform.md README.md go/installer/i18n/en.json go/installer/i18n/zh.json go/installer/i18n/ja.json go/installer/main.go go/installer/main_test.go
+git commit -m "docs(simplex): 让文档、i18n 文案与注释对齐 telegram+simplex 契约"
 ```
 
 ---
