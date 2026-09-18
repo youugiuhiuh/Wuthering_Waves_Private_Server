@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
         .await?
     };
 
-    let state = Arc::new(AppState::new(
+    let state = AppState::new(
         app_config.decrypted.admin_id,
         app_config.decrypted.simplex_admin_id,
         app_config.totp_manager,
@@ -133,7 +133,16 @@ async fn main() -> Result<()> {
             .clone(),
         app_config.bot_settings.session_timeout_secs,
         adapter,
-    ));
+    );
+    // 自愈只在纯 --simplex 下开启：`is_admin_user` 的 user_id 命名空间与 Telegram 共用，
+    // `--tg-simplex` 下无差别重钉会把 simplex_admin_id 覆写成 Telegram 的 chat id，
+    // 破坏「敏感内容落点」这个发送目标。tg-simplex 的重钉留待 P2（那时才引入平台来源）。
+    let state = if selection.simplex && !selection.telegram {
+        state.with_simplex_repin()
+    } else {
+        state
+    };
+    let state = Arc::new(state);
 
     // 同步 AppState 语言状态 + 一次性系统副作用（时区、apt-daily timer）。
     main::runtime::apply_configured_language(&state).await;
