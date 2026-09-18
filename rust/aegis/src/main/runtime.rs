@@ -281,8 +281,24 @@ pub async fn run(
                     log::warn!("SimpleX 事件流解析失败，已跳过该事件");
                     continue;
                 };
-                let simploxide_client::events::Event::NewChatItems(items) = ev else {
-                    continue;
+                let items = match ev {
+                    simploxide_client::events::Event::NewChatItems(items) => items,
+                    // 连接即上报。此前非 NewChatItems 的事件一律被丢弃，于是管理员连上 bot 后
+                    // 必须先发一条消息、再从「未授权联系人」告警里反推自己的 contactId ——
+                    // 官方设计里 ContactConnected 就是用来处理「正在连接的用户」的。
+                    simploxide_client::events::Event::ContactConnected(ev) => {
+                        log::info!(
+                            "{}",
+                            contact_connected_log_line(
+                                ev.contact.contact_id,
+                                &ev.contact.local_display_name
+                            )
+                        );
+                        continue;
+                    }
+                    // `Event` 是 `#[non_exhaustive]`：其余事件（ChatItemReaction、
+                    // ReceivedContactRequest、各类群事件…）仍然不处理。
+                    _ => continue,
                 };
 
                 let mapped = aegis::gateways::simplex::map_new_chat_items(&items.chat_items);
@@ -516,4 +532,39 @@ pub async fn run(
     }
 
     Ok(())
+}
+
+/// 组装 `ContactConnected` 的上报行。
+///
+/// 显示名用 `{:?}` 而非 `{}`：地址是公开的、自动接受的，任何人都能连接并自设显示名，
+/// 不转义控制字符就能用换行伪造日志行（日志注入）。
+///
+/// 单独抽成纯函数仅为可测：事件循环跑在 `tokio::spawn` 里、依赖活的 WebSocket，
+/// 「分支是否存在」这类缺失型回归无法用单测覆盖（P1 的日志器缺陷同属此类）。
+fn contact_connected_log_line(contact_id: i64, display_name: &str) -> String {
+    format!("SimpleX 新联系人连接: contactId={contact_id} display_name={display_name:?}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contact_connected_log_line_reports_contact_id_and_name() {
+        let line = contact_connected_log_line(3, "alice");
+        assert!(line.contains("contactId=3"), "{line}");
+        assert!(line.contains("display_name=\"alice\""), "{line}");
+    }
+
+    /// 地址是公开的、自动接受的，任何人都能连接并自设显示名。显示名里的换行/
+    /// 控制字符必须被转义，否则陌生人能伪造日志行（日志注入）。
+    #[test]
+    fn contact_connected_log_line_escapes_control_chars_in_display_name() {
+        let line = contact_connected_log_line(7, "evil\n[WARN] SimpleX 未授权联系人 contactId=1");
+        assert!(
+            !line.contains('\n'),
+            "显示名里的换行必须被转义，实际: {line}"
+        );
+        assert!(line.contains("\\n"), "换行应以转义形式出现，实际: {line}");
+    }
 }
