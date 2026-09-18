@@ -1408,3 +1408,18 @@ func TestRemoveStaleSimplexAddressWhenAbsent(t *testing.T) {
 		t.Fatalf("removeStaleSimplexAddress() on missing file = %v", err)
 	}
 }
+
+func TestUsesSimplexService(t *testing.T) {
+	tests := map[string]bool{
+		"tg":         false,
+		"matrix":     false,
+		"tg-matrix":  false,
+		"simplex":    true,
+		"tg-simplex": true,
+	}
+	for platform, want := range tests {
+		if got := usesSimplexService(platform); got != want {
+			t.Errorf("usesSimplexService(%q) = %t, want %t", platform, got, want)
+		}
+	}
+}

@@ -1138,10 +1138,36 @@ func installSimplexChat() (string, error) {
 	return dest, nil
 }
 
-// deploySimplexService 安装 simplex-chat 并写好它的 systemd 单元；非 simplex / tg-simplex 平台是空操作。
+// usesSimplexService 报告某个平台形态是否需要 wwps-simplex 单元。
+func usesSimplexService(platform string) bool {
+	return platform == "simplex" || platform == "tg-simplex"
+}
+
+// disableSimplexServiceIfPresent 停止并取消 wwps-simplex 的开机自启。
+//
+// 平台不再包含 SimpleX 时，早退前必须处理掉这个单元：它此前是 enabled 且正在运行的，
+// 会一直占着端口和 SQLite 库，开机还会自启（此前 deploySimplexService 对它静默 return，
+// 全文件再无任何 stop/disable）。
+//
+// 单元文件与数据目录都**保留** —— 切回 simplex 时仍可用，且不销毁 bot 身份（simplex_store）。
+func disableSimplexServiceIfPresent() {
+	if _, err := os.Stat(simplexServiceFile); err != nil {
+		// 从未部署过 simplex：不要对不存在的单元调 systemctl，那只会把报错喷进安装输出。
+		return
+	}
+	if err := runCmdSilent("systemctl", "disable", "--now", simplexServiceName); err != nil {
+		printYellow(i18n.T("simplex.disable_failed", err.Error()))
+		return
+	}
+	printGreen(i18n.T("simplex.service_disabled"))
+}
+
+// deploySimplexService 安装 simplex-chat 并写好它的 systemd 单元；
+// 平台不再包含 SimpleX 时改为停用既有单元。
 // 端口优先级：调用方显式给的 > 已存在单元里回读的 > 默认端口。
 func deploySimplexService(platform, port string) {
-	if platform != "simplex" && platform != "tg-simplex" {
+	if !usesSimplexService(platform) {
+		disableSimplexServiceIfPresent()
 		return
 	}
 	// 地址文件只能由本次运行的 aegis 写入（重启发生在 installAegis / finishDeploy），

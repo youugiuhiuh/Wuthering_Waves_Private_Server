@@ -52,6 +52,8 @@
   "simplex.port_invalid": "SimpleX \u30dd\u30fc\u30c8\u304c\u4e0d\u6b63\u3067\u3059: %s",
   "simplex.service_failed": "SimpleX \u30b5\u30fc\u30d3\u30b9\u306e\u8d77\u52d5\u306b\u5931\u6557\u3057\u307e\u3057\u305f: %s",
   "simplex.service_ok": "\u2705 SimpleX Chat \u30b5\u30fc\u30d3\u30b9\u3092\u8d77\u52d5\u3057\u307e\u3057\u305f",
+  "simplex.service_disabled": "wwps-simplex を停止し自動起動を無効化しました（ユニットとデータは保持、SimpleX へ戻せます）",
+  "simplex.disable_failed": "wwps-simplex の無効化に失敗しました（今回のデプロイには影響しません）: %s",
   "simplex.address_ready": "✅ bot アドレス: %s",
   "simplex.address_paste_hint": "   上の行をコピーし、SimpleX クライアントに貼り付けて接続します（または /c <アドレス> を送信）",
   "simplex.address_pending": "⏳ bot アドレスをまだ取得できていません（aegis 起動中の可能性）。後で実行: journalctl -u wwps-aegis | grep \"bot 地址\"",

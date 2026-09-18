@@ -52,6 +52,8 @@
   "simplex.port_invalid": "Invalid SimpleX port: %s",
   "simplex.service_failed": "Failed to start SimpleX service: %s",
   "simplex.service_ok": "\u2705 SimpleX Chat service started",
+  "simplex.service_disabled": "Stopped wwps-simplex and disabled its autostart (unit and data kept, so switching back to SimpleX still works)",
+  "simplex.disable_failed": "Failed to disable wwps-simplex (does not affect this deployment): %s",
   "simplex.address_ready": "✅ Bot address: %s",
   "simplex.address_paste_hint": "   Copy the line above and paste it into your SimpleX client to connect (or send /c <address>)",
   "simplex.address_pending": "⏳ Bot address not available yet (aegis may still be starting). Later run: journalctl -u wwps-aegis | grep \"bot 地址\"",

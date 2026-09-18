@@ -57,6 +57,8 @@
   "simplex.port_invalid": "SimpleX \u7aef\u53e3\u65e0\u6548: %s",
   "simplex.service_failed": "启动 SimpleX 服务失败: %s",
   "simplex.service_ok": "✅ SimpleX Chat 服务已启动",
+  "simplex.service_disabled": "已停止并取消 wwps-simplex 的开机自启（单元与数据保留，切回 SimpleX 仍可用）",
+  "simplex.disable_failed": "停用 wwps-simplex 失败（不影响本次部署）: %s",
   "simplex.address_ready": "✅ bot 地址: %s",
   "simplex.address_paste_hint": "   复制上面这一行，粘到 SimpleX 客户端的输入框里连接 bot（或发 /c <地址>）",
   "simplex.address_pending": "⏳ 暂未取到 bot 地址（aegis 可能仍在启动）。稍后执行：journalctl -u wwps-aegis | grep \"bot 地址\"",
