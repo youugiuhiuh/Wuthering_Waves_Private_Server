@@ -82,6 +82,11 @@ pub struct AppState {
     self_destruct_executor: Arc<dyn SelfDestructExecutor>,
     sessions: Mutex<HashMap<i64, Instant>>,
     failed_attempts: Mutex<HashMap<i64, FailedRecord>>,
+    /// 全局失败记录，与 per-user 记录**并存**。
+    ///
+    /// per-user 记录按身份限额；但门禁放开后攻击者可用公开地址造 N 个联系人拿到 N 份
+    /// 独立预算，因此必须有一条与身份无关的总计数把总尝试次数压住。
+    global_failed_attempts: Mutex<FailedRecord>,
     pending_destructs: Mutex<HashMap<String, DestructState>>,
     self_destruct_key_hash: Mutex<Option<String>>,
     pending_warp_inputs: Mutex<HashMap<String, Instant>>,
@@ -112,6 +117,12 @@ impl AppState {
             self_destruct_executor,
             sessions: Mutex::new(HashMap::new()),
             failed_attempts: Mutex::new(HashMap::new()),
+            global_failed_attempts: Mutex::new(FailedRecord {
+                count: 0,
+                first_fail: Instant::now(),
+                cooldown_until: None,
+                lock_level: 0,
+            }),
             pending_destructs: Mutex::new(HashMap::new()),
             self_destruct_key_hash: Mutex::new(self_destruct_key_hash),
             pending_warp_inputs: Mutex::new(HashMap::new()),
@@ -239,7 +250,58 @@ impl AppState {
     pub async fn record_auth_success(&self, user_id: i64, now: Instant) -> u64 {
         self.sessions.lock().await.insert(user_id, now);
         self.failed_attempts.lock().await.remove(&user_id);
+        {
+            let mut g = self.global_failed_attempts.lock().await;
+            g.count = 0;
+            g.cooldown_until = None;
+            g.first_fail = now;
+        }
         self.session_timeout_secs().await
+    }
+
+    /// 全局封锁的时长上限。
+    ///
+    /// **不能复用 `lockout_durations`**：`record_auth_failure` 取 `.last()` 作封顶，
+    /// 而 `dispatch.rs` 传入的最后一级是 172800 秒（48 小时）。若全局复用它，
+    /// 攻击者烧够次数就能把真管理员锁在门外 48 小时（自我 DoS）。
+    ///
+    /// 900 秒可接受，因为 `failed_attempts` 系列是**纯内存态**（本文件内 `Mutex`，
+    /// 全仓无持久化引用）：`systemctl restart wwps-aegis` 立即清零，
+    /// 而服务器管理员有 root ——「等 ≤15 分钟 / 重启」两条路都在自己手上。
+    pub const GLOBAL_LOCKOUT_CAP: Duration = Duration::from_secs(900);
+
+    /// 记录一次全局失败。达 `max_attempts` 则封锁 `GLOBAL_LOCKOUT_CAP`，不升级、不累积等级。
+    async fn record_global_failure(
+        &self,
+        now: Instant,
+        max_attempts: u32,
+        failure_window: Duration,
+    ) {
+        let mut rec = self.global_failed_attempts.lock().await;
+        if now.duration_since(rec.first_fail) > failure_window {
+            rec.count = 0;
+            rec.first_fail = now;
+            rec.cooldown_until = None;
+        }
+        rec.count += 1;
+        rec.first_fail = rec.first_fail.min(now);
+        if rec.count >= max_attempts {
+            rec.cooldown_until = Some(now + Self::GLOBAL_LOCKOUT_CAP);
+            rec.count = 0;
+            rec.first_fail = now;
+        }
+    }
+
+    /// 当前全局封锁的剩余时长（阻塞中）。过期的 `cooldown_until` 会被顺带清理。
+    async fn global_cooldown_remaining(&self, now: Instant) -> Option<Duration> {
+        let mut g = self.global_failed_attempts.lock().await;
+        let until = g.cooldown_until?;
+        if until > now {
+            Some(until - now)
+        } else {
+            g.cooldown_until = None;
+            None
+        }
     }
 
     pub async fn record_auth_failure(
@@ -250,6 +312,18 @@ impl AppState {
         failure_window: Duration,
         lockout_durations: &[Duration],
     ) -> AuthFailureOutcome {
+        // 全局锁定期间任何身份都被挡，包括从未失败过的新身份 —— 这正是
+        // 「造 N 个联系人换取 N 份独立预算」的封堵点。注意只在**已存在**全局锁时
+        // 短路；刚触发锁的那一次仍按 per-user 语义返回，以保留既有测试与文案行为。
+        if let Some(remaining) = self.global_cooldown_remaining(now).await {
+            return AuthFailureOutcome::Locked {
+                duration: remaining,
+            };
+        }
+
+        self.record_global_failure(now, max_attempts, failure_window)
+            .await;
+
         let mut fails = self.failed_attempts.lock().await;
         let rec = fails.entry(user_id).or_insert(FailedRecord {
             count: 0,
@@ -293,14 +367,19 @@ impl AppState {
 
     pub async fn auth_cooldown_remaining(&self, user_id: i64, now: Instant) -> Option<Duration> {
         let mut fails = self.failed_attempts.lock().await;
-        let rec = fails.get_mut(&user_id)?;
-        let until = rec.cooldown_until?;
-        if until > now {
-            Some(until - now)
-        } else {
+        if let Some(rec) = fails.get_mut(&user_id)
+            && let Some(until) = rec.cooldown_until
+        {
+            if until > now {
+                return Some(until - now);
+            }
             rec.cooldown_until = None;
-            None
         }
+        drop(fails);
+
+        // per-user 无封锁 → 再看全局：全局封锁期间，任何身份（含从未失败过的
+        // 新身份，以及只有零星失败、per-user 未达上限的身份）都必须被挡。
+        self.global_cooldown_remaining(now).await
     }
 
     pub async fn begin_destruct(&self, chat_id: String, now: Instant) {
@@ -1034,5 +1113,98 @@ mod tests {
         );
         assert!(state.is_admin_user(777));
         assert!(!state.is_admin_user(778));
+    }
+
+    /// 全局计数必须与身份无关：换一个 user_id 不能重置预算。
+    #[tokio::test]
+    async fn global_failures_are_not_reset_by_switching_identity() {
+        let state = make_state();
+        let now = Instant::now();
+        let max = 5u32;
+        let window = Duration::from_secs(600);
+        let ladder = [Duration::from_secs(900)];
+
+        // 每个身份各失败 1 次（per-user 计数永远到不了 5）
+        for uid in 1..=5 {
+            let out = state
+                .record_auth_failure(uid, now, max, window, &ladder)
+                .await;
+            assert!(
+                matches!(out, AuthFailureOutcome::Invalid { .. }),
+                "uid={uid} 单身份不应触发封锁"
+            );
+        }
+
+        // 第 6 个身份：全局已达 5 次，必须被封锁
+        let out = state
+            .record_auth_failure(6, now, max, window, &ladder)
+            .await;
+        assert!(
+            matches!(out, AuthFailureOutcome::Locked { .. }),
+            "全局计数达上限必须对任何身份封锁，否则造联系人即可无限刷码"
+        );
+    }
+
+    /// 全局封锁必须封顶 900 秒 —— 梯度最后一级是 48 小时，复用会变成自我 DoS。
+    #[tokio::test]
+    async fn global_lockout_is_capped_at_900_seconds() {
+        let state = make_state();
+        let now = Instant::now();
+        // 故意传入一条以 48 小时结尾的梯度（与 dispatch.rs 实际传入的一致）
+        let ladder = [
+            Duration::from_secs(900),
+            Duration::from_secs(3600),
+            Duration::from_secs(86400),
+            Duration::from_secs(172_800),
+        ];
+        let max = 5u32;
+        let window = Duration::from_secs(600);
+
+        let mut last = None;
+        // 反复触发封锁，逼出梯度最高级
+        for round in 0..8 {
+            for i in 0..max {
+                last = Some(
+                    state
+                        .record_auth_failure(
+                            i64::from(100 + round * 10 + i),
+                            now,
+                            max,
+                            window,
+                            &ladder,
+                        )
+                        .await,
+                );
+            }
+        }
+        match last.expect("至少触发一次封锁") {
+            AuthFailureOutcome::Locked { duration } => assert!(
+                duration <= AppState::GLOBAL_LOCKOUT_CAP,
+                "全局封锁必须封顶 900s，实际 {duration:?}；\
+                 复用梯度的 48h 会让攻击者把真管理员永久锁在门外"
+            ),
+            other => panic!("期望 Locked，得到 {other:?}"),
+        }
+    }
+
+    /// 全局冷却必须能被任何身份观察到（真的挡住了）。
+    #[tokio::test]
+    async fn global_cooldown_blocks_all_identities() {
+        let state = make_state();
+        let now = Instant::now();
+        let max = 5u32;
+        let window = Duration::from_secs(600);
+        let ladder = [Duration::from_secs(900)];
+
+        for uid in 1..=5 {
+            let _ = state
+                .record_auth_failure(uid, now, max, window, &ladder)
+                .await;
+        }
+
+        assert!(
+            state.auth_cooldown_remaining(999, now).await.is_some(),
+            "全局封锁期间，任何身份（含从未失败过的新身份）都必须被挡"
+        );
     }
 }
