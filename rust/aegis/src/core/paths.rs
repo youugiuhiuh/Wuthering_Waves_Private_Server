@@ -46,6 +46,10 @@ pub mod bot {
     pub const DIR: &str = "/etc/wwps/aegis";
     pub const KEY_FILE: &str = "/etc/wwps/aegis/.key";
     pub const BBR3_PENDING_FLAG_FILE: &str = "/etc/wwps/aegis/bbr3_pending.flag";
+
+    /// SimpleX bot 的 long-term 连接地址。aegis 连接后写入，installer 读取并打印。
+    /// 必须与 go/installer/main.go 的 simplexAddressFile 保持一致。
+    pub const SIMPLEX_ADDRESS_FILE: &str = "/etc/wwps/aegis/simplex_address";
 }
 
 /// Xray-core 相关路径
