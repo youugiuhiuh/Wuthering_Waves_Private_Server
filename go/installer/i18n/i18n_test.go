@@ -172,3 +172,52 @@ func TestSimplexAddressKeysKeepFormatVerb(t *testing.T) {
 		}
 	}
 }
+
+// P5 文案守卫：main.go 的 disableSimplexServiceIfPresent 按这两个名字查询，
+// 而 TestAllKeysExist 只能发现「zh 有而 en/ja 缺」，发现不了「三个语言文件同时拼错」。
+// disable_failed 带 %s，必须保留占位符。
+func TestSimplexDisableKeysExist(t *testing.T) {
+	keys := []string{"simplex.service_disabled", "simplex.disable_failed"}
+	for _, locale := range []struct {
+		name string
+		data map[string]string
+	}{
+		{"zh.json", loadJSON(zhFS, "zh.json")},
+		{"en.json", loadJSON(enFS, "en.json")},
+		{"ja.json", loadJSON(jaFS, "ja.json")},
+	} {
+		for _, key := range keys {
+			if v, ok := locale.data[key]; !ok || strings.TrimSpace(v) == "" {
+				t.Errorf("%s: key %q 缺失或为空（main.go 会按这个名字查找）", locale.name, key)
+			}
+		}
+		if !strings.Contains(locale.data["simplex.disable_failed"], "%s") {
+			t.Errorf("%s: simplex.disable_failed 缺少 %%s 占位符: %q",
+				locale.name, locale.data["simplex.disable_failed"])
+		}
+	}
+}
+
+// P4 文案守卫：installAegis 按这两个名字查询；reconfigure_prompt 带 %s（当前平台），
+// 缺占位符会让平台名被 fmt 丢弃。
+func TestInstallReconfigureKeysExist(t *testing.T) {
+	keys := []string{"install.reconfigure_prompt", "install.reconfigure_warning"}
+	for _, locale := range []struct {
+		name string
+		data map[string]string
+	}{
+		{"zh.json", loadJSON(zhFS, "zh.json")},
+		{"en.json", loadJSON(enFS, "en.json")},
+		{"ja.json", loadJSON(jaFS, "ja.json")},
+	} {
+		for _, key := range keys {
+			if v, ok := locale.data[key]; !ok || strings.TrimSpace(v) == "" {
+				t.Errorf("%s: key %q 缺失或为空", locale.name, key)
+			}
+		}
+		if !strings.Contains(locale.data["install.reconfigure_prompt"], "%s") {
+			t.Errorf("%s: install.reconfigure_prompt 缺少 %%s 占位符: %q",
+				locale.name, locale.data["install.reconfigure_prompt"])
+		}
+	}
+}
