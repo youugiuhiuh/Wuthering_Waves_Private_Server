@@ -371,6 +371,22 @@ use anyhow::{Context, Result};
 
 注意：不要改动下方的 `if simplex_admin != Some(msg.contact_id)` —— `simplex_admin` 是 `Option<i64>`（`Copy`），事件循环仍需要它。
 
+同时把紧随其后的 `} else {` 改为 `} else if !enable_telegram {`（消息文案不动）：
+
+```rust
+        } else if !enable_telegram {
+            log::error!(
+                "SimpleX 未配置 simplex_admin_id，调度器与启动通知不会发送；\
+                 请管理员先向 bot 发一条消息，从日志中取得 contactId 后写入配置"
+            );
+        }
+```
+
+原因：`filter` 会让条件在 TG + SimpleX 下取到 `None`，若仍走 `else`，健康部署每次启动都会打出一条
+**假的**「未配置 simplex_admin_id」错误日志。加上 `!enable_telegram` 后，该日志仅在它陈述为真时
+输出（`simplex_admin` 为 `None` 且 Telegram 未启用，即纯 SimpleX 且管理员联系人缺失），
+TG 场景下由 Telegram 分支独占 scheduler，无需这条日志。
+
 - [ ] **Step 8: 运行 Rust 四道门禁**
 
 ```bash
