@@ -378,10 +378,8 @@ func (m platformSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "space":
 		switch m.cursor {
 		case 0:
+			// Telegram 可作为主平台与 SimpleX 组合，因此不再清空 SimpleX。
 			m.telegram = !m.telegram
-			if m.telegram {
-				m.simplex = false
-			}
 		case 1:
 			m.matrix = !m.matrix
 			if m.matrix {
@@ -390,7 +388,6 @@ func (m platformSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case 2:
 			m.simplex = !m.simplex
 			if m.simplex {
-				m.telegram = false
 				m.matrix = false
 			}
 		}
@@ -404,9 +401,9 @@ func (m platformSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m platformSelector) platformSelection() (bool, bool, bool, bool) {
-	// SimpleX 为独立平台：不得与 Telegram / Matrix 组合。
-	valid := (m.telegram || m.matrix || m.simplex) &&
-		!(m.simplex && (m.telegram || m.matrix))
+	// SimpleX 只允许与 Telegram 组合（TG 主 + SimpleX 敏感内容落点）；Matrix 与 SimpleX
+	// 是两个互斥的独立平台，三者同选同样非法。
+	valid := (m.telegram || m.matrix || m.simplex) && !(m.simplex && m.matrix)
 	return m.telegram, m.matrix, m.simplex, valid
 }
 
@@ -448,6 +445,8 @@ func parsePlatformChoice(choice string) (bool, bool, bool, error) {
 		return false, false, true, nil
 	case "telegram+matrix":
 		return true, true, false, nil
+	case "telegram+simplex":
+		return true, false, true, nil
 	default:
 		return false, false, false, fmt.Errorf("invalid platform")
 	}
@@ -1082,10 +1081,10 @@ func installSimplexChat() (string, error) {
 	return dest, nil
 }
 
-// deploySimplexService 安装 simplex-chat 并写好它的 systemd 单元；非 simplex 平台是空操作。
+// deploySimplexService 安装 simplex-chat 并写好它的 systemd 单元；非 simplex / tg-simplex 平台是空操作。
 // 端口优先级：调用方显式给的 > 已存在单元里回读的 > 默认端口。
 func deploySimplexService(platform, port string) {
-	if platform != "simplex" {
+	if platform != "simplex" && platform != "tg-simplex" {
 		return
 	}
 	// 端口先解析并校验，再下载：port 来自 key=val / stdin / 交互输入，最终会拼进
@@ -1404,7 +1403,6 @@ func installFromStdin() {
 		os.Exit(1)
 	}
 
-	platform := "tg"
 	simplexPort, _ := inputData["simplex_port"].(string)
 	// Discord 平台已移除，按「键存在」即拒绝（不只看非空值）：手写 payload 里带一个空的
 	// discord_token 也必须失败，不能静默落到 tg 默认平台。
@@ -1412,14 +1410,14 @@ func installFromStdin() {
 		printRed(i18n.T("install.discord_removed"))
 		os.Exit(1)
 	}
-	if _, ok := inputData["simplex_port"].(string); ok {
-		platform = "simplex"
-	} else if _, ok := inputData["matrix_homeserver"].(string); ok {
-		if token, ok := inputData["token"].(string); ok && token != "" {
-			platform = "tg-matrix"
-		} else {
-			platform = "matrix"
-		}
+	// 组合由字段组合显式决定：token + simplex_port 即 tg-simplex。
+	// 判定用「非空」而非「键存在」：显式传空的 simplex_port 不再被当成 SimpleX 部署。
+	token, _ := inputData["token"].(string)
+	matrixHS, _ := inputData["matrix_homeserver"].(string)
+	platform, err := platformForNonInteractive(token != "", matrixHS != "", simplexPort != "")
+	if err != nil {
+		printRed(err.Error())
+		os.Exit(1)
 	}
 
 	secret, hasSecret := inputData["totp_secret"].(string)
@@ -1503,7 +1501,7 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 		}
 	}
 	if cfg.Token == "" && cfg.MatrixHS == "" && cfg.SimplexPort == "" {
-		return nil, fmt.Errorf("缺少必填字段: 至少需要配置 Telegram (token/admin_id)、Matrix (matrix_homeserver) 或 SimpleX (simplex_port/simplex_admin_id) 之一")
+		return nil, fmt.Errorf("%s", missingPlatformFieldsMsg)
 	}
 	if cfg.Token != "" {
 		if err := validateAdminID(cfg.AdminID); err != nil {
@@ -1535,16 +1533,15 @@ func installFromKeyVal() {
 		cfg.TOTPSecret = generateTOTPSecret(destPath)
 	}
 
-	platform := "tg"
-	if cfg.Token == "" {
-		if cfg.SimplexPort != "" {
-			platform = "simplex"
-		} else if cfg.MatrixHS != "" {
-			platform = "matrix"
-		}
-	}
-	if platform == "tg" && (cfg.MatrixHS != "" || cfg.MatrixUser != "") {
-		platform = "tg-matrix"
+	// matrix_username 与 matrix_homeserver 任一存在即视为配置了 Matrix（沿用既有口径）。
+	platform, err := platformForNonInteractive(
+		cfg.Token != "",
+		cfg.MatrixHS != "" || cfg.MatrixUser != "",
+		cfg.SimplexPort != "",
+	)
+	if err != nil {
+		printRed(err.Error())
+		os.Exit(1)
 	}
 
 	payload := buildSetupPayload(
@@ -1571,6 +1568,8 @@ func platformSetupForChoice(choice string) (tg, matrix, simplex bool, err error)
 		return true, true, false, nil
 	case "5":
 		return false, false, true, nil
+	case "6":
+		return true, false, true, nil
 	default:
 		return false, false, false, fmt.Errorf("invalid platform")
 	}
@@ -1578,6 +1577,8 @@ func platformSetupForChoice(choice string) (tg, matrix, simplex bool, err error)
 
 func servicePlatformForSetup(tg, matrix, simplex bool) string {
 	switch {
+	case tg && simplex:
+		return "tg-simplex"
 	case simplex:
 		return "simplex"
 	case tg && matrix:
@@ -1588,6 +1589,31 @@ func servicePlatformForSetup(tg, matrix, simplex bool) string {
 		return "matrix"
 	default:
 		return ""
+	}
+}
+
+// missingPlatformFieldsMsg 由非交互安装的两条路径与 parseKeyVal 共用同一条文案。
+const missingPlatformFieldsMsg = "缺少必填字段: 至少需要配置 Telegram (token/admin_id)、Matrix (matrix_homeserver) 或 SimpleX (simplex_port/simplex_admin_id) 之一"
+
+// platformForNonInteractive 由非交互安装（stdin JSON / key=value）的字段是否非空推导部署形态。
+// 组合必须显式：只有 token 与 simplex_port 同时存在才是 tg-simplex；三个平台字段齐备
+// 直接报错而不猜优先级，与 aegis 侧「配置歧义」的立场一致。
+func platformForNonInteractive(hasToken, hasMatrix, hasSimplex bool) (string, error) {
+	switch {
+	case hasToken && hasMatrix && hasSimplex:
+		return "", fmt.Errorf("%s", i18n.T("install.platform_ambiguous_three"))
+	case hasToken && hasSimplex:
+		return "tg-simplex", nil
+	case hasToken && hasMatrix:
+		return "tg-matrix", nil
+	case hasToken:
+		return "tg", nil
+	case hasSimplex:
+		return "simplex", nil
+	case hasMatrix:
+		return "matrix", nil
+	default:
+		return "", fmt.Errorf("%s", missingPlatformFieldsMsg)
 	}
 }
 
@@ -1814,6 +1840,8 @@ func platformFromService(service []byte) string {
 	switch {
 	case bytes.Contains(service, []byte("--matrix")):
 		return "matrix"
+	case bytes.Contains(service, []byte("--tg-simplex")):
+		return "tg-simplex"
 	case bytes.Contains(service, []byte("--simplex")):
 		return "simplex"
 	case bytes.Contains(service, []byte("--all")):
@@ -1845,6 +1873,8 @@ func platformFlagFor(platform string) string {
 		return "--matrix"
 	case "simplex":
 		return "--simplex"
+	case "tg-simplex":
+		return "--tg-simplex"
 	case "tg-matrix":
 		return "--all"
 	}
@@ -1859,6 +1889,8 @@ func writeSystemdService(platform string) {
 		descName = "WWPS Matrix Bot"
 	case "simplex":
 		descName = "WWPS SimpleX Bot"
+	case "tg-simplex":
+		descName = "WWPS Telegram + SimpleX Bot"
 	case "tg-matrix":
 		descName = "WWPS Telegram + Matrix Bot"
 	}

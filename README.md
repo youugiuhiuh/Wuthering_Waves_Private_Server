@@ -44,7 +44,7 @@ Install with:
 wget -O /root/installer "https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && ./installer
 ```
 
-Follow the prompts to enter your Telegram Bot Token and Admin ID. Optionally configure Matrix for sensitive notification routing.
+Follow the prompts to enter your Telegram Bot Token and Admin ID. Optionally configure Matrix or SimpleX for sensitive notification routing — the installer lets you pick Telegram, Matrix, SimpleX, Telegram + Matrix, or Telegram + SimpleX.
 
 To update an existing installation, just run the same command again — the installer handles upgrades automatically.
 
@@ -146,6 +146,8 @@ Supported management platforms:
 | Telegram | _(default)_ | |
 | Matrix | `--matrix` | |
 | SimpleX | `--simplex` | standalone; requires a local `simplex-chat` v7.0.0 — see [`docs/2026-09-16-simplex-platform.md`](docs/2026-09-16-simplex-platform.md) |
+| Telegram + Matrix | `--all` | sensitive messages are routed to the Matrix room |
+| Telegram + SimpleX | `--tg-simplex` | Telegram is the control surface; sensitive messages are routed to the SimpleX admin contact |
 
 ## Disclaimer
 

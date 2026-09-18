@@ -1,6 +1,6 @@
 # SimpleX Chat 平台接入 — 部署与验收
 
-记录 aegis 第四个平台（SimpleX Chat）的部署结构、版本约束与手工验收清单。SimpleX 与前三个平台（Telegram / Matrix / Discord）的结构差异是：没有中心服务器 token，身份是**本机 `simplex-chat` 数据库里的联系人**，收发全部经由该进程暴露的 **WebSocket bot API**。因此部署多出一个常驻进程与一个 systemd 单元。
+记录 aegis 第三个平台（SimpleX Chat）的部署结构、版本约束与手工验收清单。SimpleX 与 Telegram / Matrix 的结构差异是：没有中心服务器 token，身份是**本机 `simplex-chat` 数据库里的联系人**，收发全部经由该进程暴露的 **WebSocket bot API**。因此部署多出一个常驻进程与一个 systemd 单元。
 
 ## 组成
 
@@ -84,11 +84,13 @@ SimpleX 未配置 simplex_admin_id，调度器与启动通知不会发送；请�
 - key=value：`simplex_port=5225`、`simplex_admin_id=42`
 - 交互式安装：平台选择器选 SimpleX，随后提示端口与管理员 contactId
 
-`config.enc` 中对这两个字段存的是密文（与 `discord_admin_id` 一致的加密存储约定）。
+`config.enc` 中对这两个字段存的是密文。
 
-## 平台互斥语义
+## 平台选择语义
 
-一次启动只运行**一种**平台部署形态：Telegram、Matrix、Discord、SimpleX 四选一，或 Telegram + Matrix 这一种组合。选择顺序固定，且**自动探测（无 flag）最多只启用一个平台**：
+一次启动运行**一种**部署形态：Telegram、Matrix、SimpleX，或两种组合之一
+（Telegram + Matrix、Telegram + SimpleX）。**自动探测（无 flag）最多只启用一个平台**，
+组合必须显式传 flag：
 
 | 命令行 | config.enc 状态 | 结果 |
 |---|---|---|
@@ -98,16 +100,31 @@ SimpleX 未配置 simplex_admin_id，调度器与启动通知不会发送；请�
 | 无 flag | 两者都有 | **启动失败**（配置歧义） |
 | `--matrix` | 任意 | 仅 Matrix（不再自动启用 SimpleX） |
 | `--simplex` | 任意 | 仅 SimpleX（同时关闭 Telegram 与 Matrix） |
-| `--discord` | 任意 | 仅 Discord（关闭其它所有平台） |
-| `--all` | 任意 | Telegram + Matrix（永远不含 SimpleX / Discord） |
+| `--tg-simplex` | 任意 | Telegram + SimpleX（TG 主，敏感内容落 SimpleX） |
+| `--all` | 任意 | Telegram + Matrix（永远不含 SimpleX） |
 | `--tg-only` | 任意 | 仅 Telegram（不做任何自动启用） |
-| `--discord` + `--simplex` | 任意 | **启动失败**（两个独立平台） |
+| `--discord` | 任意 | **启动失败**（平台已移除，错误信息给出迁移路径） |
 
 要点：
 
-- 启用 SimpleX 会强制关闭 Telegram（SimpleX 适配器成为主适配器，而 Telegram dispatcher 用同一个 `state.adapter` 派发，二者同开会把 Telegram 的回复发到 SimpleX；无 token 时还会触发 `Bot::new` 的 panic）。
-- `matrix_*` 与 `simplex_*` **同时齐备**时，无显式 flag 会直接报错退出，而不是悄悄二选一。报错信息给出两条出路：显式传 `--matrix` 或 `--simplex`，或从 `config.enc` 中移除其中一份配置。迁移平台时请清掉旧平台字段。
-- `--discord` 与 `--simplex` 同属独立平台，显式同时给出也直接报错。
+- **SimpleX 独立运行时仍然强制关闭 Telegram**：此时 SimpleX 适配器是主适配器，而
+  Telegram dispatcher 用同一个 `state.adapter` 派发，二者同开会把 Telegram 的回复发到
+  SimpleX；无 token 时还会触发 `Bot::new` 的 panic。`--tg-simplex` 是唯一允许二者共存的
+  形式，此时 Telegram 仍是主适配器。
+- **`--tg-simplex` 的语义与 `--all` 对等**：Telegram 是控制入口，`is_sensitive` 命中的
+  文本改投 SimpleX 管理员联系人（`simplex_admin_id`）。SimpleX 侧仍可发命令，回包回到
+  SimpleX。scheduler 与启动通知全局只启动一个实例，不会重复发送。
+- 敏感内容的判定与 `--all` 一致（`vmess://` / `vless://` / `trojan://` / `ss://` /
+  `hysteria://` / `hysteria2://` / `tuic://` 以及 `"privateKey"` / `"secretKey"` /
+  `"password":` 字段）。**仅转发文本**，文件下发仍走主平台。
+- `matrix_*` 与 `simplex_*` **同时齐备**时，无显式 flag 会直接报错退出，而不是悄悄二选一。
+  报错信息给出两条出路：显式传 `--matrix` 或 `--simplex`，或从 `config.enc` 中移除其中
+  一份配置。迁移平台时请清掉旧平台字段。
+- `--discord` 平台已**移除**：显式传入会在启动时硬失败，错误信息给出迁移路径（改用
+  `--matrix` / `--simplex` / `--tg-only`，或从 systemd 单元中移除 `--discord`）。
+- `--tg-simplex` 的判定排在 `--simplex` **之前**，因此 flag 冲突时 `--simplex --tg-simplex`
+  与 `--all --tg-simplex` 都得到 Telegram + SimpleX（沿用 aegis 既有的「按判定顺序首个
+  命中者胜」行为，未新增冲突校验）。
 
 ## 手工验收清单
 

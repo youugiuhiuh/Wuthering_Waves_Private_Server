@@ -235,7 +235,9 @@ pub async fn run(
         // SimpleX 是独立平台：调度器与启动通知必须发往 SimpleX 管理员联系人，
         // 而非 Telegram 的 admin_id（后者在纯 SimpleX 部署下为 None）。
         let simplex_admin = state.simplex_admin_id();
-        if let Some(admin_contact) = simplex_admin {
+        // TG + SimpleX 组合下 Telegram 分支已启动唯一一个 scheduler，此处必须跳过，
+        // 否则定时通知与启动通知会各发两遍。事件循环不受影响，仍照常接收命令。
+        if let Some(admin_contact) = simplex_admin.filter(|_| !enable_telegram) {
             let adapter_for_init = handle.adapter.clone();
             let target_for_init = TargetId(admin_contact.to_string());
             tokio::spawn(async move {
@@ -262,7 +264,7 @@ pub async fn run(
                     },
                 );
             });
-        } else {
+        } else if !enable_telegram {
             log::error!(
                 "SimpleX 未配置 simplex_admin_id，调度器与启动通知不会发送；\
                  请管理员先向 bot 发一条消息，从日志中取得 contactId 后写入配置"

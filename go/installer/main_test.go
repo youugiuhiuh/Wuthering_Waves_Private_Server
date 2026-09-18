@@ -112,10 +112,11 @@ func TestRunSetupCommandReturnsFailure(t *testing.T) {
 
 func TestPlatformFromService(t *testing.T) {
 	tests := map[string]string{
-		"ExecStart=/etc/wwps/aegis/aegis":           "tg",
-		"ExecStart=/etc/wwps/aegis/aegis --matrix":  "matrix",
-		"ExecStart=/etc/wwps/aegis/aegis --simplex": "simplex",
-		"ExecStart=/etc/wwps/aegis/aegis --all":     "tg-matrix",
+		"ExecStart=/etc/wwps/aegis/aegis":              "tg",
+		"ExecStart=/etc/wwps/aegis/aegis --matrix":     "matrix",
+		"ExecStart=/etc/wwps/aegis/aegis --simplex":    "simplex",
+		"ExecStart=/etc/wwps/aegis/aegis --all":        "tg-matrix",
+		"ExecStart=/etc/wwps/aegis/aegis --tg-simplex": "tg-simplex",
 	}
 	for service, want := range tests {
 		if got := platformFromService([]byte(service)); got != want {
@@ -157,6 +158,7 @@ func TestPlatformSetupForChoice(t *testing.T) {
 		"2": {matrix: true},
 		"4": {tg: true, matrix: true},
 		"5": {simplex: true},
+		"6": {tg: true, simplex: true},
 	}
 
 	for choice, want := range tests {
@@ -184,12 +186,45 @@ func TestServicePlatformForSetup(t *testing.T) {
 		{simplex: true, want: "simplex"},
 		{simplex: true, matrix: true, want: "simplex"},
 		{tg: true, matrix: true, want: "tg-matrix"},
+		{tg: true, simplex: true, want: "tg-simplex"},
+		{tg: true, matrix: true, simplex: true, want: "tg-simplex"},
 	}
 
 	for _, test := range tests {
 		if got := servicePlatformForSetup(test.tg, test.matrix, test.simplex); got != test.want {
 			t.Errorf("servicePlatformForSetup(%t, %t, %t) = %q, want %q", test.tg, test.matrix, test.simplex, got, test.want)
 		}
+	}
+}
+
+func TestPlatformForNonInteractive(t *testing.T) {
+	tests := []struct {
+		name                            string
+		hasToken, hasMatrix, hasSimplex bool
+		want                            string
+		wantErr                         bool
+	}{
+		{"telegram only", true, false, false, "tg", false},
+		{"matrix only", false, true, false, "matrix", false},
+		{"simplex only", false, false, true, "simplex", false},
+		{"telegram+matrix", true, true, false, "tg-matrix", false},
+		{"telegram+simplex", true, false, true, "tg-simplex", false},
+		{"three platforms", true, true, true, "", true},
+		{"no fields", false, false, false, "", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := platformForNonInteractive(tc.hasToken, tc.hasMatrix, tc.hasSimplex)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("platformForNonInteractive(%t, %t, %t) err = %v, wantErr = %t",
+					tc.hasToken, tc.hasMatrix, tc.hasSimplex, err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Fatalf("platformForNonInteractive(%t, %t, %t) = %q, want %q",
+					tc.hasToken, tc.hasMatrix, tc.hasSimplex, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -705,14 +740,14 @@ func TestPlatformSelectorTogglesAndConfirms(t *testing.T) {
 	}
 }
 
-func TestPlatformSelectorSimplexIsStandalone(t *testing.T) {
+func TestPlatformSelectorSimplexKeepsTelegram(t *testing.T) {
 	m := newPlatformSelector()
 	m.telegram = true
 	m.cursor = 2
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(platformSelector)
-	if !m.simplex || m.telegram || m.matrix {
-		t.Fatalf("selecting simplex must clear telegram and matrix: %#v", m)
+	if !m.simplex || !m.telegram || m.matrix {
+		t.Fatalf("selecting simplex must keep telegram and clear matrix: %#v", m)
 	}
 }
 
@@ -784,10 +819,11 @@ func TestPlatformSelectorCtrlCQuitsWithoutConfirmation(t *testing.T) {
 
 func TestParsePlatformChoice(t *testing.T) {
 	tests := map[string]struct{ tg, matrix, simplex bool }{
-		"telegram":          {tg: true},
-		"matrix":            {matrix: true},
-		"simplex":           {simplex: true},
-		"telegram + matrix": {tg: true, matrix: true},
+		"telegram":           {tg: true},
+		"matrix":             {matrix: true},
+		"simplex":            {simplex: true},
+		"telegram + matrix":  {tg: true, matrix: true},
+		"telegram + simplex": {tg: true, simplex: true},
 	}
 	for input, want := range tests {
 		tg, matrix, simplex, err := parsePlatformChoice(input)
@@ -812,21 +848,27 @@ func TestParsePlatformChoiceSimplex(t *testing.T) {
 	}
 }
 
-func TestParsePlatformChoiceRejectsSimplexCombo(t *testing.T) {
-	for _, input := range []string{"simplex+matrix", "simplex+telegram", "simplex+discord"} {
-		if _, _, _, err := parsePlatformChoice(input); err == nil {
-			t.Fatalf("parsePlatformChoice(%q) must be rejected: SimpleX is standalone-only", input)
-		}
+func TestParsePlatformChoiceSimplexCombos(t *testing.T) {
+	tg, matrix, simplex, err := parsePlatformChoice("telegram+simplex")
+	if err != nil {
+		t.Fatalf("telegram+simplex must be accepted: %v", err)
+	}
+	if !tg || matrix || !simplex {
+		t.Fatalf("telegram+simplex expected, got tg=%t matrix=%t simplex=%t", tg, matrix, simplex)
+	}
+	if _, _, _, err := parsePlatformChoice("simplex+matrix"); err == nil {
+		t.Fatal("parsePlatformChoice(\"simplex+matrix\") must be rejected: Matrix 与 SimpleX 互斥")
 	}
 }
 
 func TestWriteSystemdServiceSimplexUsesFlag(t *testing.T) {
 	// writeSystemdService 写固定路径，这里验证可测的 flag 映射函数。
 	tests := map[string]string{
-		"tg":        "",
-		"matrix":    "--matrix",
-		"simplex":   "--simplex",
-		"tg-matrix": "--all",
+		"tg":         "",
+		"matrix":     "--matrix",
+		"simplex":    "--simplex",
+		"tg-matrix":  "--all",
+		"tg-simplex": "--tg-simplex",
 	}
 	for platform, want := range tests {
 		if got := platformFlagFor(platform); got != want {
@@ -901,7 +943,7 @@ func TestBuildSetupPayloadOmitsSimplexWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestPlatformSelectorSimplexIsExclusive(t *testing.T) {
+func TestPlatformSelectorValidityMatrix(t *testing.T) {
 	cases := []struct {
 		name             string
 		telegram, matrix bool
@@ -910,7 +952,8 @@ func TestPlatformSelectorSimplexIsExclusive(t *testing.T) {
 	}{
 		{"simplex alone", false, false, true, true},
 		{"simplex with matrix", false, true, true, false},
-		{"simplex with telegram", true, false, true, false},
+		{"simplex with telegram", true, false, true, true},
+		{"telegram+matrix+simplex", true, true, true, false},
 		{"matrix alone", false, true, false, true},
 		{"telegram+matrix", true, true, false, true},
 		{"telegram alone", true, false, false, true},
@@ -930,14 +973,26 @@ func TestPlatformSelectorSimplexIsExclusive(t *testing.T) {
 	}
 }
 
-func TestPlatformSelectorTogglingSimplexClearsOthers(t *testing.T) {
+func TestPlatformSelectorTogglingSimplexClearsMatrixOnly(t *testing.T) {
 	m := newPlatformSelector()
+	m.telegram = true
 	m.matrix = true
 	m.cursor = 2
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(platformSelector)
-	if !m.simplex || m.matrix || m.telegram {
-		t.Fatalf("selecting simplex must clear other platforms: %#v", m)
+	if !m.simplex || m.matrix || !m.telegram {
+		t.Fatalf("selecting simplex must clear matrix and keep telegram: %#v", m)
+	}
+}
+
+func TestPlatformSelectorTogglingTelegramKeepsSimplex(t *testing.T) {
+	m := newPlatformSelector()
+	m.simplex = true
+	m.cursor = 0
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	m = updated.(platformSelector)
+	if !m.telegram || !m.simplex || m.matrix {
+		t.Fatalf("telegram toggle must not clear simplex: %#v", m)
 	}
 }
 

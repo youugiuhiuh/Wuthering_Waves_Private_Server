@@ -8,11 +8,25 @@ use std::sync::Arc;
 pub struct RoutingAdapter {
     primary: Arc<dyn BotAdapter>,
     secondary: Option<Arc<dyn BotAdapter>>,
+    /// secondary 的发送目标覆盖。SimpleX 适配器会用 `parse_chat_id(target)` 解读目标
+    /// （`gateways/simplex/adapter.rs`），而 Matrix 适配器忽略目标、固定发往自己的 room
+    /// （`gateways/matrix/adapter.rs`）。只有需要改写的 secondary（TG + SimpleX）才设置它。
+    secondary_target: Option<TargetId>,
 }
 
 impl RoutingAdapter {
     pub fn new(primary: Arc<dyn BotAdapter>, secondary: Option<Arc<dyn BotAdapter>>) -> Self {
-        Self { primary, secondary }
+        Self {
+            primary,
+            secondary,
+            secondary_target: None,
+        }
+    }
+
+    /// 覆盖 secondary 的发送目标；未设置时沿用调用方传入的 target。
+    pub fn with_secondary_target(mut self, target: TargetId) -> Self {
+        self.secondary_target = Some(target);
+        self
     }
 }
 
@@ -41,7 +55,8 @@ impl BotAdapter for RoutingAdapter {
     async fn send_message(&self, target: &TargetId, content: MessageContent) -> Result<MessageId> {
         match &self.secondary {
             Some(secondary) if is_sensitive(&content.text) => {
-                secondary.send_message(target, content).await
+                let secondary_target = self.secondary_target.as_ref().unwrap_or(target);
+                secondary.send_message(secondary_target, content).await
             }
             _ => self.primary.send_message(target, content).await,
         }
@@ -258,6 +273,62 @@ mod tests {
                     &TargetId("1".to_string()),
                     MessageContent {
                         text: "vless://any-content".into(),
+                        markup: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn sensitive_uses_secondary_target_override() {
+            let mut primary = MockBotAdapter::new();
+            primary.expect_platform().returning(|| Platform::Telegram);
+            primary.expect_send_message().never();
+
+            let mut secondary = MockBotAdapter::new();
+            secondary.expect_platform().returning(|| Platform::Simplex);
+            secondary
+                .expect_send_message()
+                .times(1)
+                .withf(|target, _| target.0 == "999")
+                .returning(|_, _| Ok(MessageId("1".to_string())));
+
+            let routing = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)))
+                .with_secondary_target(TargetId("999".to_string()));
+            routing
+                .send_message(
+                    &TargetId("42".to_string()),
+                    MessageContent {
+                        text: "vless://abc123".into(),
+                        markup: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn normal_message_keeps_original_target() {
+            let mut primary = MockBotAdapter::new();
+            primary.expect_platform().returning(|| Platform::Telegram);
+            primary
+                .expect_send_message()
+                .times(1)
+                .withf(|target, _| target.0 == "42")
+                .returning(|_, _| Ok(MessageId("1".to_string())));
+
+            let mut secondary = MockBotAdapter::new();
+            secondary.expect_platform().returning(|| Platform::Simplex);
+            secondary.expect_send_message().never();
+
+            let routing = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)))
+                .with_secondary_target(TargetId("999".to_string()));
+            routing
+                .send_message(
+                    &TargetId("42".to_string()),
+                    MessageContent {
+                        text: "normal system message".into(),
                         markup: None,
                     },
                 )

@@ -10,13 +10,13 @@ mod utils;
 
 use crate::bootstrap::{config_dir, harden_process, install_crypto_provider, verify_integrity};
 use aegis::app::state::AppState;
-use aegis::common::{BotAdapter, MessageContent, TargetId};
+use aegis::common::{BotAdapter, MessageContent, RoutingAdapter, TargetId};
 use aegis::core::paths::maintenance::BBR3_PENDING_FLAG_FILE;
 use aegis::core::security::self_destruct::production_executor;
 use aegis::core::system::SystemMonitor;
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::upgrade::UPGRADE_FLAG_FILE;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -83,8 +83,30 @@ async fn main() -> Result<()> {
         None
     };
 
-    let adapter = if let Some(ref handle) = simplex_handle {
+    let adapter = if let Some(handle) = simplex_handle.as_ref().filter(|_| !selection.telegram) {
+        // 纯 SimpleX：raw 适配器即主适配器（行为与 SimpleX standalone 接入时一致）。
         handle.adapter.clone()
+    } else if let Some(handle) = simplex_handle.as_ref() {
+        // Telegram + SimpleX：Telegram 为主，敏感内容改投 SimpleX 管理员联系人。
+        // SimpleX 适配器用 parse_chat_id(target) 解读目标（Matrix 适配器忽略目标），
+        // 因此必须把 secondary 目标改写为 simplex_admin_id，否则会发往 TG 的 chat id。
+        let primary = main::adapter::build_adapter(
+            app_config.decrypted.token.as_deref(),
+            selection.telegram,
+            selection.matrix,
+            &matrix_handle,
+        )
+        .await?;
+        // connect_simplex 在装配之前已强制校验 simplex_port / simplex_admin_id 齐备，
+        // 这里的 context 仅为防御性写法，正常路径不可达。
+        let simplex_admin_id = app_config
+            .decrypted
+            .simplex_admin_id
+            .context("启用 SimpleX 作为敏感内容落点时必须配置 simplex_admin_id")?;
+        Arc::new(
+            RoutingAdapter::new(primary, Some(handle.adapter.clone()))
+                .with_secondary_target(TargetId(simplex_admin_id.to_string())),
+        ) as Arc<dyn BotAdapter>
     } else {
         main::adapter::build_adapter(
             app_config.decrypted.token.as_deref(),
@@ -145,15 +167,20 @@ struct PlatformSelection {
 /// | 无 | 是 | 是 | 错误（配置歧义） |
 /// | `--matrix` | 任意 | 任意 | matrix（压制 simplex 自动启用） |
 /// | `--simplex` | 任意 | 任意 | simplex（压制 matrix 与 telegram） |
+/// | `--tg-simplex` | 任意 | 任意 | telegram + simplex（TG 主，敏感内容落 SimpleX） |
 /// | `--all` | 任意 | 任意 | telegram + matrix（永不包含 simplex） |
 /// | `--tg-only` | 任意 | 任意 | telegram（不做自动启用） |
 ///
 /// 含 `--discord` 的参数组合直接报错（平台已移除）。
 ///
 /// 自动探测（无 flag）最多只启用一个平台：`matrix_*` 与 `simplex_*` 同时齐备时
-/// 直接报错，而不是悄悄二选一。SimpleX 成为主适配器时必须关闭 Telegram，否则
-/// Telegram dispatcher 用同一个 `state.adapter` 派发，会把 Telegram 回复发到
-/// SimpleX；无 token 时还会触发 `Bot::new` 的 panic。
+/// 直接报错，而不是悄悄二选一。
+///
+/// SimpleX 作为**唯一**平台时必须关闭 Telegram：SimpleX 适配器会成为主适配器，而
+/// Telegram dispatcher 用同一个 `state.adapter` 派发，二者同开会把 Telegram 回复发到
+/// SimpleX；无 token 时还会触发 `Bot::new` 的 panic。`--tg-simplex` 是唯一允许二者
+/// 共存的形式：此时 Telegram 仍是主适配器，SimpleX 只作为敏感内容落点，且目标被
+/// 改写为 `simplex_admin_id`（见 `main.rs` 中适配器装配处）。
 fn resolve_platform_selection(
     args: &[String],
     has_matrix: bool,
@@ -172,7 +199,17 @@ fn resolve_platform_selection(
     let use_simplex = args.iter().any(|a| a == "--simplex");
     let use_all = args.iter().any(|a| a == "--all");
     let tg_only = args.iter().any(|a| a == "--tg-only");
+    let use_tg_simplex = args.iter().any(|a| a == "--tg-simplex");
 
+    // `--tg-simplex` 必须先于 `--simplex` 判定：两者同时给出时取「TG 主 + SimpleX」，
+    // 沿用既有「按判定顺序首个命中者胜」的先例（如 `--all --simplex` 取 simplex）。
+    if use_tg_simplex {
+        return Ok(PlatformSelection {
+            telegram: true,
+            matrix: false,
+            simplex: true,
+        });
+    }
     if use_simplex {
         return Ok(PlatformSelection {
             telegram: false,
@@ -444,6 +481,30 @@ mod platform_selection_tests {
         assert_eq!(
             resolve_platform_selection(&v(&["--all", "--simplex"]), false, false),
             Ok(sel(false, false, true))
+        );
+    }
+
+    #[test]
+    fn tg_simplex_flag_is_telegram_plus_simplex() {
+        assert_eq!(
+            resolve_platform_selection(&v(&["--tg-simplex"]), false, false),
+            Ok(sel(true, false, true))
+        );
+        assert_eq!(
+            resolve_platform_selection(&v(&["--tg-simplex"]), true, true),
+            Ok(sel(true, false, true))
+        );
+    }
+
+    #[test]
+    fn tg_simplex_flag_wins_over_all_and_simplex() {
+        assert_eq!(
+            resolve_platform_selection(&v(&["--all", "--tg-simplex"]), true, true),
+            Ok(sel(true, false, true))
+        );
+        assert_eq!(
+            resolve_platform_selection(&v(&["--simplex", "--tg-simplex"]), false, true),
+            Ok(sel(true, false, true))
         );
     }
 }
