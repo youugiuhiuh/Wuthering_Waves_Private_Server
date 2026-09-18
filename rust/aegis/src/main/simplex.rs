@@ -52,10 +52,15 @@ fn record_address(address: &str, path: &Path) {
     }
 }
 
+/// 是否需要接入 SimpleX。
+///
+/// 无 flag 时的探测只看 `simplex_port`：管理员留空是**合法状态**（首次安装时 contactId
+/// 尚未存在，见 `decode_port_and_admin` 与 `main.rs` 的形态判定），所以要求
+/// `simplex_admin_id` 同时存在会把「已配端口但还没填管理员」错判成非 SimpleX 部署，
+/// 进而退化到 Telegram 分支（无 token 时 `Bot::new` 直接 panic）。
 pub fn has_simplex_config(encrypted_config: &EncryptedConfig, args: &[String]) -> bool {
     let explicit = args.iter().any(|a| a == "--simplex");
-    explicit
-        || (encrypted_config.simplex_port.is_some() && encrypted_config.simplex_admin_id.is_some())
+    explicit || encrypted_config.simplex_port.is_some()
 }
 
 /// 解析并解密 simplex_port / simplex_admin_id。
@@ -172,11 +177,13 @@ mod tests {
         assert!(has_simplex_config(&cfg, &[]));
     }
 
+    /// 管理员留空是合法状态（首次安装时 contactId 尚未存在），因此「只配端口」必须
+    /// 被识别为 SimpleX。否则会退化到 Telegram 分支，而无 token 时 `Bot::new` 直接 panic。
     #[test]
-    fn returns_false_when_only_port_present() {
+    fn returns_true_when_only_port_present() {
         let mut cfg = empty_config();
         cfg.simplex_port = Some(vec![1]);
-        assert!(!has_simplex_config(&cfg, &[]));
+        assert!(has_simplex_config(&cfg, &[]));
     }
 
     use std::os::unix::fs::PermissionsExt;
