@@ -1404,7 +1404,6 @@ func installFromStdin() {
 		os.Exit(1)
 	}
 
-	platform := "tg"
 	simplexPort, _ := inputData["simplex_port"].(string)
 	// Discord 平台已移除，按「键存在」即拒绝（不只看非空值）：手写 payload 里带一个空的
 	// discord_token 也必须失败，不能静默落到 tg 默认平台。
@@ -1412,14 +1411,14 @@ func installFromStdin() {
 		printRed(i18n.T("install.discord_removed"))
 		os.Exit(1)
 	}
-	if _, ok := inputData["simplex_port"].(string); ok {
-		platform = "simplex"
-	} else if _, ok := inputData["matrix_homeserver"].(string); ok {
-		if token, ok := inputData["token"].(string); ok && token != "" {
-			platform = "tg-matrix"
-		} else {
-			platform = "matrix"
-		}
+	// 组合由字段组合显式决定：token + simplex_port 即 tg-simplex。
+	// 判定用「非空」而非「键存在」：显式传空的 simplex_port 不再被当成 SimpleX 部署。
+	token, _ := inputData["token"].(string)
+	matrixHS, _ := inputData["matrix_homeserver"].(string)
+	platform, err := platformForNonInteractive(token != "", matrixHS != "", simplexPort != "")
+	if err != nil {
+		printRed(err.Error())
+		os.Exit(1)
 	}
 
 	secret, hasSecret := inputData["totp_secret"].(string)
@@ -1503,7 +1502,7 @@ func parseKeyVal(data []byte) (*setupConfig, error) {
 		}
 	}
 	if cfg.Token == "" && cfg.MatrixHS == "" && cfg.SimplexPort == "" {
-		return nil, fmt.Errorf("缺少必填字段: 至少需要配置 Telegram (token/admin_id)、Matrix (matrix_homeserver) 或 SimpleX (simplex_port/simplex_admin_id) 之一")
+		return nil, fmt.Errorf("%s", missingPlatformFieldsMsg)
 	}
 	if cfg.Token != "" {
 		if err := validateAdminID(cfg.AdminID); err != nil {
@@ -1535,16 +1534,15 @@ func installFromKeyVal() {
 		cfg.TOTPSecret = generateTOTPSecret(destPath)
 	}
 
-	platform := "tg"
-	if cfg.Token == "" {
-		if cfg.SimplexPort != "" {
-			platform = "simplex"
-		} else if cfg.MatrixHS != "" {
-			platform = "matrix"
-		}
-	}
-	if platform == "tg" && (cfg.MatrixHS != "" || cfg.MatrixUser != "") {
-		platform = "tg-matrix"
+	// matrix_username 与 matrix_homeserver 任一存在即视为配置了 Matrix（沿用既有口径）。
+	platform, err := platformForNonInteractive(
+		cfg.Token != "",
+		cfg.MatrixHS != "" || cfg.MatrixUser != "",
+		cfg.SimplexPort != "",
+	)
+	if err != nil {
+		printRed(err.Error())
+		os.Exit(1)
 	}
 
 	payload := buildSetupPayload(
@@ -1588,6 +1586,31 @@ func servicePlatformForSetup(tg, matrix, simplex bool) string {
 		return "matrix"
 	default:
 		return ""
+	}
+}
+
+// missingPlatformFieldsMsg 由非交互安装的两条路径与 parseKeyVal 共用同一条文案。
+const missingPlatformFieldsMsg = "缺少必填字段: 至少需要配置 Telegram (token/admin_id)、Matrix (matrix_homeserver) 或 SimpleX (simplex_port/simplex_admin_id) 之一"
+
+// platformForNonInteractive 由非交互安装（stdin JSON / key=value）的字段存在性推导部署形态。
+// 组合必须显式：只有 token 与 simplex_port 同时存在才是 tg-simplex；三个平台字段齐备
+// 直接报错而不猜优先级，与 aegis 侧「配置歧义」的立场一致。
+func platformForNonInteractive(hasToken, hasMatrix, hasSimplex bool) (string, error) {
+	switch {
+	case hasToken && hasMatrix && hasSimplex:
+		return "", fmt.Errorf("%s", i18n.T("install.platform_ambiguous_three"))
+	case hasToken && hasSimplex:
+		return "tg-simplex", nil
+	case hasToken && hasMatrix:
+		return "tg-matrix", nil
+	case hasToken:
+		return "tg", nil
+	case hasSimplex:
+		return "simplex", nil
+	case hasMatrix:
+		return "matrix", nil
+	default:
+		return "", fmt.Errorf("%s", missingPlatformFieldsMsg)
 	}
 }
 

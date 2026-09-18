@@ -193,6 +193,37 @@ func TestServicePlatformForSetup(t *testing.T) {
 	}
 }
 
+func TestPlatformForNonInteractive(t *testing.T) {
+	tests := []struct {
+		name                            string
+		hasToken, hasMatrix, hasSimplex bool
+		want                            string
+		wantErr                         bool
+	}{
+		{"telegram only", true, false, false, "tg", false},
+		{"matrix only", false, true, false, "matrix", false},
+		{"simplex only", false, false, true, "simplex", false},
+		{"telegram+matrix", true, true, false, "tg-matrix", false},
+		{"telegram+simplex", true, false, true, "tg-simplex", false},
+		{"three platforms", true, true, true, "", true},
+		{"no fields", false, false, false, "", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := platformForNonInteractive(tc.hasToken, tc.hasMatrix, tc.hasSimplex)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("platformForNonInteractive(%t, %t, %t) err = %v, wantErr = %t",
+					tc.hasToken, tc.hasMatrix, tc.hasSimplex, err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Fatalf("platformForNonInteractive(%t, %t, %t) = %q, want %q",
+					tc.hasToken, tc.hasMatrix, tc.hasSimplex, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPlatformSelectorRejectsEmptyConfirmation(t *testing.T) {
 	m := newPlatformSelector()
 	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})

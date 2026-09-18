@@ -43,6 +43,7 @@
   "install.bin_deployed": "✓ Aegis 二进制文件部署完成",
   "install.cap_ipc_failed": "提示: 设置 cap_ipc_lock 失败，安全内存锁定不可用",
   "install.mem_protect_ok": "✓ 内存安全保护已启用",
+  "install.platform_ambiguous_three": "不能同时部署三个平台。请改用 Telegram + Matrix 或 Telegram + SimpleX，并从载荷中移除其中一份平台字段。",
   "install.start": "\n开始安装/更新 Aegis…",
   "install.config_exists": "\n检测到已存在配置文件，跳过初始化设置。",
   "install.service_missing": "无法读取服务文件。请选择平台以重建服务；凭据和加密配置不会被更改。",
