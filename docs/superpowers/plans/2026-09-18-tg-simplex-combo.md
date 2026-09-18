@@ -1127,7 +1127,7 @@ cargo nextest run --cargo-profile fast-test simplex_admin_id_is_recognized_as_ad
 
 ```bash
 cd /home/ub/Dark/Wuthering_Waves_Private_Server/.worktrees/tg-simplex/go/installer
-go test ./... -run 'TestPlatformFromService|TestPlatformFlagFor|TestServicePlatformForSetup|TestPlatformForNonInteractive' -v 2>&1 | grep -E '^(=== RUN|--- (PASS|FAIL)|ok|FAIL)' | head -40
+go test ./... -run 'TestPlatformFromService|TestWriteSystemdServiceSimplexUsesFlag|TestServicePlatformForSetup|TestPlatformForNonInteractive' -v 2>&1 | grep -E '^(=== RUN|--- (PASS|FAIL)|ok|FAIL)' | head -40
 ```
 
 期望：`--tg-simplex` 相关子用例全部 PASS，无 FAIL。
