@@ -314,7 +314,8 @@ pub async fn run(
                 }
 
                 for msg in mapped {
-                    if simplex_admin != Some(msg.contact_id) {
+                    let is_admin = simplex_admin == Some(msg.contact_id);
+                    if !should_forward_simplex_msg(is_admin, msg.text.as_deref()) {
                         log::warn!(
                             "SimpleX 未授权联系人 contactId={} 尝试发消息，已忽略",
                             msg.contact_id
@@ -545,6 +546,22 @@ fn contact_connected_log_line(contact_id: i64, display_name: &str) -> String {
     format!("SimpleX 新联系人连接: contactId={contact_id} display_name={display_name:?}")
 }
 
+/// 是否把这条 SimpleX 入站消息交给 dispatch。
+///
+/// 管理员的消息全放行；非管理员**只有 6 位纯数字码**放行 —— 那是登录尝试，
+/// 也是新 contactId 证明自己的唯一途径（自愈的前提）。
+/// 其余非管理员消息按原样丢弃并记日志。
+///
+/// 与 `shared::dispatch::is_totp_code` 保持同样的判据（6 位 ASCII 数字）。
+/// 此处无法复用那个私有函数（跨 crate 边界：runtime.rs 在 bin，dispatch 在 lib），
+/// 因此判据写在这里；两处不一致会让码在门口被丢，是本模块最该盯的回归点。
+fn should_forward_simplex_msg(is_admin: bool, text: Option<&str>) -> bool {
+    if is_admin {
+        return true;
+    }
+    text.is_some_and(|t| t.len() == 6 && t.chars().all(|c| c.is_ascii_digit()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -566,5 +583,34 @@ mod tests {
             "显示名里的换行必须被转义，实际: {line}"
         );
         assert!(line.contains("\\n"), "换行应以转义形式出现，实际: {line}");
+    }
+
+    #[test]
+    fn simplex_forwards_totp_code_from_unknown_contact() {
+        assert!(
+            should_forward_simplex_msg(false, Some("123456")),
+            "非管理员发来的 6 位码必须放行，否则新 contactId 无法自愈"
+        );
+    }
+
+    #[test]
+    fn simplex_drops_ordinary_text_from_unknown_contact() {
+        assert!(!should_forward_simplex_msg(false, Some("/menu")));
+        assert!(!should_forward_simplex_msg(false, Some("hello")));
+        assert!(!should_forward_simplex_msg(false, None));
+    }
+
+    #[test]
+    fn simplex_forwards_everything_from_admin() {
+        assert!(should_forward_simplex_msg(true, Some("/menu")));
+        assert!(should_forward_simplex_msg(true, Some("hello")));
+        assert!(should_forward_simplex_msg(true, None));
+    }
+
+    #[test]
+    fn simplex_does_not_treat_near_miss_codes_as_login() {
+        assert!(!should_forward_simplex_msg(false, Some("12345")));
+        assert!(!should_forward_simplex_msg(false, Some("1234567")));
+        assert!(!should_forward_simplex_msg(false, Some("12345a")));
     }
 }
