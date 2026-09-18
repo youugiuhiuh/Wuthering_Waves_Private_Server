@@ -1081,7 +1081,7 @@ func installSimplexChat() (string, error) {
 	return dest, nil
 }
 
-// deploySimplexService 安装 simplex-chat 并写好它的 systemd 单元；非 simplex 平台是空操作。
+// deploySimplexService 安装 simplex-chat 并写好它的 systemd 单元；非 simplex / tg-simplex 平台是空操作。
 // 端口优先级：调用方显式给的 > 已存在单元里回读的 > 默认端口。
 func deploySimplexService(platform, port string) {
 	if platform != "simplex" && platform != "tg-simplex" {

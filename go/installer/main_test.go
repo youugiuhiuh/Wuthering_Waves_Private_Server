@@ -943,7 +943,7 @@ func TestBuildSetupPayloadOmitsSimplexWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestPlatformSelectorSimplexIsExclusive(t *testing.T) {
+func TestPlatformSelectorValidityMatrix(t *testing.T) {
 	cases := []struct {
 		name             string
 		telegram, matrix bool
