@@ -74,7 +74,17 @@ pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<()> {
 #[allow(dead_code)]
 async fn check_auth(event: &BotEvent, state: &AppState) -> bool {
     let user_id = event.user_id();
-    if !state.is_admin_user(user_id) {
+
+    // 6 位纯数字消息是**登录尝试**，必须对任何身份放行到 `auth::process_auth_code`。
+    // 这是 SimpleX 管理员自愈的前提：新 contactId（删联系人重连 / 换设备）在重钉之前
+    // 一定不是管理员，若在这里就挡掉，它就永远发不出那个能证明自己的码。
+    // 安全性由「全局限流 + TOTP 本身」承担，而不是由这道白名单承担。
+    let is_login_attempt = matches!(
+        event,
+        BotEvent::Message(msg) if msg.text.as_deref().is_some_and(is_totp_code)
+    ) && !state.is_authorized(user_id).await;
+
+    if !state.is_admin_user(user_id) && !is_login_attempt {
         return false;
     }
     match event {
@@ -475,6 +485,64 @@ mod tests {
             reply_to_text: None,
             thread_root: None,
         })
+    }
+
+    /// 与 `message_event` 相同，但身份显式 —— 既有 `message_event` 把 `user_id` 硬编码为 42，
+    /// 而那正是 `make_state()` 的管理员，用它无法测到「非管理员」路径。
+    fn message_event_from(
+        adapter: Arc<MockAdapter>,
+        user_id: i64,
+        text: Option<String>,
+    ) -> BotEvent {
+        BotEvent::Message(MessageEvent {
+            adapter,
+            target: TargetId(user_id.to_string()),
+            user_id,
+            text,
+            file_id: None,
+            file_name: None,
+            reply_to_text: None,
+            thread_root: None,
+        })
+    }
+
+    /// 未授权身份发 6 位码必须能通过 check_auth（登录尝试），否则重钉路径不可达。
+    #[tokio::test]
+    async fn totp_code_from_non_admin_passes_check_auth() {
+        let state = make_state();
+        let event = message_event_from(
+            Arc::new(MockAdapter::default()),
+            99, // 不是 make_state() 配的管理员（42）
+            Some("123456".to_string()),
+        );
+        assert!(
+            check_auth(&event, &state).await,
+            "6 位码是登录尝试，必须放行到 process_auth_code；否则新 contactId 永远无法自愈"
+        );
+    }
+
+    /// 非 6 位码的普通消息来自非管理员时必须仍然被挡。
+    #[tokio::test]
+    async fn non_code_message_from_non_admin_is_still_rejected() {
+        let state = make_state();
+        let event = message_event_from(
+            Arc::new(MockAdapter::default()),
+            99,
+            Some("hello".to_string()),
+        );
+        assert!(!check_auth(&event, &state).await);
+    }
+
+    /// 6 位但非全数字（如 "12345a"）不算码，仍须被挡。
+    #[tokio::test]
+    async fn non_numeric_six_chars_from_non_admin_is_rejected() {
+        let state = make_state();
+        let event = message_event_from(
+            Arc::new(MockAdapter::default()),
+            99,
+            Some("12345a".to_string()),
+        );
+        assert!(!check_auth(&event, &state).await);
     }
 
     #[tokio::test]
