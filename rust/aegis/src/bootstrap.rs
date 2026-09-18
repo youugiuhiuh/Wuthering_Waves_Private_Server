@@ -446,7 +446,9 @@ pub fn set_simplex_admin_id(config_dir: &Path, admin_id: i64) -> Result<()> {
     }
     fs::rename(&tmp_path, &config_path).context("rename config.enc 失败")?;
 
-    println!("✅ SimpleX 管理员 contactId 已写入配置: {admin_id}");
+    println!(
+        "✅ SimpleX 管理员 contactId 已写入配置: {admin_id}（重启生效：systemctl restart wwps-aegis）"
+    );
     Ok(())
 }
 

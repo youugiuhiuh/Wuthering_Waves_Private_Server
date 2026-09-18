@@ -1382,3 +1382,29 @@ func TestPollSimplexAddressWaitsForLateFile(t *testing.T) {
 		t.Fatalf("pollSimplexAddress = (%q, %v), want (simplex:/late, true)", got, ok)
 	}
 }
+
+func TestRemoveStaleSimplexAddress(t *testing.T) {
+	old := simplexAddressFile
+	defer func() { simplexAddressFile = old }()
+	simplexAddressFile = filepath.Join(t.TempDir(), "simplex_address")
+
+	if err := os.WriteFile(simplexAddressFile, []byte("simplex:/stale\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeStaleSimplexAddress(); err != nil {
+		t.Fatalf("removeStaleSimplexAddress() = %v", err)
+	}
+	if _, err := os.Stat(simplexAddressFile); !os.IsNotExist(err) {
+		t.Fatalf("address file not removed: %v", err)
+	}
+}
+
+func TestRemoveStaleSimplexAddressWhenAbsent(t *testing.T) {
+	old := simplexAddressFile
+	defer func() { simplexAddressFile = old }()
+	simplexAddressFile = filepath.Join(t.TempDir(), "simplex_address")
+
+	if err := removeStaleSimplexAddress(); err != nil {
+		t.Fatalf("removeStaleSimplexAddress() on missing file = %v", err)
+	}
+}

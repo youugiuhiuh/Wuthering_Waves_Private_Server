@@ -55,7 +55,7 @@
   "simplex.address_ready": "✅ Bot address: %s",
   "simplex.address_paste_hint": "   Copy the line above and paste it into your SimpleX client to connect (or send /c <address>)",
   "simplex.address_pending": "⏳ Bot address not available yet (aegis may still be starting). Later run: journalctl -u wwps-aegis | grep \"bot 地址\"",
-  "simplex.admin_fill_hint": "   After connecting, send any message to the bot, then run: aegis --set-simplex-admin <ID> (find the ID via journalctl -u wwps-aegis | grep 未授权联系人)",
+  "simplex.admin_fill_hint": "   After connecting, send any message to the bot, then run: aegis --set-simplex-admin <ID> and systemctl restart wwps-aegis (find the ID via journalctl -u wwps-aegis | grep 未授权联系人)",
   "simplex.unit_write_failed": "Failed to write SimpleX systemd unit: %s",
   "totp.generating": "Generating TOTP secret\u2026",
   "totp.generate_failed": "Failed to generate TOTP secret: %s",

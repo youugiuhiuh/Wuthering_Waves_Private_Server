@@ -995,6 +995,16 @@ func simplexPortFromUnit(content []byte) string {
 // 必须与 rust/aegis/src/core/paths.rs::bot::SIMPLEX_ADDRESS_FILE 保持一致。
 var simplexAddressFile = filepath.Join(installDir, "simplex_address")
 
+// removeStaleSimplexAddress 删除上一次运行留下的地址文件，确保安装器打印的
+// 地址只来自本次运行（旧身份/上次连接失败留下的文件会误导管理员连到死链）。
+// 文件不存在视为已清理。
+func removeStaleSimplexAddress() error {
+	if err := os.Remove(simplexAddressFile); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // readSimplexAddress 读取并校验地址文件；不存在 / 空 / 仅空白视为未命中。
 func readSimplexAddress(path string) (string, bool) {
 	raw, err := os.ReadFile(path)
@@ -1133,6 +1143,12 @@ func installSimplexChat() (string, error) {
 func deploySimplexService(platform, port string) {
 	if platform != "simplex" && platform != "tg-simplex" {
 		return
+	}
+	// 地址文件只能由本次运行的 aegis 写入（重启发生在 installAegis / finishDeploy），
+	// 先清掉旧文件，避免打印上一身份的地址。
+	if err := removeStaleSimplexAddress(); err != nil {
+		printRed(i18n.T("simplex.install_failed", err.Error()))
+		os.Exit(1)
 	}
 	// 端口先解析并校验，再下载：port 来自 key=val / stdin / 交互输入，最终会拼进
 	// root 拥有的 systemd 单元，任何非纯数字值都必须在这里被挡住。先校验也避免了

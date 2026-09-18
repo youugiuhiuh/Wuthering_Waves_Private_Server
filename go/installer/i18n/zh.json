@@ -60,7 +60,7 @@
   "simplex.address_ready": "✅ bot 地址: %s",
   "simplex.address_paste_hint": "   复制上面这一行，粘到 SimpleX 客户端的输入框里连接 bot（或发 /c <地址>）",
   "simplex.address_pending": "⏳ 暂未取到 bot 地址（aegis 可能仍在启动）。稍后执行：journalctl -u wwps-aegis | grep \"bot 地址\"",
-  "simplex.admin_fill_hint": "   连上后给 bot 发任意一条消息，再执行：aegis --set-simplex-admin <ID>（ID 见 journalctl -u wwps-aegis | grep 未授权联系人）",
+  "simplex.admin_fill_hint": "   连上后给 bot 发任意一条消息，再执行：aegis --set-simplex-admin <ID>，然后 systemctl restart wwps-aegis（ID 见 journalctl -u wwps-aegis | grep 未授权联系人）",
   "simplex.unit_write_failed": "写入 SimpleX systemd 服务文件失败: %s",
 
   "totp.generating": "正在生成 TOTP 密钥…",
