@@ -28,7 +28,7 @@ cargo test --doc
 
 This command sequence MUST succeed with no errors before you proceed.
 
-**Fast lane policy:** prefer the Cranelift lane (below) while iterating. If Cranelift is unavailable, fails to build, or fails a test, fall back to the LLVM lane above. When the two disagree, **LLVM is authoritative** — re-run the failing check under LLVM before concluding the code is broken, because Cranelift has its own codegen gaps (see the VAES caveat below). Always run the LLVM lane once before commit/PR; never report a Cranelift result as the gate result.
+**Fast lane policy:** use Cranelift for **builds only** while iterating — it speeds up codegen. **Tests always run on LLVM** with `cargo nextest run --cargo-profile fast-test`; do not run the test suite under Cranelift. If Cranelift is unavailable or fails to build, fall back to an LLVM build. **LLVM is authoritative** for both build and test verdicts, because Cranelift has its own codegen gaps (see the VAES caveat below). Always run the LLVM lane once before commit/PR; never report a Cranelift result as the gate result.
 
 > If `cargo-nextest` is unavailable, try to auto-install it:
 >
@@ -118,8 +118,8 @@ Never skip the quality gate because:
 |---------|---------|
 | `cargo fmt` | Format code |
 | `cargo clippy --all-targets --all-features -- -D warnings` | Strict linting |
-| `cargo nextest run --cargo-profile fast-test` | Run unit & integration tests (recommended) |
-| `RUSTFLAGS="-Zcodegen-backend=cranelift" cargo +nightly nextest run --cargo-profile cranelift-dev` | Preferred fast lane; fall back to LLVM on failure |
+| `cargo nextest run --cargo-profile fast-test` | Run unit & integration tests on LLVM (authoritative) |
+| `RUSTFLAGS="-Zcodegen-backend=cranelift" cargo +nightly build --profile cranelift-dev` | Cranelift fast **build** lane; tests still run on LLVM |
 | `-C link-arg=-fuse-ld=mold` | Fast linker (Linux); add to `RUSTFLAGS` |
 | `cargo test --doc` | Run documentation tests |
 | `cargo test` | Fallback when `cargo-nextest` is unavailable |
@@ -136,26 +136,28 @@ It inherits `dev` with `opt-level = 1`, `debug = 0`, `incremental = true`, `code
 
 `nextest` 0.9.x only accepts the Cargo profile through the `--cargo-profile` CLI flag. There is no `cargo-profile` key in `.config/nextest.toml`, so there is no config-file or alias shortcut for it.
 
-### Cranelift backend
+### Cranelift backend (build only)
 
-A `cranelift-dev` profile exists for faster codegen. The backend must be passed through `RUSTFLAGS`, because a profile-level `codegen-backend` in `.cargo/config.toml` makes stable Cargo fail on every profile, not just that one.
+A `cranelift-dev` profile exists for faster codegen. Use it for **builds only**; the test suite runs on LLVM via `cargo nextest run --cargo-profile fast-test`. The backend must be passed through `RUSTFLAGS`, because a profile-level `codegen-backend` in `.cargo/config.toml` makes stable Cargo fail on every profile, not just that one.
 
 ```bash
 rustup component add rustc-codegen-cranelift --toolchain nightly
 # Linux, with mold (see "Fast linkers" below)
-RUSTFLAGS="-Zcodegen-backend=cranelift -C link-arg=-fuse-ld=mold" cargo +nightly nextest run --cargo-profile cranelift-dev
+RUSTFLAGS="-Zcodegen-backend=cranelift -C link-arg=-fuse-ld=mold" cargo +nightly build --profile cranelift-dev
 # Linux, without a fast linker
-RUSTFLAGS="-Zcodegen-backend=cranelift" cargo +nightly nextest run --cargo-profile cranelift-dev
+RUSTFLAGS="-Zcodegen-backend=cranelift" cargo +nightly build --profile cranelift-dev
+# Tests always run on LLVM:
+cargo nextest run --cargo-profile fast-test
 ```
 
-**Status: build, test, doc-test and clippy all work.** Re-verified 2026-09-18. The old "`cargo check` only / linking fails" restriction is obsolete: it came from `aws-lc-sys`, which exported `\u{1}`-prefixed symbols that only the LLVM backend understands (<https://github.com/rust-lang/rustc_codegen_cranelift/issues/1520>). `aws-lc-sys` is no longer in the graph — `matrix-sdk` 0.19 goes through `reqwest` 0.13's `rustls-no-provider` and the provider is `ring`.
+**Status: build and clippy work under Cranelift; tests run on LLVM.** Re-verified 2026-09-18. The old "`cargo check` only / linking fails" restriction is obsolete: it came from `aws-lc-sys`, which exported `\u{1}`-prefixed symbols that only the LLVM backend understands (<https://github.com/rust-lang/rustc_codegen_cranelift/issues/1520>). `aws-lc-sys` is no longer in the graph — `matrix-sdk` 0.19 goes through `reqwest` 0.13's `rustls-no-provider` and the provider is `ring`.
 
 Evidence for that:
 
 - `Cargo.lock` contains no `aws-lc-sys` / `aws-lc-rs` / `openssl-sys` (626 packages total).
 - `nm` over 554 built artifacts under `target/release` found zero `\u{1}` symbols, checked against an `objcopy`-crafted positive control so the detector was not silently blind.
 - `cargo +nightly build --profile cranelift-dev --bin aegis` links and exits 0 (1m25s).
-- Full suite under cranelift: `929 passed, 1 skipped` — identical to the LLVM `fast-test` verdict. Doc tests and `cargo +nightly clippy` also run clean under the same `RUSTFLAGS`.
+- One-off experiment (not the policy): the full suite also ran under cranelift — `929 passed, 1 skipped`, identical to the LLVM `fast-test` verdict. Tests are still run on LLVM; Cranelift is a build-only lane.
 
 Remaining caveats — use Cranelift as a fast pre-check, keep LLVM as the gate that decides:
 
@@ -175,7 +177,7 @@ Link time is the second half of the loop; swap the default linker for a parallel
 
 ```bash
 export RUSTFLAGS="-Zcodegen-backend=cranelift -C link-arg=-fuse-ld=mold"
-cargo +nightly nextest run --cargo-profile cranelift-dev
+cargo +nightly build --profile cranelift-dev
 ```
 
 Measured on this repo (Linux, mold 2.40.4, cranelift-dev, `--bin aegis`): relink 6.21s with `ld.bfd` → **0.36s with mold**, and the resulting binary runs. mold was also verified end-to-end on the LLVM `fast-test` lane (32/32 crypto tests, full rebuild 146s). Full cold build barely moves (1m25s → 1m20s) because codegen dominates — the linker is worth it for the edit/test/relink loop, not for a clean CI build. The macOS/Windows rows are conventional recipes, **not verified on this machine** (no zld/lld installed here).
@@ -202,7 +204,7 @@ If the flag is rejected, that means the C compiler driving the link is too old t
 ## Project-Specific Notes
 
 - Run from the workspace root.
-- Prefer `cargo nextest run --cargo-profile fast-test` over `cargo test` for daily development.
+- Prefer `cargo nextest run --cargo-profile fast-test` (LLVM) over `cargo test` for daily development. Cranelift is for builds only, never for the test verdict.
 - Always run `cargo test --doc` because `cargo-nextest` does not execute documentation tests.
 - For workspaces, execute the commands from the workspace root.
 - If feature-gated code exists, ensure the appropriate feature set is tested (typically `--all-features` where applicable).
