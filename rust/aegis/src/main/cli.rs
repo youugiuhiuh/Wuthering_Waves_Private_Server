@@ -14,6 +14,12 @@ pub enum CliMode {
     /// 补填 SimpleX 管理员 contactId。保留原始字符串，正整数校验在 bootstrap 层
     /// （那里才知道 id 的语义），与 `CliMode::Setup` 保留原始 token 的风格一致。
     SetSimplexAdmin(Option<String>),
+    /// 本地审批旁路：列出在敲门的 SimpleX 联系人请求（不依赖 Telegram）。
+    ListContactRequests,
+    /// 批准请求。参数为 **contactRequestId**（不是 contactId）。
+    ApproveContact(Option<String>),
+    /// 拒绝请求（对请求方静默）。
+    RejectContact(Option<String>),
     /// `args[1]` 是无法识别的 `-`/`--` 参数。
     ///
     /// 绝不放行：aegis 已作为 systemd 服务运行时，静默回落到正常启动会起第二个实例、
@@ -46,6 +52,9 @@ pub fn try_cli_mode(args: &[String]) -> Option<CliMode> {
         "--setup-stdin" => Some(CliMode::SetupStdin),
         // 注意：缺参数时也必须返回 Some —— 返回 None 会让 main 继续正常启动 bot。
         "--set-simplex-admin" => Some(CliMode::SetSimplexAdmin(args.get(2).cloned())),
+        "--list-contact-requests" => Some(CliMode::ListContactRequests),
+        "--approve-contact" => Some(CliMode::ApproveContact(args.get(2).cloned())),
+        "--reject-contact" => Some(CliMode::RejectContact(args.get(2).cloned())),
         // 合法但不走 CLI 模式的平台 flag：必须返回 None，让 main.rs 的
         // resolve_platform_selection 处理（其中 --discord 有专门的迁移指引报错）。
         "--simplex" | "--tg-simplex" | "--matrix" | "--all" | "--tg-only" | "--discord" => None,
@@ -84,10 +93,38 @@ pub async fn execute_cli_mode(mode: CliMode) -> Result<()> {
             let admin_id = parse_contact_id(&raw)?;
             set_simplex_admin_id(&config_dir(), admin_id)
         }
+        CliMode::ListContactRequests => {
+            let pending = crate::main::simplex::list_pending_contact_requests().await?;
+            if pending.is_empty() {
+                println!("没有待批准的联系人请求");
+            }
+            for p in pending {
+                println!(
+                    "contactRequestId={} display_name={:?}",
+                    p.contact_request_id, p.display_name
+                );
+            }
+            Ok(())
+        }
+        CliMode::ApproveContact(raw) => {
+            let raw = raw.context("用法: aegis --approve-contact <contactRequestId>")?;
+            let id = parse_contact_id(&raw)?;
+            crate::main::simplex::approve_contact_request(id).await?;
+            println!("已批准联系人请求 contactRequestId={id}");
+            Ok(())
+        }
+        CliMode::RejectContact(raw) => {
+            let raw = raw.context("用法: aegis --reject-contact <contactRequestId>")?;
+            let id = parse_contact_id(&raw)?;
+            crate::main::simplex::reject_contact_request(id).await?;
+            println!("已拒绝联系人请求 contactRequestId={id}");
+            Ok(())
+        }
         CliMode::Unknown(flag) => Err(anyhow::anyhow!(
             "未知参数 {flag:?}。可用参数: --simplex | --tg-simplex | --matrix | --all | --tg-only | \
              --generate-totp-secret | --version | --setup <token> <admin_id> <totp_secret> | \
-             --setup-stdin | --set-simplex-admin <contactId>"
+             --setup-stdin | --set-simplex-admin <contactId> | --list-contact-requests | \
+             --approve-contact <contactRequestId> | --reject-contact <contactRequestId>"
         )),
     }
 }
@@ -128,6 +165,31 @@ mod tests {
     fn recognises_set_simplex_admin_without_value() {
         let mode = try_cli_mode(&args(&["aegis", "--set-simplex-admin"]));
         assert!(matches!(mode, Some(CliMode::SetSimplexAdmin(None))));
+    }
+
+    #[test]
+    fn recognises_contact_approval_flags() {
+        assert!(matches!(
+            try_cli_mode(&args(&["aegis", "--list-contact-requests"])),
+            Some(CliMode::ListContactRequests)
+        ));
+        assert!(matches!(
+            try_cli_mode(&args(&["aegis", "--approve-contact", "7"])),
+            Some(CliMode::ApproveContact(Some(ref v))) if v == "7"
+        ));
+        // 缺参数仍须返回 Some（否则 main 会继续正常启动 bot）。
+        assert!(matches!(
+            try_cli_mode(&args(&["aegis", "--approve-contact"])),
+            Some(CliMode::ApproveContact(None))
+        ));
+        assert!(matches!(
+            try_cli_mode(&args(&["aegis", "--reject-contact", "7"])),
+            Some(CliMode::RejectContact(Some(ref v))) if v == "7"
+        ));
+        assert!(matches!(
+            try_cli_mode(&args(&["aegis", "--reject-contact"])),
+            Some(CliMode::RejectContact(None))
+        ));
     }
 
     /// aegis 已作为 systemd 服务运行时，静默回落到「正常启动」会起第二个实例、

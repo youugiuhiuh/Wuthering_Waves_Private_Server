@@ -6,7 +6,11 @@ use aegis::core::security::SecurityManager;
 use aegis::gateways::simplex::SimplexAdapter;
 use anyhow::{Context, Result};
 use secrecy::ExposeSecret;
-use simploxide_client::prelude::AddressSettings;
+use simploxide_client::ext::ClientApiExt as _;
+use simploxide_client::prelude::{
+    AddressSettings, ApiGetChats, ChatInfo, ClientApi as _, ContactRequestId,
+};
+use simploxide_client::types::{ChatListQuery, PaginationByTime};
 
 use crate::bootstrap::EncryptedConfig;
 
@@ -69,7 +73,7 @@ pub fn has_simplex_config(encrypted_config: &EncryptedConfig, args: &[String]) -
 /// simplex_admin_id 允许缺失：首次安装时管理员尚未连接，无从得知自己的 contactId；
 /// 缺省时 bot 照常启动，事件循环会把非管理员消息记日志并忽略（见 runtime.rs 的无管理员分支）。
 /// 字段存在时仍严格校验 —— 畸形值（非整数或 <= 0）必须启动即失败。
-fn decode_port_and_admin(
+pub(crate) fn decode_port_and_admin(
     security: &SecurityManager,
     encrypted_config: &EncryptedConfig,
 ) -> Result<(u16, Option<i64>)> {
@@ -156,6 +160,85 @@ pub async fn connect_simplex(
         events,
         adapter,
     })
+}
+
+// ── 本地 CLI 审批旁路（防 Telegram 成为单点）───────────────────────────────
+// 独立进程连接正在运行的 simplex-chat WebSocket（第二个客户端，E4 实证无影响）。
+// **不能**构造 `Bot`：`Bot::init` 在 auto_accept=None 时会删除地址。
+
+pub(crate) struct PendingContactRequest {
+    pub contact_request_id: i64,
+    pub display_name: String,
+}
+
+async fn cli_client() -> Result<simploxide_client::ws::Client> {
+    let (app_config, security) = crate::main::config::load_and_validate()?;
+    let (port, _) = decode_port_and_admin(&security, &app_config.decrypted.encrypted_config)?;
+    let (client, _events) = simploxide_client::ws::connect(format!("ws://127.0.0.1:{port}"))
+        .await
+        .map_err(|e| anyhow::anyhow!("连接 simplex-chat (127.0.0.1:{port}) 失败: {e}"))?;
+    Ok(client)
+}
+
+async fn active_user_id(client: &simploxide_client::ws::Client) -> Result<i64> {
+    client
+        .users()
+        .await?
+        .into_iter()
+        .find(|u| u.user.active_user)
+        .map(|u| u.user.user_id)
+        .context("找不到活跃的 SimpleX 用户")
+}
+
+/// 列出在敲门的待批准请求（`_get chats <uid> pcc=on`）。
+pub(crate) async fn list_pending_contact_requests() -> Result<Vec<PendingContactRequest>> {
+    let client = cli_client().await?;
+    let user_id = active_user_id(&client).await?;
+    let resp = client
+        .api_get_chats(ApiGetChats {
+            user_id,
+            pending_connections: true,
+            pagination: PaginationByTime::make_last(100),
+            query: ChatListQuery::make_filters(false, false),
+        })
+        .await
+        .context("读取待批准联系人请求失败")?;
+    let mut out = Vec::new();
+    for chat in &resp.chats {
+        if let ChatInfo::ContactRequest {
+            contact_request, ..
+        } = &chat.chat_info
+        {
+            out.push(PendingContactRequest {
+                contact_request_id: contact_request.contact_request_id,
+                display_name: contact_request.local_display_name.clone(),
+            });
+        }
+    }
+    Ok(out)
+}
+
+fn contact_request_id(raw: i64) -> Result<ContactRequestId> {
+    ContactRequestId::try_from(raw)
+        .map_err(|_| anyhow::anyhow!("contactRequestId 必须为正整数: {raw}"))
+}
+
+pub(crate) async fn approve_contact_request(id: i64) -> Result<()> {
+    let client = cli_client().await?;
+    client
+        .accept_contact(contact_request_id(id)?)
+        .await
+        .context("接受联系人请求失败")?;
+    Ok(())
+}
+
+pub(crate) async fn reject_contact_request(id: i64) -> Result<()> {
+    let client = cli_client().await?;
+    client
+        .reject_contact(contact_request_id(id)?)
+        .await
+        .context("拒绝联系人请求失败")?;
+    Ok(())
 }
 
 #[cfg(test)]
