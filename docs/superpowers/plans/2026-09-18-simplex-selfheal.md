@@ -1069,8 +1069,10 @@ systemctl restart wwps-aegis                        # 之后应立即恢复可�
 
 ## 已知边界（写进 PR，不得隐去）
 
-1. **自愈只覆盖纯 `--simplex`**。`--tg-simplex` 仍须手工 `--set-simplex-admin`（控制面在 TG 不受影响，
-   受影响的是「敏感内容落点」）。原因：`user_id` 命名空间跨平台共用，逐消息区分平台要动 13 个调用点。
+1. ~~**自愈只覆盖纯 `--simplex`**~~ **（P2 已解决）**：`--tg-simplex` 亦启用自愈；平台来源由
+   `app::auth::process_auth_code` 内的 `adapter.platform() == Platform::Simplex` 判据区分
+   （见 `docs/superpowers/plans/2026-09-18-simplex-p2-approval.md`），TG 的码不会重钉
+   `simplex_admin_id`，因此无需逐消息改动 13 个调用点。
 2. **门禁① 的 6 位码判据与 `dispatch::is_totp_code` 是两份实现**（bin/lib 边界无法复用）。
    两处不一致会让码在门口被丢 —— 这是本计划最该盯的回归点，已写在代码注释里。
 3. **TOTP 成为凭据**：泄露即失守，且它安装时被打印到终端。
