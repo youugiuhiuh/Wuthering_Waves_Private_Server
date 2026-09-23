@@ -190,6 +190,37 @@ async fn active_user_id(client: &simploxide_client::ws::Client) -> Result<i64> {
         .context("找不到活跃的 SimpleX 用户")
 }
 
+/// 从 `_get chats pcc=on` 返回的会话里筛出待批准请求。
+///
+/// 只认 `ChatInfo::ContactRequest`（typed API 变体）；其余变体一律忽略。
+/// 拆成纯函数以便用 JSON fixture 单测（避免依赖活的 WS）。
+fn parse_pending(chats: impl IntoIterator<Item = ChatInfo>) -> Vec<PendingContactRequest> {
+    chats
+        .into_iter()
+        .filter_map(|info| match info {
+            ChatInfo::ContactRequest {
+                contact_request, ..
+            } => Some(PendingContactRequest {
+                contact_request_id: contact_request.contact_request_id,
+                display_name: contact_request.local_display_name,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+/// 会话类型标签：仅用于「列表为空但确实有会话」时的可诊断告警。
+fn chat_info_kind(info: &ChatInfo) -> &'static str {
+    match info {
+        ChatInfo::Direct { .. } => "direct",
+        ChatInfo::Group { .. } => "group",
+        ChatInfo::Local { .. } => "local",
+        ChatInfo::ContactRequest { .. } => "contactRequest",
+        ChatInfo::ContactConnection { .. } => "contactConnection",
+        _ => "unknown",
+    }
+}
+
 /// 列出在敲门的待批准请求（`_get chats <uid> pcc=on`）。
 pub(crate) async fn list_pending_contact_requests() -> Result<Vec<PendingContactRequest>> {
     let client = cli_client().await?;
@@ -203,24 +234,31 @@ pub(crate) async fn list_pending_contact_requests() -> Result<Vec<PendingContact
         })
         .await
         .context("读取待批准联系人请求失败")?;
-    let mut out = Vec::new();
-    for chat in &resp.chats {
-        if let ChatInfo::ContactRequest {
-            contact_request, ..
-        } = &chat.chat_info
-        {
-            out.push(PendingContactRequest {
-                contact_request_id: contact_request.contact_request_id,
-                display_name: contact_request.local_display_name.clone(),
-            });
-        }
+    let out = parse_pending(resp.chats.iter().map(|c| c.chat_info.clone()));
+    if out.is_empty() && !resp.chats.is_empty() {
+        // 静默为空很难排查：协议形态变化（如 contactRequest 变体改名/换成 direct）
+        // 会让 CLI 旁路失效却不像错。此处把实际看到的类型记下来。
+        let kinds: Vec<&str> = resp
+            .chats
+            .iter()
+            .map(|c| chat_info_kind(&c.chat_info))
+            .collect();
+        log::warn!(
+            "SimpleX 待批准请求列表为空，但返回了 {} 个会话（类型: {:?}）——可能协议形态变化",
+            resp.chats.len(),
+            kinds
+        );
     }
     Ok(out)
 }
 
 fn contact_request_id(raw: i64) -> Result<ContactRequestId> {
-    ContactRequestId::try_from(raw)
-        .map_err(|_| anyhow::anyhow!("contactRequestId 必须为正整数: {raw}"))
+    // `ContactRequestId::try_from` 只拒 0（NonZeroI64），**负数会被放行**；
+    // 这里显式要求正整数，错误文案才不会与实际行为不符。
+    if raw <= 0 {
+        anyhow::bail!("contactRequestId 必须为正整数: {raw}");
+    }
+    ContactRequestId::try_from(raw).map_err(|_| anyhow::anyhow!("非法 contactRequestId: {raw}"))
 }
 
 pub(crate) async fn approve_contact_request(id: i64) -> Result<()> {
@@ -406,6 +444,46 @@ mod tests {
     fn disabled_auto_accept_settings_serialize_explicit_null() {
         let json = serde_json::to_string(&settings_with_auto_accept_disabled()).unwrap();
         assert_eq!(json, r#"{"businessAddress":false,"autoAccept":null}"#);
+    }
+
+    /// 用 JSON fixture 验证待批准请求的解析（不依赖活的 WS）。
+    /// 若真实 payload 形态不同（设计 E3 记的是 `chatInfo.contact`），
+    /// 这里的解析会失败 —— 这正是要盯住的回归点。
+    #[test]
+    fn parse_pending_extracts_contact_request() {
+        let json = r#"{
+            "type": "contactRequest",
+            "contactRequest": {
+                "contactRequestId": "8",
+                "agentInvitationId": "inv",
+                "cReqChatVRange": {"minVersion": "1", "maxVersion": "2"},
+                "localDisplayName": "stranger",
+                "profileId": "9",
+                "profile": {"profileId": "9", "displayName": "stranger", "fullName": "", "localAlias": ""},
+                "createdAt": "2026-09-18T00:00:00Z",
+                "updatedAt": "2026-09-18T00:00:00Z"
+            }
+        }"#;
+        let info: ChatInfo = serde_json::from_str(json).unwrap();
+        let out = parse_pending([info]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].contact_request_id, 8);
+        assert_eq!(out[0].display_name, "stranger");
+    }
+
+    #[test]
+    fn parse_pending_empty_for_no_chats() {
+        assert!(parse_pending(std::iter::empty()).is_empty());
+    }
+
+    #[test]
+    fn contact_request_id_rejects_non_positive() {
+        assert!(contact_request_id(0).is_err());
+        assert!(
+            contact_request_id(-1).is_err(),
+            "负数必须被拒（NonZeroI64 放行）"
+        );
+        assert!(contact_request_id(7).is_ok());
     }
 
     #[test]

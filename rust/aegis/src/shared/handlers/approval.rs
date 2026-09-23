@@ -6,7 +6,7 @@ use rust_i18n::t;
 ///
 /// 授权由 `check_auth` 提前承担：回调与命令同路，要求 Telegram 管理员已有活跃 TOTP
 /// 会话（见 `shared/dispatch.rs`）。因此「点一下即批准」= 已经需要 TOTP，无需新机制。
-pub async fn handle(event: &CallbackEvent) -> HandlerResult {
+pub(crate) async fn handle(event: &CallbackEvent) -> HandlerResult {
     let (approve, raw_id) = match event.data.split_once(':') {
         Some(("sx_approve", id)) => (true, id),
         Some(("sx_reject", id)) => (false, id),
@@ -52,17 +52,25 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
         .adapter
         .answer_callback(&event.target, &event.callback_id, Some(answer))
         .await?;
-    event
-        .adapter
-        .send_message(&event.target, MessageContent { text, markup: None })
-        .await?;
+    // 用 edit 替换原通知，顺带撤掉 [允许][拒绝] 按钮：第二次点已处理的 id 会报错，
+    // 看起来像故障。编辑失败（消息过旧等）不致命，退回 send_message 保证结果可见。
+    let content = MessageContent { text, markup: None };
+    if event.msg_id.0.is_empty()
+        || event
+            .adapter
+            .edit_message(&event.target, &event.msg_id, content.clone())
+            .await
+            .is_err()
+    {
+        event.adapter.send_message(&event.target, content).await?;
+    }
     Ok(HandlerAction::Done)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{BotAdapter as _, MessageId, MockBotAdapter, Platform, TargetId};
+    use crate::common::{MessageId, MockBotAdapter, TargetId};
     use std::sync::Arc;
 
     fn event_with(data: &str) -> CallbackEvent {
@@ -92,8 +100,9 @@ mod tests {
             .times(1)
             .returning(|_| Ok(()));
         mock.expect_answer_callback().returning(|_, _, _| Ok(()));
-        mock.expect_send_message()
-            .returning(|_, _| Ok(MessageId("2".into())));
+        mock.expect_edit_message()
+            .times(1)
+            .returning(|_, _, _| Ok(()));
         let event = mock_event(mock, "sx_approve:7");
         assert_eq!(handle(&event).await.unwrap(), HandlerAction::Done);
     }
@@ -106,8 +115,9 @@ mod tests {
             .times(1)
             .returning(|_| Ok(()));
         mock.expect_answer_callback().returning(|_, _, _| Ok(()));
-        mock.expect_send_message()
-            .returning(|_, _| Ok(MessageId("2".into())));
+        mock.expect_edit_message()
+            .times(1)
+            .returning(|_, _, _| Ok(()));
         let event = mock_event(mock, "sx_reject:8");
         assert_eq!(handle(&event).await.unwrap(), HandlerAction::Done);
     }
@@ -122,10 +132,28 @@ mod tests {
         mock.expect_answer_callback()
             .times(1)
             .returning(|_, _, _| Ok(()));
+        mock.expect_edit_message()
+            .times(1)
+            .returning(|_, _, _| Ok(()));
+        let event = mock_event(mock, "sx_approve:9");
+        assert_eq!(handle(&event).await.unwrap(), HandlerAction::Done);
+    }
+
+    /// edit 失败（消息过旧）时退回 send_message，结果仍可见。
+    #[tokio::test]
+    async fn approval_falls_back_to_send_when_edit_fails() {
+        let mut mock = MockBotAdapter::new();
+        mock.expect_accept_contact_request()
+            .times(1)
+            .returning(|_| Ok(()));
+        mock.expect_answer_callback().returning(|_, _, _| Ok(()));
+        mock.expect_edit_message()
+            .times(1)
+            .returning(|_, _, _| anyhow::bail!("message is too old"));
         mock.expect_send_message()
             .times(1)
             .returning(|_, _| Ok(MessageId("2".into())));
-        let event = mock_event(mock, "sx_approve:9");
+        let event = mock_event(mock, "sx_approve:7");
         assert_eq!(handle(&event).await.unwrap(), HandlerAction::Done);
     }
 
@@ -136,6 +164,7 @@ mod tests {
         mock.expect_answer_callback()
             .times(1)
             .returning(|_, _, _| Ok(()));
+        mock.expect_edit_message().times(0);
         mock.expect_send_message().times(0);
         let event = mock_event(mock, "sx_approve:abc");
         assert_eq!(handle(&event).await.unwrap(), HandlerAction::Done);
@@ -146,18 +175,26 @@ mod tests {
         let mut mock = MockBotAdapter::new();
         mock.expect_accept_contact_request().times(0);
         mock.expect_answer_callback().times(0);
+        mock.expect_edit_message().times(0);
         mock.expect_send_message().times(0);
         let event = mock_event(mock, "m_main");
         assert_eq!(handle(&event).await.unwrap(), HandlerAction::Done);
     }
 
-    #[test]
-    fn mock_adapter_implements_platform() {
-        // 编译期断言：MockBotAdapter 仍是 BotAdapter。
-        fn assert_impl<T: crate::common::BotAdapter>() {}
-        assert_impl::<MockBotAdapter>();
+    /// 空 msg_id（无原消息可编辑）时直接 send。
+    #[tokio::test]
+    async fn empty_msg_id_falls_back_to_send() {
         let mut mock = MockBotAdapter::new();
-        mock.expect_platform().returning(|| Platform::Simplex);
-        assert_eq!(mock.platform(), Platform::Simplex);
+        mock.expect_accept_contact_request()
+            .times(1)
+            .returning(|_| Ok(()));
+        mock.expect_answer_callback().returning(|_, _, _| Ok(()));
+        mock.expect_edit_message().times(0);
+        mock.expect_send_message()
+            .times(1)
+            .returning(|_, _| Ok(MessageId("2".into())));
+        let mut event = mock_event(mock, "sx_approve:7");
+        event.msg_id = MessageId(String::new());
+        assert_eq!(handle(&event).await.unwrap(), HandlerAction::Done);
     }
 }

@@ -150,6 +150,15 @@ impl BotAdapter for RoutingAdapter {
             None => anyhow::bail!("未配置 SimpleX 次级适配器，无法审批联系人"),
         }
     }
+
+    /// 安全通知必须落在 primary（TG），不得因攻击者可控文本被改投 secondary。
+    async fn send_message_primary(
+        &self,
+        target: &TargetId,
+        content: MessageContent,
+    ) -> Result<MessageId> {
+        self.primary.send_message(target, content).await
+    }
 }
 
 #[cfg(test)]

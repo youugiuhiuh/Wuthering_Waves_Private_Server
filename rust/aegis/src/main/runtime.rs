@@ -234,6 +234,8 @@ pub async fn run(
     if let Some(handle) = simplex_handle {
         // SimpleX 是独立平台：调度器与启动通知必须发往 SimpleX 管理员联系人，
         // 而非 Telegram 的 admin_id（后者在纯 SimpleX 部署下为 None）。
+        // 此快照**仅用于调度器/启动通知目标**；事件循环里每条入站消息必须实时读
+        // `state.simplex_admin_id()`，否则 TOTP 重钉后本进程会把新管理员的命令丢掉。
         let simplex_admin = state.simplex_admin_id();
         // TG + SimpleX 组合下 Telegram 分支已启动唯一一个 scheduler，此处必须跳过，
         // 否则定时通知与启动通知会各发两遍。事件循环不受影响，仍照常接收命令。
@@ -314,9 +316,12 @@ pub async fn run(
                                 &req.local_display_name,
                             );
                             let target = TargetId(tg_admin.to_string());
+                            // 安全通知强制走 primary（TG）：文本含攻击者可控的显示名，
+                            // 若走 send_message 会被 RoutingAdapter 的敏感内容匹配改投
+                            // 到 SimpleX，使 TG 端收不到提示、按钮失效。
                             if let Err(e) = state_for_events
                                 .adapter
-                                .send_message(
+                                .send_message_primary(
                                     &target,
                                     MessageContent {
                                         text,
@@ -346,7 +351,9 @@ pub async fn run(
                 }
 
                 for msg in mapped {
-                    let is_admin = simplex_admin == Some(msg.contact_id);
+                    // 实时读：TOTP 重钉后（自愈）本进程必须立即把新身份当管理员，
+                    // 否则新管理员的 `/menu` 等命令会被下面的门禁① 静默丢弃。
+                    let is_admin = state_for_events.simplex_admin_id() == Some(msg.contact_id);
                     if !should_forward_simplex_msg(is_admin, msg.text.as_deref()) {
                         log::warn!(
                             "SimpleX 未授权联系人 contactId={} 尝试发消息，已忽略",
@@ -581,12 +588,12 @@ fn contact_connected_log_line(contact_id: i64, display_name: &str) -> String {
 /// 组装「有人敲门」的 TG 通知。回调 data 携带的是 `contactRequestId`
 /// （`_accept` / `_reject` 需要的 ID），不是 contactId。
 ///
-/// 显示名由陌生人自设，用 `{:?}` 加引号 —— 嵌入的换行会以字面 `\n` 出现，
-/// 无法伪造出可信的多行文案。
+/// 显示名由陌生人自设，且会经 Telegram `ParseMode::Html` 渲染。`{:?}` 只转义
+/// 引号/反斜杠/控制字符（堵换行注入），**不转义 `<>&`**；因此再叠一层 HTML 转义。
 fn contact_request_notification(contact_request_id: i64, display_name: &str) -> (String, Markup) {
     let text = rust_i18n::t!(
         "simplex.contact_request",
-        "0" => format!("{display_name:?}"),
+        "0" => escape_display_name(display_name),
         "1" => contact_request_id.to_string()
     )
     .into_owned();
@@ -603,6 +610,12 @@ fn contact_request_notification(contact_request_id: i64, display_name: &str) -> 
         ]],
     };
     (text, markup)
+}
+
+/// 显示名是攻击者可控字符串，且会经 Telegram HTML parse_mode 渲染。
+/// 先 Debug 转义（引号/反斜杠/控制字符/换行），再 HTML 转义（`<>&`），两处都堵住。
+fn escape_display_name(name: &str) -> String {
+    crate::utils::escape_html(&format!("{name:?}"))
 }
 
 /// 是否把这条 SimpleX 入站消息交给 dispatch。
@@ -658,7 +671,8 @@ mod tests {
         assert_eq!(datas, vec!["sx_approve:5", "sx_reject:5"]);
     }
 
-    /// 显示名由陌生人自设：其中的换行必须以字面 `\n` 出现，不得注入真实换行。
+    /// 显示名由陌生人自设：换行必须以字面 `\n` 出现，且 `<`/`>`/`&` 必须被
+    /// HTML 转义（通知经 Telegram HTML parse_mode 渲染，否则可注入链接/标签）。
     #[test]
     fn contact_request_notification_escapes_display_name() {
         let (text, _) = contact_request_notification(7, "evil\nINJECTED");
@@ -670,6 +684,10 @@ mod tests {
             !text.contains("evil\nINJECTED"),
             "显示名不得注入真实换行: {text}"
         );
+
+        let (html, _) = contact_request_notification(7, "<a href='x'>pwn</a>");
+        assert!(!html.contains('<'), "不得残留未转义的 '<': {html}");
+        assert!(html.contains("&lt;a"), "'<' 应被 HTML 转义: {html}");
     }
 
     #[test]

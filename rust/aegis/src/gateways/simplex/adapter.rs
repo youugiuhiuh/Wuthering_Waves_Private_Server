@@ -125,6 +125,15 @@ fn parse_message_id(msg_id: &MessageId) -> Result<SxMessageId> {
     SxMessageId::try_from(raw).with_context(|| format!("SimpleX msg_id 非法(0): {}", msg_id.0))
 }
 
+/// 解析 contactRequestId。`ContactRequestId::try_from` 只拒 0（NonZeroI64），
+/// 负数会被放行；审批接口需要正整数，故显式拒绝非正值。
+fn parse_contact_request_id(raw: i64) -> Result<ContactRequestId> {
+    if raw <= 0 {
+        anyhow::bail!("contactRequestId 必须为正整数: {raw}");
+    }
+    ContactRequestId::try_from(raw).map_err(|_| anyhow::anyhow!("非法 contactRequestId: {raw}"))
+}
+
 /// 清理调用方提供的临时文件名：只保留最后一个路径分量，拒绝 `.`、`..` 与空名。
 ///
 /// 返回值可直接拼接到临时目录下，不含路径分隔符，防止 `../` 或 `/` 逃逸目录。
@@ -239,8 +248,7 @@ impl BotAdapter for SimplexAdapter {
     }
 
     async fn accept_contact_request(&self, contact_request_id: i64) -> Result<()> {
-        let crid = ContactRequestId::try_from(contact_request_id)
-            .map_err(|_| anyhow::anyhow!("contactRequestId 必须为正整数: {contact_request_id}"))?;
+        let crid = parse_contact_request_id(contact_request_id)?;
         self.bot
             .accept_contact(crid)
             .await
@@ -249,8 +257,7 @@ impl BotAdapter for SimplexAdapter {
     }
 
     async fn reject_contact_request(&self, contact_request_id: i64) -> Result<()> {
-        let crid = ContactRequestId::try_from(contact_request_id)
-            .map_err(|_| anyhow::anyhow!("contactRequestId 必须为正整数: {contact_request_id}"))?;
+        let crid = parse_contact_request_id(contact_request_id)?;
         self.bot
             .reject_contact(crid)
             .await

@@ -126,7 +126,7 @@ pub(crate) fn route_callback(data: &str) -> Option<CallbackRoute> {
     None
 }
 
-pub async fn dispatch(event: &CallbackEvent, state: &AppState) -> DispatchResult {
+pub(crate) async fn dispatch(event: &CallbackEvent, state: &AppState) -> DispatchResult {
     let data = event.data.as_str();
 
     match route_callback(data) {
