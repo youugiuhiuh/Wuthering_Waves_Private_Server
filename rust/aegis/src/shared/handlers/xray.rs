@@ -79,8 +79,8 @@ pub async fn run_standalone_xhttp_tls(
                 combined_links.push_str(link);
                 combined_links.push_str("\n\n");
             }
-            if !combined_links.is_empty()
-                && let Ok(msg) = adapter
+            if !combined_links.is_empty() {
+                match adapter
                     .send_message(
                         &target,
                         MessageContent {
@@ -89,8 +89,10 @@ pub async fn run_standalone_xhttp_tls(
                         },
                     )
                     .await
-            {
-                message_ids.push(msg.0);
+                {
+                    Ok(msg) => message_ids.push(msg.0),
+                    Err(e) => log::warn!("批量配置链接发送失败（敏感内容改投落点可能失效）: {e}"),
+                }
             }
 
             let mut result_msg =
@@ -111,7 +113,7 @@ pub async fn run_standalone_xhttp_tls(
                 ));
             }
 
-            if let Ok(msg) = adapter
+            match adapter
                 .send_message(
                     &target,
                     MessageContent {
@@ -121,7 +123,8 @@ pub async fn run_standalone_xhttp_tls(
                 )
                 .await
             {
-                message_ids.push(msg.0);
+                Ok(msg) => message_ids.push(msg.0),
+                Err(e) => log::warn!("批量结果消息发送失败: {e}"),
             }
 
             let adapter_clone = adapter.clone();
@@ -1323,8 +1326,8 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
                 combined_links.push_str(link);
                 combined_links.push_str("\n\n");
             }
-            if !combined_links.is_empty()
-                && let Ok(msg) = adapter
+            if !combined_links.is_empty() {
+                match adapter
                     .send_message(
                         &target,
                         MessageContent {
@@ -1333,8 +1336,10 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
                         },
                     )
                     .await
-            {
-                message_ids.push(msg.0);
+                {
+                    Ok(msg) => message_ids.push(msg.0),
+                    Err(e) => log::warn!("批量配置链接发送失败（敏感内容改投落点可能失效）: {e}"),
+                }
             }
 
             let mut result_msg = t!(
@@ -1358,7 +1363,7 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
                 ));
             }
 
-            if let Ok(msg) = adapter
+            match adapter
                 .send_message(
                     &target,
                     MessageContent {
@@ -1368,7 +1373,8 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await
             {
-                message_ids.push(msg.0);
+                Ok(msg) => message_ids.push(msg.0),
+                Err(e) => log::warn!("批量结果消息发送失败: {e}"),
             }
 
             let adapter_clone = adapter.clone();
@@ -1503,8 +1509,8 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
                 combined_links.push_str(link);
                 combined_links.push_str("\n\n");
             }
-            if !combined_links.is_empty()
-                && let Ok(msg) = adapter
+            if !combined_links.is_empty() {
+                match adapter
                     .send_message(
                         &target,
                         MessageContent {
@@ -1513,8 +1519,10 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
                         },
                     )
                     .await
-            {
-                message_ids.push(msg.0);
+                {
+                    Ok(msg) => message_ids.push(msg.0),
+                    Err(e) => log::warn!("批量配置链接发送失败（敏感内容改投落点可能失效）: {e}"),
+                }
             }
 
             let mut result_msg = t!(
@@ -1538,7 +1546,7 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
                 ));
             }
 
-            if let Ok(msg) = adapter
+            match adapter
                 .send_message(
                     &target,
                     MessageContent {
@@ -1548,7 +1556,8 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await
             {
-                message_ids.push(msg.0);
+                Ok(msg) => message_ids.push(msg.0),
+                Err(e) => log::warn!("批量结果消息发送失败: {e}"),
             }
 
             let adapter_clone = adapter.clone();
@@ -1949,8 +1958,8 @@ async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
                 combined_links.push_str(link);
                 combined_links.push_str("\n\n");
             }
-            if !combined_links.is_empty()
-                && let Ok(msg) = adapter
+            if !combined_links.is_empty() {
+                match adapter
                     .send_message(
                         &target,
                         MessageContent {
@@ -1959,8 +1968,10 @@ async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
                         },
                     )
                     .await
-            {
-                message_ids.push(msg.0);
+                {
+                    Ok(msg) => message_ids.push(msg.0),
+                    Err(e) => log::warn!("批量配置链接发送失败（敏感内容改投落点可能失效）: {e}"),
+                }
             }
 
             let mut result_msg = t!(
@@ -1984,7 +1995,7 @@ async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
                 ));
             }
 
-            if let Ok(msg) = adapter
+            match adapter
                 .send_message(
                     &target,
                     MessageContent {
@@ -1994,7 +2005,8 @@ async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await
             {
-                message_ids.push(msg.0);
+                Ok(msg) => message_ids.push(msg.0),
+                Err(e) => log::warn!("批量结果消息发送失败: {e}"),
             }
 
             let adapter_clone = adapter.clone();
@@ -2746,8 +2758,8 @@ async fn handle_kcp_ok(event: &CallbackEvent) -> HandlerResult {
                 combined_links.push_str(link);
                 combined_links.push_str("\n\n");
             }
-            if !combined_links.is_empty()
-                && let Ok(msg) = adapter
+            if !combined_links.is_empty() {
+                match adapter
                     .send_message(
                         &target,
                         MessageContent {
@@ -2756,8 +2768,10 @@ async fn handle_kcp_ok(event: &CallbackEvent) -> HandlerResult {
                         },
                     )
                     .await
-            {
-                message_ids.push(msg.0);
+                {
+                    Ok(msg) => message_ids.push(msg.0),
+                    Err(e) => log::warn!("批量配置链接发送失败（敏感内容改投落点可能失效）: {e}"),
+                }
             }
 
             let mut result_msg = t!(
@@ -2775,7 +2789,7 @@ async fn handle_kcp_ok(event: &CallbackEvent) -> HandlerResult {
                 ));
             }
 
-            if let Ok(msg) = adapter
+            match adapter
                 .send_message(
                     &target,
                     MessageContent {
@@ -2785,7 +2799,8 @@ async fn handle_kcp_ok(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await
             {
-                message_ids.push(msg.0);
+                Ok(msg) => message_ids.push(msg.0),
+                Err(e) => log::warn!("批量结果消息发送失败: {e}"),
             }
 
             let adapter_clone = adapter.clone();
