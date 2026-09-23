@@ -5,7 +5,8 @@ use crate::common::{
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use simploxide_client::prelude::{
-    CIDeleteMode, ChatId, ContactId, MessageId as SxMessageId, NewChatItemsResponse, Reaction,
+    CIDeleteMode, ChatId, ContactId, ContactRequestId, MessageId as SxMessageId,
+    NewChatItemsResponse, Reaction,
 };
 use simploxide_client::types::{AChatItem, CIContent, CIFile, ChatInfo, MsgContent};
 use std::io::Write;
@@ -234,6 +235,26 @@ impl BotAdapter for SimplexAdapter {
         if let Some(Err(e)) = results.into_iter().next() {
             anyhow::bail!("SimpleX reaction 失败: {e}");
         }
+        Ok(())
+    }
+
+    async fn accept_contact_request(&self, contact_request_id: i64) -> Result<()> {
+        let crid = ContactRequestId::try_from(contact_request_id)
+            .map_err(|_| anyhow::anyhow!("contactRequestId 必须为正整数: {contact_request_id}"))?;
+        self.bot
+            .accept_contact(crid)
+            .await
+            .context("接受 SimpleX 联系人请求失败")?;
+        Ok(())
+    }
+
+    async fn reject_contact_request(&self, contact_request_id: i64) -> Result<()> {
+        let crid = ContactRequestId::try_from(contact_request_id)
+            .map_err(|_| anyhow::anyhow!("contactRequestId 必须为正整数: {contact_request_id}"))?;
+        self.bot
+            .reject_contact(crid)
+            .await
+            .context("拒绝 SimpleX 联系人请求失败")?;
         Ok(())
     }
 
