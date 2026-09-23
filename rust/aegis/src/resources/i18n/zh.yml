@@ -703,3 +703,6 @@ matrix:
 
 simplex:
   welcome: "Aegis bot 已就绪。发送 /menu 查看操作。"
+  contact_request: "🔔 SimpleX 有人请求连接\n显示名: %{0}\n请求 ID: %{1}"
+  approve: "✅ 允许"
+  reject: "🚫 拒绝"

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use aegis::common::{MessageId, TargetId};
+use aegis::common::{InlineButton, Markup, MessageContent, MessageId, TargetId};
 use aegis::core::i18n;
 use aegis::shared::dispatch_event;
 use aegis::shared::types::*;
@@ -297,7 +297,39 @@ pub async fn run(
                         continue;
                     }
                     // `Event` 是 `#[non_exhaustive]`：其余事件（ChatItemReaction、
-                    // ReceivedContactRequest、各类群事件…）仍然不处理。
+                    // 各类群事件…）仍然不处理。
+                    // P2：autoAccept 已关闭，敲门变成 ReceivedContactRequest（不再是
+                    // ContactConnected）。此事件**必须在此刻捕获** —— 它携带的
+                    // contactRequestId 是 _accept/_reject 的唯一凭据，接受后无法回溯。
+                    simploxide_client::events::Event::ReceivedContactRequest(ev) => {
+                        let req = &ev.contact_request;
+                        log::info!(
+                            "SimpleX 待批准联系人请求: contactRequestId={} display_name={:?}",
+                            req.contact_request_id,
+                            req.local_display_name
+                        );
+                        if enable_telegram && let Some(tg_admin) = admin_id {
+                            let (text, markup) = contact_request_notification(
+                                req.contact_request_id,
+                                &req.local_display_name,
+                            );
+                            let target = TargetId(tg_admin.to_string());
+                            if let Err(e) = state_for_events
+                                .adapter
+                                .send_message(
+                                    &target,
+                                    MessageContent {
+                                        text,
+                                        markup: Some(markup),
+                                    },
+                                )
+                                .await
+                            {
+                                log::error!("向 Telegram 推送待批准联系人请求失败: {e}");
+                            }
+                        }
+                        continue;
+                    }
                     _ => continue,
                 };
 
@@ -546,6 +578,33 @@ fn contact_connected_log_line(contact_id: i64, display_name: &str) -> String {
     format!("SimpleX 新联系人连接: contactId={contact_id} display_name={display_name:?}")
 }
 
+/// 组装「有人敲门」的 TG 通知。回调 data 携带的是 `contactRequestId`
+/// （`_accept` / `_reject` 需要的 ID），不是 contactId。
+///
+/// 显示名由陌生人自设，用 `{:?}` 加引号 —— 嵌入的换行会以字面 `\n` 出现，
+/// 无法伪造出可信的多行文案。
+fn contact_request_notification(contact_request_id: i64, display_name: &str) -> (String, Markup) {
+    let text = rust_i18n::t!(
+        "simplex.contact_request",
+        "0" => format!("{display_name:?}"),
+        "1" => contact_request_id.to_string()
+    )
+    .into_owned();
+    let markup = Markup {
+        buttons: vec![vec![
+            InlineButton {
+                text: rust_i18n::t!("simplex.approve").into_owned(),
+                data: format!("sx_approve:{contact_request_id}"),
+            },
+            InlineButton {
+                text: rust_i18n::t!("simplex.reject").into_owned(),
+                data: format!("sx_reject:{contact_request_id}"),
+            },
+        ]],
+    };
+    (text, markup)
+}
+
 /// 是否把这条 SimpleX 入站消息交给 dispatch。
 ///
 /// 管理员的消息全放行；非管理员**只有 6 位纯数字码**放行 —— 那是登录尝试，
@@ -583,6 +642,34 @@ mod tests {
             "显示名里的换行必须被转义，实际: {line}"
         );
         assert!(line.contains("\\n"), "换行应以转义形式出现，实际: {line}");
+    }
+
+    #[test]
+    fn contact_request_notification_has_approve_and_reject_buttons() {
+        let (text, markup) = contact_request_notification(5, "alice");
+        assert!(text.contains('5'), "{text}");
+        assert!(text.contains("alice"), "{text}");
+        let datas: Vec<&str> = markup
+            .buttons
+            .iter()
+            .flatten()
+            .map(|b| b.data.as_str())
+            .collect();
+        assert_eq!(datas, vec!["sx_approve:5", "sx_reject:5"]);
+    }
+
+    /// 显示名由陌生人自设：其中的换行必须以字面 `\n` 出现，不得注入真实换行。
+    #[test]
+    fn contact_request_notification_escapes_display_name() {
+        let (text, _) = contact_request_notification(7, "evil\nINJECTED");
+        assert!(
+            text.contains(r#"evil\nINJECTED"#),
+            "显示名的换行应以字面 \\n 出现: {text}"
+        );
+        assert!(
+            !text.contains("evil\nINJECTED"),
+            "显示名不得注入真实换行: {text}"
+        );
     }
 
     #[test]

@@ -683,3 +683,6 @@ matrix:
 
 simplex:
   welcome: "Aegis bot is ready. Send /menu to see available operations."
+  contact_request: "🔔 Someone requested to connect on SimpleX\nDisplay name: %{0}\nRequest ID: %{1}"
+  approve: "✅ Allow"
+  reject: "🚫 Reject"
