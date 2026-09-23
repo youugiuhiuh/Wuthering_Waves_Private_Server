@@ -135,11 +135,73 @@ impl BotAdapter for RoutingAdapter {
             .send_message_threaded(target, content, thread_root)
             .await
     }
+
+    /// TG + SimpleX 形态下，审批动作落在 **secondary**（SimpleX）上，不是 primary（TG）。
+    async fn accept_contact_request(&self, contact_request_id: i64) -> Result<()> {
+        match &self.secondary {
+            Some(secondary) => secondary.accept_contact_request(contact_request_id).await,
+            None => anyhow::bail!("未配置 SimpleX 次级适配器，无法审批联系人"),
+        }
+    }
+
+    async fn reject_contact_request(&self, contact_request_id: i64) -> Result<()> {
+        match &self.secondary {
+            Some(secondary) => secondary.reject_contact_request(contact_request_id).await,
+            None => anyhow::bail!("未配置 SimpleX 次级适配器，无法审批联系人"),
+        }
+    }
+
+    /// 安全通知必须落在 primary（TG），不得因攻击者可控文本被改投 secondary。
+    async fn send_message_primary(
+        &self,
+        target: &TargetId,
+        content: MessageContent,
+    ) -> Result<MessageId> {
+        self.primary.send_message(target, content).await
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::MockBotAdapter;
+
+    #[tokio::test]
+    async fn routing_forwards_contact_approval_to_secondary() {
+        let mut primary = MockBotAdapter::new();
+        primary.expect_platform().returning(|| Platform::Telegram);
+        let mut secondary = MockBotAdapter::new();
+        secondary
+            .expect_accept_contact_request()
+            .with(mockall::predicate::eq(5))
+            .times(1)
+            .returning(|_| Ok(()));
+        let adapter = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)));
+        adapter.accept_contact_request(5).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn routing_forwards_contact_rejection_to_secondary() {
+        let mut primary = MockBotAdapter::new();
+        primary.expect_platform().returning(|| Platform::Telegram);
+        let mut secondary = MockBotAdapter::new();
+        secondary
+            .expect_reject_contact_request()
+            .with(mockall::predicate::eq(6))
+            .times(1)
+            .returning(|_| Ok(()));
+        let adapter = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)));
+        adapter.reject_contact_request(6).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn routing_contact_approval_without_secondary_errors() {
+        let mut primary = MockBotAdapter::new();
+        primary.expect_platform().returning(|| Platform::Telegram);
+        let adapter = RoutingAdapter::new(Arc::new(primary), None);
+        assert!(adapter.accept_contact_request(5).await.is_err());
+        assert!(adapter.reject_contact_request(5).await.is_err());
+    }
 
     #[test]
     fn is_sensitive_detects_vmess() {

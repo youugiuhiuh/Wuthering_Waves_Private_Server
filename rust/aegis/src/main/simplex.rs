@@ -6,6 +6,11 @@ use aegis::core::security::SecurityManager;
 use aegis::gateways::simplex::SimplexAdapter;
 use anyhow::{Context, Result};
 use secrecy::ExposeSecret;
+use simploxide_client::ext::ClientApiExt as _;
+use simploxide_client::prelude::{
+    AddressSettings, ApiGetChats, ChatInfo, ClientApi as _, ContactRequestId,
+};
+use simploxide_client::types::{ChatListQuery, PaginationByTime};
 
 use crate::bootstrap::EncryptedConfig;
 
@@ -68,7 +73,7 @@ pub fn has_simplex_config(encrypted_config: &EncryptedConfig, args: &[String]) -
 /// simplex_admin_id 允许缺失：首次安装时管理员尚未连接，无从得知自己的 contactId；
 /// 缺省时 bot 照常启动，事件循环会把非管理员消息记日志并忽略（见 runtime.rs 的无管理员分支）。
 /// 字段存在时仍严格校验 —— 畸形值（非整数或 <= 0）必须启动即失败。
-fn decode_port_and_admin(
+pub(crate) fn decode_port_and_admin(
     security: &SecurityManager,
     encrypted_config: &EncryptedConfig,
 ) -> Result<(u16, Option<i64>)> {
@@ -99,6 +104,23 @@ fn decode_port_and_admin(
     Ok((port, admin_id))
 }
 
+/// 关闭 bot 地址的自动接受。
+///
+/// `auto_accept_with()` 的目的是「保留/创建地址」，副作用是每次启动都把 autoAccept
+/// 重新打开。故必须在 connect 之后显式关闭，否则「永久关闭」只成立于首次安装。
+///
+/// 用 `undocumented`（flatten 的 `serde_json::Value`）注入**显式** `null`：
+/// `AddressSettings.auto_accept = None` 会被 serde 省略该键（= 不修改），而设计 E2
+/// 已实证必须 `autoAccept: null` 才真正关闭。
+pub(crate) fn settings_with_auto_accept_disabled() -> AddressSettings {
+    AddressSettings {
+        business_address: false,
+        auto_accept: None,
+        auto_reply: None,
+        undocumented: serde_json::json!({ "autoAccept": null }),
+    }
+}
+
 pub async fn connect_simplex(
     security: &SecurityManager,
     encrypted_config: &EncryptedConfig,
@@ -111,6 +133,12 @@ pub async fn connect_simplex(
         .connect()
         .await
         .map_err(|e| anyhow::anyhow!("连接 SimpleX WebSocket 失败: {e}"))?;
+
+    // P2：autoAccept 永久关闭。失败即启动失败（fail closed）—— 这个控制是
+    // 「地址泄露近乎无用」的全部依据，静默继续等于把公开地址留在自动接受状态。
+    bot.configure_address(settings_with_auto_accept_disabled())
+        .await
+        .map_err(|e| anyhow::anyhow!("关闭 SimpleX autoAccept 失败，拒绝以不安全状态启动: {e}"))?;
 
     // connect() 内部已走完 setup_auto_accept，因此此刻地址必然已存在。
     // 读不到只 warn：地址缺失不应阻止 bot 启动（管理员仍可从日志排查）。
@@ -132,6 +160,123 @@ pub async fn connect_simplex(
         events,
         adapter,
     })
+}
+
+// ── 本地 CLI 审批旁路（防 Telegram 成为单点）───────────────────────────────
+// 独立进程连接正在运行的 simplex-chat WebSocket（第二个客户端，E4 实证无影响）。
+// **不能**构造 `Bot`：`Bot::init` 在 auto_accept=None 时会删除地址。
+
+pub(crate) struct PendingContactRequest {
+    pub contact_request_id: i64,
+    pub display_name: String,
+}
+
+async fn cli_client() -> Result<simploxide_client::ws::Client> {
+    let (app_config, security) = crate::main::config::load_and_validate()?;
+    let (port, _) = decode_port_and_admin(&security, &app_config.decrypted.encrypted_config)?;
+    let (client, _events) = simploxide_client::ws::connect(format!("ws://127.0.0.1:{port}"))
+        .await
+        .map_err(|e| anyhow::anyhow!("连接 simplex-chat (127.0.0.1:{port}) 失败: {e}"))?;
+    Ok(client)
+}
+
+async fn active_user_id(client: &simploxide_client::ws::Client) -> Result<i64> {
+    client
+        .users()
+        .await?
+        .into_iter()
+        .find(|u| u.user.active_user)
+        .map(|u| u.user.user_id)
+        .context("找不到活跃的 SimpleX 用户")
+}
+
+/// 从 `_get chats pcc=on` 返回的会话里筛出待批准请求。
+///
+/// 只认 `ChatInfo::ContactRequest`（typed API 变体）；其余变体一律忽略。
+/// 拆成纯函数以便用 JSON fixture 单测（避免依赖活的 WS）。
+fn parse_pending(chats: impl IntoIterator<Item = ChatInfo>) -> Vec<PendingContactRequest> {
+    chats
+        .into_iter()
+        .filter_map(|info| match info {
+            ChatInfo::ContactRequest {
+                contact_request, ..
+            } => Some(PendingContactRequest {
+                contact_request_id: contact_request.contact_request_id,
+                display_name: contact_request.local_display_name,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+/// 会话类型标签：仅用于「列表为空但确实有会话」时的可诊断告警。
+fn chat_info_kind(info: &ChatInfo) -> &'static str {
+    match info {
+        ChatInfo::Direct { .. } => "direct",
+        ChatInfo::Group { .. } => "group",
+        ChatInfo::Local { .. } => "local",
+        ChatInfo::ContactRequest { .. } => "contactRequest",
+        ChatInfo::ContactConnection { .. } => "contactConnection",
+        _ => "unknown",
+    }
+}
+
+/// 列出在敲门的待批准请求（`_get chats <uid> pcc=on`）。
+pub(crate) async fn list_pending_contact_requests() -> Result<Vec<PendingContactRequest>> {
+    let client = cli_client().await?;
+    let user_id = active_user_id(&client).await?;
+    let resp = client
+        .api_get_chats(ApiGetChats {
+            user_id,
+            pending_connections: true,
+            pagination: PaginationByTime::make_last(100),
+            query: ChatListQuery::make_filters(false, false),
+        })
+        .await
+        .context("读取待批准联系人请求失败")?;
+    let out = parse_pending(resp.chats.iter().map(|c| c.chat_info.clone()));
+    if out.is_empty() && !resp.chats.is_empty() {
+        // 静默为空很难排查：协议形态变化（如 contactRequest 变体改名/换成 direct）
+        // 会让 CLI 旁路失效却不像错。此处把实际看到的类型记下来。
+        let kinds: Vec<&str> = resp
+            .chats
+            .iter()
+            .map(|c| chat_info_kind(&c.chat_info))
+            .collect();
+        log::warn!(
+            "SimpleX 待批准请求列表为空，但返回了 {} 个会话（类型: {:?}）——可能协议形态变化",
+            resp.chats.len(),
+            kinds
+        );
+    }
+    Ok(out)
+}
+
+fn contact_request_id(raw: i64) -> Result<ContactRequestId> {
+    // `ContactRequestId::try_from` 只拒 0（NonZeroI64），**负数会被放行**；
+    // 这里显式要求正整数，错误文案才不会与实际行为不符。
+    if raw <= 0 {
+        anyhow::bail!("contactRequestId 必须为正整数: {raw}");
+    }
+    ContactRequestId::try_from(raw).map_err(|_| anyhow::anyhow!("非法 contactRequestId: {raw}"))
+}
+
+pub(crate) async fn approve_contact_request(id: i64) -> Result<()> {
+    let client = cli_client().await?;
+    client
+        .accept_contact(contact_request_id(id)?)
+        .await
+        .context("接受联系人请求失败")?;
+    Ok(())
+}
+
+pub(crate) async fn reject_contact_request(id: i64) -> Result<()> {
+    let client = cli_client().await?;
+    client
+        .reject_contact(contact_request_id(id)?)
+        .await
+        .context("拒绝联系人请求失败")?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -290,6 +435,55 @@ mod tests {
     fn decode_port_and_admin_rejects_zero_admin() {
         let (security, cfg) = config_with(Some("5225"), Some("0"));
         assert!(decode_port_and_admin(&security, &cfg).is_err());
+    }
+
+    /// E2 实证：关闭 autoAccept 必须发**显式** `null`。
+    /// `AddressSettings.auto_accept` 是 `Option` 且 `skip_serializing_if = is_none`，
+    /// 传 `None` 只会省略该键（不修改），因此靠 flatten 的 `undocumented` 注入 null。
+    #[test]
+    fn disabled_auto_accept_settings_serialize_explicit_null() {
+        let json = serde_json::to_string(&settings_with_auto_accept_disabled()).unwrap();
+        assert_eq!(json, r#"{"businessAddress":false,"autoAccept":null}"#);
+    }
+
+    /// 用 JSON fixture 验证待批准请求的解析（不依赖活的 WS）。
+    /// 若真实 payload 形态不同（设计 E3 记的是 `chatInfo.contact`），
+    /// 这里的解析会失败 —— 这正是要盯住的回归点。
+    #[test]
+    fn parse_pending_extracts_contact_request() {
+        let json = r#"{
+            "type": "contactRequest",
+            "contactRequest": {
+                "contactRequestId": "8",
+                "agentInvitationId": "inv",
+                "cReqChatVRange": {"minVersion": "1", "maxVersion": "2"},
+                "localDisplayName": "stranger",
+                "profileId": "9",
+                "profile": {"profileId": "9", "displayName": "stranger", "fullName": "", "localAlias": ""},
+                "createdAt": "2026-09-18T00:00:00Z",
+                "updatedAt": "2026-09-18T00:00:00Z"
+            }
+        }"#;
+        let info: ChatInfo = serde_json::from_str(json).unwrap();
+        let out = parse_pending([info]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].contact_request_id, 8);
+        assert_eq!(out[0].display_name, "stranger");
+    }
+
+    #[test]
+    fn parse_pending_empty_for_no_chats() {
+        assert!(parse_pending(std::iter::empty()).is_empty());
+    }
+
+    #[test]
+    fn contact_request_id_rejects_non_positive() {
+        assert!(contact_request_id(0).is_err());
+        assert!(
+            contact_request_id(-1).is_err(),
+            "负数必须被拒（NonZeroI64 放行）"
+        );
+        assert!(contact_request_id(7).is_ok());
     }
 
     #[test]

@@ -156,9 +156,10 @@ impl AppState {
 
     /// 允许 TOTP 验证成功后重钉 `simplex_admin_id`。
     ///
-    /// **只允许在纯 `--simplex` 部署下开启。** `is_admin_user` 的 `user_id` 命名空间是
-    /// Telegram 与 SimpleX **共用**的；`--tg-simplex` 下两个平台同时在线，无差别重钉会把
-    /// `simplex_admin_id` 覆写成 Telegram 的 chat id，从而破坏「敏感内容落点」这个发送目标。
+    /// 两种 SimpleX 形态（`--simplex` / `--tg-simplex`）都可以开启：真正的平台串台风险由
+    /// `app::auth::process_auth_code` 内的 `adapter.platform() == Platform::Simplex` 判据兜住
+    /// ——只有**来自 SimpleX** 的验证成功才会重钉，TG 的码不会把 `simplex_admin_id`
+    /// 覆写成 Telegram 的 chat id。
     #[must_use]
     pub fn with_simplex_repin(mut self) -> Self {
         self.simplex_repin_enabled = true;

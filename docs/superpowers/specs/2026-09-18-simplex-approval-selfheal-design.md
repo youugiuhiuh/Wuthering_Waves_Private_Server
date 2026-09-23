@@ -67,9 +67,10 @@ autoAccept 永久关闭
 你刚经历过一次「配置对不上就完全没权限」，这条不能只有一条路。
 
 ```
-aegis --list-contact-requests        # 列出在敲门的（读 pcc=on）
-aegis --approve-contact <contactId>  # 不依赖 TG
-aegis --reject-contact <contactId>
+aegis --list-contact-requests                # 列出在敲门的（读 pcc=on）
+aegis --approve-contact <contactRequestId>  # 不依赖 TG
+                                                          # 注：_accept 需要 contactRequestId，不是 contactId
+aegis --reject-contact <contactRequestId>
 ```
 
 ### 自愈：TOTP 成为凭据
@@ -146,6 +147,10 @@ aegis --reject-contact <contactId>
 而该状态下 **E1 实测无法传消息** ⇒ 若此时还没有自愈，你重连时既进不来、也无法发码 ⇒ 锁死。
 
 => **P1 完成并验证后直接进入 P2，无需再次征求顺序意见。**
+
+> **实施状态（2026-09-18）**：P2 已实施于分支 `feat/simplex-p2-approval`
+> （计划：`docs/superpowers/plans/2026-09-18-simplex-p2-approval.md`），含 TG 审批、
+> 本地 CLI 旁路、autoAccept 永久关闭、平台来源感知重钉（`--tg-simplex` 自愈）。
 
 ## 7. 待你裁决（仅限设计细节）
 

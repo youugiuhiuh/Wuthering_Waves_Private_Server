@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use aegis::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
+use aegis::common::{BotAdapter, InlineButton, Markup, MessageContent, Platform, TargetId};
 use anyhow::Result;
 use rust_i18n::t;
 
@@ -34,13 +34,11 @@ pub async fn process_auth_code(
     if state.verify_totp(code) {
         let timeout = state.record_auth_success(user_id, now).await;
 
-        // 自愈：TOTP 是稳定凭据，contactId 是易变标识（删联系人重连/换设备即变）。
-        // 验证成功即把管理员重钉到**当前身份**，使重连不再需要读 journal 抄 ID。
-        //
-        // 仅在纯 --simplex 下由 `with_simplex_repin()` 开启；`--tg-simplex` 下
-        // user_id 命名空间与 Telegram 共用，无差别重钉会把 simplex_admin_id
-        // 覆写成 TG chat id（见 AppState::with_simplex_repin 的说明）。
-        if state.simplex_repin_enabled() {
+        // 自愈：只有**来自 SimpleX** 的 TOTP 成功才重钉 simplex_admin_id。
+        // `is_admin_user` 的 user_id 命名空间与 Telegram 共用，若不加平台判据，
+        // `--tg-simplex` 下 TG 管理员的码会把 simplex_admin_id 覆写成 TG chat id，
+        // 破坏「敏感内容落点」。平台判据取自事件自身的 adapter（无需改调用点）。
+        if state.simplex_repin_enabled() && adapter.platform() == Platform::Simplex {
             let previous = state.simplex_admin_id();
             // 先更新内存态：即使落盘失败，本次运行也已可用，避免「验过码却还是没权限」。
             state.set_simplex_admin_id(user_id);
@@ -197,6 +195,40 @@ mod tests {
         }
     }
 
+    struct TelegramRecordingAdapter;
+
+    #[async_trait::async_trait]
+    impl BotAdapter for TelegramRecordingAdapter {
+        fn platform(&self) -> Platform {
+            Platform::Telegram
+        }
+        async fn send_message(
+            &self,
+            _target: &TargetId,
+            _content: MessageContent,
+        ) -> anyhow::Result<MessageId> {
+            Ok(MessageId("0".to_string()))
+        }
+        async fn edit_message(
+            &self,
+            _target: &TargetId,
+            _msg_id: &MessageId,
+            _content: MessageContent,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn delete_message(
+            &self,
+            _target: &TargetId,
+            _msg_id: &MessageId,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn capabilities(&self) -> PlatformCapabilities {
+            PlatformCapabilities::TELEGRAM
+        }
+    }
+
     /// 空 config 目录：让 `set_simplex_admin_id` 读不到 config.enc 而失败，
     /// 从而验证「落盘失败不丢内存态」。
     fn state_with_repin(repin: bool) -> (AppState, tempfile::TempDir) {
@@ -268,5 +300,30 @@ mod tests {
         let (state, _dir) = state_with_repin(true);
         assert!(!run_code(&state, 7, "000000").await);
         assert_eq!(state.simplex_admin_id(), Some(3), "错码不得改动管理员");
+    }
+
+    /// TG 发来的码绝不改 simplex_admin_id —— 否则敏感内容落点会被覆写成 TG chat id。
+    #[tokio::test]
+    async fn telegram_code_does_not_repin_simplex_admin() {
+        let (state, _dir) = state_with_repin(true);
+        let code = state.generate_current_totp().expect("有 TOTP 管理器");
+        let ok = process_auth_code(
+            &TelegramRecordingAdapter,
+            &TargetId("42".into()),
+            42,
+            &code,
+            &state,
+            5,
+            Duration::from_secs(600),
+            &[Duration::from_secs(900)],
+        )
+        .await
+        .unwrap();
+        assert!(ok, "TG 验证仍应成功建会话");
+        assert_eq!(
+            state.simplex_admin_id(),
+            Some(3),
+            "TG 不得重钉 SimpleX 管理员"
+        );
     }
 }

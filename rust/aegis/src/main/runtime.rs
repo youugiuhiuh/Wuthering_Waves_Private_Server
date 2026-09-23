@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use aegis::common::{MessageId, TargetId};
+use aegis::common::{InlineButton, Markup, MessageContent, MessageId, TargetId};
 use aegis::core::i18n;
 use aegis::shared::dispatch_event;
 use aegis::shared::types::*;
@@ -234,6 +234,8 @@ pub async fn run(
     if let Some(handle) = simplex_handle {
         // SimpleX 是独立平台：调度器与启动通知必须发往 SimpleX 管理员联系人，
         // 而非 Telegram 的 admin_id（后者在纯 SimpleX 部署下为 None）。
+        // 此快照**仅用于调度器/启动通知目标**；事件循环里每条入站消息必须实时读
+        // `state.simplex_admin_id()`，否则 TOTP 重钉后本进程会把新管理员的命令丢掉。
         let simplex_admin = state.simplex_admin_id();
         // TG + SimpleX 组合下 Telegram 分支已启动唯一一个 scheduler，此处必须跳过，
         // 否则定时通知与启动通知会各发两遍。事件循环不受影响，仍照常接收命令。
@@ -297,7 +299,42 @@ pub async fn run(
                         continue;
                     }
                     // `Event` 是 `#[non_exhaustive]`：其余事件（ChatItemReaction、
-                    // ReceivedContactRequest、各类群事件…）仍然不处理。
+                    // 各类群事件…）仍然不处理。
+                    // P2：autoAccept 已关闭，敲门变成 ReceivedContactRequest（不再是
+                    // ContactConnected）。此事件**必须在此刻捕获** —— 它携带的
+                    // contactRequestId 是 _accept/_reject 的唯一凭据，接受后无法回溯。
+                    simploxide_client::events::Event::ReceivedContactRequest(ev) => {
+                        let req = &ev.contact_request;
+                        log::info!(
+                            "SimpleX 待批准联系人请求: contactRequestId={} display_name={:?}",
+                            req.contact_request_id,
+                            req.local_display_name
+                        );
+                        if enable_telegram && let Some(tg_admin) = admin_id {
+                            let (text, markup) = contact_request_notification(
+                                req.contact_request_id,
+                                &req.local_display_name,
+                            );
+                            let target = TargetId(tg_admin.to_string());
+                            // 安全通知强制走 primary（TG）：文本含攻击者可控的显示名，
+                            // 若走 send_message 会被 RoutingAdapter 的敏感内容匹配改投
+                            // 到 SimpleX，使 TG 端收不到提示、按钮失效。
+                            if let Err(e) = state_for_events
+                                .adapter
+                                .send_message_primary(
+                                    &target,
+                                    MessageContent {
+                                        text,
+                                        markup: Some(markup),
+                                    },
+                                )
+                                .await
+                            {
+                                log::error!("向 Telegram 推送待批准联系人请求失败: {e}");
+                            }
+                        }
+                        continue;
+                    }
                     _ => continue,
                 };
 
@@ -314,7 +351,9 @@ pub async fn run(
                 }
 
                 for msg in mapped {
-                    let is_admin = simplex_admin == Some(msg.contact_id);
+                    // 实时读：TOTP 重钉后（自愈）本进程必须立即把新身份当管理员，
+                    // 否则新管理员的 `/menu` 等命令会被下面的门禁① 静默丢弃。
+                    let is_admin = state_for_events.simplex_admin_id() == Some(msg.contact_id);
                     if !should_forward_simplex_msg(is_admin, msg.text.as_deref()) {
                         log::warn!(
                             "SimpleX 未授权联系人 contactId={} 尝试发消息，已忽略",
@@ -546,6 +585,39 @@ fn contact_connected_log_line(contact_id: i64, display_name: &str) -> String {
     format!("SimpleX 新联系人连接: contactId={contact_id} display_name={display_name:?}")
 }
 
+/// 组装「有人敲门」的 TG 通知。回调 data 携带的是 `contactRequestId`
+/// （`_accept` / `_reject` 需要的 ID），不是 contactId。
+///
+/// 显示名由陌生人自设，且会经 Telegram `ParseMode::Html` 渲染。`{:?}` 只转义
+/// 引号/反斜杠/控制字符（堵换行注入），**不转义 `<>&`**；因此再叠一层 HTML 转义。
+fn contact_request_notification(contact_request_id: i64, display_name: &str) -> (String, Markup) {
+    let text = rust_i18n::t!(
+        "simplex.contact_request",
+        "0" => escape_display_name(display_name),
+        "1" => contact_request_id.to_string()
+    )
+    .into_owned();
+    let markup = Markup {
+        buttons: vec![vec![
+            InlineButton {
+                text: rust_i18n::t!("simplex.approve").into_owned(),
+                data: format!("sx_approve:{contact_request_id}"),
+            },
+            InlineButton {
+                text: rust_i18n::t!("simplex.reject").into_owned(),
+                data: format!("sx_reject:{contact_request_id}"),
+            },
+        ]],
+    };
+    (text, markup)
+}
+
+/// 显示名是攻击者可控字符串，且会经 Telegram HTML parse_mode 渲染。
+/// 先 Debug 转义（引号/反斜杠/控制字符/换行），再 HTML 转义（`<>&`），两处都堵住。
+fn escape_display_name(name: &str) -> String {
+    crate::utils::escape_html(&format!("{name:?}"))
+}
+
 /// 是否把这条 SimpleX 入站消息交给 dispatch。
 ///
 /// 管理员的消息全放行；非管理员**只有 6 位纯数字码**放行 —— 那是登录尝试，
@@ -583,6 +655,39 @@ mod tests {
             "显示名里的换行必须被转义，实际: {line}"
         );
         assert!(line.contains("\\n"), "换行应以转义形式出现，实际: {line}");
+    }
+
+    #[test]
+    fn contact_request_notification_has_approve_and_reject_buttons() {
+        let (text, markup) = contact_request_notification(5, "alice");
+        assert!(text.contains('5'), "{text}");
+        assert!(text.contains("alice"), "{text}");
+        let datas: Vec<&str> = markup
+            .buttons
+            .iter()
+            .flatten()
+            .map(|b| b.data.as_str())
+            .collect();
+        assert_eq!(datas, vec!["sx_approve:5", "sx_reject:5"]);
+    }
+
+    /// 显示名由陌生人自设：换行必须以字面 `\n` 出现，且 `<`/`>`/`&` 必须被
+    /// HTML 转义（通知经 Telegram HTML parse_mode 渲染，否则可注入链接/标签）。
+    #[test]
+    fn contact_request_notification_escapes_display_name() {
+        let (text, _) = contact_request_notification(7, "evil\nINJECTED");
+        assert!(
+            text.contains(r#"evil\nINJECTED"#),
+            "显示名的换行应以字面 \\n 出现: {text}"
+        );
+        assert!(
+            !text.contains("evil\nINJECTED"),
+            "显示名不得注入真实换行: {text}"
+        );
+
+        let (html, _) = contact_request_notification(7, "<a href='x'>pwn</a>");
+        assert!(!html.contains('<'), "不得残留未转义的 '<': {html}");
+        assert!(html.contains("&lt;a"), "'<' 应被 HTML 转义: {html}");
     }
 
     #[test]
