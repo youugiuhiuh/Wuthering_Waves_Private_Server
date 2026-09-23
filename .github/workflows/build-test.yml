@@ -220,7 +220,18 @@ jobs:
               ;;
             rust)
               # 唯一后端：Cranelift。两处都需要显式带上 mold。
-              export RUSTFLAGS="-Zcodegen-backend=cranelift -C link-arg=-fuse-ld=mold"
+              #
+              # `--cfg aes_backend="soft"`（aes crate 官方逃生口，见 aes/lib.rs 文档）：
+              # aes 0.9.3 的 x86_vaes512 后端在 x86_64 上**无条件编译**，运行时按 CPUID
+              # （cpufeatures：avx512f+vaes）选路；而 cranelift 把 `aesenc.512` 编成 trap。
+              # 于是同一 commit 会随机红绿：带 AVX-512 的 runner 跑 SecurityManager
+              # 加解密测试 → SIGABRT；不带 AVX-512 的 runner → 通过（实测 main@bf1a611
+              # push run 红、a249094 push run 绿，两次编译产物甚至打印了完全相同的
+              # `unsupported x86 llvm intrinsic ... aesenc.512; replacing with trap` 警告，
+              # 差别只在运行时 CPU）。强制软件后端后 512 路径**根本不参与编译**，
+              # 与 runner CPU 无关。仅限本 CI；发布构建走 public-release.yml 的
+              # stable/LLVM，硬件 AES 仍然生效。
+              export RUSTFLAGS='-Zcodegen-backend=cranelift -C link-arg=-fuse-ld=mold --cfg aes_backend="soft"'
 
               # 发布 profile 编译门禁。cranelift 不支持 LTO，必须关掉（见上）。
               CARGO_PROFILE_RELEASE_LTO=false cargo +nightly build --release
