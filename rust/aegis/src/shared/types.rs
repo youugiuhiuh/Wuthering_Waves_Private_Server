@@ -21,6 +21,7 @@ pub struct CallbackEvent {
     pub session_timeout_secs: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HandlerAction {
     Done,
     Redirect(String),

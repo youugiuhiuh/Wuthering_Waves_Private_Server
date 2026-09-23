@@ -1,3 +1,4 @@
+pub mod approval;
 pub(crate) mod callback;
 pub mod log;
 pub mod menu;
@@ -14,6 +15,7 @@ use crate::shared::types::{CallbackEvent, DispatchResult};
 /// Handler a callback data string is routed to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CallbackRoute {
+    Approval,
     Log,
     Singbox,
     Warp,
@@ -44,6 +46,9 @@ pub(crate) enum CallbackRoute {
 /// （`xray/installer.rs::install_wwps_core_service`）同时支持 OpenRC，若部署到
 /// OpenRC 主机需同步扩展这两处。
 pub(crate) fn route_callback(data: &str) -> Option<CallbackRoute> {
+    if data.starts_with("sx_approve:") || data.starts_with("sx_reject:") {
+        return Some(CallbackRoute::Approval);
+    }
     if data == "m_log" || data.starts_with("l_") {
         return Some(CallbackRoute::Log);
     }
@@ -125,6 +130,7 @@ pub async fn dispatch(event: &CallbackEvent, state: &AppState) -> DispatchResult
     let data = event.data.as_str();
 
     match route_callback(data) {
+        Some(CallbackRoute::Approval) => Ok(Some(approval::handle(event).await?)),
         Some(CallbackRoute::Log) => Ok(Some(self::log::handle(event).await?)),
         Some(CallbackRoute::Singbox) => Ok(Some(singbox::handle(event).await?)),
         Some(CallbackRoute::Warp) => Ok(Some(warp::handle(event).await?)),
@@ -213,6 +219,17 @@ mod tests {
             "menu.rs 中以下按钮回调 ID 未注册路由（请在 route_callback 或前置拦截层处理）: {:?}",
             unregistered
         );
+    }
+
+    #[test]
+    fn test_contact_approval_callbacks_route() {
+        assert_eq!(
+            route_callback("sx_approve:5"),
+            Some(CallbackRoute::Approval)
+        );
+        assert_eq!(route_callback("sx_reject:5"), Some(CallbackRoute::Approval));
+        // 缺 id 不应被误路由（handler 只认 `:<id>` 形式）。
+        assert_eq!(route_callback("sx_approve"), None);
     }
 
     #[test]
