@@ -42,6 +42,11 @@ pub async fn process_auth_code(
             let previous = state.simplex_admin_id();
             // 先更新内存态：即使落盘失败，本次运行也已可用，避免「验过码却还是没权限」。
             state.set_simplex_admin_id(user_id);
+            // 敏感内容落点也是运行时值，必须同步刷新；否则 tg-simplex 下仍发往
+            // 启动快照里的旧 contactId（要重启才生效）。
+            state
+                .adapter
+                .set_secondary_target(TargetId(user_id.to_string()));
             match crate::bootstrap::set_simplex_admin_id(&crate::bootstrap::config_dir(), user_id) {
                 Ok(()) => log::warn!(
                     "SimpleX 管理员已重钉: contactId={user_id}（原 {previous:?}），已落盘"
@@ -143,7 +148,7 @@ pub async fn process_auth_code(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aegis::common::{MessageId, Platform, PlatformCapabilities};
+    use aegis::common::{MessageId, MockBotAdapter, Platform, PlatformCapabilities};
     use aegis::core::security::self_destruct::SelfDestructExecutor;
     use aegis::core::totp::TotpManager;
     use futures_util::future::BoxFuture;
@@ -231,7 +236,10 @@ mod tests {
 
     /// 空 config 目录：让 `set_simplex_admin_id` 读不到 config.enc 而失败，
     /// 从而验证「落盘失败不丢内存态」。
-    fn state_with_repin(repin: bool) -> (AppState, tempfile::TempDir) {
+    fn state_with_repin_and(
+        repin: bool,
+        adapter: Arc<dyn BotAdapter>,
+    ) -> (AppState, tempfile::TempDir) {
         let dir = tempfile::TempDir::new().unwrap();
         // SAFETY: 测试进程内串行修改环境变量。本模块测试均在同一进程且不并发读写
         // AEGIS_CONFIG_DIR（nextest 默认每个测试独立进程）。
@@ -245,7 +253,7 @@ mod tests {
             Arc::new(NoopExecutor),
             None,
             600,
-            Arc::new(RecordingAdapter),
+            adapter,
         );
         let state = if repin {
             state.with_simplex_repin()
@@ -253,6 +261,10 @@ mod tests {
             state
         };
         (state, dir)
+    }
+
+    fn state_with_repin(repin: bool) -> (AppState, tempfile::TempDir) {
+        state_with_repin_and(repin, Arc::new(RecordingAdapter))
     }
 
     async fn run_code(state: &AppState, user_id: i64, code: &str) -> bool {
@@ -325,5 +337,31 @@ mod tests {
             Some(3),
             "TG 不得重钉 SimpleX 管理员"
         );
+    }
+
+    /// 重钉必须同时刷新 `state.adapter` 的敏感内容落点；否则 tg-simplex 下敏感内容
+    /// 仍发往启动快照里的旧 contactId（真机实测踩到）。
+    #[tokio::test]
+    async fn repin_refreshes_sensitive_secondary_target() {
+        let mut mock = MockBotAdapter::new();
+        mock.expect_set_secondary_target()
+            .withf(|t| t.0 == "7")
+            .times(1)
+            .returning(|_| ());
+        let (state, _dir) = state_with_repin_and(true, Arc::new(mock));
+        let code = state.generate_current_totp().expect("有 TOTP 管理器");
+        let ok = process_auth_code(
+            &RecordingAdapter,
+            &TargetId("7".into()),
+            7,
+            &code,
+            &state,
+            5,
+            Duration::from_secs(600),
+            &[Duration::from_secs(900)],
+        )
+        .await
+        .unwrap();
+        assert!(ok);
     }
 }

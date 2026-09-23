@@ -3,7 +3,7 @@ use crate::common::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub struct RoutingAdapter {
     primary: Arc<dyn BotAdapter>,
@@ -11,7 +11,10 @@ pub struct RoutingAdapter {
     /// secondary 的发送目标覆盖。SimpleX 适配器会用 `parse_chat_id(target)` 解读目标
     /// （`gateways/simplex/adapter.rs`），而 Matrix 适配器忽略目标、固定发往自己的 room
     /// （`gateways/matrix/adapter.rs`）。只有需要改写的 secondary（TG + SimpleX）才设置它。
-    secondary_target: Option<TargetId>,
+    ///
+    /// `Mutex`：运行时重钉 `simplex_admin_id` 后要能就地改（`set_secondary_target`），
+    /// 否则敏感内容会一直发往启动快照里的旧 contactId。
+    secondary_target: Mutex<Option<TargetId>>,
 }
 
 impl RoutingAdapter {
@@ -19,13 +22,13 @@ impl RoutingAdapter {
         Self {
             primary,
             secondary,
-            secondary_target: None,
+            secondary_target: Mutex::new(None),
         }
     }
 
     /// 覆盖 secondary 的发送目标；未设置时沿用调用方传入的 target。
     pub fn with_secondary_target(mut self, target: TargetId) -> Self {
-        self.secondary_target = Some(target);
+        self.secondary_target = Mutex::new(Some(target));
         self
     }
 }
@@ -55,10 +58,34 @@ impl BotAdapter for RoutingAdapter {
     async fn send_message(&self, target: &TargetId, content: MessageContent) -> Result<MessageId> {
         match &self.secondary {
             Some(secondary) if is_sensitive(&content.text) => {
-                let secondary_target = self.secondary_target.as_ref().unwrap_or(target);
-                secondary.send_message(secondary_target, content).await
+                // 先取锁并 clone，尽早释放 guard（勿跨 await 持锁）。
+                let secondary_target = self
+                    .secondary_target
+                    .lock()
+                    .map(|g| g.clone())
+                    .unwrap_or(None)
+                    .unwrap_or_else(|| target.clone());
+                match secondary.send_message(&secondary_target, content).await {
+                    Ok(msg) => Ok(msg),
+                    Err(e) => {
+                        // 静默失败会让敏感内容「两边都收不到」且无从排查（真机已踩）。
+                        log::error!(
+                            "敏感内容改投 secondary 失败（target={}）: {e}",
+                            secondary_target.0
+                        );
+                        Err(e)
+                    }
+                }
             }
             _ => self.primary.send_message(target, content).await,
+        }
+    }
+
+    /// 运行时重钉后刷新敏感内容落点（见 `BotAdapter::set_secondary_target`）。
+    fn set_secondary_target(&self, target: TargetId) {
+        match self.secondary_target.lock() {
+            Ok(mut g) => *g = Some(target),
+            Err(e) => log::error!("更新敏感内容落点失败（锁中毒）: {e}"),
         }
     }
 
@@ -201,6 +228,60 @@ mod tests {
         let adapter = RoutingAdapter::new(Arc::new(primary), None);
         assert!(adapter.accept_contact_request(5).await.is_err());
         assert!(adapter.reject_contact_request(5).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn set_secondary_target_redirects_sensitive_content() {
+        let mut primary = MockBotAdapter::new();
+        primary.expect_platform().returning(|| Platform::Telegram);
+        // 敏感内容绝不应落到 primary。
+        primary.expect_send_message().times(0);
+        let mut secondary = MockBotAdapter::new();
+        secondary.expect_platform().returning(|| Platform::Simplex);
+        secondary
+            .expect_send_message()
+            .withf(|t, c| t.0 == "9" && c.text.contains("vless://"))
+            .times(1)
+            .returning(|_, _| Ok(MessageId("1".into())));
+        let adapter = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)))
+            .with_secondary_target(TargetId("1".into()));
+        // 模拟运行时重钉：落点从 1 改为 9。
+        adapter.set_secondary_target(TargetId("9".into()));
+        adapter
+            .send_message(
+                &TargetId("42".into()),
+                MessageContent {
+                    text: "vless://x".into(),
+                    markup: None,
+                },
+            )
+            .await
+            .unwrap();
+    }
+
+    /// 敏感内容发送失败不得被 RoutingAdapter 吞掉（真机曾因落点无效静默丢弃）。
+    #[tokio::test]
+    async fn sensitive_send_failure_is_propagated() {
+        let mut primary = MockBotAdapter::new();
+        primary.expect_platform().returning(|| Platform::Telegram);
+        let mut secondary = MockBotAdapter::new();
+        secondary.expect_platform().returning(|| Platform::Simplex);
+        secondary
+            .expect_send_message()
+            .times(1)
+            .returning(|_, _| anyhow::bail!("no such contact"));
+        let adapter = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)))
+            .with_secondary_target(TargetId("1".into()));
+        let res = adapter
+            .send_message(
+                &TargetId("42".into()),
+                MessageContent {
+                    text: "vless://x".into(),
+                    markup: None,
+                },
+            )
+            .await;
+        assert!(res.is_err(), "失败必须回传，不能静默成功");
     }
 
     #[test]
