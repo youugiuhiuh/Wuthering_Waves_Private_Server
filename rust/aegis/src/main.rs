@@ -134,10 +134,9 @@ async fn main() -> Result<()> {
         app_config.bot_settings.session_timeout_secs,
         adapter,
     );
-    // 自愈只在纯 --simplex 下开启：`is_admin_user` 的 user_id 命名空间与 Telegram 共用，
-    // `--tg-simplex` 下无差别重钉会把 simplex_admin_id 覆写成 Telegram 的 chat id，
-    // 破坏「敏感内容落点」这个发送目标。tg-simplex 的重钉留待 P2（那时才引入平台来源）。
-    let state = if selection.simplex && !selection.telegram {
+    // 自愈开关：两种 SimpleX 形态都开启；平台串台由 `process_auth_code` 内的
+    // `adapter.platform() == Platform::Simplex` 判据兜住（TG 的码不会重钉）。
+    let state = if selection.simplex {
         state.with_simplex_repin()
     } else {
         state
