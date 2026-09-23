@@ -6,6 +6,7 @@ use aegis::core::security::SecurityManager;
 use aegis::gateways::simplex::SimplexAdapter;
 use anyhow::{Context, Result};
 use secrecy::ExposeSecret;
+use simploxide_client::prelude::AddressSettings;
 
 use crate::bootstrap::EncryptedConfig;
 
@@ -99,6 +100,23 @@ fn decode_port_and_admin(
     Ok((port, admin_id))
 }
 
+/// 关闭 bot 地址的自动接受。
+///
+/// `auto_accept_with()` 的目的是「保留/创建地址」，副作用是每次启动都把 autoAccept
+/// 重新打开。故必须在 connect 之后显式关闭，否则「永久关闭」只成立于首次安装。
+///
+/// 用 `undocumented`（flatten 的 `serde_json::Value`）注入**显式** `null`：
+/// `AddressSettings.auto_accept = None` 会被 serde 省略该键（= 不修改），而设计 E2
+/// 已实证必须 `autoAccept: null` 才真正关闭。
+pub(crate) fn settings_with_auto_accept_disabled() -> AddressSettings {
+    AddressSettings {
+        business_address: false,
+        auto_accept: None,
+        auto_reply: None,
+        undocumented: serde_json::json!({ "autoAccept": null }),
+    }
+}
+
 pub async fn connect_simplex(
     security: &SecurityManager,
     encrypted_config: &EncryptedConfig,
@@ -111,6 +129,12 @@ pub async fn connect_simplex(
         .connect()
         .await
         .map_err(|e| anyhow::anyhow!("连接 SimpleX WebSocket 失败: {e}"))?;
+
+    // P2：autoAccept 永久关闭。失败即启动失败（fail closed）—— 这个控制是
+    // 「地址泄露近乎无用」的全部依据，静默继续等于把公开地址留在自动接受状态。
+    bot.configure_address(settings_with_auto_accept_disabled())
+        .await
+        .map_err(|e| anyhow::anyhow!("关闭 SimpleX autoAccept 失败，拒绝以不安全状态启动: {e}"))?;
 
     // connect() 内部已走完 setup_auto_accept，因此此刻地址必然已存在。
     // 读不到只 warn：地址缺失不应阻止 bot 启动（管理员仍可从日志排查）。
@@ -290,6 +314,15 @@ mod tests {
     fn decode_port_and_admin_rejects_zero_admin() {
         let (security, cfg) = config_with(Some("5225"), Some("0"));
         assert!(decode_port_and_admin(&security, &cfg).is_err());
+    }
+
+    /// E2 实证：关闭 autoAccept 必须发**显式** `null`。
+    /// `AddressSettings.auto_accept` 是 `Option` 且 `skip_serializing_if = is_none`，
+    /// 传 `None` 只会省略该键（不修改），因此靠 flatten 的 `undocumented` 注入 null。
+    #[test]
+    fn disabled_auto_accept_settings_serialize_explicit_null() {
+        let json = serde_json::to_string(&settings_with_auto_accept_disabled()).unwrap();
+        assert_eq!(json, r#"{"businessAddress":false,"autoAccept":null}"#);
     }
 
     #[test]
