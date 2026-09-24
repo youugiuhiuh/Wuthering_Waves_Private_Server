@@ -141,3 +141,18 @@ P2.1 已修：`RoutingAdapter.secondary_target` 动态化（重钉即时生效�
 | D-C4 | 判定对象统一为**渲染后文本**（路由层+平台层） | **是** |
 | D-C5 | C1c 常量对齐是否顺手做 | **是** |
 | ~~D-C6~~ | ~~文件类分流策略 S-A/S-B~~ | **随 C2 撤销** |
+
+## 7. 实现后勘误（2026-09-24 真机验收）
+
+1. **附件名泄露临时文件名**（已修）：接收方看到 `69771-1790251954508139423-batch_result.txt`。
+   根因：`simplex_client` 的 `File::new(path)` **没有名字参数**（只有 `file_path`），附件名取自路径的
+   `file_name`；而 `write_temp_file` 把唯一性放在**文件名**上（`pid-nanos-` 前缀）。
+   修法：唯一性改为由**独占子目录**（`pid-nanos`，`0700`）承担，文件名原样保留；
+   并新增 `remove_temp_file()` 一并清理该目录（避免 /tmp 堆积空目录）。
+   回归测试：`write_temp_file_preserves_base_name`、`remove_temp_file_removes_its_private_dir`。
+2. **C1 已在真机确认生效**：敏感文本以 `type: "file"` 落在 `chat_items`（不再是纯文本条目）。
+3. **CI flake 修复已被真 CI 证实**：含 `--cfg aes_backend="soft"` 后，`build-test (rust-aegis)` 的
+   `warning: unsupported x86 llvm intrinsic … aesenc/aesenclast .256/.512` 由 **8 条 → 0 条**，
+   PR #347 一次通过（8m56s）。
+
+> C2 已于 §0 撤销；本设计实际交付 **C1 + C1b + C1c + 附件名修复**。
