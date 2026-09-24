@@ -185,6 +185,15 @@ impl BotAdapter for RoutingAdapter {
         }
     }
 
+    /// 安全码属于 SimpleX 连接：必须落到 **secondary**，不是 primary（TG）。
+    /// 否则 `--tg-simplex` 下（TOTP 通常来自 TG）永远取不到码。
+    async fn contact_security_code(&self, contact_id: i64) -> Result<String> {
+        match &self.secondary {
+            Some(secondary) => secondary.contact_security_code(contact_id).await,
+            None => anyhow::bail!("未配置 SimpleX 次级适配器，无法获取连接安全码"),
+        }
+    }
+
     /// 安全通知必须落在 primary（TG），不得因攻击者可控文本被改投 secondary。
     async fn send_message_primary(
         &self,
@@ -484,6 +493,37 @@ mod tests {
                 )
                 .await
                 .unwrap();
+        }
+
+        /// 安全码属于 SimpleX 连接：RoutingAdapter 必须落到 **secondary**，
+        /// 否则 `--tg-simplex` 下（事件来自 TG）永远取不到码。
+        #[tokio::test]
+        async fn contact_security_code_forwards_to_secondary() {
+            let mut primary = MockBotAdapter::new();
+            primary.expect_platform().returning(|| Platform::Telegram);
+            primary.expect_contact_security_code().times(0);
+
+            let mut secondary = MockBotAdapter::new();
+            secondary.expect_platform().returning(|| Platform::Simplex);
+            secondary
+                .expect_contact_security_code()
+                .times(1)
+                .withf(|id| *id == 3)
+                .returning(|_| Ok("52075 05398".to_string()));
+
+            let routing = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)));
+            assert_eq!(
+                routing.contact_security_code(3).await.unwrap(),
+                "52075 05398"
+            );
+        }
+
+        #[tokio::test]
+        async fn contact_security_code_without_secondary_errors() {
+            let mut primary = MockBotAdapter::new();
+            primary.expect_platform().returning(|| Platform::Telegram);
+            let routing = RoutingAdapter::new(Arc::new(primary), None);
+            assert!(routing.contact_security_code(3).await.is_err());
         }
 
         /// C1b 回归：敏感内容只藏在按钮 `data` 里时，只判未渲染的 `content.text` 会漏判
