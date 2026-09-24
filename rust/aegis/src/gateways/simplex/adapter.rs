@@ -5,6 +5,7 @@ use crate::common::{
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use simploxide_client::ClientApi;
 use simploxide_client::prelude::{
     CIDeleteMode, ChatId, ContactId, ContactRequestId, MessageId as SxMessageId,
     NewChatItemsResponse, Reaction,
@@ -204,6 +205,29 @@ fn outgoing_text(content: &MessageContent) -> String {
     }
 }
 
+/// 从 `/_get code @<contactId>` 的原始响应里取连接安全码。
+///
+/// 响应形如 `{"corrId":"1","resp":{"type":"contactCode","connectionCode":"52075 …"}}`。
+/// 只接受 `contactCode`（出错时是 `chatCmdError`）；缺失/空白一律视为失败，
+/// 避免把错误文本当成安全码发给管理员。
+fn parse_contact_code(raw: &str) -> Result<String> {
+    let value: serde_json::Value =
+        serde_json::from_str(raw).context("解析 SimpleX 安全码响应失败")?;
+    let resp = value.get("resp").context("SimpleX 安全码响应缺少 resp")?;
+    let kind = resp
+        .get("type")
+        .and_then(|t| t.as_str())
+        .unwrap_or("unknown");
+    anyhow::ensure!(kind == "contactCode", "SimpleX 安全码响应类型异常: {kind}");
+    let code = resp
+        .get("connectionCode")
+        .and_then(|c| c.as_str())
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .context("SimpleX 安全码响应缺少 connectionCode")?;
+    Ok(code.to_string())
+}
+
 /// 从发送响应中取第一条 chat item 的 itemId。
 ///
 /// 响应不含 chat item 时返回错误：0 不是合法 SimpleX id，若把它当作
@@ -304,6 +328,22 @@ impl BotAdapter for SimplexAdapter {
             .await
             .context("拒绝 SimpleX 联系人请求失败")?;
         Ok(())
+    }
+
+    /// 取该联系人与本 bot 的**连接安全码**（管理员在自己客户端「验证安全码」逐段比对，
+    /// 用于排除邀请链接被替换的 MITM 场景）。
+    ///
+    /// 命令语法来自 simplex-chat 源码（`Simplex.Chat.Library.Commands`）：
+    /// `"/_get code @" *> (APIGetContactCode <$> A.decimal)` —— 按 contactId 取，
+    /// 绕开「`/code @<名字>` 不支持带空格名字」的限制。
+    async fn contact_security_code(&self, contact_id: i64) -> Result<String> {
+        let raw = self
+            .bot
+            .client()
+            .send_raw(format!("/_get code @{contact_id}"))
+            .await
+            .map_err(|e| anyhow::anyhow!("获取 SimpleX 安全码失败: {e}"))?;
+        parse_contact_code(&raw)
     }
 
     async fn send_file(
@@ -737,6 +777,33 @@ mod tests {
 
     /// `MessageId("0")` 由 Matrix 文本命令路径合成（`gateways/matrix/commands.rs`），
     /// SimpleX 复用该路径，因此必须返回错误而不是 panic。
+    // ── S1：连接安全码（`/_get code @<contactId>` 的响应解析）──
+
+    #[test]
+    fn parse_contact_code_extracts_connection_code() {
+        let raw = r#"{"corrId":"1","resp":{"type":"contactCode","connectionCode":"52075 05398 87241 67434","contact":{"contactId":3}}}"#;
+        assert_eq!(parse_contact_code(raw).unwrap(), "52075 05398 87241 67434");
+    }
+
+    #[test]
+    fn parse_contact_code_rejects_error_response() {
+        let raw = r#"{"corrId":"1","resp":{"type":"chatCmdError","chatError":{"type":"error"}}}"#;
+        assert!(parse_contact_code(raw).is_err(), "错误响应不得当成安全码");
+    }
+
+    #[test]
+    fn parse_contact_code_rejects_missing_code() {
+        let missing = r#"{"corrId":"1","resp":{"type":"contactCode"}}"#;
+        assert!(parse_contact_code(missing).is_err());
+        let blank = r#"{"corrId":"1","resp":{"type":"contactCode","connectionCode":"   "}}"#;
+        assert!(parse_contact_code(blank).is_err(), "空串不得当成安全码");
+    }
+
+    #[test]
+    fn parse_contact_code_rejects_invalid_json() {
+        assert!(parse_contact_code("not json").is_err());
+    }
+
     #[test]
     fn parse_message_id_rejects_zero() {
         assert!(parse_message_id(&MessageId("0".to_string())).is_err());
