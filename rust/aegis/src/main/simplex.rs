@@ -21,6 +21,9 @@ pub struct SimplexHandle {
     pub bot: simploxide_client::ws::Bot,
     pub events: simploxide_client::ws::EventStream,
     pub adapter: Arc<dyn BotAdapter>,
+    /// bot 地址（`https://smp5.simplex.im/a#…`）；读取失败为 `None`。
+    /// TG+SimpleX 下由 TG 分支推送给管理员，便于其连接。
+    pub address: Option<String>,
 }
 
 /// 以 0600 原子写入 bot 地址文件：写 tmp → fsync → rename。
@@ -149,16 +152,23 @@ pub async fn connect_simplex(
             .file_name()
             .context("SIMPLEX_ADDRESS_FILE 缺少文件名")?,
     );
-    match bot.address().await {
-        Ok(address) => record_address(&address, &address_path),
-        Err(e) => log::warn!("读取 SimpleX bot 地址失败（不影响 bot 运行）: {e}"),
-    }
+    let address = match bot.address().await {
+        Ok(address) => {
+            record_address(&address, &address_path);
+            Some(address)
+        }
+        Err(e) => {
+            log::warn!("读取 SimpleX bot 地址失败（不影响 bot 运行）: {e}");
+            None
+        }
+    };
 
     let adapter: Arc<dyn BotAdapter> = Arc::new(SimplexAdapter::new(bot.clone()));
     Ok(SimplexHandle {
         bot,
         events,
         adapter,
+        address,
     })
 }
 

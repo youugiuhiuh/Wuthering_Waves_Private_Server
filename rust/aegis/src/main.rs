@@ -275,6 +275,40 @@ fn resolve_platform_selection(
     }
 }
 
+/// 是否应当向 TG 推送 SimpleX 分享链接：仅 TG+SimpleX 且地址非空。
+///
+/// 抽成纯函数以便单测：调用点在 TG 分支，但判据本身与 IO 无关。
+pub(crate) fn simplex_share_link_target(
+    enable_telegram: bool,
+    address: Option<&str>,
+) -> Option<&str> {
+    if !enable_telegram {
+        return None;
+    }
+    address.map(str::trim).filter(|a| !a.is_empty())
+}
+
+/// 向 TG 管理员推送 SimpleX 分享链接（管理员点开即可连接本 bot）。
+///
+/// 强制走 `send_message_primary`：链接若走 `send_message`，会被敏感分流改投到
+/// SimpleX，管理员反而在 TG 看不到。
+async fn notify_simplex_share_link(
+    adapter: &dyn BotAdapter,
+    target: &TargetId,
+    address: &str,
+) -> Result<()> {
+    adapter
+        .send_message_primary(
+            target,
+            MessageContent {
+                text: rust_i18n::t!("simplex.share_link", "0" => address).to_string(),
+                markup: None,
+            },
+        )
+        .await?;
+    Ok(())
+}
+
 async fn notify_online(adapter: &dyn BotAdapter, target: &TargetId) -> Result<()> {
     let ip = match SystemMonitor::get_public_ip().await {
         Ok(ip) => ip,
@@ -555,6 +589,20 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// 仅 TG+SimpleX 且真拿到地址时才向 TG 推送分享链接（纯 simplex 不发 TG）。
+    #[test]
+    fn share_link_only_when_tg_and_address_present() {
+        let addr = "https://smp5.simplex.im/a#xyz";
+        assert_eq!(simplex_share_link_target(true, Some(addr)), Some(addr));
+        assert_eq!(simplex_share_link_target(true, Some("   ")), None);
+        assert_eq!(simplex_share_link_target(true, None), None);
+        assert_eq!(
+            simplex_share_link_target(false, Some(addr)),
+            None,
+            "纯 simplex 不得往 TG 发"
+        );
     }
 
     #[test]

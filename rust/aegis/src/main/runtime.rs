@@ -229,6 +229,14 @@ pub async fn run(
         });
     }
 
+    // TG+SimpleX：分享链接必须在 SimpleX 分支消费 handle 之前取出 —— 而且该分支在
+    // `enable_telegram` 时本就跳过自己的启动通知，所以由 TG 分支负责发送。
+    let simplex_share_address = crate::simplex_share_link_target(
+        enable_telegram,
+        simplex_handle.as_ref().and_then(|h| h.address.as_deref()),
+    )
+    .map(str::to_string);
+
     // ── SimpleX 网关 ──
     let simplex_enabled = simplex_handle.is_some();
     if let Some(handle) = simplex_handle {
@@ -503,6 +511,17 @@ pub async fn run(
                 },
                 async {
                     let _ = crate::notify_online(&*adapter_for_init, &target_for_init).await;
+                },
+                async {
+                    // TG+SimpleX：先给管理员递上 SimpleX 分享链接，否则用户无从连接。
+                    if let Some(address) = simplex_share_address.as_deref() {
+                        let _ = crate::notify_simplex_share_link(
+                            &*adapter_for_init,
+                            &target_for_init,
+                            address,
+                        )
+                        .await;
+                    }
                 },
             );
         });
