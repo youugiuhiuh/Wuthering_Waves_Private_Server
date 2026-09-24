@@ -189,6 +189,12 @@ pub trait BotAdapter: Send + Sync {
         anyhow::bail!("当前平台不支持联系人审批")
     }
 
+    /// 取 SimpleX 连接安全码（管理员在自己客户端「验证安全码」比对，防 MITM）。
+    /// 默认不支持：只有 SimpleX 适配器实现。失败不得影响调用方的 TOTP 结果。
+    async fn contact_security_code(&self, _contact_id: i64) -> Result<String> {
+        anyhow::bail!("当前平台不支持获取连接安全码")
+    }
+
     /// 强制经 primary 发送，绕开 `RoutingAdapter` 的敏感内容分流。
     ///
     /// 用于**安全通知**：其文本包含攻击者可控内容（如 SimpleX 显示名），若走

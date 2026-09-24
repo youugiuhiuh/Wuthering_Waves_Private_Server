@@ -57,6 +57,40 @@ pub async fn process_auth_code(
             }
         }
 
+        // TG+SimpleX：把 SimpleX 管理员联系人的**连接安全码**发到 TG（管理员在自己
+        // 客户端「验证安全码」逐段比对，排查邀请链接被替换的 MITM）。
+        //
+        // 判据刻意与「事件来源平台」无关：真实用法是在 **TG** 里发 TOTP 码（SimpleX
+        // 那一路才是重钉）。取码经 `state.adapter`（RoutingAdapter）落到 SimpleX 次级。
+        // 取码/发送失败只 warn —— 安全码是辅助手段，不得影响 TOTP 验证结果本身。
+        if let Some(sx_admin) = state.simplex_admin_id()
+            && let Some(tg_admin) = state.admin_id()
+        {
+            match state.adapter.contact_security_code(sx_admin).await {
+                Ok(code) => {
+                    let target = TargetId(tg_admin.to_string());
+                    // 强制 primary(TG)：安全码若走 `send_message`，可能被敏感分流改投 SimpleX。
+                    if let Err(e) = state
+                        .adapter
+                        .send_message_primary(
+                            &target,
+                            MessageContent {
+                                text: t!("simplex.security_code", "0" => code).to_string(),
+                                markup: None,
+                            },
+                        )
+                        .await
+                    {
+                        log::warn!("向 Telegram 发送 SimpleX 安全码失败: {e}");
+                    } else {
+                        // 只记「已发」不记码本身：journal 只需能证明这条路径跑过。
+                        log::info!("已向 TG 输出 SimpleX 连接安全码（contactId={sx_admin}）");
+                    }
+                }
+                Err(e) => log::warn!("获取 SimpleX 安全码失败（不影响验证）: {e}"),
+            }
+        }
+
         let success_text =
             t!("auth.success", "0" => crate::utils::format_duration_human(timeout)).to_string();
         if !state.is_lang_configured().await {
@@ -232,6 +266,96 @@ mod tests {
         fn capabilities(&self) -> PlatformCapabilities {
             PlatformCapabilities::TELEGRAM
         }
+    }
+
+    /// 带 TG 管理员 id 的 state（`state_with_repin_and` 固定为 None，无法覆盖本场景）。
+    fn state_with_admin_and(
+        tg_admin: Option<i64>,
+        repin: bool,
+        adapter: Arc<dyn BotAdapter>,
+    ) -> (AppState, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().unwrap();
+        // SAFETY: 测试进程内串行修改环境变量。本模块测试均在同一进程且不并发读写
+        // AEGIS_CONFIG_DIR（nextest 默认每个测试独立进程）。
+        unsafe { std::env::set_var("AEGIS_CONFIG_DIR", dir.path()) };
+        let state = AppState::new(
+            tg_admin,
+            Some(3),
+            Some(
+                TotpManager::new(&SecretString::from(TotpManager::generate_new_secret())).unwrap(),
+            ),
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            adapter,
+        );
+        let state = if repin {
+            state.with_simplex_repin()
+        } else {
+            state
+        };
+        (state, dir)
+    }
+
+    /// TG+SimpleX：**任何来源**的 TOTP 成功后（真实用法是在 TG 里发码），只要存在
+    /// SimpleX 管理员联系人，就把其连接安全码发到 TG。取码经 `state.adapter`
+    /// （RoutingAdapter）落到 SimpleX 次级 —— 事件来源不再参与判据。
+    #[tokio::test]
+    async fn totp_success_sends_simplex_security_code_to_tg() {
+        let mut adapter = MockBotAdapter::new();
+        // TG 来源不会走重钉，因此不得设置敏感落点。
+        adapter.expect_set_secondary_target().times(0);
+        adapter
+            .expect_contact_security_code()
+            .times(1)
+            .withf(|id| *id == 3) // state.simplex_admin_id() = Some(3)
+            .returning(|_| Ok("52075 05398 87241 67434".to_string()));
+        adapter
+            .expect_send_message_primary()
+            .times(1)
+            .withf(|target, content| {
+                target.0 == "6103295147" && content.text.contains("52075 05398 87241 67434")
+            })
+            .returning(|_, _| Ok(MessageId("1".to_string())));
+        let (state, _dir) = state_with_admin_and(Some(6103295147), true, Arc::new(adapter));
+        let code = state.generate_current_totp().expect("有 TOTP 管理器");
+        let ok = process_auth_code(
+            &TelegramRecordingAdapter,
+            &TargetId("6103295147".into()),
+            6103295147,
+            &code,
+            &state,
+            5,
+            Duration::from_secs(600),
+            &[Duration::from_secs(900)],
+        )
+        .await
+        .unwrap();
+        assert!(ok);
+    }
+
+    /// 纯 `--simplex`（无 TG 管理员）：不得尝试发 TG，也不去取码。
+    #[tokio::test]
+    async fn no_tg_admin_means_no_code_send() {
+        let mut adapter = MockBotAdapter::new();
+        adapter.expect_set_secondary_target().times(0);
+        adapter.expect_contact_security_code().times(0);
+        adapter.expect_send_message_primary().times(0);
+        let (state, _dir) = state_with_admin_and(None, true, Arc::new(adapter));
+        let code = state.generate_current_totp().expect("有 TOTP 管理器");
+        let ok = process_auth_code(
+            &TelegramRecordingAdapter,
+            &TargetId("6103295147".into()),
+            6103295147,
+            &code,
+            &state,
+            5,
+            Duration::from_secs(600),
+            &[Duration::from_secs(900)],
+        )
+        .await
+        .unwrap();
+        assert!(ok);
     }
 
     /// 空 config 目录：让 `set_simplex_admin_id` 读不到 config.enc 而失败，
