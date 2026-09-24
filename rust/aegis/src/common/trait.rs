@@ -65,6 +65,8 @@ impl PlatformCapabilities {
         has_e2ee: false,
     };
 
+    /// 必须与 `MatrixAdapter::capabilities()` 保持一致（Matrix 确实实现了
+    /// `typing_notice` / `Annotation` / `Thread`）；此常量曾与 adapter 不一致。
     pub const MATRIX: Self = Self {
         can_edit_message: true,
         can_delete_message: true,
@@ -74,9 +76,9 @@ impl PlatformCapabilities {
         can_send_file: true,
         can_send_image: true,
         can_send_voice: false,
-        can_send_typing: false,
-        can_send_reaction: false,
-        can_thread: false,
+        can_send_typing: true,
+        can_send_reaction: true,
+        can_thread: true,
         has_e2ee: true,
     };
 

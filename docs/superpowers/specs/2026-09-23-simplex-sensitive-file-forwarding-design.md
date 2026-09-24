@@ -1,87 +1,158 @@
-# 设计：敏感内容转发 —— 为 SimpleX 补齐「文本转附件」与文件分流
+# 设计：敏感内容转发 —— SimpleX 敏感文本转附件（修订 v2）
 
-> 模式：**strict**（设计先行） ｜ 状态：**待批准** ｜ 日期：2026-09-23
-> 触发：P2 真机验收（murky-pull）暴露的三点不对称之一（记为 C）
+> 模式：**strict** ｜ 状态：**待批准**（v2） ｜ 日期：2026-09-23
+> 触发：P2 真机验收暴露的不对称（记为 C）+ CodeGraph 复查对 v1 范围的修正
 
-## 1. 现状（已核实，非推断）
+## 0. v2 修订摘要（相对 v1）
 
-**敏感转发目前有两套，且只覆盖一半平台：**
+| 变更 | 依据 |
+| --- | --- |
+| **撤销 C2**（文件类分流 S-A/S-B） | CodeGraph 复查：`send_file`/`send_image`/`send_voice` 在**生产代码零调用点**（唯一调用者是 `BotAdapter` 默认委托与 `MatrixAdapter` 内部委托）→ 为一条不可达路径写路由+测试 = 死代码（YAGNI）。v1 §1 第 2 点所述「文件永远落 TG、绕过 secondary」在真机触发不到 |
+| **新增 C1b** | 路由层同类漏判：`RoutingAdapter::send_message` 判的是**未渲染**的 `content.text`，而按钮 data 会被并入文本（`common/markup.rs:10`）→ 敏感内容只存在于按钮时按 primary 发出，落 TG |
+| **新增 C1c（可选）** | `PlatformCapabilities::MATRIX` 常量与 `MatrixAdapter::capabilities()` 三个字段不一致 |
+| **保留 C1** | 唯一真缺口，已真机复现（`chat_item 17`：`vless://…` 当**普通消息**落到 SimpleX） |
+
+## 1. 现状（CodeGraph 复核，非推断）
+
+### 1.1 敏感转发现有的两层
 
 | 层 | 位置 | 行为 |
 | --- | --- | --- |
-| 路由层 | `common/routing.rs::RoutingAdapter::send_message` | 文本命中 `is_sensitive` → 改投 secondary（TG+SimpleX 下即 SimpleX） |
-| 平台层 | `gateways/matrix/adapter.rs::MatrixAdapter::send_message`（`:120`） | 文本命中 `is_sensitive` → **改写为附件** `batch_result.txt`（`send_attachment`），不落普通消息 |
+| 路由层 | `common/routing.rs::RoutingAdapter::send_message`（`:58`） | `is_sensitive(&content.text)`（**未渲染**）命中 → 改投 secondary |
+| 平台层 | `gateways/matrix/adapter.rs::MatrixAdapter::send_message`（`:120`） | `is_sensitive(&body_text)`（**已渲染**）命中 → 改写成附件 `batch_result.txt` |
 
-**三点不对称（C 的核心）：**
+`render_markup_buttons`（`common/markup.rs:4`）会把按钮并入正文：
 
-1. **SimpleX 没有「文本转附件」**：`SimplexAdapter::send_message` 直接把敏感文本当普通消息发。Matrix 会转成 `.txt` 附件（规避纯文本泄露/便于保存），SimpleX 不会。
-2. **`RoutingAdapter` 的文件类发送不分流**：`send_file`/`send_image`/`send_voice` 一律走 `primary`（`routing.rs`）。即敏感内容**以文件形式**发出时永远落在 TG，绕过 secondary。
-3. **文件类判定缺位**：`is_sensitive` 只接受 `&str`（文本）；对二进制/文件名无判定。
+```rust
+lines.push(format!("{}. {} — send: `{}`", idx, btn.text, btn.data));   // markup.rs:10
+```
 
-`is_sensitive` 判据（`routing.rs`）：协议前缀 `vmess:// vless:// trojan:// ss:// hysteria:// hysteria2:// tuic://` + 字段 `"privateKey" "secretKey" "password":`。
+### 1.2 SimpleX 能力矩阵（声明 / 实现 / 实际）
 
-## 2. 目标
+| 能力 | `PlatformCapabilities::SIMPLEX` | `SimplexAdapter` | 实际 |
+| --- | --- | --- | --- |
+| send_message / edit / delete | ✓ / ✓ / ✓ | ✓ `send_msg` / `update_msg` / `delete_msg` | ✓ |
+| send_file | `can_send_file: true` | ✓ `File::new` + temp `0600` + 用后删 | ✓ |
+| send_image | `can_send_image: true` | ✓ `Image::new` | ✓ |
+| send_voice | `false` | ✗ 未实现 → 默认委托 `send_file("voice")` | 可用（发成文件） |
+| send_reaction | `true` | ✓ `update_msg_reaction` | ✓ |
+| send_typing | `false` | ✗ 默认 no-op | ✗ |
+| inline keyboard | `false` | ✗ 默认 no-op；按钮降级为文本命令 | ✗ |
+| thread | `false` | ✗ 默认回落 `send_message` | ✗ |
+| download_file | `has_file_transfer: false` | ✗ 默认 `bail!` | ✗ 收文件不可用 |
+| 联系人审批 | — | ✓ accept/reject | ✓ |
 
-在 `--tg-simplex` 形态下，敏感内容的落点行为与 Matrix 形态**对齐**：
+### 1.3 三条复核结论（决定 v2 范围）
 
-- G1：命中 `is_sensitive` 的**文本**，投递到 SimpleX 时以**附件**（`.txt`）形式，而非可转发的普通消息。
-- G2：`send_file`/`send_image`/`send_voice` 若属于敏感内容，改投 secondary；否则维持 primary。
-- G3：不改变现有 Matrix 行为与 `--simplex`（纯）行为。
+1. **`send_file`/`send_image`/`send_voice` 生产调用点为 0** → C2 撤销。
+2. **capabilities 字段在生产代码中无读取点**（`.capabilities()` 仅被 `RoutingAdapter` 透传 + mock/测试调用）→ 目前是「只写不读」的数据；C1c 只影响测试/文档，无线上风险。
+3. **SimpleX 无法收文件**（`download_file` 未实现）。任何「让用户在 SimpleX 发文件给 bot」的流程都不可用——本设计不涉及，但记录在此避免误判。
+
+## 2. 目标（v2）
+
+- **G1**：命中 `is_sensitive` 的**文本**投到 SimpleX 时以**附件**（`.txt`）形式，而非可转发的普通消息。
+- ~~**G2**：文件类发送分流~~ **【撤销，见 §0】**
+- **G3**：不改变现有 Matrix 行为与纯 `--simplex` 行为（除 D-C2 裁决）。
+- **G4（新增）**：**路由层与平台层的敏感判定对象统一为「渲染后文本」**，消除按钮 data 逃逸。
 
 ## 3. 设计
 
-### 3.1 把「敏感文本转附件」下沉为适配器能力（推荐）
+### 3.1 C1：SimpleX 敏感文本转附件
 
-不要在每个调用点判断，而是在 `SimpleXAdapter::send_message` 内与 Matrix 对称处理：
+在 `SimplexAdapter::send_message` 内与 Matrix 对称处理（**判定对象为渲染后的 `text`**）：
 
 ```rust
-// gateways/simplex/adapter.rs（impl BotAdapter for SimplexAdapter::send_message）
-if crate::common::routing::is_sensitive(&content.text) {
-    // 复用既有 write_temp_file(0600) → File::new(path) → send_msg → remove
-    return self.send_file(target, "batch_result.txt", content.text.into_bytes(), "text/plain").await;
+// gateways/simplex/adapter.rs  impl BotAdapter for SimplexAdapter::send_message
+let chat_id = parse_chat_id(target)?;
+let text = match &content.markup {
+    Some(markup) => render_markup_buttons(content.text, markup),
+    None => content.text,
+};
+if is_sensitive(&text) {
+    // 复用既有 write_temp_file(0600) → File::new → 发送后删除
+    return self.send_file(target, "batch_result.txt", text.into_bytes(), "text/plain").await;
 }
-// 否则照旧发文本
+let resp = self.bot.send_msg(chat_id, text).await.context("发送 SimpleX 消息失败")?;
+Ok(MessageId(first_item_id(&resp)?.to_string()))
 ```
 
-- `is_sensitive` 已是 `pub(crate)`，`MatrixAdapter` 已在用；SimpleX 直接复用。
-- SimpleX 的 `send_file` 已存在（`write_temp_file` + `0600` + 发送后删除），无新增依赖、无新增临时文件生命周期。
+- `is_sensitive` 已是 `pub(crate)`（`routing.rs:36`），Matrix 已在用。
+- `SimpleXAdapter::send_file` 已存在（`adapter.rs:268`），无新增依赖、无新增临时文件生命周期。
+- **不要**判 `content.text`：按钮 data 会被 `render_markup_buttons` 并入正文，判未渲染文本会漏判（v1 草图的缺陷）。
 
-> 备选（不推荐）：在 `RoutingAdapter` 里用 `secondary.send_file(...)` 代替 `send_message`。缺点：路由层被迫知道「平台用什么 mime/文件名」，且纯 `--simplex`（无 RoutingAdapter）仍不生效。
+> 备选（不推荐）：在 `RoutingAdapter` 里改调 `secondary.send_file(...)`。路由层被迫知道平台的 mime/文件名，且纯 `--simplex`（无 RoutingAdapter）不生效。
 
-### 3.2 文件类发送的分流
+### 3.2 C1b：`RoutingAdapter` 判定改用渲染后文本
 
-`RoutingAdapter` 目前 `send_file/send_image/send_voice` 一律 primary。两种可选策略（需你裁决）：
+```rust
+// common/routing.rs  RoutingAdapter::send_message
+let routed_text = match &content.markup {
+    Some(markup) => render_markup_buttons(content.text.clone(), markup),
+    None => content.text.clone(),
+};
+match &self.secondary {
+    Some(secondary) if is_sensitive(&routed_text) => { /* 原分流逻辑不变 */ }
+    _ => self.primary.send_message(target, content).await,
+}
+```
 
-| 策略 | 行为 | 适用 |
-| --- | --- | --- |
-| **S-A 全量分流** | TG+SimpleX 下，**所有**文件/图片/语音都发 secondary | 保守：tg-simplex 本就是「文件即敏感」的部署假设 |
-| **S-B 判定分流** | 只有 `name`/内容命中敏感判据才分流；二进制内容可做关键字扫描（成本高、易漏） | 精确，但二进制不可靠 |
+- 风险：`render_markup_buttons` 依赖 `rust_i18n::t!("matrix.markup_header")`。若 i18n 未初始化，渲染结果可能退化——单测需覆盖。
+- `send_message_primary`（`routing.rs:182`）本就是绕过分流的专用通道，不受影响。
 
-**默认建议 S-A**：`--tg-simplex` 的定位就是「敏感内容落 SimpleX」，且 aegis 发送的文件基本都是配置/备份（`batch_result.txt`、`*_inbounds.json`、证书包），全量分流与部署意图一致、实现最简。
+### 3.3 C1c（可选）：对齐 `PlatformCapabilities::MATRIX`
 
-### 3.3 与 P2.1 的关系
+| 字段 | 常量现值 | `MatrixAdapter::capabilities()` | 应改为 |
+| --- | --- | --- | --- |
+| can_send_typing | `false` | `true` | `true` |
+| can_send_reaction | `false` | `true` | `true` |
+| can_thread | `false` | `true` | `true` |
+
+纯常量改动，零运行时影响（见 §1.3 第 2 点）。
+
+### 3.4 与 P2.1 的关系
 
 P2.1 已修：`RoutingAdapter.secondary_target` 动态化（重钉即时生效）+ 敏感发送失败记 `log::error`。本设计**依赖 P2.1**（否则落点仍是启动快照）。
 
 ## 4. 边界与风险
 
-1. **纯 `--simplex` 无 secondary**：3.1 的适配器级转换对该形态**也生效**（敏感文本→附件），但目标就是管理员本身。行为变化需确认可接受；若不接受，可用 `capabilities`/开关限定。
-2. **`is_sensitive` 是启发式**：非敏感文本若误判会变附件（体验下降，不泄露）；敏感文本若漏判仍以普通消息发出（**这是主要残余风险**，与 Matrix 完全一致）。
-3. **SimpleX 附件**：bot 已用 `--create-bot-allow-files` 启动（安装器单元），接收方需能收文件。
-4. **测试**：适配器级转换可单测（构造敏感文本 → 断言走 `send_file` 路径的 mock 期望）；文件分流可单测 RoutingAdapter。真机验收需 SimpleX 客户端确认收到 `.txt` 附件。
+1. **纯 `--simplex` 无 secondary**：C1 的适配器级转换对该形态**也生效**（敏感文本→附件），但目标就是管理员本身。是否接受由 D-C2 裁决。
+2. **`is_sensitive` 是启发式**：误判 → 变附件（体验下降，不泄露）；漏判 → 普通消息发出（**主要残余风险**，与 Matrix 一致）。
+3. **SimpleX 附件**：bot 需以 `--create-bot-allow-files` 启动（安装器单元已含）；接收方需能收文件。
+4. **C1b 会改变分流结果**：原本判不出（按钮 data）而发往 TG 的消息，改为发往 secondary。需确认「安全通知」路径仍走 `send_message_primary`（已实现，`routing.rs:182`）。
+5. **测试**：C1 可单测（敏感文本 → 断言走 `send_file` 的 mock 期望）；C1b 用带敏感按钮 data 的 `MessageContent` 单测分流；真机验收需 SimpleX 客户端确认收到 `.txt` 附件。
 
-## 5. 交付拆分（建议）
+## 5. 交付拆分（v2）
 
-| # | 内容 | 依赖 |
-| --- | --- | --- |
-| C1 | `SimpleXAdapter::send_message` 敏感文本转 `.txt` 附件（对称 Matrix） | P2.1 |
-| C2 | `RoutingAdapter` 文件类发送按 S-A 分流（默认） | C1、裁决 S-A/S-B |
-| C3 | 单测 + 真机验收 + 文档勘误 | C1/C2 |
+| # | 内容 | 依赖 | 状态 |
+| --- | --- | --- | --- |
+| C1 | `SimplexAdapter::send_message` 敏感文本转 `.txt` 附件（判定用渲染后文本） | P2.1 | 待批 |
+| C1b | `RoutingAdapter::send_message` 判定改用渲染后文本 | — | 待批 |
+| C1c | 对齐 `PlatformCapabilities::MATRIX` 常量 | — | 待批（可选） |
+| ~~C2~~ | ~~文件类分流 S-A/S-B~~ | — | **撤销（零调用点）** |
+| C3 | 单测 + 真机验收 + 文档勘误 | C1/C1b | 待批 |
 
 ## 6. 待裁决
 
 | # | 决策 | 默认 |
 | --- | --- | --- |
-| D-C1 | 文件类分流策略 | **S-A 全量分流** |
+| D-C1 | C1b（路由层判定改渲染后文本）是否纳入本次 | **是** |
 | D-C2 | 纯 `--simplex` 是否也做「敏感文本→附件」 | **是**（与适配器行为一致，最简单） |
-| D-C3 | 附件文件名/mime | `batch_result.txt` / `text/plain`（与 Matrix 一致） |
+| D-C3 | 附件文件名 / mime | `batch_result.txt` / `text/plain`（与 Matrix 一致） |
+| D-C4 | 判定对象统一为**渲染后文本**（路由层+平台层） | **是** |
+| D-C5 | C1c 常量对齐是否顺手做 | **是** |
+| ~~D-C6~~ | ~~文件类分流策略 S-A/S-B~~ | **随 C2 撤销** |
+
+## 7. 实现后勘误（2026-09-24 真机验收）
+
+1. **附件名泄露临时文件名**（已修）：接收方看到 `69771-1790251954508139423-batch_result.txt`。
+   根因：`simplex_client` 的 `File::new(path)` **没有名字参数**（只有 `file_path`），附件名取自路径的
+   `file_name`；而 `write_temp_file` 把唯一性放在**文件名**上（`pid-nanos-` 前缀）。
+   修法：唯一性改为由**独占子目录**（`pid-nanos`，`0700`）承担，文件名原样保留；
+   并新增 `remove_temp_file()` 一并清理该目录（避免 /tmp 堆积空目录）。
+   回归测试：`write_temp_file_preserves_base_name`、`remove_temp_file_removes_its_private_dir`。
+2. **C1 已在真机确认生效**：敏感文本以 `type: "file"` 落在 `chat_items`（不再是纯文本条目）。
+3. **CI flake 修复已被真 CI 证实**：含 `--cfg aes_backend="soft"` 后，`build-test (rust-aegis)` 的
+   `warning: unsupported x86 llvm intrinsic … aesenc/aesenclast .256/.512` 由 **8 条 → 0 条**，
+   PR #347 一次通过（8m56s）。
+
+> C2 已于 §0 撤销；本设计实际交付 **C1 + C1b + C1c + 附件名修复**。

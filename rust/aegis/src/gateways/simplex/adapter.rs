@@ -1,4 +1,5 @@
 use crate::common::markup::render_markup_buttons;
+use crate::common::routing::is_sensitive;
 use crate::common::{
     BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
@@ -147,22 +148,29 @@ fn sanitize_file_name(name: &str) -> Option<String> {
 
 /// 把字节写入仅本进程可读的临时文件（simplex-chat 与服务同机、同 root，可读到该路径）。
 ///
-/// - 目录 `/tmp/aegis-simplex/` 权限强制为 `0700`
+/// - 根目录 `/tmp/aegis-simplex/` 权限强制为 `0700`
+/// - 每次发送用**独占子目录**（`pid-nanos`，`0700`）承担唯一性
 /// - 文件以 `0600` 创建，且用 `create_new` 保证不与既有文件冲突
-/// - 文件名含 PID 与纳秒时间戳，同一名字并发写入也不会碰撞
+///
+/// 文件名必须**原样保留**调用方给的名字：SimpleX 的 `File::new(path)` 没有名字参数，
+/// 附件名取自路径的 `file_name`（真机曾把 `pid-nanos-` 前缀泄露给接收方）。
 fn write_temp_file(name: &str, data: &[u8]) -> Result<PathBuf> {
     let base = sanitize_file_name(name).context("SimpleX 临时文件名非法")?;
-    let dir = std::env::temp_dir().join("aegis-simplex");
-    std::fs::create_dir_all(&dir).context("创建 SimpleX 临时目录失败")?;
-    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+    let root = std::env::temp_dir().join("aegis-simplex");
+    std::fs::create_dir_all(&root).context("创建 SimpleX 临时目录失败")?;
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
         .context("设置 SimpleX 临时目录权限失败")?;
 
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let path = dir.join(format!("{}-{}-{}", std::process::id(), nanos, base));
+    let dir = root.join(format!("{}-{}", std::process::id(), nanos));
+    std::fs::create_dir_all(&dir).context("创建 SimpleX 独占临时目录失败")?;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+        .context("设置 SimpleX 独占临时目录权限失败")?;
 
+    let path = dir.join(base);
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -171,6 +179,29 @@ fn write_temp_file(name: &str, data: &[u8]) -> Result<PathBuf> {
         .context("创建 SimpleX 临时文件失败")?;
     file.write_all(data).context("写入 SimpleX 临时文件失败")?;
     Ok(path)
+}
+
+/// 删除 `write_temp_file` 产出的临时文件及其独占目录（用后即清，避免 /tmp 堆积空目录）。
+fn remove_temp_file(path: &std::path::Path) {
+    let _ = std::fs::remove_file(path);
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::remove_dir(dir);
+    }
+}
+
+/// 敏感文本改投的附件名/类型（与 `MatrixAdapter` 保持一致）。
+const SENSITIVE_FILE_NAME: &str = "batch_result.txt";
+const SENSITIVE_FILE_MIME: &str = "text/plain";
+
+/// 渲染 markup 后的最终外发文本（SimpleX 无 inline keyboard，按钮降级为文本命令）。
+///
+/// 敏感判定必须用**渲染后**文本：按钮 `data` 会被并入正文（`common/markup.rs`），
+/// 只判 `content.text` 会漏掉「敏感内容只藏在按钮里」的情况。
+fn outgoing_text(content: &MessageContent) -> String {
+    match &content.markup {
+        Some(markup) => render_markup_buttons(content.text.clone(), markup),
+        None => content.text.clone(),
+    }
 }
 
 /// 从发送响应中取第一条 chat item 的 itemId。
@@ -191,11 +222,21 @@ impl BotAdapter for SimplexAdapter {
     }
 
     async fn send_message(&self, target: &TargetId, content: MessageContent) -> Result<MessageId> {
+        let text = outgoing_text(&content);
+        // 命中敏感判据 → 改投 `.txt` 附件，与 `MatrixAdapter` 对称：普通消息可被
+        // 转发/复制且以纯文本落在消息列表，附件则不会（真机已确认敏感链接会以
+        // 普通消息落到 SimpleX）。
+        if is_sensitive(&text) {
+            return self
+                .send_file(
+                    target,
+                    SENSITIVE_FILE_NAME,
+                    text.into_bytes(),
+                    SENSITIVE_FILE_MIME,
+                )
+                .await;
+        }
         let chat_id = parse_chat_id(target)?;
-        let text = match &content.markup {
-            Some(markup) => render_markup_buttons(content.text, markup),
-            None => content.text,
-        };
         let resp = self
             .bot
             .send_msg(chat_id, text)
@@ -278,7 +319,7 @@ impl BotAdapter for SimplexAdapter {
             .bot
             .send_msg(chat_id, simploxide_client::messages::File::new(&path))
             .await;
-        let _ = std::fs::remove_file(&path);
+        remove_temp_file(&path);
         let resp = result.context("发送 SimpleX 文件失败")?;
         Ok(MessageId(first_item_id(&resp)?.to_string()))
     }
@@ -290,7 +331,7 @@ impl BotAdapter for SimplexAdapter {
             .bot
             .send_msg(chat_id, simploxide_client::messages::Image::new(&path))
             .await;
-        let _ = std::fs::remove_file(&path);
+        remove_temp_file(&path);
         let resp = result.context("发送 SimpleX 图片失败")?;
         Ok(MessageId(first_item_id(&resp)?.to_string()))
     }
@@ -339,6 +380,67 @@ mod tests {
             .unwrap(),
             undocumented: JsonObject::default(),
         }
+    }
+
+    // ── C1：敏感文本改投附件（判定对象必须是**渲染后**文本）──
+
+    fn message_with_buttons(text: &str, buttons: &[(&str, &str)]) -> MessageContent {
+        MessageContent {
+            text: text.to_string(),
+            markup: if buttons.is_empty() {
+                None
+            } else {
+                Some(crate::common::Markup {
+                    buttons: vec![
+                        buttons
+                            .iter()
+                            .map(|(t, d)| crate::common::InlineButton {
+                                text: t.to_string(),
+                                data: d.to_string(),
+                            })
+                            .collect(),
+                    ],
+                })
+            },
+        }
+    }
+
+    #[test]
+    fn outgoing_text_renders_markup_buttons_into_body() {
+        let got = outgoing_text(&message_with_buttons("正文", &[("点我", "m_mon")]));
+        assert!(got.contains("点我"), "按钮文案应并入正文: {got}");
+        assert!(got.contains("m_mon"), "按钮 data 应并入正文: {got}");
+    }
+
+    #[test]
+    fn sensitive_plain_text_is_flagged() {
+        let got = outgoing_text(&message_with_buttons(
+            "vless://abc@1.2.3.4:443?security=reality",
+            &[],
+        ));
+        assert!(crate::common::routing::is_sensitive(&got));
+    }
+
+    /// 关键回归：敏感内容只藏在按钮 `data` 里时，判未渲染的 `content.text` 会漏判。
+    #[test]
+    fn sensitive_only_in_button_data_is_flagged() {
+        let c = message_with_buttons(
+            "点击复制订阅",
+            &[("复制", "vless://abc@1.2.3.4:443?security=reality")],
+        );
+        assert!(
+            crate::common::routing::is_sensitive(&outgoing_text(&c)),
+            "按钮 data 里的敏感内容必须被判定为敏感"
+        );
+    }
+
+    #[test]
+    fn normal_text_is_not_flagged() {
+        let got = outgoing_text(&message_with_buttons(
+            "今天的天气不错",
+            &[("菜单", "m_mon")],
+        ));
+        assert!(!crate::common::routing::is_sensitive(&got));
     }
 
     #[test]
@@ -516,8 +618,35 @@ mod tests {
     fn write_temp_file_writes_bytes_that_can_be_removed() {
         let path = write_temp_file("unit-test.txt", b"hello").unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"hello");
-        std::fs::remove_file(&path).unwrap();
+        remove_temp_file(&path);
         assert!(!path.exists());
+    }
+
+    /// 真机回归：SimpleX 用**路径的 `file_name`** 当附件名（`File::new` 无名字参数），
+    /// 所以临时文件必须原样保留调用方给的名字——唯一性交给独占目录承担。
+    /// 修复前接收方看到的是 `69771-1790251954508139423-batch_result.txt`。
+    #[test]
+    fn write_temp_file_preserves_base_name() {
+        let path = write_temp_file("batch_result.txt", b"x").unwrap();
+        assert_eq!(
+            path.file_name().and_then(|n| n.to_str()),
+            Some("batch_result.txt"),
+            "附件名不能带 pid/时间戳前缀"
+        );
+        remove_temp_file(&path);
+    }
+
+    #[test]
+    fn remove_temp_file_removes_its_private_dir() {
+        let path = write_temp_file("unit.txt", b"x").unwrap();
+        let dir = path.parent().unwrap().to_path_buf();
+        assert!(dir.exists());
+        remove_temp_file(&path);
+        assert!(!path.exists());
+        assert!(
+            !dir.exists(),
+            "独占目录也应一并清理，避免 /tmp 里堆积空目录"
+        );
     }
 
     #[test]
@@ -550,8 +679,8 @@ mod tests {
         assert_ne!(a, b);
         assert!(a.exists());
         assert!(b.exists());
-        std::fs::remove_file(&a).unwrap();
-        std::fs::remove_file(&b).unwrap();
+        remove_temp_file(&a);
+        remove_temp_file(&b);
     }
 
     #[test]
@@ -559,7 +688,7 @@ mod tests {
         let path = write_temp_file("unit.txt", b"x").unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
-        std::fs::remove_file(&path).unwrap();
+        remove_temp_file(&path);
     }
 
     #[test]
@@ -568,7 +697,7 @@ mod tests {
         let dir = std::env::temp_dir().join("aegis-simplex");
         let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o700);
-        std::fs::remove_file(&path).unwrap();
+        remove_temp_file(&path);
     }
 
     /// 空响应不得制造 id=0（旧实现 `unwrap_or(0)` 会返回 Ok(0)，

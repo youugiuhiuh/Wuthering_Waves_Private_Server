@@ -1,3 +1,4 @@
+use crate::common::markup::render_markup_buttons;
 use crate::common::{
     BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
@@ -56,8 +57,14 @@ impl BotAdapter for RoutingAdapter {
     }
 
     async fn send_message(&self, target: &TargetId, content: MessageContent) -> Result<MessageId> {
+        // 判定用**渲染后**文本：按钮 `data` 会被并入正文（`common/markup.rs`），
+        // 只判 `content.text` 会让「敏感内容只藏在按钮里」的消息按 primary 发出。
+        let routed_text = match &content.markup {
+            Some(markup) => render_markup_buttons(content.text.clone(), markup),
+            None => content.text.clone(),
+        };
         match &self.secondary {
-            Some(secondary) if is_sensitive(&content.text) => {
+            Some(secondary) if is_sensitive(&routed_text) => {
                 // 先取锁并 clone，尽早释放 guard（勿跨 await 持锁）。
                 let secondary_target = self
                     .secondary_target
@@ -473,6 +480,40 @@ mod tests {
                     MessageContent {
                         text: "normal system message".into(),
                         markup: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        /// C1b 回归：敏感内容只藏在按钮 `data` 里时，只判未渲染的 `content.text` 会漏判
+        /// → 敏感内容按 primary(TG) 发出。判定必须用**渲染后**文本。
+        #[tokio::test]
+        async fn sensitive_only_in_button_data_uses_secondary() {
+            let mut primary = MockBotAdapter::new();
+            primary.expect_platform().returning(|| Platform::Telegram);
+            primary.expect_send_message().never();
+
+            let mut secondary = MockBotAdapter::new();
+            secondary.expect_platform().returning(|| Platform::Simplex);
+            secondary
+                .expect_send_message()
+                .times(1)
+                .returning(|_, _| Ok(MessageId("1".to_string())));
+
+            let routing = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)))
+                .with_secondary_target(TargetId("999".to_string()));
+            routing
+                .send_message(
+                    &TargetId("42".to_string()),
+                    MessageContent {
+                        text: "点击复制订阅".into(),
+                        markup: Some(crate::common::Markup {
+                            buttons: vec![vec![crate::common::InlineButton {
+                                text: "复制".into(),
+                                data: "vless://abc123".into(),
+                            }]],
+                        }),
                     },
                 )
                 .await
