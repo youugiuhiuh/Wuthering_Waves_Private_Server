@@ -1,4 +1,5 @@
 use crate::common::markup::render_markup_buttons;
+use crate::common::routing::is_sensitive;
 use crate::common::{
     BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
@@ -173,6 +174,21 @@ fn write_temp_file(name: &str, data: &[u8]) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// 敏感文本改投的附件名/类型（与 `MatrixAdapter` 保持一致）。
+const SENSITIVE_FILE_NAME: &str = "batch_result.txt";
+const SENSITIVE_FILE_MIME: &str = "text/plain";
+
+/// 渲染 markup 后的最终外发文本（SimpleX 无 inline keyboard，按钮降级为文本命令）。
+///
+/// 敏感判定必须用**渲染后**文本：按钮 `data` 会被并入正文（`common/markup.rs`），
+/// 只判 `content.text` 会漏掉「敏感内容只藏在按钮里」的情况。
+fn outgoing_text(content: &MessageContent) -> String {
+    match &content.markup {
+        Some(markup) => render_markup_buttons(content.text.clone(), markup),
+        None => content.text.clone(),
+    }
+}
+
 /// 从发送响应中取第一条 chat item 的 itemId。
 ///
 /// 响应不含 chat item 时返回错误：0 不是合法 SimpleX id，若把它当作
@@ -191,11 +207,21 @@ impl BotAdapter for SimplexAdapter {
     }
 
     async fn send_message(&self, target: &TargetId, content: MessageContent) -> Result<MessageId> {
+        let text = outgoing_text(&content);
+        // 命中敏感判据 → 改投 `.txt` 附件，与 `MatrixAdapter` 对称：普通消息可被
+        // 转发/复制且以纯文本落在消息列表，附件则不会（真机已确认敏感链接会以
+        // 普通消息落到 SimpleX）。
+        if is_sensitive(&text) {
+            return self
+                .send_file(
+                    target,
+                    SENSITIVE_FILE_NAME,
+                    text.into_bytes(),
+                    SENSITIVE_FILE_MIME,
+                )
+                .await;
+        }
         let chat_id = parse_chat_id(target)?;
-        let text = match &content.markup {
-            Some(markup) => render_markup_buttons(content.text, markup),
-            None => content.text,
-        };
         let resp = self
             .bot
             .send_msg(chat_id, text)
@@ -339,6 +365,67 @@ mod tests {
             .unwrap(),
             undocumented: JsonObject::default(),
         }
+    }
+
+    // ── C1：敏感文本改投附件（判定对象必须是**渲染后**文本）──
+
+    fn message_with_buttons(text: &str, buttons: &[(&str, &str)]) -> MessageContent {
+        MessageContent {
+            text: text.to_string(),
+            markup: if buttons.is_empty() {
+                None
+            } else {
+                Some(crate::common::Markup {
+                    buttons: vec![
+                        buttons
+                            .iter()
+                            .map(|(t, d)| crate::common::InlineButton {
+                                text: t.to_string(),
+                                data: d.to_string(),
+                            })
+                            .collect(),
+                    ],
+                })
+            },
+        }
+    }
+
+    #[test]
+    fn outgoing_text_renders_markup_buttons_into_body() {
+        let got = outgoing_text(&message_with_buttons("正文", &[("点我", "m_mon")]));
+        assert!(got.contains("点我"), "按钮文案应并入正文: {got}");
+        assert!(got.contains("m_mon"), "按钮 data 应并入正文: {got}");
+    }
+
+    #[test]
+    fn sensitive_plain_text_is_flagged() {
+        let got = outgoing_text(&message_with_buttons(
+            "vless://abc@1.2.3.4:443?security=reality",
+            &[],
+        ));
+        assert!(crate::common::routing::is_sensitive(&got));
+    }
+
+    /// 关键回归：敏感内容只藏在按钮 `data` 里时，判未渲染的 `content.text` 会漏判。
+    #[test]
+    fn sensitive_only_in_button_data_is_flagged() {
+        let c = message_with_buttons(
+            "点击复制订阅",
+            &[("复制", "vless://abc@1.2.3.4:443?security=reality")],
+        );
+        assert!(
+            crate::common::routing::is_sensitive(&outgoing_text(&c)),
+            "按钮 data 里的敏感内容必须被判定为敏感"
+        );
+    }
+
+    #[test]
+    fn normal_text_is_not_flagged() {
+        let got = outgoing_text(&message_with_buttons(
+            "今天的天气不错",
+            &[("菜单", "m_mon")],
+        ));
+        assert!(!crate::common::routing::is_sensitive(&got));
     }
 
     #[test]
