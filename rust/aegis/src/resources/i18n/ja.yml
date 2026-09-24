@@ -683,6 +683,8 @@ matrix:
 
 simplex:
   welcome: "Aegis bot の準備ができました。/menu を送信して操作一覧を表示します。"
+  share_link: "🔗 この bot に SimpleX で接続してください：\n%{0}"
+  security_code: "🔐 SimpleX 接続のセキュリティコード（お使いのクライアントの「セキュリティコードを確認」で照合してください）：\n%{0}"
   contact_request: "🔔 SimpleX で接続リクエスト\n表示名: %{0}\nリクエスト ID: %{1}"
   approve: "✅ 許可"
   reject: "🚫 拒否"
