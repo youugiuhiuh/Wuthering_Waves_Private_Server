@@ -515,12 +515,16 @@ pub async fn run(
                 async {
                     // TG+SimpleX：先给管理员递上 SimpleX 分享链接，否则用户无从连接。
                     if let Some(address) = simplex_share_address.as_deref() {
-                        let _ = crate::notify_simplex_share_link(
+                        match crate::notify_simplex_share_link(
                             &*adapter_for_init,
                             &target_for_init,
                             address,
                         )
-                        .await;
+                        .await
+                        {
+                            Ok(()) => log::info!("已向 TG 推送 SimpleX 分享链接"),
+                            Err(e) => log::warn!("向 TG 推送 SimpleX 分享链接失败: {e}"),
+                        }
                     }
                 },
             );

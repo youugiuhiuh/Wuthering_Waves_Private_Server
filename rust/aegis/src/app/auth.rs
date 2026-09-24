@@ -80,6 +80,9 @@ pub async fn process_auth_code(
                         .await
                     {
                         log::warn!("向 Telegram 发送 SimpleX 安全码失败: {e}");
+                    } else {
+                        // 只记「已发」不记码本身：journal 只需能证明这条路径跑过。
+                        log::info!("已向 TG 输出 SimpleX 连接安全码（contactId={user_id}）");
                     }
                 }
                 Err(e) => log::warn!("获取 SimpleX 安全码失败（不影响验证）: {e}"),
