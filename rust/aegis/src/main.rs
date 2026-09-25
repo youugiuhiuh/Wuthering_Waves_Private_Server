@@ -141,6 +141,8 @@ async fn main() -> Result<()> {
     } else {
         state
     };
+    let state =
+        state.with_simplex_code_verified_for(app_config.bot_settings.simplex_code_verified_for);
     let state = Arc::new(state);
 
     // 同步 AppState 语言状态 + 一次性系统副作用（时区、apt-daily timer）。
