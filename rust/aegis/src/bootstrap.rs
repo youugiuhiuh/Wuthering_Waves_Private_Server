@@ -123,6 +123,9 @@ impl Drop for EncryptedConfig {
 pub struct BotSettings {
     #[serde(default = "BotSettings::default_session_timeout")]
     pub session_timeout_secs: u64,
+    /// 已验证的 SimpleX contactId；None = 未验证。
+    #[serde(default)]
+    pub simplex_code_verified_for: Option<i64>,
 }
 
 impl BotSettings {
@@ -140,6 +143,7 @@ impl BotSettings {
         }
         BotSettings {
             session_timeout_secs: DEFAULT_SESSION_TIMEOUT_SECS,
+            simplex_code_verified_for: None,
         }
     }
 
@@ -153,6 +157,23 @@ impl BotSettings {
         )?;
         Ok(())
     }
+}
+
+/// 读现有 bot_settings.json（不存在或解析失败则用默认），只改验证字段再写回。
+#[allow(dead_code)]
+pub fn set_simplex_code_verified(config_dir: &Path, contact_id: Option<i64>) -> Result<()> {
+    let path = config_dir.join(BOT_SETTINGS_FILE);
+    let mut settings = fs::read_to_string(&path)
+        .ok()
+        .and_then(|data| serde_json::from_str::<BotSettings>(&data).ok())
+        .unwrap_or(BotSettings {
+            session_timeout_secs: DEFAULT_SESSION_TIMEOUT_SECS,
+            simplex_code_verified_for: None,
+        });
+    settings.simplex_code_verified_for = contact_id;
+    fs::create_dir_all(config_dir)?;
+    fs::write(&path, serde_json::to_string_pretty(&settings)?)?;
+    Ok(())
 }
 
 /// 同步执行 wwps-core/xray，解析 Seed/Verify 并写入文件。供 setup 时调用（无 tokio）。
@@ -729,6 +750,7 @@ mod config_validator_tests {
 mod config_tests {
     use super::*;
     use secrecy::ExposeSecret;
+    use serial_test::serial;
 
     #[test]
     fn save_self_destruct_hash_compiles() {
@@ -840,6 +862,60 @@ mod config_tests {
     fn set_simplex_admin_id_errors_when_config_missing() {
         let dir = tempfile::TempDir::new().unwrap();
         assert!(set_simplex_admin_id(dir.path(), 42).is_err());
+    }
+
+    #[serial]
+    #[test]
+    fn bot_settings_missing_field_deserializes_to_none() {
+        let dir = tempfile::TempDir::new().unwrap();
+        // 旧文件：只有 session_timeout_secs，缺新字段。
+        fs::write(
+            dir.path().join(BOT_SETTINGS_FILE),
+            br#"{"session_timeout_secs":60}"#,
+        )
+        .unwrap();
+        let raw = fs::read_to_string(dir.path().join(BOT_SETTINGS_FILE)).unwrap();
+        let settings: BotSettings = serde_json::from_str(&raw).unwrap();
+        assert_eq!(settings.session_timeout_secs, 60);
+        assert_eq!(settings.simplex_code_verified_for, None);
+    }
+
+    #[serial]
+    #[test]
+    fn set_simplex_code_verified_round_trips_and_clears() {
+        let dir = tempfile::TempDir::new().unwrap();
+        // SAFETY: test environment, single-threaded
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
+        }
+
+        set_simplex_code_verified(dir.path(), Some(5)).unwrap();
+        assert_eq!(BotSettings::load().simplex_code_verified_for, Some(5));
+
+        set_simplex_code_verified(dir.path(), None).unwrap();
+        assert_eq!(BotSettings::load().simplex_code_verified_for, None);
+    }
+
+    #[serial]
+    #[test]
+    fn set_simplex_code_verified_preserves_session_timeout() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let existing = BotSettings {
+            session_timeout_secs: 123,
+            simplex_code_verified_for: None,
+        };
+        fs::write(
+            dir.path().join(BOT_SETTINGS_FILE),
+            serde_json::to_vec(&existing).unwrap(),
+        )
+        .unwrap();
+
+        set_simplex_code_verified(dir.path(), Some(9)).unwrap();
+
+        let raw = fs::read_to_string(dir.path().join(BOT_SETTINGS_FILE)).unwrap();
+        let settings: BotSettings = serde_json::from_str(&raw).unwrap();
+        assert_eq!(settings.session_timeout_secs, 123);
+        assert_eq!(settings.simplex_code_verified_for, Some(9));
     }
 
     #[test]
