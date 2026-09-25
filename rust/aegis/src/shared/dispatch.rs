@@ -5,7 +5,7 @@ use sha2::Digest;
 
 use crate::app::auth;
 use crate::app::state::AppState;
-use crate::common::{MessageContent, MessageId};
+use crate::common::{MessageContent, MessageId, TargetId};
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::types::DomainFlowSource;
 use crate::shared::handlers::message::{self, MessageAction};
@@ -42,6 +42,9 @@ pub async fn dispatch_event(event: BotEvent, state: &AppState) -> Result<()> {
             commands::handle(cmd, state).await?;
         }
         BotEvent::Message(msg) => {
+            if try_confirm_security_code(&msg, state).await? {
+                return Ok(());
+            }
             handle_message(msg, state).await?;
         }
         BotEvent::Callback(mut cb) => {
@@ -130,6 +133,81 @@ fn looks_like_security_code(s: &str) -> bool {
     s.chars()
         .all(|c| c.is_ascii_digit() || c.is_ascii_whitespace())
         && s.chars().filter(char::is_ascii_digit).count() >= MIN_CODE_DIGITS
+}
+
+/// 处理用户回贴的 SimpleX 安全码。
+///
+/// 命中判据：未验证 + TG/SimpleX 管理员都在 + 文本形如安全码。命中后现取当前
+/// 安全码比对：一致则置位并落盘、回复成功；不一致则回复失败且不落盘。两条路都
+/// 返回 `true`（短路后续普通处理）。不命中或取码失败（fail-open）返回 `false`。
+#[allow(dead_code)]
+async fn try_confirm_security_code(msg: &MessageEvent, state: &AppState) -> Result<bool> {
+    if state.simplex_code_verified() {
+        return Ok(false);
+    }
+    let Some(sx_admin) = state.simplex_admin_id() else {
+        return Ok(false);
+    };
+    let Some(tg_admin) = state.admin_id() else {
+        return Ok(false);
+    };
+    let Some(text) = msg.text.as_deref() else {
+        return Ok(false);
+    };
+    if !looks_like_security_code(text) {
+        return Ok(false);
+    }
+
+    // 现取码；失败不阻塞普通消息处理（fail-open）。
+    let fetched = match state.adapter.contact_security_code(sx_admin).await {
+        Ok(code) => code,
+        Err(e) => {
+            log::warn!("获取 SimpleX 安全码失败（不影响普通消息处理）: {e}");
+            return Ok(false);
+        }
+    };
+
+    let target = TargetId(tg_admin.to_string());
+    // 强制 primary(TG)：安全码回复若走 `send_message`，可能被敏感分流改投 SimpleX。
+    if normalize_security_code(text) == normalize_security_code(&fetched) {
+        // 先更新内存态：即使落盘失败，本次运行也已可用。
+        state.set_simplex_code_verified_for(Some(sx_admin));
+        if let Err(e) = crate::bootstrap::set_simplex_code_verified(
+            &crate::bootstrap::config_dir(),
+            Some(sx_admin),
+        ) {
+            log::error!("保存安全码已验证状态失败（内存态保留）: {e}");
+        }
+        if let Err(e) = state
+            .adapter
+            .send_message_primary(
+                &target,
+                MessageContent {
+                    text: rust_i18n::t!("simplex.code_verified").to_string(),
+                    markup: None,
+                },
+            )
+            .await
+        {
+            log::warn!("回复安全码已验证失败: {e}");
+        }
+    } else {
+        log::warn!("用户回贴的安全码与现取不一致（contactId={sx_admin}）");
+        if let Err(e) = state
+            .adapter
+            .send_message_primary(
+                &target,
+                MessageContent {
+                    text: rust_i18n::t!("simplex.code_mismatch").to_string(),
+                    markup: None,
+                },
+            )
+            .await
+        {
+            log::warn!("回复安全码不一致失败: {e}");
+        }
+    }
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -390,6 +468,10 @@ mod tests {
         pub button_data: Mutex<Vec<String>>,
         pub button_text: Mutex<Vec<String>>,
         pub callback_answers: Mutex<Vec<String>>,
+        /// 经 `send_message_primary` 发出的文本（与 `sent` 同步记录，额外单独留痕）。
+        pub primary_sent: Mutex<Vec<String>>,
+        /// `contact_security_code` 的返回；`None` 表示取码失败。
+        pub security_code: Mutex<Option<String>>,
     }
 
     #[async_trait]
@@ -442,6 +524,21 @@ mod tests {
         }
         async fn download_file(&self, _file_id: &str) -> anyhow::Result<Vec<u8>> {
             Ok(Vec::new())
+        }
+        async fn contact_security_code(&self, _contact_id: i64) -> anyhow::Result<String> {
+            self.security_code
+                .lock()
+                .unwrap()
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("未配置测试安全码（模拟取码失败）"))
+        }
+        async fn send_message_primary(
+            &self,
+            target: &TargetId,
+            content: MessageContent,
+        ) -> anyhow::Result<MessageId> {
+            self.primary_sent.lock().unwrap().push(content.text.clone());
+            self.send_message(target, content).await
         }
         fn capabilities(&self) -> crate::common::PlatformCapabilities {
             crate::common::PlatformCapabilities::TELEGRAM
@@ -860,5 +957,189 @@ mod tests {
         assert!(!looks_like_security_code("12345678901")); // 11 digits
         assert!(!looks_like_security_code("12345 6789a"));
         assert!(!looks_like_security_code("example.com"));
+    }
+
+    // --- S5: 入站安全码确认 ---
+
+    /// TG 管理员 42 + SimpleX 联系人 7 的组合态（安全码确认要求两者都存在）。
+    fn make_tg_simplex_state(adapter: Arc<MockAdapter>) -> AppState {
+        AppState::new(
+            Some(42),
+            Some(7),
+            Some(
+                TotpManager::new(&SecretString::from(TotpManager::generate_new_secret())).unwrap(),
+            ),
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            adapter,
+        )
+    }
+
+    /// 纯 `--simplex`：无 TG 管理员（`admin_id == None`）。
+    fn make_simplex_only_state(adapter: Arc<MockAdapter>) -> AppState {
+        AppState::new(
+            None,
+            Some(7),
+            Some(
+                TotpManager::new(&SecretString::from(TotpManager::generate_new_secret())).unwrap(),
+            ),
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            adapter,
+        )
+    }
+
+    fn set_config_dir(dir: &tempfile::TempDir) {
+        // SAFETY: `#[serial]` 保证没有并发读该环境变量的测试；nextest 每个测试独立进程。
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
+        }
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn matching_security_code_marks_verified_persists_and_swallows_message() {
+        let dir = tempfile::TempDir::new().unwrap();
+        set_config_dir(&dir);
+        let adapter = Arc::new(MockAdapter::default());
+        // 5000 位数字：若未短路而落到 handle_message，必然触发 message.input_too_long。
+        let code = "5".repeat(5000);
+        *adapter.security_code.lock().unwrap() = Some(code.clone());
+        let state = make_tg_simplex_state(adapter.clone());
+        state.record_auth_success(42, Instant::now()).await;
+
+        dispatch_event(message_event(adapter.clone(), "42", Some(code)), &state)
+            .await
+            .unwrap();
+
+        assert!(state.simplex_code_verified(), "一致后内存态应置为已验证");
+        assert_eq!(
+            crate::bootstrap::BotSettings::load().simplex_code_verified_for,
+            Some(7),
+            "一致后应把 contactId 落盘"
+        );
+        let primary = adapter.primary_sent.lock().unwrap();
+        assert_eq!(primary.len(), 1, "只应回复一条安全码确认消息");
+        assert!(
+            primary[0].contains("code_verified"),
+            "回复应走 send_message_primary 且含 code_verified，got: {:?}",
+            *primary
+        );
+        drop(primary);
+        let sent = adapter.sent.lock().unwrap();
+        assert!(
+            !sent.iter().any(|m| m.contains("input_too_long")),
+            "命中后必须短路，handle_message 不应被调用，got: {:?}",
+            *sent
+        );
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn mismatching_security_code_replies_and_does_not_persist() {
+        let dir = tempfile::TempDir::new().unwrap();
+        set_config_dir(&dir);
+        let adapter = Arc::new(MockAdapter::default());
+        *adapter.security_code.lock().unwrap() = Some("9999888877776666".to_string());
+        let state = make_tg_simplex_state(adapter.clone());
+        state.record_auth_success(42, Instant::now()).await;
+
+        dispatch_event(
+            message_event(adapter.clone(), "42", Some("123456789012".to_string())),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        assert!(!state.simplex_code_verified(), "不一致不得置为已验证");
+        assert_eq!(
+            crate::bootstrap::BotSettings::load().simplex_code_verified_for,
+            None,
+            "不一致不得落盘"
+        );
+        let primary = adapter.primary_sent.lock().unwrap();
+        assert_eq!(primary.len(), 1);
+        assert!(
+            primary[0].contains("code_mismatch"),
+            "回复应含 code_mismatch，got: {:?}",
+            *primary
+        );
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn ordinary_messages_do_not_enter_confirmation() {
+        let dir = tempfile::TempDir::new().unwrap();
+        set_config_dir(&dir);
+        // 命令、域名、6 位 TOTP、含字母的类码输入，全部不走确认路径（行为逐条不变）。
+        for text in ["/menu", "example.com", "123456", "12345 6789a"] {
+            let adapter = Arc::new(MockAdapter::default());
+            *adapter.security_code.lock().unwrap() = Some("123456789012".to_string());
+            let state = make_tg_simplex_state(adapter.clone());
+            state.record_auth_success(42, Instant::now()).await;
+
+            dispatch_event(
+                message_event(adapter.clone(), "42", Some(text.to_string())),
+                &state,
+            )
+            .await
+            .unwrap();
+
+            assert!(
+                adapter.primary_sent.lock().unwrap().is_empty(),
+                "普通消息 {text:?} 不应触发安全码确认"
+            );
+            assert!(!state.simplex_code_verified());
+        }
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn simplex_only_deployment_skips_confirmation() {
+        let dir = tempfile::TempDir::new().unwrap();
+        set_config_dir(&dir);
+        let adapter = Arc::new(MockAdapter::default());
+        *adapter.security_code.lock().unwrap() = Some("123456789012".to_string());
+        let state = make_simplex_only_state(adapter.clone());
+        state.record_auth_success(7, Instant::now()).await;
+
+        dispatch_event(
+            message_event_from(adapter.clone(), 7, Some("123456789012".to_string())),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            adapter.primary_sent.lock().unwrap().is_empty(),
+            "纯 --simplex（admin_id == None）不得进入确认路径"
+        );
+        assert!(!state.simplex_code_verified());
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn security_code_fetch_failure_fails_open() {
+        let dir = tempfile::TempDir::new().unwrap();
+        set_config_dir(&dir);
+        let adapter = Arc::new(MockAdapter::default());
+        // 未配置 security_code → contact_security_code 返回 Err。
+        let state = make_tg_simplex_state(adapter.clone());
+        state.record_auth_success(42, Instant::now()).await;
+
+        dispatch_event(
+            message_event(adapter.clone(), "42", Some("123456789012".to_string())),
+            &state,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            adapter.primary_sent.lock().unwrap().is_empty(),
+            "取码失败应 fail-open，不回复也不打断普通处理"
+        );
+        assert!(!state.simplex_code_verified());
     }
 }
