@@ -122,13 +122,11 @@ fn is_totp_code(text: &str) -> bool {
 const MIN_CODE_DIGITS: usize = 12;
 
 /// 归一化安全码：仅保留 ASCII 数字，去掉空格/换行/制表符等一切非数字字符。
-#[allow(dead_code)]
 fn normalize_security_code(s: &str) -> String {
     s.chars().filter(char::is_ascii_digit).collect()
 }
 
 /// 是否「疑似安全码」：原文只含数字与空白，且去空白后数字位数 >= `MIN_CODE_DIGITS`。
-#[allow(dead_code)]
 fn looks_like_security_code(s: &str) -> bool {
     s.chars()
         .all(|c| c.is_ascii_digit() || c.is_ascii_whitespace())
@@ -140,7 +138,6 @@ fn looks_like_security_code(s: &str) -> bool {
 /// 命中判据：未验证 + TG/SimpleX 管理员都在 + 文本形如安全码。命中后现取当前
 /// 安全码比对：一致则置位并落盘、回复成功；不一致则回复失败且不落盘。两条路都
 /// 返回 `true`（短路后续普通处理）。不命中或取码失败（fail-open）返回 `false`。
-#[allow(dead_code)]
 async fn try_confirm_security_code(msg: &MessageEvent, state: &AppState) -> Result<bool> {
     if state.simplex_code_verified() {
         return Ok(false);
@@ -1020,19 +1017,53 @@ mod tests {
             Some(7),
             "一致后应把 contactId 落盘"
         );
+        let expected = rust_i18n::t!("simplex.code_verified").to_string();
         let primary = adapter.primary_sent.lock().unwrap();
         assert_eq!(primary.len(), 1, "只应回复一条安全码确认消息");
-        assert!(
-            primary[0].contains("code_verified"),
-            "回复应走 send_message_primary 且含 code_verified，got: {:?}",
+        assert_eq!(
+            primary[0], expected,
+            "回复应走 send_message_primary 且为本地化确认文案，got: {:?}",
             *primary
         );
         drop(primary);
+        // 短路证据：handle_message 若被调用，5000 位输入会再追加一条 input_too_long。
         let sent = adapter.sent.lock().unwrap();
-        assert!(
-            !sent.iter().any(|m| m.contains("input_too_long")),
-            "命中后必须短路，handle_message 不应被调用，got: {:?}",
+        assert_eq!(
+            sent.len(),
+            1,
+            "命中后必须短路，只应有确认回复一条，got: {:?}",
             *sent
+        );
+        assert_eq!(sent[0], expected);
+    }
+
+    /// 落盘失败必须只告警、保留内存态并照常回复（spec §4.1 fail-open）。
+    #[serial]
+    #[tokio::test]
+    async fn persist_failure_keeps_memory_and_replies() {
+        // config 目录指向一个文件的子路径：create_dir_all 必然失败。
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let bad = format!("{}/sub", file.path().display());
+        // SAFETY: `#[serial]` 保证没有并发读写该环境变量的测试；nextest 每个测试独立进程。
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", &bad);
+        }
+        let adapter = Arc::new(MockAdapter::default());
+        let code = "123456789012".to_string();
+        *adapter.security_code.lock().unwrap() = Some(code.clone());
+        let state = make_tg_simplex_state(adapter.clone());
+        state.record_auth_success(42, Instant::now()).await;
+
+        dispatch_event(message_event(adapter.clone(), "42", Some(code)), &state)
+            .await
+            .unwrap();
+
+        assert!(state.simplex_code_verified(), "落盘失败也应保留内存态");
+        let primary = adapter.primary_sent.lock().unwrap();
+        assert_eq!(primary.len(), 1, "落盘失败也应回复确认");
+        assert_eq!(
+            primary[0],
+            rust_i18n::t!("simplex.code_verified").to_string()
         );
     }
 
@@ -1061,9 +1092,10 @@ mod tests {
         );
         let primary = adapter.primary_sent.lock().unwrap();
         assert_eq!(primary.len(), 1);
-        assert!(
-            primary[0].contains("code_mismatch"),
-            "回复应含 code_mismatch，got: {:?}",
+        assert_eq!(
+            primary[0],
+            rust_i18n::t!("simplex.code_mismatch").to_string(),
+            "回复应为本地化不一致文案，got: {:?}",
             *primary
         );
     }

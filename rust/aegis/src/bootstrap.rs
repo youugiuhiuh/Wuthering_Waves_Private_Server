@@ -160,6 +160,10 @@ impl BotSettings {
 }
 
 /// 读现有 bot_settings.json（不存在或解析失败则用默认），只改验证字段再写回。
+///
+/// 调用方必须传 `config_dir()`（与 `BotSettings::load`/`save` 同源），否则读与写会指向不同目录。
+///
+/// `#[allow(dead_code)]`：仅 lib 侧 `shared::dispatch` 调用；bin target 也编译本模块但不经此路径。
 #[allow(dead_code)]
 pub fn set_simplex_code_verified(config_dir: &Path, contact_id: Option<i64>) -> Result<()> {
     let path = config_dir.join(BOT_SETTINGS_FILE);
