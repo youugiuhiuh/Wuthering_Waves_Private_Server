@@ -29,4 +29,5 @@
 
 ### Checkpoint: Complete
 - [x] spec §6 可测项全部验收、atomic commit
+- [x] 复核（fresh-context `explore` `715ef2f4`）：`Merge verdict: OK with notes`，C1/H2/M1/L1 已解决，H1/M2/M3/M4 已登记，无新增 Critical/High；唯一 notes = 新测试未还原 `AEGIS_CONFIG_DIR`（与既有 set_config_dir 同模式，serial 下无害）
 - [ ] 真机验收（`--tg-simplex` 实机，需用户在真实环境执行）
