@@ -115,6 +115,23 @@ fn is_totp_code(text: &str) -> bool {
     text.len() == 6 && text.chars().all(|c| c.is_ascii_digit())
 }
 
+/// 安全码最少数字位数；低于此值的纯数字消息（如 6 位 TOTP）不算码。
+const MIN_CODE_DIGITS: usize = 12;
+
+/// 归一化安全码：仅保留 ASCII 数字，去掉空格/换行/制表符等一切非数字字符。
+#[allow(dead_code)]
+fn normalize_security_code(s: &str) -> String {
+    s.chars().filter(char::is_ascii_digit).collect()
+}
+
+/// 是否「疑似安全码」：原文只含数字与空白，且去空白后数字位数 >= `MIN_CODE_DIGITS`。
+#[allow(dead_code)]
+fn looks_like_security_code(s: &str) -> bool {
+    s.chars()
+        .all(|c| c.is_ascii_digit() || c.is_ascii_whitespace())
+        && s.chars().filter(char::is_ascii_digit).count() >= MIN_CODE_DIGITS
+}
+
 #[cfg(test)]
 pub fn domain_resume_target(
     action: &MessageAction,
@@ -815,5 +832,33 @@ mod tests {
             domain_resume_target(&action_oneclick),
             Some(DomainFlowSource::OneClick)
         );
+    }
+
+    #[test]
+    fn normalize_security_code_strips_whitespace_keeps_digits() {
+        assert_eq!(
+            normalize_security_code("54440 24092\n64994"),
+            "544402409264994"
+        );
+        assert_eq!(normalize_security_code("07 533\t47951"), "0753347951");
+        assert_eq!(normalize_security_code("a1 b2\nc3"), "123");
+        assert_eq!(normalize_security_code(""), "");
+    }
+
+    #[test]
+    fn looks_like_security_code_accepts_pure_digits_spanning_lines() {
+        assert!(looks_like_security_code("54440 24092\n64994"));
+        assert!(looks_like_security_code("123456789012"));
+        assert!(looks_like_security_code("544402409264994"));
+    }
+
+    #[test]
+    fn looks_like_security_code_rejects_non_code_inputs() {
+        assert!(!looks_like_security_code(""));
+        assert!(!looks_like_security_code("/menu"));
+        assert!(!looks_like_security_code("123456")); // 6-digit TOTP
+        assert!(!looks_like_security_code("12345678901")); // 11 digits
+        assert!(!looks_like_security_code("12345 6789a"));
+        assert!(!looks_like_security_code("example.com"));
     }
 }
