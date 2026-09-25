@@ -115,32 +115,36 @@ pub async fn run(
     if let Some((client, room, matrix_adapter)) = matrix_handle {
         let target = TargetId(room.room_id().to_string());
 
-        fn parse_user_id(s: &str) -> i64 {
-            s.trim_start_matches('@')
-                .split(':')
-                .next()
-                .and_then(|n| n.parse().ok())
-                .unwrap_or(0)
-        }
+        let matrix_target_for_encrypted = target.clone();
 
-        let matrix_state = state.clone();
-        let matrix_adapter_sync = matrix_adapter;
-        let matrix_target = target.clone();
-        let matrix_target_for_encrypted = matrix_target.clone();
+        // 组合形态（enable_telegram=true）下 Matrix 只作出站落点，不再注册入站消息
+        // handler；纯 `--matrix`（enable_telegram=false）行为保持不变。
+        if secondary_handles_inbound(enable_telegram) {
+            fn parse_user_id(s: &str) -> i64 {
+                s.trim_start_matches('@')
+                    .split(':')
+                    .next()
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(0)
+            }
 
-        fn extract_thread_root(
-            relates_to: &Option<Relation<RoomMessageEventContentWithoutRelation>>,
-        ) -> Option<String> {
-            relates_to.as_ref().and_then(|r| {
-                if let Relation::Thread(t) = r {
-                    Some(t.event_id.to_string())
-                } else {
-                    None
-                }
-            })
-        }
+            let matrix_state = state.clone();
+            let matrix_adapter_sync = matrix_adapter;
+            let matrix_target = target.clone();
 
-        client.add_event_handler(
+            fn extract_thread_root(
+                relates_to: &Option<Relation<RoomMessageEventContentWithoutRelation>>,
+            ) -> Option<String> {
+                relates_to.as_ref().and_then(|r| {
+                    if let Relation::Thread(t) = r {
+                        Some(t.event_id.to_string())
+                    } else {
+                        None
+                    }
+                })
+            }
+
+            client.add_event_handler(
             move |event: matrix_sdk::ruma::events::room::message::OriginalSyncRoomMessageEvent,
                   room: MatrixRoom,
                   _client: MatrixClient| {
@@ -200,6 +204,11 @@ pub async fn run(
                 }
             },
         );
+        } else {
+            // spec §7 的缓解措施：Matrix 入站被关闭时留下可观测痕迹，否则房间里的
+            // 消息会完全静默（用户只会看到「没反应」，无从排查）。
+            log::warn!("组合形态下 Matrix 入站交互已关闭：Matrix 仅作敏感内容出站落点");
+        }
 
         client.add_event_handler(
             move |event: encrypted::SyncRoomEncryptedEvent,
@@ -362,11 +371,15 @@ pub async fn run(
                     // 实时读：TOTP 重钉后（自愈）本进程必须立即把新身份当管理员，
                     // 否则新管理员的 `/menu` 等命令会被下面的门禁① 静默丢弃。
                     let is_admin = state_for_events.simplex_admin_id() == Some(msg.contact_id);
-                    if !should_forward_simplex_msg(is_admin, msg.text.as_deref()) {
-                        log::warn!(
-                            "SimpleX 未授权联系人 contactId={} 尝试发消息，已忽略",
-                            msg.contact_id
-                        );
+                    if let SimplexInbound::Drop =
+                        classify_simplex_inbound(enable_telegram, is_admin, msg.text.as_deref())
+                    {
+                        let reason = if secondary_handles_inbound(enable_telegram) {
+                            "未授权联系人（仅 6 位登录码放行）"
+                        } else {
+                            "组合形态下 SimpleX 只作出站落点"
+                        };
+                        log::warn!("SimpleX 入站已丢弃 contactId={}：{reason}", msg.contact_id);
                         continue;
                     }
 
@@ -641,20 +654,42 @@ fn escape_display_name(name: &str) -> String {
     crate::utils::escape_html(&format!("{name:?}"))
 }
 
-/// 是否把这条 SimpleX 入站消息交给 dispatch。
-///
-/// 管理员的消息全放行；非管理员**只有 6 位纯数字码**放行 —— 那是登录尝试，
-/// 也是新 contactId 证明自己的唯一途径（自愈的前提）。
-/// 其余非管理员消息按原样丢弃并记日志。
-///
-/// 与 `shared::dispatch::is_totp_code` 保持同样的判据（6 位 ASCII 数字）。
-/// 此处无法复用那个私有函数（跨 crate 边界：runtime.rs 在 bin，dispatch 在 lib），
-/// 因此判据写在这里；两处不一致会让码在门口被丢，是本模块最该盯的回归点。
-fn should_forward_simplex_msg(is_admin: bool, text: Option<&str>) -> bool {
-    if is_admin {
-        return true;
+/// 组合形态下 secondary 平台（SimpleX / Matrix）是否处理入站交互。
+/// primary（TG）已启用时，secondary 只作出站落点。
+pub(crate) fn secondary_handles_inbound(primary_enabled: bool) -> bool {
+    !primary_enabled
+}
+
+/// SimpleX 入站消息的处置。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SimplexInbound {
+    /// 交给 dispatch_event（命令 / 文本 / 登录码）。
+    Dispatch,
+    /// 丢弃（仅记日志）。
+    Drop,
+}
+
+/// TG 启用时 SimpleX 一律不交互；纯 SimpleX 时沿用既有门禁
+/// （管理员全放行，非管理员只放行 6 位纯数字码 = TOTP 自愈入口）。
+pub(crate) fn classify_simplex_inbound(
+    enable_telegram: bool,
+    is_admin: bool,
+    text: Option<&str>,
+) -> SimplexInbound {
+    if !secondary_handles_inbound(enable_telegram) {
+        return SimplexInbound::Drop;
     }
-    text.is_some_and(|t| t.len() == 6 && t.chars().all(|c| c.is_ascii_digit()))
+    // 管理员的消息全放行；非管理员**只有 6 位纯数字码**放行 —— 那是登录尝试，
+    // 也是新 contactId 证明自己的唯一途径（TOTP 自愈的前提）。
+    //
+    // 与 `shared::dispatch::is_totp_code` 保持同样的判据（6 位 ASCII 数字）。
+    // 此处无法复用那个私有函数（跨 crate 边界：runtime.rs 在 bin，dispatch 在 lib），
+    // 因此判据写在这里；两处不一致会让码在门口被丢，是本模块最该盯的回归点。
+    if is_admin || text.is_some_and(|t| t.len() == 6 && t.chars().all(|c| c.is_ascii_digit())) {
+        SimplexInbound::Dispatch
+    } else {
+        SimplexInbound::Drop
+    }
 }
 
 #[cfg(test)]
@@ -714,31 +749,108 @@ mod tests {
     }
 
     #[test]
-    fn simplex_forwards_totp_code_from_unknown_contact() {
-        assert!(
-            should_forward_simplex_msg(false, Some("123456")),
+    fn classify_simplex_inbound_dispatches_totp_code_from_unknown_contact() {
+        assert_eq!(
+            classify_simplex_inbound(false, false, Some("123456")),
+            SimplexInbound::Dispatch,
             "非管理员发来的 6 位码必须放行，否则新 contactId 无法自愈"
         );
     }
 
     #[test]
-    fn simplex_drops_ordinary_text_from_unknown_contact() {
-        assert!(!should_forward_simplex_msg(false, Some("/menu")));
-        assert!(!should_forward_simplex_msg(false, Some("hello")));
-        assert!(!should_forward_simplex_msg(false, None));
+    fn classify_simplex_inbound_drops_ordinary_text_from_unknown_contact() {
+        assert_eq!(
+            classify_simplex_inbound(false, false, Some("/menu")),
+            SimplexInbound::Drop
+        );
+        assert_eq!(
+            classify_simplex_inbound(false, false, Some("hello")),
+            SimplexInbound::Drop
+        );
+        assert_eq!(
+            classify_simplex_inbound(false, false, None),
+            SimplexInbound::Drop
+        );
     }
 
     #[test]
-    fn simplex_forwards_everything_from_admin() {
-        assert!(should_forward_simplex_msg(true, Some("/menu")));
-        assert!(should_forward_simplex_msg(true, Some("hello")));
-        assert!(should_forward_simplex_msg(true, None));
+    fn classify_simplex_inbound_dispatches_everything_from_admin() {
+        assert_eq!(
+            classify_simplex_inbound(false, true, Some("/menu")),
+            SimplexInbound::Dispatch
+        );
+        assert_eq!(
+            classify_simplex_inbound(false, true, Some("hello")),
+            SimplexInbound::Dispatch
+        );
+        assert_eq!(
+            classify_simplex_inbound(false, true, None),
+            SimplexInbound::Dispatch
+        );
     }
 
     #[test]
-    fn simplex_does_not_treat_near_miss_codes_as_login() {
-        assert!(!should_forward_simplex_msg(false, Some("12345")));
-        assert!(!should_forward_simplex_msg(false, Some("1234567")));
-        assert!(!should_forward_simplex_msg(false, Some("12345a")));
+    fn classify_simplex_inbound_does_not_treat_near_miss_codes_as_login() {
+        for text in [Some("12345"), Some("1234567"), Some("12345a")] {
+            assert_eq!(
+                classify_simplex_inbound(false, false, text),
+                SimplexInbound::Drop,
+                "近失码不得当作登录: {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn secondary_handles_inbound_is_false_when_primary_enabled() {
+        assert!(!secondary_handles_inbound(true));
+    }
+
+    #[test]
+    fn secondary_handles_inbound_is_true_when_primary_disabled() {
+        assert!(secondary_handles_inbound(false));
+    }
+
+    /// TG 形态下 SimpleX 一律不交互：管理员命令、6 位码、空文本都丢弃。
+    #[test]
+    fn classify_simplex_inbound_drops_everything_when_telegram_enabled() {
+        assert_eq!(
+            classify_simplex_inbound(true, true, Some("/menu")),
+            SimplexInbound::Drop
+        );
+        assert_eq!(
+            classify_simplex_inbound(true, false, Some("123456")),
+            SimplexInbound::Drop
+        );
+        assert_eq!(
+            classify_simplex_inbound(true, true, None),
+            SimplexInbound::Drop
+        );
+    }
+
+    /// 纯 SimpleX 形态：沿用既有门禁判据，逐条不回归。
+    #[test]
+    fn classify_simplex_inbound_pure_simplex_keeps_old_rules() {
+        assert_eq!(
+            classify_simplex_inbound(false, true, Some("/menu")),
+            SimplexInbound::Dispatch
+        );
+        assert_eq!(
+            classify_simplex_inbound(false, false, Some("123456")),
+            SimplexInbound::Dispatch
+        );
+        for text in [
+            Some("/menu"),
+            Some("hello"),
+            None,
+            Some("12345"),
+            Some("1234567"),
+            Some("12345a"),
+        ] {
+            assert_eq!(
+                classify_simplex_inbound(false, false, text),
+                SimplexInbound::Drop,
+                "非管理员近失码/普通文本必须丢弃: {text:?}"
+            );
+        }
     }
 }
