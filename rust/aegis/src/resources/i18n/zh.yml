@@ -704,7 +704,9 @@ matrix:
 simplex:
   welcome: "Aegis bot 已就绪。发送 /menu 查看操作。"
   share_link: "🔗 请用 SimpleX 连接本 bot：\n%{0}"
-  security_code: "🔐 SimpleX 连接安全码（在你客户端的「验证安全码」里逐段比对）：\n%{0}"
+  security_code: "🔐 SimpleX 连接安全码（请在客户端复制后直接发到这里自动验证）：\n%{0}"
+  code_verified: "✅ 安全码验证成功，后续将不再发送安全码。"
+  code_mismatch: "❌ 安全码不匹配，请重新在客户端复制后发送。"
   contact_request: "🔔 SimpleX 有人请求连接\n显示名: %{0}\n请求 ID: %{1}"
   approve: "✅ 允许"
   reject: "🚫 拒绝"
