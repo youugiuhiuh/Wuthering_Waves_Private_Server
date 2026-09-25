@@ -30,6 +30,9 @@ pub struct InlineButton {
 pub enum Platform {
     Telegram,
     Matrix,
+    /// 不可改动：内部平台标识符。对外显示名是 `Aegis SimpleX Bot`（见
+    /// `crate::main::simplex::simplex_bot_display_name`），与此处无关。
+    /// 改名会波及 dispatch / routing 的全部分支匹配，属破坏性变更。
     Simplex,
 }
 

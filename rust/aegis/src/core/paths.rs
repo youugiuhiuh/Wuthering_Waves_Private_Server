@@ -49,6 +49,9 @@ pub mod bot {
 
     /// SimpleX bot 的 long-term 连接地址。aegis 连接后写入，installer 读取并打印。
     /// 必须与 go/installer/main.go 的 simplexAddressFile 保持一致。
+    ///
+    /// 不可改动：文件名 `simplex_address` 是与 installer 共享的落盘契约，
+    /// 改名会让存量部署的地址文件变成孤儿，admin 连接信息丢失。
     pub const SIMPLEX_ADDRESS_FILE: &str = "/etc/wwps/aegis/simplex_address";
 }
 

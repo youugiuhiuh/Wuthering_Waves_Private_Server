@@ -14,6 +14,15 @@ use simploxide_client::types::{ChatListQuery, PaginationByTime};
 
 use crate::bootstrap::EncryptedConfig;
 
+/// SimpleX bot 对外显示名。与 Matrix 侧 `matrix_device_display_name` 同款：
+/// 带平台区分（`Aegis SimpleX Bot`）+ 机房城市前缀，城市不可用/为空时回退默认名。
+fn simplex_bot_display_name(city: Option<&str>) -> String {
+    match city.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => format!("{c} Aegis SimpleX Bot"),
+        None => "Aegis SimpleX Bot".to_string(),
+    }
+}
+
 /// SimpleX runtime handle: WebSocket Bot, event stream, Adapter.
 pub struct SimplexHandle {
     /// 与 `adapter` 内部持有的句柄指向同一连接；保留以便后续直接调用 Bot API。
@@ -67,6 +76,8 @@ fn record_address(address: &str, path: &Path) {
 /// `simplex_admin_id` 同时存在会把「已配端口但还没填管理员」错判成非 SimpleX 部署，
 /// 进而退化到 Telegram 分支（无 token 时 `Bot::new` 直接 panic）。
 pub fn has_simplex_config(encrypted_config: &EncryptedConfig, args: &[String]) -> bool {
+    // 不可改动：`--simplex` 是已发布 CLI 契约（别名 `--tg-simplex` 见 main/cli.rs）。
+    // 改名会让既有部署的启动参数静默失效并退化到其他分支。
     let explicit = args.iter().any(|a| a == "--simplex");
     explicit || encrypted_config.simplex_port.is_some()
 }
@@ -131,11 +142,19 @@ pub async fn connect_simplex(
 ) -> Result<SimplexHandle> {
     let (port, _) = decode_port_and_admin(security, encrypted_config)?;
 
-    let (bot, events) = simploxide_client::ws::BotBuilder::new("Aegis", port)
-        .auto_accept_with(rust_i18n::t!("simplex.welcome").to_string())
-        .connect()
+    // bot 名带机房归属城市（best-effort，查询失败回退默认名），与 Matrix 侧一致
+    let city = aegis::core::network::GeoIPService::new()
+        .fetch_location()
         .await
-        .map_err(|e| anyhow::anyhow!("连接 SimpleX WebSocket 失败: {e}"))?;
+        .map(|loc| loc.location.city)
+        .ok();
+
+    let (bot, events) =
+        simploxide_client::ws::BotBuilder::new(simplex_bot_display_name(city.as_deref()), port)
+            .auto_accept_with(rust_i18n::t!("simplex.welcome").to_string())
+            .connect()
+            .await
+            .map_err(|e| anyhow::anyhow!("连接 SimpleX WebSocket 失败: {e}"))?;
 
     // P2：autoAccept 永久关闭。失败即启动失败（fail closed）—— 这个控制是
     // 「地址泄露近乎无用」的全部依据，静默继续等于把公开地址留在自动接受状态。
@@ -309,6 +328,18 @@ mod tests {
             simplex_port: None,
             simplex_admin_id: None,
         }
+    }
+
+    /// 对外显示名需与 Matrix 侧同款：带平台区分 + 机房城市前缀，
+    /// 否则同一台服务器上的多个 Aegis bot 在 SimpleX 联系人列表里无法分辨。
+    #[test]
+    fn bot_display_name_is_platform_distinguished() {
+        assert_eq!(simplex_bot_display_name(None), "Aegis SimpleX Bot");
+        assert_eq!(simplex_bot_display_name(Some("   ")), "Aegis SimpleX Bot");
+        assert_eq!(
+            simplex_bot_display_name(Some("  San Jose  ")),
+            "San Jose Aegis SimpleX Bot"
+        );
     }
 
     #[test]
