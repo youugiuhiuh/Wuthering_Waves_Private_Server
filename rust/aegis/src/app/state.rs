@@ -76,6 +76,9 @@ pub struct AppState {
     /// 运行时可变：TOTP 验证成功后可就地重钉（见 `with_simplex_repin`）。
     /// `0` 表示「未配置」—— 这与 `is_admin_user` 里 `admin_id.unwrap_or(0)` 的既有约定一致。
     simplex_admin_id: AtomicI64,
+    /// 已验证的安全码对应 contactId（`0` = 未验证）。仅当它与当前
+    /// `simplex_admin_id` 一致时才算「已验证」，重钉后自然失配。
+    simplex_code_verified_for: AtomicI64,
     /// 是否允许 TOTP 成功后重钉 `simplex_admin_id`。仅纯 `--simplex` 部署开启。
     simplex_repin_enabled: bool,
     totp_manager: Option<TotpManager>,
@@ -112,6 +115,7 @@ impl AppState {
             adapter,
             admin_id,
             simplex_admin_id: AtomicI64::new(simplex_admin_id.unwrap_or(0)),
+            simplex_code_verified_for: AtomicI64::new(0),
             simplex_repin_enabled: false,
             totp_manager,
             self_destruct_executor,
@@ -168,6 +172,29 @@ impl AppState {
 
     pub fn simplex_repin_enabled(&self) -> bool {
         self.simplex_repin_enabled
+    }
+
+    /// 注入已持久化的「安全码已验证 contactId」。
+    #[must_use]
+    pub fn with_simplex_code_verified_for(self, id: Option<i64>) -> Self {
+        self.simplex_code_verified_for
+            .store(id.unwrap_or(0), Ordering::Relaxed);
+        self
+    }
+
+    /// 是否已验证：存储的 contactId 与当前 `simplex_admin_id` 一致才算。
+    /// 重钉即自然失效，无需显式清零。
+    pub fn simplex_code_verified(&self) -> bool {
+        match self.simplex_code_verified_for.load(Ordering::Relaxed) {
+            0 => false,
+            id => self.simplex_admin_id() == Some(id),
+        }
+    }
+
+    /// 就地更新已验证 contactId（**只改内存态**；落盘由调用方负责）。
+    pub fn set_simplex_code_verified_for(&self, id: Option<i64>) {
+        self.simplex_code_verified_for
+            .store(id.unwrap_or(0), Ordering::Relaxed);
     }
 
     pub fn is_admin_user(&self, user_id: i64) -> bool {
@@ -1253,5 +1280,49 @@ mod tests {
             state.auth_cooldown_remaining(999, now).await.is_some(),
             "全局封锁期间，任何身份（含从未失败过的新身份）都必须被挡"
         );
+    }
+
+    fn make_state_with_simplex(simplex_admin_id: Option<i64>) -> AppState {
+        AppState::new(
+            Some(42),
+            simplex_admin_id,
+            None,
+            Arc::new(NoopExecutor),
+            None,
+            600,
+            Arc::new(MockAdapter),
+        )
+    }
+
+    #[test]
+    fn simplex_code_unverified_by_default() {
+        let state = make_state();
+        assert!(!state.simplex_code_verified());
+    }
+
+    #[test]
+    fn simplex_code_verified_requires_matching_admin_id() {
+        let state = make_state_with_simplex(Some(5)).with_simplex_code_verified_for(Some(5));
+        assert!(state.simplex_code_verified());
+
+        let state = make_state_with_simplex(Some(7)).with_simplex_code_verified_for(Some(5));
+        assert!(!state.simplex_code_verified());
+    }
+
+    #[test]
+    fn simplex_code_unverified_when_admin_id_missing() {
+        let state = make_state_with_simplex(None).with_simplex_code_verified_for(Some(5));
+        assert!(!state.simplex_code_verified());
+    }
+
+    #[test]
+    fn set_simplex_code_verified_reflects_admin_id_changes() {
+        let state = make_state_with_simplex(Some(5));
+        state.set_simplex_code_verified_for(Some(7));
+        assert!(!state.simplex_code_verified());
+        state.set_simplex_admin_id(7);
+        assert!(state.simplex_code_verified());
+        state.set_simplex_code_verified_for(None);
+        assert!(!state.simplex_code_verified());
     }
 }

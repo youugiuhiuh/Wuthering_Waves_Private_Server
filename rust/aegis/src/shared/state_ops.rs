@@ -35,9 +35,9 @@ async fn handle_set_timeout(cb: &CallbackEvent, state: &AppState) {
         .parse()
         .unwrap_or(600);
     state.set_session_timeout_secs(secs).await;
-    let settings = BotSettings {
-        session_timeout_secs: secs,
-    };
+    // 读-改-写：保留 simplex_code_verified_for 等其他字段。
+    let mut settings = BotSettings::load();
+    settings.session_timeout_secs = secs;
     if let Err(e) = settings.save() {
         log::error!("保存会话设置失败: {}", e);
     }
@@ -112,6 +112,7 @@ mod tests {
         )
     }
 
+    #[serial_test::serial]
     #[tokio::test]
     async fn intercept_set_timeout_persists() {
         let state = make_state();
@@ -126,5 +127,36 @@ mod tests {
         };
         intercept(&event, &state).await;
         assert_eq!(state.session_timeout_secs().await, 3600);
+    }
+
+    #[serial_test::serial]
+    #[tokio::test]
+    async fn set_timeout_preserves_simplex_code_verified() {
+        let dir = tempfile::TempDir::new().unwrap();
+        // SAFETY: test environment, single-threaded
+        unsafe {
+            std::env::set_var("AEGIS_CONFIG_DIR", dir.path().to_str().unwrap());
+        }
+        let settings = BotSettings {
+            session_timeout_secs: 600,
+            simplex_code_verified_for: Some(5),
+        };
+        settings.save().unwrap();
+
+        let state = make_state();
+        let event = CallbackEvent {
+            adapter: Arc::new(MockBotAdapter::new()) as Arc<dyn BotAdapter>,
+            target: TargetId("123".into()),
+            user_id: "42".into(),
+            msg_id: MessageId("1".into()),
+            data: "set_timeout:3600".into(),
+            callback_id: "cb1".into(),
+            session_timeout_secs: 600,
+        };
+        intercept(&event, &state).await;
+
+        let loaded = BotSettings::load();
+        assert_eq!(loaded.session_timeout_secs, 3600);
+        assert_eq!(loaded.simplex_code_verified_for, Some(5));
     }
 }

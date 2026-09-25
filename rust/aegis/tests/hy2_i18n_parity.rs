@@ -68,6 +68,13 @@ const SINGBOX_HY2_KEYS: &[&str] = &[
     "menu.singbox_h2_hop_enable_v2rayn",
 ];
 
+/// SimpleX 安全码相关 key：回贴自动验证功能新增/修改，三语必须齐全。
+const SIMPLEX_KEYS: &[&str] = &[
+    "simplex.security_code",
+    "simplex.code_verified",
+    "simplex.code_mismatch",
+];
+
 #[test]
 fn every_hy2_key_exists_in_all_locales() {
     let en = locale("en");
@@ -75,7 +82,11 @@ fn every_hy2_key_exists_in_all_locales() {
     let ja = locale("ja");
 
     let mut missing = Vec::new();
-    for key in XRAY_HY2_KEYS.iter().chain(SINGBOX_HY2_KEYS) {
+    for key in XRAY_HY2_KEYS
+        .iter()
+        .chain(SINGBOX_HY2_KEYS)
+        .chain(SIMPLEX_KEYS)
+    {
         for (name, map) in [("en", &en), ("zh", &zh), ("ja", &ja)] {
             if !map.contains_key(*key) {
                 missing.push(format!("{key} missing in {name}.yml"));
@@ -113,6 +124,7 @@ fn cjk_locales_are_not_left_in_english() {
     let all_keys: Vec<&str> = XRAY_HY2_KEYS
         .iter()
         .chain(SINGBOX_HY2_KEYS)
+        .chain(SIMPLEX_KEYS)
         .copied()
         .collect();
     let mut untranslated = Vec::new();
