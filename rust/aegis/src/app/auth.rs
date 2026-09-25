@@ -65,6 +65,7 @@ pub async fn process_auth_code(
         // 取码/发送失败只 warn —— 安全码是辅助手段，不得影响 TOTP 验证结果本身。
         if let Some(sx_admin) = state.simplex_admin_id()
             && let Some(tg_admin) = state.admin_id()
+            && !state.simplex_code_verified()
         {
             match state.adapter.contact_security_code(sx_admin).await {
                 Ok(code) => {
@@ -342,6 +343,32 @@ mod tests {
         adapter.expect_contact_security_code().times(0);
         adapter.expect_send_message_primary().times(0);
         let (state, _dir) = state_with_admin_and(None, true, Arc::new(adapter));
+        let code = state.generate_current_totp().expect("有 TOTP 管理器");
+        let ok = process_auth_code(
+            &TelegramRecordingAdapter,
+            &TargetId("6103295147".into()),
+            6103295147,
+            &code,
+            &state,
+            5,
+            Duration::from_secs(600),
+            &[Duration::from_secs(900)],
+        )
+        .await
+        .unwrap();
+        assert!(ok);
+    }
+
+    /// 已验证（`verified_for == simplex_admin_id`）后：不再取码、不再发送。
+    #[tokio::test]
+    async fn verified_code_skips_simplex_security_code_send() {
+        let mut adapter = MockBotAdapter::new();
+        adapter.expect_set_secondary_target().times(0);
+        adapter.expect_contact_security_code().times(0);
+        adapter.expect_send_message_primary().times(0);
+        let (state, _dir) = state_with_admin_and(Some(6103295147), true, Arc::new(adapter));
+        let state = state.with_simplex_code_verified_for(Some(3));
+        assert!(state.simplex_code_verified());
         let code = state.generate_current_totp().expect("有 TOTP 管理器");
         let ok = process_auth_code(
             &TelegramRecordingAdapter,
