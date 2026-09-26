@@ -290,13 +290,13 @@ fn contact_request_id(raw: i64) -> Result<ContactRequestId> {
     ContactRequestId::try_from(raw).map_err(|_| anyhow::anyhow!("非法 contactRequestId: {raw}"))
 }
 
-pub(crate) async fn approve_contact_request(id: i64) -> Result<()> {
+pub(crate) async fn approve_contact_request(id: i64) -> Result<Option<i64>> {
     let client = cli_client().await?;
-    client
+    let res = client
         .accept_contact(contact_request_id(id)?)
         .await
         .context("接受联系人请求失败")?;
-    Ok(())
+    Ok(Some(res.contact.contact_id))
 }
 
 pub(crate) async fn reject_contact_request(id: i64) -> Result<()> {

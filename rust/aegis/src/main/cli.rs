@@ -109,8 +109,13 @@ pub async fn execute_cli_mode(mode: CliMode) -> Result<()> {
         CliMode::ApproveContact(raw) => {
             let raw = raw.context("用法: aegis --approve-contact <contactRequestId>")?;
             let id = parse_contact_id(&raw)?;
-            crate::main::simplex::approve_contact_request(id).await?;
+            let bound = crate::main::simplex::approve_contact_request(id).await?;
             println!("已批准联系人请求 contactRequestId={id}");
+            if let Some(contact_id) = bound {
+                println!(
+                    "   contactId={contact_id}（可用 aegis --set-simplex-admin {contact_id} 绑定）"
+                );
+            }
             Ok(())
         }
         CliMode::RejectContact(raw) => {

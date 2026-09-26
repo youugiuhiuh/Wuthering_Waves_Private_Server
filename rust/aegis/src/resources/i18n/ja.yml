@@ -691,6 +691,7 @@ simplex:
   approve: "✅ 許可"
   reject: "🚫 拒否"
   approval_done: "✅ 連絡先リクエスト #%{0} を処理しました"
+  approval_done_bound: "✅ 連絡先リクエストを承認し、SimpleX 管理者として自動バインドしました（秘匿情報の送信先を SimpleX に切り替え）"
   approved: "許可しました"
   rejected: "拒否しました"
   approval_failed: "❌ 処理に失敗しました: %{0}"

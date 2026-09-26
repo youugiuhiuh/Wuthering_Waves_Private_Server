@@ -691,6 +691,7 @@ simplex:
   approve: "✅ Allow"
   reject: "🚫 Reject"
   approval_done: "✅ Handled contact request #%{0}"
+  approval_done_bound: "✅ Contact request approved and auto-bound as SimpleX admin (sensitive-content landing switched to SimpleX)"
   approved: "Approved"
   rejected: "Rejected"
   approval_failed: "❌ Failed: %{0}"

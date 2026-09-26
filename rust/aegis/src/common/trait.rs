@@ -183,7 +183,10 @@ pub trait BotAdapter: Send + Sync {
 
     /// 批准一个 SimpleX 联系人请求（TG 带外审批 / 本地 CLI 用）。
     /// 默认不支持：只有 SimpleX 适配器实现；RoutingAdapter 转发到 secondary。
-    async fn accept_contact_request(&self, _contact_request_id: i64) -> Result<()> {
+    ///
+    /// 返回刚接受出来的 contactId：SDK 的 `AcceptingContactRequestResponse` 带着它，
+    /// onboarding 期间靠它自动绑定管理员。实现方拿不到时返回 `None`（不视为失败）。
+    async fn accept_contact_request(&self, _contact_request_id: i64) -> Result<Option<i64>> {
         anyhow::bail!("当前平台不支持联系人审批")
     }
 

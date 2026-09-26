@@ -4,6 +4,7 @@ use crate::common::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct RoutingAdapter {
@@ -16,6 +17,16 @@ pub struct RoutingAdapter {
     /// `Mutex`：运行时重钉 `simplex_admin_id` 后要能就地改（`set_secondary_target`），
     /// 否则敏感内容会一直发往启动快照里的旧 contactId。
     secondary_target: Mutex<Option<TargetId>>,
+    /// 敏感内容是否允许改投 secondary。
+    ///
+    /// onboarding 期间（`--tg-simplex` 但 `simplex_admin_id` 尚未配置）没有合法落点：
+    /// 改投会把 TG 的 chat_id 交给 SimpleX 适配器的 `parse_chat_id` 当 contactId 解读。
+    /// 此时强制留在 primary，而 `accept/reject_contact_request` 等仍照常走 secondary ——
+    /// 联系人请求就住在那里，审批动作必须能穿过。
+    ///
+    /// `AtomicBool`：`send_message` 是 async 且并发调用；置位点只有两处
+    /// （构造期显式配置、`set_secondary_target` 重钉），故用原子量而非 `Mutex`。
+    sensitive_routing: AtomicBool,
 }
 
 impl RoutingAdapter {
@@ -24,12 +35,19 @@ impl RoutingAdapter {
             primary,
             secondary,
             secondary_target: Mutex::new(None),
+            sensitive_routing: AtomicBool::new(true),
         }
     }
 
     /// 覆盖 secondary 的发送目标；未设置时沿用调用方传入的 target。
     pub fn with_secondary_target(mut self, target: TargetId) -> Self {
         self.secondary_target = Mutex::new(Some(target));
+        self
+    }
+
+    /// 开关敏感内容路由。仅 onboarding（无 `simplex_admin_id`）需要置 `false`。
+    pub fn with_sensitive_routing(mut self, enabled: bool) -> Self {
+        self.sensitive_routing = AtomicBool::new(enabled);
         self
     }
 }
@@ -64,7 +82,9 @@ impl BotAdapter for RoutingAdapter {
             None => content.text.clone(),
         };
         match &self.secondary {
-            Some(secondary) if is_sensitive(&routed_text) => {
+            Some(secondary)
+                if self.sensitive_routing.load(Ordering::Relaxed) && is_sensitive(&routed_text) =>
+            {
                 // 先取锁并 clone，尽早释放 guard（勿跨 await 持锁）。
                 let secondary_target = self
                     .secondary_target
@@ -89,7 +109,12 @@ impl BotAdapter for RoutingAdapter {
     }
 
     /// 运行时重钉后刷新敏感内容落点（见 `BotAdapter::set_secondary_target`）。
+    ///
+    /// 重钉意味着已经拿到了合法的 `simplex_admin_id`，onboarding 结束 —— 因此
+    /// 这里同时把敏感路由打开。否则 6 位码自愈之后敏感内容仍被钉死在 TG，
+    /// 而调用方（`app/auth.rs`）无从得知还有这么一道开关。
     fn set_secondary_target(&self, target: TargetId) {
+        self.sensitive_routing.store(true, Ordering::Relaxed);
         match self.secondary_target.lock() {
             Ok(mut g) => *g = Some(target),
             Err(e) => log::error!("更新敏感内容落点失败（锁中毒）: {e}"),
@@ -171,7 +196,7 @@ impl BotAdapter for RoutingAdapter {
     }
 
     /// TG + SimpleX 形态下，审批动作落在 **secondary**（SimpleX）上，不是 primary（TG）。
-    async fn accept_contact_request(&self, contact_request_id: i64) -> Result<()> {
+    async fn accept_contact_request(&self, contact_request_id: i64) -> Result<Option<i64>> {
         match &self.secondary {
             Some(secondary) => secondary.accept_contact_request(contact_request_id).await,
             None => anyhow::bail!("未配置 SimpleX 次级适配器，无法审批联系人"),
@@ -218,9 +243,10 @@ mod tests {
             .expect_accept_contact_request()
             .with(mockall::predicate::eq(5))
             .times(1)
-            .returning(|_| Ok(()));
+            .returning(|_| Ok(Some(6)));
         let adapter = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)));
-        adapter.accept_contact_request(5).await.unwrap();
+        // contactId 必须原样透传（onboarding 自动绑定依赖它）。
+        assert_eq!(adapter.accept_contact_request(5).await.unwrap(), Some(6));
     }
 
     #[tokio::test]
@@ -262,6 +288,80 @@ mod tests {
         let adapter = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)))
             .with_secondary_target(TargetId("1".into()));
         // 模拟运行时重钉：落点从 1 改为 9。
+        adapter.set_secondary_target(TargetId("9".into()));
+        adapter
+            .send_message(
+                &TargetId("42".into()),
+                MessageContent {
+                    text: "vless://x".into(),
+                    markup: None,
+                },
+            )
+            .await
+            .unwrap();
+    }
+
+    /// onboarding 期间（`--tg-simplex` 但还没配 `simplex_admin_id`）敏感内容必须留在
+    /// primary。落点此时不存在，若照常改投 secondary，TG 的 chat_id 会被
+    /// SimpleX 适配器的 `parse_chat_id` 当成 contactId 解读。
+    #[tokio::test]
+    async fn onboarding_keeps_sensitive_content_on_primary() {
+        let mut primary = MockBotAdapter::new();
+        primary.expect_platform().returning(|| Platform::Telegram);
+        primary
+            .expect_send_message()
+            .withf(|t, c| t.0 == "42" && c.text.contains("vless://"))
+            .times(1)
+            .returning(|_, _| Ok(MessageId("1".into())));
+        let mut secondary = MockBotAdapter::new();
+        secondary.expect_platform().returning(|| Platform::Simplex);
+        secondary.expect_send_message().times(0);
+        let adapter = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)))
+            .with_sensitive_routing(false);
+        adapter
+            .send_message(
+                &TargetId("42".into()),
+                MessageContent {
+                    text: "vless://x".into(),
+                    markup: None,
+                },
+            )
+            .await
+            .unwrap();
+    }
+
+    /// onboarding 期间审批仍然必须走 secondary —— 联系人请求就住在那里，
+    /// 走 primary 只会静默失败（这正是当初硬失败想保护的路径）。
+    #[tokio::test]
+    async fn onboarding_still_approves_contacts_on_secondary() {
+        let mut primary = MockBotAdapter::new();
+        primary.expect_platform().returning(|| Platform::Telegram);
+        let mut secondary = MockBotAdapter::new();
+        secondary
+            .expect_accept_contact_request()
+            .with(mockall::predicate::eq(5))
+            .times(1)
+            .returning(|_| Ok(Some(6)));
+        let adapter = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)))
+            .with_sensitive_routing(false);
+        adapter.accept_contact_request(5).await.unwrap();
+    }
+
+    /// 运行时重钉 `simplex_admin_id` 后敏感路由必须自动恢复 —— 审批通过、
+    /// 6 位码自愈钉上 contactId 之后，敏感内容才允许离开 TG。
+    #[tokio::test]
+    async fn re_pin_restores_sensitive_routing() {
+        let mut primary = MockBotAdapter::new();
+        primary.expect_platform().returning(|| Platform::Telegram);
+        primary.expect_send_message().times(0);
+        let mut secondary = MockBotAdapter::new();
+        secondary.expect_platform().returning(|| Platform::Simplex);
+        secondary
+            .expect_send_message()
+            .times(1)
+            .returning(|_, _| Ok(MessageId("1".into())));
+        let adapter = RoutingAdapter::new(Arc::new(primary), Some(Arc::new(secondary)))
+            .with_sensitive_routing(false);
         adapter.set_secondary_target(TargetId("9".into()));
         adapter
             .send_message(

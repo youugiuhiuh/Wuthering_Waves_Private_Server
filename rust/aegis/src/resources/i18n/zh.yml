@@ -711,6 +711,7 @@ simplex:
   approve: "✅ 允许"
   reject: "🚫 拒绝"
   approval_done: "✅ 已处理联系人请求 #%{0}"
+  approval_done_bound: "✅ 已批准联系人请求，并自动绑定为 SimpleX 管理员（敏感内容落点已切换到 SimpleX）"
   approved: "已允许"
   rejected: "已拒绝"
   approval_failed: "❌ 处理失败: %{0}"

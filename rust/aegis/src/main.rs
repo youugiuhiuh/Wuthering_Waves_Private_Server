@@ -16,7 +16,7 @@ use aegis::core::security::self_destruct::production_executor;
 use aegis::core::system::SystemMonitor;
 use aegis::core::system::maintenance::MaintenanceManager;
 use aegis::core::system::upgrade::UPGRADE_FLAG_FILE;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -100,17 +100,27 @@ async fn main() -> Result<()> {
             &matrix_handle,
         )
         .await?;
-        // 独立 --simplex 形态允许无管理员启动（首次安装时 contactId 尚不存在）；
-        // 但 TG+SimpleX 形态下 SimpleX 是敏感内容落点，必须已有投递目标，
-        // 因此这里的 context 是真正的硬校验。
-        let simplex_admin_id = app_config
-            .decrypted
-            .simplex_admin_id
-            .context("启用 SimpleX 作为敏感内容落点时必须配置 simplex_admin_id")?;
-        Arc::new(
-            RoutingAdapter::new(primary, Some(handle.adapter.clone()))
-                .with_secondary_target(TargetId(simplex_admin_id.to_string())),
-        ) as Arc<dyn BotAdapter>
+        // TG+SimpleX 首次安装时管理员尚未连接，contactId 无从得知 —— 这不是错误状态，
+        // 而是 onboarding 的起点：bot 照常启动，SimpleX 侧收到的敲门会推送到 TG 管理员，
+        // 在 TG 点批准后审批动作路由回 SimpleX（见 routing.rs 的 accept/reject）。
+        //
+        // 此时没有合法的敏感内容落点，RoutingAdapter 必须关掉敏感路由，让敏感内容
+        // 留在 TG（`with_sensitive_routing(false)`）；审批/安全码仍走 secondary。
+        // 重钉 contactId（`set_secondary_target`）后路由自动恢复。
+        let routing = RoutingAdapter::new(primary, Some(handle.adapter.clone()));
+        let routing = match app_config.decrypted.simplex_admin_id {
+            Some(admin_id) => routing.with_secondary_target(TargetId(admin_id.to_string())),
+            None => {
+                log::warn!(
+                    "SimpleX 未配置 simplex_admin_id，进入 onboarding 模式：\
+                     敏感内容暂留 Telegram，SimpleX 敲门会推送到 Telegram 等待批准。\n\
+                     👉 请在 Telegram 中批准该联系人请求，然后执行 \
+                     `aegis --set-simplex-admin <contactId>` 并重启以完成绑定。"
+                );
+                routing.with_sensitive_routing(false)
+            }
+        };
+        Arc::new(routing) as Arc<dyn BotAdapter>
     } else {
         main::adapter::build_adapter(
             app_config.decrypted.token.as_deref(),

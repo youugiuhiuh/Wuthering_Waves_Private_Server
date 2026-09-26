@@ -312,13 +312,15 @@ impl BotAdapter for SimplexAdapter {
         Ok(())
     }
 
-    async fn accept_contact_request(&self, contact_request_id: i64) -> Result<()> {
+    async fn accept_contact_request(&self, contact_request_id: i64) -> Result<Option<i64>> {
         let crid = parse_contact_request_id(contact_request_id)?;
-        self.bot
+        // response 自带刚接受出来的 contact —— onboarding 自动绑定就靠它。
+        let res = self
+            .bot
             .accept_contact(crid)
             .await
             .context("接受 SimpleX 联系人请求失败")?;
-        Ok(())
+        Ok(Some(res.contact.contact_id))
     }
 
     async fn reject_contact_request(&self, contact_request_id: i64) -> Result<()> {

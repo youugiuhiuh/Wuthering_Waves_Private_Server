@@ -130,7 +130,7 @@ pub(crate) async fn dispatch(event: &CallbackEvent, state: &AppState) -> Dispatc
     let data = event.data.as_str();
 
     match route_callback(data) {
-        Some(CallbackRoute::Approval) => Ok(Some(approval::handle(event).await?)),
+        Some(CallbackRoute::Approval) => Ok(Some(approval::handle(event, state).await?)),
         Some(CallbackRoute::Log) => Ok(Some(self::log::handle(event).await?)),
         Some(CallbackRoute::Singbox) => Ok(Some(singbox::handle(event).await?)),
         Some(CallbackRoute::Warp) => Ok(Some(warp::handle(event).await?)),
