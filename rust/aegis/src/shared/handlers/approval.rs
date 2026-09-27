@@ -7,21 +7,25 @@ use rust_i18n::t;
 ///
 /// 授权由 `check_auth` 提前承担：回调与命令同路，要求 Telegram 管理员已有活跃 TOTP
 /// 会话（见 `shared/dispatch.rs`）。因此「点一下即批准」= 已经需要 TOTP，无需新机制。
-/// onboarding（`simplex_admin_id` 未配）时，批准成功即自动绑定：SDK 的
-/// `AcceptingContactRequestResponse` 带着刚接受出来的 contactId，扔掉它等于逼用户
-/// 去翻日志 + 手动 `--set-simplex-admin` + 重启。
+/// onboarding 与「删联系人重加」后自动重绑：批准成功即把 contactId 记为管理员。
 ///
-/// 保守：仅在**尚未配置管理员**时绑定。已绑定时批准新联系人不碰配置 ——
-/// 否则「谁最后被批准谁是管理员」，多设备轮用会在管理员身份之间来回跳。
+/// 判据是 **contactId 是否变化**，而不是「是否为空」。删掉 bot 联系人重连是最常见的
+/// contactId 变更方式，而 `--tg-simplex` 下 SimpleX 入站全被
+/// `classify_simplex_inbound` 丢弃，`app::auth` 的 SimpleX TOTP 自愈重钉根本走不到 ——
+/// 若这里也不重绑，用户就永久卡死：落点钉在一个已删除的联系人上，自己却是新 contactId。
 ///
-/// 返回是否发生了绑定（供调用方决定文案）。
+/// 安全性由既有 TOTP 会话承担：回调经 `check_auth`，能点批准的就是管理员本人。
+/// 「多设备轮用会抢管理员」的顾虑不成立 —— 每次批准都要人在 TG 前操作。
+///
+/// 返回是否发生了重绑（供调用方决定文案 / 是否发安全码）。
 fn auto_bind_on_approve(state: &AppState, contact_id: Option<i64>) -> bool {
     let Some(contact_id) = contact_id else {
         return false;
     };
-    if state.simplex_admin_id().is_some() {
+    if state.simplex_admin_id() == Some(contact_id) {
         return false;
     }
+    let previous = state.simplex_admin_id();
     // 先更新内存态：落盘失败也不该让「已批准却仍无权限」。
     state.set_simplex_admin_id(contact_id);
     // 敏感内容落点 + 敏感路由开关都在这一步恢复（见 RoutingAdapter::set_secondary_target），
@@ -31,11 +35,13 @@ fn auto_bind_on_approve(state: &AppState, contact_id: Option<i64>) -> bool {
         .set_secondary_target(TargetId(contact_id.to_string()));
     match crate::bootstrap::set_simplex_admin_id(&crate::bootstrap::config_dir(), contact_id) {
         Ok(()) => {
-            log::warn!("onboarding 完成：SimpleX 管理员已自动绑定 contactId={contact_id}，已落盘")
+            log::warn!(
+                "SimpleX 管理员已自动重绑: contactId={contact_id}（原 {previous:?}），已落盘"
+            )
         }
-        Err(e) => log::error!(
-            "onboarding 完成：SimpleX 管理员已绑定 contactId={contact_id}（仅内存态）；落盘失败: {e}"
-        ),
+        Err(e) => {
+            log::error!("SimpleX 管理员已重绑为 contactId={contact_id}（仅内存态）；落盘失败: {e}")
+        }
     }
     true
 }
@@ -60,7 +66,15 @@ pub(crate) async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerRe
 
     let (bound_contact_id, result) = if approve {
         match event.adapter.accept_contact_request(id).await {
-            Ok(contact_id) => (auto_bind_on_approve(state, contact_id), Ok(())),
+            Ok(contact_id) => {
+                let bound = auto_bind_on_approve(state, contact_id);
+                if bound {
+                    // 绑定即发安全码：`set_secondary_target` 一执行，敏感内容就已开始
+                    // 流向这条 SimpleX 连接，而未验证的连接挡不住 MITM。
+                    crate::app::auth::notify_security_code(state).await;
+                }
+                (bound, Ok(()))
+            }
             Err(e) => (false, Err(e)),
         }
     } else {
@@ -158,7 +172,9 @@ mod tests {
         }
     }
 
-    /// onboarding（未配管理员）时批准 → 自动绑定 + 热重钉落点。
+    /// onboarding（未配管理员）时批准 → 自动绑定 + 热重钉落点 + **当场发安全码**。
+    /// 安全码必须在绑定时发：`set_secondary_target` 一执行，敏感内容就开始流向
+    /// SimpleX，而未验证的连接挡不住 MITM。等下一次 TOTP 登录才发，中间是空窗。
     #[tokio::test]
     async fn approve_auto_binds_admin_during_onboarding() {
         let mut mock = MockBotAdapter::new();
@@ -169,6 +185,16 @@ mod tests {
             .withf(|t: &TargetId| t.0 == "6")
             .times(1)
             .returning(|_| ());
+        mock.expect_contact_security_code()
+            .times(1)
+            .withf(|id| *id == 6)
+            .returning(|_| Ok("52075 05398 87241 67434".to_string()));
+        mock.expect_send_message_primary()
+            .times(1)
+            .withf(|target, content| {
+                target.0 == "42" && content.text.contains("52075 05398 87241 67434")
+            })
+            .returning(|_, _| Ok(MessageId("1".into())));
         mock.expect_answer_callback().returning(|_, _, _| Ok(()));
         mock.expect_edit_message()
             .times(1)
@@ -188,15 +214,51 @@ mod tests {
         );
     }
 
-    /// 已有管理员时批准新联系人 —— 不得改配置（否则多设备轮用会来回抢管理员）。
+    /// 删掉 bot 联系人重连 → contactId 变化 → 必须重绑。
+    /// 这是 contactId 变更最常见的方式，而 `--tg-simplex` 下没有别的恢复通道
+    /// （SimpleX 入站全被丢弃，SimpleX TOTP 自愈重钉走不到）。不重绑就永久卡死。
     #[tokio::test]
-    async fn approve_does_not_rebind_when_admin_already_set() {
+    async fn approve_rebinds_when_contact_changed() {
         let mut mock = MockBotAdapter::new();
         mock.expect_accept_contact_request()
             .times(1)
-            .returning(|_| Ok(Some(99)));
-        // 落点不得被重钉。
+            .returning(|_| Ok(Some(6)));
+        mock.expect_set_secondary_target()
+            .withf(|t: &TargetId| t.0 == "6")
+            .times(1)
+            .returning(|_| ());
+        mock.expect_contact_security_code()
+            .times(1)
+            .withf(|id| *id == 6)
+            .returning(|_| Ok("52075 05398 87241 67434".to_string()));
+        mock.expect_send_message_primary()
+            .times(1)
+            .returning(|_, _| Ok(MessageId("1".into())));
+        mock.expect_answer_callback().returning(|_, _, _| Ok(()));
+        mock.expect_edit_message()
+            .times(1)
+            .withf(|_, _, c: &MessageContent| c.text == t!("simplex.approval_done_bound").as_ref())
+            .returning(|_, _, _| Ok(()));
+        let adapter: Arc<dyn crate::common::BotAdapter> = Arc::new(mock);
+        let state = test_state(adapter.clone(), Some(5));
+        let event = CallbackEvent {
+            adapter,
+            ..event_with("sx_approve:2")
+        };
+        handle(&event, &state).await.unwrap();
+        assert_eq!(state.simplex_admin_id(), Some(6), "contactId 变化必须重绑");
+    }
+
+    /// contactId **未变**（重复批准同一个）—— 不得重绑、不得发码。
+    #[tokio::test]
+    async fn approve_does_not_rebind_when_contact_unchanged() {
+        let mut mock = MockBotAdapter::new();
+        mock.expect_accept_contact_request()
+            .times(1)
+            .returning(|_| Ok(Some(7)));
         mock.expect_set_secondary_target().times(0);
+        mock.expect_contact_security_code().times(0);
+        mock.expect_send_message_primary().times(0);
         mock.expect_answer_callback().returning(|_, _, _| Ok(()));
         mock.expect_edit_message()
             .times(1)
@@ -209,7 +271,7 @@ mod tests {
             ..event_with("sx_approve:2")
         };
         handle(&event, &state).await.unwrap();
-        assert_eq!(state.simplex_admin_id(), Some(7), "已有管理员不得被覆盖");
+        assert_eq!(state.simplex_admin_id(), Some(7));
     }
 
     /// 适配器拿不到 contactId（返回 None）时不得误判为绑定成功。
@@ -220,6 +282,8 @@ mod tests {
             .times(1)
             .returning(|_| Ok(None));
         mock.expect_set_secondary_target().times(0);
+        mock.expect_contact_security_code().times(0);
+        mock.expect_send_message_primary().times(0);
         mock.expect_answer_callback().returning(|_, _, _| Ok(()));
         mock.expect_edit_message()
             .times(1)

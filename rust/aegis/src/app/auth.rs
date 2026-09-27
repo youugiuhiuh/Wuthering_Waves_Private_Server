@@ -6,6 +6,54 @@ use rust_i18n::t;
 
 use crate::app::state::{AppState, AuthFailureOutcome};
 
+/// 把 SimpleX 管理员联系人的**连接安全码**发到 TG（管理员在客户端「验证安全码」
+/// 逐段比对，排查邀请链接被替换的 MITM）。
+///
+/// **触发点是「contactId 变更」，不是「TOTP 登录」。** `simplex_code_verified()` 的
+/// 判据本来就建在 contactId 上，而 contactId 现在有两个变更点：onboarding 自动绑定
+/// （`shared/handlers/approval.rs`）与 SimpleX 侧 TOTP 重钉（本文件）。两者都在
+/// 同一处调用本函数，语义才是「一个 contactId 恰好发一次」。
+///
+/// 早前挂在 `verify_totp` 成功分支上有两个问题：
+/// 1. 自动绑定不经过 TOTP → 绑定后到下次登录之间，敏感内容已在流向一条**未验证**的
+///    SimpleX 连接，MITM 防护形同虚设（真机实测该空窗约 10 分钟，管理员不需要重新
+///    登录时甚至不会出现）。
+/// 2. 只要没验证，每次 session 超时（默认 600s）重登就重发一次，刷屏。
+///
+/// 取码经 `state.adapter`（RoutingAdapter）落到 SimpleX 次级；发送强制
+/// `send_message_primary` —— 走 `send_message` 会被敏感分流改投 SimpleX。
+/// 取码/发送失败只 warn：安全码是辅助手段，不得影响绑定本身。
+pub async fn notify_security_code(state: &AppState) {
+    let (Some(sx_admin), Some(tg_admin)) = (state.simplex_admin_id(), state.admin_id()) else {
+        return;
+    };
+    if state.simplex_code_verified() {
+        return;
+    }
+    match state.adapter.contact_security_code(sx_admin).await {
+        Ok(code) => {
+            let target = TargetId(tg_admin.to_string());
+            if let Err(e) = state
+                .adapter
+                .send_message_primary(
+                    &target,
+                    MessageContent {
+                        text: t!("simplex.security_code", "0" => code).to_string(),
+                        markup: None,
+                    },
+                )
+                .await
+            {
+                log::warn!("向 Telegram 发送 SimpleX 安全码失败: {e}");
+            } else {
+                // 只记「已发」不记码本身：journal 只需能证明这条路径跑过。
+                log::info!("已向 TG 输出 SimpleX 连接安全码（contactId={sx_admin}）");
+            }
+        }
+        Err(e) => log::warn!("获取 SimpleX 安全码失败（不影响验证）: {e}"),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn process_auth_code(
     adapter: &dyn BotAdapter,
@@ -55,6 +103,8 @@ pub async fn process_auth_code(
                     "SimpleX 管理员已重钉为 contactId={user_id}（仅内存态）；落盘失败: {e}"
                 ),
             }
+            // contactId 刚变更 → 旧的「已验证」自然失配，当��发新码。
+            notify_security_code(state).await;
         }
 
         // TG+SimpleX：把 SimpleX 管理员联系人的**连接安全码**发到 TG（管理员在自己
@@ -63,34 +113,8 @@ pub async fn process_auth_code(
         // 判据刻意与「事件来源平台」无关：真实用法是在 **TG** 里发 TOTP 码（SimpleX
         // 那一路才是重钉）。取码经 `state.adapter`（RoutingAdapter）落到 SimpleX 次级。
         // 取码/发送失败只 warn —— 安全码是辅助手段，不得影响 TOTP 验证结果本身。
-        if let Some(sx_admin) = state.simplex_admin_id()
-            && let Some(tg_admin) = state.admin_id()
-            && !state.simplex_code_verified()
-        {
-            match state.adapter.contact_security_code(sx_admin).await {
-                Ok(code) => {
-                    let target = TargetId(tg_admin.to_string());
-                    // 强制 primary(TG)：安全码若走 `send_message`，可能被敏感分流改投 SimpleX。
-                    if let Err(e) = state
-                        .adapter
-                        .send_message_primary(
-                            &target,
-                            MessageContent {
-                                text: t!("simplex.security_code", "0" => code).to_string(),
-                                markup: None,
-                            },
-                        )
-                        .await
-                    {
-                        log::warn!("向 Telegram 发送 SimpleX 安全码失败: {e}");
-                    } else {
-                        // 只记「已发」不记码本身：journal 只需能证明这条路径跑过。
-                        log::info!("已向 TG 输出 SimpleX 连接安全码（contactId={sx_admin}）");
-                    }
-                }
-                Err(e) => log::warn!("获取 SimpleX 安全码失败（不影响验证）: {e}"),
-            }
-        }
+        // ↑ 这段已下沉到 `notify_security_code`，触发点改为「contactId 变更」——
+        // 绑定那一刻敏感内容就已经开始流向 SimpleX，等下一次 TOTP 登录才发码会留空窗。
 
         let success_text =
             t!("auth.success", "0" => crate::utils::format_duration_human(timeout)).to_string();
@@ -298,18 +322,45 @@ mod tests {
         (state, dir)
     }
 
-    /// TG+SimpleX：**任何来源**的 TOTP 成功后（真实用法是在 TG 里发码），只要存在
-    /// SimpleX 管理员联系人，就把其连接安全码发到 TG。取码经 `state.adapter`
-    /// （RoutingAdapter）落到 SimpleX 次级 —— 事件来源不再参与判据。
+    /// 触发点已从「TOTP 登录」改为「contactId 绑定」：
+    /// TG 侧 TOTP 成功不再取码、不再发安全码（否则每过 session 超时就刷一次屏）。
     #[tokio::test]
-    async fn totp_success_sends_simplex_security_code_to_tg() {
+    async fn tg_totp_success_does_not_send_security_code() {
         let mut adapter = MockBotAdapter::new();
-        // TG 来源不会走重钉，因此不得设置敏感落点。
         adapter.expect_set_secondary_target().times(0);
+        adapter.expect_contact_security_code().times(0);
+        adapter.expect_send_message_primary().times(0);
+        let (state, _dir) = state_with_admin_and(Some(6103295147), true, Arc::new(adapter));
+        let code = state.generate_current_totp().expect("有 TOTP 管理器");
+        let ok = process_auth_code(
+            &TelegramRecordingAdapter,
+            &TargetId("6103295147".into()),
+            6103295147,
+            &code,
+            &state,
+            5,
+            Duration::from_secs(600),
+            &[Duration::from_secs(900)],
+        )
+        .await
+        .unwrap();
+        assert!(ok);
+    }
+
+    /// SimpleX 侧 TOTP 成功触发重钉（contactId 变更）→ 当场发一次安全码。
+    /// 这是「绑定即发」的一半。
+    #[tokio::test]
+    async fn simplex_repin_sends_security_code() {
+        let mut adapter = MockBotAdapter::new();
+        adapter
+            .expect_set_secondary_target()
+            .times(1)
+            .withf(|t: &TargetId| t.0 == "3")
+            .returning(|_| ());
         adapter
             .expect_contact_security_code()
             .times(1)
-            .withf(|id| *id == 3) // state.simplex_admin_id() = Some(3)
+            .withf(|id| *id == 3)
             .returning(|_| Ok("52075 05398 87241 67434".to_string()));
         adapter
             .expect_send_message_primary()
@@ -321,9 +372,9 @@ mod tests {
         let (state, _dir) = state_with_admin_and(Some(6103295147), true, Arc::new(adapter));
         let code = state.generate_current_totp().expect("有 TOTP 管理器");
         let ok = process_auth_code(
-            &TelegramRecordingAdapter,
-            &TargetId("6103295147".into()),
-            6103295147,
+            &RecordingAdapter,
+            &TargetId("3".into()),
+            3,
             &code,
             &state,
             5,

@@ -9,8 +9,9 @@
 
 1. 用户从 **SimpleX 客户端的「验证安全码」界面**复制码，粘到 **TG** 私聊。
    —— 不是把 Bot 自己发的那条 TG 消息复制回来（那样恒等，无验证意义）。
-2. 「下次就不会出现了」= **Bot 下次 TOTP 成功后不再发这条安全码 TG 消息**（持久化"已验证"）。
+2. 「下次就不会出现了」= **Bot 不再发这条安全码 TG 消息**（持久化"已验证"）。
    —— 不是"让 SimpleX 客户端不再显示验证提示"（那要调 `/_verify`，见 §7，本次不做）。
+   —— **触发点是 contactId 变更，不是 TOTP 登录**（2026-09-27 修订，见 §3.4 补记）。
 3. 安全码稳定：同一 contactId 上 API 现取的码 == 用户客户端显示的码；重连换码由「现取比对」自然覆盖。
 4. 只在 **TG 管理员已通过 TOTP** 后接受回贴（未授权消息在 `check_auth` 已被丢弃）。
 5. 码格式跨行、分组长度不定（例见 §2），比对前**去掉全部空白**只比数字序列。
@@ -19,7 +20,7 @@
 
 - **G1**：授权管理员的 TG 文本消息若等于当前 SimpleX 联系人安全码 → 标记「已验证」并回复成功。
 - **G2**：标记持久化，重启后仍有效；`simplex_admin_id` 变更（重钉/换联系人）后自动回到未验证。
-- **G3**：已验证后，TOTP 成功不再向 TG 发送 `simplex.security_code` 消息。
+- **G3**：已验证后，不再向 TG 发送 `simplex.security_code` 消息；且发送只发生在 contactId 变更时。
 - **G4**：不命中安全码判据的普通消息行为**逐条不变**；纯 `--simplex`（无 TG 管理员）行为不变。
 
 ## 2. 事实（已核实，CodeGraph + 源码）
@@ -74,7 +75,33 @@ pub simplex_code_verified_for: Option<i64>, // 已验证的 contactId；None = �
 
 ### 3.4 出站门控（`app/auth.rs`）
 
-TOTP 成功块里的安全码发送追加判据：`&& !state.simplex_code_verified()`。已验证 → 完全跳过取码与发送（G3）。
+> **2026-09-27 修订：触发点从「TOTP 登录」改为「contactId 变更」。**
+>
+> 原实现挂在 `verify_totp` 成功分支内，有两个缺陷：
+> 1. `simplex_admin_id` 有第二个变更点（onboarding 自动绑定，
+>    `shared/handlers/approval.rs::auto_bind_on_approve`），**不经过 TOTP**。
+>    绑定时 `set_secondary_target` 一执行，敏感内容即开始流向新的 SimpleX 连接，
+>    而安全码要等下一次 TOTP 登录才发 —— 真机实测空窗约 10 分钟；管理员不需要重新
+>    登录时（session 未过期）该码根本不会出现。MITM 防护在这段时间里失效。
+> 2. 未验证时，每过一个 session 超时（默认 600s）重登就重发一次，刷屏。
+>
+> 现在发送逻辑抽为 `app::auth::notify_security_code`，仅由两个绑定点调用：
+> onboarding 自动绑定、SimpleX 侧 TOTP 重钉。已验证 → 完全跳过取码与发送（G3）。
+> 取码/发送失败只 warn（fail-open），且**无重试** —— 这是刻意的取舍：
+> 重试会退化成刷屏，而重绑 contactId 本身就是一次新的发送机会。
+>
+> **2026-09-27 第二次修订：自动重绑的判据是「contactId 是否变化」，不是「是否为空」。**
+>
+> 真机踩到：管理员删掉 bot 联系人重连，contactId 5 → 6。原判据见 `is_some()` 就
+> 拒绝重绑，于是（a）敏感内容仍投递给已删除的联系人 5，（b）`simplex_code_verified()`
+> 因为 `verified_for == admin == 5` 仍返回 true，安全码回贴在 `dispatch.rs` 第一行
+> 就被短路，**静默吞掉，连「不一致」提示都不会有**。
+>
+> 关键前提：`--tg-simplex` 下 SimpleX 入站全被 `classify_simplex_inbound` 丢弃，
+> `app::auth` 的 SimpleX TOTP 自愈重钉**永远走不到**。若批准时也不重绑，
+> 「删联系人重加」后用户就永久卡死，没有恢复通道。
+>
+> 安全性由既有 TOTP 会话承担：审批回调经 `check_auth`，能点批准的就是管理员本人。
 
 ### 3.5 入站确认（`shared/dispatch.rs`）
 
@@ -139,14 +166,18 @@ cargo test --doc
 - [ ] `normalize_security_code("54440 24092\n64994") == "544402409264994"`；`looks_like_security_code` 对纯数字/跨行真，对含字母/命令/6 位 TOTP(阈值外)/空假。
 - [ ] 授权管理员 + 未验证 + 回贴等于 API 码 → `simplex_code_verified()==true`、落盘字段写入、回复 `simplex.code_verified`、后续普通处理被短路。
 - [ ] 回贴不等 → 不落盘、回复 `simplex.code_mismatch`、`simplex_code_verified()` 仍 false。
-- [ ] 已验证后再次 TOTP 成功：`contact_security_code` 调用次数 == 0、`send_message_primary` 安全码调用次数 == 0。
+- [ ] 已验证后再次绑定（重钉/换联系人）：`contact_security_code` 调用次数 == 0、`send_message_primary` 安全码调用次数 == 0。
+- [ ] **TG 侧 TOTP 成功（未重钉）**：`contact_security_code` 调用次数 == 0 —— 触发点已不是登录。
+- [ ] **删掉 bot 联系人重连**（contactId 5→6）→ 批准 → 自动重绑为 6 + 立即发安全码；旧 contactId 5 不再是落点。
+- [ ] **重复批准同一 contactId**（contactId 未变）→ 不重绑、不发码。
 - [ ] `simplex_admin_id` 从 5 改为 7 后，`simplex_code_verified()` == false（重钉即失效）。
 - [ ] 超时设置保存后 `simplex_code_verified_for` 不被抹掉（读改写回归）。
 - [ ] 纯 `--simplex`（`admin_id == None`）不进入确认路径。
 
 **真机**
-- [ ] `--tg-simplex`：TOTP 后 TG 收到安全码 → 从 SimpleX 客户端复制码贴回 TG → 收到"已验证"。
-- [ ] 重启后再次 TOTP 成功，TG **不再**收到安全码消息。
+- [ ] `--tg-simplex`：批准联系人自动绑定 → TG 立即收到安全码 → 从 SimpleX 客户端复制码贴回 TG → 收到"已验证"。
+- [ ] 重启后 / 再次 TOTP 登录，TG **不再**收到安全码消息。
+- [ ] 绑定瞬间的安全码发送**失败**时，绑定仍生效（TOTP/审批结果不受影响），且只有 warn。
 - [ ] 贴错码收到不一致提示，且下次仍会正常发码。
 
 ## 7. 未决 / 后续
