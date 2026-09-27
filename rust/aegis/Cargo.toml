@@ -52,7 +52,7 @@ matrix-sdk = { version = "0.19.1", default-features = false, features = [
 ] }
 mime = "0.3.17"
 rust-i18n = "4.2.2"
-minisign-verify = "0.2.5"
+minisign-verify = "0.3.0"
 mockall = "0.15.0" # Needed at runtime for binary-crate tests (MockBotAdapter shared across lib/bin)
 simploxide-client = { version = "=0.14.0", default-features = false, features = ["websocket"] }
 
