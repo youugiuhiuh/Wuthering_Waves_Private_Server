@@ -539,7 +539,7 @@
       "source": "affaan-m/ECC",
       "sourceType": "github",
       "skillPath": "skills/ecc-recipes/SKILL.md",
-      "computedHash": "79072f430dafe5bee28d53b13238f8f73222e13be52b80814761625a3839e5d5"
+      "computedHash": "a35dd8d28bfddfdf5ddd4e791b63af78ab83d951849c6e3722accd4c733b0566"
     },
     "ecc-tools-cost-audit": {
       "source": "affaan-m/ECC",
@@ -582,12 +582,6 @@
       "sourceType": "github",
       "skillPath": "skills/eval-harness/SKILL.md",
       "computedHash": "14941a710d43a6ceee68963c1a9e6bdba33df91ac5b685c20f1f11adbe39f524"
-    },
-    "everything-claude-code": {
-      "source": "affaan-m/ECC",
-      "sourceType": "github",
-      "skillPath": ".agents/skills/everything-claude-code/SKILL.md",
-      "computedHash": "2792c687efcfeb53df5f96374a171fc81d09e32bdde4f659c11d9206f540c246"
     },
     "evm-token-decimals": {
       "source": "affaan-m/ECC",
@@ -761,7 +755,7 @@
       "source": "affaan-m/ECC",
       "sourceType": "github",
       "skillPath": "skills/growth-log/SKILL.md",
-      "computedHash": "db6d96db082005de0747b004e9c69bd018bb3b78fdd2d4d685514e10ef0d9dea"
+      "computedHash": "e35ed4f2ed27dcc23c276ad4796dc9bc9af4b37adc27fba59b1dac2aad8eda3a"
     },
     "healthcare-cdss-patterns": {
       "source": "affaan-m/ECC",
@@ -1043,7 +1037,7 @@
       "source": "affaan-m/ECC",
       "sourceType": "github",
       "skillPath": "skills/loop-design-check/SKILL.md",
-      "computedHash": "6b2ca93a996dfb0deabdfb32d9b36377ba896fc6df85e51fc3a5b03de4d8f24c"
+      "computedHash": "45e1c13ac6b34c283a4b23d8719c9b27b16792a040eb21f6d155aacbeec37ed4"
     },
     "mailtrap-email-integration": {
       "source": "affaan-m/ECC",
@@ -1139,7 +1133,7 @@
       "source": "affaan-m/ECC",
       "sourceType": "github",
       "skillPath": "skills/nasiko-control-plane/SKILL.md",
-      "computedHash": "1a08c9a5cb1c285e23d1185da7d658d47f54f9bc720447398550e5d8aa8911a7"
+      "computedHash": "1fb6ebabcc216cdac4ecba18b2f882aea804480c5a1ba91fe24071ed641c9273"
     },
     "nestjs-patterns": {
       "source": "affaan-m/ECC",
@@ -1223,7 +1217,7 @@
       "source": "affaan-m/ECC",
       "sourceType": "github",
       "skillPath": "skills/orch-build-mvp/SKILL.md",
-      "computedHash": "16fd4776b5d02815c2ab3c319f0d228157c0e4bda225db216afe9de66fe1c255"
+      "computedHash": "8ff191f83163353ac1b6f07d51286139ba6eaf5ba1dfafa8d639c70bfdaee7f7"
     },
     "orch-change-feature": {
       "source": "affaan-m/ECC",
@@ -1241,7 +1235,7 @@
       "source": "affaan-m/ECC",
       "sourceType": "github",
       "skillPath": "skills/orch-pipeline/SKILL.md",
-      "computedHash": "df59df96b8d45cc7e2baf02fbc233043cc6652e37c887758ac7d7c26f6754d2b"
+      "computedHash": "44b380705e4ea8e467be1081f0fdfceaf3e1ab4e9deb8db5fceba49f3d43a810"
     },
     "orch-refine-code": {
       "source": "affaan-m/ECC",
@@ -1445,7 +1439,7 @@
       "source": "affaan-m/ECC",
       "sourceType": "github",
       "skillPath": "skills/recursive-decision-ledger/SKILL.md",
-      "computedHash": "af6d6f2b44b95bbd0df7ca1809070cb655331b79050bc3832916e2bbef462b45"
+      "computedHash": "38dfa4df1a8c6c155bdd2e4968f684258b961c3cac6b400832dcf0c5fdd59a7f"
     },
     "redis-patterns": {
       "source": "affaan-m/ECC",
@@ -1643,7 +1637,7 @@
       "source": "affaan-m/ECC",
       "sourceType": "github",
       "skillPath": "skills/taste/SKILL.md",
-      "computedHash": "f39fb3d84bc7dff1710817ff7ea70b4720adab6551401472219aa8d48b494d31"
+      "computedHash": "74bd7ffcd8231d77b752d0cfca1daf264b50d182259945f89a077e16f4e1aae0"
     },
     "taste-application": {
       "source": "affaan-m/ECC",
@@ -1673,7 +1667,7 @@
       "source": "affaan-m/ECC",
       "sourceType": "github",
       "skillPath": "skills/team-agent-orchestration/SKILL.md",
-      "computedHash": "4d686c9077d0df94ba331f3ac87f82eedccf9d5297de322d715bef679ec90aa6"
+      "computedHash": "8ccee957f9c7e0c0f06e1018cf45f97ac3b1fdb1db66d42c6aaf5bc2b85184eb"
     },
     "team-builder": {
       "source": "affaan-m/ECC",
