@@ -6,7 +6,9 @@ use crate::core::network::release_api::{
     fetch_prerelease, find_minisig_asset, parse_digest, parse_sha256_manifest,
 };
 use crate::core::paths::xray;
-use crate::core::utils::{format_download_progress, human_readable_size, should_report};
+use crate::core::utils::{
+    format_download_progress, human_readable_size, is_same_version, should_report,
+};
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use futures_util::StreamExt;
@@ -86,6 +88,29 @@ pub struct WwpsCoreUpgradeManager {
 }
 
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
+
+/// 执行 `<core> version` 读取本机核心版本的超时。
+///
+/// 版本读取是升级流程的**前置门**，必须快速失败：超时则视为“版本未知”，
+/// 放行升级（行为退化为升级前的现状），绝不能因为一个辅助检查卡住升级。
+const CURRENT_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// 从 `wwps-core version` 输出中解析版本号。
+///
+/// 目标机真实输出（上游 `core.VersionStatement()` 拼装）：
+/// ```text
+/// Xray 26.9.30 (Xray, Penetrates Everything.) b26a91d (go1.27.1 linux/amd64)
+/// A unified platform for anti-censorship.
+/// ```
+/// 版本号为首个 `Xray ` 行里 `Xray` 之后的第一个空白分隔 token。上游版本号形态
+/// 随发布策略变化（`1.8.x` → 日期式 `26.9.30`），故**不假设点分结构**。
+pub fn parse_xray_version_from_output(output: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        let rest = line.trim().strip_prefix("Xray ")?;
+        let version = rest.split_whitespace().next()?;
+        (!version.is_empty()).then(|| version.to_string())
+    })
+}
 
 impl WwpsCoreUpgradeConfig {
     pub fn new(
@@ -190,6 +215,27 @@ impl WwpsCoreUpgradeManager {
             client,
             github_token: token,
         })
+    }
+
+    /// 读取本机已安装核心的版本号。
+    ///
+    /// 返回 `None` 表示**版本未知**（二进制缺失、执行失败、超时、输出无法解析），
+    /// 调用方应据此放行升级，不得据此阻断。
+    pub async fn current_version(&self) -> Option<String> {
+        let binary = self.config.install_dir.join("wwps-core");
+        let output = tokio::time::timeout(
+            CURRENT_VERSION_TIMEOUT,
+            tokio::process::Command::new(&binary)
+                .arg("version")
+                // 超时后 tokio 会 drop 未来的 Child；不开此选项，挂死的 `version`
+                // 子进程会变成孤儿继续占用 CPU 与内存。
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .ok()?
+        .ok()?;
+        parse_xray_version_from_output(&String::from_utf8_lossy(&output.stdout))
     }
 
     pub async fn fetch_recent_tags(&self, limit: usize) -> Result<Vec<String>> {
@@ -579,6 +625,30 @@ impl WwpsCoreUpgradeManager {
 
         let release = manager.fetch_release(tag.as_deref()).await?;
 
+        // 版本短路：与 Bot 自更新的 `is_current_version` 同构——本机已是目标版本时
+        // 直接告知并返回，不进入下载/替换/重启。版本未知（`None`）则放行，
+        // 行为退化为升级前的现状，辅助检查绝不阻断升级。
+        if let Some(local) = manager.current_version().await
+            && is_same_version(&local, &release.tag_name)
+        {
+            adapter
+                .edit_message(
+                    target,
+                    &status_msg_id,
+                    MessageContent {
+                        text: t!(
+                            "upgrade.core_already_latest",
+                            "0" => local.as_str(),
+                            "1" => release.tag_name.as_str()
+                        )
+                        .to_string(),
+                        markup: None,
+                    },
+                )
+                .await?;
+            return Ok(());
+        }
+
         let size_str = release
             .size
             .map(human_readable_size)
@@ -726,6 +796,46 @@ impl WwpsCoreUpgradeManager {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    /// 目标机 `wwps-core version` 的真实输出。
+    const XRAY_VERSION_OUTPUT: &str = "Xray 26.9.30 (Xray, Penetrates Everything.) b26a91d (go1.27.1 linux/amd64)\nA unified platform for anti-censorship.\n";
+
+    #[test]
+    fn test_parse_xray_version_from_output_typical() {
+        assert_eq!(
+            parse_xray_version_from_output(XRAY_VERSION_OUTPUT),
+            Some("26.9.30".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_xray_version_ignores_surrounding_noise() {
+        let noisy = format!("warning: something\n{XRAY_VERSION_OUTPUT}");
+        assert_eq!(
+            parse_xray_version_from_output(&noisy),
+            Some("26.9.30".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_xray_version_from_output_rejects_invalid() {
+        let cases = [
+            ("", None),
+            ("A unified platform for anti-censorship.\n", None),
+            ("XrayCore 26.9.30\n", None),
+            // 前缀存在但后面没有版本 token（空或纯空白）。
+            ("Xray \n", None),
+            ("Xray\n", None),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                parse_xray_version_from_output(input),
+                expected.map(str::to_string),
+                "input={input:?}"
+            );
+        }
+    }
 
     #[test]
     fn test_cpu_arch_detection() {

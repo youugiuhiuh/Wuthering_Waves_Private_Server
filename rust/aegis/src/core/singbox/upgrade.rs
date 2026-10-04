@@ -30,16 +30,24 @@ use crate::core::network::release_api::{
 };
 use crate::core::paths::singbox;
 use crate::core::singbox::installer::SingBoxInstaller;
-use crate::core::utils::human_readable_size;
+use crate::core::utils::{human_readable_size, is_same_version};
 use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
 use std::path::Path;
+use std::time::Duration;
 use tokio::fs;
 
 const SINGBOX_RELEASE_OWNER: &str = "SagerNet";
 const SINGBOX_RELEASE_REPO: &str = "sing-box";
 const SINGBOX_RELEASE_API_BASE: &str = "https://api.github.com/repos";
 const SINGBOX_UPGRADE_TEMP_DIR: &str = "/tmp/sing-box-upgrade";
+
+/// 执行 `wwps-box version` 读取本机版本的硬超时。
+///
+/// 版本读取是升级流程的**前置门**，必须快速失败：超时则视为“版本未知”，
+/// 放行升级（行为退化为升级前的现状），绝不能因为一个辅助检查卡死整个升级。
+/// 二进制损坏导致 `version` 子命令挂死是真实场景（此时既不能升级也不能卡住）。
+const CURRENT_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// 从 GitHub release 页面 HTML 片段中解析某资产的 sha256 hex。
 ///
@@ -479,14 +487,31 @@ impl SingBoxUpgradeManager {
         })
     }
 
+    /// 读取本机已安装 Sing-box 的版本号。
+    ///
+    /// 返回 `None` 表示**版本未知**（二进制缺失、执行失败、超时、输出无法解析），
+    /// 调用方应据此放行升级，不得据此阻断。
     pub async fn current_version() -> Option<String> {
-        let output = tokio::process::Command::new(singbox::BIN)
-            .arg("version")
-            .output()
-            .await
-            .ok()?;
-        let text = String::from_utf8_lossy(&output.stdout);
-        parse_version_from_output(&text)
+        Self::query_version_with_timeout(Path::new(singbox::BIN), CURRENT_VERSION_TIMEOUT).await
+    }
+
+    /// 执行 `<binary> version` 并解析版本号，带硬超时。
+    ///
+    /// 二进制与超时均可注入，便于在不触碰真实安装目录的前提下测试挂死/缺失场景。
+    /// `kill_on_drop(true)`：超时后 tokio 会 drop 未来的 Child，若不开启，挂死的
+    /// 子进程会变成孤儿继续占用 CPU 与内存。
+    pub async fn query_version_with_timeout(binary: &Path, timeout: Duration) -> Option<String> {
+        let output = tokio::time::timeout(
+            timeout,
+            tokio::process::Command::new(binary)
+                .arg("version")
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .ok()?
+        .ok()?;
+        parse_version_from_output(&String::from_utf8_lossy(&output.stdout))
     }
 
     pub async fn run_upgrade(
@@ -518,6 +543,29 @@ impl SingBoxUpgradeManager {
             .await;
 
         let release = manager.fetch_release(tag.as_deref()).await?;
+
+        // 版本短路：与 Bot 自更新的 `is_current_version` 同构——本机已是目标版本时
+        // 直接告知并返回，不进入下载/替换/重启。版本未知（`None`）则放行。
+        if let Some(local) = SingBoxUpgradeManager::current_version().await
+            && is_same_version(&local, &release.tag_name)
+        {
+            adapter
+                .edit_message(
+                    target,
+                    &status_msg_id,
+                    MessageContent {
+                        text: t!(
+                            "menu.singbox_upgrade_already_latest",
+                            "0" => local.as_str(),
+                            "1" => release.tag_name.as_str()
+                        )
+                        .to_string(),
+                        markup: None,
+                    },
+                )
+                .await?;
+            return Ok(());
+        }
 
         let size_str = release
             .size
@@ -652,10 +700,87 @@ mod tests {
         assert_eq!(parse_version_from_output(out), Some("1.13.20".to_string()));
     }
 
+    /// 目标机 `wwps-box version` 的真实输出（多行、带 Tags/Revision/CGO）。
+    /// 版本号只在首行，其后的 Tags 行极长且含逗号，解析器必须只认首行前缀。
+    #[test]
+    fn test_parse_version_from_output_real_multiline() {
+        let out = "sing-box version 1.14.2\n\nEnvironment: go1.26.8 linux/amd64\nTags: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_cloudflared,with_naive_outbound,with_usbip,with_openvpn,with_openconnect,badlinkname,tfogo_checklinkname0,with_purego\nRevision: af6e64c3b69e6132ebaee0e1a3d24e93903f6709\nCGO: disabled\n";
+        assert_eq!(parse_version_from_output(out), Some("1.14.2".to_string()));
+    }
+
     #[test]
     fn test_parse_version_from_output_empty() {
         assert_eq!(parse_version_from_output(""), None);
         assert_eq!(parse_version_from_output("not a version line\n"), None);
+    }
+
+    /// 写一个假 `wwps-box`，仅回显版本行。
+    #[cfg(unix)]
+    fn write_fake_binary(dir: &Path, name: &str, body: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join(name);
+        std::fs::write(&path, body).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_query_version_reads_binary_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = write_fake_binary(
+            tmp.path(),
+            "wwps-box",
+            "#!/bin/sh\necho 'sing-box version 1.14.2'\n",
+        );
+
+        assert_eq!(
+            SingBoxUpgradeManager::query_version_with_timeout(
+                &bin,
+                std::time::Duration::from_secs(5)
+            )
+            .await,
+            Some("1.14.2".to_string())
+        );
+    }
+
+    /// 二进制损坏 / `version` 子命令挂死时，必须在超时内返回 `None`，
+    /// 否则升级前的版本检查会把整个升级流程卡死。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_query_version_times_out_on_hanging_binary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = write_fake_binary(tmp.path(), "wwps-box", "#!/bin/sh\nsleep 30\n");
+
+        let started = std::time::Instant::now();
+        let version = SingBoxUpgradeManager::query_version_with_timeout(
+            &bin,
+            std::time::Duration::from_millis(200),
+        )
+        .await;
+
+        assert_eq!(version, None);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "超时未生效，耗时 {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_query_version_returns_none_for_missing_binary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("wwps-box");
+
+        assert_eq!(
+            SingBoxUpgradeManager::query_version_with_timeout(
+                &bin,
+                std::time::Duration::from_secs(5)
+            )
+            .await,
+            None
+        );
     }
 
     #[test]

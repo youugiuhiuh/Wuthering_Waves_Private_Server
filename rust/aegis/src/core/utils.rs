@@ -7,6 +7,25 @@ pub const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_secs(2);
 pub const PROGRESS_PERCENT_STEP: f64 = 5.0;
 pub const PROGRESS_SIZE_STEP: u64 = 5 * 1024 * 1024;
 
+/// 归一化版本标签：去首尾空白与**单个**前导 `v`。
+///
+/// 上游 Release tag 形如 `v26.9.30`，而核心自报版本为 `26.9.30`，两者需归一后才能比较。
+/// 只剥一层 `v`：`vv1.2.3` 保留第二个 `v`，避免误吞版本内容。
+pub fn normalize_version_tag(tag: &str) -> &str {
+    tag.trim().strip_prefix('v').unwrap_or(tag.trim())
+}
+
+/// 判断本地核心版本与远端 tag 是否为同一版本。
+///
+/// 刻意**只做相等判断**：不引入大小比较。上游存在预发行通道（sing-box 走
+/// `fetch_prerelease`），大小语义由上游 tag 决定，bot 侧不应自行判定「本地更新」
+/// 而拒绝管理员显式指定的升级。
+pub fn is_same_version(local: &str, remote_tag: &str) -> bool {
+    let local = normalize_version_tag(local);
+    let remote = normalize_version_tag(remote_tag);
+    !local.is_empty() && local == remote
+}
+
 /// 通用端口选择
 pub async fn select_available_port(preferred: Option<u16>) -> Result<u16> {
     if let Some(port) = preferred
@@ -132,6 +151,39 @@ pub fn should_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_normalize_version_tag_strips_prefix_and_space() {
+        assert_eq!(normalize_version_tag("v1.2.3"), "1.2.3");
+        assert_eq!(normalize_version_tag("  v1.2.3  "), "1.2.3");
+        assert_eq!(normalize_version_tag("1.2.3"), "1.2.3");
+        // 仅去一个前缀：``vv1`` 保留第二个 ``v``，避免误吞版本内容。
+        assert_eq!(normalize_version_tag("vv1.2.3"), "v1.2.3");
+        assert_eq!(normalize_version_tag(""), "");
+    }
+
+    #[test]
+    fn test_is_same_version_table() {
+        let cases = [
+            ("26.9.30", "v26.9.30", true),
+            ("v26.9.30", "26.9.30", true),
+            (" 26.9.30 ", " v26.9.30 ", true),
+            ("26.9.30", "v26.9.31", false),
+            ("1.8.4", "v1.8.4-rc1", false),
+            ("1.8.4-rc1", "v1.8.4", false),
+            ("", "v1.2.3", false),
+            ("1.2.3", "", false),
+            ("", "", false),
+        ];
+
+        for (local, remote, expected) in cases {
+            assert_eq!(
+                is_same_version(local, remote),
+                expected,
+                "local={local:?} remote={remote:?}"
+            );
+        }
+    }
 
     #[test]
     fn test_generate_random_suffix_length() {
