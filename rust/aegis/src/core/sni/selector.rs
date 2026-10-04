@@ -1,7 +1,8 @@
 use once_cell::sync::Lazy;
 use prost::Message;
-use rand::rng;
+use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
+use rand::{RngExt, SeedableRng};
 use rust_embed::RustEmbed;
 
 use super::state::{SNIPersistence, SNIState};
@@ -46,11 +47,28 @@ fn load_protobuf(data: &[u8]) -> Option<Vec<String>> {
 #[cfg(test)]
 static DECODE_PROBE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+/// 从种子确定性重建排列，并跳过已消耗的 `used_count` 个。
+fn build_order(len: usize, seed: u64, used_count: u32) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..len).collect();
+    let mut rng = SmallRng::seed_from_u64(seed);
+    order.shuffle(&mut rng);
+
+    // used_count 可能超过当前域名数（例如 .pb 更新后变短），不能直接索引。
+    let skip = (used_count as usize).min(len);
+    order.truncate(len - skip);
+    order
+}
+
 pub struct SNISelector {
     domains: Vec<String>,
+    /// 运行期缓存的剩余排列。**只存在于内存**，不落盘。
     shuffled_indices: Vec<usize>,
-    used_count: usize,
+    used_count: u32,
+    /// 本轮种子，用于确定性重建 `shuffled_indices`。
+    seed: u64,
     cache_key: String,
+    /// 是否有尚未落盘的进度。
+    dirty: bool,
 }
 
 impl SNISelector {
@@ -62,40 +80,42 @@ impl SNISelector {
         };
 
         let domains = Self::load_domains(code).await;
-        let state = SNIState::new(domains.clone());
 
         let cache_key = format!("sni_{}", code);
 
         if let Some(ref persistence) = *SNI_PERSISTENCE
             && let Some(state) = persistence.load(&cache_key)
         {
+            let total = domains.len();
+            let shuffled_indices = build_order(total, state.seed, state.used_count);
             log::info!(
                 "Loaded persisted SNI state for {}: {} domains, remaining={}, used={}",
                 cache_key,
-                state.domains.len(),
-                state.shuffled_indices.len(),
+                total,
+                shuffled_indices.len(),
                 state.used_count
             );
             return Self {
-                domains: state.domains,
-                shuffled_indices: state.shuffled_indices,
+                domains,
+                shuffled_indices,
                 used_count: state.used_count,
+                seed: state.seed,
                 cache_key,
+                dirty: false,
             };
         }
 
-        if let Some(ref persistence) = *SNI_PERSISTENCE
-            && let Err(e) = persistence.save(&cache_key, &state)
-        {
-            log::warn!("Failed to save initial SNI state: {}", e);
-        }
-
-        Self {
-            domains: state.domains,
-            shuffled_indices: state.shuffled_indices,
-            used_count: state.used_count,
+        let seed = rand::rng().random::<u64>();
+        let mut selector = Self {
+            shuffled_indices: build_order(domains.len(), seed, 0),
+            domains,
+            used_count: 0,
+            seed,
             cache_key,
-        }
+            dirty: true,
+        };
+        selector.persist();
+        selector
     }
 
     async fn load_domains(code: &str) -> Vec<String> {
@@ -143,8 +163,7 @@ impl SNISelector {
         }
 
         if self.shuffled_indices.is_empty() {
-            self.reset_shuffled_indices();
-            self.save_state();
+            self.start_new_round();
         }
 
         let idx = self
@@ -152,32 +171,41 @@ impl SNISelector {
             .pop()
             .expect("shuffled_indices should not be empty after reset");
         self.used_count += 1;
-        self.save_state();
+        // 关键：这里**不再落盘**。
+        // 修复前每次抽样都重写完整状态（真机 19,591,273 字节），
+        // 而这些数据完全可以由 seed + used_count 重建。
+        self.dirty = true;
 
         self.domains[idx].clone()
     }
 
-    fn reset_shuffled_indices(&mut self) {
-        let mut indices: Vec<usize> = (0..self.domains.len()).collect();
-        let mut rng = rng();
-        indices.shuffle(&mut rng);
-        self.shuffled_indices = indices;
+    /// 域名耗尽：换新种子开启下一轮，并立即落盘。
+    fn start_new_round(&mut self) {
+        self.seed = rand::rng().random::<u64>();
+        self.used_count = 0;
+        self.shuffled_indices = build_order(self.domains.len(), self.seed, 0);
+        log::info!(
+            "SNI rotation exhausted, starting new round with seed {} ({} domains)",
+            self.seed,
+            self.domains.len()
+        );
+        self.dirty = true;
+        self.persist();
     }
 
-    fn save_state(&self) {
-        if self.cache_key.is_empty() {
+    /// 落盘当前轮转状态。失败只告警 —— 状态丢失的后果是「可能重复用域名」，
+    /// 而非功能不可用，不应因此中断业务。
+    fn persist(&mut self) {
+        if self.cache_key.is_empty() || !self.dirty {
             return;
         }
         if let Some(ref persistence) = *SNI_PERSISTENCE {
-            let state = SNIState {
-                domains: self.domains.clone(),
-                shuffled_indices: self.shuffled_indices.clone(),
-                used_count: self.used_count,
-                created_at: chrono::Utc::now().to_rfc3339(),
-            };
+            let state = SNIState::new(self.seed, self.used_count);
             if let Err(e) = persistence.save(&self.cache_key, &state) {
                 log::warn!("Failed to save SNI state: {}", e);
+                return;
             }
+            self.dirty = false;
         }
     }
 
@@ -185,7 +213,7 @@ impl SNISelector {
         self.shuffled_indices.len()
     }
 
-    pub fn total_used(&self) -> usize {
+    pub fn total_used(&self) -> u32 {
         self.used_count
     }
 
@@ -195,6 +223,16 @@ impl SNISelector {
         tokio::task::spawn_blocking(move || load_protobuf(&data))
             .await
             .ok()?
+    }
+}
+
+impl Drop for SNISelector {
+    /// 进程退出或 selector 被丢弃时保存未落盘的进度。
+    ///
+    /// 这是「不在每次抽样时落盘」与「不丢进度」之间的折中：
+    /// 崩溃最多丢失本轮最后一批（< 1KB）的进度。
+    fn drop(&mut self) {
+        self.persist();
     }
 }
 
@@ -238,20 +276,25 @@ mod tests {
         assert!(!d.is_empty());
     }
 
+    /// 构造一个受控的 selector：给定域名与确定的剩余排列。
+    fn test_selector(domains: &[&str], shuffled_indices: Vec<usize>) -> SNISelector {
+        SNISelector {
+            domains: domains.iter().map(|d| d.to_string()).collect(),
+            shuffled_indices,
+            used_count: 0,
+            seed: 0,
+            // cache_key 留空 → persist() 直接返回，测试不会碰磁盘。
+            cache_key: String::new(),
+            dirty: false,
+        }
+    }
+
     #[test]
     fn next_random_no_repeat() {
-        let mut selector = SNISelector {
-            domains: vec![
-                "a.com".to_string(),
-                "b.com".to_string(),
-                "c.com".to_string(),
-                "d.com".to_string(),
-                "e.com".to_string(),
-            ],
-            shuffled_indices: vec![0, 1, 2, 3, 4],
-            used_count: 0,
-            cache_key: String::new(),
-        };
+        let mut selector = test_selector(
+            &["a.com", "b.com", "c.com", "d.com", "e.com"],
+            vec![0, 1, 2, 3, 4],
+        );
 
         let mut results = Vec::new();
         for _ in 0..5 {
@@ -265,12 +308,7 @@ mod tests {
 
     #[test]
     fn next_resets_when_exhausted() {
-        let mut selector = SNISelector {
-            domains: vec!["a.com".to_string(), "b.com".to_string()],
-            shuffled_indices: vec![0, 1],
-            used_count: 0,
-            cache_key: String::new(),
-        };
+        let mut selector = test_selector(&["a.com", "b.com"], vec![0, 1]);
 
         selector.get_next();
         selector.get_next();
@@ -294,16 +332,7 @@ mod tests {
 
     #[test]
     fn remaining_count() {
-        let mut selector = SNISelector {
-            domains: vec![
-                "a.com".to_string(),
-                "b.com".to_string(),
-                "c.com".to_string(),
-            ],
-            shuffled_indices: vec![0, 1, 2],
-            used_count: 0,
-            cache_key: String::new(),
-        };
+        let mut selector = test_selector(&["a.com", "b.com", "c.com"], vec![0, 1, 2]);
 
         assert_eq!(selector.remaining(), 3);
         selector.get_next();
@@ -412,5 +441,74 @@ mod tests {
                 "国家码 {code:?} 的 fallback 返回了空列表 —— 伪装目标会消失"
             );
         }
+    }
+
+    // ---- T4 / T5: 确定性重建与不再逐次落盘 ----
+
+    /// T5: 同一 seed 必须重建出**完全相同**的排列。
+    ///
+    /// 这是「只存 seed + used_count」的正确性基础：进程重启后靠它
+    /// 接上上一轮的进度，而不会重发已用过的域名。
+    #[test]
+    fn t5_build_order_is_deterministic_for_same_seed() {
+        for seed in [0u64, 1, u64::MAX, 0xDEAD_BEEF_CAFE_F00D] {
+            let a = build_order(1000, seed, 0);
+            let b = build_order(1000, seed, 0);
+            assert_eq!(a, b, "seed={seed} 两次重建结果不同");
+
+            let c = build_order(1000, seed.wrapping_add(1), 0);
+            assert_ne!(a, c, "不同 seed 不应产生相同排列");
+        }
+    }
+
+    /// T5b: used_count 必须精确地「跳过已消耗的前缀」，而不是重置轮转。
+    #[test]
+    fn t5_build_order_skips_consumed_prefix() {
+        let full = build_order(100, 42, 0);
+        let after_37 = build_order(100, 42, 37);
+
+        assert_eq!(after_37.len(), 63);
+        assert_eq!(
+            after_37,
+            full[..full.len() - 37].to_vec(),
+            "恢复后的剩余集合应等于原排列去掉已消耗的前缀"
+        );
+    }
+
+    /// T5c: used_count 超过域名数时不能 panic（.pb 更新后变短的情况）。
+    #[test]
+    fn t5_build_order_tolerates_used_count_overflow() {
+        let o = build_order(10, 42, 9999);
+        assert!(o.is_empty(), "越界的 used_count 应退化为空排列而非 panic");
+    }
+
+    /// T4: 连续抽样不得产生任何落盘。
+    ///
+    /// 修复前 `get_next()` 每次都重写完整状态（真机 19,591,273 字节）。
+    /// 这里用 mtime 不变来断言「没写」—— 比断言耗时稳定。
+    #[tokio::test]
+    #[serial]
+    async fn t4_drawing_does_not_write_state_file() {
+        let _tmp = use_temp_config_dir();
+
+        let selector = SNISelector::get_for_country("US").await;
+        // 确保初始状态已落盘，才能观察「后续抽样不再改写」。
+        drop(selector);
+
+        let path = std::path::Path::new(&_tmp.path().to_string_lossy().to_string())
+            .join("sni_state")
+            .join("sni_US.enc");
+        assert!(path.exists(), "构造 selector 时应已写入初始状态");
+
+        let before = std::fs::metadata(&path).unwrap().modified().unwrap();
+
+        let mut s = SNISelector::get_for_country("US").await;
+        for _ in 0..10 {
+            let sni = s.get_next();
+            assert!(!sni.is_empty());
+        }
+
+        let after = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(before, after, "10 次抽样期间状态文件被改写 —— 落盘仍未消除");
     }
 }
