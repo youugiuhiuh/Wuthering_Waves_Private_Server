@@ -8,6 +8,36 @@
 #
 # 首次引导 GitHub Actions：需要在 repo secrets 中提供 GITHUB_TOKEN。
 # Forgejo：GITHUB_TOKEN 由 FORGEJO_TOKEN / GITEA_TOKEN 自动回退填充，无需改文件。
+#
+# ─────────────────────────────────────────────────────────────────────────
+# 为什么发行产物不再 UPX 压缩（2026-10-04 实测后移除）
+# ─────────────────────────────────────────────────────────────────────────
+# 背景：aegis 用 rust_embed 把 172 个 SNI 域名表（src/resources/sni/*.pb，
+# 合计 19.9 MB）编进二进制。这些数据在正常运行中几乎从不被读取。
+#
+# UPX 的代价不是磁盘，而是内存：
+#   UPX 的解压 stub 会在启动时把整个镜像 touch 一遍。这使得
+#     · 未压缩时：那 19.9 MB 落在 file-backed clean 页 → 内核可在内存紧张时回收/换出
+#     · UPX 后：那 19.9 MB 变成 anon dirty 页 → 完全不可回收
+#   即「压缩」把本来可回收的静态数据，换成了不可回收的常驻内存。
+#
+# 实测（同机、同测量方法：LD_PRELOAD 构造函数停在 main 之前，只测镜像常驻成本）：
+#                     磁盘体积      VmRSS      VmHWM    其中 anon
+#   UPX --best --lzma    13.2 MB    35.3 MB    60.7 MB   33.3 MB
+#   不压缩               51.5 MB     8.1 MB     8.1 MB    2.7 MB
+#   → VmHWM 降 87%。两个二进制的 VmSize 都是 55 MB（映射成本不变，变的是常驻成本）。
+#   UPX 版的 VmHWM 60.7 MB 与现网实测 60.6 MB 一致，说明测量方法可信。
+#   上游亦有同类报告：upx/upx#459（native app 50 MB → 100 MB）。
+#
+# 决策：用磁盘换内存。本项目是「一次安装、长期运行的守护进程」，
+#       且 VPS 普遍内存贵、硬盘便宜，这个交换是划算的。
+# 代价：二进制 13.2 MB → 51.5 MB（×3.9），下载与安装耗时相应增加。
+#
+# 如果未来磁盘体积重新成为问题，正确的方向**不是**把 UPX 加回来，而是
+# 把 SNI 资源改为运行时从 /etc/wwps/aegis/sni/ 读取（连同 release asset、
+# installer 校验与安装一并改造）——那样连 19.9 MB 的磁盘也一并省掉。
+#
+# ─────────────────────────────────────────────────────────────────────────
 
 name: Build and Release
 
@@ -138,7 +168,7 @@ jobs:
           cargo build --release
 
           ls -lh target/release/aegis
-          upx --best --lzma target/release/aegis
+          # 不使用 UPX。见文件顶部「为什么发行产物不再 UPX 压缩」。
 
       - name: Build Bootstrap Binary
         run: |
@@ -209,7 +239,7 @@ jobs:
           curl -fsSL https://mise.run | sh
           export PATH="$HOME/.local/bin:$PATH"
           mise install --yes
-          (cd rust/aegis && RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" cargo build --release && upx --best --lzma target/release/aegis)
+          (cd rust/aegis && RUSTFLAGS="--remap-path-prefix ${{ github.workspace }}=/project" cargo build --release)
           (cd go/installer && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 garble -literals -tiny -seed=random build -ldflags="-s -w" -o installer .)
           mkdir -p dist
           cp rust/aegis/target/release/aegis dist/
