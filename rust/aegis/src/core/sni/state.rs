@@ -57,6 +57,18 @@ struct LegacyMarker {
     domains: serde::de::IgnoredAny,
 }
 
+/// 判断解密后的内容是否为旧格式。
+///
+/// 先做廉价的子串预筛，再走完整解析。原因是旧文件真机实测 19,591,273 字节，
+/// 无条件 `from_slice` 会为了确认一个字段名把整份 JSON 再解析一遍。
+fn is_legacy_format(raw: &[u8]) -> bool {
+    const DOMAINS_KEY: &[u8] = b"\"d\":";
+    if !raw.windows(DOMAINS_KEY.len()).any(|w| w == DOMAINS_KEY) {
+        return false;
+    }
+    serde_json::from_slice::<LegacyMarker>(raw).is_ok()
+}
+
 impl SNIState {
     pub fn new(seed: u64, used_count: u32) -> Self {
         Self {
@@ -135,7 +147,7 @@ impl SNIPersistence {
                 Some(state)
             }
             Err(e) => {
-                if serde_json::from_slice::<LegacyMarker>(&decrypted_vec).is_ok() {
+                if is_legacy_format(&decrypted_vec) {
                     log::warn!(
                         "SNI state {} 是旧格式（含完整域名列表），将重建轮转状态。\
                          域名池不受影响，仅轮转位置重置一次。解析错误: {e}",
@@ -172,15 +184,6 @@ impl SNIPersistence {
             state.used_count
         );
 
-        Ok(())
-    }
-
-    pub fn reset(&self, key: &str) -> Result<()> {
-        let path = self.get_state_path(key);
-        if path.exists() {
-            fs::remove_file(&path)?;
-            log::info!("Reset SNI state for {}", key);
-        }
         Ok(())
     }
 }
@@ -338,5 +341,27 @@ mod tests {
 
         // 重新读取不再报错。
         assert!(p.load(key).is_none());
+    }
+
+    /// 预筛不得误判：缺少 `"d"` 字段的内容不能被当成旧格式。
+    ///
+    /// 这条用例锁住 `is_legacy_format` 两个方向的行为 —— 只测正例的话，
+    /// 把预筛写成“永远返回 true”也能全绿。
+    #[test]
+    fn t6_is_legacy_format_rejects_non_legacy_payloads() {
+        // 无 "d" 字段
+        assert!(!is_legacy_format(br#"{"s":42,"u":1,"c":"x"}"#));
+        // 格式正确但字段名不是 "d"
+        assert!(!is_legacy_format(br#"{"domains":["a.com"],"s":42}"#));
+        // 完全不是 JSON
+        assert!(!is_legacy_format(b"not json at all"));
+        // 空内容
+        assert!(!is_legacy_format(b""));
+        // 短于预筛模式的长度
+        assert!(!is_legacy_format(b"\"d\""));
+        // 真正的旧格式
+        assert!(is_legacy_format(
+            br#"{"d":["a.com"],"s":[0],"u":1,"c":"x"}"#
+        ));
     }
 }
