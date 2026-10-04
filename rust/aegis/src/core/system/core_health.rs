@@ -376,12 +376,59 @@ mod tests {
     }
 
     /// 真实目标机的 Xray 把 warning 与 `Configuration OK.` 打到 **stdout**。
-    /// 若误把 stdout 当作「flag 不认识」的证据，一份含 `usage:` 字样的配置内容
-    /// 就能让真实配置错误被放行——必须只信 stderr。
-    #[test]
-    fn test_is_preflight_unsupported_ignores_stdout_noise() {
-        let stdout = "2026/10/04 [Warning] infra/conf: REALITY: Listening on non-443 ports\nConfiguration OK.\nsee usage: docs";
-        assert!(!is_preflight_unsupported(stdout));
+    /// 真正的保证在**调用方**只传 stderr 给分类器——这里用假二进制驱动
+    /// `run_config_preflight` 来验证：标记只出现在 stdout 时，必须判为
+    /// `Invalid`（中止升级），而不是 `Unsupported`（fail-open 放行）。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_preflight_ignores_unsupported_markers_on_stdout() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("fake-core");
+        // 配置错误写 stdout（Xray 日志的真实形态），并故意在 stdout 里
+        // 混进 usage 字样——旧实现会因此误判 fail-open。
+        std::fs::write(
+            &bin,
+            "#!/bin/sh\necho \"Failed to start: main: failed to load config files\"\necho \"see usage: docs\"\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let outcome =
+            run_config_preflight(&bin, &["run", "-test"], std::time::Duration::from_secs(5))
+                .await
+                .unwrap();
+        // 关键断言：不得是 Unsupported——那会把一个坏配置 fail-open 放行。
+        match outcome {
+            PreflightOutcome::Invalid { reason } => assert!(
+                !reason.is_empty(),
+                "Invalid 必须带根因，否则管理员收不到可诊断信息"
+            ),
+            other => panic!("stdout 中的 usage 字样不应把配置错误误判为 fail-open: {other:?}"),
+        }
+    }
+
+    /// 相反方向：标记出现在 **stderr** 时才判 Unsupported 并 fail-open。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_preflight_treats_stderr_flag_error_as_unsupported() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("fake-core");
+        std::fs::write(
+            &bin,
+            "#!/bin/sh\necho \"flag provided but not defined: -test\" >&2\necho \"Usage:\" >&2\nexit 2\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let outcome =
+            run_config_preflight(&bin, &["run", "-test"], std::time::Duration::from_secs(5))
+                .await
+                .unwrap();
+        assert_eq!(outcome, PreflightOutcome::Unsupported);
     }
 
     #[test]
