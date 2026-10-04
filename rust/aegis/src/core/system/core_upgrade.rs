@@ -882,6 +882,15 @@ impl WwpsCoreUpgradeManager {
             .await;
         let backup_path = manager.backup_current_core().await?;
 
+        // 备份后**立即**裁剪，而不是等到升级成功之后。
+        //
+        // 放在这里而不是成功路径末尾，是因为“只保留最近 N 份”这个不变式必须在
+        // **任何结局**下都成立——健康检查失败触发回滚时会在 937 行早退，若把裁剪
+        // 挂在成功分支末尾，回滚场景就会一份都不删，目录照样无限堆积
+        // （真机验证：一次回滚后备份从 4 份涨到 5 份，287M）。
+        // 自动回滚只需要本次刚产生的这一份，它必然落在保留集内。
+        let pruned = manager.prune_backups(BACKUP_KEEP).await.unwrap_or_default();
+
         let _ = adapter
             .edit_message(
                 target,
@@ -954,9 +963,6 @@ impl WwpsCoreUpgradeManager {
         manager
             .cleanup_paths(&[archive_path.clone(), unpack_dir.clone()])
             .await;
-
-        // 备份裁剪：自动回滚只需本次这一份，多留的只是给人工善后。
-        let pruned = manager.prune_backups(BACKUP_KEEP).await.unwrap_or_default();
 
         let mut summary = t!(
             "upgrade.core_updated",
@@ -1101,6 +1107,79 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    /// 用真实目录验证裁剪：用生产常量拼出的目录名，超出保留份数的会被删掉。
+    ///
+    /// 曾经只靠 `select_backups_to_delete` 的纯函数测试，而它用的是手写前缀、
+    /// 且整条裁剪链从未在“回滚路径”上被执行过——真机上表现为一次回滚后备份
+    /// 从 4 份涨到 5 份。这里直接跑 `prune_backups` 走完整链路。
+    #[tokio::test]
+    async fn test_prune_backups_uses_production_prefix_and_keeps_newest() {
+        let tmp = tempdir().unwrap();
+        let backup_dir = tmp.path().join("backup");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+
+        // 刻意混入非备份目录，验证它不会被删。
+        std::fs::create_dir_all(backup_dir.join("README.txt")).unwrap();
+        std::fs::create_dir_all(backup_dir.join("wwps-core-backup-notatimestamp")).unwrap();
+
+        for stamp in [
+            "20250101000000",
+            "20260930082914",
+            "20261004023043",
+            "20261004035431",
+        ] {
+            std::fs::create_dir_all(
+                backup_dir.join(format!("{WWPS_CORE_DEFAULT_BACKUP_PREFIX}-{stamp}")),
+            )
+            .unwrap();
+        }
+
+        let config = WwpsCoreUpgradeConfig::new(
+            "XTLS",
+            "Xray-core",
+            "wwps-core",
+            tmp.path().to_path_buf(),
+            backup_dir.clone(),
+            tmp.path().join("temp"),
+            CpuArch::Amd64,
+        );
+        let manager = WwpsCoreUpgradeManager::new(config).unwrap();
+
+        let removed = manager.prune_backups(3).await.unwrap();
+        assert_eq!(removed.len(), 1, "应只删最旧的一份，实际删除: {removed:?}");
+
+        let left: Vec<String> = std::fs::read_dir(backup_dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(left.contains(&"README.txt".to_string()), "外来文件被删了");
+        assert!(
+            left.contains(&"wwps-core-backup-notatimestamp".to_string()),
+            "非法时间戳目录被删了"
+        );
+        // 不能按 `starts_with(prefix)` 计数：`wwps-core-backup-notatimestamp`
+        // 同样以该前缀开头会被多算一份（第一次写这个断言就是这么错的）。
+        // 必须只认「前缀 + 可解析时间戳」，并逐个比对保留下来的目录。
+        let mut kept: Vec<String> = left
+            .iter()
+            .filter(|n| {
+                n.strip_prefix(WWPS_CORE_DEFAULT_BACKUP_PREFIX)
+                    .and_then(|r| r.strip_prefix('-'))
+                    .is_some_and(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))
+            })
+            .cloned()
+            .collect();
+        kept.sort();
+        assert_eq!(
+            kept,
+            vec![
+                "wwps-core-backup-20260930082914".to_string(),
+                "wwps-core-backup-20261004023043".to_string(),
+                "wwps-core-backup-20261004035431".to_string(),
+            ],
+            "保留的应当是最近 3 份"
+        );
+    }
     /// 目标机 `wwps-core version` 的真实输出。
     const XRAY_VERSION_OUTPUT: &str = "Xray 26.9.30 (Xray, Penetrates Everything.) b26a91d (go1.27.1 linux/amd64)\nA unified platform for anti-censorship.\n";
 

@@ -810,6 +810,13 @@ impl SingBoxUpgradeManager {
         // 备份必须在替换**之前**产生：它是回滚的唯一来源。
         let backup_path = backup_manager.backup_binary().await?;
 
+        // 备份后立即裁剪，而非等升级成功——与 Xray-core 侧同构：健康检查失败
+        // 触发回滚时会提前返回，挂在成功分支末尾就永远裁不到。
+        let pruned = backup_manager
+            .prune_backups(BACKUP_KEEP)
+            .await
+            .unwrap_or_default();
+
         let _ = adapter
             .edit_message(
                 target,
@@ -905,10 +912,6 @@ impl SingBoxUpgradeManager {
             summary.push('\n');
             summary.push_str(t!("menu.singbox_upgrade_verify_unknown").as_ref());
         }
-        let pruned = backup_manager
-            .prune_backups(BACKUP_KEEP)
-            .await
-            .unwrap_or_default();
         if !pruned.is_empty() {
             summary.push('\n');
             summary.push_str(&t!(
