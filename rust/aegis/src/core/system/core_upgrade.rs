@@ -178,6 +178,7 @@ impl WwpsCoreUpgradeConfig {
 
 impl WwpsCoreUpgradeManager {
     pub fn new(config: WwpsCoreUpgradeConfig) -> Result<Self> {
+        crate::bootstrap::install_crypto_provider();
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(60))
             .build()
