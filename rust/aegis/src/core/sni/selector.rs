@@ -204,11 +204,23 @@ mod tests {
     use serial_test::serial;
     use std::sync::atomic::Ordering;
 
+    /// 把 SNI 状态目录重定向到临时目录。
+    ///
+    /// 必须在首次触碰 `SNI_PERSISTENCE`（一个 `once_cell::Lazy`）之前调用：
+    /// 它每进程只解析一次目录。本模块用例均带 `#[serial]`，不会互相踩踏。
+    fn use_temp_config_dir() -> tempfile::TempDir {
+        let dir = tempfile::TempDir::new().expect("创建临时目录");
+        // SAFETY: nextest 每测试独立进程；单进程下由 #[serial] 保证不并发。
+        unsafe { std::env::set_var("AEGIS_CONFIG_DIR", dir.path()) };
+        dir
+    }
+
     // 以下用例共享 `DECODE_PROBE`（进程级全局计数器），必须串行执行，
     // 否则 `cargo test` 的多线程会互相污染计数。nextest 每测试独立进程，天然隔离。
     #[tokio::test]
     #[serial]
     async fn get_for_country_returns_selector_with_domains() {
+        let _tmp = use_temp_config_dir();
         let selector = SNISelector::get_for_country("US").await;
         let mut s = selector;
         let first = s.get_next();
@@ -219,6 +231,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn get_for_country_unknown_falls_back_to_default() {
+        let _tmp = use_temp_config_dir();
         let selector = SNISelector::get_for_country("XX").await;
         let mut s = selector;
         let d = s.get_next();
@@ -270,6 +283,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn get_for_country_uk_normalizes_to_gb() {
+        let _tmp = use_temp_config_dir();
         let selector_uk = SNISelector::get_for_country("UK").await;
         let selector_gb = SNISelector::get_for_country("GB").await;
         let mut s1 = selector_uk;
