@@ -60,7 +60,7 @@ pub async fn run_config_preflight(
     if status.success() {
         return Ok(PreflightOutcome::Passed);
     }
-    if is_preflight_unsupported(&combined) {
+    if is_preflight_unsupported(&stderr) {
         log::warn!(
             "配置预检不可用（疑似上游移除了预检子命令），fail-open 继续升级: {}",
             combined.trim()
@@ -142,8 +142,13 @@ pub fn parse_nrestarts(stdout: &str) -> Option<u64> {
 /// 上游可能重命名/移除预检 flag（`-test` / `check`）。若把「flag 不认识」
 /// 误判成「配置坏了」，升级会被永久阻断——那是灾难性的误伤。因此这类输出
 /// 必须 fail-open：跳过预检、继续升级，只靠事后健康检查兜底。
-pub fn is_preflight_unsupported(output: &str) -> bool {
-    let lower = output.to_ascii_lowercase();
+///
+/// **只看 stderr**：Go 的 `flag` 包与 cobra 在 flag/命令解析失败时都把错误与
+/// usage 写到 stderr；而 Xray 把普通日志（含 warning 与 `Configuration OK.`）
+/// 写到 stdout。若把 stdout 也纳入判定，一份恰好含 `usage:` 字样的配置内容
+/// 就能让真实的配置错误被误放行。
+pub fn is_preflight_unsupported(stderr: &str) -> bool {
+    let lower = stderr.to_ascii_lowercase();
     const MARKERS: &[&str] = &[
         "flag provided but not defined",
         "unknown flag",
@@ -151,7 +156,6 @@ pub fn is_preflight_unsupported(output: &str) -> bool {
         "unknown command",
         "no such flag",
         "usage:",
-        "usage :",
         "invalid syntax",
     ];
     MARKERS.iter().any(|m| lower.contains(m))
@@ -366,9 +370,18 @@ mod tests {
             ),
         ];
 
-        for (output, expected) in cases {
-            assert_eq!(is_preflight_unsupported(output), expected, "{output}");
+        for (stderr, expected) in cases {
+            assert_eq!(is_preflight_unsupported(stderr), expected, "{stderr}");
         }
+    }
+
+    /// 真实目标机的 Xray 把 warning 与 `Configuration OK.` 打到 **stdout**。
+    /// 若误把 stdout 当作「flag 不认识」的证据，一份含 `usage:` 字样的配置内容
+    /// 就能让真实配置错误被放行——必须只信 stderr。
+    #[test]
+    fn test_is_preflight_unsupported_ignores_stdout_noise() {
+        let stdout = "2026/10/04 [Warning] infra/conf: REALITY: Listening on non-443 ports\nConfiguration OK.\nsee usage: docs";
+        assert!(!is_preflight_unsupported(stdout));
     }
 
     #[test]
