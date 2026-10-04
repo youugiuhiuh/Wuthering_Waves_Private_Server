@@ -6,6 +6,9 @@ use crate::core::network::release_api::{
     fetch_prerelease, find_minisig_asset, parse_digest, parse_sha256_manifest,
 };
 use crate::core::paths::xray;
+use crate::core::system::core_health::{
+    self, PreflightOutcome, run_config_preflight, select_backups_to_delete,
+};
 use crate::core::utils::{
     format_download_progress, human_readable_size, is_same_version, should_report,
 };
@@ -33,6 +36,13 @@ const WWPS_CORE_DEFAULT_TEMP_DIR: &str = xray::DEFAULT_TEMP_DIR;
 const WWPS_CORE_DEFAULT_BACKUP_PREFIX: &str = xray::DEFAULT_BACKUP_PREFIX;
 
 const WWPS_CORE_RELEASE_API_BASE: &str = "https://api.github.com/repos";
+
+/// 配置预检（`xray run -test`）的超时。
+const PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// 备份保留份数。自动回滚只需要「本次升级刚产生的那份」，多留的只是为了
+/// 应对升级后才发现问题、还想再退一步的场景；无限增长会吃光 VPS 磁盘。
+const BACKUP_KEEP: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CpuArch {
@@ -89,8 +99,7 @@ pub struct WwpsCoreUpgradeManager {
 
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
 
-/// 执行 `<core> version` 读取本机核心版本的超时。
-///
+/// 执行 `<core> version` 读取本机核心版本的超时。///
 /// 版本读取是升级流程的**前置门**，必须快速失败：超时则视为“版本未知”，
 /// 放行升级（行为退化为升级前的现状），绝不能因为一个辅助检查卡住升级。
 const CURRENT_VERSION_TIMEOUT: Duration = Duration::from_secs(10);
@@ -524,6 +533,128 @@ impl WwpsCoreUpgradeManager {
         Ok(backup_path)
     }
 
+    /// 用**新核心**验证**现网配置**能否加载（升级前预检）。
+    ///
+    /// 这是零风险防线：失败时现网二进制根本没被动过。
+    /// 上游会主动移除旧配置项（sing-box 迁移文档逐条标注移除版本；Xray
+    /// v24.9.30 移除了 QUIC/DomainSocket 与远古配置兼容代码），因此
+    /// 「旧配置 + 新核心」失败是**预期内**行为，不是边缘情况。
+    ///
+    /// 上游若重命名/移除 `-test` flag，预检会不可用——此时必须 fail-open
+    /// 放行（见 `is_preflight_unsupported`），绝不能因预检不可用而永久阻断升级。
+    pub async fn preflight_check_config(&self, new_binary: &Path) -> Result<PreflightOutcome> {
+        let conf_dir = xray::CONF_DIR.to_string();
+        run_config_preflight(
+            new_binary,
+            &["run", "-test", "-confdir", &conf_dir],
+            PREFLIGHT_TIMEOUT,
+        )
+        .await
+    }
+
+    /// 从备份目录恢复核心二进制与 geo 数据，并重启服务。
+    ///
+    /// 沿用 `replace_core` 已验证的「暂存 `.new` + 原子 rename」模式：直接
+    /// `fs::copy` 覆盖正在被映射执行的 ELF 会拿到 `ETXTBSY`。
+    pub async fn restore_backup(&self, backup: &Path) -> Result<()> {
+        let backup_core = backup.join("wwps-core");
+        if !backup_core.exists() {
+            anyhow::bail!("备份中未找到核心文件: {}", backup_core.display());
+        }
+
+        self.install_binary_from(&backup_core, "wwps-core").await?;
+
+        for data in ["geoip.dat", "geosite.dat"] {
+            let src = backup.join(data);
+            if src.exists() {
+                // geo 数据恢复失败不应阻断回滚：核心能起来才是第一优先级。
+                if let Err(err) = self.install_data_file(&src, data).await {
+                    log::warn!("恢复 {data} 失败（忽略）: {err}");
+                }
+            }
+        }
+
+        self.restart_service().await?;
+        self.verify_service_active().await?;
+
+        // 回滚后必须复验：unit 刚 exec 时也是 active，单次 is-active 会误报。
+        // 不复验就等于向管理员宣称“服务已恢复”，而实际可能正在崩溃循环。
+        let verdict =
+            core_health::wait_for_health(&format!("{}.service", self.config.service_name)).await;
+        if verdict.should_rollback() {
+            anyhow::bail!("回滚后核心仍未健康（{verdict:?}）");
+        }
+        Ok(())
+    }
+
+    /// 裁剪备份目录：仅保留最近 `keep` 份，其余删除（最旧优先）。
+    pub async fn prune_backups(&self, keep: usize) -> Result<Vec<PathBuf>> {
+        let mut names = Vec::new();
+        let mut entries = match tokio::fs::read_dir(&self.config.backup_dir).await {
+            Ok(entries) => entries,
+            // 备份目录不存在 = 还没备份过，无需裁剪。
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(err) => return Err(err).context("读取备份目录失败"),
+        };
+
+        while let Some(entry) = entries.next_entry().await.context("遍历备份目录失败")? {
+            if entry.path().is_dir() {
+                names.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+
+        let deleted = select_backups_to_delete(&names, WWPS_CORE_DEFAULT_BACKUP_PREFIX, keep);
+        let mut removed = Vec::new();
+        for name in deleted {
+            let path = self.config.backup_dir.join(&name);
+            // 删除失败只记日志：备份多留几份不致命，不能因此中断升级。
+            match fs::remove_dir_all(&path).await {
+                Ok(()) => removed.push(path),
+                Err(err) => log::warn!("删除旧备份 {} 失败: {}", path.display(), err),
+            }
+        }
+        Ok(removed)
+    }
+
+    /// 把一个可执行文件装到 install_dir：暂存 → 0755 → 原子 rename。
+    async fn install_binary_from(&self, source: &Path, file_name: &str) -> Result<()> {
+        let staging = self.config.install_dir.join(format!("{file_name}.new"));
+        fs::copy(source, &staging)
+            .await
+            .with_context(|| format!("复制到暂存文件失败: {}", staging.display()))?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&staging).await?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&staging, perms)
+                .await
+                .context("设置可执行权限失败")?;
+        }
+
+        let target = self.config.install_dir.join(file_name);
+        fs::rename(&staging, &target).await.with_context(|| {
+            format!(
+                "原子替换失败: {} -> {}",
+                staging.display(),
+                target.display()
+            )
+        })
+    }
+
+    /// 恢复单个数据文件（geoip/geosite）：暂存 + 原子 rename。
+    async fn install_data_file(&self, source: &Path, file_name: &str) -> Result<()> {
+        let staging = self.config.install_dir.join(format!("{file_name}.new"));
+        fs::copy(source, &staging)
+            .await
+            .with_context(|| format!("复制 {file_name} 到暂存文件失败"))?;
+        let target = self.config.install_dir.join(file_name);
+        fs::rename(&staging, &target)
+            .await
+            .with_context(|| format!("恢复 {file_name} 失败"))
+    }
+
     pub async fn replace_core(&self, unpack_dir: &Path) -> Result<()> {
         let new_core = unpack_dir.join("xray");
         if !new_core.exists() {
@@ -610,6 +741,7 @@ impl WwpsCoreUpgradeManager {
 
         let config = WwpsCoreUpgradeConfig::from_env()?;
         config.validate()?;
+        let service_unit = format!("{}.service", config.service_name);
         let manager = WwpsCoreUpgradeManager::new(config)?;
 
         let _ = adapter
@@ -687,6 +819,57 @@ impl WwpsCoreUpgradeManager {
             .await;
         let unpack_dir = manager.extract_archive(&archive_path).await?;
 
+        // ── 防线 1：替换前预检（零风险）──
+        // 用新核心验现网配置。不通过则完全不碰现网二进制——这是最安全的一层，
+        // 因为此时备份尚未产生、服务未被重启。
+        let new_binary = unpack_dir.join("xray");
+        match manager.preflight_check_config(&new_binary).await? {
+            PreflightOutcome::Passed => {
+                let _ = adapter
+                    .edit_message(
+                        target,
+                        &status_msg_id,
+                        MessageContent {
+                            text: t!("upgrade.core_preflight_ok").to_string(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+            }
+            PreflightOutcome::Unsupported => {
+                let _ = adapter
+                    .edit_message(
+                        target,
+                        &status_msg_id,
+                        MessageContent {
+                            text: t!("upgrade.core_preflight_unsupported").to_string(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+            }
+            PreflightOutcome::Invalid { reason } => {
+                manager
+                    .cleanup_paths(&[archive_path.clone(), unpack_dir.clone()])
+                    .await;
+                let text = t!("upgrade.core_preflight_failed", "0" => reason.as_str()).to_string();
+                let _ = adapter
+                    .edit_message(
+                        target,
+                        &status_msg_id,
+                        MessageContent {
+                            text: text.clone(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+                adapter
+                    .send_message(target, MessageContent { text, markup: None })
+                    .await?;
+                anyhow::bail!("配置预检未通过，已中止升级（现网核心未被改动）");
+            }
+        }
+
         let _ = adapter
             .edit_message(
                 target,
@@ -725,26 +908,137 @@ impl WwpsCoreUpgradeManager {
         manager.restart_service().await?;
         manager.verify_service_active().await?;
 
+        // ── 防线 2：替换后健康检查 + 自动回滚 ──
+        // 单次 is-active 会误判：Type=simple 在 exec 那一刻就 active，而配置
+        // 解析失败发生在其后，且 Restart=always 会把它重新拉回 active。
+        // 故跨崩溃周期采样 is-active + NRestarts。
+        let _ = adapter
+            .edit_message(
+                target,
+                &status_msg_id,
+                MessageContent {
+                    text: t!("upgrade.core_verifying").to_string(),
+                    markup: None,
+                },
+            )
+            .await;
+
+        let verdict = core_health::wait_for_health(&service_unit).await;
+        if verdict.should_rollback() {
+            // 先回滚，再清理临时文件：无论回滚成败，压缩包/解压目录都不应残留。
+            let result = Self::handle_rollback(
+                &manager,
+                &backup_path,
+                verdict,
+                adapter,
+                target,
+                &status_msg_id,
+            )
+            .await;
+            manager
+                .cleanup_paths(&[archive_path.clone(), unpack_dir.clone()])
+                .await;
+            return result;
+        }
+
         manager
             .cleanup_paths(&[archive_path.clone(), unpack_dir.clone()])
             .await;
+
+        // 备份裁剪：自动回滚只需本次这一份，多留的只是给人工善后。
+        let pruned = manager.prune_backups(BACKUP_KEEP).await.unwrap_or_default();
+
+        let mut summary = t!(
+            "upgrade.core_updated",
+            "0" => release.tag_name.as_str(),
+            "1" => backup_path.display().to_string().as_str()
+        )
+        .to_string();
+        if verdict == core_health::HealthVerdict::Unknown {
+            summary.push('\n');
+            summary.push_str(t!("upgrade.core_verify_unknown").as_ref());
+        }
+        if !pruned.is_empty() {
+            summary.push('\n');
+            summary.push_str(&t!(
+                "upgrade.core_pruned",
+                "0" => pruned.len().to_string().as_str()
+            ));
+        }
 
         adapter
             .send_message(
                 target,
                 MessageContent {
-                    text: t!(
-                        "upgrade.core_updated",
-                        "0" => release.tag_name.as_str(),
-                        "1" => backup_path.display().to_string().as_str()
-                    )
-                    .to_string(),
+                    text: summary,
                     markup: None,
                 },
             )
             .await?;
 
         Ok(())
+    }
+
+    /// 健康检查失败时的自动回滚：恢复**本次升级刚产生**的备份并复验。
+    ///
+    /// 回滚目标必须是本次的 `backup_path`，而不是重新扫目录取“最新备份”——
+    /// 并发升级或目录残留会把它带到错误的版本上。
+    #[allow(clippy::too_many_arguments)]
+    async fn handle_rollback(
+        manager: &WwpsCoreUpgradeManager,
+        backup_path: &Path,
+        verdict: core_health::HealthVerdict,
+        adapter: &dyn BotAdapter,
+        target: &TargetId,
+        status_msg_id: &AegisMsgId,
+    ) -> Result<()> {
+        let _ = adapter
+            .edit_message(
+                target,
+                status_msg_id,
+                MessageContent {
+                    text: t!("upgrade.core_rolling_back").to_string(),
+                    markup: None,
+                },
+            )
+            .await;
+
+        match manager.restore_backup(backup_path).await {
+            Ok(()) => {
+                adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: t!(
+                                "upgrade.core_rollback_done",
+                                "0" => format!("{verdict:?}").as_str()
+                            )
+                            .to_string(),
+                            markup: None,
+                        },
+                    )
+                    .await?;
+                Ok(())
+            }
+            Err(err) => {
+                // 回滚也失败：保留现场，不再重试，把备份路径交回管理员。
+                adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: t!(
+                                "upgrade.core_rollback_failed",
+                                "0" => err.to_string().as_str(),
+                                "1" => backup_path.display().to_string().as_str()
+                            )
+                            .to_string(),
+                            markup: None,
+                        },
+                    )
+                    .await?;
+                Err(err)
+            }
+        }
     }
 
     async fn download_sha256_manifest(

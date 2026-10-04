@@ -30,10 +30,13 @@ use crate::core::network::release_api::{
 };
 use crate::core::paths::singbox;
 use crate::core::singbox::installer::SingBoxInstaller;
+use crate::core::system::core_health::{
+    self, PreflightOutcome, run_config_preflight, select_backups_to_delete,
+};
 use crate::core::utils::{human_readable_size, is_same_version};
 use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::fs;
 
@@ -248,6 +251,120 @@ fn retry_delay_secs(retry_after: Option<&str>, reset_epoch: Option<&str>, now_ep
 pub struct SingBoxUpgradeManager {
     client: reqwest::Client,
     github_token: Option<String>,
+}
+
+/// 配置预检（`sing-box check`）的超时。
+const PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// 备份保留份数，与 Xray-core 侧保持一致。
+const BACKUP_KEEP: usize = 3;
+
+/// Sing-box 备份目录与文件名前缀。
+const SINGBOX_BACKUP_DIR: &str = "/etc/wwps/wwps-box/backup";
+const SINGBOX_BACKUP_PREFIX: &str = "wwps-box-backup";
+
+/// Sing-box 的 systemd unit 名。
+const SINGBOX_SERVICE_UNIT: &str = "wwps-box.service";
+
+/// Sing-box 配置预检与自动回滚。
+///
+/// 与 Xray-core 侧同构：先用新二进制验证现网配置（失败则不碰现网），替换后
+/// 跨崩溃周期检查健康度，不健康则用本次备份自动回滚。
+pub struct SingBoxBackupManager {
+    backup_dir: PathBuf,
+    binary: PathBuf,
+}
+
+impl SingBoxBackupManager {
+    pub fn new() -> Self {
+        Self {
+            backup_dir: PathBuf::from(SINGBOX_BACKUP_DIR),
+            binary: PathBuf::from(singbox::BIN),
+        }
+    }
+
+    /// 备份当前二进制，返回备份目录。
+    pub async fn backup_binary(&self) -> Result<PathBuf> {
+        fs::create_dir_all(&self.backup_dir)
+            .await
+            .context("创建 Sing-box 备份目录失败")?;
+
+        let backup_path = self.backup_dir.join(format!(
+            "{}-{}",
+            SINGBOX_BACKUP_PREFIX,
+            chrono::Utc::now().format("%Y%m%d%H%M%S")
+        ));
+        fs::create_dir_all(&backup_path)
+            .await
+            .context("创建 Sing-box 备份子目录失败")?;
+
+        let dst = backup_path.join("wwps-box");
+        fs::copy(&self.binary, &dst)
+            .await
+            .with_context(|| format!("备份 Sing-box 核心失败: {}", self.binary.display()))?;
+
+        Ok(backup_path)
+    }
+
+    /// 用新二进制验证现网配置。
+    pub async fn preflight_check_config(&self, new_binary: &Path) -> Result<PreflightOutcome> {
+        let conf_dir = singbox::CONF_DIR.to_string();
+        run_config_preflight(new_binary, &["check", "-C", &conf_dir], PREFLIGHT_TIMEOUT).await
+    }
+
+    /// 从备份恢复二进制并重启服务。
+    pub async fn restore_backup(&self, backup: &Path) -> Result<()> {
+        let backup_core = backup.join("wwps-box");
+        if !backup_core.exists() {
+            anyhow::bail!("备份中未找到 Sing-box 二进制: {}", backup_core.display());
+        }
+        SingBoxInstaller::replace_binary(&backup_core, &self.binary).await?;
+        SingBoxInstaller::restart_service().await?;
+
+        // 回滚后复验：否则“服务已恢复”只是一句没有证据的断言。
+        let verdict = core_health::wait_for_health(SINGBOX_SERVICE_UNIT).await;
+        if verdict.should_rollback() {
+            anyhow::bail!("回滚后 Sing-box 仍未健康（{verdict:?}）");
+        }
+        Ok(())
+    }
+
+    /// 裁剪备份目录：保留最近 `keep` 份。
+    pub async fn prune_backups(&self, keep: usize) -> Result<Vec<PathBuf>> {
+        let mut names = Vec::new();
+        let mut entries = match fs::read_dir(&self.backup_dir).await {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(err) => return Err(err).context("读取 Sing-box 备份目录失败"),
+        };
+
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .context("遍历 Sing-box 备份目录失败")?
+        {
+            if entry.path().is_dir() {
+                names.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+
+        let deleted = select_backups_to_delete(&names, SINGBOX_BACKUP_PREFIX, keep);
+        let mut removed = Vec::new();
+        for name in deleted {
+            let path = self.backup_dir.join(&name);
+            match fs::remove_dir_all(&path).await {
+                Ok(()) => removed.push(path),
+                Err(err) => log::warn!("删除旧 Sing-box 备份 {} 失败: {}", path.display(), err),
+            }
+        }
+        Ok(removed)
+    }
+}
+
+impl Default for SingBoxBackupManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SingBoxUpgradeManager {
@@ -637,6 +754,62 @@ impl SingBoxUpgradeManager {
             anyhow::bail!("未找到解压后的 sing-box 二进制: {}", unpacked_bin);
         }
 
+        let backup_manager = SingBoxBackupManager::new();
+
+        // ── 防线 1：替换前预检（零风险）──
+        // 用新二进制验现网配置。不通过则完全不碰现网二进制。
+        match backup_manager
+            .preflight_check_config(Path::new(&unpacked_bin))
+            .await?
+        {
+            PreflightOutcome::Passed => {
+                let _ = adapter
+                    .edit_message(
+                        target,
+                        &status_msg_id,
+                        MessageContent {
+                            text: t!("menu.singbox_upgrade_preflight_ok").to_string(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+            }
+            PreflightOutcome::Unsupported => {
+                let _ = adapter
+                    .edit_message(
+                        target,
+                        &status_msg_id,
+                        MessageContent {
+                            text: t!("menu.singbox_upgrade_preflight_unsupported").to_string(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+            }
+            PreflightOutcome::Invalid { reason } => {
+                let _ = fs::remove_dir_all(SINGBOX_UPGRADE_TEMP_DIR).await;
+                let text =
+                    t!("menu.singbox_upgrade_preflight_failed", "0" => reason.as_str()).to_string();
+                let _ = adapter
+                    .edit_message(
+                        target,
+                        &status_msg_id,
+                        MessageContent {
+                            text: text.clone(),
+                            markup: None,
+                        },
+                    )
+                    .await;
+                adapter
+                    .send_message(target, MessageContent { text, markup: None })
+                    .await?;
+                anyhow::bail!("配置预检未通过，已中止升级（现网核心未被改动）");
+            }
+        }
+
+        // 备份必须在替换**之前**产生：它是回滚的唯一来源。
+        let backup_path = backup_manager.backup_binary().await?;
+
         let _ = adapter
             .edit_message(
                 target,
@@ -663,17 +836,96 @@ impl SingBoxUpgradeManager {
             .await;
         SingBoxInstaller::restart_service().await?;
 
+        // ── 防线 2：替换后健康检查 + 自动回滚 ──
         let _ = adapter
             .edit_message(
                 target,
                 &status_msg_id,
                 MessageContent {
-                    text: t!("menu.singbox_upgrade_success", "0" => release.tag_name.as_str())
-                        .to_string(),
+                    text: t!("menu.singbox_upgrade_verifying").to_string(),
                     markup: None,
                 },
             )
             .await;
+
+        let verdict = core_health::wait_for_health(SINGBOX_SERVICE_UNIT).await;
+        if verdict.should_rollback() {
+            let _ = adapter
+                .edit_message(
+                    target,
+                    &status_msg_id,
+                    MessageContent {
+                        text: t!("menu.singbox_upgrade_rolling_back").to_string(),
+                        markup: None,
+                    },
+                )
+                .await;
+
+            match backup_manager.restore_backup(&backup_path).await {
+                Ok(()) => {
+                    let _ = fs::remove_dir_all(SINGBOX_UPGRADE_TEMP_DIR).await;
+                    adapter
+                        .send_message(
+                            target,
+                            MessageContent {
+                                text: t!(
+                                    "menu.singbox_upgrade_rollback_done",
+                                    "0" => format!("{verdict:?}").as_str()
+                                )
+                                .to_string(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                    return Ok(());
+                }
+                Err(err) => {
+                    adapter
+                        .send_message(
+                            target,
+                            MessageContent {
+                                text: t!(
+                                    "menu.singbox_upgrade_rollback_failed",
+                                    "0" => err.to_string().as_str(),
+                                    "1" => backup_path.display().to_string().as_str()
+                                )
+                                .to_string(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                    return Err(err);
+                }
+            }
+        }
+
+        let mut summary =
+            t!("menu.singbox_upgrade_success", "0" => release.tag_name.as_str()).to_string();
+        if verdict == core_health::HealthVerdict::Unknown {
+            summary.push('\n');
+            summary.push_str(t!("menu.singbox_upgrade_verify_unknown").as_ref());
+        }
+        let pruned = backup_manager
+            .prune_backups(BACKUP_KEEP)
+            .await
+            .unwrap_or_default();
+        if !pruned.is_empty() {
+            summary.push('\n');
+            summary.push_str(&t!(
+                "menu.singbox_upgrade_pruned",
+                "0" => pruned.len().to_string().as_str()
+            ));
+        }
+
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: summary,
+                    markup: None,
+                },
+            )
+            .await?;
 
         let _ = fs::remove_dir_all(SINGBOX_UPGRADE_TEMP_DIR).await;
         Ok(())

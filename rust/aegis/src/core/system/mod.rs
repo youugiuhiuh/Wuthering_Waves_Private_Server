@@ -1,3 +1,4 @@
+pub mod core_health;
 pub mod core_upgrade;
 pub mod log_audit;
 pub mod maintenance;
