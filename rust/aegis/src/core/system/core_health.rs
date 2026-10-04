@@ -15,6 +15,33 @@
 //! 信号是 `NRestarts` 计数——只有它会在崩溃重启时递增。
 //!
 //! 因此判定需要两条信号 + 一个跨崩溃周期（> `RestartSec`）的观察窗口。
+//!
+//! # 能力边界（真机验证得出，勿高估这两道防线）
+//!
+//! 防线一（配置预检）**拦不住**下面这类故障：
+//!
+//! - **字段被移除/改名，但上游没有为它加显式报错。** 实测在配置里注入一个
+//!   未知字段 `bogusRemovedField` 后，Xray 仍输出 `Configuration OK.`——Go 的
+//!   `encoding/json` 默认静默忽略未知字段。能拦到的是上游**显式加了拒绝逻辑**
+//!   的移除（例如 `The feature "legacy reverse" has been removed`、
+//!   `maxConnections cannot be specified together with maxConcurrency`）。
+//!
+//! 两道防线**都拦不住**「进程健康但功能已坏」：
+//!
+//! - 例如 Xray v26.7.11 给 REALITY 引入了 `minClientVer` 默认值，旧客户端被拒。
+//!   核心能正常启动、健康检查全绿，但流量根本不通。
+//!
+//! 换言之：这两道防线保证的是「**核心能起来且不崩**」，不是「**功能正常**」。
+//! 后者需要业务侧探测（如真实握手、连通性测试）才能覆盖。
+//!
+//! # 实测得到的行为事实
+//!
+//! - crash-loop 时 `systemctl is-active` 返回 `activating`（exit 3）而非 `active`，
+//!   `NRestarts` 同步递增——两者都能识别崩溃，单看 `is-active` 已足够。
+//! - `NRestarts` 会被 `systemctl restart` 重置，因此它只在**单次启动的观察窗口内**
+//!   有意义，跨重启比较会得出错误的“无崩溃”结论。
+//! - Xray 把 warning 与 `Configuration OK.` 打到 **stdout**，Go 的 flag/cobra 才把
+//!   错误与 usage 写到 **stderr**——这是 `is_preflight_unsupported` 只扫 stderr 的原因。
 
 use crate::core::cmd_async::run_cmd_output;
 use anyhow::{Context, Result};
