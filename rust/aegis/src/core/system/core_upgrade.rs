@@ -906,7 +906,17 @@ impl WwpsCoreUpgradeManager {
             .await;
 
         manager.restart_service().await?;
-        manager.verify_service_active().await?;
+
+        // 这里**故意不**用旧的单次 `verify_service_active` 作为门。
+        // 它在 restart 后立即跑一次 `is-active`，而 Type=simple 的 unit 在进程
+        // exec 那一刻就是 active；若新核心随后因配置不兼容退出，这次检查会失败并
+        // 让 `run_upgrade` 直接返回 Err——**恰好把下面的健康检查与自动回滚全部
+        // 跳过**，坏二进制留在原地。已实测（sleep 2 后 exit 1 的 unit）该单次检查
+        // 会看到 active=true 而漏报；反过来在启动稍慢时又会误报失败并中断升级。
+        // 因此只记日志，判定权交给下方跳崩溃周期的窗口化检查。
+        if let Err(err) = manager.verify_service_active().await {
+            log::warn!("restart 后首次 is-active 未通过（交由健康检查判定）: {err}");
+        }
 
         // ── 防线 2：替换后健康检查 + 自动回滚 ──
         // 单次 is-active 会误判：Type=simple 在 exec 那一刻就 active，而配置

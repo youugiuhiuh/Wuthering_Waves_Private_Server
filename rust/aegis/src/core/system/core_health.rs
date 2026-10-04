@@ -247,12 +247,23 @@ pub async fn wait_for_health(unit: &str) -> HealthVerdict {
 /// 纯函数：输入目录名列表，输出待删列表，便于表驱动测试。
 /// 只认以 `prefix` 开头且后缀可解析为时间戳的目录，其他内容一律忽略——
 /// 宁可留下垃圾，也不能误删管理员放在同一目录下的东西。
+///
+/// **前缀可以不带尾部连字符**：目录名是由 `format!("{prefix}-{timestamp}")`
+/// 拼出来的（见 `paths::xray::DEFAULT_BACKUP_PREFIX`，其值为
+/// `wwps-core-backup`、无尾部横杠），而剥前缀后剩下的是 `-20260101...`。
+/// 这里额外吃掉一个前导 `-`，使调用方传 `wwps-core-backup` 或
+/// `wwps-core-backup-` 都能正确匹配——两者的区别不应由调用方承担，
+/// 否则常量一改这里就会静默失效（曾真实发生过：单元测试用带横杠的前缀通过，
+/// 线上传不带横杠的常量，导致备份永不裁剪）。
 pub fn select_backups_to_delete(names: &[String], prefix: &str, keep: usize) -> Vec<String> {
     let mut candidates: Vec<&String> = names
         .iter()
         .filter(|name| {
-            name.strip_prefix(prefix)
-                .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()))
+            let Some(rest) = name.strip_prefix(prefix) else {
+                return false;
+            };
+            let stamp = rest.strip_prefix('-').unwrap_or(rest);
+            !stamp.is_empty() && stamp.chars().all(|c| c.is_ascii_digit())
         })
         .collect();
 
@@ -511,5 +522,40 @@ mod tests {
     fn test_select_backups_to_delete_keep_all_when_under_limit() {
         let names = vec!["wwps-core-backup-20260101000000".to_string()];
         assert!(select_backups_to_delete(&names, "wwps-core-backup-", 3).is_empty());
+    }
+
+    /// 回归测试：必须用**生产常量**的原值（无尾部横杠）。
+    ///
+    /// `paths::xray::DEFAULT_BACKUP_PREFIX = "wwps-core-backup"`，而目录名是
+    /// `format!("{PREFIX}-{timestamp}")`。曾经用带横杠的手写前缀测试通过，
+    /// 线上传不带横杠的常量时，前缀剥离后剩下 `-20250101...`（带前导横杠）
+    /// 而被当作非法时间戳过滤，导致备份永不裁剪——真机升级验证才发现。
+    #[test]
+    fn test_select_backups_to_delete_with_production_prefix_constant() {
+        assert_eq!(
+            crate::core::paths::xray::DEFAULT_BACKUP_PREFIX,
+            "wwps-core-backup"
+        );
+
+        let names: Vec<String> = [
+            "wwps-core-backup-20250101000000",
+            "wwps-core-backup-20260930082914",
+            "wwps-core-backup-20261004023043",
+            "wwps-core-backup-20261004034041",
+            "README.txt",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        let prefix = crate::core::paths::xray::DEFAULT_BACKUP_PREFIX;
+        let deleted = select_backups_to_delete(&names, prefix, 3);
+        assert_eq!(deleted, vec!["wwps-core-backup-20250101000000".to_string()]);
+
+        // 带横杠的前缀必须得到相同结果（两种写法都不能失效）。
+        assert_eq!(
+            select_backups_to_delete(&names, &format!("{prefix}-"), 3),
+            deleted
+        );
     }
 }
