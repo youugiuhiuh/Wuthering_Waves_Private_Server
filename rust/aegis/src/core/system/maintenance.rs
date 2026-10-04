@@ -314,6 +314,7 @@ impl MaintenanceManager {
             ),
         ];
 
+        crate::bootstrap::install_crypto_provider();
         let client = reqwest::Client::builder()
             .timeout(TIMEOUT_LONG)
             .build()
@@ -375,6 +376,7 @@ impl MaintenanceManager {
         // 确保目标目录存在
         std::fs::create_dir_all(xray::DIR).context("创建 xray 目录失败")?;
 
+        crate::bootstrap::install_crypto_provider();
         let client = reqwest::Client::builder()
             .timeout(TIMEOUT_LONG)
             .build()
@@ -438,6 +440,7 @@ impl MaintenanceManager {
         let temp_dir = Self::prepare_update_temp_dir(Path::new(singbox::DIR), std::process::id())?;
         let temp_dir = temp_dir.to_string_lossy().to_string();
 
+        crate::bootstrap::install_crypto_provider();
         let client = reqwest::Client::builder()
             .timeout(TIMEOUT_LONG)
             .build()

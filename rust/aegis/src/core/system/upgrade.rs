@@ -136,6 +136,7 @@ impl UpgradeManager {
             env::var("AEGIS_RELEASE_ASSET").unwrap_or_else(|_| DEFAULT_ASSET_NAME.to_string());
         let token = env::var("GITHUB_TOKEN").ok().filter(|s| !s.is_empty());
 
+        crate::bootstrap::install_crypto_provider();
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
