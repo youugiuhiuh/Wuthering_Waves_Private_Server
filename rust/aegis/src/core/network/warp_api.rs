@@ -28,6 +28,7 @@ pub async fn register_account() -> Result<WarpAccountConfig> {
     let priv_key_b64 = general_purpose::STANDARD.encode(private_key.to_bytes());
     let pub_key_b64 = general_purpose::STANDARD.encode(public_key.as_bytes());
 
+    crate::bootstrap::install_crypto_provider();
     let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
     let api_endpoint = obfstr!("https://api.cloudflareclient.com/v0a2158").to_string();

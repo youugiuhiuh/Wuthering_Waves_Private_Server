@@ -244,6 +244,7 @@ pub struct SingBoxUpgradeManager {
 
 impl SingBoxUpgradeManager {
     pub fn new() -> Result<Self> {
+        crate::bootstrap::install_crypto_provider();
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
             .build()

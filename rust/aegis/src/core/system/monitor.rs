@@ -205,6 +205,8 @@ impl SystemMonitor {
 
     /// 获取公网 IP (异步)
     pub async fn get_public_ip() -> Result<String> {
+        // reqwest 0.13 以 rustls-no-provider 构建，Client 构造前必须已安装 crypto provider。
+        crate::bootstrap::install_crypto_provider();
         let client = Client::builder()
             .user_agent("wwps-runtime-monitor/1.0")
             .timeout(Duration::from_secs(5))
@@ -246,6 +248,7 @@ impl SystemMonitor {
 
     /// 获取公网 IPv6 (异步)
     pub async fn get_public_ipv6() -> Result<String> {
+        crate::bootstrap::install_crypto_provider();
         let client = Client::builder()
             .user_agent("wwps-runtime-monitor/1.0")
             .timeout(Duration::from_secs(5))

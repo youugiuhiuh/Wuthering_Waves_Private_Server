@@ -57,6 +57,7 @@ impl Default for GeoIPService {
 
 impl GeoIPService {
     pub fn new() -> Self {
+        crate::bootstrap::install_crypto_provider();
         Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(10))
