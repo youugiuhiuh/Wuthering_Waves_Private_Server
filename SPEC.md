@@ -595,6 +595,16 @@ domain:sdx.microsoft.com
 
 也不列 apex `google.com` / `googleapis.com` / `gstatic.com`（避免把其下广告端點一并放行）。**该约束以测试断言固化**（denylist + 前缀检查），防止日后手滑加回。
 
+### 开关持久化（`routing.rulesDisabled`）
+
+`toggle()` 在停用某规则时，除从 `routing.rules` 移除该规则外，还把规则 id 追加进同文件的 `routing.rulesDisabled`（字符串数组，去重）；重新启用时写回 canonical 规则（`rule_def_to_json`）并从该数组移除 id。整个读-改-写与迁移、custom_direct 共用既有 `CONFIG_LOCK`，且不改动 `00_base.json` 其他键；「用户显式停用」因此随文件一起备份/回滚，无需新增状态文件。
+
+迁移 `ensure_direct_rules_value` 与 `rulesDisabled` 的交互：
+
+- 停用中的规则（id ∈ `rulesDisabled`）即使 `default_enabled == true` 也不得被插入，且「缺失」不计为变更——否则打开一次菜单就把它塞回来，用户永远关不掉（`connectivity_check` 的既有缺陷同此）。
+- 若同一 id 同时出现在 `rules` 与 `rulesDisabled`（例如管理员手改 JSON），以 `rules` 为准：保留规则并从 `rulesDisabled` 移除该 id；此移除本身算一次变更（触发写盘 + reload）。
+- `rulesDisabled` 缺省即「无停用记录」；迁移不会主动创建该键，仅在需要移除冲突标记时写回。
+
 ## 两个既有缺陷的修复（本模块必须一并做）
 
 ### 修復 1：迁移后不重启核心 ⇒ 新规则在存量机器上等于不存在

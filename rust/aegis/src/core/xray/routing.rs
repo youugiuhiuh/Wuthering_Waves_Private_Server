@@ -174,12 +174,11 @@ impl RoutingManager {
         Ok((v, base_path))
     }
 
-    async fn write_rules(rules: &[Value]) -> Result<()> {
-        let _lock = CONFIG_LOCK.lock().await;
-        let (mut v, base_path) = Self::read_base_json().await?;
-        v["routing"]["rules"] = Value::Array(rules.to_vec());
-        let new_content = serde_json::to_string_pretty(&v).context("序列化配置失败")?;
-        tokio::fs::write(&base_path, new_content)
+    /// 把整个 base JSON 写回并 reload 核心。调用方必须已持 `CONFIG_LOCK`
+    /// 且确认确有变更（reload 会重建核心、打断现有连接）。
+    async fn write_base_json(v: &Value, base_path: &str) -> Result<()> {
+        let new_content = serde_json::to_string_pretty(v).context("序列化配置失败")?;
+        tokio::fs::write(base_path, new_content)
             .await
             .context("写入 00_base.json 失败")?;
         crate::core::system::maintenance::MaintenanceManager::reload_core().await
@@ -230,6 +229,12 @@ impl RoutingManager {
     ///   - `default_enabled == false` 的 direct 规则（openai）**不主动插入**
     ///     （插入等于默认打开它，违反其定义），仅在已存在时校正内容与位置；
     ///   - 其余规则保持原有相对顺序。
+    ///
+    /// `routing.rulesDisabled`（用户显式停用的规则 id，由 `toggle()` 持久化）：
+    ///   - 被停用的规则即使 `default_enabled` 也不得被插入，且「缺失」不算变更
+    ///     （否则打开一次菜单就把它塞回来，用户永远关不掉）；
+    ///   - 若同一 id 同时出现在 `rules` 与 `rulesDisabled`（用户手改），以 `rules`
+    ///     为准：保留规则并从 `rulesDisabled` 移除该 id，此移除本身计为变更。
     pub fn ensure_direct_rules_value(v: &mut Value) -> bool {
         // 规范化 routing 与 routing.rules 的存在性
         if v.get("routing").map(|r| r.is_null()).unwrap_or(true) {
@@ -241,6 +246,15 @@ impl RoutingManager {
 
         let original = v["routing"]["rules"].as_array().unwrap().clone();
 
+        let disabled_ids: Vec<String> = v["routing"]["rulesDisabled"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| t.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         let direct_ids: Vec<&'static str> = ROUTING_RULES
             .iter()
             .filter(|r| r.outbound == "direct")
@@ -249,12 +263,14 @@ impl RoutingManager {
 
         let mut reordered: Vec<Value> = Vec::with_capacity(original.len());
 
-        // 1) direct 规则按 ROUTING_RULES 顺序置于最前，内容取当前定义（canonical）
+        // 1) direct 规则按 ROUTING_RULES 顺序置于最前，内容取当前定义（canonical）；
+        //    用户显式停用的规则（rulesDisabled）不插入。
         for def in ROUTING_RULES.iter().filter(|r| r.outbound == "direct") {
             let present = original
                 .iter()
                 .any(|r| r.get("ruleTag").and_then(|t| t.as_str()) == Some(def.id));
-            if present || def.default_enabled {
+            let disabled = disabled_ids.iter().any(|d| d == def.id);
+            if present || (def.default_enabled && !disabled) {
                 reordered.push(Self::rule_def_to_json(def));
             }
         }
@@ -268,7 +284,23 @@ impl RoutingManager {
             }
         }
 
-        if reordered == original {
+        // 3) rulesDisabled 与 rules 冲突时以 rules 为准：移除已在 rules 中的 id。
+        let present_tags: Vec<&str> = reordered
+            .iter()
+            .filter_map(|r| r.get("ruleTag").and_then(|t| t.as_str()))
+            .collect();
+        let reconciled: Vec<String> = disabled_ids
+            .iter()
+            .filter(|d| !present_tags.contains(&d.as_str()))
+            .cloned()
+            .collect();
+        let disabled_changed = reconciled.len() != disabled_ids.len();
+        if disabled_changed {
+            v["routing"]["rulesDisabled"] =
+                Value::Array(reconciled.into_iter().map(Value::String).collect());
+        }
+
+        if reordered == original && !disabled_changed {
             return false;
         }
         v["routing"]["rules"] = Value::Array(reordered);
@@ -316,27 +348,88 @@ impl RoutingManager {
             .collect())
     }
 
+    /// 切换规则开关并持久化。写盘与 reload 全程持 `CONFIG_LOCK`，避免与菜单迁移
+    /// （`ensure_direct_rules_in_base`）及 custom_direct 的读改写交错而互相覆盖。
     pub async fn toggle(rule_id: &str) -> Result<bool> {
         let rule_def = ROUTING_RULES
             .iter()
             .find(|r| r.id == rule_id)
             .ok_or_else(|| anyhow::anyhow!("未知规则: {}", rule_id))?;
 
-        let mut rules = Self::read_rules().await?;
-        let pos = rules
-            .iter()
-            .position(|r| r.get("ruleTag").and_then(|t| t.as_str()) == Some(rule_id));
-
-        let now_enabled = if let Some(idx) = pos {
-            rules.remove(idx);
-            false
-        } else {
-            rules.push(Self::rule_def_to_json(rule_def));
-            true
-        };
-
-        Self::write_rules(&rules).await?;
+        let _lock = CONFIG_LOCK.lock().await;
+        let (mut v, base_path) = Self::read_base_json().await?;
+        let now_enabled = Self::toggle_rule_value(&mut v, rule_def);
+        Self::write_base_json(&v, &base_path).await?;
         Ok(now_enabled)
+    }
+
+    /// 纯函数：在 base JSON 上执行一次开关，返回开关后的启用状态。
+    /// I/O 与 `CONFIG_LOCK` 由 `toggle()` 负责，便于单测。
+    ///
+    /// - 停用：从 `routing.rules` 移除该规则，并把 id 记入 `routing.rulesDisabled`（去重）；
+    /// - 启用：写回 canonical（`rule_def_to_json`），并从 `routing.rulesDisabled` 移除该 id。
+    ///
+    /// `rulesDisabled` 记录「用户显式停用」，使迁移不再把 `default_enabled` 的规则塞回来。
+    /// 除 `routing.rules` / `routing.rulesDisabled` 外不改动其他键。
+    fn toggle_rule_value(v: &mut Value, rule_def: &RuleDef) -> bool {
+        if v.get("routing").map(|r| r.is_null()).unwrap_or(true) {
+            v["routing"] = Value::Object(serde_json::Map::new());
+        }
+        if v["routing"]["rules"].as_array().is_none() {
+            v["routing"]["rules"] = Value::Array(Vec::new());
+        }
+        let now_enabled = {
+            let rules = v["routing"]["rules"].as_array_mut().unwrap();
+            match rules
+                .iter()
+                .position(|r| r.get("ruleTag").and_then(|t| t.as_str()) == Some(rule_def.id))
+            {
+                Some(idx) => {
+                    rules.remove(idx);
+                    false
+                }
+                None => {
+                    rules.push(Self::rule_def_to_json(rule_def));
+                    true
+                }
+            }
+        };
+        if now_enabled {
+            Self::remove_disabled_marker(v, rule_def.id);
+        } else {
+            Self::add_disabled_marker(v, rule_def.id);
+        }
+        now_enabled
+    }
+
+    /// 把 id 加入 `routing.rulesDisabled`（去重，保持既有顺序）。返回是否变更。
+    fn add_disabled_marker(v: &mut Value, rule_id: &str) -> bool {
+        if v["routing"]
+            .get("rulesDisabled")
+            .and_then(|d| d.as_array())
+            .is_none()
+        {
+            v["routing"]["rulesDisabled"] = Value::Array(Vec::new());
+        }
+        let arr = v["routing"]["rulesDisabled"].as_array_mut().unwrap();
+        if arr.iter().any(|t| t.as_str() == Some(rule_id)) {
+            return false;
+        }
+        arr.push(Value::String(rule_id.to_string()));
+        true
+    }
+
+    /// 从 `routing.rulesDisabled` 移除 id（保留空数组，不删键）。返回是否变更。
+    fn remove_disabled_marker(v: &mut Value, rule_id: &str) -> bool {
+        let Some(arr) = v["routing"]
+            .get_mut("rulesDisabled")
+            .and_then(|d| d.as_array_mut())
+        else {
+            return false;
+        };
+        let before = arr.len();
+        arr.retain(|t| t.as_str() != Some(rule_id));
+        arr.len() != before
     }
 }
 
@@ -951,6 +1044,150 @@ mod tests {
         assert!(
             !RoutingManager::ensure_direct_rules_value(&mut v),
             "缺少 openai 不应被视作变更"
+        );
+    }
+
+    // ── toggle_rule_value：持久化「用户停用」（Ruling 13） ────────────────
+
+    fn rule_def(id: &str) -> &'static RuleDef {
+        ROUTING_RULES
+            .iter()
+            .find(|r| r.id == id)
+            .unwrap_or_else(|| panic!("缺少规则 {id}"))
+    }
+
+    fn disabled_tags(v: &Value) -> Vec<String> {
+        v["routing"]["rulesDisabled"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| t.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn tags_of(v: &Value) -> Vec<&str> {
+        v["routing"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r["ruleTag"].as_str())
+            .collect()
+    }
+
+    /// 停用默认启用的 direct 规则（essential_direct）后：迁移连续两次都不得把它
+    /// 塞回来，`rules` 不再含它、`rulesDisabled` 仍含它（用户停用被持久化）。
+    #[test]
+    fn test_toggle_off_persists_for_default_enabled_direct() {
+        let mut v = base_with_rules(serde_json::json!([]));
+        assert!(
+            RoutingManager::ensure_direct_rules_value(&mut v),
+            "先迁移到 canonical"
+        );
+
+        assert!(
+            !RoutingManager::toggle_rule_value(&mut v, rule_def("essential_direct")),
+            "停用应返回 false"
+        );
+
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "停用后被停用规则缺失不算变更"
+        );
+        let after_first = v["routing"]["rules"].clone();
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "第二次仍应为 false"
+        );
+        assert_eq!(v["routing"]["rules"], after_first, "不得把它塞回来");
+        assert!(
+            !tags_of(&v).contains(&"essential_direct"),
+            "rules 不得再含 essential_direct"
+        );
+        assert!(
+            disabled_tags(&v).iter().any(|t| t == "essential_direct"),
+            "rulesDisabled 必须保留停用标记"
+        );
+    }
+
+    /// 重新启用：写回 canonical 并清除停用标记；之后迁移零变更且规则在场。
+    #[test]
+    fn test_toggle_on_clears_disabled_marker() {
+        let mut v = base_with_rules(serde_json::json!([RoutingManager::rule_def_to_json(
+            rule_def("connectivity_check")
+        )]));
+        v["routing"]["rulesDisabled"] = serde_json::json!(["essential_direct"]);
+
+        assert!(
+            RoutingManager::toggle_rule_value(&mut v, rule_def("essential_direct")),
+            "启用应返回 true"
+        );
+        assert!(disabled_tags(&v).is_empty(), "启用必须清除停用标记");
+
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "启用后迁移应为 false"
+        );
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "第二次仍为 false"
+        );
+        let rules = v["routing"]["rules"].as_array().unwrap();
+        let ed = rules
+            .iter()
+            .find(|r| r["ruleTag"] == "essential_direct")
+            .expect("规则必须在场");
+        assert_eq!(
+            ed,
+            &RoutingManager::rule_def_to_json(rule_def("essential_direct")),
+            "启用必须写回 canonical"
+        );
+    }
+
+    /// 回归既有缺陷：connectivity_check（默认启用）也必须能被持久停用——
+    /// 迁移不得因它 missing 而重新插入或回报为变更。
+    #[test]
+    fn test_connectivity_check_can_be_disabled_persistently() {
+        let mut v = base_with_rules(serde_json::json!([]));
+        assert!(RoutingManager::ensure_direct_rules_value(&mut v));
+
+        assert!(!RoutingManager::toggle_rule_value(
+            &mut v,
+            rule_def("connectivity_check")
+        ));
+
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "停用 cc 后 missing 不算变更"
+        );
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "第二次仍应为 false"
+        );
+        assert!(!tags_of(&v).contains(&"connectivity_check"));
+        assert!(disabled_tags(&v).iter().any(|t| t == "connectivity_check"));
+    }
+
+    /// 同一 id 同时出现在 `rules` 与 `rulesDisabled`（用户手改）时以 `rules` 为准：
+    /// 保留规则、移除停用标记，且此移除本身计为变更。
+    #[test]
+    fn test_ensure_direct_rules_reconciles_disabled_marker_with_present_rule() {
+        let mut v = base_with_rules(serde_json::json!([
+            RoutingManager::rule_def_to_json(rule_def("connectivity_check")),
+            RoutingManager::rule_def_to_json(rule_def("essential_direct"))
+        ]));
+        v["routing"]["rulesDisabled"] = serde_json::json!(["essential_direct"]);
+
+        assert!(
+            RoutingManager::ensure_direct_rules_value(&mut v),
+            "移除冲突标记应计为变更"
+        );
+        assert!(disabled_tags(&v).is_empty(), "以 rules 为准，须移除标记");
+        assert!(tags_of(&v).contains(&"essential_direct"), "规则必须保留");
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "二次应为 false"
         );
     }
 

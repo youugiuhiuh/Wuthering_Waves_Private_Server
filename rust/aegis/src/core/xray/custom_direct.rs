@@ -298,22 +298,44 @@ impl RoutingManager {
         rules.insert(insert_at, rule);
         *v != original
     }
-    /// 纯函数：确保 routing.rules 含 custom_direct（位于 essential_direct 之后，幂等）。
+    /// 动态锚点：`routing.rules` 中最后一个「已存在的内建 direct 规则」的规则 id
+    /// （按 `ROUTING_RULES` 顺序取最后出现在 rules 里的一条）。全部缺失时返回 `None`。
+    /// 目的：内建 direct 区末条会随用户开关变化（例如打开 `openai` 后它成为末条）；
+    /// 固定锚在 `essential_direct` 会让 custom_direct 与迁移互推（每次开菜单 /
+    /// 每次添加各写盘 + reload 一次）。
+    pub(crate) fn last_present_builtin_direct_tag(v: &Value) -> Option<&'static str> {
+        let tags: Vec<&str> = v["routing"]["rules"]
+            .as_array()
+            .map(|rules| {
+                rules
+                    .iter()
+                    .filter_map(|r| r.get("ruleTag").and_then(|t| t.as_str()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        ROUTING_RULES
+            .iter()
+            .filter(|r| r.outbound == "direct")
+            .map(|r| r.id)
+            .rfind(|id| tags.contains(id))
+    }
+
+    /// 纯函数：确保 routing.rules 含 custom_direct（幂等）。
     /// 空列表 = 移除既存规则。返回是否发生变更。
     ///
-    /// 为什么紧跟 essential_direct：Xray 顺序匹配、首条命中即停，用户自定义域名
-    /// （多为 geosite:cn 收录）排在 cn_domain 之后会被抢先 blackhole。
-    /// 锚点必须是 direct 区末条：更早的 fallback（connectivity_check）会让
-    /// custom_direct 落在 essential_direct 之前，而菜单迁移（ensure_direct_rules_value）
-    /// 又把它移回 essential_direct 之后；两者互推，每次开菜单与每次添加
-    /// 各触发一次写盘 + reload_core（核心重启）。
+    /// 落位紧跟「最后一个已存在的内建 direct 规则」之后（无内建 direct 则插首位）：
+    /// Xray 顺序匹配、首条命中即停，用户自定义域名（多为 geosite:cn 收录）排在
+    /// blocked 规则之后会被抢先 blackhole；锚点必须是内建 direct 区的末条，才能与
+    /// 菜单迁移（`ensure_direct_rules_value` 把内建 direct 规则按定义顺序前置）
+    /// 认可的落位一致，否则二者互推，各触发一次写盘 + reload_core（核心重启）。
     pub fn ensure_custom_direct_value(v: &mut Value, domains: &[String]) -> bool {
         const RULE_ID: &str = "custom_direct";
-        const ANCHOR: &str = "essential_direct";
         if domains.is_empty() {
             return Self::remove_rule_by_tag(v, RULE_ID);
         }
-        Self::upsert_after(v, ANCHOR, RULE_ID, Self::custom_direct_rule_json(domains))
+        // 锚点为空串时 `upsert_after` 找不到该 tag，按「anchor 不存在」插到首位。
+        let anchor = Self::last_present_builtin_direct_tag(v).unwrap_or("");
+        Self::upsert_after(v, anchor, RULE_ID, Self::custom_direct_rule_json(domains))
     }
 
     /// 从 base JSON 中取出 custom_direct 规则的 domain 列表；规则不存在则为空。
@@ -573,6 +595,43 @@ mod tests {
             "第二次调用必须仍返回 false"
         );
     }
+    // Ruling 13(4)：锚点动态化。base 含 openai（在 essential_direct 之后）时，
+    // 内建 direct 区末条是 openai，custom_direct 必须落在它之后，且菜单迁移
+    // 连续两次零变更（固定锚在 essential_direct 时会与迁移互推）。
+    #[test]
+    fn test_custom_direct_anchor_stable_with_openai() {
+        let canonical = |id: &str| {
+            RoutingManager::rule_def_to_json(
+                ROUTING_RULES
+                    .iter()
+                    .find(|r| r.id == id)
+                    .unwrap_or_else(|| panic!("缺少规则 {id}")),
+            )
+        };
+        let mut v = base_with_rules(json!([
+            canonical("connectivity_check"),
+            canonical("essential_direct"),
+            canonical("openai"),
+            {"type":"field","ruleTag":"private_ip","outboundTag":"blocked","ip":["geoip:private"]},
+            {"type":"field","ruleTag":"cn_ip","outboundTag":"blocked","ip":["geoip:cn"]},
+            {"type":"field","ruleTag":"cn_domain","outboundTag":"blocked","domain":["geosite:cn"]}
+        ]));
+        assert!(ensure_cd(&mut v, &cd_domains()));
+        assert_eq!(
+            tag_index(&v, "custom_direct"),
+            tag_index(&v, "openai") + 1,
+            "custom_direct 必须紧跟内建 direct 区末条 openai"
+        );
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "菜单迁移不得移动紧跟在 openai 之后的 custom_direct"
+        );
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "第二次调用必须仍返回 false"
+        );
+    }
+
     // 幂等 + 空列表移除；缺失 routing / routing.rules / routing=null 不 panic，空输入不建容器。
     #[test]
     fn test_custom_direct_idempotent_empty_list_and_missing_containers() {
