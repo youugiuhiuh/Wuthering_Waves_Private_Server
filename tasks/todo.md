@@ -124,3 +124,51 @@
    - `matches_connectivity_check` 语义上属于规则表（读 `ROUTING_RULES`），现随 `custom_direct.rs` 落地 ⇒ 依赖方向为 `custom_direct → routing`，已在文件头声明；若日后 `routing.rs` 再次逼近体检线，优先把它连同 5 个匹配 helper 再拆一层。
    - `base_with_rules` 测试夹具在两侧各存一份（测试夹具无法跨测试模块共享）；仅测试代码重复。
    - `pub use` 转发使 5 个符号有两条路径（`routing::X` 与 `custom_direct::X`）；这是刻意的稳定层，已注释说明。
+
+---
+
+## Phase E — essential-direct（外網必需服務直連）
+
+> 设计见 `SPEC.md` → `Module: essential-direct`；分片/验收见 `tasks/plan.md` → `Implementation Plan: essential-direct`。
+> worktree `feat/essential-direct`（base `04f34a5`）。strict 模式：TDD 严格 RED→GREEN→REFACTOR。
+> 一句话目标：新增内建规则 `essential_direct`（37 条，独立菜单按钮），修「迁移不 reload」与「direct 规则被 push 到 blocked 之后」两个缺陷。
+
+### E0 基线
+- [x] worktree 建立 + 四道门全绿（**1097 passed / 1 skipped**，数字已写入 `tasks/plan.md`）
+
+### E1–E2 规则骨架
+- [ ] E1 RED：`len()==9`、`test_essential_direct_rule_shape`、`test_essential_direct_precedes_cn_rules`
+- [ ] E2 GREEN：`RuleDef essential_direct`（占位 1 条）+ 三语 `routing_rule_essential_direct`
+
+### E3 清单（不放行广告/追踪）
+- [ ] RED：`targets_use_explicit_prefix` / `excludes_ads_and_tracking`（14 域名 + 8 前缀）/ `contains_evidence_backed_hosts` / `unique_lowercase_no_scheme`
+- [ ] GREEN：补齐 37 条（Google/YouTube 29 + Apple 2 + Microsoft 8）
+
+### E4 迁移与生效（本次关键修复）
+- [ ] `ensure_direct_rules_value` 泛化为「所有 direct 规则位于所有 blocked 规则之前」（返回是否变更）
+- [ ] `ensure_direct_rules_in_base` **仅变更时**写盘 + `reload_core()`
+- [ ] 测试：插入新规则 / 错位前移（含既有 `openai` 回归）/ 幂等零副作用
+
+### E5 自检一致性
+- [ ] `matches_builtin_direct` 返回命中规则 id；`matches_connectivity_check` 保留薄封装
+- [ ] `custom_check_reply` 用命中规则名；`www.recaptcha.net` 命中 `essential_direct`、`www.doubleclick.net` 未命中
+
+### E6–E7 夹具与菜单
+- [ ] `direct_chain()` 含 `essential_direct`；`cd == essential_direct + 1` 且仍早于 `cn_*`
+- [ ] `cc` 5 条正規化为 `domain:`；守护测试剥前缀后仍「恰为这 5 项」
+- [ ] 菜单注释 8→9；按钮 `routing_toggle:essential_direct` + i18n 文案断言
+
+### Checkpoint E
+- [ ] 四道质量门全绿（fmt / clippy `-D warnings` / nextest / doctest）
+- [ ] 通过数 = 基线 + 新增测试数（既有测试零减少）
+- [ ] `code-review-and-quality` 五轴审查；Critical 为零
+- [ ] 原子提交串：`feat(essential-direct): …` / `fix(routing): …` / `test(routing): …`
+
+### 真机验收（需部署机）
+- [ ] 升级后打开一次路由菜单 → `journalctl -u wwps-core` 出现重启且 `Reading config: …/00_base.json`
+- [ ] `www.recaptcha.net` 由 `-> blocked` 变为 `>> direct`；`dashboard.decodo.com` 登录可用
+- [ ] 菜单出现「外網必需服務直連」按钮，开关后重开菜单位置仍正确（在 `cn_*` 之前）
+
+### 遗留（超范围，另行立项）
+- [ ] sing-box 侧同类问题（`.srs` 的 `geosite-cn` 仍会拦这些域名）
+- [ ] 向上游反馈：`geosite:google-cn` 只收 `full:recaptcha.net`（子域漏网）

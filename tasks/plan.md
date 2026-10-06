@@ -223,3 +223,129 @@ T8 集成 parity 测试 + 全量质量门  ← 依赖全部
 | `pub use` 转发漏项 → 调用方编译失败 | Med | 编译即暴露；R1 片内一次补全 5 个名 |
 | 移入块变为 `unused import`（`Value`/`json`/`xray`） | Low | 每片跑 clippy `--all-targets -- -D warnings` |
 | 测试搬入新模块后 `use super::*` 拿不到 `RoutingManager` | Low | `custom_direct.rs` 顶层 `use super::routing::RoutingManager;`（私有 `use` 对子模块可见，与现状同构） |
+
+---
+
+# Implementation Plan: essential-direct（Phase E）
+
+> 对應 `SPEC.md` → `Module: essential-direct`。状态：**待批准（设计已獲用戶確認；本计畫待过目）**。
+> 任务勾选清单见 `tasks/todo.md` → 「Phase E」。
+> worktree：`/home/ub/Dark/wwps-worktrees/essential-direct`（分支 `feat/essential-direct`，base `04f34a5`）。
+
+## Overview
+
+新增内建规则 `essential_direct`（37 条，domain/geosite 混合）作为**独立菜单按钮**，位置紧接 `connectivity_check` 之后；修两个既有缺陷（迁移不 reload / `toggle` 把 direct 规则推到 blocked 之后）；自检泛化为「命中哪条内建规则」；并把 `connectivity_check` 5 条正規化为 `domain:` 前缀。**仅 Xray；不放行广告/追踪；不动 sing-box。**
+
+## Architecture Decisions
+
+1. **新规则而非扩 `connectivity_check`** — 后者被守护测试 `test_connectivity_check_targets_are_probe_endpoints_only` 锁死（「恰为这 5 项」+ 禁 CDN/遥测前缀）。菜单按钮自动生成（`handle_routing_menu` 遍历 `ROUTING_RULES`），无需改渲染层。
+2. **条目一律显式前缀** — Xray 裸字符串 = `keyword:` 子字符串（官方文件），会产生 `www.gstatic.com.evil.com` 误命中并与自检函数语义不一致；`domain:` = apex＋子域。
+3. **`geosite:apple-cn` / `geosite:microsoft-pki` 直接引用分类** — 由 geodata 维护（本机实测：apple-cn 165 条覆盖 20/21、零广告；microsoft-pki 6 条），避免抄写并随 geodata 更新。
+4. **不可变式写纯函数** — 迁移逻辑留在 `ensure_direct_rules_value(&mut Value) -> bool`（`00_base.json` 路径硬编码，无法单测 I/O）；I/O 包装只做「读—纯函数—**有变更才写盘+reload**」。
+5. **不变量泛化**：所有 `outbound == "direct"` 的规则必须按 `ROUTING_RULES` 顺序位于所有 blocked 规则之前。`toggle()` 仍 push（不改），由迁移在下次开菜单时修正——顺带修好既有 `openai` 死规则问题。
+6. **自检向后兼容** — `matches_connectivity_check` 保留为薄封装（转调 `matches_builtin_direct`），避免动 `message.rs` 之外的调用方。
+
+## Dependency Graph
+
+```
+E0 基线（worktree + 四道门）
+      │
+E1 RED：新规则存在/形状/顺序（含 len 8→9）
+      │
+E2 GREEN：RuleDef essential_direct（占位 1 条）+ 三语 i18n
+      │─────────────┐
+E3 清单不变式（前缀/denylist/唯一性）      E7 菜单按钮测试（依赖 i18n）
+      │
+E4 迁移泛化 + 变更才 reload（含 openai 回归）
+      │
+E5 自检泛化 matches_builtin_direct + message.rs 文案
+      │
+E6 索引/夹具同步（direct_chain、cd == essential_direct+1、cc 前缀正規化）
+      │
+E8 文档收口 + 四道门终检 + code-review
+```
+
+## Tasks
+
+- [x] **E0：基线确认** ✅（2026-10-06）
+  - Acceptance: worktree 建立；四道门在**改动前**全绿；基线数字写入本文件。
+  - Verify: `cd rust/aegis && cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings && cargo nextest run --cargo-profile fast-test && cargo test --doc`
+  - Files: 无（只跑门）
+  - Scope: —
+
+- [ ] **E1：RED — 新规则存在/形状/顺序**
+  - Acceptance: `test_rule_def_constants_count` 期望 `9`；新增 `test_essential_direct_rule_shape`、`test_essential_direct_precedes_cn_rules`（`cc < ed < cn_ip/cn_domain`）；此时跑测必须**红**（规则不存在）。
+  - Verify: `cargo nextest run --cargo-profile fast-test xray` → 预期失败信息含 `essential_direct`
+  - Files: `src/core/xray/routing.rs`（仅 tests）
+  - Scope: S（1 file）
+
+- [ ] **E2：GREEN — RuleDef + i18n**
+  - Acceptance: `ROUTING_RULES` 新增 `essential_direct`（插在 `connectivity_check` 之后，先放 `domain:recaptcha.net` 一条占位）；三语新增 `xray.routing_rule_essential_direct`：zh「外網必需服務直連」/ en `Essential Services Direct` / ja「必須サービスの直通」；E1 测试转绿。
+  - Verify: `cargo nextest run --cargo-profile fast-test xray`；`cargo fmt`
+  - Files: `src/core/xray/routing.rs`、`src/resources/i18n/{zh,en,ja}.yml`
+  - Scope: S（4 files，各 1–3 行）
+
+- [ ] **E3：RED→GREEN — 清单不变式与完整清单**
+  - Acceptance: 先写四个测试（前缀/denylist/必需项在场/唯一小写无 scheme），跑必红；再补全 37 条使其转绿；`test_essential_direct_excludes_ads_and_tracking` 的 denylist 含 14 个具体域名 + 8 个前缀模式。
+  - Verify: `cargo nextest run --cargo-profile fast-test essential_direct`
+  - Files: `src/core/xray/routing.rs`
+  - Scope: M（~120 行：清单 37 + 测试 4）
+
+- [ ] **E4：RED→GREEN — 迁移泛化 + 变更才 reload**
+  - Acceptance: `ensure_direct_rules_value` 改为「遍历 direct 规则：存在 / 内容=canonical / 位置在所有 blocked 之前」，返回是否变更；`ensure_direct_rules_in_base` 仅 `changed == true` 时写盘并 `reload_core()`。新增：插入 `essential_direct`、错位 `openai`/`essential_direct` 被前移、幂等三测；旧 `updates_stale_targets_at_index_zero` 与 `emits_expected_json_shape` 同步为 `domain:` 前缀。
+  - Verify: `cargo nextest run --cargo-profile fast-test xray`；`git diff` 审阅：无变更路径不得出现 `reload_core`
+  - Files: `src/core/xray/routing.rs`
+  - Scope: M（~100 行）
+
+- [ ] **E5：RED→GREEN — 自检泛化**
+  - Acceptance: `matches_builtin_direct(host) -> Option<&'static str>`（返回规则 id）；`matches_connectivity_check` 保留为薄封装；`custom_check_reply` 用命中规则 id 取 i18n 名；新增 `test_matches_builtin_direct_reports_rule_id`、`test_matches_builtin_direct_rejects_substring_false_positive`。
+  - Verify: `cargo nextest run --cargo-profile fast-test`（全量）+ `cargo clippy --all-targets --all-features -- -D warnings`
+  - Files: `src/core/xray/custom_direct.rs`、`src/shared/handlers/message.rs`
+  - Scope: M（~70 行）
+
+- [ ] **E6：索引/夹具同步**
+  - Acceptance: `direct_chain()` 夹具含 `essential_direct`（`domain:recaptcha.net`）；`test_custom_direct_index_precedes_cn_domain_regression` 改判 `cd == tag_index("essential_direct") + 1` 且仍 `< cn_ip/cn_domain`；`test_connectivity_check_targets_are_probe_endpoints_only` 剥 `domain:` 前缀后仍「恰为这 5 项」。
+  - Verify: `cargo nextest run --cargo-profile fast-test custom_direct`
+  - Files: `src/core/xray/custom_direct.rs`、`src/core/xray/routing.rs`
+  - Scope: S（2 files，仅 tests）
+
+- [ ] **E7：菜单按钮**
+  - Acceptance: `handle_routing_menu` 注释「8 条」→「9 条」；新增断言：菜单按钮包含 `routing_toggle:essential_direct`，文字 = `t!("xray.routing_rule_essential_direct")`；三语 key 存在性测试涵盖新 key。
+  - Verify: `cargo nextest run --cargo-profile fast-test xray`；真机目视（部署后）
+  - Files: `src/shared/handlers/xray.rs`
+  - Scope: S（1 file）
+
+- [ ] **E8：收口**
+  - Acceptance: SPEC/plan/todo 与本实现一致；四道门全绿；`code-review-and-quality` 五轴审查完成，Critical 为零；给出交付建议（PR / merge / keep）。
+  - Verify: 四道门 + 审查报告 + `git log --oneline` 原子提交串
+  - Files: `SPEC.md`、`tasks/plan.md`、`tasks/todo.md`
+  - Scope: S（文档）
+
+### Checkpoint E（每个 M 级任务后）
+- [ ] 只跑本域快速回路 `cargo nextest run --cargo-profile fast-test xray` ≤ 30 秒，失败不进入下一任务。
+- [ ] `git diff --stat` 单片 ≤ 200 行、≤ 3 文件；超出就拆。
+- [ ] 每任务一个原子提交（`feat(essential-direct): ...` / `fix(routing): ...` / `test(...): ...`）。
+
+## Baseline（E0 实测，2026-10-06）
+
+| 门 | 基线结果 |
+|---|---|
+| `cargo fmt --check` | **OK** |
+| `cargo clippy --all-targets --all-features -- -D warnings` | **OK**（`Finished dev profile in 35.45s`，无 clippy 告警；仅既有构建脚本 warning） |
+| `cargo nextest run --cargo-profile fast-test` | **1097 passed / 1 skipped**（summary 5.7s） |
+| `cargo test --doc` | **ok**（0 tests） |
+
+> 加速跑法（避免 fresh worktree 冷构建）：`CARGO_TARGET_DIR=/home/ub/Dark/Wuthering_Waves_Private_Server/rust/aegis/target`（共享主树 86G 缓存）。
+> 基线数字与 `tasks/todo.md` 里 custom-allowlist/routing-split 记录的终数为同一终数（1097 passed / 1 skipped）。
+
+## Risks（essential-direct）
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| 清单把广告/追踪域名一并放行（违反用户硬约束） | **High** | denylist + 前缀双断言，并把 14 个具体域名写进测试 |
+| 裸字符串条目被 Xray 当成子字符串 → 越权匹配 `www.gstatic.com.evil.com` | High | 强制显式前缀测试；`cc` 5 条一并正規化；自检同步 |
+| 迁移不 reload 未修好 ⇒ 存量机器上功能「不存在」（菜单 ✅、核心旧规则） | **High** | E4 只在该变时调 `reload_core`；真机验收步骤：改完后笺看核心重启与 `Reading 00_base.json` |
+| `ensure_direct_rules_value` 泛化后破坏既有只插 `connectivity_check` 的语义 | Med | 保留原有四分支行为（无/错位/过时/正常）并新增 direct-ordering 不变量测试 |
+| `geosite:apple-cn` 不存在于旧版 `geosite.dat` | Low | 本机实测存在（165 条）；geodata 更新走既有 `update_geodata` + reload；若缺失仅少一层覆盖，不会导致核心启动失败 |
+| 与 sing-box 侧行为不一致（本模块不碰） | Low | 已在 SPEC 非目标与遗留项里明写 |
+| diff 超 200 行/片 | Med | E3 拆为「测试先行」+「清单补齐」两个提交 |
