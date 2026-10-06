@@ -86,6 +86,10 @@ pub(crate) fn route_callback(data: &str) -> Option<CallbackRoute> {
     }
     if data == "m_xray_mgmt"
         || data == "m_routing"
+        // 自定义放行子菜单：入口 + 列表 + 删除共用 `routing_custom_` 前缀，
+        // 后续新增项（add/check）不必再逐个登记。
+        || data == "m_routing_custom"
+        || data.starts_with("routing_custom_")
         || data.starts_with("routing_toggle:")
         || data == "m_del_cfg"
         || data == "m_pq_mgmt"
@@ -218,6 +222,29 @@ mod tests {
             unregistered.is_empty(),
             "menu.rs 中以下按钮回调 ID 未注册路由（请在 route_callback 或前置拦截层处理）: {:?}",
             unregistered
+        );
+    }
+
+    /// 回归（T4 自定义放行菜单）：入口按钮与列表/删除回调必须路由到 Xray。
+    /// 与 1.2.7 的 wwps-core 按钮同类问题——漏注册会让按钮点击被静默丢弃。
+    #[test]
+    fn test_routing_custom_callbacks_route_to_xray() {
+        assert_eq!(
+            route_callback("m_routing_custom"),
+            Some(CallbackRoute::Xray)
+        );
+        assert_eq!(
+            route_callback("routing_custom_list"),
+            Some(CallbackRoute::Xray)
+        );
+        assert_eq!(
+            route_callback("routing_custom_del:0"),
+            Some(CallbackRoute::Xray)
+        );
+        // 前缀路由：同一子菜单后续新增的回调（如 :12）无需再逐个登记。
+        assert_eq!(
+            route_callback("routing_custom_del:12"),
+            Some(CallbackRoute::Xray)
         );
     }
 

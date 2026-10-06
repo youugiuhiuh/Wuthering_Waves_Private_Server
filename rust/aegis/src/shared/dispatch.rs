@@ -350,6 +350,9 @@ async fn handle_message(msg: MessageEvent, state: &AppState) -> Result<()> {
                     });
                 }
             }
+            // 自定义放行流程从不产出 DomainReady（它直接写 routing 配置，不涉及证书部署），无需动作。
+            // 生效自检同理：它以 CustomAllowlist 之外的来源区分只读判定，同样不产出 DomainReady。
+            DomainFlowSource::CustomAllowlist | DomainFlowSource::CustomAllowlistCheck => {}
         }
     }
 

@@ -37,6 +37,13 @@ impl DnsProvider {
 pub enum DomainFlowSource {
     Standalone,
     OneClick,
+    /// 自定义放行（Xray `custom_direct`）：输入的是「要放行的域名」，不是证书申请域名。
+    /// 复用同一个输入状态机，但必须在 `handle_message` 里按来源分流，绝不进入 ACME 路径。
+    CustomAllowlist,
+    /// 生效自检：输入仍是「要检查的域名」，但语义是【只读判定】——
+    /// 单独一个变体是为了让「不写盘」在类型层面就与上面的「添加」区分开，
+    /// 否则只靠函数内部的布尔开关，日后很容易把自检接回写盘路径。
+    CustomAllowlistCheck,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

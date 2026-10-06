@@ -9,6 +9,9 @@ use crate::core::security::acme::{
 };
 use crate::core::types::{DnsProvider, DomainFlowSource, DomainInputState, DomainInputStep};
 use crate::core::xray::config::ConfigManager;
+use crate::core::xray::routing::{
+    CustomAddOutcome, RoutingManager, match_custom_direct, matches_connectivity_check,
+};
 use crate::shared::types::TimeoutStatus;
 
 const MAX_INPUT_LENGTH: usize = 4096;
@@ -72,6 +75,25 @@ pub async fn handle_message(
     let target_str = &target.0;
 
     if let Some(domain_state) = state.domain_input_snapshot(target_str).await {
+        // 自定义放行（添加 / 自检）与 ACME 共用 AwaitDomain 这一步输入，但语义完全不同：
+        // ACME 分支会把输入当作「要签发证书的域名」。因此必须【先按来源分流】，
+        // 否则用户在「添加放行域名」里输入 decodo.cn 会被拿去申请证书（可能真的签发）。
+        // 这里显式列出 ACME 的两个来源（而不是用 `_`）是为了：日后新增来源时必须回来
+        // 决定它走写盘还是只读分支，编译器会把这件事顶到眼前。
+        match domain_state.source {
+            DomainFlowSource::CustomAllowlist => {
+                return handle_custom_allowlist_input(adapter, target, text, state, target_str)
+                    .await;
+            }
+            DomainFlowSource::CustomAllowlistCheck => {
+                return handle_custom_allowlist_check_input(
+                    adapter, target, text, state, target_str,
+                )
+                .await;
+            }
+            DomainFlowSource::Standalone | DomainFlowSource::OneClick => {}
+        }
+
         match domain_state.step {
             DomainInputStep::AwaitDomain => {
                 match state
@@ -559,6 +581,275 @@ fn parse_provider_selection(text: &str) -> Option<DnsProvider> {
     }
 }
 
+/// 判定当前输入状态是否属于「自定义放行」流程。
+///
+/// 返回 `None` 表示「不属于该来源」：调用方据此【完全不进】自定义放行分支，
+/// 反过来 `handle_message` 也只在来源匹配时才进这里。为什么要把来源判断做成返回值
+/// 而不是布尔：调用方拿不到 `Some` 就无法进入写盘路径，「不干扰 ACME」是类型层面的。
+/// 添加与自检共用同一套归一化：两者对「什么算合法域名」必须给出完全一致的口径，
+/// 否则会出现「添加时被拒、自检却接受」这种自相矛盾的回答。
+/// 输入先 `trim` 再交给 `normalize_custom_domain`，后者会自己再做一次 trim，
+/// 这里显式 trim 是为了让「空输入」与「带空格的输入」走向同一个判定结果。
+pub(crate) fn custom_allowlist_decision(
+    source: &crate::core::types::DomainFlowSource,
+    text: &str,
+) -> Option<Result<String, crate::core::xray::routing::CustomDomainError>> {
+    if !matches!(
+        source,
+        DomainFlowSource::CustomAllowlist | DomainFlowSource::CustomAllowlistCheck
+    ) {
+        return None;
+    }
+    Some(crate::core::xray::routing::normalize_custom_domain(
+        text.trim(),
+    ))
+}
+
+/// 把校验错误映射到 i18n key（UI 文案选择用）。
+///
+/// 只有三类拒绝原因各有专属文案：用户看到后能直接知道该改什么。
+/// 其余原因（空/带端口/非法 label/超长/未知前缀/非 ASCII）对用户而言动作相同
+/// ——「重新输入一个合法域名」，共用一条文案以免三语维护成本翻倍。
+pub(crate) fn custom_domain_error_key(
+    e: &crate::core::xray::routing::CustomDomainError,
+) -> &'static str {
+    use crate::core::xray::routing::CustomDomainError as E;
+
+    match e {
+        E::HasSchemeOrPath => "xray.routing_custom_invalid_scheme",
+        E::SingleLabel => "xray.routing_custom_invalid_single_label",
+        E::IpNotSupported => "xray.routing_custom_invalid_ip",
+        E::Empty
+        | E::HasPort
+        | E::InvalidLabel
+        | E::TooLong
+        | E::UnsupportedPrefix
+        | E::NonAscii => "xray.routing_custom_invalid_generic",
+    }
+}
+
+/// 自定义放行（添加 / 自检）共用的输入前处理：超时、非文本、空输入。
+///
+/// 两种流程共用同一份引导文案（`xray.routing_custom_input_prompt`），因此这三种
+/// 「还没到判定阶段」的反应必须逐字一致；抽出来是为了以后加第三种流程时无法只改一半。
+/// 返回 `Some(input)` 表示可以进入判定；`None` 表示本次消息已回应完毕（调用方直接返回 Handled）。
+async fn take_custom_input<'a>(
+    adapter: &dyn BotAdapter,
+    target: &TargetId,
+    text: Option<&'a str>,
+    state: &dyn MessageState,
+    target_str: &str,
+) -> anyhow::Result<Option<&'a str>> {
+    // 120 秒沿用 ACME 的口径：引导文案（xray.routing_custom_input_prompt）已向用户承诺 120 秒，
+    // 两边用同一个数字才能保证「文案说多久就多久」
+    match state
+        .domain_timeout_status(target_str, Duration::from_secs(120))
+        .await
+    {
+        TimeoutStatus::Expired => {
+            state.take_domain_input(target_str).await;
+            send_plain(adapter, target, t!("domain.input_timeout").to_string()).await?;
+            return Ok(None);
+        }
+        TimeoutStatus::Active | TimeoutStatus::NotTracked => {}
+    }
+
+    // 非文本（例如用户回了张图）不消费这条消息，保持等待即可
+    let Some(input) = text else {
+        return Ok(None);
+    };
+
+    if input.trim().is_empty() {
+        send_plain(adapter, target, t!("domain.input_empty").to_string()).await?;
+        return Ok(None);
+    }
+
+    Ok(Some(input))
+}
+
+/// 自定义放行输入分支（添加）。
+///
+/// 单独成函数而不是塞进 ACME 的 match：该分支从校验到落盘都与 ACME 无关，
+/// 混在一起后，任何未来的修改都得同时记住「这里还要判来源」。
+async fn handle_custom_allowlist_input(
+    adapter: &dyn BotAdapter,
+    target: &TargetId,
+    text: Option<&str>,
+    state: &dyn MessageState,
+    target_str: &str,
+) -> anyhow::Result<MessageAction> {
+    let Some(input) = take_custom_input(adapter, target, text, state, target_str).await? else {
+        return Ok(MessageAction::Handled);
+    };
+
+    let entry = match custom_allowlist_decision(&DomainFlowSource::CustomAllowlist, input) {
+        Some(Ok(entry)) => entry,
+        Some(Err(e)) => {
+            send_plain(adapter, target, t!(custom_domain_error_key(&e)).to_string()).await?;
+            // 非法输入不落盘、不清状态：用户重输一次即可，不必重进菜单。
+            // 空输入已在上方先拦下，因此这里不会出现 Empty。
+            return Ok(MessageAction::Handled);
+        }
+        // 实际不可达（上一行已固定传入 CustomAllowlist）；真出现时也只保持等待，
+        // 因为「什么都不做」是唯一不会写坏配置的选择。
+        None => return Ok(MessageAction::Handled),
+    };
+
+    match RoutingManager::add_custom_direct_entry(&entry).await {
+        Ok(CustomAddOutcome::Added(domain)) => {
+            send_plain(
+                adapter,
+                target,
+                t!("xray.routing_custom_added", "domain" => domain).to_string(),
+            )
+            .await?;
+        }
+        Ok(CustomAddOutcome::AlreadyExists(domain)) => {
+            send_plain(
+                adapter,
+                target,
+                t!("xray.routing_custom_exists", "domain" => domain).to_string(),
+            )
+            .await?;
+        }
+        Ok(CustomAddOutcome::LimitReached) => {
+            send_plain(adapter, target, t!("xray.routing_custom_full").to_string()).await?;
+        }
+        Err(e) => {
+            // 写盘或 reload 失败：不向上抛错（上层会把异常当未处理消费掉），
+            // 但必须清状态，否则用户会被永久困在输入态且以为还在等提示
+            log::error!("add_custom_direct_entry failed: {e}");
+            send_plain(
+                adapter,
+                target,
+                t!("xray.routing_reload_failed").to_string(),
+            )
+            .await?;
+        }
+    }
+
+    state.take_domain_input(target_str).await;
+    Ok(MessageAction::Handled)
+}
+
+/// 从归一化条目里取出纯主机名：`domain:X` / `full:X` -> `X`。
+///
+/// 自检的匹配与展示都按主机名进行，而列表里存的是带前缀的条目；
+/// 前缀在这里剥掉，而不是让 `match_custom_direct` 去理解条目前缀——
+/// 判定函数一旦同时承担「前缀语义 + 域名语义」，日后加前缀就会静默漏匹配。
+pub(crate) fn custom_entry_host(entry: &str) -> &str {
+    entry
+        .strip_prefix("domain:")
+        .or_else(|| entry.strip_prefix("full:"))
+        .unwrap_or(entry)
+}
+
+/// 自检结论（纯数据）：把「命中第几条」与「没命中」编码成值，
+/// 便于让分支选择脱离文件系统被单独验证。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CustomCheckOutcome {
+    /// `idx` 是列表下标（展示时 +1），`entry` 是命中条目原文。
+    Hit {
+        idx: usize,
+        entry: String,
+    },
+    Miss,
+}
+
+/// 只读判定：host 是否命中自定义放行列表。
+/// 纯函数，不读盘、不写盘——自检的「只读」性质在这一层就成立。
+pub(crate) fn custom_check_outcome(domains: &[String], host: &str) -> CustomCheckOutcome {
+    match match_custom_direct(domains, host) {
+        Some(idx) => CustomCheckOutcome::Hit {
+            idx,
+            entry: domains[idx].clone(),
+        },
+        None => CustomCheckOutcome::Miss,
+    }
+}
+
+/// 渲染自检回报文案。
+///
+/// connectivity_check（「Google 服务直连」）命中的域名本来就会被放行：
+/// 自检若只说「不在自定义列表里」，用户会误以为规则没生效而反复添加，
+/// 因此额外追加一行说明它由哪条规则覆盖。
+/// 这里复用既有的规则名 key（不新增 key）：三语文件不在本次改动的允许清单内，
+/// 而规则名与菜单里的展示名同源，改规则名时提示不会过期。
+fn custom_check_reply(outcome: &CustomCheckOutcome, host: &str) -> String {
+    let mut text = match outcome {
+        CustomCheckOutcome::Hit { idx, entry } => t!(
+            "xray.routing_custom_check_hit",
+            "idx" => (idx + 1).to_string(),
+            "entry" => entry.clone()
+        )
+        .to_string(),
+        CustomCheckOutcome::Miss => t!("xray.routing_custom_check_miss").to_string(),
+    };
+
+    if matches_connectivity_check(host) {
+        text.push_str("\nℹ️ ");
+        text.push_str(&t!("xray.routing_rule_connectivity_check"));
+    }
+
+    text
+}
+
+/// 自检输入分支。【只读】：不写盘、不 reload、不调 add_custom_direct_entry。
+///
+/// 全流程只有一次「读」（list_custom_direct_domains）+ 纯判定；
+/// 自检的语义是「看一下现在的规则会怎么判」，任何写操作都会把查询变成修改。
+async fn handle_custom_allowlist_check_input(
+    adapter: &dyn BotAdapter,
+    target: &TargetId,
+    text: Option<&str>,
+    state: &dyn MessageState,
+    target_str: &str,
+) -> anyhow::Result<MessageAction> {
+    let Some(input) = take_custom_input(adapter, target, text, state, target_str).await? else {
+        return Ok(MessageAction::Handled);
+    };
+
+    let entry = match custom_allowlist_decision(&DomainFlowSource::CustomAllowlistCheck, input) {
+        Some(Ok(entry)) => entry,
+        Some(Err(e)) => {
+            // 非法输入的提示与「添加」完全一致：同一个引导文案进来，不该有两种口径。
+            send_plain(adapter, target, t!(custom_domain_error_key(&e)).to_string()).await?;
+            return Ok(MessageAction::Handled);
+        }
+        None => return Ok(MessageAction::Handled),
+    };
+
+    // 自检的口径是主机名：归一化条目里剥掉 domain:/full: 前缀后再判定
+    let host = custom_entry_host(&entry);
+
+    match RoutingManager::list_custom_direct_domains().await {
+        Ok(domains) => {
+            let outcome = custom_check_outcome(&domains, host);
+            send_plain(adapter, target, custom_check_reply(&outcome, host)).await?;
+        }
+        Err(e) => {
+            // 读不到列表时【不能】报「未命中」：那会让用户以为规则失效而重复添加。
+            // 复用「配置文件不存在」这条既有文案：它描述的正是此处唯一的失败原因。
+            log::error!("list_custom_direct_domains failed: {e}");
+            send_plain(adapter, target, t!("xray.user_cfg_not_found").to_string()).await?;
+        }
+    }
+
+    state.take_domain_input(target_str).await;
+    Ok(MessageAction::Handled)
+}
+
+async fn send_plain(
+    adapter: &dyn BotAdapter,
+    target: &TargetId,
+    text: String,
+) -> anyhow::Result<()> {
+    adapter
+        .send_message(target, MessageContent { text, markup: None })
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -567,6 +858,7 @@ mod tests {
     };
     use crate::core::i18n;
     use crate::core::i18n::Lang;
+    use crate::core::xray::routing::CustomDomainError;
     use crate::shared::types::TimeoutStatus;
     use anyhow::Result;
     use async_trait::async_trait;
@@ -605,6 +897,15 @@ mod tests {
                     step: DomainInputStep::AwaitCredentials(provider),
                     domain: Some(domain.to_string()),
                 })),
+            }
+        }
+
+        /// 自检来源：与添加共用 AwaitDomain 输入态，但只能走只读判定分支。
+        fn custom_check(step: DomainInputStep) -> Self {
+            Self {
+                source: DomainFlowSource::CustomAllowlistCheck,
+                chat_id: "test_chat".to_string(),
+                inner: Arc::new(Mutex::new(FakeStateInner { step, domain: None })),
             }
         }
 
@@ -1037,6 +1338,272 @@ mod tests {
         let button_text = adapter.button_text.lock().unwrap();
         for raw_key in ["domain.prov_cf", "domain.prov_aws"] {
             assert!(!button_text.contains(&raw_key.to_string()));
+        }
+    }
+
+    // ── 自定义放行输入分流（T6a）─────────────────────────────────────────
+    // 「自定义放行」复用同一个 AwaitDomain 输入状态，但绝不能落进 ACME 路径：
+    // 以下断言就是「不干扰 ACME」的锁死线。
+
+    /// 只有 CustomAllowlist 来源才返回判定结果；ACME 的两个来源必须返回 None，
+    /// 否则 ACME 域名输入会被当成「放行域名」处理（或反之，放行输入触发证书签发）。
+    #[test]
+    fn acme_sources_never_enter_custom_allowlist() {
+        for source in [DomainFlowSource::Standalone, DomainFlowSource::OneClick] {
+            assert_eq!(
+                custom_allowlist_decision(&source, "decodo.cn"),
+                None,
+                "{source:?} 必须完全不进自定义放行分支"
+            );
+            assert_eq!(custom_allowlist_decision(&source, "https://x/y"), None);
+        }
+    }
+
+    #[test]
+    fn custom_allowlist_source_normalizes_plain_domain() {
+        assert_eq!(
+            custom_allowlist_decision(&DomainFlowSource::CustomAllowlist, " decodo.cn "),
+            Some(Ok("domain:decodo.cn".to_string()))
+        );
+    }
+
+    #[test]
+    fn custom_allowlist_source_surfaces_normalizer_errors() {
+        assert_eq!(
+            custom_allowlist_decision(&DomainFlowSource::CustomAllowlist, "https://x/y"),
+            Some(Err(CustomDomainError::HasSchemeOrPath))
+        );
+    }
+
+    #[test]
+    fn custom_domain_error_keys_cover_every_variant() {
+        use CustomDomainError::*;
+
+        assert_eq!(
+            custom_domain_error_key(&HasSchemeOrPath),
+            "xray.routing_custom_invalid_scheme"
+        );
+        assert_eq!(
+            custom_domain_error_key(&SingleLabel),
+            "xray.routing_custom_invalid_single_label"
+        );
+        assert_eq!(
+            custom_domain_error_key(&IpNotSupported),
+            "xray.routing_custom_invalid_ip"
+        );
+        // 其余原因共用通用文案：用户能做的动作相同（重输一个合法域名），
+        // 区分文案只会增加三语维护成本
+        for e in [
+            Empty,
+            HasPort,
+            InvalidLabel,
+            TooLong,
+            UnsupportedPrefix,
+            NonAscii,
+        ] {
+            assert_eq!(
+                custom_domain_error_key(&e),
+                "xray.routing_custom_invalid_generic"
+            );
+        }
+    }
+
+    /// 映射出的 key 必须真的存在：rust-i18n 找不到 key 时会把 key 原样返回给用户，
+    /// 拼错一个字母就会把 `xray.routing_custom_...` 直接显示出来。
+    #[test]
+    fn custom_domain_error_keys_exist_in_all_locales() {
+        use CustomDomainError::*;
+
+        let keys = [
+            custom_domain_error_key(&HasSchemeOrPath),
+            custom_domain_error_key(&SingleLabel),
+            custom_domain_error_key(&IpNotSupported),
+            custom_domain_error_key(&Empty),
+        ];
+        for yaml in [
+            include_str!("../../resources/i18n/zh.yml"),
+            include_str!("../../resources/i18n/en.yml"),
+            include_str!("../../resources/i18n/ja.yml"),
+        ] {
+            for key in keys {
+                // yml 里只写叶子 key（缩进在 `xray:` 段内），断言时去掉段名前缀
+                let leaf = key.strip_prefix("xray.").expect("key 应带 xray. 段名");
+                assert!(
+                    yaml.contains(&format!("\n  {leaf}: ")),
+                    "缺少 i18n key: {key}"
+                );
+            }
+        }
+    }
+
+    // ── 生效自检（T7b）：只读判定 ────────────────────────────────────────
+    // 自检与添加共用同一个输入状态机，区别只在「判定 vs 写盘」。以下断言分两层：
+    // 纯逻辑（host 提取 / 命中分支选择）与分流锁死线。
+
+    /// 锁死线：CustomAllowlistCheck 必须和 CustomAllowlist 一样在【进入 ACME 分支之前】
+    /// 被拦下；而 ACME 的两个来源仍必须返回 None，否则证书流程会被自检输入污染。
+    #[test]
+    fn custom_allowlist_check_never_enters_acme_path() {
+        assert_eq!(
+            custom_allowlist_decision(&DomainFlowSource::CustomAllowlistCheck, " decodo.cn "),
+            Some(Ok("domain:decodo.cn".to_string()))
+        );
+        assert_eq!(
+            custom_allowlist_decision(&DomainFlowSource::CustomAllowlistCheck, "https://x/y"),
+            Some(Err(CustomDomainError::HasSchemeOrPath))
+        );
+        for source in [DomainFlowSource::Standalone, DomainFlowSource::OneClick] {
+            assert_eq!(
+                custom_allowlist_decision(&source, "decodo.cn"),
+                None,
+                "{source:?} 不得进入自定义放行/自检分支"
+            );
+        }
+    }
+
+    /// 自检判定用的是纯主机名：列表里存的是 `domain:`/`full:` 条目，
+    /// 前缀在这里剥掉而不是让 match_custom_direct 去理解前缀（否则判定函数要同时
+    /// 处理两种语义，任何一处漏改都会静默漏匹配）。
+    #[test]
+    fn custom_entry_host_strips_known_prefixes() {
+        assert_eq!(custom_entry_host("domain:decodo.cn"), "decodo.cn");
+        assert_eq!(custom_entry_host("full:decodo.cn"), "decodo.cn");
+        assert_eq!(custom_entry_host("decodo.cn"), "decodo.cn");
+    }
+
+    /// 命中分支选择 + host 提取合起来就是自检的全部判定逻辑。
+    /// 之所以把它做成纯函数并单测：自检分支【不写盘】这一点无法在集成测试里直接断言，
+    /// 至少要保证判定本身可被脱离文件系统验证。
+    #[test]
+    fn custom_check_outcome_selects_hit_or_miss() {
+        let list = vec![
+            "domain:decodo.cn".to_string(),
+            "full:exact.example".to_string(),
+        ];
+        assert_eq!(
+            custom_check_outcome(&list, custom_entry_host("domain:decodo.cn")),
+            CustomCheckOutcome::Hit {
+                idx: 0,
+                entry: "domain:decodo.cn".to_string()
+            }
+        );
+        // `domain:` 条目命中其子域
+        assert_eq!(
+            custom_check_outcome(&list, "a.b.decodo.cn"),
+            CustomCheckOutcome::Hit {
+                idx: 0,
+                entry: "domain:decodo.cn".to_string()
+            }
+        );
+        // `full:` 条目仅精确匹配，子域必须判未命中
+        assert_eq!(
+            custom_check_outcome(&list, custom_entry_host("full:exact.example")),
+            CustomCheckOutcome::Hit {
+                idx: 1,
+                entry: "full:exact.example".to_string()
+            }
+        );
+        assert_eq!(
+            custom_check_outcome(&list, "sub.exact.example"),
+            CustomCheckOutcome::Miss
+        );
+        assert_eq!(
+            custom_check_outcome(&[], "decodo.cn"),
+            CustomCheckOutcome::Miss
+        );
+    }
+
+    /// 命中回报要带「人性化序号」（下标 +1）与命中条目本身：这两个值直接展示给用户。
+    /// 断言精确字符串会与并发 set_lang 竞争，故 #[serial]（同 empty_domain_keeps_await_domain_state 的说明）；
+    /// 结束时把语言恢复原样，避免污染后来者对「默认语言」的隐含假设。
+    #[serial]
+    #[test]
+    fn custom_check_reply_renders_hit_index_and_entry() {
+        let previous = i18n::current_lang();
+        i18n::set_lang(Lang::Zh);
+        let hit = CustomCheckOutcome::Hit {
+            idx: 2,
+            entry: "domain:decodo.cn".to_string(),
+        };
+        assert_eq!(
+            custom_check_reply(&hit, "decodo.cn"),
+            t!(
+                "xray.routing_custom_check_hit",
+                "idx" => "3",
+                "entry" => "domain:decodo.cn"
+            )
+            .to_string()
+        );
+        i18n::set_lang(previous);
+    }
+
+    /// 被 connectivity_check（Google 服务直连）命中的域名本来就会被放行，
+    /// 自检必须额外说明，否则用户会把「不在自定义列表里」理解成「没生效」而反复添加。
+    #[serial]
+    #[test]
+    fn custom_check_reply_appends_connectivity_rule_note() {
+        let previous = i18n::current_lang();
+        i18n::set_lang(Lang::Zh);
+        let miss = CustomCheckOutcome::Miss;
+
+        // 用规则里真实存在的探测域名（见 routing.rs 的 connectivity_check targets）：
+        // 断言依赖的是规则内容本身，而不是另抄一份域名清单。
+        let google = custom_check_reply(&miss, "connectivitycheck.gstatic.com");
+        assert!(google.contains(&t!("xray.routing_custom_check_miss").to_string()));
+        assert!(
+            google.contains(&t!("xray.routing_rule_connectivity_check").to_string()),
+            "应说明它由 Google 服务直连规则覆盖: {google}"
+        );
+
+        // 非 connectivity 域名不得出现该提示，否则提示会退化成噪音
+        let other = custom_check_reply(&miss, "example.com");
+        assert!(!other.contains(&t!("xray.routing_rule_connectivity_check").to_string()));
+        i18n::set_lang(previous);
+    }
+
+    /// 自检来源走只读分支：不产出 DomainReady（不会去签证书/建站）、
+    /// 不推进 ACME 输入步骤、不改动 00_base.json。
+    #[serial]
+    #[tokio::test]
+    async fn check_source_is_read_only_and_leaves_acme_state_untouched() {
+        let adapter = RecordingAdapter::new();
+        let target = TargetId("test_chat".to_string());
+        let state = FakeState::custom_check(DomainInputStep::AwaitDomain);
+
+        let base = format!("{}/00_base.json", crate::core::paths::xray::CONF_DIR);
+        let before = std::fs::read(&base).ok();
+        let action = handle_message(&adapter, &target, Some("decodo.cn"), false, &state)
+            .await
+            .unwrap();
+        let after = std::fs::read(&base).ok();
+
+        assert!(
+            matches!(action, MessageAction::Handled),
+            "自检绝不能产出 DomainReady"
+        );
+        // ACME 分支会把输入推进到 AwaitProvider/Processing；自检必须原地不动
+        assert!(
+            matches!(state.snapshot(), DomainInputStep::AwaitDomain),
+            "自检不得推进 ACME 输入状态"
+        );
+        assert_eq!(before, after, "自检不得改动 {base}");
+    }
+
+    /// 自检分支复用了两个既有 i18n key（三语文件不在本次允许改动的清单内，故不新增 key）：
+    /// 它们必须三语齐备，否则用户会直接看到 `xray.user_cfg_not_found` 这种原始 key。
+    #[test]
+    fn custom_check_reused_keys_exist_in_all_locales() {
+        for yaml in [
+            include_str!("../../resources/i18n/zh.yml"),
+            include_str!("../../resources/i18n/en.yml"),
+            include_str!("../../resources/i18n/ja.yml"),
+        ] {
+            for leaf in ["routing_rule_connectivity_check", "user_cfg_not_found"] {
+                assert!(
+                    yaml.contains(&format!("\n  {leaf}: ")),
+                    "缺少 i18n key: xray.{leaf}"
+                );
+            }
         }
     }
 

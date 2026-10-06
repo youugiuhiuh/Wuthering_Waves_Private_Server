@@ -225,6 +225,10 @@ pub async fn show_domain_choice(event: &CallbackEvent, source: DomainFlowSource)
     let source_str = match source {
         DomainFlowSource::Standalone => "standalone",
         DomainFlowSource::OneClick => "one_click",
+        // 占位字符串：自定义放行不走「是否申请证书」这个选择；反向映射与流程细化由 T6b 负责。
+        DomainFlowSource::CustomAllowlist => "custom_allowlist",
+        // 自检同样不经过该选择（它从不产出 DomainReady）。
+        DomainFlowSource::CustomAllowlistCheck => "custom_allowlist_check",
     };
     let buttons = vec![
         vec![InlineButton {
@@ -606,6 +610,12 @@ async fn handle_routing_menu(event: &CallbackEvent) -> HandlerResult {
         })
         .collect();
 
+    // 导航型入口：自成一行，且【不带】✅/⬜ —— 与上面 8 条开关型规则按钮
+    // 保持视觉可分（开关标记意味着按钮自身有开/关状态）。
+    rows.push(vec![custom_direct_entry_button(
+        custom_direct_count().await,
+    )]);
+
     rows.push(vec![InlineButton {
         text: t!("menu.back").into(),
         data: "m_xray_mgmt".into(),
@@ -660,6 +670,228 @@ async fn handle_routing_toggle(event: &CallbackEvent) -> HandlerResult {
     }
 
     Ok(HandlerAction::Redirect("m_routing".to_string()))
+}
+
+// ── 自定义放行（custom_direct）───────────────────────────────────────
+//
+// 「入口 + 列表 + 按序号删除 + 添加域名 + 生效自检」全部就位。
+// 菜单只渲染已接好 dispatch 分支的按钮：渲染还没有 handler 的按钮会得到
+// 点了没反应的死按钮（同 1.2.7 的 wwps-core 事故）。
+
+/// 入口按钮是导航型，故意不加 ✅/⬜，与开关型规则按钮区分。
+fn custom_direct_entry_button(count: usize) -> InlineButton {
+    InlineButton {
+        text: t!("xray.routing_custom_btn", "count" => count.to_string()).into_owned(),
+        data: "m_routing_custom".into(),
+    }
+}
+
+fn custom_direct_menu_rows() -> Vec<Vec<InlineButton>> {
+    vec![
+        // 「查看列表」与「添加域名」同处一行：两者都是常用操作，并排省一次滑动；
+        // 「生效自检」单独一行：它是排查类操作，与写操作分开摆可降低误点概率；
+        // 「返回」单独占末行，与其它菜单的导航位置保持一致。
+        vec![
+            InlineButton {
+                text: t!("xray.routing_custom_list").into_owned(),
+                data: "routing_custom_list".into(),
+            },
+            InlineButton {
+                text: t!("xray.routing_custom_add").into_owned(),
+                data: "routing_custom_add".into(),
+            },
+        ],
+        vec![InlineButton {
+            text: t!("xray.routing_custom_check").into_owned(),
+            data: "routing_custom_check".into(),
+        }],
+        vec![InlineButton {
+            text: t!("menu.back").into_owned(),
+            data: "m_routing".into(),
+        }],
+    ]
+}
+
+fn custom_direct_list_rows(domains: &[String]) -> Vec<Vec<InlineButton>> {
+    let mut rows: Vec<Vec<InlineButton>> = domains
+        .iter()
+        .enumerate()
+        .map(|(idx, domain)| {
+            vec![InlineButton {
+                // 显示序号从 1 开始（面向人），data 里的序号直接用列表下标，
+                // 避免 handler 为了「人性化」再减一次 1 而引入 off-by-one。
+                text: format!("{}. {}", idx + 1, domain),
+                data: format!("routing_custom_del:{}", idx),
+            }]
+        })
+        .collect();
+    rows.push(vec![InlineButton {
+        text: t!("menu.back").into_owned(),
+        data: "m_routing_custom".into(),
+    }]);
+    rows
+}
+
+/// 读当前条数：失败按 0 处理（菜单渲染不应因为一次读盘失败而整页报错）。
+async fn custom_direct_count() -> usize {
+    RoutingManager::list_custom_direct_domains()
+        .await
+        .map(|v| v.len())
+        .unwrap_or(0)
+}
+
+/// 解析 `routing_custom_del:<idx>`。失败返回 None（回调可能来自过期菜单或被伪造），
+/// 绝不回退成 0：那会让任何非法回调都变成「删除第一条」。
+fn parse_custom_del_idx(data: &str) -> Option<usize> {
+    data.strip_prefix("routing_custom_del:")?
+        .trim()
+        .parse::<usize>()
+        .ok()
+}
+
+async fn handle_routing_custom_menu(event: &CallbackEvent) -> HandlerResult {
+    let count = custom_direct_count().await;
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text: t!("xray.routing_custom_title", "count" => count.to_string()).into_owned(),
+                markup: Some(Markup {
+                    buttons: custom_direct_menu_rows(),
+                }),
+            },
+        )
+        .await?;
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_routing_custom_list(event: &CallbackEvent) -> HandlerResult {
+    // 这里不能像入口按钮那样把读失败当成空列表：列表为空意味着「无可删除项」，
+    // 会把「读盘失败」误导成「没有配置」。
+    let domains = match RoutingManager::list_custom_direct_domains().await {
+        Ok(v) => v,
+        Err(e) => {
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(format!("{}: {}", t!("xray.routing_reload_failed"), e)),
+                )
+                .await?;
+            return Ok(HandlerAction::Redirect("m_routing_custom".to_string()));
+        }
+    };
+
+    let text = if domains.is_empty() {
+        t!("xray.routing_custom_empty_list").into_owned()
+    } else {
+        t!("xray.routing_custom_title", "count" => domains.len().to_string()).into_owned()
+    };
+
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text,
+                markup: Some(Markup {
+                    buttons: custom_direct_list_rows(&domains),
+                }),
+            },
+        )
+        .await?;
+
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_routing_custom_del(event: &CallbackEvent) -> HandlerResult {
+    let msg = match parse_custom_del_idx(event.data.as_str()) {
+        // 解析失败按非法处理，绝不当作 0（见 parse_custom_del_idx 注释）。
+        None => t!("xray.routing_custom_del_bad_index").into_owned(),
+        Some(idx) => match RoutingManager::remove_custom_direct_at(idx).await {
+            Ok(domain) => t!("xray.routing_custom_removed", "domain" => domain).into_owned(),
+            Err(e) => {
+                // 失败有两类：序号已失效（并发会话删空/伪造回调）与写盘、重载失败。
+                // 重读一次列表长度就能区分，且不必依赖 routing.rs 的错误文案做匹配。
+                let stale = RoutingManager::list_custom_direct_domains()
+                    .await
+                    .map(|v| idx >= v.len())
+                    .unwrap_or(false);
+                if stale {
+                    t!("xray.routing_custom_del_bad_index").into_owned()
+                } else {
+                    format!("{}: {}", t!("xray.routing_reload_failed"), e)
+                }
+            }
+        },
+    };
+
+    event
+        .adapter
+        .answer_callback(&event.target, &event.callback_id, Some(msg))
+        .await?;
+
+    // 提示后统一回列表页：列表会重新读盘，天然展示删除后的最新状态。
+    Ok(HandlerAction::Redirect("routing_custom_list".to_string()))
+}
+
+/// T6b：点「添加域名」后进入等待输入状态，随后 message.rs 会接管文本消息。
+/// 这里只负责置状态 + 发引导文案，真正的分流/校验/写盘在 message.rs。
+async fn handle_routing_custom_add(event: &CallbackEvent, state: &AppState) -> HandlerResult {
+    // 沿用 handle_domain_yes 的既有形态：置入 CustomAllowlist 输入态，120 秒窗口
+    // 由 message.rs 侧把关（引导文案已向用户承诺 120 秒）。
+    state
+        .start_domain_input(
+            event.target.0.clone(),
+            DomainFlowSource::CustomAllowlist,
+            std::time::Instant::now(),
+        )
+        .await;
+
+    // 无 markup：下一步用户要直接发域名文本，而不是再点按钮。
+    event
+        .adapter
+        .send_message(
+            &event.target,
+            MessageContent {
+                text: t!("xray.routing_custom_input_prompt").into_owned(),
+                markup: None,
+            },
+        )
+        .await?;
+
+    Ok(HandlerAction::Done)
+}
+
+/// T7b：点「生效自检」后进入同一个输入状态，但来源标为 `CustomAllowlistCheck`，
+/// message.rs 据此只做只读判定（不进写盘分支），引导文案与「添加域名」完全一致——
+/// 用户看到的是同一套「请输入域名」提示，差别只在回报。
+async fn handle_routing_custom_check(event: &CallbackEvent, state: &AppState) -> HandlerResult {
+    state
+        .start_domain_input(
+            event.target.0.clone(),
+            DomainFlowSource::CustomAllowlistCheck,
+            std::time::Instant::now(),
+        )
+        .await;
+
+    // 无 markup：下一步用户要直接发域名文本，而不是再点按钮。
+    event
+        .adapter
+        .send_message(
+            &event.target,
+            MessageContent {
+                text: t!("xray.routing_custom_input_prompt").into_owned(),
+                markup: None,
+            },
+        )
+        .await?;
+
+    Ok(HandlerAction::Done)
 }
 
 // ── delete ───────────────────────────────────────────────────────────
@@ -3021,6 +3253,11 @@ pub async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerResult {
         d if d.starts_with("u_d_confirm:") => handle_user_del_confirm(event).await,
 
         "m_routing" => handle_routing_menu(event).await,
+        "m_routing_custom" => handle_routing_custom_menu(event).await,
+        "routing_custom_list" => handle_routing_custom_list(event).await,
+        "routing_custom_add" => handle_routing_custom_add(event, state).await,
+        "routing_custom_check" => handle_routing_custom_check(event, state).await,
+        d if d.starts_with("routing_custom_del:") => handle_routing_custom_del(event).await,
         d if d.starts_with("routing_toggle:") => handle_routing_toggle(event).await,
 
         d if d.starts_with("xhttp_domain_yes:") => handle_domain_yes(event, state, d).await,
@@ -3160,6 +3397,137 @@ async fn handle_domain_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// T4：序号必须按 usize 严格解析；任何非法输入都要判为非法，
+    /// 绝不能默认成 0——那会把「删除第一条」变成兜底行为，造成数据事故。
+    #[test]
+    fn test_custom_del_idx_rejects_bad_input() {
+        assert_eq!(parse_custom_del_idx("routing_custom_del:0"), Some(0));
+        assert_eq!(parse_custom_del_idx("routing_custom_del:12"), Some(12));
+        assert_eq!(parse_custom_del_idx("routing_custom_del:"), None, "空序号");
+        assert_eq!(parse_custom_del_idx("routing_custom_del:-1"), None, "负数");
+        assert_eq!(
+            parse_custom_del_idx("routing_custom_del:abc"),
+            None,
+            "非数字"
+        );
+        assert_eq!(parse_custom_del_idx("routing_custom_del:1.5"), None, "小数");
+        assert_eq!(
+            parse_custom_del_idx("routing_custom_del:99999999999999999999"),
+            None,
+            "溢出 usize 不能 panic 也不能回绕成小序号"
+        );
+        assert_eq!(parse_custom_del_idx("routing_custom_del"), None, "缺冒号");
+        assert_eq!(parse_custom_del_idx("m_routing_custom"), None, "非删除回调");
+    }
+
+    /// T4：按钮显示序号从 1 开始、data 序号从 0 开始，且必须与列表下标一致，
+    /// 否则用户点「2」会删掉第 1 条。
+    #[test]
+    fn test_custom_direct_rows_index_matches_list_order() {
+        let domains = vec!["decodo.cn".to_string(), "a.example.com".to_string()];
+        let rows = custom_direct_list_rows(&domains);
+        assert_eq!(rows.len(), 3, "两条条目 + 一行返回");
+        assert_eq!(rows[0][0].text, "1. decodo.cn");
+        assert_eq!(rows[0][0].data, "routing_custom_del:0");
+        assert_eq!(rows[1][0].text, "2. a.example.com");
+        assert_eq!(rows[1][0].data, "routing_custom_del:1");
+        assert_eq!(rows[2][0].data, "m_routing_custom", "末行回子菜单");
+        // 按钮与 handler 用同一个解析器闭环：序号还原后必须等于原下标。
+        for (idx, row) in rows[..domains.len()].iter().enumerate() {
+            assert_eq!(parse_custom_del_idx(&row[0].data), Some(idx));
+        }
+    }
+
+    /// 空列表不渲染任何删除按钮（没有条目可删），只留返回行。
+    #[test]
+    fn test_custom_direct_rows_empty_has_no_delete_buttons() {
+        let rows = custom_direct_list_rows(&[]);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows.iter()
+                .all(|r| r.iter().all(|b| !b.data.starts_with("routing_custom_del:"))),
+            "空列表不能出现删除按钮: {rows:?}"
+        );
+        assert_eq!(rows[0][0].data, "m_routing_custom");
+    }
+
+    /// T7b：子菜单应齐备「查看列表」+「添加域名」+「生效自检」，末行是「返回」。
+    /// 少任何一个都会得到「点了没反应」的死按钮；多渲染未接 dispatch 的按钮同理。
+    #[test]
+    fn test_custom_direct_menu_rows_has_list_add_and_check() {
+        let rows = custom_direct_menu_rows();
+        let datas: Vec<&str> = rows
+            .iter()
+            .flat_map(|r| r.iter().map(|b| b.data.as_str()))
+            .collect();
+        assert!(
+            datas.contains(&"routing_custom_list"),
+            "应含查看列表: {datas:?}"
+        );
+        assert!(
+            datas.contains(&"routing_custom_add"),
+            "应含添加域名: {datas:?}"
+        );
+        assert!(
+            datas.contains(&"routing_custom_check"),
+            "应含生效自检: {datas:?}"
+        );
+        assert!(datas.contains(&"m_routing"), "应含返回行: {datas:?}");
+        assert_eq!(datas.len(), 4, "本子菜单恰为四个按钮: {datas:?}");
+        // 「返回」必须是最后一行，避免把导航按钮夹在中间。
+        assert_eq!(rows.last().unwrap()[0].data, "m_routing", "末行应为返回");
+    }
+
+    /// T7b：「生效自检」按钮的文本走 i18n、data 精确为 `routing_custom_check`，
+    /// 与 dispatch 里的分支字面量保持一致（否则点了没反应）。
+    #[test]
+    fn test_custom_direct_menu_has_check_button_with_i18n_text() {
+        let rows = custom_direct_menu_rows();
+        let check = rows
+            .iter()
+            .flat_map(|r| r.iter())
+            .find(|b| b.data == "routing_custom_check")
+            .expect("必须存在「生效自检」按钮");
+        assert_eq!(
+            check.text,
+            t!("xray.routing_custom_check").into_owned(),
+            "按钮文本必须走 i18n xray.routing_custom_check"
+        );
+        assert_eq!(check.data, "routing_custom_check");
+    }
+
+    /// T6b：「添加域名」按钮必须存在，文本走 i18n、data 精确为 `routing_custom_add`，
+    /// 与 dispatch 里的分支字面量保持一致（否则点了没反应）。
+    #[test]
+    fn test_custom_direct_menu_has_add_button_with_i18n_text() {
+        let rows = custom_direct_menu_rows();
+        let add = rows
+            .iter()
+            .flat_map(|r| r.iter())
+            .find(|b| b.data == "routing_custom_add")
+            .expect("必须存在「添加域名」按钮");
+        assert_eq!(
+            add.text,
+            t!("xray.routing_custom_add").into_owned(),
+            "按钮文本必须走 i18n xray.routing_custom_add"
+        );
+        assert_eq!(add.data, "routing_custom_add");
+    }
+
+    /// 入口按钮是【导航型】：不得带 ✅/⬜（那是开关型规则按钮的标记），
+    /// 且文本必须含当前条数。
+    #[test]
+    fn test_custom_direct_entry_button_is_navigation_style() {
+        let btn = custom_direct_entry_button(3);
+        assert_eq!(btn.data, "m_routing_custom");
+        assert!(
+            !btn.text.contains('✅') && !btn.text.contains('⬜'),
+            "入口按钮不能带开关图标: {}",
+            btn.text
+        );
+        assert!(btn.text.contains('3'), "文本应含条数: {}", btn.text);
+    }
 
     #[test]
     fn one_click_domain_no_selects_reality_backend() {

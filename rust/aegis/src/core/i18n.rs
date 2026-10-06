@@ -206,6 +206,50 @@ mod tests {
         set_lang(Lang::Zh);
     }
 
+    /// 路由自定义放行功能的 key 存在性回归测试：
+    /// 逐字显式列出 18 个 key（zh/en/ja 的 key 数量本就不同，不能用数量 parity），
+    /// 遍历三语断言非空且不等于 key 本身（rust-i18n 找不到 key 时原样返回 key）。
+    #[serial]
+    #[test]
+    fn routing_custom_translation_keys_exist() {
+        let keys = [
+            "xray.routing_custom_btn",
+            "xray.routing_custom_title",
+            "xray.routing_custom_add",
+            "xray.routing_custom_list",
+            "xray.routing_custom_check",
+            "xray.routing_custom_added",
+            "xray.routing_custom_exists",
+            "xray.routing_custom_removed",
+            "xray.routing_custom_empty_list",
+            "xray.routing_custom_full",
+            "xray.routing_custom_del_bad_index",
+            "xray.routing_custom_invalid_scheme",
+            "xray.routing_custom_invalid_single_label",
+            "xray.routing_custom_invalid_ip",
+            "xray.routing_custom_invalid_generic",
+            "xray.routing_custom_check_hit",
+            "xray.routing_custom_check_miss",
+            "xray.routing_custom_input_prompt",
+        ];
+
+        for lang in [Lang::Zh, Lang::En, Lang::Ja] {
+            set_lang(lang);
+            for key in &keys {
+                let value = rust_i18n::t!(*key);
+                let value_str = value.to_string();
+                assert!(
+                    !value_str.is_empty() && value_str != *key,
+                    "key '{}' missing or resolves to key itself for {:?}",
+                    key,
+                    lang
+                );
+            }
+        }
+
+        set_lang(Lang::Zh);
+    }
+
     /// 防混淆回归测试：
     /// 机器端部署名为 `wwps-core` / `wwps-box`，但用户端显示必须用上游产品名
     /// **Xray-core** / **Sing-box**（见 `core/paths.rs` 模块注释的命名映射）。
