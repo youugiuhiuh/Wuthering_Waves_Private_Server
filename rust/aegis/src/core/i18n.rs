@@ -84,12 +84,16 @@ mod tests {
     use super::*;
     use serial_test::serial;
 
+    // locale 是进程级全局状态（rust-i18n 的 set_locale），不加 #[serial] 会与
+    // 本 crate 其它 #[serial] 的 locale 写入者并发执行，导致间歇性失败。
+    #[serial]
     #[test]
     fn default_lang_is_zh() {
         set_lang(Lang::Zh);
         assert_eq!(current_lang(), Lang::Zh);
     }
 
+    #[serial]
     #[test]
     fn set_and_get_lang() {
         set_lang(Lang::En);
