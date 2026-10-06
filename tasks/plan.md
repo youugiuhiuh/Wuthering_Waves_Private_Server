@@ -228,7 +228,7 @@ T8 集成 parity 测试 + 全量质量门  ← 依赖全部
 
 # Implementation Plan: essential-direct（Phase E）
 
-> 对應 `SPEC.md` → `Module: essential-direct`。状态：**待批准（设计已獲用戶確認；本计畫待过目）**。
+> 对應 `SPEC.md` → `Module: essential-direct`。状态：**已批准并已完成（E0–E8，2026-10-06）**。
 > 任务勾选清单见 `tasks/todo.md` → 「Phase E」。
 > worktree：`/home/ub/Dark/wwps-worktrees/essential-direct`（分支 `feat/essential-direct`，base `04f34a5`）。
 
@@ -273,39 +273,39 @@ E8 文档收口 + 四道门终检 + code-review
   - Files: 无（只跑门）
   - Scope: —
 
-- [ ] **E1：RED — 新规则存在/形状/顺序**
+- [x] **E1：RED — 新规则存在/形状/顺序**
   - Acceptance: `test_rule_def_constants_count` 期望 `9`；新增 `test_essential_direct_rule_shape`、`test_essential_direct_precedes_cn_rules`（`cc < ed < cn_ip/cn_domain`）；此时跑测必须**红**（规则不存在）。
   - Verify: `cargo nextest run --cargo-profile fast-test xray` → 预期失败信息含 `essential_direct`
   - Files: `src/core/xray/routing.rs`（仅 tests）
   - Scope: S（1 file）
 
-- [ ] **E2：GREEN — RuleDef + i18n**
+- [x] **E2：GREEN — RuleDef + i18n**
   - Acceptance: `ROUTING_RULES` 新增 `essential_direct`（插在 `connectivity_check` 之后，先放 `domain:recaptcha.net` 一条占位）；三语新增 `xray.routing_rule_essential_direct`：zh「外網必需服務直連」/ en `Essential Services Direct` / ja「必須サービスの直通」；E1 测试转绿。
   - Verify: `cargo nextest run --cargo-profile fast-test xray`；`cargo fmt`
   - Files: `src/core/xray/routing.rs`、`src/resources/i18n/{zh,en,ja}.yml`、`src/core/xray/config.rs`
   - 注：`src/core/xray/config.rs` 仅测试期望同步（默认启用规则集 4→5），经 Ruling 7 授权。
   - Scope: S（4 files，各 1–3 行）
 
-- [ ] **E3：RED→GREEN — 清单不变式与完整清单**
+- [x] **E3：RED→GREEN — 清单不变式与完整清单**
   - Acceptance: 先写四个测试（前缀/denylist/必需项在场/唯一小写无 scheme），跑必红；再补全 39 条使其转绿；`test_essential_direct_excludes_ads_and_tracking` 的 denylist 含 14 个具体域名 + 8 个前缀模式。
   - Verify: `cargo nextest run --cargo-profile fast-test essential_direct`
   - Files: `src/core/xray/routing.rs`
   - Scope: M（~120 行：清单 39 + 测试 4）
 
-- [ ] **E4：RED→GREEN — 迁移泛化 + 变更才 reload**
+- [x] **E4：RED→GREEN — 迁移泛化 + 变更才 reload**
   - Acceptance: 全量 `cargo nextest run --cargo-profile fast-test` 绿（含 5 个既有测试的 len/tags 期望同步，Ruling 10/11 授权）。
   - 步骤 1d（把 `test_ensure_direct_rules_updates_stale_targets_at_index_zero` 与 `test_ensure_direct_rules_emits_expected_json_shape` 的期望同步为 `domain:` 前缀）：**已作废**，移至 E6（Ruling 9）。
   - Verify: `cargo nextest run --cargo-profile fast-test xray`；`git diff` 审阅：无变更路径不得出现 `reload_core`
   - Files: `src/core/xray/routing.rs`
   - Scope: M（~100 行）
 
-- [ ] **E5：RED→GREEN — 自检泛化**
+- [x] **E5：RED→GREEN — 自检泛化**
   - Acceptance: `matches_builtin_direct(host) -> Option<&'static str>`（返回规则 id）；`matches_connectivity_check` 保留为薄封装；`custom_check_reply` 用命中规则 id 取 i18n 名；新增 `test_matches_builtin_direct_reports_rule_id`、`test_matches_builtin_direct_rejects_substring_false_positive`。
   - Verify: `cargo nextest run --cargo-profile fast-test`（全量）+ `cargo clippy --all-targets --all-features -- -D warnings`
   - Files: `src/core/xray/custom_direct.rs`、`src/shared/handlers/message.rs`
   - Scope: M（~70 行）
 
-- [ ] **E6：cc 正規化 + custom_direct 锚点 + E3 deferred minors（四部分）**
+- [x] **E6：cc 正規化 + custom_direct 锚点 + E3 deferred minors（四部分）**
   - (1) cc 正規化：`connectivity_check` 5 条加 `domain:` 前缀，并同步其 3 个测试——`test_connectivity_check_targets_are_probe_endpoints_only`（剥前缀后仍「恰为这 5 项」）、`test_ensure_direct_rules_emits_expected_json_shape`、`test_ensure_direct_rules_updates_stale_targets_at_index_zero`（Ruling 9）。
   - (2) custom_direct 锚点改 `essential_direct`：`ensure_custom_direct_value` 的锚点由 `connectivity_check` 改为 `essential_direct`，并同步索引测试（`cd == tag_index("essential_direct") + 1` 且仍 `< cn_ip/cn_domain`）与 `direct_chain()` 夹具（Ruling 12）。
   - (3) apex denylist 断言：`essential_direct` 条目剥前缀后不得等于 apex `google.com`/`googleapis.com`/`gstatic.com`（E3 minor-2）。
@@ -314,13 +314,13 @@ E8 文档收口 + 四道门终检 + code-review
   - Files: `src/core/xray/routing.rs`、`src/core/xray/custom_direct.rs`
   - Scope: S（2 files）
 
-- [ ] **E7：菜单按钮**
+- [x] **E7：菜单按钮**
   - Acceptance: `handle_routing_menu` 注释「8 条」→「9 条」；新增断言：菜单按钮包含 `routing_toggle:essential_direct`，文字 = `t!("xray.routing_rule_essential_direct")`；三语 key 存在性测试涵盖新 key。
   - Verify: `cargo nextest run --cargo-profile fast-test xray`；真机目视（部署后）
   - Files: `src/shared/handlers/xray.rs`
   - Scope: S（1 file）
 
-- [ ] **E8：收口**
+- [x] **E8：收口**
   - Acceptance: SPEC/plan/todo 与本实现一致；四道门全绿；`code-review-and-quality` 五轴审查完成，Critical 为零；给出交付建议（PR / merge / keep）。
   - Verify: 四道门 + 审查报告 + `git log --oneline` 原子提交串
   - Files: `SPEC.md`、`tasks/plan.md`、`tasks/todo.md`

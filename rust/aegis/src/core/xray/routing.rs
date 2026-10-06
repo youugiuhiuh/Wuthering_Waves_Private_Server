@@ -505,7 +505,7 @@ mod tests {
     /// 这类域名，且与自检函数的语义不一致；故禁止裸域名。
     #[test]
     fn test_essential_direct_targets_use_explicit_prefix() {
-        // 39 = 37 条 domain: + 2 条 geosite:；SPEC 标题的「37 条」经编排者裁定为笔误（只数了 domain: 行），将于文档提交更正为 39。
+        // 39 = 37 条 domain: + 2 条 geosite:，与 SPEC「条目清单（39 条）」一致。
         let rule = ROUTING_RULES
             .iter()
             .find(|r| r.id == "essential_direct")
