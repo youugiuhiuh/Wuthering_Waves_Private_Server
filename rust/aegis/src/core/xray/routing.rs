@@ -309,7 +309,7 @@ impl RoutingManager {
 
     /// 迁移：确保 00_base.json 的 routing.rules 满足 direct 规则不变量（幂等）。
     ///
-    /// **仅在发生变更时**写盘并 reload 核心（与 `write_rules()` 对齐）；
+    /// **仅在发生变更时**写盘并 reload 核心（与 `write_base_json()` 对齐）；
     /// 无变更时零副作用（不写盘、不 reload，避免打断现有连接）。由
     /// get_all_with_status() 在用户打开路由菜单时触发。
     ///
