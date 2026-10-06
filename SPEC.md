@@ -458,3 +458,273 @@ cargo test --doc
 5. 四条质量门全绿；全量测试通过数 = 拆分前（1097 passed / 1 skipped）。
 6. 仅 3 个代码文件被改：`routing.rs`、`custom_direct.rs`（新增）、`mod.rs`；`handlers/` 零改动。
 7. `custom_direct.rs` 内**零** `anyhow::bail!`/错误路径改动：`add_custom_direct_entry` / `remove_custom_direct_at` 的「重复/越界不写盘」语义原样保留。
+
+---
+
+# Module: essential-direct（外網必需服務直連）
+
+> 状态：**已批准（2026-10-06，用户确认「要但新建按钮」＋「cc 五条也改 `domain:` 前缀」）**。
+> 类型：**新功能（新增内建规则 + 新菜单按钮）＋ 两个既有缺陷修复**（迁移不 reload、`toggle` 落位）。
+> 归属：影响 >3 文件、属安全/路由逻辑 ⇒ **strict 模式**（worktree → plan → TDD → review → ship）。
+
+## Objective
+
+**问题**：`geosite:cn`（Loyalsoldier 的 `geosite.dat`）把大量**外网必需**的 Google/Apple/Microsoft 服务端點收进了「中国域名」名单。本机实测命中并被黑洞的实例：
+
+| 域名 | 实测证据 | 用户可见后果 |
+|---|---|---|
+| `www.recaptcha.net` | HAR：登录链唯一失败请求 `net::ERR_CONNECTION_CLOSED`；core 日志 `14:16:32 [2607:f8b0:4005:815::2003]:443 -> blocked`（`getent` 证实该 IP 即 `www.recaptcha.net`） | **登录/注册彻底失败** |
+| `app-measurement.com` | `.220` core 日志 `-> blocked` **42 次** | Firebase 分析被黑洞、App 反复重试 |
+| `safebrowsing.googleapis.com` | `.220` core 日志 `-> blocked` 6 次 | Chrome 安全浏览失效 |
+| `r2---sn-j5o76n7{s,l}.googlevideo.com` | `.220` core 日志 `-> blocked`；命中 `geosite:cn` 的 **regex** 条目 | YouTube 影片 CDN 被封 |
+| `pagead-googlehosted.l.google.com` 等 | `.44` core 日志大量 `142.251.x:80 -> blocked` | 广告/追踪（**本模块明确不放行**） |
+
+上游**已知且不修**：
+
+- **#484**《请求移除 fonts.gstatic.com 为 cn 规则》2026-01-25 开启，**至今 open**；
+- **#478**《gstatic.com 大陆直连导致 gemini 显示不全》owner 回复（comment 3708851066，2026-01-05）：`将 geosite:google-cn 设置为代理，并放在 geosite:cn 上面`；同期社区留言「这个设计很不好，导致用 google 的人都有问题」。
+
+**目标**：把「被 `geosite:cn` 误收的外网必需服务端點」做成**内建、默认启用、可在菜单单独开关**的规则 `essential_direct`，免去管理员逐台手动 `custom_direct`。
+
+**成功标准（一句话）**：任一部署升级后打开一次路由菜单，`essential_direct` 自动落位在 `cn_ip`/`cn_domain` 之前并重启核心；`www.recaptcha.net` 的登录请求由 `blocked` 变为 `direct`；全程无需手工编辑 JSON。
+
+## 为什么是「新规则 + 新按钮」而不是扩 `connectivity_check`
+
+**既有守护测试禁止扩它**（`routing.rs:311 test_connectivity_check_targets_are_probe_endpoints_only`）：
+
+```rust
+assert_eq!(rule.targets, &[5 个探測端點], "域名清单必须恰为这 5 项");
+for t in rule.targets {
+    assert!(!t.starts_with("csi.") && !t.starts_with("update.") && !t.starts_with("safebrowsing.")
+        && !t.starts_with("tac.") && !t.starts_with("clientservices.") && !t.starts_with("fontfiles.")
+        && ... , "不应放行其余资源 CDN / 遥测域名");
+}
+```
+
+→ 方案 A（扩充 `connectivity_check`）会当场让该测试变红。**新建独立规则**既满足用户要求，又不违反既有不变量；且 `handle_routing_menu` 直接迭代 `ROUTING_RULES`，新规则**自动获得菜单按钮**（`routing_toggle:essential_direct`），无需改菜单渲染逻辑。
+
+## 已核实的事实（设计依据，全部有据可查）
+
+1. **`geosite:google-cn` 不能直接采用**（本机 `geosite.dat` 解析）：该分类 112 条里 **28 条是广告/追踪**（`doubleclick.net`、`googlesyndication.com`、`googleadservices.com`、`googletagmanager.com`、`google-analytics.com`、`pagead-googlehosted.l.google.com`、`imasdk.googleapis.com`、`app-measurement.com` …）⇒ 违反「不放行广告/追踪」。
+2. **`geosite:google-cn` 还漏掉本次真正的故障域名**：它只收 `full:recaptcha.net`（精确匹配，**不含子域**），而 `geosite:cn` 收的是 `full:www.recaptcha.net` ⇒ 只加 `google-cn` 修不好登录。
+3. **`geosite:apple-cn` 可用**：165 条，覆盖 Apple 清单 20/21（只漏 `init.itunes.apple.com`），且**零广告/追踪**。
+4. **`geosite:microsoft-pki` 可用**：6 条（`crl/ocsp.microsoft.com` 等）；**无 `microsoft-cn`** ⇒ 微软端點需手写。
+5. **Xray 官方文档语义**（`XTLS/Xray-docs-next/docs/en/config/routing.md`）：
+   - `domain:` = 匹配该域名**及其子域**（推荐用法）；
+   - **裸字符串 = `keyword:` 子字符串匹配**（可省略前缀）——**本专案此前误以为等于 `domain:`**；
+   - `geosite:xxx` 是 domain 列表中的合法条目形式；
+   - 路由**自上而下、首条命中即停**；全部不命中时用**第一个 outbound**。
+6. **被误收的 Google IP 不在 `geoip:CN`**（本机 `geoip.dat` 实测：`142.251.218.195`、`2607:f8b0:4005:815::2003` 等均 `NO`）⇒ 问题纯由 `cn_domain` 造成，**用 domain 规则即可修**，且必须排在 `cn_domain` 之前。
+
+## 规则定义
+
+```rust
+RuleDef {
+    id: "essential_direct",
+    rule_type: "domain",
+    outbound: "direct",
+    default_enabled: true,
+    // 位置：ROUTING_RULES 中紧接 connectivity_check 之后（索引 1）
+}
+```
+
+- `connectivity_check` **内容不动**（仅把 5 条正規化为 `domain:` 前缀，见下），语义保持「连通性探測 + Google 静态资源」。
+- 全部条目**必须**显式前缀：`domain:`（子域语义）或 `geosite:`；**禁止裸字符串**（会被 Xray 当子字符串，产生 `www.gstatic.com.evil.com` 这类误命中，且与自检函数语义不一致）。
+
+### 条目清单（39 条）
+
+> 39 = 37 条 `domain:` + 2 条 `geosite:`。
+
+**Google / YouTube 功能必需（29）**
+
+```
+domain:recaptcha.net
+domain:safebrowsing.googleapis.com
+domain:safebrowsing-cache.google.com
+domain:update.googleapis.com
+domain:dl.google.com
+domain:dl.l.google.com
+domain:tools.google.com
+domain:clientservices.googleapis.com
+domain:performanceparameters.googleapis.com
+domain:tac.googleapis.com
+domain:crashlyticsreports-pa.googleapis.com
+domain:firebase-settings.crashlytics.com
+domain:update.crashlytics.com
+domain:checkin.gstatic.com
+domain:csi.gstatic.com
+domain:g0.gstatic.com
+domain:g1.gstatic.com
+domain:g2.gstatic.com
+domain:g3.gstatic.com
+domain:fontfiles.googleapis.com
+domain:redirector.gvt1.com
+domain:redirector.gcpcdn.gvt1.com
+domain:redirector.offline-maps.gvt1.com
+domain:redirector.snap.gvt1.com
+domain:beacons.gvt2.com
+domain:beacons2.gvt2.com
+domain:beacons3.gvt2.com
+domain:googlevideo.com          # 覆盖 geosite:cn 的 YouTube CDN regex，避免枚举轮换节点
+domain:youtube-dubbing.com
+```
+
+**Apple（2）**
+
+```
+geosite:apple-cn                    # 165 条，覆盖 ocsp/crl/mesu/swscan/swdist/swcdn/gs-loc/cl2-cl5/init.ess/guzzoni/...
+domain:init.itunes.apple.com        # apple-cn 唯一漏项
+```
+
+**Microsoft（8）**
+
+```
+geosite:microsoft-pki               # crl/ocsp.microsoft.com 等 6 条
+domain:download.microsoft.com
+domain:download.visualstudio.microsoft.com
+domain:officecdn.microsoft.com
+domain:storeedge.microsoft.com
+domain:storeedgefd.dsx.mp.microsoft.com
+domain:dcg.microsoft.com
+domain:sdx.microsoft.com
+```
+
+### 明确**不**纳入（硬约束：不放行广告/追踪）
+
+`app-measurement.com`、`imasdk.googleapis.com`、`adservice.google.com`、`pagead-googlehosted.l.google.com`、`ssl-google-analytics.l.google.com`、`www-google-analytics.l.google.com`、`www-googletagmanager.l.google.com`、`google-analytics.com`、`googletagmanager.com`、`googleadservices.com`、`googlesyndication.com`、`googletagservices.com`、`doubleclick.net`、`googleoptimize.com`。
+
+也不列 apex `google.com` / `googleapis.com` / `gstatic.com`（避免把其下广告端點一并放行）。**该约束以测试断言固化**（denylist + 前缀检查），防止日后手滑加回。
+
+### 开关持久化（`routing.rulesDisabled`）
+
+`toggle()` 在停用某规则时，除从 `routing.rules` 移除该规则外，还把规则 id 追加进同文件的 `routing.rulesDisabled`（字符串数组，去重）；重新启用时写回 canonical 规则（`rule_def_to_json`）并从该数组移除 id。整个读-改-写与迁移、custom_direct 共用既有 `CONFIG_LOCK`，且不改动 `00_base.json` 其他键；「用户显式停用」因此随文件一起备份/回滚，无需新增状态文件。
+
+迁移 `ensure_direct_rules_value` 与 `rulesDisabled` 的交互：
+
+- 停用中的规则（id ∈ `rulesDisabled`）即使 `default_enabled == true` 也不得被插入，且「缺失」不计为变更——否则打开一次菜单就把它塞回来，用户永远关不掉（`connectivity_check` 的既有缺陷同此）。
+- 若同一 id 同时出现在 `rules` 与 `rulesDisabled`（例如管理员手改 JSON），以 `rules` 为准：保留规则并从 `rulesDisabled` 移除该 id；此移除本身算一次变更（触发写盘 + reload）。
+- `rulesDisabled` 缺省即「无停用记录」；迁移不会主动创建该键，仅在需要移除冲突标记时写回。
+
+## 两个既有缺陷的修复（本模块必须一并做）
+
+### 修復 1：迁移后不重启核心 ⇒ 新规则在存量机器上等于不存在
+
+`ensure_direct_rules_in_base()`（打开路由菜单时触发）**写盘后不 reload**；而 `ensure_direct_rules_value()` 已支持「内容过时 → 覆盖」。结果：菜单显示 ✅、核心仍跑旧规则，新域名继续被 `cn_domain` 黑洞——与本次线上排查到的现象同类。
+
+**改法**：`ensure_direct_rules_value` 返回是否变更（已有语义），`ensure_direct_rules_in_base` 在**变更时**写盘并 `reload_core()`，与 `write_rules()` 对齐；无变更时零副作用（幂等，不打扰现网连接）。
+
+### 修復 2：`toggle()` 用 `push` ⇒ 任何 `direct` 规则被打开后都落在 `cn_domain` 之后（死规则）
+
+**改法**：把迁移的不变量从「确保 `connectivity_check` 在首位」泛化为
+
+> **所有 `outbound == "direct"` 的规则，必须按 `ROUTING_RULES` 顺序位于所有 blocked 规则之前**（存在性 / 内容 = 当前定义 / 位置）。
+
+迁移是唯一修复路径（`toggle` 保持 push 不改），因此切开关后重新打开菜单即自动修正。**收益**：新按钮可用；既有 `openai`（direct、默认关）被打开后也不再是死规则。
+
+## 自检一致性
+
+`matches_connectivity_check` 泛化为 `matches_builtin_direct(host) -> Option<&'static str>`（返回命中的规则 id），`custom_check_reply` 用该规则 id 取 i18n 名回显；否则出现「已白名单、自检却说未命中」的误导（本次线上排查正是被这类不一致拖慢）。
+
+## `connectivity_check` 5 条正規化（已批准）
+
+`www.gstatic.com` → `domain:www.gstatic.com`（其余同理）。理由：Xray 裸字符串是**子字符串**语义，`www.gstatic.com.evil.com` 也会命中；`domain:` 收紧为 apex＋子域，且与自检函数语义一致。守护测试保留其原意（仍断言「恰为这 5 项」、仍禁 `csi./update./safebrowsing.` 等），但比对前剥掉 `domain:` 前缀。
+
+## Tech Stack
+
+Rust 2024（workspace `rust/aegis`）、Xray-core 26.9.30（`wwps-core`）、rust-i18n（`src/resources/i18n/{zh,en,ja}.yml`）、tokio、serde_json、cargo-nextest。**无新依赖。**
+
+## Commands
+
+```bash
+cd rust/aegis
+cargo fmt
+cargo clippy --all-targets --all-features -- -D warnings
+cargo nextest run --cargo-profile fast-test            # 权威门（基线见 tasks/plan.md）
+cargo test --doc                                       # 兜底门
+cargo nextest run --cargo-profile fast-test xray       # 本模块快速回路
+```
+
+## Project Structure（本次改动范围）
+
+```
+rust/aegis/src/core/xray/routing.rs          # 新 RuleDef + 迁移泛化 + reload + 测试
+rust/aegis/src/core/xray/custom_direct.rs    # 自检泛化 matches_builtin_direct + 测试夹具
+rust/aegis/src/shared/handlers/message.rs    # 自检回报用命中规则名
+rust/aegis/src/shared/handlers/xray.rs       # 菜单注释/按钮测试
+rust/aegis/src/resources/i18n/{zh,en,ja}.yml # routing_rule_essential_direct
+SPEC.md / tasks/plan.md / tasks/todo.md      # 文档
+```
+
+## Code Style
+
+```rust
+// 条目一律带显式前缀：读的人不必去查 Xray 裸字符串是子字符串还是子域语义。
+targets: &[
+    "domain:recaptcha.net",              // 登录链路必需（#478 同类问题的直系案例）
+    "domain:safebrowsing.googleapis.com",
+    "geosite:apple-cn",                  // 由 geodata 维护，免手写 165 条
+],
+```
+
+## Testing Strategy
+
+**全部为单元测试（纯函数优先）+ 既有夹具**；无 I/O 依赖（`00_base.json` 路径硬编码 `/etc/wwps/...`，故迁移逻辑必须留在纯函数层被测，I/O 包装仅薄调用）。
+
+| 测试 | 断言要点 |
+|---|---|
+| `test_essential_direct_rule_shape` | id/`rule_type=domain`/`outbound=direct`/`default_enabled=true` |
+| `test_essential_direct_precedes_cn_rules` | `pos(connectivity_check) < pos(essential_direct) < pos(cn_ip)`、`< pos(cn_domain)` |
+| `test_essential_direct_targets_use_explicit_prefix` | 每条须以 `domain:` 开头或为白名单内的 `geosite:` 条目；无裸域名 |
+| `test_essential_direct_excludes_ads_and_tracking` | denylist 14 条 + 前缀（`pagead`/`doubleclick`/`adservices`/`syndication`/`googletagmanager`/`-analytics`/`app-measurement`/`imasdk`）全不出现 |
+| `test_essential_direct_contains_evidence_backed_hosts` | `domain:recaptcha.net`、`domain:googlevideo.com`、`geosite:apple-cn`、`geosite:microsoft-pki` 必须在场 |
+| `test_essential_direct_targets_unique_lowercase_no_scheme` | 去重、全小写、无 `://`、无 `/`、无空格、无 IP、无 `regexp:` |
+| `test_ensure_direct_rules_inserts_essential_direct` | 旧 base（仅 cc + blocked）→ `[connectivity_check, essential_direct, private_ip, cn_ip, cn_domain]` |
+| `test_ensure_direct_rules_moves_misplaced_direct_before_blocked` | 末尾的 `openai`/`essential_direct` 被提到 blocked 之前且内容=canonical |
+| `test_ensure_direct_rules_idempotent_all_canonical` | 第二次调用返回 `false`，JSON 不变 |
+| `test_ensure_direct_rules_updates_stale_targets_at_index_zero`（既有，更新） | 旧 5 条 → 新 `domain:` 5 条 |
+| `test_connectivity_check_targets_are_probe_endpoints_only`（既有，更新） | 剥前缀后仍「恰为这 5 项」且仍禁 CDN/遥测 |
+| `test_custom_direct_index_precedes_cn_domain_regression`（既有，更新） | `cd == tag_index(essential_direct) + 1`，且仍 `< cn_ip/cn_domain` |
+| `test_matches_builtin_direct_reports_rule_id` | `www.recaptcha.net → Some("essential_direct")`、`fonts.gstatic.com → Some("connectivity_check")`、`www.doubleclick.net → None` |
+| `test_matches_builtin_direct_rejects_substring_false_positive` | `www.gstatic.com.evil.com → None`（正規化后核心与自检一致） |
+| `test_rule_def_constants_count`（既有，更新） | xray `ROUTING_RULES.len()` 8 → **9**；singbox 仍 6 |
+| 菜单按钮 | `routing_toggle:essential_direct` 存在且文案走 i18n；三语 key 齐备 |
+
+## Boundaries
+
+**Always**
+- 先写失败测试（RED）再写实现；每个任务一个原子提交。
+- 迁移逻辑保持纯函数可测；I/O 包装只做「读—纯函数—有变更才写盘+reload」。
+- 新条目带显式 `domain:`／`geosite:` 前缀。
+- 收尾跑四道门：`cargo fmt`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo nextest run --cargo-profile fast-test`、`cargo test --doc`。
+
+**Ask first**
+- 若要新增/删除任何清单条目（尤其把广告/追踪类加回）。
+- 若需改动 sing-box 侧或 `custom_direct` 的管理员输入语法。
+- 若 diff 超 ~200 行/片或需 >3 文件/片。
+
+**Never**
+- 删除、跳过或放松既有断言来「变绿」。
+- 引入新依赖、把 `geosite:google-cn` 整包放行。
+- 在同一 patch 混合无关重构。
+
+## Success Criteria（essential-direct）
+
+1. `ROUTING_RULES` 含 `essential_direct`（39 条），索引紧接 `connectivity_check` 之后，早于 `cn_ip`/`cn_domain`；xray 规则数 = 9。
+2. 清单零广告/追踪（denylist + 前缀断言通过）；全部条目带显式前缀；无重复/大写/IP/路径/正则。
+3. `connectivity_check` 5 条为 `domain:` 前缀；其守护测试仍断言「恰为这 5 项」。
+4. 迁移：旧 base 打开菜单后被插入 `essential_direct` 并**重启核心**；重复执行零副作用（返回 `false`、不写盘、不 reload）；错位的 direct 规则被提到 blocked 之前（`openai` 回归）。
+5. 自检：`www.recaptcha.net` 回报命中 `essential_direct`；`www.doubleclick.net` 回报未命中；`www.gstatic.com.evil.com` 不再被裸前缀误命中。
+6. 三语 `xray.routing_rule_essential_direct` 齐备；菜单出现「外網必需服務直連」按钮且可开关。
+7. 四道质量门全绿，通过数 = 基线 + 新增测试数（无既有测试减少）。
+8. 真机：升级后打开一次路由菜单 → `journalctl -u wwps-core` 出现重启并读取新 `00_base.json`；登录页 `www.recaptcha.net` 由 `-> blocked` 变为 `>> direct`。
+
+## Open Questions
+
+- 无（用户已确认：新建按钮、纳入 Apple/Microsoft、排除广告追踪、`cc` 五条改 `domain:` 前缀）。
+- 遗留（超范围，另行立项）：sing-box 侧同类问题（`.srs` 的 `geosite-cn` 仍会拦这些域名）；`geosite:google-cn` 只收 `full:` 导致子域漏网——可向上游提 issue。
+
+## References
+
+- <https://github.com/Loyalsoldier/v2ray-rules-dat/issues/484>（fonts.gstatic.com 未修，open）
+- <https://github.com/Loyalsoldier/v2ray-rules-dat/issues/478#issuecomment-3708851066>（owner：改用 `geosite:google-cn` 并置于 `geosite:cn` 之前）
+- <https://github.com/XTLS/Xray-docs-next/blob/main/docs/en/config/routing.md>（domain 匹配语义、geosite 条目、首条命中即停、默认 outbound）

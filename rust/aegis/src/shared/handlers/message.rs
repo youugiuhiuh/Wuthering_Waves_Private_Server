@@ -10,7 +10,7 @@ use crate::core::security::acme::{
 use crate::core::types::{DnsProvider, DomainFlowSource, DomainInputState, DomainInputStep};
 use crate::core::xray::config::ConfigManager;
 use crate::core::xray::routing::{
-    CustomAddOutcome, RoutingManager, match_custom_direct, matches_connectivity_check,
+    CustomAddOutcome, RoutingManager, match_custom_direct, matches_builtin_direct,
 };
 use crate::shared::types::TimeoutStatus;
 
@@ -770,11 +770,11 @@ pub(crate) fn custom_check_outcome(domains: &[String], host: &str) -> CustomChec
 
 /// 渲染自检回报文案。
 ///
-/// connectivity_check（「Google 服务直连」）命中的域名本来就会被放行：
-/// 自检若只说「不在自定义列表里」，用户会误以为规则没生效而反复添加，
-/// 因此额外追加一行说明它由哪条规则覆盖。
-/// 这里复用既有的规则名 key（不新增 key）：三语文件不在本次改动的允许清单内，
-/// 而规则名与菜单里的展示名同源，改规则名时提示不会过期。
+/// 被任一内建 direct 规则（connectivity_check「Google 服务直连」/ essential_direct
+/// 「外網必需服務直連」…）命中的域名本来就会被放行：自检若只说「不在自定义列表里」，
+/// 用户会误以为规则没生效而反复添加，因此额外追加一行说明它由哪条规则覆盖。
+/// 规则名按 `xray.routing_rule_<id>` 约定现拼（三语文件不在本次改动的允许清单内）：
+/// 规则名与菜单里的展示名同源，改规则名时提示不会过期。
 fn custom_check_reply(outcome: &CustomCheckOutcome, host: &str) -> String {
     let mut text = match outcome {
         CustomCheckOutcome::Hit { idx, entry } => t!(
@@ -786,9 +786,13 @@ fn custom_check_reply(outcome: &CustomCheckOutcome, host: &str) -> String {
         CustomCheckOutcome::Miss => t!("xray.routing_custom_check_miss").to_string(),
     };
 
-    if matches_connectivity_check(host) {
+    // 报「命中的那条规则」而不是写死 connectivity_check：direct 规则不止一条，
+    // 写死会把 essential_direct 覆盖的域名（recaptcha 等）张冠李戴。
+    if let Some(rule_id) = matches_builtin_direct(host) {
+        // 先绑定 key：`t!` 借用 key，直接把临时 `format!` 传进去会先被释放。
+        let rule_name_key = format!("xray.routing_rule_{rule_id}");
         text.push_str("\nℹ️ ");
-        text.push_str(&t!("xray.routing_rule_connectivity_check"));
+        text.push_str(t!(&rule_name_key).as_ref());
     }
 
     text
@@ -1561,6 +1565,29 @@ mod tests {
         i18n::set_lang(previous);
     }
 
+    /// 自检提示必须用「命中的那条内建 direct 规则」的名字：direct 规则不止
+    /// connectivity_check 一条，硬编码 key 会把 essential_direct 覆盖的域名
+    /// （如 recaptcha）张冠李戴地报成「Google 服务直连」。
+    #[serial]
+    #[test]
+    fn custom_check_reply_uses_hit_rule_name() {
+        let previous = i18n::current_lang();
+        i18n::set_lang(Lang::Zh);
+        let miss = CustomCheckOutcome::Miss;
+
+        // domain:recaptcha.net 只被 essential_direct 覆盖
+        let essential = custom_check_reply(&miss, "www.recaptcha.net");
+        assert!(
+            essential.contains(&t!("xray.routing_rule_essential_direct").to_string()),
+            "应回显命中的 essential_direct 规则名: {essential}"
+        );
+        assert!(
+            !essential.contains(&t!("xray.routing_rule_connectivity_check").to_string()),
+            "不得报成 Google 服务直连: {essential}"
+        );
+        i18n::set_lang(previous);
+    }
+
     /// 自检来源走只读分支：不产出 DomainReady（不会去签证书/建站）、
     /// 不推进 ACME 输入步骤、不改动 00_base.json。
     #[serial]
@@ -1589,8 +1616,9 @@ mod tests {
         assert_eq!(before, after, "自检不得改动 {base}");
     }
 
-    /// 自检分支复用了两个既有 i18n key（三语文件不在本次允许改动的清单内，故不新增 key）：
-    /// 它们必须三语齐备，否则用户会直接看到 `xray.user_cfg_not_found` 这种原始 key。
+    /// 自检分支复用了既有 i18n key（三语文件不在本次允许改动的清单内，故不新增 key）：
+    /// 规则名按 `xray.routing_rule_<id>` 现拼，故所有会命中自检的 direct 规则 id
+    /// 都必须三语齐备，否则用户会直接看到 `xray.routing_rule_essential_direct` 这种原始 key。
     #[test]
     fn custom_check_reused_keys_exist_in_all_locales() {
         for yaml in [
@@ -1598,7 +1626,11 @@ mod tests {
             include_str!("../../resources/i18n/en.yml"),
             include_str!("../../resources/i18n/ja.yml"),
         ] {
-            for leaf in ["routing_rule_connectivity_check", "user_cfg_not_found"] {
+            for leaf in [
+                "routing_rule_connectivity_check",
+                "routing_rule_essential_direct",
+                "user_cfg_not_found",
+            ] {
                 assert!(
                     yaml.contains(&format!("\n  {leaf}: ")),
                     "缺少 i18n key: xray.{leaf}"
