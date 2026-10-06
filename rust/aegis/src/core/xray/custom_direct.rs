@@ -216,23 +216,35 @@ pub fn match_custom_direct(domains: &[String], host: &str) -> Option<usize> {
         .position(|entry| entry_matches_host(&normalize_host(entry), &host))
 }
 
-/// 判断 host 是否命中 connectivity_check 的 5 个静态主机名（裸主机名 = 含子域语义）。
+/// 判断 host 是否命中「任一内建 direct 规则」；命中则返回该规则 id。
 ///
-/// 主机名清单从 ROUTING_RULES 现取而不另抄一份：抄两份的话，日后改规则域名时
+/// 遍历 `ROUTING_RULES` 现取而不另抄一份清单：抄两份的话，日后改规则域名时
 /// 自检会静默用过时清单判断，恰恰在排查「放行了却仍被拦」时给出误导结论。
-pub fn matches_connectivity_check(host: &str) -> bool {
+/// 按规则表顺序返回首条命中的（与 Xray 首条命中即停一致），因此
+/// connectivity_check 与 essential_direct 同时命中时返回前者。
+/// 不解析 `geosite:` / `geoip:` 条目：它们靠 geodata 展开，无法在此离线判定。
+pub fn matches_builtin_direct(host: &str) -> Option<&'static str> {
     let host = normalize_host(host);
     if host.is_empty() {
-        return false;
+        return None;
     }
     ROUTING_RULES
         .iter()
-        .find(|r| r.id == "connectivity_check")
-        .is_some_and(|rule| {
+        .filter(|rule| rule.outbound == "direct")
+        .find(|rule| {
             rule.targets
                 .iter()
                 .any(|t| entry_matches_host(&normalize_host(t), &host))
         })
+        .map(|rule| rule.id)
+}
+
+/// 判断 host 是否命中 connectivity_check 的 5 个静态主机名（裸主机名 = 含子域语义）。
+///
+/// 薄封装：转调 `matches_builtin_direct` 后判断命中的是不是 connectivity_check。
+/// connectivity_check 是规则表里首条 direct 规则，故被它覆盖的 host 一定先报它。
+pub fn matches_connectivity_check(host: &str) -> bool {
+    matches_builtin_direct(host) == Some("connectivity_check")
 }
 
 impl RoutingManager {
@@ -773,6 +785,33 @@ mod tests {
         // 裸主机名等价于 domain: —— 子域也要命中
         assert!(matches_connectivity_check("sub.www.gstatic.com"));
         assert!(matches_connectivity_check("a.b.fonts.googleapis.com"));
+    }
+
+    /// 自检要按「命中的那条内建 direct 规则」报名字：规则表里 direct 不止一条
+    /// （connectivity_check / essential_direct），命中哪条就要报哪条，
+    /// 否则 essential_direct 覆盖的域名会被说成「Google 服务直连」。
+    #[test]
+    fn test_matches_builtin_direct_reports_rule_id() {
+        // 只被 essential_direct 命中的域名
+        assert_eq!(
+            matches_builtin_direct("www.recaptcha.net"),
+            Some("essential_direct")
+        );
+        // connectivity_check 排在规则表首位：两者都命中时必须先报它
+        assert_eq!(
+            matches_builtin_direct("fonts.gstatic.com"),
+            Some("connectivity_check")
+        );
+        // 两张 direct 清单都不覆盖的域名
+        assert_eq!(matches_builtin_direct("www.doubleclick.net"), None);
+    }
+
+    /// 子串误命中是规则匹配的核心反例：`www.gstatic.com` 不能靠裸 ends_with
+    /// 命中 `www.gstatic.com.evil.com`，也不能命中 `evilwww.gstatic.com`。
+    #[test]
+    fn test_matches_builtin_direct_rejects_substring_false_positive() {
+        assert_eq!(matches_builtin_direct("www.gstatic.com.evil.com"), None);
+        assert_eq!(matches_builtin_direct("evilwww.gstatic.com"), None);
     }
 
     #[test]

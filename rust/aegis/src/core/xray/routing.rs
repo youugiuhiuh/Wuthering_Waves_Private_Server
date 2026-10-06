@@ -6,8 +6,8 @@ use tokio::sync::Mutex;
 
 // 拆分后仍从本模块导出，保持既有调用方路径不变（handlers/message.rs 有 6 处引用两种判定）。
 pub use super::custom_direct::{
-    CustomAddOutcome, CustomDomainError, match_custom_direct, matches_connectivity_check,
-    normalize_custom_domain,
+    CustomAddOutcome, CustomDomainError, match_custom_direct, matches_builtin_direct,
+    matches_connectivity_check, normalize_custom_domain,
 };
 
 pub(super) static CONFIG_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
