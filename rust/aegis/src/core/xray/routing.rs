@@ -45,10 +45,59 @@ pub static ROUTING_RULES: &[RuleDef] = &[
     },
     // 外網必需服務直連：geosite:cn 误收的外网必需服务端点（Google/Apple/Microsoft），
     // 必须早于 cn_ip / cn_domain，否则被 blackhole。
+    // 硬约束：不放行任何广告/追踪域名（由 test_essential_direct_excludes_ads_and_tracking
+    // 的 14 域名 + 8 模式断言固化）——故不整包引用 geosite:google-cn。
     RuleDef {
         id: "essential_direct",
         rule_type: "domain",
-        targets: &["domain:recaptcha.net"],
+        targets: &[
+            // ── Google / YouTube 功能必需（29）──
+            "domain:recaptcha.net",
+            "domain:safebrowsing.googleapis.com",
+            "domain:safebrowsing-cache.google.com",
+            "domain:update.googleapis.com",
+            "domain:dl.google.com",
+            "domain:dl.l.google.com",
+            "domain:tools.google.com",
+            "domain:clientservices.googleapis.com",
+            "domain:performanceparameters.googleapis.com",
+            "domain:tac.googleapis.com",
+            "domain:crashlyticsreports-pa.googleapis.com",
+            "domain:firebase-settings.crashlytics.com",
+            "domain:update.crashlytics.com",
+            "domain:checkin.gstatic.com",
+            "domain:csi.gstatic.com",
+            "domain:g0.gstatic.com",
+            "domain:g1.gstatic.com",
+            "domain:g2.gstatic.com",
+            "domain:g3.gstatic.com",
+            "domain:fontfiles.googleapis.com",
+            "domain:redirector.gvt1.com",
+            "domain:redirector.gcpcdn.gvt1.com",
+            "domain:redirector.offline-maps.gvt1.com",
+            "domain:redirector.snap.gvt1.com",
+            "domain:beacons.gvt2.com",
+            "domain:beacons2.gvt2.com",
+            "domain:beacons3.gvt2.com",
+            // 覆盖 geosite:cn 的 YouTube CDN regex，避免枚举轮换节点
+            "domain:googlevideo.com",
+            "domain:youtube-dubbing.com",
+            // ── Apple（2）──
+            // 165 条，覆盖 ocsp/crl/mesu/swscan/swdist/swcdn/gs-loc/cl2-cl5/init.ess/guzzoni/...
+            "geosite:apple-cn",
+            // apple-cn 唯一漏项
+            "domain:init.itunes.apple.com",
+            // ── Microsoft（8）──
+            // crl/ocsp.microsoft.com 等 6 条
+            "geosite:microsoft-pki",
+            "domain:download.microsoft.com",
+            "domain:download.visualstudio.microsoft.com",
+            "domain:officecdn.microsoft.com",
+            "domain:storeedge.microsoft.com",
+            "domain:storeedgefd.dsx.mp.microsoft.com",
+            "domain:dcg.microsoft.com",
+            "domain:sdx.microsoft.com",
+        ],
         outbound: "direct",
         default_enabled: true,
     },
@@ -348,6 +397,138 @@ mod tests {
             pos("essential_direct") < pos("cn_domain"),
             "essential_direct 必须排在 cn_domain 之前"
         );
+    }
+
+    /// 清单条目一律带显式前缀：`domain:`（apex＋子域语义）或白名单 `geosite:`。
+    /// Xray 裸字符串是关键字**子字符串**匹配，会误命中 `www.gstatic.com.evil.com`
+    /// 这类域名，且与自检函数的语义不一致；故禁止裸域名。
+    #[test]
+    fn test_essential_direct_targets_use_explicit_prefix() {
+        // 39 = 37 條 domain: + 2 條 geosite:；SPEC 標題的「37 條」經編排者裁定為筆誤（只數了 domain: 行），將於文檔提交更正為 39。
+        let rule = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == "essential_direct")
+            .expect("essential_direct 规则必须存在");
+        assert_eq!(
+            rule.targets.len(),
+            39,
+            "清单必须恰为 39 条（SPEC 逐字清单：29 Google + 2 Apple + 8 Microsoft）"
+        );
+        const ALLOWED_GEOSITE: &[&str] = &["geosite:apple-cn", "geosite:microsoft-pki"];
+        for &t in rule.targets {
+            let ok = t.starts_with("domain:") || ALLOWED_GEOSITE.contains(&t);
+            assert!(
+                ok,
+                "条目必须带 domain: 前缀或为白名单 geosite 条目，禁止裸域名: {}",
+                t
+            );
+        }
+    }
+
+    /// 硬约束：不得放行广告/追踪域名。以 14 个具体域名 + 8 个模式双重断言固化，
+    /// 防止日后手滑把 `geosite:google-cn` 那 28 条广告/追踪条目加回。
+    #[test]
+    fn test_essential_direct_excludes_ads_and_tracking() {
+        let rule = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == "essential_direct")
+            .expect("essential_direct 规则必须存在");
+
+        const DENIED_DOMAINS: &[&str] = &[
+            "app-measurement.com",
+            "imasdk.googleapis.com",
+            "adservice.google.com",
+            "pagead-googlehosted.l.google.com",
+            "ssl-google-analytics.l.google.com",
+            "www-google-analytics.l.google.com",
+            "www-googletagmanager.l.google.com",
+            "google-analytics.com",
+            "googletagmanager.com",
+            "googleadservices.com",
+            "googlesyndication.com",
+            "googletagservices.com",
+            "doubleclick.net",
+            "googleoptimize.com",
+        ];
+        const DENIED_SUBSTRINGS: &[&str] = &[
+            "pagead",
+            "doubleclick",
+            "adservices",
+            "syndication",
+            "googletagmanager",
+            "-analytics",
+            "app-measurement",
+            "imasdk",
+        ];
+
+        for &t in rule.targets {
+            let host = t
+                .strip_prefix("domain:")
+                .or_else(|| t.strip_prefix("geosite:"))
+                .unwrap_or(t);
+            for d in DENIED_DOMAINS {
+                assert_ne!(host, *d, "不得放行广告/追踪域名: {}", t);
+                assert!(
+                    !host.ends_with(&format!(".{}", d)),
+                    "不得放行广告/追踪域名的子域: {}",
+                    t
+                );
+            }
+            for p in DENIED_SUBSTRINGS {
+                assert!(!host.contains(p), "条目 {} 命中广告/追踪模式 {}", t, p);
+            }
+        }
+    }
+
+    /// 实测证据支撑的必需端點必须在场（否则登录 / YouTube CDN / 安全浏览
+    /// 仍被 cn_domain blackhole）。
+    #[test]
+    fn test_essential_direct_contains_evidence_backed_hosts() {
+        let rule = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == "essential_direct")
+            .expect("essential_direct 规则必须存在");
+        for required in [
+            "domain:recaptcha.net",
+            "domain:googlevideo.com",
+            "domain:safebrowsing.googleapis.com",
+            "geosite:apple-cn",
+            "geosite:microsoft-pki",
+            "domain:init.itunes.apple.com",
+        ] {
+            assert!(
+                rule.targets.contains(&required),
+                "必需端點 {} 必须在场（实测证据支撑）",
+                required
+            );
+        }
+    }
+
+    /// 清单卫生：无重复、全小写、无 scheme、无路径、无空格、无 IP、无 regexp:。
+    #[test]
+    fn test_essential_direct_targets_unique_lowercase_no_scheme() {
+        let rule = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == "essential_direct")
+            .expect("essential_direct 规则必须存在");
+        let mut seen = std::collections::HashSet::new();
+        for &t in rule.targets {
+            assert!(seen.insert(t), "条目重复: {}", t);
+            assert_eq!(t, t.to_lowercase(), "条目必须全小写: {}", t);
+            assert!(!t.contains("://"), "条目不得含 scheme: {}", t);
+            assert!(!t.contains('/'), "条目不得含路径: {}", t);
+            assert!(!t.contains(' '), "条目不得含空格: {}", t);
+            assert!(!t.starts_with("regexp:"), "条目不得用 regexp: {}", t);
+            let host = t
+                .strip_prefix("domain:")
+                .or_else(|| t.strip_prefix("geosite:"))
+                .unwrap_or(t);
+            assert!(
+                host.parse::<std::net::IpAddr>().is_err(),
+                "条目不得是 IP: {}",
+                t
+            );
+        }
     }
 
     /// 域名清单必须恰为这 5 项（连通性探测 + Google 登录必需静态资源 +
