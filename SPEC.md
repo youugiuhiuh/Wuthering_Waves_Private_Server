@@ -461,7 +461,7 @@ cargo test --doc
 
 ---
 
-# Module: essential-direct（外網必需服務直連）
+# Module: essential-direct（外网必需服务直连）
 
 > 状态：**已批准（2026-10-06，用户确认「要但新建按钮」＋「cc 五条也改 `domain:` 前缀」）**。
 > 类型：**新功能（新增内建规则 + 新菜单按钮）＋ 两个既有缺陷修复**（迁移不 reload、`toggle` 落位）。
@@ -714,7 +714,7 @@ targets: &[
 3. `connectivity_check` 5 条为 `domain:` 前缀；其守护测试仍断言「恰为这 5 项」。
 4. 迁移：旧 base 打开菜单后被插入 `essential_direct` 并**重启核心**；重复执行零副作用（返回 `false`、不写盘、不 reload）；错位的 direct 规则被提到 blocked 之前（`openai` 回归）。
 5. 自检：`www.recaptcha.net` 回报命中 `essential_direct`；`www.doubleclick.net` 回报未命中；`www.gstatic.com.evil.com` 不再被裸前缀误命中。
-6. 三语 `xray.routing_rule_essential_direct` 齐备；菜单出现「外網必需服務直連」按钮且可开关。
+6. 三语 `xray.routing_rule_essential_direct` 齐备；菜单出现「外网必需服务直连」按钮且可开关。
 7. 四道质量门全绿，通过数 = 基线 + 新增测试数（无既有测试减少）。
 8. 真机：升级后打开一次路由菜单 → `journalctl -u wwps-core` 出现重启并读取新 `00_base.json`；登录页 `www.recaptcha.net` 由 `-> blocked` 变为 `>> direct`。
 

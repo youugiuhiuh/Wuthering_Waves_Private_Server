@@ -771,7 +771,7 @@ pub(crate) fn custom_check_outcome(domains: &[String], host: &str) -> CustomChec
 /// 渲染自检回报文案。
 ///
 /// 被任一内建 direct 规则（connectivity_check「Google 服务直连」/ essential_direct
-/// 「外網必需服務直連」…）命中的域名本来就会被放行：自检若只说「不在自定义列表里」，
+/// 「外网必需服务直连」…）命中的域名本来就会被放行：自检若只说「不在自定义列表里」，
 /// 用户会误以为规则没生效而反复添加，因此额外追加一行说明它由哪条规则覆盖。
 /// 规则名按 `xray.routing_rule_<id>` 约定现拼（三语文件不在本次改动的允许清单内）：
 /// 规则名与菜单里的展示名同源，改规则名时提示不会过期。

@@ -280,7 +280,7 @@ E8 文档收口 + 四道门终检 + code-review
   - Scope: S（1 file）
 
 - [x] **E2：GREEN — RuleDef + i18n**
-  - Acceptance: `ROUTING_RULES` 新增 `essential_direct`（插在 `connectivity_check` 之后，先放 `domain:recaptcha.net` 一条占位）；三语新增 `xray.routing_rule_essential_direct`：zh「外網必需服務直連」/ en `Essential Services Direct` / ja「必須サービスの直通」；E1 测试转绿。
+  - Acceptance: `ROUTING_RULES` 新增 `essential_direct`（插在 `connectivity_check` 之后，先放 `domain:recaptcha.net` 一条占位）；三语新增 `xray.routing_rule_essential_direct`：zh「外网必需服务直连」/ en `Essential Services Direct` / ja「必須サービスをダイレクト」；E1 测试转绿。
   - Verify: `cargo nextest run --cargo-profile fast-test xray`；`cargo fmt`
   - Files: `src/core/xray/routing.rs`、`src/resources/i18n/{zh,en,ja}.yml`、`src/core/xray/config.rs`
   - 注：`src/core/xray/config.rs` 仅测试期望同步（默认启用规则集 4→5），经 Ruling 7 授权。

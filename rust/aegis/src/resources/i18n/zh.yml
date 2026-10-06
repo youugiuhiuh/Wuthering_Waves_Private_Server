@@ -481,7 +481,7 @@ xray:
   routing_rule_ads: "广告域名封锁"
   routing_rule_openai: "OpenAI直连"
   routing_rule_connectivity_check: "Google 服务直连"
-  routing_rule_essential_direct: "外網必需服務直連"
+  routing_rule_essential_direct: "外网必需服务直连"
   routing_mgmt_btn: "📋 路由规则管理"
   routing_custom_btn: "✏️ 自定义放行 (%{count})"
   routing_custom_title: "✏️ <b>自定义放行</b>\n\n这些域名（含子域）直接放行，优先级高于「中国域名封锁」「中国IP封锁」「广告域名封锁」。\n⚠️ 仅对域名生效：客户端直接用 IP 连接时仍会被 geoip:cn 拦截。\n\n当前 %{count} 条"
