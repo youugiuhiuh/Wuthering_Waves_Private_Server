@@ -476,7 +476,7 @@ xray:
   routing_rule_ads: "広告をブロック"
   routing_rule_openai: "OpenAI ダイレクト"
   routing_rule_connectivity_check: "Google サービスをダイレクト"
-  routing_rule_essential_direct: "必須サービスの直通"
+  routing_rule_essential_direct: "必須サービスをダイレクト"
   routing_mgmt_btn: "📋 ルーティングルール"
   routing_custom_btn: "✏️ カスタム許可 (%{count})"
   routing_custom_title: "✏️ <b>カスタム許可</b>\n\nこれらのドメイン（サブドメインを含む）は直接許可され、「中国ドメインをブロック」「中国IPをブロック」「広告をブロック」より優先されます。\n⚠️ ドメインのみ有効：クライアントが IP で直接接続した場合は引き続き geoip:cn でブロックされます。\n\n現在 %{count} 件"

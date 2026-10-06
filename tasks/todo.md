@@ -127,7 +127,7 @@
 
 ---
 
-## Phase E — essential-direct（外網必需服務直連）
+## Phase E — essential-direct（外网必需服务直连）
 
 > 设计见 `SPEC.md` → `Module: essential-direct`；分片/验收见 `tasks/plan.md` → `Implementation Plan: essential-direct`。
 > worktree `feat/essential-direct`（base `04f34a5`）。strict 模式：TDD 严格 RED→GREEN→REFACTOR。
@@ -167,7 +167,7 @@
 ### 真机验收（需部署机）
 - [ ] 升级后打开一次路由菜单 → `journalctl -u wwps-core` 出现重启且 `Reading config: …/00_base.json`
 - [ ] `www.recaptcha.net` 由 `-> blocked` 变为 `>> direct`；`dashboard.decodo.com` 登录可用
-- [ ] 菜单出现「外網必需服務直連」按钮，开关后重开菜单位置仍正确（在 `cn_*` 之前）
+- [ ] 菜单出现「外网必需服务直连」按钮，开关后重开菜单位置仍正确（在 `cn_*` 之前）
 
 ### 遗留（超范围，另行立项）
 - [ ] sing-box 侧同类问题（`.srs` 的 `geosite-cn` 仍会拦这些域名）
