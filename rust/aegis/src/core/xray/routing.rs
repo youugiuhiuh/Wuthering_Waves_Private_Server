@@ -215,15 +215,20 @@ impl RoutingManager {
         obj
     }
 
-    /// 纯函数：确保 routing.rules 含 connectivity_check（位于首位，幂等）。
-    /// 返回是否发生变更。不触碰文件系统，便于单测。
+    /// 纯函数：确保 routing.rules 满足「direct 规则不变量」并返回是否发生变更。
+    /// 不触碰文件系统，便于单测。
     ///
-    /// 插在首位是必须的：Xray routing 顺序匹配、首条命中即停，
-    /// 排在 cn_ip / cn_domain 之后则完全不生效。
-    /// 因此规则已存在但错位时也会被提到首位（视为有变更），而不是原样放过。
+    /// 不变量（Xray routing 顺序匹配、首条命中即停）：
+    /// 所有 `outbound == "direct"` 的规则必须按 `ROUTING_RULES` 顺序排在
+    /// 所有 `blocked` 规则之前；否则它们落在 cn_ip / cn_domain 之后而完全失效。
+    ///
+    /// 迁移是唯一修复路径（`toggle()` 用 push 追加到末尾，不改），因此：
+    ///   - 缺失的 `default_enabled` direct 规则（connectivity_check、essential_direct）会被插入；
+    ///   - 已存在的 direct 规则会被同步为 `rule_def_to_json(定义)`（修过时内容）并前置；
+    ///   - `default_enabled == false` 的 direct 规则（openai）**不主动插入**
+    ///     （插入等于默认打开它，违反其定义），仅在已存在时校正内容与位置；
+    ///   - 其余规则保持原有相对顺序。
     pub fn ensure_direct_rules_value(v: &mut Value) -> bool {
-        const RULE_ID: &str = "connectivity_check";
-
         // 规范化 routing 与 routing.rules 的存在性
         if v.get("routing").map(|r| r.is_null()).unwrap_or(true) {
             v["routing"] = Value::Object(serde_json::Map::new());
@@ -232,46 +237,47 @@ impl RoutingManager {
             v["routing"]["rules"] = Value::Array(Vec::new());
         }
 
-        let def = ROUTING_RULES
-            .iter()
-            .find(|r| r.id == RULE_ID)
-            .expect("ROUTING_RULES 必须包含 connectivity_check");
-        let canonical = Self::rule_def_to_json(def);
+        let original = v["routing"]["rules"].as_array().unwrap().clone();
 
-        let rules = v["routing"]["rules"].as_array_mut().unwrap();
-        let pos = rules
+        let direct_ids: Vec<&'static str> = ROUTING_RULES
             .iter()
-            .position(|r| r.get("ruleTag").and_then(|t| t.as_str()) == Some(RULE_ID));
+            .filter(|r| r.outbound == "direct")
+            .map(|r| r.id)
+            .collect();
 
-        match pos {
-            // 已在首位且内容与当前定义一致：无变更，无需写盘
-            Some(0) if rules[0] == canonical => false,
-            // 已在首位但内容过时（例如新增了域名）：用当前定义覆盖。
-            // 旧版本的迁移只插一次就不再更新，存量机器永远拿不到新增域名，
-            // 因此这里必须比对内容而非只看 tag 是否存在。
-            Some(0) => {
-                rules[0] = canonical;
-                true
-            }
-            // 错位：提到首位。toggle() 用 push 追加到末尾（cn_domain 之后），
-            // 那里因首条命中即停而完全失效；迁移是唯一的修复路径。
-            // 同时用当前定义覆盖，顺带修正过时内容。
-            Some(i) => {
-                rules.remove(i);
-                rules.insert(0, canonical);
-                true
-            }
-            None => {
-                rules.insert(0, canonical);
-                true
+        let mut reordered: Vec<Value> = Vec::with_capacity(original.len());
+
+        // 1) direct 规则按 ROUTING_RULES 顺序置于最前，内容取当前定义（canonical）
+        for def in ROUTING_RULES.iter().filter(|r| r.outbound == "direct") {
+            let present = original
+                .iter()
+                .any(|r| r.get("ruleTag").and_then(|t| t.as_str()) == Some(def.id));
+            if present || def.default_enabled {
+                reordered.push(Self::rule_def_to_json(def));
             }
         }
+
+        // 2) 其余（非 direct）规则保持原有相对顺序
+        for rule in &original {
+            let tag = rule.get("ruleTag").and_then(|t| t.as_str());
+            let is_direct = tag.is_some_and(|t| direct_ids.contains(&t));
+            if !is_direct {
+                reordered.push(rule.clone());
+            }
+        }
+
+        if reordered == original {
+            return false;
+        }
+        v["routing"]["rules"] = Value::Array(reordered);
+        true
     }
 
-    /// 迁移：确保 00_base.json 的 routing.rules 含 connectivity_check（幂等）。
+    /// 迁移：确保 00_base.json 的 routing.rules 满足 direct 规则不变量（幂等）。
     ///
-    /// 只写盘，**不重载核心** —— 避免打断现有连接。由 get_all_with_status()
-    /// 在用户打开路由菜单时触发。
+    /// **仅在发生变更时**写盘并 reload 核心（与 `write_rules()` 对齐）；
+    /// 无变更时零副作用（不写盘、不 reload，避免打断现有连接）。由
+    /// get_all_with_status() 在用户打开路由菜单时触发。
     ///
     /// 注意：00_base.json 不存在时向上传播错误（已知遗留，见 spec §5）。
     pub async fn ensure_direct_rules_in_base() -> Result<()> {
@@ -288,7 +294,7 @@ impl RoutingManager {
         tokio::fs::write(&base_path, new_content)
             .await
             .context("写入 00_base.json 失败")?;
-        Ok(())
+        crate::core::system::maintenance::MaintenanceManager::reload_core().await
     }
 
     pub async fn get_all_with_status() -> Result<Vec<(&'static RuleDef, bool)>> {
@@ -662,10 +668,13 @@ mod tests {
         ]));
         assert!(RoutingManager::ensure_direct_rules_value(&mut v));
         let rules = v["routing"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 2);
+        // 经 Ruling 10 授权：迁移泛化后同时插入 default_enabled 的 essential_direct
+        // （行为源自 SPEC Success Criteria #4），故长度 2→3。
+        assert_eq!(rules.len(), 3);
         assert_eq!(rules[0]["ruleTag"], "connectivity_check");
         assert_eq!(rules[0]["outboundTag"], "direct");
-        assert_eq!(rules[1]["ruleTag"], "cn_ip");
+        assert_eq!(rules[1]["ruleTag"], "essential_direct");
+        assert_eq!(rules[2]["ruleTag"], "cn_ip");
     }
 
     /// 迁移是错位的唯一修复路径：toggle() 用 push 把规则追加到末尾（cn_domain
@@ -681,9 +690,13 @@ mod tests {
             "错位的规则应被移动，视为有变更"
         );
         let rules = v["routing"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 2, "移动不得产生重复条目");
+        // 经 Ruling 11（同类预先授权）：插入 default_enabled 的 essential_direct 使长度 2→3。
+        assert_eq!(rules.len(), 3, "移动不得产生重复条目");
         let tags: Vec<&str> = rules.iter().filter_map(|r| r["ruleTag"].as_str()).collect();
-        assert_eq!(tags, vec!["connectivity_check", "cn_ip"]);
+        assert_eq!(
+            tags,
+            vec!["connectivity_check", "essential_direct", "cn_ip"]
+        );
     }
 
     #[test]
@@ -699,7 +712,8 @@ mod tests {
             "二次应无变更"
         );
         assert_eq!(v["routing"]["rules"], after_first, "二次不得重复插入");
-        assert_eq!(v["routing"]["rules"].as_array().unwrap().len(), 1);
+        // 经 Ruling 10 授权：空 base 现插入 cc + essential_direct（SPEC Success Criteria #4），长度 1→2。
+        assert_eq!(v["routing"]["rules"].as_array().unwrap().len(), 2);
     }
 
     #[test]
@@ -707,8 +721,10 @@ mod tests {
         let mut v = serde_json::json!({"routing": {"domainStrategy": "IPIfNonMatch"}});
         assert!(RoutingManager::ensure_direct_rules_value(&mut v));
         let rules = v["routing"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 1);
+        // 经 Ruling 10 授权：长度 1→2 并补 essential_direct（SPEC Success Criteria #4）。
+        assert_eq!(rules.len(), 2);
         assert_eq!(rules[0]["ruleTag"], "connectivity_check");
+        assert_eq!(rules[1]["ruleTag"], "essential_direct");
     }
 
     #[test]
@@ -728,9 +744,16 @@ mod tests {
         assert!(RoutingManager::ensure_direct_rules_value(&mut v));
         let rules = v["routing"]["rules"].as_array().unwrap();
         let tags: Vec<&str> = rules.iter().filter_map(|r| r["ruleTag"].as_str()).collect();
+        // 经 Ruling 10 授权：保留精确有序比对，仅插入 essential_direct（SPEC Success Criteria #4）。
         assert_eq!(
             tags,
-            vec!["connectivity_check", "private_ip", "cn_ip", "cn_domain"]
+            vec![
+                "connectivity_check",
+                "essential_direct",
+                "private_ip",
+                "cn_ip",
+                "cn_domain"
+            ]
         );
     }
 
@@ -768,7 +791,9 @@ mod tests {
             "内容过时应视为有变更"
         );
         let rules = v["routing"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 2, "不得重复插入");
+        // 经 Ruling 10 授权：essential_direct 插入使长度 2→3，cn_ip 索引由 1 位移到 2；
+        // cc 的 domain 期望维持裸串（Ruling C 仍有效，E6 才做前缀正規化）。
+        assert_eq!(rules.len(), 3, "不得重复插入");
         assert_eq!(rules[0]["ruleTag"], "connectivity_check");
         assert_eq!(
             rules[0]["domain"],
@@ -781,7 +806,121 @@ mod tests {
             ]),
             "过时内容应被当前定义覆盖"
         );
-        assert_eq!(rules[1]["ruleTag"], "cn_ip", "其余规则不得受影响");
+        assert_eq!(rules[2]["ruleTag"], "cn_ip", "其余规则不得受影响");
+    }
+
+    /// 旧存量 base（仅 cc + 阻塞规则）经迁移后应插入 essential_direct，
+    /// 其内容 = rule_def_to_json(当前定义)；direct 规则按 ROUTING_RULES 顺序排在
+    /// 所有 blocked 规则之前。
+    #[test]
+    fn test_ensure_direct_rules_inserts_essential_direct() {
+        let mut v = base_with_rules(serde_json::json!([
+            {"type": "field", "ruleTag": "connectivity_check", "outboundTag": "direct",
+             "domain": ["www.gstatic.com", "connectivitycheck.gstatic.com", "ssl.gstatic.com",
+                        "fonts.gstatic.com", "fonts.googleapis.com"]},
+            {"type": "field", "ruleTag": "private_ip", "outboundTag": "blocked", "ip": ["geoip:private"]},
+            {"type": "field", "ruleTag": "cn_ip", "outboundTag": "blocked", "ip": ["geoip:cn"]},
+            {"type": "field", "ruleTag": "cn_domain", "outboundTag": "blocked", "domain": ["geosite:cn"]}
+        ]));
+        assert!(RoutingManager::ensure_direct_rules_value(&mut v));
+        let rules = v["routing"]["rules"].as_array().unwrap();
+        let tags: Vec<&str> = rules.iter().filter_map(|r| r["ruleTag"].as_str()).collect();
+        assert_eq!(
+            tags,
+            vec![
+                "connectivity_check",
+                "essential_direct",
+                "private_ip",
+                "cn_ip",
+                "cn_domain"
+            ]
+        );
+        // canonical 一律取 rule_def_to_json(定义)，不硬编码前缀字符串
+        let def = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == "essential_direct")
+            .expect("essential_direct 规则必须存在");
+        assert_eq!(rules[1], RoutingManager::rule_def_to_json(def));
+    }
+
+    /// 错位的 direct 规则（openai 与 essential_direct 被 toggle 的 push 追加到末尾，
+    /// 落在 blocked 之后而成为死规则）必须被移到所有 blocked 之前，并同步为 canonical。
+    /// 这同时回归修复既有 openai 死规则问题。
+    #[test]
+    fn test_ensure_direct_rules_moves_misplaced_direct_before_blocked() {
+        let mut v = base_with_rules(serde_json::json!([
+            {"type": "field", "ruleTag": "connectivity_check", "outboundTag": "direct",
+             "domain": ["www.gstatic.com", "connectivitycheck.gstatic.com", "ssl.gstatic.com",
+                        "fonts.gstatic.com", "fonts.googleapis.com"]},
+            {"type": "field", "ruleTag": "private_ip", "outboundTag": "blocked", "ip": ["geoip:private"]},
+            {"type": "field", "ruleTag": "cn_ip", "outboundTag": "blocked", "ip": ["geoip:cn"]},
+            {"type": "field", "ruleTag": "cn_domain", "outboundTag": "blocked", "domain": ["geosite:cn"]},
+            {"type": "field", "ruleTag": "essential_direct", "outboundTag": "direct",
+             "domain": ["domain:recaptcha.net"]},
+            {"type": "field", "ruleTag": "openai", "outboundTag": "direct",
+             "domain": ["geosite:openai"]}
+        ]));
+        assert!(RoutingManager::ensure_direct_rules_value(&mut v));
+        let rules = v["routing"]["rules"].as_array().unwrap();
+        let tags: Vec<&str> = rules.iter().filter_map(|r| r["ruleTag"].as_str()).collect();
+        // 两者都被移到所有 blocked 之前，且按 ROUTING_RULES 顺序（essential_direct 先于 openai）
+        assert_eq!(
+            tags,
+            vec![
+                "connectivity_check",
+                "essential_direct",
+                "openai",
+                "private_ip",
+                "cn_ip",
+                "cn_domain"
+            ]
+        );
+        let ed = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == "essential_direct")
+            .expect("essential_direct 规则必须存在");
+        let oa = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == "openai")
+            .expect("openai 规则必须存在");
+        assert_eq!(rules[1], RoutingManager::rule_def_to_json(ed));
+        assert_eq!(rules[2], RoutingManager::rule_def_to_json(oa));
+    }
+
+    /// 全 canonical 后再次迁移必须零变更：返回 false 且 JSON 完全不变。
+    #[test]
+    fn test_ensure_direct_rules_idempotent_all_canonical() {
+        let mut v = base_with_rules(serde_json::json!([]));
+        assert!(
+            RoutingManager::ensure_direct_rules_value(&mut v),
+            "首次应完成迁移"
+        );
+        let after_first = v["routing"]["rules"].clone();
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "全 canonical 后二次调用应返回 false"
+        );
+        assert_eq!(v["routing"]["rules"], after_first, "二次调用不得改动 JSON");
+    }
+
+    /// 迁移只插入 default_enabled 的 direct 规则（connectivity_check、essential_direct）；
+    /// default_disabled 的 openai 不得被主动插入（插入等于默认打开它，违反其定义），
+    /// 也不得因缺失 openai 而把返回值误报为 true。
+    #[test]
+    fn test_ensure_direct_rules_does_not_insert_default_disabled_direct() {
+        let mut v = base_with_rules(serde_json::json!([]));
+        assert!(RoutingManager::ensure_direct_rules_value(&mut v));
+        let rules = v["routing"]["rules"].as_array().unwrap();
+        let tags: Vec<&str> = rules.iter().filter_map(|r| r["ruleTag"].as_str()).collect();
+        assert_eq!(tags, vec!["connectivity_check", "essential_direct"]);
+        assert!(
+            !tags.contains(&"openai"),
+            "不得插入 default_disabled 的 openai"
+        );
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "缺少 openai 不应被视作变更"
+        );
     }
 
     // ── ensure_direct_rules_in_base ───────────────────────────────
