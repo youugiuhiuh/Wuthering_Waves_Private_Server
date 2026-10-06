@@ -77,3 +77,26 @@
 - [ ] `update_geodata` 后用户列表仍在
 - [ ] 实际出站为 `direct`、`dashboard.decodo.cn` 登录可用
 - [ ] WARP 路由未被影响（若启用）
+
+---
+
+## Phase R — `routing.rs` 拆分（纯重构）⏳ 待批准
+
+> 设计见 `SPEC.md` → `Module: routing-split`；分片/验收见 `tasks/plan.md` → `Phase R`。
+> 目标：`routing.rs` 1325 行 → `routing.rs` ≈ 630 + 新增 `custom_direct.rs` ≈ 790，两文件均 < 1000。
+> 铁律：**移动而非修改** —— 测试断言零增删、测试名集合不变、面积 40 项测试。
+
+- [ ] **基线**：`cargo nextest run --cargo-profile fast-test xray` = 40 passed；`wc -l routing.rs` = 1325（已实测）
+- [ ] **R1** 迁移纯逻辑（规范化 / 匹配 / 列表算术）+ `pub use` 转发 + `mod.rs`（3 files）
+- [ ] **R2** 迁移规则 JSON 纯函数（`custom_direct_rule_json` / `remove_rule_by_tag` / `upsert_after` / `ensure_custom_direct_value`）（2 files）
+- [ ] **R3** 迁移 I/O 薄封装（`add_` / `remove_` / `list_` + `custom_direct_domains_from` / `persist_base_json`）；`CONFIG_LOCK` 与 `read_base_json` 放行到 `pub(super)`（2 files）
+- [ ] **R4** 迁移 25 个单测 + 夹具（含 `base_with_rules` 副本）；核对不变量（2 files）
+
+### Checkpoint R
+- [ ] `wc -l`：两文件均 < 1000
+- [ ] `grep -c 'fn test_'`：15 + 25 = 40（与拆分前一致）
+- [ ] `grep -c 'static CONFIG_LOCK'` = 1（只有一把锁）
+- [ ] `assert` 行增删 = 0；测试名集合前后一致（`cargo nextest list` 对比）
+- [ ] `handlers/` 零改动；仅 3 个代码文件被改
+- [ ] 四条质量门全绿（1097 passed / 1 skipped，与拆分前一致）
+- [ ] 人工 review `git diff`：无行为变更 / 无顺手重构 / 注释随迁完整

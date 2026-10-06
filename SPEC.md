@@ -333,3 +333,125 @@ pub fn ensure_custom_direct_value(v: &mut Value, domains: &[String]) -> bool {
 - **`decodo.com` 不会自动跳转到 `.cn`**：实测无 meta-refresh、无 JS 跳转，首页所有 login/register 链接均指向 `dashboard.decodo.com`；`decodo.cn` 仅出现在手动的 Region 选择器（`China (中文)`）。因此若登录发生在 `dashboard.decodo.com`，`.cn` 拦截**不是**其原因。
 - **规则顺序**：Xray `routing.rules` 与 sing-box `route.rules` 均为**首条命中即停**。
 - **IP 条件救不了域名规则**：`IPIfNonMatch` 下第一轮无 IP，仅含 `ip` 条件的规则无法命中，因此**本功能必须用域名规则**，不能用 `ip` 条件。
+
+---
+
+# Module: routing-split（`routing.rs` 拆分）
+
+> 状态：**待批准**。批准前不进入 BUILD。
+> 类型：**纯重构**（行为保持不变）。不新增功能、不改文案、不改 JSON 形状、不改公开 API 语义。
+
+## Objective
+
+**问题**：`rust/aegis/src/core/xray/routing.rs` 已 **1325 行**，越过 ~1000 行单文件体检线。它同时承载三件互不相关的事，其中 `custom_direct`（custom-allowlist 功能的实现载体）占 ~790 行（含其单测），是超线主因。
+
+**目标**：把 `custom_direct` 全链路（域名规范化 + 纯逻辑 + `RoutingManager` 的 custom_direct 相关 I/O 方法 + 其单测）**逐字搬**到新文件 `rust/aegis/src/core/xray/custom_direct.rs`；`routing.rs` 只留规则表定义 + `connectivity_check` 迁移/开关。
+
+**成功标准（一句话）**：拆分后两文件各 < 1000 行（预期 `routing.rs` ≈ 630、`custom_direct.rs` ≈ 790），四条质量门全绿，且**既有测试零增删行**（40 项测试原样通过，测试名不变、断言字符不变）。
+
+## 非目标
+
+- 不改任何行为：不新增/删除测试，不改规则顺序、不改文案、不改 JSON 键、不改 `00_base.json` 布局。
+- 不动 sing-box 侧、不动 `handlers/*`、不动 i18n、不动 `Cargo.toml`（无新依赖）。
+- 不进一步拆分 `connectivity_check`（它属于规则表，留在 `routing.rs`）。
+- 不做重命名、不做"顺手清理"、不做可见性收紧（除下文列出的 2 处必需放宽）。
+
+## 拆分边界（已用 CodeGraph 核实调用方）
+
+### 移入 `custom_direct.rs`（~790 行）
+
+| 项 | 现状 | 外部调用方 | 可见性 |
+|---|---|---|---|
+| `CustomDomainError` | pub enum | `handlers/message.rs`（6 处） | 保持 `pub` |
+| `is_ip_or_cidr` | private fn | 仅本文件 | 保持 private |
+| `normalize_custom_domain` | pub fn | `handlers/message.rs:603` | 保持 `pub` |
+| `CUSTOM_DIRECT_LIMIT` | pub(crate) const | 仅本文件 | 保持 `pub(crate)` |
+| `CustomAddOutcome` | pub enum | `handlers/message.rs:13` | 保持 `pub` |
+| `append_unique` / `remove_at` | pub(crate) fn | 仅本文件 + 本文件测试 | 保持 `pub(crate)` |
+| `normalize_host` / `entry_matches_host` | private fn | 仅本文件 | 保持 private |
+| `match_custom_direct` | pub fn | `handlers/message.rs:762` | 保持 `pub` |
+| `matches_connectivity_check` | pub fn | `handlers/message.rs:778` | 保持 `pub` |
+| `RoutingManager::{custom_direct_rule_json, remove_rule_by_tag, upsert_after, ensure_custom_direct_value, custom_direct_domains_from, persist_base_json, add_custom_direct_entry, remove_custom_direct_at, list_custom_direct_domains}` | 9 个 inherent 方法 | `handlers/*`（仅 `add_/remove_/list_` 三个） | 全部保持原可见性 |
+| 上述项的 25 个单测 + 其专属测试夹具（`norm_ok`/`norm_err`/`cd_domains`/`cd_rule`/`ensure_cd`/`remove_cd`/`upsert_cd`/`tags_of`/`tag_index`/`direct_chain`/`strs`/`many`） | `routing.rs::tests` | — | — |
+
+> `matches_connectivity_check` 随迁的理由：它与 `match_custom_direct` 共用 `normalize_host`/`entry_matches_host`，原文件已把两者放在同一注释分组「纯函数自检判定」；拆开需把两个 helper 提为 `pub(super)`，反而扩大接口。它读的 `ROUTING_RULES` 由 `routing.rs` 提供（单向依赖 `custom_direct → routing`）。
+
+### 留在 `routing.rs`（~630 行）
+
+`CONFIG_LOCK`、`RuleDef`、`ROUTING_RULES`、`RoutingManager` 本体、`read_rules` / `read_base_json` / `write_rules` / `rule_def_to_json` / `ensure_direct_rules_value` / `ensure_direct_rules_in_base` / `get_all_with_status` / `toggle`，以及 15 个规则表单测（`test_rule_def_*`、`test_connectivity_check_*`、`test_ensure_direct_rules_*`）与夹具 `base_with_rules`。
+
+### 必需的可见性改动（仅 2 处，最小）
+
+1. `static CONFIG_LOCK` → `pub(super) static CONFIG_LOCK`（`custom_direct.rs` 的写盘/读盘需复用同一把锁）。
+2. `RoutingManager::read_base_json` → `pub(super) async fn`（`custom_direct.rs` 唯一的读入口）。
+
+`base_with_rules` 是 `routing.rs::tests` 的私有夹具，`custom_direct.rs` 的测试**另存一份等价副本**（测试夹具跨测试模块无法共享；这是本次唯一新增的重复文本，不属行为代码）。
+
+## 接口稳定性（关键决定）
+
+`routing.rs` 顶部保留一行转发，**不修改 `handlers/message.rs`**：
+
+```rust
+// 拆分后仍从本模块导出，保持既有调用方路径不变（handlers/message.rs 有 6 处引用）
+pub use super::custom_direct::{
+    CustomAddOutcome, CustomDomainError, match_custom_direct, matches_connectivity_check,
+    normalize_custom_domain,
+};
+```
+
+理由：`RoutingManager` 本体留在 `routing.rs`，其方法调用方无需改动；只有 4 个自由项 + 1 个枚举需要转发。这样本次改动**只碰 3 个代码文件**（`routing.rs`、新增 `custom_direct.rs`、`mod.rs`），不触碰 `handlers/`，diff 可逐行审读。
+
+## Commands
+
+```bash
+cd rust/aegis
+wc -l src/core/xray/routing.rs src/core/xray/custom_direct.rs   # 两文件均须 < 1000
+cargo fmt
+cargo clippy --all-targets --all-features -- -D warnings
+cargo nextest run --cargo-profile fast-test
+cargo test --doc
+```
+
+`xray` 域的快速回路：`cargo nextest run --cargo-profile fast-test xray`（拆分前基线 = **40 passed**）。
+
+## Testing Strategy（纯重构的 TDD 等价物）
+
+无新行为 ⇒ 无新测试。**既有 40 项测试就是这次重构的契约**，验证方式是"移动而非修改"：
+
+1. **基线（RED 的等价物）**：拆分前记录 `cargo nextest run --cargo-profile fast-test xray` = 40 passed（已验证）。
+2. **不变量断言**：`git diff -U0 -- rust/aegis/src/core/xray/routing.rs | grep '^[-+]' | grep 'assert'` 必须**为空**；测试函数名的增删计数必须为 0（`grep -c 'fn test_' routing.rs` 拆分后应从 40 降为 15，`custom_direct.rs` 为 25，合计 40）。
+3. **GREEN**：`xray` 域 40 passed 且全量测试数不变。
+
+## Code Style
+
+- 移动 = 剪切粘贴：函数体、注释、doc comment、断言**一字不改**。仅允许改：`use` 行；`RoutingManager` 方法所在的 `impl` 块归属；`mod` 声明。
+- `custom_direct.rs` 顶部写文件头注释，说明「为什么存在这个文件」（从 `routing.rs` 拆出，服务 custom-allowlist 功能）。
+- 注释解释**为什么**，不解释语法；延续既有中文注释风格。
+- 单个 patch ≤ ~200 行 ⇒ 拆成 4 片（见 `tasks/plan.md` Phase R），每片后跑一次 `xray` 域测试。
+
+## Boundaries（routing-split）
+
+**Always**
+- 每片移动后立刻跑 `cargo nextest run --cargo-profile fast-test xray`，确认 40 passed 且测试名集合不变。
+- 保持 `custom_direct` 规则插入点语义不变（`connectivity_check` 之后）；`test_custom_direct_index_precedes_cn_domain_regression` 必须原样通过。
+- 保持 `CONFIG_LOCK` 只有一处定义（同时只有一个实例）。
+
+**Ask first**
+- 若要新增测试、改既有断言、或改动任何函数签名/行为。
+- 若发现必须触碰 `handlers/`（当前评估：不需要）。
+- 若两文件仍超 1000 行而需二次拆分。
+
+**Never**
+- 删除、跳过、重写既有测试断言来"变绿"。
+- 在同一 patch 里混合行为变更或无关重构（不重命名、不顺手抽公共 helper）。
+- 引入新依赖或新模块层（不搞 `routing/` 目录化）。
+
+## Success Criteria（routing-split）
+
+1. `src/core/xray/custom_direct.rs` 存在，承载上表全部项；`routing.rs` 只剩规则表 + `connectivity_check` + 转发。
+2. `wc -l` 两文件均 < 1000。
+3. `grep -c 'fn test_'`：`routing.rs` = 15、`custom_direct.rs` = 25、合计 = 40（与拆分前一致）。
+4. `git diff` 中**无**任何 `assert` 行的增删；`custom_direct.rs` 的函数体与拆分前逐字一致（`git diff --no-index` 视角下仅位置变化）。
+5. 四条质量门全绿；全量测试通过数 = 拆分前（1097 passed / 1 skipped）。
+6. 仅 3 个代码文件被改：`routing.rs`、`custom_direct.rs`（新增）、`mod.rs`；`handlers/` 零改动。
+7. `custom_direct.rs` 内**零** `anyhow::bail!`/错误路径改动：`add_custom_direct_entry` / `remove_custom_direct_at` 的「重复/越界不写盘」语义原样保留。
