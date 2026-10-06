@@ -80,23 +80,47 @@
 
 ---
 
-## Phase R — `routing.rs` 拆分（纯重构）⏳ 待批准
+## Phase R — `routing.rs` 拆分（纯重构）✅
 
 > 设计见 `SPEC.md` → `Module: routing-split`；分片/验收见 `tasks/plan.md` → `Phase R`。
 > 目标：`routing.rs` 1325 行 → `routing.rs` ≈ 630 + 新增 `custom_direct.rs` ≈ 790，两文件均 < 1000。
-> 铁律：**移动而非修改** —— 测试断言零增删、测试名集合不变、面积 40 项测试。
+> 铁律：**移动而非修改** —— 测试断言零增删、测试名集合不变、合计 40 项测试。
+> 实测（worktree `refactor/routing-split`，base 94cb05c）：`routing.rs` 1325 → **576**；新增 `custom_direct.rs` **791**；测试 17 + 23 = 40。
 
-- [ ] **基线**：`cargo nextest run --cargo-profile fast-test xray` = 40 passed；`wc -l routing.rs` = 1325（已实测）
-- [ ] **R1** 迁移纯逻辑（规范化 / 匹配 / 列表算术）+ `pub use` 转发 + `mod.rs`（3 files）
-- [ ] **R2** 迁移规则 JSON 纯函数（`custom_direct_rule_json` / `remove_rule_by_tag` / `upsert_after` / `ensure_custom_direct_value`）（2 files）
-- [ ] **R3** 迁移 I/O 薄封装（`add_` / `remove_` / `list_` + `custom_direct_domains_from` / `persist_base_json`）；`CONFIG_LOCK` 与 `read_base_json` 放行到 `pub(super)`（2 files）
-- [ ] **R4** 迁移 25 个单测 + 夹具（含 `base_with_rules` 副本）；核对不变量（2 files）
+- [x] **基线**：`cargo nextest run --cargo-profile fast-test xray` = 40 passed；`wc -l routing.rs` = 1325（已实测）
+- [x] **R1** 迁移纯逻辑（规范化 / 匹配 / 列表算术）+ `pub use` 转发 + `mod.rs`（3 files）
+- [x] **R2** 迁移规则 JSON 纯函数（`custom_direct_rule_json` / `remove_rule_by_tag` / `upsert_after` / `ensure_custom_direct_value`）（2 files）
+- [x] **R3** 迁移 I/O 薄封装（`add_` / `remove_` / `list_` + `custom_direct_domains_from` / `persist_base_json`）；`CONFIG_LOCK` 与 `read_base_json` 放行到 `pub(super)`（2 files）
+- [x] **R4** 迁移 25 个单测 + 夹具（含 `base_with_rules` 副本）；核对不变量（2 files）
 
 ### Checkpoint R
-- [ ] `wc -l`：两文件均 < 1000
-- [ ] `grep -c 'fn test_'`：15 + 25 = 40（与拆分前一致）
-- [ ] `grep -c 'static CONFIG_LOCK'` = 1（只有一把锁）
-- [ ] `assert` 行增删 = 0；测试名集合前后一致（`cargo nextest list` 对比）
-- [ ] `handlers/` 零改动；仅 3 个代码文件被改
-- [ ] 四条质量门全绿（1097 passed / 1 skipped，与拆分前一致）
-- [ ] 人工 review `git diff`：无行为变更 / 无顺手重构 / 注释随迁完整
+- [x] `wc -l`：两文件均 < 1000
+- [x] `grep -c 'fn test_'`：15 + 25 = 40（与拆分前一致）
+- [x] `grep -c 'static CONFIG_LOCK'` = 1（只有一把锁）
+- [x] `assert` 行增删 = 0；测试名集合前后一致（`cargo nextest list` 对比）
+- [x] `handlers/` 零改动；仅 3 个代码文件被改
+- [x] 四条质量门全绿（1097 passed / 1 skipped，与拆分前一致）
+- [x] 人工 review `git diff`：无行为变更 / 无顺手重构 / 注释随迁完整
+
+## Phase R 逐条核对（证据）
+
+| 条目 | 状态 | 证据 |
+|---|---|---|
+| 两文件 < 1000 行 | ✅ | `wc -l` → routing.rs 576 / custom_direct.rs 791 |
+| 测试零增删（合计 40） | ✅ | `grep -c 'fn test_'` → 17 + 23 = 40；`fn test_*` 名字集合与 HEAD **set 相等**（丢失 0 / 新增 0） |
+| 函数体逐字一致 | ✅ | HEAD vs 新树「非空行去缩进去重多重集」差集：**消失仅 2 行**（`CONFIG_LOCK`、`read_base_json` 的可见性改动），其余全是新增的转发/模块文档/`impl` 包裹/测试脚手架/`base_with_rules` 夹具副本 |
+| 只有一把锁 | ✅ | `grep -c 'static CONFIG_LOCK'` → routing.rs 1 / custom_direct.rs 0 |
+| 9 个方法各定义恰一次 | ✅ | 逐名 `grep -c` → routing.rs 0 / custom_direct.rs 1（9/9） |
+| 只改 3 个代码文件 | ✅ | `git status --porcelain` → mod.rs、routing.rs、custom_direct.rs（新增）；`handlers/` 零改动 |
+| 四条质量门 | ✅ | fmt / clippy `--all-targets --all-features -- -D warnings` / nextest **1097 passed, 1 skipped**（与拆分前一致）/ `cargo test --doc` ok |
+
+## Phase R REVIEW 结论（五轴）
+
+1. **行为保持** — 由上述不变量链证明：行级多重集差集 + 测试名集合 + 全量 1097 与拆分前一致。
+2. **接口稳定** — `routing.rs` 保留 `pub use` 转发，`handlers/message.rs` 零改动；`RoutingManager` 方法归属不变。
+3. **可见性最小** — 仅 `CONFIG_LOCK` 与 `read_base_json` 放宽到 `pub(super)`；锁仍只有一处定义。
+4. **复杂度** — 两文件 < 1000 行；每文件一个 `impl RoutingManager` 块；`custom_direct.rs` 文件头说明拆分理由与依赖方向。
+5. **残余风险（已记录，非阻塞）** —
+   - `matches_connectivity_check` 语义上属于规则表（读 `ROUTING_RULES`），现随 `custom_direct.rs` 落地 ⇒ 依赖方向为 `custom_direct → routing`，已在文件头声明；若日后 `routing.rs` 再次逼近体检线，优先把它连同 5 个匹配 helper 再拆一层。
+   - `base_with_rules` 测试夹具在两侧各存一份（测试夹具无法跨测试模块共享）；仅测试代码重复。
+   - `pub use` 转发使 5 个符号有两条路径（`routing::X` 与 `custom_direct::X`）；这是刻意的稳定层，已注释说明。

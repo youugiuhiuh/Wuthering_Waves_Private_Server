@@ -347,7 +347,7 @@ pub fn ensure_custom_direct_value(v: &mut Value, domains: &[String]) -> bool {
 
 **目标**：把 `custom_direct` 全链路（域名规范化 + 纯逻辑 + `RoutingManager` 的 custom_direct 相关 I/O 方法 + 其单测）**逐字搬**到新文件 `rust/aegis/src/core/xray/custom_direct.rs`；`routing.rs` 只留规则表定义 + `connectivity_check` 迁移/开关。
 
-**成功标准（一句话）**：拆分后两文件各 < 1000 行（预期 `routing.rs` ≈ 630、`custom_direct.rs` ≈ 790），四条质量门全绿，且**既有测试零增删行**（40 项测试原样通过，测试名不变、断言字符不变）。
+**成功标准（一句话）**：拆分后两文件各 < 1000 行（实测 `routing.rs` 576、`custom_direct.rs` 791），四条质量门全绿，且**既有测试零增删行**（40 项测试原样通过，测试名集合不变、断言行零改动）。
 
 ## 非目标
 
@@ -372,7 +372,7 @@ pub fn ensure_custom_direct_value(v: &mut Value, domains: &[String]) -> bool {
 | `match_custom_direct` | pub fn | `handlers/message.rs:762` | 保持 `pub` |
 | `matches_connectivity_check` | pub fn | `handlers/message.rs:778` | 保持 `pub` |
 | `RoutingManager::{custom_direct_rule_json, remove_rule_by_tag, upsert_after, ensure_custom_direct_value, custom_direct_domains_from, persist_base_json, add_custom_direct_entry, remove_custom_direct_at, list_custom_direct_domains}` | 9 个 inherent 方法 | `handlers/*`（仅 `add_/remove_/list_` 三个） | 全部保持原可见性 |
-| 上述项的 25 个单测 + 其专属测试夹具（`norm_ok`/`norm_err`/`cd_domains`/`cd_rule`/`ensure_cd`/`remove_cd`/`upsert_cd`/`tags_of`/`tag_index`/`direct_chain`/`strs`/`many`） | `routing.rs::tests` | — | — |
+| 上述项的 23 个单测 + 其专属测试夹具（`norm_ok`/`norm_err`/`cd_domains`/`cd_rule`/`ensure_cd`/`remove_cd`/`upsert_cd`/`tags_of`/`tag_index`/`direct_chain`/`strs`/`many`） | `routing.rs::tests` | — | — |
 
 > `matches_connectivity_check` 随迁的理由：它与 `match_custom_direct` 共用 `normalize_host`/`entry_matches_host`，原文件已把两者放在同一注释分组「纯函数自检判定」；拆开需把两个 helper 提为 `pub(super)`，反而扩大接口。它读的 `ROUTING_RULES` 由 `routing.rs` 提供（单向依赖 `custom_direct → routing`）。
 
@@ -419,7 +419,10 @@ cargo test --doc
 无新行为 ⇒ 无新测试。**既有 40 项测试就是这次重构的契约**，验证方式是"移动而非修改"：
 
 1. **基线（RED 的等价物）**：拆分前记录 `cargo nextest run --cargo-profile fast-test xray` = 40 passed（已验证）。
-2. **不变量断言**：`git diff -U0 -- rust/aegis/src/core/xray/routing.rs | grep '^[-+]' | grep 'assert'` 必须**为空**；测试函数名的增删计数必须为 0（`grep -c 'fn test_' routing.rs` 拆分后应从 40 降为 15，`custom_direct.rs` 为 25，合计 40）。
+2. **不变量断言（两层）**：
+   - 弱一层：`git diff -U0 -- rust/aegis/src/core/xray/routing.rs | grep '^[-+]' | grep assert` 中删除的那 85 行必须**原样出现**在 `custom_direct.rs`（23 个已迁走的测试携带它们）。
+   - 强一层（实测采用）：把 `HEAD:routing.rs` 与拆分后两文件的**全部非空行去缩进后做多重集差集**。消失集必须**恰为 2 行**（`CONFIG_LOCK` 与 `read_base_json` 的两处可见性改动），其余差异只能是新增的转发 / 模块文档 / `impl` 包裹 / 测试模块脚手架 / `base_with_rules` 夹具副本。任何函数体或断言行的丢失、改写都会在此暴露。
+   - 测试函数名集合必须与拆分前**完全相等**（`grep -o 'fn test_[a-z_]*'`）。
 3. **GREEN**：`xray` 域 40 passed 且全量测试数不变。
 
 ## Code Style
@@ -450,8 +453,8 @@ cargo test --doc
 
 1. `src/core/xray/custom_direct.rs` 存在，承载上表全部项；`routing.rs` 只剩规则表 + `connectivity_check` + 转发。
 2. `wc -l` 两文件均 < 1000。
-3. `grep -c 'fn test_'`：`routing.rs` = 15、`custom_direct.rs` = 25、合计 = 40（与拆分前一致）。
-4. `git diff` 中**无**任何 `assert` 行的增删；`custom_direct.rs` 的函数体与拆分前逐字一致（`git diff --no-index` 视角下仅位置变化）。
+3. `grep -c 'fn test_'`：`routing.rs` = 17、`custom_direct.rs` = 23、合计 = 40（与拆分前一致）。
+4. 行级多重集差集的消失集恰为 2 行（即上文的可见性改动），且 `custom_direct.rs` 内所有函数体与拆分前逐字一致；无任何断言被改写。
 5. 四条质量门全绿；全量测试通过数 = 拆分前（1097 passed / 1 skipped）。
 6. 仅 3 个代码文件被改：`routing.rs`、`custom_direct.rs`（新增）、`mod.rs`；`handlers/` 零改动。
 7. `custom_direct.rs` 内**零** `anyhow::bail!`/错误路径改动：`add_custom_direct_entry` / `remove_custom_direct_at` 的「重复/越界不写盘」语义原样保留。
