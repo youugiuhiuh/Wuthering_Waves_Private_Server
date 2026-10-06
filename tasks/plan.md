@@ -163,7 +163,7 @@ T8 集成 parity 测试 + 全量质量门  ← 依赖全部
 
 ## Phase R — `routing.rs` 拆分（纯重构，对应 SPEC `routing-split`）
 
-> 状态：**待批准**，批准后执行。基线已实测：`cargo nextest run --cargo-profile fast-test xray` = **40 passed**（`routing.rs` 1325 行）。
+> 状态：**已完成并验证**（2026-10-06，worktree `refactor/routing-split`）。基线已实测：`cargo nextest run --cargo-profile fast-test xray` = **40 passed**（`routing.rs` 1325 行）。
 > 拆分映射与不变量见 `SPEC.md` → `Module: routing-split`。勾选清单见 `tasks/todo.md`。
 
 ### 分片原则（每片 ≤ 3 文件、≤ ~200 行、每片后可编译且测试全绿）
@@ -171,7 +171,7 @@ T8 集成 parity 测试 + 全量质量门  ← 依赖全部
 - **R1 先立骨架的思路被否决**：先建空文件再迁移会让中间态出现重复定义（无法编译）。
   ⇒ **改为按符号分组的「加一份 + 同片删一份」**：每片结束时树可编译、测试可跑。
 
-- [ ] **R1: 迁移自定义放行纯逻辑（规范化 + 匹配 + 列表算术）**
+- [x] **R1: 迁移自定义放行纯逻辑（规范化 + 匹配 + 列表算术）**
   - 移入 `custom_direct.rs`：`CustomDomainError`、`is_ip_or_cidr`、`normalize_custom_domain`、`CUSTOM_DIRECT_LIMIT`、`CustomAddOutcome`、`append_unique`、`remove_at`、`normalize_host`、`entry_matches_host`、`match_custom_direct`、`matches_connectivity_check`（含全部 doc comment，逐字）。
   - `routing.rs` 删除上述块，并加 `pub use super::custom_direct::{CustomAddOutcome, CustomDomainError, match_custom_direct, matches_connectivity_check, normalize_custom_domain};`。
   - Acceptance: `matches_connectivity_check` 仍能读到 `ROUTING_RULES`（由 `routing.rs` 提供，`use super::routing::ROUTING_RULES`）；`xray` 域测试仍 40 passed；文件头注释含「为什么存在这个文件」。
@@ -180,14 +180,14 @@ T8 集成 parity 测试 + 全量质量门  ← 依赖全部
   - Scope: S（3 files）
   - 备注: `routing.rs` 中 `use serde_json::{Value, json}` 若因此片变为未使用，须同片修正（否则 clippy -D warnings 失败）。
 
-- [ ] **R2: 迁移规则 JSON 纯函数**
+- [x] **R2: 迁移规则 JSON 纯函数**
   - 移入 `custom_direct.rs`（新 `impl RoutingManager` 块）：`custom_direct_rule_json`、`remove_rule_by_tag`、`upsert_after`、`ensure_custom_direct_value`。
   - Acceptance: `test_custom_direct_rule_json_shape` / `test_custom_direct_index_precedes_cn_domain_regression` / `test_custom_direct_idempotent_empty_list_and_missing_containers` / `test_custom_direct_overwrites_moves_and_preserves_order` / `test_remove_and_upsert_after_report_change` 全部原样通过。
   - Verify: `cargo nextest run --cargo-profile fast-test custom_direct`
   - Files: `core/xray/custom_direct.rs`、`core/xray/routing.rs`
   - Scope: S（2 files）
 
-- [ ] **R3: 迁移 I/O 薄封装 + 打开最小可见性**
+- [x] **R3: 迁移 I/O 薄封装 + 打开最小可见性**
   - 移入 `custom_direct.rs`：`custom_direct_domains_from`、`persist_base_json`、`add_custom_direct_entry`、`remove_custom_direct_at`、`list_custom_direct_domains`。
   - `routing.rs`：`CONFIG_LOCK` → `pub(super)`；`read_base_json` → `pub(super)`。
   - Acceptance: 三个方法体内**一字未改**（`git diff` 中 `assert` 行增删 = 0；`anyhow::bail!` 的越界文案原样）；`list_custom_direct_domains` 仍持锁只读。
@@ -195,12 +195,13 @@ T8 集成 parity 测试 + 全量质量门  ← 依赖全部
   - Files: `core/xray/custom_direct.rs`、`core/xray/routing.rs`
   - Scope: S（2 files）
 
-- [ ] **R4: 迁移测试并核对不变量**
+- [x] **R4: 迁移测试并核对不变量**
   - 把 `routing.rs::tests` 中 25 个 custom_direct 测试 + 其夹具搬到 `custom_direct.rs::tests`；`custom_direct.rs::tests` 内另存 `base_with_rules` 等价副本（`direct_chain()` 依赖它）。
   - Acceptance（SPEC Success Criteria 1–7）：
     - `wc -l` 两文件均 < 1000；
-    - `grep -c 'fn test_' routing.rs` = 15、`custom_direct.rs` = 25、合计 40；
-    - `git diff -U0 -- rust/aegis/src/core/xray/routing.rs | grep '^[-+]' | grep assert` 为空；
+    - `grep -c 'fn test_' routing.rs` = 17、`custom_direct.rs` = 23、合计 40；
+    - 行级多重集差集的**消失集恰为 2 行**（`CONFIG_LOCK` / `read_base_json` 的可见性改动）；
+    - 测试函数名集合与拆分前完全相等（`fn test_[a-z_]*` 提取后 set 对比）；
     - 测试**名称集合**与拆分前完全一致（用 `cargo nextest list` 前后对比）；
     - `handlers/` 零改动（`git status` 中不出现）。
   - Verify: `cargo nextest list --cargo-profile fast-test -p aegis xray` 前后 diff；`wc -l`；四条质量门
@@ -208,10 +209,10 @@ T8 集成 parity 测试 + 全量质量门  ← 依赖全部
   - Scope: S（2 files）
 
 ### Checkpoint R（重构完成）
-- [ ] 四条质量门全绿（`cargo fmt` / `cargo clippy --all-targets --all-features -- -D warnings` / `cargo nextest run --cargo-profile fast-test` / `cargo test --doc`）
-- [ ] 全量通过数与拆分前一致（1097 passed / 1 skipped）
-- [ ] 人工对比 `git diff`：确认无行为变更、无测试断言改动、无顺手重构
-- [ ] `code-review-and-quality` 五轴审查（重点：行为保持、接口稳定、注释随迁完整）
+- [x] 四条质量门全绿（`cargo fmt` / `cargo clippy --all-targets --all-features -- -D warnings` / `cargo nextest run --cargo-profile fast-test` / `cargo test --doc`）
+- [x] 全量通过数与拆分前一致（1097 passed / 1 skipped）
+- [x] 人工对比 `git diff`：确认无行为变更、无测试断言改动、无顺手重构
+- [x] `code-review-and-quality` 五轴审查（重点：行为保持、接口稳定、注释随迁完整）
 
 ### Risks（routing-split）
 
