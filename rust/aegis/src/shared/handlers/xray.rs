@@ -9,7 +9,7 @@ use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::types::{DomainFlowSource, IpVersion};
 use crate::core::xray::installer::{RealityInstallOutcome, RealityInstaller};
-use crate::core::xray::routing::RoutingManager;
+use crate::core::xray::routing::{RoutingManager, RuleDef};
 use crate::core::xray::{ConfigManager, KcpMask, Proto};
 use crate::shared::handlers::message::provider_credential_guidance;
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
@@ -585,6 +585,23 @@ async fn handle_pq_init(event: &CallbackEvent) -> HandlerResult {
 
 // ── routing ──────────────────────────────────────────────────────────
 
+/// 开关型规则按钮：每行一条规则，图标反映启用状态；文案走
+/// `xray.routing_rule_<id>`（三语 key 由 message.rs 的存在性测试兜底）。
+fn routing_rule_rows(rules: &[(&'static RuleDef, bool)]) -> Vec<Vec<InlineButton>> {
+    rules
+        .iter()
+        .map(|(def, enabled)| {
+            let i18n_key = format!("xray.routing_rule_{}", def.id);
+            let name = t!(i18n_key.as_str());
+            let icon = if *enabled { "✅" } else { "⬜" };
+            vec![InlineButton {
+                text: format!("{} {}", icon, name),
+                data: format!("routing_toggle:{}", def.id),
+            }]
+        })
+        .collect()
+}
+
 async fn handle_routing_menu(event: &CallbackEvent) -> HandlerResult {
     let rules = RoutingManager::get_all_with_status()
         .await
@@ -597,20 +614,9 @@ async fn handle_routing_menu(event: &CallbackEvent) -> HandlerResult {
         t!("xray.routing_active_count", "count" => active_count.to_string())
     ));
 
-    let mut rows: Vec<Vec<InlineButton>> = rules
-        .iter()
-        .map(|(def, enabled)| {
-            let i18n_key = format!("xray.routing_rule_{}", def.id);
-            let name = t!(i18n_key.as_str());
-            let icon = if *enabled { "✅" } else { "⬜" };
-            vec![InlineButton {
-                text: format!("{} {}", icon, name),
-                data: format!("routing_toggle:{}", def.id),
-            }]
-        })
-        .collect();
+    let mut rows: Vec<Vec<InlineButton>> = routing_rule_rows(&rules);
 
-    // 导航型入口：自成一行，且【不带】✅/⬜ —— 与上面 8 条开关型规则按钮
+    // 导航型入口：自成一行，且【不带】✅/⬜ —— 与上面 9 条开关型规则按钮
     // 保持视觉可分（开关标记意味着按钮自身有开/关状态）。
     rows.push(vec![custom_direct_entry_button(
         custom_direct_count().await,
@@ -3397,6 +3403,7 @@ async fn handle_domain_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::xray::routing::ROUTING_RULES;
 
     /// T4：序号必须按 usize 严格解析；任何非法输入都要判为非法，
     /// 绝不能默认成 0——那会把「删除第一条」变成兜底行为，造成数据事故。
@@ -3527,6 +3534,26 @@ mod tests {
             btn.text
         );
         assert!(btn.text.contains('3'), "文本应含条数: {}", btn.text);
+    }
+
+    /// E7：规则菜单必须为 essential_direct 渲染开关按钮，且按钮文案与
+    /// `xray.routing_rule_essential_direct` 一致。清单取自 ROUTING_RULES 现算，
+    /// 这样新增规则却漏渲染时也会被这条测试拦住。
+    #[test]
+    fn test_routing_menu_includes_essential_direct_toggle() {
+        let rules: Vec<(&'static RuleDef, bool)> =
+            ROUTING_RULES.iter().map(|def| (def, false)).collect();
+        let rows = routing_rule_rows(&rules);
+        let btn = rows
+            .iter()
+            .flat_map(|r| r.iter())
+            .find(|b| b.data == "routing_toggle:essential_direct")
+            .expect("菜单必须含 essential_direct 开关按钮");
+        assert_eq!(
+            btn.text,
+            format!("⬜ {}", t!("xray.routing_rule_essential_direct")),
+            "按钮文案必须等于 xray.routing_rule_essential_direct"
+        );
     }
 
     #[test]
