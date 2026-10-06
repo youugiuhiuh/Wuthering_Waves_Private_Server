@@ -234,7 +234,7 @@ T8 集成 parity 测试 + 全量质量门  ← 依赖全部
 
 ## Overview
 
-新增内建规则 `essential_direct`（37 条，domain/geosite 混合）作为**独立菜单按钮**，位置紧接 `connectivity_check` 之后；修两个既有缺陷（迁移不 reload / `toggle` 把 direct 规则推到 blocked 之后）；自检泛化为「命中哪条内建规则」；并把 `connectivity_check` 5 条正規化为 `domain:` 前缀。**仅 Xray；不放行广告/追踪；不动 sing-box。**
+新增内建规则 `essential_direct`（39 条，domain/geosite 混合）作为**独立菜单按钮**，位置紧接 `connectivity_check` 之后；修两个既有缺陷（迁移不 reload / `toggle` 把 direct 规则推到 blocked 之后）；自检泛化为「命中哪条内建规则」；并把 `connectivity_check` 5 条正規化为 `domain:` 前缀。**仅 Xray；不放行广告/追踪；不动 sing-box。**
 
 ## Architecture Decisions
 
@@ -282,17 +282,19 @@ E8 文档收口 + 四道门终检 + code-review
 - [ ] **E2：GREEN — RuleDef + i18n**
   - Acceptance: `ROUTING_RULES` 新增 `essential_direct`（插在 `connectivity_check` 之后，先放 `domain:recaptcha.net` 一条占位）；三语新增 `xray.routing_rule_essential_direct`：zh「外網必需服務直連」/ en `Essential Services Direct` / ja「必須サービスの直通」；E1 测试转绿。
   - Verify: `cargo nextest run --cargo-profile fast-test xray`；`cargo fmt`
-  - Files: `src/core/xray/routing.rs`、`src/resources/i18n/{zh,en,ja}.yml`
+  - Files: `src/core/xray/routing.rs`、`src/resources/i18n/{zh,en,ja}.yml`、`src/core/xray/config.rs`
+  - 注：`src/core/xray/config.rs` 仅测试期望同步（默认启用规则集 4→5），经 Ruling 7 授权。
   - Scope: S（4 files，各 1–3 行）
 
 - [ ] **E3：RED→GREEN — 清单不变式与完整清单**
-  - Acceptance: 先写四个测试（前缀/denylist/必需项在场/唯一小写无 scheme），跑必红；再补全 37 条使其转绿；`test_essential_direct_excludes_ads_and_tracking` 的 denylist 含 14 个具体域名 + 8 个前缀模式。
+  - Acceptance: 先写四个测试（前缀/denylist/必需项在场/唯一小写无 scheme），跑必红；再补全 39 条使其转绿；`test_essential_direct_excludes_ads_and_tracking` 的 denylist 含 14 个具体域名 + 8 个前缀模式。
   - Verify: `cargo nextest run --cargo-profile fast-test essential_direct`
   - Files: `src/core/xray/routing.rs`
-  - Scope: M（~120 行：清单 37 + 测试 4）
+  - Scope: M（~120 行：清单 39 + 测试 4）
 
 - [ ] **E4：RED→GREEN — 迁移泛化 + 变更才 reload**
-  - Acceptance: `ensure_direct_rules_value` 改为「遍历 direct 规则：存在 / 内容=canonical / 位置在所有 blocked 之前」，返回是否变更；`ensure_direct_rules_in_base` 仅 `changed == true` 时写盘并 `reload_core()`。新增：插入 `essential_direct`、错位 `openai`/`essential_direct` 被前移、幂等三测；旧 `updates_stale_targets_at_index_zero` 与 `emits_expected_json_shape` 同步为 `domain:` 前缀。
+  - Acceptance: 全量 `cargo nextest run --cargo-profile fast-test` 绿（含 5 个既有测试的 len/tags 期望同步，Ruling 10/11 授权）。
+  - 步骤 1d（把 `test_ensure_direct_rules_updates_stale_targets_at_index_zero` 与 `test_ensure_direct_rules_emits_expected_json_shape` 的期望同步为 `domain:` 前缀）：**已作废**，移至 E6（Ruling 9）。
   - Verify: `cargo nextest run --cargo-profile fast-test xray`；`git diff` 审阅：无变更路径不得出现 `reload_core`
   - Files: `src/core/xray/routing.rs`
   - Scope: M（~100 行）
@@ -303,11 +305,14 @@ E8 文档收口 + 四道门终检 + code-review
   - Files: `src/core/xray/custom_direct.rs`、`src/shared/handlers/message.rs`
   - Scope: M（~70 行）
 
-- [ ] **E6：索引/夹具同步**
-  - Acceptance: `direct_chain()` 夹具含 `essential_direct`（`domain:recaptcha.net`）；`test_custom_direct_index_precedes_cn_domain_regression` 改判 `cd == tag_index("essential_direct") + 1` 且仍 `< cn_ip/cn_domain`；`test_connectivity_check_targets_are_probe_endpoints_only` 剥 `domain:` 前缀后仍「恰为这 5 项」。
+- [ ] **E6：cc 正規化 + custom_direct 锚点 + E3 deferred minors（四部分）**
+  - (1) cc 正規化：`connectivity_check` 5 条加 `domain:` 前缀，并同步其 3 个测试——`test_connectivity_check_targets_are_probe_endpoints_only`（剥前缀后仍「恰为这 5 项」）、`test_ensure_direct_rules_emits_expected_json_shape`、`test_ensure_direct_rules_updates_stale_targets_at_index_zero`（Ruling 9）。
+  - (2) custom_direct 锚点改 `essential_direct`：`ensure_custom_direct_value` 的锚点由 `connectivity_check` 改为 `essential_direct`，并同步索引测试（`cd == tag_index("essential_direct") + 1` 且仍 `< cn_ip/cn_domain`）与 `direct_chain()` 夹具（Ruling 12）。
+  - (3) apex denylist 断言：`essential_direct` 条目剥前缀后不得等于 apex `google.com`/`googleapis.com`/`gstatic.com`（E3 minor-2）。
+  - (4) 注释简繁统一为简体（E3 minor-3）。
   - Verify: `cargo nextest run --cargo-profile fast-test custom_direct`
-  - Files: `src/core/xray/custom_direct.rs`、`src/core/xray/routing.rs`
-  - Scope: S（2 files，仅 tests）
+  - Files: `src/core/xray/routing.rs`、`src/core/xray/custom_direct.rs`
+  - Scope: S（2 files）
 
 - [ ] **E7：菜单按钮**
   - Acceptance: `handle_routing_menu` 注释「8 条」→「9 条」；新增断言：菜单按钮包含 `routing_toggle:essential_direct`，文字 = `t!("xray.routing_rule_essential_direct")`；三语 key 存在性测试涵盖新 key。

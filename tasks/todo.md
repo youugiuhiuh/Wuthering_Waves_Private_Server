@@ -131,32 +131,32 @@
 
 > 设计见 `SPEC.md` → `Module: essential-direct`；分片/验收见 `tasks/plan.md` → `Implementation Plan: essential-direct`。
 > worktree `feat/essential-direct`（base `04f34a5`）。strict 模式：TDD 严格 RED→GREEN→REFACTOR。
-> 一句话目标：新增内建规则 `essential_direct`（37 条，独立菜单按钮），修「迁移不 reload」与「direct 规则被 push 到 blocked 之后」两个缺陷。
+> 一句话目标：新增内建规则 `essential_direct`（39 条，独立菜单按钮），修「迁移不 reload」与「direct 规则被 push 到 blocked 之后」两个缺陷。
 
 ### E0 基线
 - [x] worktree 建立 + 四道门全绿（**1097 passed / 1 skipped**，数字已写入 `tasks/plan.md`）
 
-### E1–E2 规则骨架
-- [ ] E1 RED：`len()==9`、`test_essential_direct_rule_shape`、`test_essential_direct_precedes_cn_rules`
-- [ ] E2 GREEN：`RuleDef essential_direct`（占位 1 条）+ 三语 `routing_rule_essential_direct`
+### E1–E2 规则骨架（E12，已合并派发）
+- [x] E1 RED：`len()==9`、`test_essential_direct_rule_shape`、`test_essential_direct_precedes_cn_rules`
+- [x] E2 GREEN：`RuleDef essential_direct`（占位 1 条）+ 三语 `routing_rule_essential_direct`
 
 ### E3 清单（不放行广告/追踪）
-- [ ] RED：`targets_use_explicit_prefix` / `excludes_ads_and_tracking`（14 域名 + 8 前缀）/ `contains_evidence_backed_hosts` / `unique_lowercase_no_scheme`
-- [ ] GREEN：补齐 37 条（Google/YouTube 29 + Apple 2 + Microsoft 8）
+- [x] RED：`targets_use_explicit_prefix` / `excludes_ads_and_tracking`（14 域名 + 8 前缀）/ `contains_evidence_backed_hosts` / `unique_lowercase_no_scheme`
+- [x] GREEN：补齐 39 条（Google/YouTube 29 + Apple 2 + Microsoft 8）
 
 ### E4 迁移与生效（本次关键修复）
-- [ ] `ensure_direct_rules_value` 泛化为「所有 direct 规则位于所有 blocked 规则之前」（返回是否变更）
-- [ ] `ensure_direct_rules_in_base` **仅变更时**写盘 + `reload_core()`
-- [ ] 测试：插入新规则 / 错位前移（含既有 `openai` 回归）/ 幂等零副作用
+- [x] `ensure_direct_rules_value` 泛化为「所有 direct 规则位于所有 blocked 规则之前」（返回是否变更）
+- [x] `ensure_direct_rules_in_base` **仅变更时**写盘 + `reload_core()`
+- [x] 测试：插入新规则 / 错位前移（含既有 `openai` 回归）/ 幂等零副作用
 
 ### E5 自检一致性
-- [ ] `matches_builtin_direct` 返回命中规则 id；`matches_connectivity_check` 保留薄封装
-- [ ] `custom_check_reply` 用命中规则名；`www.recaptcha.net` 命中 `essential_direct`、`www.doubleclick.net` 未命中
+- [x] `matches_builtin_direct` 返回命中规则 id；`matches_connectivity_check` 保留薄封装
+- [x] `custom_check_reply` 用命中规则名；`www.recaptcha.net` 命中 `essential_direct`、`www.doubleclick.net` 未命中
 
 ### E6–E7 夹具与菜单
-- [ ] `direct_chain()` 含 `essential_direct`；`cd == essential_direct + 1` 且仍早于 `cn_*`
-- [ ] `cc` 5 条正規化为 `domain:`；守护测试剥前缀后仍「恰为这 5 项」
-- [ ] 菜单注释 8→9；按钮 `routing_toggle:essential_direct` + i18n 文案断言
+- [x] `direct_chain()` 含 `essential_direct`；`cd == essential_direct + 1` 且仍早于 `cn_*`
+- [x] `cc` 5 条正規化为 `domain:`；守护测试剥前缀后仍「恰为这 5 项」
+- [x] 菜单注释 8→9；按钮 `routing_toggle:essential_direct` + i18n 文案断言
 
 ### Checkpoint E
 - [ ] 四道质量门全绿（fmt / clippy `-D warnings` / nextest / doctest）
@@ -172,3 +172,7 @@
 ### 遗留（超范围，另行立项）
 - [ ] sing-box 侧同类问题（`.srs` 的 `geosite-cn` 仍会拦这些域名）
 - [ ] 向上游反馈：`geosite:google-cn` 只收 `full:recaptcha.net`（子域漏网）
+
+### 已记录的 deferred minor / 异常
+- **E4-rv 基础设施失败**：reviewer 未呼叫 `structured_output`（`Missing structured_output call`，run `72fa95db`），导致 workflow `38aae2a4` 终止（E5–E7/四道门/终审未在该 workflow 内执行）；其 prose 审查 artifact 完整，verdict = **OK with notes**（0 critical / 0 important，2 minor）。见 Ruling 12。
+- **E3 两个 minor 已并入 E6**：(a) apex denylist 断言（`google.com`/`googleapis.com`/`gstatic.com`）；(b) 注释简繁统一为简体。

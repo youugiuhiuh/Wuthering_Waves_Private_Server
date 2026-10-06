@@ -531,7 +531,9 @@ RuleDef {
 - `connectivity_check` **内容不动**（仅把 5 条正規化为 `domain:` 前缀，见下），语义保持「连通性探測 + Google 静态资源」。
 - 全部条目**必须**显式前缀：`domain:`（子域语义）或 `geosite:`；**禁止裸字符串**（会被 Xray 当子字符串，产生 `www.gstatic.com.evil.com` 这类误命中，且与自检函数语义不一致）。
 
-### 条目清单（37 条）
+### 条目清单（39 条）
+
+> 39 = 37 条 `domain:` + 2 条 `geosite:`。
 
 **Google / YouTube 功能必需（29）**
 
@@ -697,7 +699,7 @@ targets: &[
 
 ## Success Criteria（essential-direct）
 
-1. `ROUTING_RULES` 含 `essential_direct`（37 条），索引紧接 `connectivity_check` 之后，早于 `cn_ip`/`cn_domain`；xray 规则数 = 9。
+1. `ROUTING_RULES` 含 `essential_direct`（39 条），索引紧接 `connectivity_check` 之后，早于 `cn_ip`/`cn_domain`；xray 规则数 = 9。
 2. 清单零广告/追踪（denylist + 前缀断言通过）；全部条目带显式前缀；无重复/大写/IP/路径/正则。
 3. `connectivity_check` 5 条为 `domain:` 前缀；其守护测试仍断言「恰为这 5 项」。
 4. 迁移：旧 base 打开菜单后被插入 `essential_direct` 并**重启核心**；重复执行零副作用（返回 `false`、不写盘、不 reload）；错位的 direct 规则被提到 blocked 之前（`openai` 回归）。
