@@ -298,15 +298,18 @@ impl RoutingManager {
         rules.insert(insert_at, rule);
         *v != original
     }
-    /// 纯函数：确保 routing.rules 含 custom_direct（位于 connectivity_check 之后，幂等）。
+    /// 纯函数：确保 routing.rules 含 custom_direct（位于 essential_direct 之后，幂等）。
     /// 空列表 = 移除既存规则。返回是否发生变更。
     ///
-    /// 为什么必须紧跟 connectivity_check：Xray 顺序匹配、首条命中即停，
-    /// 用户自定义域名（多为 geosite:cn 收录）排在 cn_domain 之后会被抢先 blackhole。
-    /// 与 connectivity_check 同为 direct，故插在其后不扰动既有顺序断言。
+    /// 为什么紧跟 essential_direct：Xray 顺序匹配、首条命中即停，用户自定义域名
+    /// （多为 geosite:cn 收录）排在 cn_domain 之后会被抢先 blackhole。
+    /// 锚点必须是 direct 区末条：更早的 fallback（connectivity_check）会让
+    /// custom_direct 落在 essential_direct 之前，而菜单迁移（ensure_direct_rules_value）
+    /// 又把它移回 essential_direct 之后；两者互推，每次开菜单与每次添加
+    /// 各触发一次写盘 + reload_core（核心重启）。
     pub fn ensure_custom_direct_value(v: &mut Value, domains: &[String]) -> bool {
         const RULE_ID: &str = "custom_direct";
-        const ANCHOR: &str = "connectivity_check";
+        const ANCHOR: &str = "essential_direct";
         if domains.is_empty() {
             return Self::remove_rule_by_tag(v, RULE_ID);
         }
@@ -510,9 +513,20 @@ mod tests {
             .position(|t| t == tag)
             .unwrap_or_else(|| panic!("缺少规则 {tag}"))
     }
+    // direct 区夹具：connectivity_check 与 essential_direct 取当前定义（canonical），
+    // 否则 ensure_direct_rules_value 会因内容过时而被当作变更，污染锚点稳定性断言。
     fn direct_chain() -> Value {
+        let canonical = |id: &str| {
+            RoutingManager::rule_def_to_json(
+                ROUTING_RULES
+                    .iter()
+                    .find(|r| r.id == id)
+                    .unwrap_or_else(|| panic!("缺少规则 {id}")),
+            )
+        };
         base_with_rules(json!([
-            {"type":"field","ruleTag":"connectivity_check","outboundTag":"direct","domain":["www.gstatic.com"]},
+            canonical("connectivity_check"),
+            canonical("essential_direct"),
             {"type":"field","ruleTag":"private_ip","outboundTag":"blocked","ip":["geoip:private"]},
             {"type":"field","ruleTag":"cn_ip","outboundTag":"blocked","ip":["geoip:cn"]},
             {"type":"field","ruleTag":"cn_domain","outboundTag":"blocked","domain":["geosite:cn"]}
@@ -528,17 +542,36 @@ mod tests {
         let multi = cd_rule(&["a.cn".into(), "b.cn".into()]);
         assert_eq!(multi["domain"], json!(["a.cn", "b.cn"]));
     }
-    // 索引 + 显式回归：必须紧跟 connectivity_check，且早于 private_ip / cn_ip / cn_domain。
-    // 顺序颠倒（尤其排在 cn_domain 之后）会被 geosite:cn 抢先 blackhole，规则形同不存在。
+    // 索引 + 显式回归：必须紧跟 essential_direct（direct 区末条），且早于
+    // private_ip / cn_ip / cn_domain。顺序颠倒（尤其排在 cn_domain 之后）会被
+    // geosite:cn 抢先 blackhole，规则形同不存在。
     #[test]
     fn test_custom_direct_index_precedes_cn_domain_regression() {
         let mut v = direct_chain();
         assert!(ensure_cd(&mut v, &cd_domains()));
         let cd = tag_index(&v, "custom_direct");
-        assert_eq!(cd, tag_index(&v, "connectivity_check") + 1);
+        assert_eq!(cd, tag_index(&v, "essential_direct") + 1);
         assert!(cd < tag_index(&v, "private_ip"));
         assert!(cd < tag_index(&v, "cn_ip"));
         assert!(cd < tag_index(&v, "cn_domain"));
+    }
+    // 锚点稳定性：添加域名时的落位（ensure_custom_direct_value 紧跟 essential_direct）
+    // 必须与菜单迁移（ensure_direct_rules_value）认可的落位一致，否则二者互推——
+    // 每次开菜单移一次、每次添加再移回，各触发一次写盘 + reload_core（核心重启）。
+    #[test]
+    fn test_custom_direct_anchor_is_stable_after_migration() {
+        let mut v = direct_chain();
+        // 模拟「用户添加域名」：custom_direct 落位
+        assert!(ensure_cd(&mut v, &cd_domains()));
+        // 菜单迁移（含重复调用）都必须零变更
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "菜单迁移不得移动刚落位的 custom_direct（互推会反复写盘 + reload）"
+        );
+        assert!(
+            !RoutingManager::ensure_direct_rules_value(&mut v),
+            "第二次调用必须仍返回 false"
+        );
     }
     // 幂等 + 空列表移除；缺失 routing / routing.rules / routing=null 不 panic，空输入不建容器。
     #[test]
@@ -560,11 +593,12 @@ mod tests {
         assert!(!ensure_cd(&mut empty, &[]));
         assert_eq!(empty, json!({}));
     }
-    // 过时覆盖 + 错位移动（不重复）+ 既有规则相对顺序不变 + connectivity_check 不被改动。
+    // 过时覆盖 + 错位移动（不重复）+ 既有规则相对顺序不变 + 上条 direct 规则不被改动。
     #[test]
     fn test_custom_direct_overwrites_moves_and_preserves_order() {
         let mut v = base_with_rules(json!([
             {"type":"field","ruleTag":"connectivity_check","outboundTag":"direct","domain":["old.example.com"]},
+            {"type":"field","ruleTag":"essential_direct","outboundTag":"direct","domain":["domain:recaptcha.net"]},
             {"type":"field","ruleTag":"custom_direct","outboundTag":"direct","domain":["domain:stale.cn"]},
             {"type":"field","ruleTag":"private_ip","outboundTag":"blocked","ip":["geoip:private"]},
             {"type":"field","ruleTag":"cn_ip","outboundTag":"blocked","ip":["geoip:cn"]},
@@ -572,23 +606,24 @@ mod tests {
         ]));
         assert!(ensure_cd(&mut v, &cd_domains()));
         let rules = v["routing"]["rules"].as_array().unwrap();
-        assert_eq!(rules.len(), 5);
-        let overwritten = rules[1]["domain"].clone();
+        assert_eq!(rules.len(), 6);
+        let overwritten = rules[2]["domain"].clone();
         assert_eq!(overwritten, json!(["domain:decodo.cn"]));
         assert_eq!(rules[0]["domain"], json!(["old.example.com"]));
         let others: Vec<String> = tags_of(&v)
             .into_iter()
             .filter(|t| t != "custom_direct")
             .collect();
-        let want = "connectivity_check,private_ip,cn_ip,cn_domain";
+        let want = "connectivity_check,essential_direct,private_ip,cn_ip,cn_domain";
         assert_eq!(others.join(","), want);
         let mut mis = base_with_rules(json!([
             {"type":"field","ruleTag":"connectivity_check","outboundTag":"direct","domain":["www.gstatic.com"]},
+            {"type":"field","ruleTag":"essential_direct","outboundTag":"direct","domain":["domain:recaptcha.net"]},
             {"type":"field","ruleTag":"cn_domain","outboundTag":"blocked","domain":["geosite:cn"]},
             {"type":"field","ruleTag":"custom_direct","outboundTag":"direct","domain":["domain:old.cn"]}
         ]));
         assert!(ensure_cd(&mut mis, &cd_domains()));
-        assert_eq!(tag_index(&mis, "custom_direct"), 1);
+        assert_eq!(tag_index(&mis, "custom_direct"), 2);
         let count = tags_of(&mis)
             .iter()
             .filter(|t| *t == "custom_direct")

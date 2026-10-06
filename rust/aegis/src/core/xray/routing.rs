@@ -30,20 +30,22 @@ pub static ROUTING_RULES: &[RuleDef] = &[
     //   1. 连通性探测端点（generate_204）
     //   2. Google 登录必需的静态资源（ssl.gstatic.com 见 ChromeOS sign-in allowlist）
     //   3. Google Fonts 样式表与字体文件（fonts.googleapis.com 发 CSS，fonts.gstatic.com 发字体）
+    // 全部条目显式带 domain: 前缀（子域语义），与 essential_direct 保持一致，
+    // 避免裸字符串被 Xray 当关键字子字符串而误命中。
     RuleDef {
         id: "connectivity_check",
         rule_type: "domain",
         targets: &[
-            "www.gstatic.com",
-            "connectivitycheck.gstatic.com",
-            "ssl.gstatic.com",
-            "fonts.gstatic.com",
-            "fonts.googleapis.com",
+            "domain:www.gstatic.com",
+            "domain:connectivitycheck.gstatic.com",
+            "domain:ssl.gstatic.com",
+            "domain:fonts.gstatic.com",
+            "domain:fonts.googleapis.com",
         ],
         outbound: "direct",
         default_enabled: true,
     },
-    // 外網必需服務直連：geosite:cn 误收的外网必需服务端点（Google/Apple/Microsoft），
+    // 外网必需服务直连：geosite:cn 误收的外网必需服务端点（Google/Apple/Microsoft），
     // 必须早于 cn_ip / cn_domain，否则被 blackhole。
     // 硬约束：不放行任何广告/追踪域名（由 test_essential_direct_excludes_ads_and_tracking
     // 的 14 域名 + 8 模式断言固化）——故不整包引用 geosite:google-cn。
@@ -368,7 +370,7 @@ mod tests {
         );
     }
 
-    /// 外網必需服務直連：独立规则，直连出站、默认启用。
+    /// 外网必需服务直连：独立规则，直连出站、默认启用。
     #[test]
     fn test_essential_direct_rule_shape() {
         let rule = ROUTING_RULES
@@ -380,9 +382,9 @@ mod tests {
         assert!(rule.default_enabled, "essential_direct 应默认启用");
     }
 
-    /// 外網必需服務直連必须紧接 connectivity_check 之后、早于 cn_ip / cn_domain。
+    /// 外网必需服务直连必须紧接 connectivity_check 之后、早于 cn_ip / cn_domain。
     /// Xray routing 顺序匹配、首条命中即停；排在 cn 规则之后就完全不生效，
-    /// 而 cn_domain（geosite:cn）会把这些外網必需域名 blackhole。
+    /// 而 cn_domain（geosite:cn）会把这些外网必需域名 blackhole。
     #[test]
     fn test_essential_direct_precedes_cn_rules() {
         let pos = |id: &str| {
@@ -410,7 +412,7 @@ mod tests {
     /// 这类域名，且与自检函数的语义不一致；故禁止裸域名。
     #[test]
     fn test_essential_direct_targets_use_explicit_prefix() {
-        // 39 = 37 條 domain: + 2 條 geosite:；SPEC 標題的「37 條」經編排者裁定為筆誤（只數了 domain: 行），將於文檔提交更正為 39。
+        // 39 = 37 条 domain: + 2 条 geosite:；SPEC 标题的「37 条」经编排者裁定为笔误（只数了 domain: 行），将于文档提交更正为 39。
         let rule = ROUTING_RULES
             .iter()
             .find(|r| r.id == "essential_direct")
@@ -486,6 +488,27 @@ mod tests {
         }
     }
 
+    /// apex 排除：规则条目不得退化为「整个 google.com / googleapis.com /
+    /// gstatic.com」——那会把同域的广告与追踪一并放行。必须做 apex 相等比对，
+    /// 不能用子串，否则 `domain:safebrowsing.googleapis.com` 等合法子域会被误伤。
+    #[test]
+    fn test_essential_direct_excludes_apex_provider_domains() {
+        const APEX: &[&str] = &["google.com", "googleapis.com", "gstatic.com"];
+        let rule = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == "essential_direct")
+            .expect("essential_direct 规则必须存在");
+        for &t in rule.targets {
+            let host = t
+                .strip_prefix("domain:")
+                .or_else(|| t.strip_prefix("geosite:"))
+                .unwrap_or(t);
+            for apex in APEX {
+                assert_ne!(host, *apex, "不得放行 apex 域名（会连带广告/追踪）: {}", t);
+            }
+        }
+    }
+
     /// 实测证据支撑的必需端點必须在场（否则登录 / YouTube CDN / 安全浏览
     /// 仍被 cn_domain blackhole）。
     #[test]
@@ -549,9 +572,16 @@ mod tests {
         assert_eq!(rule.rule_type, "domain");
         assert_eq!(rule.outbound, "direct");
         assert!(rule.default_enabled, "新规则应默认启用");
+        // 比对前剥掉 domain: 前缀：条目语义是「主机名 + 子域」，是否带前缀
+        // 不影响「恰为这 5 项」的判定，故两条路径下守护意图一致。
+        let hosts: Vec<&str> = rule
+            .targets
+            .iter()
+            .map(|t| t.strip_prefix("domain:").unwrap_or(t))
+            .collect();
         assert_eq!(
-            rule.targets,
-            &[
+            hosts,
+            vec![
                 "www.gstatic.com",
                 "connectivitycheck.gstatic.com",
                 "ssl.gstatic.com",
@@ -568,23 +598,23 @@ mod tests {
                 t
             );
         }
-        // 不得混入其余被 geosite:cn 收录的资源 CDN / 签到 / 遥测域名
-        for t in rule.targets {
+        // 不得混入其余被 geosite:cn 收录的资源 CDN / 签到 / 遥测域名（同样剥前缀后判）
+        for host in &hosts {
             assert!(
-                !t.starts_with("csi.")
-                    && !t.starts_with("g0.")
-                    && !t.starts_with("g1.")
-                    && !t.starts_with("g2.")
-                    && !t.starts_with("g3.")
-                    && !t.starts_with("checkin.")
-                    && !t.starts_with("fontfiles.")
-                    && !t.starts_with("update.")
-                    && !t.starts_with("tac.")
-                    && !t.starts_with("clientservices.")
-                    && !t.starts_with("safebrowsing.")
-                    && !t.starts_with("wear."),
+                !host.starts_with("csi.")
+                    && !host.starts_with("g0.")
+                    && !host.starts_with("g1.")
+                    && !host.starts_with("g2.")
+                    && !host.starts_with("g3.")
+                    && !host.starts_with("checkin.")
+                    && !host.starts_with("fontfiles.")
+                    && !host.starts_with("update.")
+                    && !host.starts_with("tac.")
+                    && !host.starts_with("clientservices.")
+                    && !host.starts_with("safebrowsing.")
+                    && !host.starts_with("wear."),
                 "不应放行其余资源 CDN / 遥测域名: {}",
-                t
+                host
             );
         }
     }
@@ -764,14 +794,15 @@ mod tests {
         let rule = &v["routing"]["rules"][0];
         assert_eq!(rule["type"], "field");
         assert_eq!(rule["outboundTag"], "direct");
+        // cc 5 条已统一为 domain: 前缀（E6）。
         assert_eq!(
             rule["domain"],
             serde_json::json!([
-                "www.gstatic.com",
-                "connectivitycheck.gstatic.com",
-                "ssl.gstatic.com",
-                "fonts.gstatic.com",
-                "fonts.googleapis.com"
+                "domain:www.gstatic.com",
+                "domain:connectivitycheck.gstatic.com",
+                "domain:ssl.gstatic.com",
+                "domain:fonts.gstatic.com",
+                "domain:fonts.googleapis.com"
             ])
         );
         assert!(rule.get("ip").is_none(), "domain 规则不应带 ip 键");
@@ -791,18 +822,18 @@ mod tests {
             "内容过时应视为有变更"
         );
         let rules = v["routing"]["rules"].as_array().unwrap();
-        // 经 Ruling 10 授权：essential_direct 插入使长度 2→3，cn_ip 索引由 1 位移到 2；
-        // cc 的 domain 期望维持裸串（Ruling C 仍有效，E6 才做前缀正規化）。
+        // 经 Ruling 10 授权：essential_direct 插入使长度 2→3，cn_ip 索引由 1 位移到 2。
+        // E6 起 cc 的 domain 统一为 domain: 前缀（Ruling C 的过渡期已结束）。
         assert_eq!(rules.len(), 3, "不得重复插入");
         assert_eq!(rules[0]["ruleTag"], "connectivity_check");
         assert_eq!(
             rules[0]["domain"],
             serde_json::json!([
-                "www.gstatic.com",
-                "connectivitycheck.gstatic.com",
-                "ssl.gstatic.com",
-                "fonts.gstatic.com",
-                "fonts.googleapis.com"
+                "domain:www.gstatic.com",
+                "domain:connectivitycheck.gstatic.com",
+                "domain:ssl.gstatic.com",
+                "domain:fonts.gstatic.com",
+                "domain:fonts.googleapis.com"
             ]),
             "过时内容应被当前定义覆盖"
         );
