@@ -43,6 +43,15 @@ pub static ROUTING_RULES: &[RuleDef] = &[
         outbound: "direct",
         default_enabled: true,
     },
+    // 外網必需服務直連：geosite:cn 误收的外网必需服务端点（Google/Apple/Microsoft），
+    // 必须早于 cn_ip / cn_domain，否则被 blackhole。
+    RuleDef {
+        id: "essential_direct",
+        rule_type: "domain",
+        targets: &["domain:recaptcha.net"],
+        outbound: "direct",
+        default_enabled: true,
+    },
     RuleDef {
         id: "private_ip",
         rule_type: "ip",
@@ -280,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_rule_def_constants_count() {
-        assert_eq!(ROUTING_RULES.len(), 8);
+        assert_eq!(ROUTING_RULES.len(), 9);
     }
 
     /// 回归防线：连通性检测规则必须先于 cn_ip / cn_domain。
@@ -301,6 +310,43 @@ mod tests {
         assert!(
             pos("connectivity_check") < pos("cn_domain"),
             "connectivity_check 必须排在 cn_domain 之前"
+        );
+    }
+
+    /// 外網必需服務直連：独立规则，直连出站、默认启用。
+    #[test]
+    fn test_essential_direct_rule_shape() {
+        let rule = ROUTING_RULES
+            .iter()
+            .find(|r| r.id == "essential_direct")
+            .expect("essential_direct 规则必须存在");
+        assert_eq!(rule.rule_type, "domain");
+        assert_eq!(rule.outbound, "direct");
+        assert!(rule.default_enabled, "essential_direct 应默认启用");
+    }
+
+    /// 外網必需服務直連必须紧接 connectivity_check 之后、早于 cn_ip / cn_domain。
+    /// Xray routing 顺序匹配、首条命中即停；排在 cn 规则之后就完全不生效，
+    /// 而 cn_domain（geosite:cn）会把这些外網必需域名 blackhole。
+    #[test]
+    fn test_essential_direct_precedes_cn_rules() {
+        let pos = |id: &str| {
+            ROUTING_RULES
+                .iter()
+                .position(|r| r.id == id)
+                .unwrap_or_else(|| panic!("规则 {} 不存在", id))
+        };
+        assert!(
+            pos("connectivity_check") < pos("essential_direct"),
+            "essential_direct 必须排在 connectivity_check 之后"
+        );
+        assert!(
+            pos("essential_direct") < pos("cn_ip"),
+            "essential_direct 必须排在 cn_ip 之前"
+        );
+        assert!(
+            pos("essential_direct") < pos("cn_domain"),
+            "essential_direct 必须排在 cn_domain 之前"
         );
     }
 

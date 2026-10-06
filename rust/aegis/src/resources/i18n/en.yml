@@ -476,6 +476,7 @@ xray:
   routing_rule_ads: "Block Ads"
   routing_rule_openai: "OpenAI Direct"
   routing_rule_connectivity_check: "Google Services Direct"
+  routing_rule_essential_direct: "Essential Services Direct"
   routing_mgmt_btn: "📋 Routing Rules"
   routing_custom_btn: "✏️ Custom Allowlist (%{count})"
   routing_custom_title: "✏️ <b>Custom Allowlist</b>\n\nThese domains (including subdomains) are routed directly and take priority over \"Block China Domain\", \"Block China IP\" and \"Block Ads\".\n⚠️ Domains only: clients connecting directly by IP are still blocked by geoip:cn.\n\nCurrently %{count} entries"
