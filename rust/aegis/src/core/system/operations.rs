@@ -147,6 +147,9 @@ APT::Periodic::AutocleanInterval "7";
 
     pub(crate) fn needrestart_config() -> String {
         r#"$nrconf{restart} = 'a';
+$nrconf{override_rc} = {
+  qr(^unattended-upgrades\.service$) => 0,
+};
 "#
         .to_string()
     }
@@ -582,6 +585,23 @@ mod tests {
     fn test_needrestart_config() {
         let config = AutoUpdateConfigurator::needrestart_config();
         assert!(config.contains("$nrconf{restart} = 'a'"));
+    }
+
+    #[test]
+    fn test_needrestart_config_defers_unattended_upgrades_service() {
+        // 回归：needrestart 自动重启（restart='a'）会连带重启「关机哨兵」
+        // unattended-upgrades.service。该服务收到 SIGTERM 会误判系统正在关机，
+        // 进而 SIGTERM 掉正在执行的 unattended-upgrade，使升级中途夭折
+        // （2026-10-10 两台生产机积压 49/57 个安全更新的根因）。
+        let config = AutoUpdateConfigurator::needrestart_config();
+        assert!(
+            config.contains("$nrconf{override_rc}"),
+            "缺少 override_rc 段，实际配置:\n{config}"
+        );
+        assert!(
+            config.contains(r"qr(^unattended-upgrades\.service$)"),
+            "unattended-upgrades.service 必须列入不重启名单，实际配置:\n{config}"
+        );
     }
 
     #[test]
