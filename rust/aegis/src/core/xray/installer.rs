@@ -18,6 +18,34 @@ const BASE_PACKAGES_APK: &[&str] = &[
 
 pub struct WarpInstaller;
 
+/// 两次 `rx_bytes` 采样的间隔。
+///
+/// 需要大于 WireGuard 的 keepalive 周期才有意义；Xray 侧配的是
+/// `keepAlive: 30`（秒），但这里只判「有没有任何回包」，不过分依赖那个值。
+/// 取 1s 是因为：若隧道可用，任何在途请求都会立刻产生回包；
+/// 若不可用，等 30s 也只是自讨苦吃。
+const WG_RX_SAMPLE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// wg0 隧道健康度。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WgTunnelHealth {
+    /// 采样期内 `rx_bytes` 有增长 → 真的在收包。
+    Established,
+    /// 计数不增长、或根本读不到 → 未建立。
+    NoTraffic,
+}
+
+/// 读 `wg0` 的累计接收字节数；读不到返回 `None`。
+///
+/// 读不到是**正常**情形（接口还没建、容器里没这个路径），
+/// 不应报错——调用方按「未建立」处理。
+async fn read_wg_rx_bytes() -> Option<u64> {
+    let raw = fs::read_to_string(crate::core::paths::warp::WG_RX_BYTES_PATH)
+        .await
+        .ok()?;
+    raw.trim().parse::<u64>().ok()
+}
+
 impl WarpInstaller {
     pub async fn is_installed() -> bool {
         // Check for config file instead of binary
@@ -32,21 +60,72 @@ impl WarpInstaller {
             .await
             .context("Failed to register WARP account")?;
 
-        // 2. Save Account Config
+        // 2. 先捕获现有配置，再覆写账号文件。
+        //
+        // 重装/升级不应抹掉管理员已配的域名清单与模式偏好。修复前这里
+        // 无条件传 `vec![]` + `Default`，每次重装都会静默清空它们
+        // （真机已复现：`proxy-warp + warp`（IPv4）退化为仅 `warp`，
+        // 域名规则全丢）。
+        let preserved = Self::read_preservable_config().await;
+
+        // 3. Save Account Config
         let account_path = warp_paths::ACCOUNT_FILE;
         let content = serde_json::to_string_pretty(&config)?;
         fs::write(account_path, content).await?;
 
-        // 3. Update core routing config
+        // 4. Update core routing config
+        //
+        // scope 取新注册账号的默认值（`register_account` 已设好）——
+        // 账号换新后把旧 scope 强行搬过来语义不对；而 `Domain` 是安全默认。
+        let (rules, mode) = Self::config_to_restore(preserved, config.scope);
         crate::core::xray::config::ConfigManager::update_warp_routing_rules(
-            vec![],
-            crate::core::xray::WarpMode::Default,
-            crate::core::xray::WarpScope::default(),
+            rules,
+            mode,
+            config.scope,
             false,
         )
         .await?;
 
         Ok(())
+    }
+
+    /// 读现有路由配置供重装时保留；无配置时返回 `None`。
+    ///
+    /// 读失败一律当作「无既有配置」：宁可回到默认，也不应因一个损坏的
+    /// 旧文件而让重装整个失败（重装本身是修复手段）。
+    async fn read_preservable_config() -> Option<(Vec<String>, crate::core::xray::WarpMode)> {
+        match crate::core::xray::ConfigManager::get_warp_routing_rules().await {
+            Ok((rules, mode, _scope)) => Some((rules, mode)),
+            Err(_) => None,
+        }
+    }
+
+    /// 决定重装后应写回的路由配置。
+    ///
+    /// 纯函数，便于单测穷举两分支。
+    ///
+    /// - `preserved = Some(..)`：全新部署后的再次安装——原样保留。
+    /// - `preserved = None`：首次安装——回到默认（空清单 + `Default`）。
+    ///
+    /// `scope` 不参与返回值：它不落在路由文件里，由调用方单独处理。
+    fn config_to_restore(
+        preserved: Option<(Vec<String>, crate::core::xray::WarpMode)>,
+        _scope: crate::core::xray::WarpScope,
+    ) -> (Vec<String>, crate::core::xray::WarpMode) {
+        preserved.unwrap_or((Vec::new(), crate::core::xray::WarpMode::Default))
+    }
+
+    /// 由两次 `rx_bytes` 采样判定隧道健康度。
+    ///
+    /// 纯函数，便于单测穷举所有组合（含读不到的 `None`）。
+    ///
+    /// 判定用「增长」而非「> 0」：计数器是累计值，一旦通一次就永久为正，
+    /// 用 `> 0` 会在「曾经通过、现在断了」时发出假阳性绿报。
+    fn verdict_from_samples(first: Option<u64>, second: Option<u64>) -> WgTunnelHealth {
+        match (first, second) {
+            (Some(a), Some(b)) if b > a => WgTunnelHealth::Established,
+            _ => WgTunnelHealth::NoTraffic,
+        }
     }
 
     pub async fn uninstall() -> Result<()> {
@@ -63,18 +142,45 @@ impl WarpInstaller {
         Ok(())
     }
 
+    /// WARP 状态：账号是否注册 **且隧道是否真的通**。
+    ///
+    /// 修复前这里只 `try_exists(warp_account.json)`，于是**永远**显示
+    /// 「🟢 已注册」——真机上 `wg0` 的 `rx_bytes` 恒为 0 持续数周，
+    /// TG 里的状态检测始终是绿的。这个假阳性正是故障潜伏至今的根因：
+    /// 没人能从 bot 侧看出隧道其实一个回包都收不到。
+    ///
+    /// 现改为三态：文件缺失 / 有文件但收不到回包 / 有文件且有回包。
     pub async fn status() -> Result<String> {
-        let account_path = warp_paths::ACCOUNT_FILE;
-        let is_registered = fs::try_exists(account_path).await.unwrap_or(false);
+        let is_registered = fs::try_exists(warp_paths::ACCOUNT_FILE)
+            .await
+            .unwrap_or(false);
 
-        Ok(format!(
-            "⚙️ <b>账户状态</b>: {}\n(Native Mode 由核心服务托管)",
-            if is_registered {
-                "🟢 已注册"
-            } else {
-                "🔴 未注册"
-            }
-        ))
+        if !is_registered {
+            return Ok("⚙️ <b>账户状态</b>: 🔴 未注册\n(Native Mode 由核心服务托管)".to_string());
+        }
+
+        // 采样两次 `rx_bytes`，用「是否有增长」而非「是否 > 0」判定。
+        //
+        // 单纯 `rx_bytes > 0` 无法区分「正在工作」与「曾经工作过、现在断了」：
+        // 计数器是累计值，一旦恢复过一次就永久为正。那种情况下旧逻辑会
+        // 再次发出假阳性绿报——而本部署恰好就是因为「恒为 0」才暴露了这个坑。
+        let first = read_wg_rx_bytes().await;
+        tokio::time::sleep(WG_RX_SAMPLE_INTERVAL).await;
+        let second = read_wg_rx_bytes().await;
+
+        let verdict = Self::verdict_from_samples(first, second);
+
+        Ok(match verdict {
+            WgTunnelHealth::Established => format!(
+                "⚙️ <b>账户状态</b>: 🟢 隧道正常（近 {WG_RX_SAMPLE_INTERVAL:?} 内收到回包）\n(Native Mode 由核心服务托管)"
+            ),
+            WgTunnelHealth::NoTraffic => format!(
+                "⚙️ <b>账户状态</b>: 🟡 已注册，但隧道未建立\n\
+                 已注册账号但 {WG_RX_SAMPLE_INTERVAL:?} 内 `wg0` 未收到任何回包。\n\
+                 常见原因：机房在出站方向丢弃了 UDP 2408（本部署实测被封锁）。\n\
+                 请用「出口连通性探测」确认，或改用 TCP/443（MASQUE）。"
+            ),
+        })
     }
 }
 
@@ -721,5 +827,122 @@ mod tests {
     #[test]
     fn test_progress_state_total_steps() {
         assert_eq!(TOTAL_STEPS, 6);
+    }
+
+    // ───────────────────── T10: 隧道健康判定 ─────────────────────
+
+    /// 收到回包（计数增长）→ 已建立。
+    #[test]
+    fn test_verdict_established_when_rx_grows() {
+        assert_eq!(
+            WarpInstaller::verdict_from_samples(Some(0), Some(1024)),
+            WgTunnelHealth::Established
+        );
+        assert_eq!(
+            WarpInstaller::verdict_from_samples(Some(4096), Some(8192)),
+            WgTunnelHealth::Established
+        );
+    }
+
+    /// **Bug B 的核心回归测试**：计数为 0（真机现状）必须是「未建立」。
+    ///
+    /// 修复前这里会报「🟢 已注册」，正是该假阳性让故障潜伏数周。
+    #[test]
+    fn test_verdict_not_established_when_rx_is_zero() {
+        assert_eq!(
+            WarpInstaller::verdict_from_samples(Some(0), Some(0)),
+            WgTunnelHealth::NoTraffic
+        );
+    }
+
+    /// 计数为正但**无增长** → 仍未建立。
+    ///
+    /// 这防的是「曾经通过、现在断了」：计数器是累计值，一旦通过一次
+    /// 就永久为正，用 `> 0` 判定会再次发出假阳性。
+    #[test]
+    fn test_verdict_not_established_when_rx_stalls() {
+        assert_eq!(
+            WarpInstaller::verdict_from_samples(Some(1_000_000), Some(1_000_000)),
+            WgTunnelHealth::NoTraffic,
+            "累计值不增长必须判为未建立，否则「曾经通、现在断」会再次假绿"
+        );
+    }
+
+    /// 读不到计数器（接口未建 / 路径不存在）→ 未建立，且不 panic。
+    #[test]
+    fn test_verdict_handles_unreadable_counter() {
+        assert_eq!(
+            WarpInstaller::verdict_from_samples(None, None),
+            WgTunnelHealth::NoTraffic
+        );
+        assert_eq!(
+            WarpInstaller::verdict_from_samples(Some(100), None),
+            WgTunnelHealth::NoTraffic
+        );
+        assert_eq!(
+            WarpInstaller::verdict_from_samples(None, Some(100)),
+            WgTunnelHealth::NoTraffic
+        );
+    }
+
+    /// 计数器回绕（理论可能）不得误判为已建立。
+    #[test]
+    fn test_verdict_does_not_treat_wrap_as_established() {
+        assert_eq!(
+            WarpInstaller::verdict_from_samples(Some(u64::MAX), Some(1)),
+            WgTunnelHealth::NoTraffic,
+            "回绕后 second < first，不应判为已建立"
+        );
+    }
+
+    // ───────────────────── T9: 重装保留配置 ─────────────────────
+
+    /// 首次安装（无既有配置）→ 默认：空清单 + Default 模式。
+    #[test]
+    fn test_restore_defaults_on_first_install() {
+        let (rules, mode) =
+            WarpInstaller::config_to_restore(None, crate::core::xray::WarpScope::Domain);
+        assert!(rules.is_empty(), "首次安装不应有域名规则");
+        assert_eq!(mode, crate::core::xray::WarpMode::Default);
+    }
+
+    /// **Bug A 的核心回归测试**：重装必须原样保留管理员配的清单与模式。
+    ///
+    /// 修复前 `install()` 无条件传 `vec![]` + `Default`，每次重装都
+    /// 静默清空域名规则并重置出口协议偏好（真机已复现）。
+    #[test]
+    fn test_restore_preserves_existing_config_on_reinstall() {
+        let saved = vec![
+            "domain:reddit.com".to_string(),
+            "domain:example.org".to_string(),
+        ];
+
+        for mode in [
+            crate::core::xray::WarpMode::Default,
+            crate::core::xray::WarpMode::IPv4,
+            crate::core::xray::WarpMode::IPv6,
+        ] {
+            let (rules, restored_mode) = WarpInstaller::config_to_restore(
+                Some((saved.clone(), mode)),
+                crate::core::xray::WarpScope::Domain,
+            );
+            assert_eq!(rules, saved, "重装后域名清单必须逐项保留（mode={mode:?}）");
+            assert_eq!(restored_mode, mode, "重装后模式偏好必须保留");
+        }
+    }
+
+    /// scope 不影响保留逻辑：它不落在路由文件里，由调用方单独处理。
+    #[test]
+    fn test_restore_is_independent_of_scope() {
+        let saved = vec!["domain:a.com".to_string()];
+        let a = WarpInstaller::config_to_restore(
+            Some((saved.clone(), crate::core::xray::WarpMode::IPv4)),
+            crate::core::xray::WarpScope::Domain,
+        );
+        let b = WarpInstaller::config_to_restore(
+            Some((saved, crate::core::xray::WarpMode::IPv4)),
+            crate::core::xray::WarpScope::Global,
+        );
+        assert_eq!(a, b, "scope 不应改变保留结果");
     }
 }
