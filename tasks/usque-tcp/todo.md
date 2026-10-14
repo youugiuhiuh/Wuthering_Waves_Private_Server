@@ -10,9 +10,24 @@
 
 ## 进度
 
-| 任务 | 状态 |
-|---|---|
-| T1–T16 | ⬜ 待做 |
+| 任务 | 状态 | commit |
+|---|---|---|
+| T1 路径常量 + self_destruct | ✅ | c367888 |
+| T2 pin 版本 + sha256 | ✅ | c367888 |
+| T3 systemd unit 纯函数 | ✅ | c367888 |
+| T4 sha256 校验 | ✅ | c367888 |
+| T5 checksums 解析 | ✅ | c367888 |
+| T6 出口引擎选择 | ✅ | c367888 |
+| T7 探测缓存 TTL | ✅ | c367888 |
+| T8 Xray socks outbound | ✅ | 33cf45e |
+| T9 隧道健康判据 | ✅ | c367888 |
+| T10 失败计数判死 | ✅ | c367888 |
+| T11 安装状态探测 | ✅ | c367888 |
+| T12 **成对卸载** | ✅ | c367888 |
+| T13 enforce 改运行时 | ✅ | 33cf45e |
+| T14 状态显示两套 | ✅ | 9ffad79 |
+| T15 i18n 三语同步 | ✅ | 9ffad79 |
+| T16 质量门禁 + 审查 | 🔄 | — |
 
 ---
 
@@ -21,10 +36,10 @@
 **Description**: `paths.rs` 新增 `pub mod usque`，并把 `wwps-usque` 加入 `DESTRUCT_SERVICES`（决策 OQ4）。
 
 **验收标准:**
-- [ ] `paths::usque` 含 `DIR` / `BIN` / `CONFIG_FILE` / `SERVICE_NAME` / `SERVICE_PATH` / `SOCKS_PORT`
-- [ ] `DESTRUCT_SERVICES` 含 `"wwps-usque"`
-- [ ] 常量测试断言字面值
-- [ ] 既有 `test_maintenance_paths` 仍通过（它断言 `DESTRUCT_SERVICES` 非空且含 `wwps-core`）
+- [x] `paths::usque` 含 `DIR` / `BIN` / `CONFIG_FILE` / `SERVICE_NAME` / `SERVICE_PATH` / `SOCKS_PORT`
+- [x] `DESTRUCT_SERVICES` 含 `"wwps-usque"`
+- [x] 常量测试断言字面值
+- [x] 既有 `test_maintenance_paths` 仍通过（它断言 `DESTRUCT_SERVICES` 非空且含 `wwps-core`）
 
 **验证:** `cargo nextest run paths::`
 
@@ -50,13 +65,13 @@ pub mod usque {
 **Description**: 新建 `core/usque/pin.rs`，硬编码版本与 sha256（硬约束 5），提供从架构构造下载 URL 的纯函数。
 
 **验收标准:**
-- [ ] `USQUE_VERSION` = `"4.2.1"`
-- [ ] `USQUE_SHA256_LINUX_AMD64` = `"4117e206..."`（64 位 hex）
-- [ ] `asset_name(arch) -> Option<String>` 纯函数：`x86_64` → `usque_4.2.1_linux_amd64.zip`；`aarch64` → `usque_4.2.1_linux_arm64.zip`；未知架构 → `None`
-- [ ] `download_url(asset) -> String` 拼正确 GitHub Release URL
-- [ ] `checksums_url() -> String`
-- [ ] 测试覆盖各架构 + 未知架构 + URL 形状
-- [ ] **断言 sha256 是 64 位小写 hex**（防手误粘贴截断的哈希）
+- [x] `USQUE_VERSION` = `"4.2.1"`
+- [x] `USQUE_SHA256_LINUX_AMD64` = `"4117e206..."`（64 位 hex）
+- [x] `asset_name(arch) -> Option<String>` 纯函数：`x86_64` → `usque_4.2.1_linux_amd64.zip`；`aarch64` → `usque_4.2.1_linux_arm64.zip`；未知架构 → `None`
+- [x] `download_url(asset) -> String` 拼正确 GitHub Release URL
+- [x] `checksums_url() -> String`
+- [x] 测试覆盖各架构 + 未知架构 + URL 形状
+- [x] **断言 sha256 是 64 位小写 hex**（防手误粘贴截断的哈希）
 
 **验证:** `cargo nextest run usque::pin`
 
@@ -72,14 +87,14 @@ pub mod usque {
 **Description**: 新建 `core/usque/unit.rs`，把 unit 文本生成做成纯函数（便于断言），复用 `singbox/installer.rs:224` 的风格。
 
 **验收标准:**
-- [ ] `service_unit(bin, config, port) -> String`
-- [ ] 含 `Restart=always`、`RestartSec=5`、`LimitNOFILE=51200`
-- [ ] `ExecStart` 含 **`socks --http2`**（硬约束 1 的机械保证）
-- [ ] `ExecStart` **不含** `l4-socks`
-- [ ] `-b 127.0.0.1`（不对外暴露 SOCKS）
-- [ ] `WantedBy=multi-user.target`
-- [ ] `[Unit]` 含 `After=network.target`
-- [ ] 测试断言以上全部（尤其「无 l4-socks」的防回归断言）
+- [x] `service_unit(bin, config, port) -> String`
+- [x] 含 `Restart=always`、`RestartSec=5`、`LimitNOFILE=51200`
+- [x] `ExecStart` 含 **`socks --http2`**（硬约束 1 的机械保证）
+- [x] `ExecStart` **不含** `l4-socks`
+- [x] `-b 127.0.0.1`（不对外暴露 SOCKS）
+- [x] `WantedBy=multi-user.target`
+- [x] `[Unit]` 含 `After=network.target`
+- [x] 测试断言以上全部（尤其「无 l4-socks」的防回归断言）
 
 **验证:** `cargo nextest run usque::unit`
 
@@ -103,10 +118,10 @@ fn test_unit_uses_socks_http2_not_l4() {
 **Description**: `core/usque/pin.rs` 或独立 `verify.rs` 加哈希比较函数。
 
 **验收标准:**
-- [ ] `verify_sha256(expected: &str, actual_hex: &str) -> bool` 大小写不敏感
-- [ ] 支持带 `sha256:` 前缀的输入（与既有 `parse_digest` 风格一致）
-- [ ] 长度不符直接 false（不 panic）
-- [ ] 测试：相等 / 不等 / 大小写 / 前缀 / 空 / 长度错误
+- [x] `verify_sha256(expected: &str, actual_hex: &str) -> bool` 大小写不敏感
+- [x] 支持带 `sha256:` 前缀的输入（与既有 `parse_digest` 风格一致）
+- [x] 长度不符直接 false（不 panic）
+- [x] 测试：相等 / 不等 / 大小写 / 前缀 / 空 / 长度错误
 
 **验证:** `cargo nextest run usque::`
 
@@ -120,11 +135,11 @@ fn test_unit_uses_socks_http2_not_l4() {
 **Description**: 从 Release 的 `checksums.txt` 中提取指定资产的 sha256。
 
 **验收标准:**
-- [ ] `parse_checksums(text, asset) -> Option<String>`
-- [ ] 格式为 `<hash>  <filename>`（两空格），兼容单空格与 tab
-- [ ] 找不到该资产 → `None`
-- [ ] 行含 `./` 前缀或路径前缀时仍能匹配（健壮性）
-- [ ] 测试覆盖多种格式 + 缺失资产
+- [x] `parse_checksums(text, asset) -> Option<String>`
+- [x] 格式为 `<hash>  <filename>`（两空格），兼容单空格与 tab
+- [x] 找不到该资产 → `None`
+- [x] 行含 `./` 前缀或路径前缀时仍能匹配（健壮性）
+- [x] 测试覆盖多种格式 + 缺失资产
 
 **验证:** `cargo nextest run usque::`
 
@@ -144,14 +159,14 @@ c88b061c2a567f30813d7505637d1fb6fe7ec5898b5b61fd05122409fa5ad925  usque_4.2.1_li
 **Description**: 新建 `core/usque/engine.rs`。`ProbeConclusion` → 出口类型。
 
 **验收标准:**
-- [ ] `pub enum Egress { WireGuard, Masque, Direct }`
-- [ ] `select_egress(conclusion) -> Egress` 穷举 4 态：
+- [x] `pub enum Egress { WireGuard, Masque, Direct }`
+- [x] `select_egress(conclusion) -> Egress` 穷举 4 态：
   - `WgUsable` → `WireGuard`
   - `UdpOnly` → `WireGuard`
   - `TcpOnly` → `Masque`
   - `FullyBlocked` → `Direct`
-- [ ] 测试穷举 4 态（不是抽 2 个）
-- [ ] `Egress` 有 `is_warp_enabled()`（`Direct` 时 false）
+- [x] 测试穷举 4 态（不是抽 2 个）
+- [x] `Egress` 有 `is_warp_enabled()`（`Direct` 时 false）
 
 **验证:** `cargo nextest run usque::engine`
 
@@ -165,11 +180,11 @@ c88b061c2a567f30813d7505637d1fb6fe7ec5898b5b61fd05122409fa5ad925  usque_4.2.1_li
 **Description**: 决策 OQ1/OQ2。内存缓存 + TTL。
 
 **验收标准:**
-- [ ] 缓存 `ProbeReport`，TTL 10 分钟
-- [ ] `cached_or_probe()`：命中且未过期 → 返回缓存；否则跑 `run_probe()`
-- [ ] 过期判定用可注入的「当前时刻」以便测试（不依赖真实时钟）
-- [ ] 测试：未探测 / 命中 / 过期 / 强制刷新
-- [ ] **不在测试里打网络**（把 probe 做成可注入的闭包/trait）
+- [x] 缓存 `ProbeReport`，TTL 10 分钟
+- [x] `cached_or_probe()`：命中且未过期 → 返回缓存；否则跑 `run_probe()`
+- [x] 过期判定用可注入的「当前时刻」以便测试（不依赖真实时钟）
+- [x] 测试：未探测 / 命中 / 过期 / 强制刷新
+- [x] **不在测试里打网络**（把 probe 做成可注入的闭包/trait）
 
 **验证:** `cargo nextest run usque::engine`
 
@@ -220,11 +235,11 @@ fn test_masque_outbound_is_flat_socks_shape() {
 **Description**: `core/usque/health.rs`。从 `cdn-cgi/trace` 响应体判定隧道是否工作。
 
 **验收标准:**
-- [ ] `is_tunnel_healthy(trace_body: &str) -> bool`：含 `warp=on` → true
-- [ ] `warp=off` / 空体 / 无该字段 → false
-- [ ] **不区分行序、允许前后空白**（trace 输出顺序可变）
-- [ ] 测试用真实 trace 输出做 fixture（不打网络）
-- [ ] 断言 `warp=plus` 也算健康（Cloudflare 还有这个值）
+- [x] `is_tunnel_healthy(trace_body: &str) -> bool`：含 `warp=on` → true
+- [x] `warp=off` / 空体 / 无该字段 → false
+- [x] **不区分行序、允许前后空白**（trace 输出顺序可变）
+- [x] 测试用真实 trace 输出做 fixture（不打网络）
+- [x] 断言 `warp=plus` 也算健康（Cloudflare 还有这个值）
 
 **验证:** `cargo nextest run usque::health`
 
@@ -249,11 +264,11 @@ loc=US
 **Description**: 连续失败 N 次才判死（避免网络抖动误杀）。
 
 **验收标准:**
-- [ ] `FailureTracker`：`record(success: bool)`，连续成功清零
-- [ ] `should_restart() -> bool`：连续失败 ≥ 3 时 true
-- [ ] 阈值 3、间隔 60s 为具名常量
-- [ ] 测试：第一次失败不触发 / 两次不触发 / 三次触发 / 中途成功清零
-- [ ] 单次成功必须清零（否则偶发失败累积后误杀）
+- [x] `FailureTracker`：`record(success: bool)`，连续成功清零
+- [x] `should_restart() -> bool`：连续失败 ≥ 3 时 true
+- [x] 阈值 3、间隔 60s 为具名常量
+- [x] 测试：第一次失败不触发 / 两次不触发 / 三次触发 / 中途成功清零
+- [x] 单次成功必须清零（否则偶发失败累积后误杀）
 
 **验证:** `cargo nextest run usque::health`
 
@@ -267,10 +282,10 @@ loc=US
 **Description**: `detect_installed_kinds`，为成对卸载提供判据。
 
 **验收标准:**
-- [ ] `pub struct InstalledKinds { pub wireguard: bool, pub usque: bool }`
-- [ ] `detect_installed_kinds(wg_exists: bool, usque_exists: bool) -> InstalledKinds`
-- [ ] 穷举 4 种组合的测试
-- [ ] `InstalledKinds::none()` / `any()` / `describe()` 辅助方法
+- [x] `pub struct InstalledKinds { pub wireguard: bool, pub usque: bool }`
+- [x] `detect_installed_kinds(wg_exists: bool, usque_exists: bool) -> InstalledKinds`
+- [x] 穷举 4 种组合的测试
+- [x] `InstalledKinds::none()` / `any()` / `describe()` 辅助方法
 
 **验证:** `cargo nextest run usque::`
 
@@ -284,15 +299,15 @@ loc=US
 **Description**: 改 `WarpInstaller::uninstall()`，同时清理 WireGuard 与 usque，幂等。
 
 **验收标准:**
-- [ ] 返回 `UninstallOutcome { removed_wireguard, removed_usque }`
-- [ ] 清理 WireGuard：`warp_account.json` + `10_warp_routing.json`
-- [ ] 清理 usque：`stop` → `disable` → 删 unit → `daemon-reload` → 删 `CONFIG_FILE` → 删 `BIN`/`DIR`
-- [ ] **幂等**：两套都不存在 → 返回成功（`Ok`）而非错误
-- [ ] **任一 `stop` 失败不阻断**（已是 stopped 属正常）
-- [ ] 只装其中一套时正常卸载另一套，不报错
-- [ ] 结束后 `reload_core()`
-- [ ] `UninstallOutcome::i18n_key()` 返回 4 种组合各自的 key，且**互不相同**
-- [ ] 测试：`i18n_key()` 穷举 4 态 + 断言无重复
+- [x] 返回 `UninstallOutcome { removed_wireguard, removed_usque }`
+- [x] 清理 WireGuard：`warp_account.json` + `10_warp_routing.json`
+- [x] 清理 usque：`stop` → `disable` → 删 unit → `daemon-reload` → 删 `CONFIG_FILE` → 删 `BIN`/`DIR`
+- [x] **幂等**：两套都不存在 → 返回成功（`Ok`）而非错误
+- [x] **任一 `stop` 失败不阻断**（已是 stopped 属正常）
+- [x] 只装其中一套时正常卸载另一套，不报错
+- [x] 结束后 `reload_core()`
+- [x] `UninstallOutcome::i18n_key()` 返回 4 种组合各自的 key，且**互不相同**
+- [x] 测试：`i18n_key()` 穷举 4 态 + 断言无重复
 
 **验证:** `cargo nextest run xray::installer` + `cargo nextest run self_destruct`（回归红线）
 
@@ -314,12 +329,12 @@ loc=US
 **Description**: `Global` 是否生成 catch-all，改由「出口引擎是否可用」决定。
 
 **验收标准:**
-- [ ] 删除 `enforce_global_warp()`（读环境变量的函数）
-- [ ] 新增 `egress_engine_available()` 或等价判据
-- [ ] `build_routing_rules` 的 `enforce` 参数语义更新为「出口可用」，并写进文档注释
-- [ ] `Direct`（无可用出口）时 `Global` **不**生成 catch-all（防黑洞）
-- [ ] Spec 1 的 `test_global_without_enforce_is_identical_to_domain` **仍需通过**（语义兼容）
-- [ ] 更新该测试的注释说明语义变化
+- [x] 删除 `enforce_global_warp()`（读环境变量的函数）
+- [x] 新增 `egress_engine_available()` 或等价判据
+- [x] `build_routing_rules` 的 `enforce` 参数语义更新为「出口可用」，并写进文档注释
+- [x] `Direct`（无可用出口）时 `Global` **不**生成 catch-all（防黑洞）
+- [x] Spec 1 的 `test_global_without_enforce_is_identical_to_domain` **仍需通过**（语义兼容）
+- [x] 更新该测试的注释说明语义变化
 
 **验证:** `cargo nextest run xray::warp`
 
@@ -333,11 +348,11 @@ loc=US
 **Description**: 不做新菜单，但状态里要能看到 WireGuard + usque 两套的情况。
 
 **验收标准:**
-- [ ] `WarpInstaller::status()` 同时报告：WireGuard（账号/隧道）与 usque（安装/健康）
-- [ ] `FullyBlocked` 时明确提示「出口完全受限」（OQ3）
-- [ ] 未装 usque 时不报错，只显示「未安装」
-- [ ] 测试覆盖各组合（用纯函数拆分）
-- [ ] i18n 三语新增键，key 集合一致
+- [x] `WarpInstaller::status()` 同时报告：WireGuard（账号/隧道）与 usque（安装/健康）
+- [x] `FullyBlocked` 时明确提示「出口完全受限」（OQ3）
+- [x] 未装 usque 时不报错，只显示「未安装」
+- [x] 测试覆盖各组合（用纯函数拆分）
+- [x] i18n 三语新增键，key 集合一致
 
 **验证:** `cargo nextest run xray::installer` + 脚本校验三语 key 集合
 
@@ -351,10 +366,10 @@ loc=US
 **Description**: 补齐 T12/T14 的所有新键。
 
 **验收标准:**
-- [ ] `zh`/`en`/`ja` 的 `warp` 块 key 集合**完全一致**
-- [ ] 无硬编码文案（全走 `t!`）
-- [ ] 现有键未被破坏性改动
-- [ ] 用脚本比对三方 key 集合
+- [x] `zh`/`en`/`ja` 的 `warp` 块 key 集合**完全一致**
+- [x] 无硬编码文案（全走 `t!`）
+- [x] 现有键未被破坏性改动
+- [x] 用脚本比对三方 key 集合
 
 **验证:** `cargo nextest run` 全绿 + 脚本比对
 
