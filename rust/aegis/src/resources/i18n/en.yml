@@ -256,7 +256,10 @@ log:
   back_log: "⬅️ Back to Log Audit"
 
 warp:
-  title: "🌩 <b>WARP Routing Management</b>\n\nCurrent Mode: <b>%{0}</b>\nCurrent Rules: %{1}\n\nAdd or remove domain/GeoSite rules."
+  title: "🌩 <b>WARP Routing Management</b>\n\nCurrent Mode: <b>%{0}</b>\nCurrent Rules: %{1}\n\n🧩 Installed: %{2}\n\nAdd or remove domain/GeoSite rules."
+  installed_both: "🟢 WireGuard + usque (both present)"
+  installed_wireguard: "🟢 WireGuard (kernel TUN; outbound UDP works)"
+  installed_usque: "🟢 usque (MASQUE over TCP/443)"
   not_installed: "⚠️ <b>Cloudflare WARP Not Detected</b>\n\nWARP is not installed. Install now?"
   install_warp: "🚀 Install Cloudflare WARP"
   installing: "⏳ <b>Installing Cloudflare WARP...</b>\nThis may take a few minutes."

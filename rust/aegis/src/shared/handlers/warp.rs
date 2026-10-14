@@ -37,7 +37,10 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
 
     match data {
         "m_warp" => {
-            let is_installed = WarpInstaller::is_installed().await;
+            // 一次判定，两处使用：既是「未安装」拦截的判据，也是
+            // 界面显示「装的是哪一套」的依据。
+            let installed_kinds = crate::core::usque::installer::detect_installed().await;
+            let is_installed = installed_kinds.any();
             if !is_installed {
                 let markup = Markup {
                     buttons: vec![
@@ -162,7 +165,12 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                         text: t!(
                             "warp.title",
                             "0" => current_mode.as_str(),
-                            "1" => rule_display
+                            "1" => rule_display,
+                            // 当前装的是哪一套。两套并存且不可互换（内核 TUN
+                            // vs 本地 SOCKS），笼统地说「WARP 已安装」会让
+                            // 管理员误以为走的是另一条路。
+                            "2" => t!(WarpInstaller::installed_banner_key(installed_kinds))
+                                .to_string()
                         )
                         .into(),
                         markup: Some(markup),

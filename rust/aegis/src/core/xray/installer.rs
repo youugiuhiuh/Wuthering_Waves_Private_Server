@@ -47,11 +47,25 @@ async fn read_wg_rx_bytes() -> Option<u64> {
 }
 
 impl WarpInstaller {
+    /// 是否装有**任意一套** WARP 实现（WireGuard 或 usque）。
+    ///
+    /// # 为何必须查两套
+    ///
+    /// 两套实现的账号文件是**不同路径**：
+    ///
+    /// - WireGuard：`/etc/wwps/wwps-core/warp_account.json`
+    /// - usque：`/etc/wwps/usque/config.json`
+    ///
+    /// 之前只查前者，于是「只装 usque」的机房（UDP 被封的机房正是这种）
+    /// 会被判定为未安装，菜单显示「⚠️ 未检测到 Cloudflare WARP」并给出
+    /// 安装按钮。管理员反复点击——每次都「成功」（幂等跳过）——
+    /// 界面却永远说没装。这是一个无法自解的死循环。
+    ///
+    /// 出口条件不同的机房会装不同的实现，因此判定必须覆盖两套。
     pub async fn is_installed() -> bool {
-        // Check for config file instead of binary
-        fs::try_exists(warp_paths::ACCOUNT_FILE)
+        crate::core::usque::installer::detect_installed()
             .await
-            .unwrap_or(false)
+            .any()
     }
 
     /// 只装 WireGuard 那一套（注册账号 + 写路由，保留既有配置）。
@@ -241,6 +255,31 @@ impl WarpInstaller {
         // No service to restart, just reload core
         crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
         Ok(())
+    }
+
+    /// 入口横幅的 i18n key——按**实际装了哪一套**分派。
+    ///
+    /// # 为何不能只用布尔值
+    ///
+    /// 两套是并存且不可互换的：WireGuard 用内核 TUN（`wg0`），usque 用
+    /// 本地 SOCKS（`127.0.0.1:1080`），连 Xray outbound 的形状都不同
+    /// （`wireguard` vs 扁平 `socks`）。所以界面必须说清楚当前装的是哪一套，
+    /// 而不是笼统地讲「WARP 已安装」——后者会让管理员误以为走的是
+    /// 内核接管那条路。
+    ///
+    /// 出口条件不同的机房会装不同的实现：UDP 可用装 WireGuard，
+    /// UDP 被封装 usque。
+    ///
+    /// 纯函数，便于穷举四种组合而不用碰文件系统。
+    pub const fn installed_banner_key(kinds: crate::core::usque::InstalledKinds) -> &'static str {
+        match (kinds.wireguard, kinds.usque) {
+            (true, true) => "warp.installed_both",
+            (true, false) => "warp.installed_wireguard",
+            (false, true) => "warp.installed_usque",
+            // 都没有——这个分支只会在判定与显示不一致时命中，
+            // 调用方应先拦在 `is_installed()` 之前。
+            (false, false) => "warp.not_installed",
+        }
     }
 
     /// WARP 状态：账号是否注册 **且隧道是否真的通**。
@@ -1193,5 +1232,104 @@ mod tests {
             crate::core::usque::Egress::WireGuard
         );
         crate::core::usque::engine::global_probe_cache().clear();
+    }
+
+    // ────────── 安装判定必须覆盖两套实现 ──────────
+
+    /// **防回归**：`is_installed()` 不得只看 WireGuard。
+    ///
+    /// # 已发生的故障
+    ///
+    /// 线上只装了 usque（WireGuard 未注册），而 `is_installed()` 只
+    /// `try_exists(ACCOUNT_FILE)` → 返回 `false` → 菜单显示
+    /// 「⚠️ 未检测到 Cloudflare WARP」并给出安装按钮。
+    ///
+    /// 管理员此时会**反复点安装**：每次都成功（usque 已装会跳过），
+    /// 但界面永远说没装。这是一个无法自解的死循环，且看起来像
+    /// 「安装失败」而不是「判定写错了」。
+    ///
+    /// 断言源码而非运行时：真实判定要读磁盘，而这里要钉死的是
+    /// 「有没有考虑第二套实现」这一结构性质。
+    #[test]
+    fn test_is_installed_must_consider_both_implementations() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("pub async fn is_installed()")
+            .expect("is_installed 必须存在");
+        let body = &SRC[start..];
+        let body = &body[..body.find("\n    }").unwrap_or(body.len())];
+
+        assert!(
+            body.contains("detect_installed"),
+            "is_installed() 必须基于 detect_installed() 判定两套实现。\n\
+             只查 warp_paths::ACCOUNT_FILE 会让「只装 usque」的机房\n\
+             永远显示未安装——线上已发生过这个死循环故障。"
+        );
+        assert!(
+            !body.contains("warp_paths::ACCOUNT_FILE"),
+            "is_installed() 不得直接检查 WireGuard 的 ACCOUNT_FILE——\n\
+             usque 的账号文件在 /etc/wwps/usque/config.json，是另一个路径。"
+        );
+    }
+
+    /// 判定结果要能区分「装了哪一套」，供界面分派显示。
+    #[test]
+    fn test_install_kind_is_distinguishable() {
+        use crate::core::usque::InstalledKinds;
+
+        let wg_only = InstalledKinds::detect(true, false);
+        let uq_only = InstalledKinds::detect(false, true);
+        let both = InstalledKinds::detect(true, true);
+        let none = InstalledKinds::none();
+
+        // 都算「已安装」——入口不应再拦。
+        assert!(wg_only.any(), "只装 WireGuard 也算已安装");
+        assert!(uq_only.any(), "只装 usque 也算已安装（这正是线上情形）");
+        assert!(both.any());
+        assert!(!none.any(), "都没装才是未安装");
+
+        // 但必须能区分，否则界面无法显示「装的是哪一套」。
+        assert_ne!(wg_only, uq_only, "两套必须可区分，界面要据此分派文案");
+        assert_ne!(uq_only, none);
+    }
+
+    /// 横幅文案必须能区分四种组合——穷举，因为漏掉任一种都会让
+    /// 管理员看到与实际不符的描述。
+    #[test]
+    fn test_installed_banner_key_dispatches_all_cases() {
+        use crate::core::usque::InstalledKinds;
+
+        let cases = [
+            (InstalledKinds::detect(true, true), "warp.installed_both"),
+            (
+                InstalledKinds::detect(true, false),
+                "warp.installed_wireguard",
+            ),
+            (InstalledKinds::detect(false, true), "warp.installed_usque"),
+            (InstalledKinds::none(), "warp.not_installed"),
+        ];
+        for (kinds, expect) in cases {
+            assert_eq!(
+                WarpInstaller::installed_banner_key(kinds),
+                expect,
+                "wireguard={} usque={} 应显示 {expect}",
+                kinds.wireguard,
+                kinds.usque
+            );
+        }
+    }
+
+    /// **线上故障的直接回归**：只装 usque 时，横幅必须是 usque 那一条，
+    /// 不能是「未安装」。
+    #[test]
+    fn test_usque_only_is_not_reported_as_not_installed() {
+        use crate::core::usque::InstalledKinds;
+
+        let key = WarpInstaller::installed_banner_key(InstalledKinds::detect(false, true));
+        assert_eq!(key, "warp.installed_usque");
+        assert_ne!(
+            key, "warp.not_installed",
+            "只装 usque 就报「未检测到 WARP」——这正是线上那个死循环"
+        );
     }
 }

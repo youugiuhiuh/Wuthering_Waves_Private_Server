@@ -256,7 +256,10 @@ log:
   back_log: "⬅️ ログ監査に戻る"
 
 warp:
-  title: "🌩 <b>WARP ルーティング管理</b>\n\n現在のモード: <b>%{0}</b>\n現在のルール: %{1}\n\nドメイン/GeoSiteルールを追加または削除できます。"
+  title: "🌩 <b>WARP ルーティング管理</b>\n\n現在のモード: <b>%{0}</b>\n現在のルール: %{1}\n\n🧩 インストール済み: %{2}\n\nドメイン/GeoSiteルールを追加または削除できます。"
+  installed_both: "🟢 WireGuard + usque（両方）"
+  installed_wireguard: "🟢 WireGuard（カーネル TUN、外向き UDP 可）"
+  installed_usque: "🟢 usque（TCP/443 上の MASQUE）"
   not_installed: "⚠️ <b>Cloudflare WARP未検出</b>\n\nWARPがインストールされていません。ルーティングルールを設定できません。\n今すぐインストールしますか？"
   install_warp: "🚀 Cloudflare WARPをインストール"
   installing: "⏳ <b>Cloudflare WARPをインストール中...</b>\n数分かかる場合があります。"
