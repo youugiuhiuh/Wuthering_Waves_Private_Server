@@ -262,7 +262,10 @@ log:
   back_log: "⬅️ 返回日志审计"
 
 warp:
-  title: "🌩 <b>WARP 分流管理</b>\n\n当前模式: <b>%{0}</b>\n当前规则: %{1}\n\n您可以添加或删除特定的域名/GeoSite规则。"
+  title: "🌩 <b>WARP 分流管理</b>\n\n当前模式: <b>%{0}</b>\n当前规则: %{1}\n\n🧩 已安装实现: %{2}\n\n您可以添加或删除特定的域名/GeoSite规则。"
+  installed_both: "🟢 WireGuard + usque（两套并存）"
+  installed_wireguard: "🟢 WireGuard（内核 TUN，UDP 可用）"
+  installed_usque: "🟢 usque（MASQUE over TCP/443）"
   not_installed: "⚠️ <b>未检测到 Cloudflare WARP</b>\n\n系统未安装 WARP 服务，无法配置分流规则。\n是否立即安装？"
   install_warp: "🚀 安装 Cloudflare WARP"
   installing: "⏳ <b>正在安装 Cloudflare WARP...</b>\n请稍候，这可能需要几分钟。"
