@@ -9,15 +9,26 @@
 
 ## 进度
 
-| 任务 | 状态 |
-|---|---|
-| T1 路径常量 + 探测骨架 | ✅ 5bb4255 |
-| T6 UDP 探测 | ✅ 5bb4255 |
-| T7 TCP 探测 | ✅ 5bb4255 |
-| T8 4 态组合 + 并行 | ✅ 5bb4255 |
-| T2–T5, T9–T15 | ⬜ 待做 |
+| 任务 | 状态 | commit |
+|---|---|---|
+| T1 路径常量 + 探测骨架 | ✅ | 5bb4255 |
+| T2 WarpScope enum | ✅ | 0b001d6 |
+| T3 serde 兼容字段 | ✅ | 0b001d6 |
+| T4 build_routing_rules | ✅ | 3297562 |
+| T5 签名 + 跳过 reload | ✅ | 3297562 |
+| T6 UDP 探测 | ✅ | 5bb4255 |
+| T7 TCP 探测 | ✅ | 5bb4255 |
+| T8 4 态组合 + 并行 | ✅ | 5bb4255 |
+| T9 Bug A: install 保留配置 | ✅ | 2cdc194 |
+| T10 Bug B: status 真实探测 | ✅ | 2cdc194 |
+| T11 a_warp_switch_scope | ✅ | 3297562 |
+| T12 a_warp_probe | ✅ | 3297562 |
+| T13 菜单按钮 + 三语 | ✅ | 3297562 |
+| T14 质量门禁 | ✅ | — |
+| T15 代码审查 | ✅ | — |
 
-**当前套件**: 1126 passed, 1 skipped（基线 1119）
+**最终套件**: 1151 passed, 1 skipped（基线 1119）
+**质量门禁**: fmt ✅ / clippy -D warnings ✅ / nextest ✅ / doc ✅
 
 ---
 
@@ -50,9 +61,9 @@ pub const TCP_PROBE_SNI: &str = "consumer-masque.cloudflareclient.com";
 **Description**: 新增 `WarpScope { Domain, Global }`，与 `WarpMode` 正交。
 
 **验收标准:**
-- [ ] `next()`：Domain → Global → Domain
-- [ ] `Default` = `Domain`
-- [ ] `as_str()` 返回 i18n key（非硬编码文案）
+- [x] `next()`：Domain → Global → Domain
+- [x] `Default` = `Domain`
+- [x] `as_str()` 返回 i18n key（非硬编码文案）
 
 **验证:** `cargo nextest run warp::`
 
@@ -79,10 +90,10 @@ fn test_warp_scope_default_is_domain() {
 **Description**: 加 `#[serde(default)] pub scope: WarpScope`。
 
 **验收标准:**
-- [ ] 旧 JSON（无 `scope`）→ 反序列化成功且 `== Domain`
-- [ ] 新 JSON 往返保真
-- [ ] `register_account()` 设 `WarpScope::default()`
-- [ ] 既有 `test_warp_account_config_*` 仍通过
+- [x] 旧 JSON（无 `scope`）→ 反序列化成功且 `== Domain`
+- [x] 新 JSON 往返保真
+- [x] `register_account()` 设 `WarpScope::default()`
+- [x] 既有 `test_warp_account_config_*` 仍通过
 
 **验证:** `cargo nextest run warp_api::`
 
@@ -108,11 +119,11 @@ fn test_scope_defaults_when_absent_legacy_file() {
 **Description**: 抽出 rules 构建函数，支持两态。配置项 `WARP_SCOPE_ENFORCE`（默认 `false`）控制是否生成 catch-all。
 
 **验收标准:**
-- [ ] `Domain` → 现有行为（domain 规则）
-- [ ] `Global` → catch-all `{"outboundTag":"warp"}`（**无 domain 键**）
-- [ ] 空规则 + Domain → 只产出 warp-in 规则
-- [ ] 默认 false → 实际仍为 Domain 行为
-- [ ] 无 dead_code（clippy 通过）
+- [x] `Domain` → 现有行为（domain 规则）
+- [x] `Global` → catch-all `{"outboundTag":"warp"}`（**无 domain 键**）
+- [x] 空规则 + Domain → 只产出 warp-in 规则
+- [x] 默认 false → 实际仍为 Domain 行为
+- [x] 无 dead_code（clippy 通过）
 
 **验证:** `cargo nextest run warp::` + `cargo clippy -D warnings`
 
@@ -126,11 +137,11 @@ fn test_scope_defaults_when_absent_legacy_file() {
 **Description**: `get_*` 加 `WarpScope`；`update_*` 加 `scope_only: bool`。
 
 **验收标准:**
-- [ ] `get_warp_routing_rules() -> (Vec<String>, WarpMode, WarpScope)`
-- [ ] `update_warp_routing_rules(rules, mode, scope, scope_only)`
-- [ ] `scope_only == true` → **不调用** `reload_core()`
-- [ ] `scope_only == false` → 行为不变
-- [ ] 6 处调用点全部适配
+- [x] `get_warp_routing_rules() -> (Vec<String>, WarpMode, WarpScope)`
+- [x] `update_warp_routing_rules(rules, mode, scope, scope_only)`
+- [x] `scope_only == true` → **不调用** `reload_core()`
+- [x] `scope_only == false` → 行为不变
+- [x] 6 处调用点全部适配
 
 **验证:** `cargo nextest run warp::` + `cargo check --all-targets`
 
@@ -210,9 +221,9 @@ UDP ❌ + TCP ❌ → FullyBlocked
 **Description**: 重装前先读现有 `(rules, mode, scope)`，写回时保留。
 
 **验收标准:**
-- [ ] 已有配置 → install 后三者**不变**
-- [ ] 无既有配置 → `Default` + 空规则 + `Domain`
-- [ ] 测试覆盖两分支
+- [x] 已有配置 → install 后三者**不变**
+- [x] 无既有配置 → `Default` + 空规则 + `Domain`
+- [x] 测试覆盖两分支
 
 **验证:** `cargo nextest run installer::` + `cargo nextest run self_destruct`（回归红线）
 
@@ -226,11 +237,11 @@ UDP ❌ + TCP ❌ → FullyBlocked
 **Description**: 保留文件判定，新增读 `WG_RX_BYTES_PATH` 三态输出。
 
 **验收标准:**
-- [ ] 无文件 → 🔴 未注册
-- [ ] 有文件 + `rx_bytes == 0` → 🟡 隧道未建立
-- [ ] 有文件 + `rx_bytes > 0` 且**有增长** → 🟢 正常
-- [ ] `rx_bytes > 0` 但**无增长** → 🟡（防"曾经通现在断"假阳性）
-- [ ] 读文件失败不 panic
+- [x] 无文件 → 🔴 未注册
+- [x] 有文件 + `rx_bytes == 0` → 🟡 隧道未建立
+- [x] 有文件 + `rx_bytes > 0` 且**有增长** → 🟢 正常
+- [x] `rx_bytes > 0` 但**无增长** → 🟡（防"曾经通现在断"假阳性）
+- [x] 读文件失败不 panic
 
 **验证:** `cargo nextest run installer::`
 
@@ -244,10 +255,10 @@ UDP ❌ + TCP ❌ → FullyBlocked
 **Description**: 新增回调，翻转 scope，走 `scope_only = true`（不重启核心）。
 
 **验收标准:**
-- [ ] 分支存在
-- [ ] 调 `update_*(..., scope_only = true)`
-- [ ] 成功 → `Redirect("m_warp")`
-- [ ] 失败 → `answer_callback` 报错（不静默）
+- [x] 分支存在
+- [x] 调 `update_*(..., scope_only = true)`
+- [x] 成功 → `Redirect("m_warp")`
+- [x] 失败 → `answer_callback` 报错（不静默）
 
 **验证:** `cargo nextest run handlers::warp`
 
@@ -261,10 +272,10 @@ UDP ❌ + TCP ❌ → FullyBlocked
 **Description**: 新增探测器按钮，跑并行探测渲染 4 态。
 
 **验收标准:**
-- [ ] 分支存在
-- [ ] 先 `answer_callback` 提示「探测中」
-- [ ] 结果含 UDP/TCP 两行 + 建议文案
-- [ ] 超时/失败有兜底
+- [x] 分支存在
+- [x] 先 `answer_callback` 提示「探测中」
+- [x] 结果含 UDP/TCP 两行 + 建议文案
+- [x] 超时/失败有兜底
 
 **验证:** `cargo nextest run handlers::warp`
 
@@ -278,11 +289,11 @@ UDP ❌ + TCP ❌ → FullyBlocked
 **Description**: `m_warp` 加「流量范围」「出口探测」按钮；补三语 key。
 
 **验收标准:**
-- [ ] 菜单显示当前 scope（标注未生效）
-- [ ] 两按钮 callback data 正确
-- [ ] `zh/en/ja` 三文件 key **完全一致**
-- [ ] 无硬编码文案
-- [ ] 现有键未被改动
+- [x] 菜单显示当前 scope（标注未生效）
+- [x] 两按钮 callback data 正确
+- [x] `zh/en/ja` 三文件 key **完全一致**
+- [x] 无硬编码文案
+- [x] 现有键未被改动
 
 **验证:** `cargo nextest run` 全绿 + grep 比对三语 key 集合
 
@@ -294,10 +305,10 @@ UDP ❌ + TCP ❌ → FullyBlocked
 ## T14: 全量质量门禁（rust-lint-format 强制）
 
 **验收标准:**
-- [ ] `cargo fmt` 无 diff
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings` 零警告
-- [ ] `cargo nextest run --cargo-profile fast-test` ≥ 1119 通过
-- [ ] `cargo test --doc` 通过
+- [x] `cargo fmt` 无 diff
+- [x] `cargo clippy --all-targets --all-features -- -D warnings` 零警告
+- [x] `cargo nextest run --cargo-profile fast-test` ≥ 1119 通过
+- [x] `cargo test --doc` 通过
 
 **依赖**: T1–T13
 **文件:** —
@@ -307,9 +318,9 @@ UDP ❌ + TCP ❌ → FullyBlocked
 ## T15: code-review-and-quality 审查
 
 **验收标准:**
-- [ ] 无 Critical / High 未解决
-- [ ] 交付物 1–4 全部落实
-- [ ] 非目标未越界
+- [x] 无 Critical / High 未解决
+- [x] 交付物 1–4 全部落实
+- [x] 非目标未越界
 
 **依赖**: T14
 **文件:** —
