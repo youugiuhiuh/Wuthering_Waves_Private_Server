@@ -301,6 +301,8 @@ warp:
   restarting: "⏳ 正在重启..."
   restart_fail: "❌ 重启失败: %{0}"
   uninstall_fail: "❌ 卸载失败: %{0}"
+  install_done_wireguard: "✅ 已按探测结果安装 <b>WireGuard</b> 版 WARP（出口 UDP 可用）"
+  install_done_usque: "✅ 已按探测结果安装 <b>usque</b>（MASQUE over TCP/443，出口 UDP 被封）"
   uninstalled_both: "✅ 已卸载 WireGuard 与 usque（MASQUE）两套 WARP 实现"
   uninstalled_wireguard: "✅ 已卸载 WireGuard 版 WARP"
   uninstalled_usque: "✅ 已卸载 usque（MASQUE over TCP/443）"

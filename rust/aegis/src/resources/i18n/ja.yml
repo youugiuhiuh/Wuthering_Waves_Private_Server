@@ -295,6 +295,8 @@ warp:
   restarting: "⏳ 再起動中..."
   restart_fail: "❌ 再起動失敗: %{0}"
   uninstall_fail: "❌ アンインストール失敗: %{0}"
+  install_done_wireguard: "✅ 診断結果に基づき <b>WireGuard</b> 版 WARP をインストールしました（外向き UDP が利用可能）"
+  install_done_usque: "✅ 診断結果に基づき <b>usque</b>（TCP/443 上の MASQUE）をインストールしました（外向き UDP が遮断）"
   uninstalled_both: "✅ WARP 実装（WireGuard と usque/MASQUE）の両方を削除しました"
   uninstalled_wireguard: "✅ WireGuard 版 WARP を削除しました"
   uninstalled_usque: "✅ usque（TCP/443 上の MASQUE）を削除しました"

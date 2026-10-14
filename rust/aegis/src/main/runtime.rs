@@ -257,6 +257,10 @@ pub async fn run(
         // TG + SimpleX 组合下 Telegram 分支已启动唯一一个 scheduler，此处必须跳过，
         // 否则定时通知与启动通知会各发两遍。事件循环不受影响，仍照常接收命令。
         if let Some(admin_contact) = simplex_admin.filter(|_| !enable_telegram) {
+            // usque 健康检查循环（与调度器无关的独立后台任务）。
+            // 只 spawn 健康检查，不做定时探测（决策 W3）。
+            aegis::core::usque::spawn_background_tasks();
+
             let adapter_for_init = handle.adapter.clone();
             let target_for_init = TargetId(admin_contact.to_string());
             tokio::spawn(async move {
@@ -502,6 +506,9 @@ pub async fn run(
             .branch(Update::filter_message().endpoint(handle_message))
             .branch(Update::filter_callback_query().endpoint(handle_callback));
 
+        // usque 健康检查循环（独立于调度器的后台任务，决策 W3：无定时探测）
+        aegis::core::usque::spawn_background_tasks();
+
         let adapter_for_init = state.adapter.clone();
         let target_for_init = TargetId(admin_id.unwrap_or(0).to_string());
         tokio::spawn(async move {
@@ -553,6 +560,8 @@ pub async fn run(
 
     // ── Matrix-only: 后台初始化 + 保活 ──
     if enable_matrix && !enable_telegram {
+        aegis::core::usque::spawn_background_tasks();
+
         let adapter_for_init = state.adapter.clone();
         let target_for_init = TargetId(admin_id.unwrap_or(0).to_string());
         tokio::spawn(async move {

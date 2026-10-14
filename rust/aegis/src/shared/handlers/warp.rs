@@ -320,14 +320,20 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            match WarpInstaller::install().await {
-                Ok(_) => {
+            // 按探测结果只装需要的那一套（决策 W2）。
+            //
+            // `install_smart` 内部：实时探测 → 选实现 → 安装 → 写探测缓存。
+            // 写缓存这一步很关键——否则 current_egress() 永远读不到结论，
+            // 装好了也不会启用。
+            let arch = std::env::consts::ARCH;
+            match WarpInstaller::install_smart(arch).await {
+                Ok(plan) => {
                     event
                         .adapter
                         .send_message(
                             &event.target,
                             MessageContent {
-                                text: t!("warp.install_success").into(),
+                                text: t!(plan.i18n_key()).into(),
                                 markup: None,
                             },
                         )
