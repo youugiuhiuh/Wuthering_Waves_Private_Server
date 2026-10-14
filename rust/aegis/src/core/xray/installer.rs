@@ -93,6 +93,22 @@ impl WarpInstaller {
         Ok(())
     }
 
+    /// 把一次探测结果写入出口引擎缓存。
+    ///
+    /// # 为何单独抽出
+    ///
+    /// 这一步是「安装后 WARP 能否生效」的关键：`current_egress()` 读的就是
+    /// 这个缓存。之前**没有任何地方写它**，于是缓存永远为空、
+    /// 出口引擎永远回退 `Direct` —— 即使 usque 装好了也不会启用。
+    ///
+    /// 抽成独立函数是为了可测：`install_smart` 本身要做真实探测与安装
+    /// （无法在单测里跑），而「写缓存 → 出口引擎随之变化」这条因果关系
+    /// 必须被断言住。
+    pub fn record_probe_result(report: crate::core::network::ProbeReport) {
+        crate::core::usque::engine::global_probe_cache()
+            .store(report, crate::core::usque::engine::now_monotonic());
+    }
+
     /// 按探测结果只装需要的那一套（TG 安装按钮的入口）。
     ///
     /// # 为何用**实时**探测而非缓存
@@ -138,8 +154,7 @@ impl WarpInstaller {
         }
 
         // 4. 写缓存——否则 current_egress() 永远读不到结论
-        crate::core::usque::engine::global_probe_cache()
-            .store(report, crate::core::usque::engine::now_monotonic());
+        Self::record_probe_result(report);
 
         Ok(plan)
     }
@@ -265,7 +280,10 @@ impl WarpInstaller {
         let usque_installed = crate::core::usque::installer::detect_installed()
             .await
             .usque;
-        let usque_line = Self::usque_status_line(usque_installed, None);
+        // 读后台健康循环维护的状态；**不**在渲染时探测（会阻塞最多 20s）。
+        // 未探测过时是 `None` → 显示「未探测」，不谎报健康或故障。
+        let usque_healthy = crate::core::usque::health::current_health();
+        let usque_line = Self::usque_status_line(usque_installed, usque_healthy);
 
         if !is_registered {
             // WireGuard 没装不代表整体不可用——usque 可能装着呢。
@@ -1121,5 +1139,59 @@ mod tests {
         let s = WarpInstaller::usque_status_line(false, None);
         assert!(!s.contains("正常"), "未安装不得显示正常: {s}");
         assert!(!s.contains("🟢"), "未安装不得显示绿灯: {s}");
+    }
+
+    // ───────── T2: 写缓存 → 出口引擎随之变化 ─────────
+
+    /// **核心因果关系**：写入探测结果后，出口引擎必须立刻反映它。
+    ///
+    /// 这条测试存在的理由：缓存此前**没有任何写入点**，于是
+    /// `current_egress()` 永远回退 `Direct`，装了 usque 也不生效。
+    /// 若后人把 `record_probe_result` 的调用删掉，这条会失败。
+    #[test]
+    fn test_record_probe_result_drives_egress_selection() {
+        use crate::core::network::{ProbeConclusion, ProbeReport, TcpVerdict, UdpVerdict};
+
+        let cache = crate::core::usque::engine::global_probe_cache();
+
+        // 先清空，确认「未探测 → Direct」
+        cache.clear();
+        assert_eq!(
+            crate::core::xray::warp::test_egress_now(),
+            crate::core::usque::Egress::Direct,
+            "无缓存时应回退 Direct"
+        );
+
+        // 本部署的真实处境：UDP 被封、TCP/443 可用
+        WarpInstaller::record_probe_result(ProbeReport {
+            udp: UdpVerdict::Blocked,
+            tcp: TcpVerdict::AvailableH2,
+            conclusion: ProbeConclusion::TcpOnly,
+        });
+
+        assert_eq!(
+            crate::core::xray::warp::test_egress_now(),
+            crate::core::usque::Egress::Masque,
+            "写入 TcpOnly 后出口引擎必须选 MASQUE（这正是「安装后能生效」的机械保证）"
+        );
+
+        cache.clear();
+    }
+
+    /// 写入 `WgUsable` 则应选 WireGuard。
+    #[test]
+    fn test_record_probe_result_selects_wireguard_when_udp_works() {
+        use crate::core::network::{ProbeConclusion, ProbeReport, TcpVerdict, UdpVerdict};
+
+        WarpInstaller::record_probe_result(ProbeReport {
+            udp: UdpVerdict::Available,
+            tcp: TcpVerdict::AvailableH2,
+            conclusion: ProbeConclusion::WgUsable,
+        });
+        assert_eq!(
+            crate::core::xray::warp::test_egress_now(),
+            crate::core::usque::Egress::WireGuard
+        );
+        crate::core::usque::engine::global_probe_cache().clear();
     }
 }

@@ -39,6 +39,11 @@ fn egress_is_available(egress: Egress) -> bool {
 ///
 /// 缓存本体在 [`crate::core::usque::engine::ProbeCache`]，
 /// 由探测调度任务写入。
+#[cfg(test)]
+pub fn test_egress_now() -> Egress {
+    current_egress()
+}
+
 fn current_egress() -> Egress {
     match crate::core::usque::engine::global_probe_cache()
         .get(now_monotonic(), crate::core::usque::engine::CACHE_TTL)
@@ -804,7 +809,10 @@ mod tests {
 
         // 只统计 `update_warp_routing_rules` 函数体内的非注释行。
         // 必须先把「本测试的字符串字面量」排除，否则它会被自己数进去。
-        let tests_start = SRC.find("#[cfg(test)]").unwrap_or(SRC.len());
+        // 找**测试模块**的位置（`#[cfg(test)]` 后紧跟 `mod tests`），
+        // 不能只找第一个 `#[cfg(test)]`——文件里可能还有别的
+        // 测试专用函数（如 `test_egress_now`）。
+        let tests_start = SRC.find("#[cfg(test)]\nmod tests").unwrap_or(SRC.len());
         let impl_body = &SRC[fn_start..tests_start];
         let total = impl_body
             .lines()
