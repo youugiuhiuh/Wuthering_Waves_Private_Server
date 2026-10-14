@@ -903,4 +903,73 @@ mod tests {
         assert!(o["settings"].get("user").is_none());
         assert!(o["settings"].get("pass").is_none());
     }
+
+    /// **跨模块一致性**：usque 的监听端点必须与 Xray outbound 指向的端点一致。
+    ///
+    /// 两者由两个不同模块生成（`core/usque/unit.rs` 写 unit、
+    /// `core/xray/warp.rs` 写 outbound），但必须指向**同一个** socket。
+    ///
+    /// 一旦倾斜，outbound 会指向一个没人监听的端口——**隧道静默失效**：
+    /// 进程都活着、配置都合法、日志无异常，但流量就是不通。
+    ///
+    /// # 这条测试为何断言源码而非调函数
+    ///
+    /// 若在测试里用同一组常量构造两侧产物（如
+    /// `masque_outbound(SOCKS_ADDR, SOCKS_PORT)`），则两侧永远相等，
+    /// **测试退化恒真**：真正会出错的是**调用点**把值写错或写死，
+    /// 而那不在被测表达式里。故这里改为：
+    ///
+    /// 1. 扫源码确认 `update_warp_routing_rules` 调用 `masque_outbound` 时
+    ///    传的是**路径常量**而非字面量；
+    /// 2. unit 模板里 `-p` / `-b` 也来自同一组常量。
+    ///
+    /// 两者都溯源到 `paths::usque`，于是端点不可能不一致。
+    #[test]
+    fn test_unit_and_outbound_share_one_endpoint_source() {
+        const SRC: &str = include_str!("warp.rs");
+
+        // 1) outbound 的构造必须用常量，不得写死端口/地址。
+        let call = SRC
+            .find("Self::masque_outbound(")
+            .expect("update_warp_routing_rules 必须调用 masque_outbound");
+        let call_line = SRC[call..].lines().next().unwrap_or_default();
+        assert!(
+            call_line.contains("usque_paths::SOCKS_PORT"),
+            "outbound 必须用 usque_paths::SOCKS_PORT（不得写死端口）：{call_line}"
+        );
+        assert!(
+            call_line.contains("usque_paths::SOCKS_ADDR"),
+            "outbound 必须用 usque_paths::SOCKS_ADDR：{call_line}"
+        );
+
+        // 2) unit 模板里绑定地址必须来自常量，不得写死。
+        //
+        //    这里查的是 `service_unit`（argv 在这里拼），
+        //    不是 `default_service_unit`（它只把常量转手传给 `service_unit`）。
+        let unit_src = include_str!("../usque/unit.rs");
+        let svc = unit_src
+            .find("pub fn service_unit")
+            .expect("service_unit 必须存在");
+        let body = &unit_src[svc..];
+        let body = &body[..body.find("\n}").unwrap_or(body.len())];
+        assert!(
+            body.contains("usque_paths::SOCKS_ADDR"),
+            "service_unit 必须从常量取绑定地址"
+        );
+        assert!(
+            !body.contains("-b 127.0.0.1"),
+            "service_unit 不得把绑定地址写死——会与 Xray outbound 错位，且故障静默"
+        );
+
+        // 3) 两侧都源自同一模块 → 端点必然一致。
+        let (a, p) = (
+            crate::core::paths::usque::SOCKS_ADDR,
+            crate::core::paths::usque::SOCKS_PORT,
+        );
+        let o = ConfigManager::masque_outbound(a, p);
+        let u = crate::core::usque::unit::default_service_unit();
+        assert!(u.contains(&format!("-b {a}")) && u.contains(&format!("-p {p}")));
+        assert_eq!(o["settings"]["address"], a);
+        assert_eq!(o["settings"]["port"], p);
+    }
 }

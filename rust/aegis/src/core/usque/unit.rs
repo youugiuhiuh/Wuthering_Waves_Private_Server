@@ -29,6 +29,11 @@ pub const RESTART_SEC: u32 = 5;
 /// usque 的 SOCKS **不加密也不认证**，对外暴露等于开放代理。
 /// 它只应被本机 Xray 的 `socks` outbound 使用。
 pub fn service_unit(bin: &str, config: &str, port: u16) -> String {
+    // 绑定地址来自常量，**不得写死**：Xray 侧生成 outbound 时用的是
+    // 同一个常量（`core/xray/warp.rs` 的 `masque_outbound` 调用点）。
+    // 两边共用同一来源才能保证不错位——一旦某处写死，outbound 会指向
+    // 没人监听的 socket，而进程活着、配置合法、日志无异常，故障完全静默。
+    let bind = usque_paths::SOCKS_ADDR;
     format!(
         "[Unit]\n\
          Description=wwps-usque (WARP over TCP/443, MASQUE/HTTP-2)\n\
@@ -37,7 +42,7 @@ pub fn service_unit(bin: &str, config: &str, port: u16) -> String {
          [Service]\n\
          User=root\n\
          Type=simple\n\
-         ExecStart={bin} socks --http2 -p {port} -b 127.0.0.1 -c {config}\n\
+         ExecStart={bin} socks --http2 -p {port} -b {bind} -c {config}\n\
          Restart=always\n\
          RestartSec={RESTART_SEC}\n\
          LimitNOFILE=51200\n\
