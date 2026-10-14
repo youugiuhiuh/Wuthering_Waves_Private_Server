@@ -6,6 +6,32 @@ use crate::utils;
 use rust_i18n::t;
 use sha2::{Digest, Sha256};
 
+/// 删除菜单里按钮显示的规则名上限（**字符**数，不是字节数）。
+const BUTTON_RULE_MAX_CHARS: usize = 27;
+const BUTTON_RULE_MAX_BYTES: usize = 30;
+
+/// 把规则截短到适合按钮显示的宽度，并转义 HTML。
+///
+/// 修复前直接写 `&rule[..27]`——字节切片。规则名来自管理员自由输入
+/// （`message.rs` 对该输入**没有任何校验**），一旦第 27 字节落在一个
+/// 多字节字符内部（中文注释、IDN 域名等），这里会 panic:
+///
+/// ```text
+/// byte index 27 is not a char boundary; it is inside '中'
+/// ```
+///
+/// 而这条路径在每个删除菜单渲染时都会跑到，所以一个含中文的长规则
+/// 会让「删除规则」按钮永久崩溃。改用 `chars()` 按字符计数。
+fn truncate_for_button(rule: &str) -> String {
+    let escaped = utils::escape_html(rule);
+    if rule.len() <= BUTTON_RULE_MAX_BYTES {
+        return escaped;
+    }
+    // 按**字符**取前缀，不可能切在多字节字符中间。
+    let head: String = rule.chars().take(BUTTON_RULE_MAX_CHARS).collect();
+    format!("{}...", utils::escape_html(&head))
+}
+
 pub async fn handle(event: &CallbackEvent) -> HandlerResult {
     let data = event.data.as_str();
 
@@ -362,11 +388,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 let hash = hex::encode(hasher.finalize());
                 let short_hash = &hash[..8];
 
-                let display_rule = if rule.len() > 30 {
-                    format!("{}...", utils::escape_html(&rule[..27]))
-                } else {
-                    utils::escape_html(rule)
-                };
+                let display_rule = truncate_for_button(rule);
 
                 buttons.push(vec![InlineButton {
                     text: format!("\u{1F5D1} {}", display_rule),
@@ -721,5 +743,78 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }
         }
         _ => Ok(HandlerAction::Done),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 回归：含多字节字符的长规则不得 panic。
+    ///
+    /// 修复前这里是 `&rule[..27]`（字节切片）。规则来自管理员自由输入且
+    /// **无任何校验**，只要第 27 字节落在多字节字符内部就 panic
+    /// （`byte index 27 is not a char boundary`）。该路径在每次渲染
+    /// 删除菜单时都会执行，因此一个含中文的长规则会让删除按钮永久崩溃。
+    #[test]
+    fn test_truncate_handles_multibyte_at_boundary() {
+        // 26 个 ASCII 字节后接一个 3 字节汉字：第 27 字节正好落在它内部。
+        let mut rule = "a".repeat(26);
+        rule.push('中');
+        rule.push_str("tailtailtail");
+        assert!(rule.len() > BUTTON_RULE_MAX_BYTES);
+        assert!(!rule.is_char_boundary(BUTTON_RULE_MAX_CHARS));
+
+        // 修复前这一行会 panic。
+        let out = truncate_for_button(&rule);
+        assert!(out.ends_with("..."), "超长规则应带省略号");
+        assert!(out.contains('中'), "首个多字节字符应完整保留");
+    }
+
+    /// 全中文长规则同样不得 panic。
+    #[test]
+    fn test_truncate_handles_all_multibyte() {
+        let rule = "域名".repeat(20); // 60 字节
+        assert!(rule.len() > BUTTON_RULE_MAX_BYTES);
+        let out = truncate_for_button(&rule);
+        assert!(out.ends_with("..."));
+        // 前缀必须是 27 个**字符**（54 字节），而不是 27 字节。
+        assert!(out.starts_with(&"域名".repeat(13)));
+    }
+
+    /// 短规则原样返回（只做 HTML 转义）。
+    #[test]
+    fn test_truncate_leaves_short_rules_intact() {
+        let out = truncate_for_button("domain:a.com");
+        assert_eq!(out, "domain:a.com");
+        assert!(!out.ends_with("..."));
+    }
+
+    /// 边界值：恰好 30 字节不截断，31 字节才截断。
+    #[test]
+    fn test_truncate_boundary_is_exact() {
+        let exactly = "a".repeat(BUTTON_RULE_MAX_BYTES);
+        assert_eq!(truncate_for_button(&exactly), exactly);
+
+        let over = "a".repeat(BUTTON_RULE_MAX_BYTES + 1);
+        assert!(truncate_for_button(&over).ends_with("..."));
+    }
+
+    /// HTML 特殊字符仍被转义（不能因按字符截断而丢掉转义）。
+    #[test]
+    fn test_truncate_still_escapes_html() {
+        let out = truncate_for_button("domain:<script>");
+        assert!(!out.contains("<script>"), "HTML 必须转义，实际输出: {out}");
+    }
+
+    /// 长且含 HTML 的规则：截断与转义都要生效。
+    #[test]
+    fn test_truncate_escapes_after_truncating() {
+        let mut rule = "a".repeat(26);
+        rule.push('中');
+        rule.push_str("<script>alert(1)</script>");
+        let out = truncate_for_button(&rule);
+        assert!(out.ends_with("..."));
+        assert!(!out.contains("<script>"), "截断后仍必须转义: {out}");
     }
 }
