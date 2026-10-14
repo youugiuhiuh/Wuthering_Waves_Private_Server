@@ -94,6 +94,38 @@ pub mod maintenance {
 pub mod warp {
     pub const ACCOUNT_FILE: &str = "/etc/wwps/wwps-core/warp_account.json";
     pub const ROUTING_FILE: &str = "/etc/wwps/wwps-core/conf/10_warp_routing.json";
+
+    // ── 出口连通性探测（`core/network/warp_probe.rs`）──
+    //
+    // 常量集中在此，与 `ACCOUNT_FILE` 风格一致；同时让探测目标可在测试中
+    // 被显式断言（而不是散落在实现里成为魔法值）。
+
+    /// wg0 的累计接收字节数。
+    ///
+    /// Xray 的 `proxy/wireguard` 在 Linux 上以 kernel TUN 模式建 wg0，
+    /// 该计数器恒为 0 即代表「握手包发得出去、回包收不到」。
+    pub const WG_RX_BYTES_PATH: &str = "/sys/class/net/wg0/statistics/rx_bytes";
+
+    /// WireGuard 握手探测目标（Cloudflare WARP 消费级端点）。
+    pub const UDP_PROBE_ENDPOINT: &str = "162.159.192.1:2408";
+
+    /// MASQUE over HTTP/2（TCP/443）探测目标。
+    ///
+    /// 取 Cloudflare 官方文档中 **MASQUE** 专用段 `162.159.197.0/24` 的首地址。
+    /// 选它而非 usque 硬编码的 `162.159.198.2`：后者真机实测 **不**协商 h2。
+    ///
+    /// 真机实测（2026-10-14，racknerd-534f8f8，TLS1.3）：
+    ///
+    /// - `162.159.197.1` → ALPN=`h2` ✅（MASQUE 段）
+    /// - `162.159.192.1` → ALPN=`h2` ✅（消费级 WARP 段）
+    /// - `162.159.198.2` → ALPN=`None` ❌（usque 默认值，此处不可用）
+    ///
+    /// 判定：TCP 通且 ALPN 协商出 `h2` 即代表「出口 UDP 被封时仍可走
+    /// TCP/443」，这是后续 usque 集成（独立 Spec 2）的可行性前提。
+    pub const TCP_PROBE_ENDPOINT: &str = "162.159.197.1:443";
+
+    /// 上述探测使用的 SNI。
+    pub const TCP_PROBE_SNI: &str = "consumer-masque.cloudflareclient.com";
 }
 
 /// 日志目录
@@ -174,6 +206,27 @@ mod tests {
             warp::ROUTING_FILE,
             "/etc/wwps/wwps-core/conf/10_warp_routing.json"
         );
+    }
+
+    /// 探测常量是**实测得出**的目标，不是随手填的值。
+    ///
+    /// 真机证据（2026-10-14，racknerd-534f8f8）：
+    ///
+    /// - 出站 UDP 2408/500/1701/4500 → 全部静默（被上游丢弃）
+    /// - 出站 UDP 53 → 正常（证明 UDP 出站本身可用）
+    /// - TCP 162.159.197.1:443 → 可连且 ALPN 协商出 h2
+    /// - TCP 162.159.198.2:443 → 可连但 **ALPN=None**（故未被选用）
+    ///
+    /// 这条测试把上述目标钉死，防止有人「顺手」改成一个不可用的端点。
+    #[test]
+    fn test_warp_probe_constants() {
+        assert_eq!(
+            warp::WG_RX_BYTES_PATH,
+            "/sys/class/net/wg0/statistics/rx_bytes"
+        );
+        assert_eq!(warp::UDP_PROBE_ENDPOINT, "162.159.192.1:2408");
+        assert_eq!(warp::TCP_PROBE_ENDPOINT, "162.159.197.1:443");
+        assert_eq!(warp::TCP_PROBE_SNI, "consumer-masque.cloudflareclient.com");
     }
 
     #[test]

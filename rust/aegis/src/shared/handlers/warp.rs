@@ -1,10 +1,36 @@
 use crate::common::{InlineButton, Markup, MessageContent};
 use crate::core::xray::installer::WarpInstaller;
-use crate::core::xray::{ConfigManager, WarpMode};
+use crate::core::xray::{ConfigManager, WarpMode, WarpScope};
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use crate::utils;
 use rust_i18n::t;
 use sha2::{Digest, Sha256};
+
+/// 删除菜单里按钮显示的规则名上限（**字符**数，不是字节数）。
+const BUTTON_RULE_MAX_CHARS: usize = 27;
+const BUTTON_RULE_MAX_BYTES: usize = 30;
+
+/// 把规则截短到适合按钮显示的宽度，并转义 HTML。
+///
+/// 修复前直接写 `&rule[..27]`——字节切片。规则名来自管理员自由输入
+/// （`message.rs` 对该输入**没有任何校验**），一旦第 27 字节落在一个
+/// 多字节字符内部（中文注释、IDN 域名等），这里会 panic:
+///
+/// ```text
+/// byte index 27 is not a char boundary; it is inside '中'
+/// ```
+///
+/// 而这条路径在每个删除菜单渲染时都会跑到，所以一个含中文的长规则
+/// 会让「删除规则」按钮永久崩溃。改用 `chars()` 按字符计数。
+fn truncate_for_button(rule: &str) -> String {
+    let escaped = utils::escape_html(rule);
+    if rule.len() <= BUTTON_RULE_MAX_BYTES {
+        return escaped;
+    }
+    // 按**字符**取前缀，不可能切在多字节字符中间。
+    let head: String = rule.chars().take(BUTTON_RULE_MAX_CHARS).collect();
+    format!("{}...", utils::escape_html(&head))
+}
 
 pub async fn handle(event: &CallbackEvent) -> HandlerResult {
     let data = event.data.as_str();
@@ -39,9 +65,12 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 return Ok(HandlerAction::Done);
             }
 
-            let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules()
-                .await
-                .unwrap_or((Vec::new(), WarpMode::Default));
+            let (current_rules, current_mode, current_scope) =
+                ConfigManager::get_warp_routing_rules().await.unwrap_or((
+                    Vec::new(),
+                    WarpMode::Default,
+                    WarpScope::default(),
+                ));
 
             let rule_display = if current_rules.is_empty() {
                 t!("warp.no_rules").to_string()
@@ -83,9 +112,25 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                         text: t!("warp.mode_label", "0" => current_mode.as_str()).into(),
                         data: "a_warp_switch_mode".into(),
                     }],
+                    // 流量范围：二态互斥切换。
+                    // v1 不生成 catch-all 规则，故文案必须显式标注未生效，
+                    // 否则管理员会以为点一下就已经「全部流量走 WARP」了。
+                    vec![InlineButton {
+                        text: t!(
+                            "warp.scope_button",
+                            "0" => t!(current_scope.i18n_key())
+                        )
+                        .into(),
+                        data: "a_warp_switch_scope".into(),
+                    }],
                     vec![InlineButton {
                         text: t!("warp.status_check").into(),
                         data: "a_warp_status".into(),
+                    }],
+                    // 出口连通性探测：分别查 UDP 与 TCP/443 两条路。
+                    vec![InlineButton {
+                        text: t!("warp.probe_button").into(),
+                        data: "a_warp_probe".into(),
                     }],
                     vec![
                         InlineButton {
@@ -127,12 +172,23 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             Ok(HandlerAction::Done)
         }
         "a_warp_switch_mode" => {
-            let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules()
-                .await
-                .unwrap_or((Vec::new(), WarpMode::Default));
+            let (current_rules, current_mode, current_scope) =
+                ConfigManager::get_warp_routing_rules().await.unwrap_or((
+                    Vec::new(),
+                    WarpMode::Default,
+                    WarpScope::default(),
+                ));
             let next_mode = current_mode.next();
 
-            match ConfigManager::update_warp_routing_rules(current_rules, next_mode).await {
+            // 改出口协议需要重写路由文件，故 scope_only = false。
+            match ConfigManager::update_warp_routing_rules(
+                current_rules,
+                next_mode,
+                current_scope,
+                false,
+            )
+            .await
+            {
                 Ok(_) => Ok(HandlerAction::Redirect("m_warp".to_string())),
                 Err(e) => {
                     event
@@ -146,6 +202,102 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     Ok(HandlerAction::Done)
                 }
             }
+        }
+        // 流量范围二态互斥切换。
+        //
+        // `scope_only = true`：只写 `warp_account.json`，**不**重写路由规则、
+        // **不**重启 `wwps-core`。v1 的 Global 不改变任何路由行为，为一个纯状态
+        // 变更去重启核心只会白白抖动全体在线用户的连接。
+        "a_warp_switch_scope" => {
+            let (current_rules, current_mode, current_scope) =
+                ConfigManager::get_warp_routing_rules().await.unwrap_or((
+                    Vec::new(),
+                    WarpMode::Default,
+                    WarpScope::default(),
+                ));
+            let next_scope = current_scope.next();
+
+            match ConfigManager::update_warp_routing_rules(
+                current_rules,
+                current_mode,
+                next_scope,
+                true,
+            )
+            .await
+            {
+                Ok(_) => Ok(HandlerAction::Redirect("m_warp".to_string())),
+                Err(e) => {
+                    event
+                        .adapter
+                        .answer_callback(
+                            &event.target,
+                            &event.callback_id,
+                            Some(t!("warp.scope_switch_fail", "0" => e.to_string()).into()),
+                        )
+                        .await?;
+                    Ok(HandlerAction::Done)
+                }
+            }
+        }
+        // 出口连通性探测：并行跑 UDP 与 TCP 两路，给出组合结论。
+        "a_warp_probe" => {
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(t!("warp.probe_running").into()),
+                )
+                .await?;
+
+            let report = crate::core::network::warp_probe::run_probe().await;
+
+            let udp_text = match report.udp {
+                crate::core::network::UdpVerdict::Available => t!("warp.probe_yes"),
+                crate::core::network::UdpVerdict::Blocked => t!("warp.probe_no"),
+                crate::core::network::UdpVerdict::ProbeFailed => t!("warp.probe_unknown"),
+            };
+            let tcp_text = match report.tcp {
+                crate::core::network::TcpVerdict::AvailableH2 => t!("warp.probe_yes"),
+                crate::core::network::TcpVerdict::OpenNoH2 => t!("warp.probe_unknown"),
+                crate::core::network::TcpVerdict::Blocked => t!("warp.probe_no"),
+            };
+            let conclusion = match report.conclusion {
+                crate::core::network::ProbeConclusion::WgUsable => t!("warp.probe_conclusion_wg"),
+                crate::core::network::ProbeConclusion::TcpOnly => t!("warp.probe_conclusion_tcp"),
+                crate::core::network::ProbeConclusion::UdpOnly => t!("warp.probe_conclusion_udp"),
+                crate::core::network::ProbeConclusion::FullyBlocked => {
+                    t!("warp.probe_conclusion_blocked")
+                }
+            };
+
+            let markup = Markup {
+                buttons: vec![vec![InlineButton {
+                    text: t!("menu.back").into(),
+                    data: "m_warp".into(),
+                }]],
+            };
+
+            event
+                .adapter
+                .edit_message(
+                    &event.target,
+                    &event.msg_id,
+                    MessageContent {
+                        text: format!(
+                            "{}\n\n{}: {}\n{}: {}\n\n{}",
+                            t!("warp.probe_title"),
+                            t!("warp.probe_udp_label"),
+                            udp_text,
+                            t!("warp.probe_tcp_label"),
+                            tcp_text,
+                            conclusion
+                        ),
+                        markup: Some(markup),
+                    },
+                )
+                .await?;
+            Ok(HandlerAction::Done)
         }
         "a_inst_warp" => {
             event
@@ -211,9 +363,11 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             Ok(HandlerAction::Done)
         }
         "a_warp_del_menu" => {
-            let (current_rules, _) = ConfigManager::get_warp_routing_rules()
-                .await
-                .unwrap_or((Vec::new(), WarpMode::Default));
+            let (current_rules, _, _) = ConfigManager::get_warp_routing_rules().await.unwrap_or((
+                Vec::new(),
+                WarpMode::Default,
+                WarpScope::default(),
+            ));
 
             if current_rules.is_empty() {
                 event
@@ -234,11 +388,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 let hash = hex::encode(hasher.finalize());
                 let short_hash = &hash[..8];
 
-                let display_rule = if rule.len() > 30 {
-                    format!("{}...", utils::escape_html(&rule[..27]))
-                } else {
-                    utils::escape_html(rule)
-                };
+                let display_rule = truncate_for_button(rule);
 
                 buttons.push(vec![InlineButton {
                     text: format!("\u{1F5D1} {}", display_rule),
@@ -276,7 +426,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     .await?;
                 return Ok(HandlerAction::Done);
             }
-            let (current_rules, _) = ConfigManager::get_warp_routing_rules()
+            let (current_rules, _, _) = ConfigManager::get_warp_routing_rules()
                 .await
                 .unwrap_or_default();
 
@@ -338,7 +488,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     .await?;
                 return Ok(HandlerAction::Done);
             }
-            let (current_rules, _) = ConfigManager::get_warp_routing_rules()
+            let (current_rules, _, _) = ConfigManager::get_warp_routing_rules()
                 .await
                 .unwrap_or_default();
 
@@ -411,7 +561,15 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             Ok(HandlerAction::Done)
         }
         "a_warp_clear_exec" => {
-            match ConfigManager::update_warp_routing_rules(Vec::new(), WarpMode::Default).await {
+            // 清空清单需要重写路由文件，故 scope_only = false。
+            match ConfigManager::update_warp_routing_rules(
+                Vec::new(),
+                WarpMode::Default,
+                WarpScope::Domain,
+                false,
+            )
+            .await
+            {
                 Ok(_) => {
                     event
                         .adapter
@@ -585,5 +743,78 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             }
         }
         _ => Ok(HandlerAction::Done),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 回归：含多字节字符的长规则不得 panic。
+    ///
+    /// 修复前这里是 `&rule[..27]`（字节切片）。规则来自管理员自由输入且
+    /// **无任何校验**，只要第 27 字节落在多字节字符内部就 panic
+    /// （`byte index 27 is not a char boundary`）。该路径在每次渲染
+    /// 删除菜单时都会执行，因此一个含中文的长规则会让删除按钮永久崩溃。
+    #[test]
+    fn test_truncate_handles_multibyte_at_boundary() {
+        // 26 个 ASCII 字节后接一个 3 字节汉字：第 27 字节正好落在它内部。
+        let mut rule = "a".repeat(26);
+        rule.push('中');
+        rule.push_str("tailtailtail");
+        assert!(rule.len() > BUTTON_RULE_MAX_BYTES);
+        assert!(!rule.is_char_boundary(BUTTON_RULE_MAX_CHARS));
+
+        // 修复前这一行会 panic。
+        let out = truncate_for_button(&rule);
+        assert!(out.ends_with("..."), "超长规则应带省略号");
+        assert!(out.contains('中'), "首个多字节字符应完整保留");
+    }
+
+    /// 全中文长规则同样不得 panic。
+    #[test]
+    fn test_truncate_handles_all_multibyte() {
+        let rule = "域名".repeat(20); // 60 字节
+        assert!(rule.len() > BUTTON_RULE_MAX_BYTES);
+        let out = truncate_for_button(&rule);
+        assert!(out.ends_with("..."));
+        // 前缀必须是 27 个**字符**（54 字节），而不是 27 字节。
+        assert!(out.starts_with(&"域名".repeat(13)));
+    }
+
+    /// 短规则原样返回（只做 HTML 转义）。
+    #[test]
+    fn test_truncate_leaves_short_rules_intact() {
+        let out = truncate_for_button("domain:a.com");
+        assert_eq!(out, "domain:a.com");
+        assert!(!out.ends_with("..."));
+    }
+
+    /// 边界值：恰好 30 字节不截断，31 字节才截断。
+    #[test]
+    fn test_truncate_boundary_is_exact() {
+        let exactly = "a".repeat(BUTTON_RULE_MAX_BYTES);
+        assert_eq!(truncate_for_button(&exactly), exactly);
+
+        let over = "a".repeat(BUTTON_RULE_MAX_BYTES + 1);
+        assert!(truncate_for_button(&over).ends_with("..."));
+    }
+
+    /// HTML 特殊字符仍被转义（不能因按字符截断而丢掉转义）。
+    #[test]
+    fn test_truncate_still_escapes_html() {
+        let out = truncate_for_button("domain:<script>");
+        assert!(!out.contains("<script>"), "HTML 必须转义，实际输出: {out}");
+    }
+
+    /// 长且含 HTML 的规则：截断与转义都要生效。
+    #[test]
+    fn test_truncate_escapes_after_truncating() {
+        let mut rule = "a".repeat(26);
+        rule.push('中');
+        rule.push_str("<script>alert(1)</script>");
+        let out = truncate_for_button(&rule);
+        assert!(out.ends_with("..."));
+        assert!(!out.contains("<script>"), "截断后仍必须转义: {out}");
     }
 }
