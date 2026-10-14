@@ -28,5 +28,5 @@ pub mod installer;
 pub mod pin;
 pub mod unit;
 
-pub use engine::{Egress, select_egress};
-pub use installer::{InstalledKinds, UninstallOutcome};
+pub use engine::{Egress, now_monotonic, select_egress};
+pub use installer::{InstallPlan, InstalledKinds, UninstallOutcome, install_plan};

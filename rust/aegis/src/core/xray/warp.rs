@@ -5,7 +5,7 @@ use tokio::fs;
 
 use super::config::ConfigManager;
 use crate::core::paths::{usque as usque_paths, warp, xray};
-use crate::core::usque::{Egress, select_egress};
+use crate::core::usque::{Egress, now_monotonic, select_egress};
 
 /// 出口引擎是否**真的可用**——`Global` 是否生成 catch-all 的判据。
 ///
@@ -46,16 +46,6 @@ fn current_egress() -> Egress {
         Some(report) => select_egress(report.conclusion),
         None => Egress::Direct,
     }
-}
-
-/// 单调时刻（进程启动至今）。
-///
-/// 用单调时钟而非墙上时钟：TTL 比较不应受系统时间调整影响。
-fn now_monotonic() -> std::time::Duration {
-    use std::sync::OnceLock;
-    static START: OnceLock<std::time::Instant> = OnceLock::new();
-    let start = START.get_or_init(std::time::Instant::now);
-    start.elapsed()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -739,7 +729,7 @@ mod tests {
                 tcp: TcpVerdict::AvailableH2,
                 conclusion: ProbeConclusion::TcpOnly,
             },
-            now_monotonic(),
+            crate::core::usque::now_monotonic(),
         );
         assert_eq!(
             current_egress(),

@@ -84,6 +84,19 @@ pub fn select_egress(conclusion: ProbeConclusion) -> Egress {
     }
 }
 
+/// 单调时刻（进程启动至今）。
+///
+/// 用单调时钟而非墙上时钟：TTL 比较不应受系统时间调整影响。
+///
+/// 放在本模块（而非调用方）是因为它服务的对象是 [`ProbeCache`]——
+/// 谁写缓存谁就得拿到这个时刻，让缓存的使用者不必依赖别的模块。
+pub fn now_monotonic() -> Duration {
+    use std::sync::OnceLock;
+    static START: OnceLock<std::time::Instant> = OnceLock::new();
+    let start = START.get_or_init(std::time::Instant::now);
+    start.elapsed()
+}
+
 /// 进程级探测缓存实例。
 ///
 /// 放在此处而非调用方，是为了让「谁写过缓存」与「谁读它」共用一个实例——

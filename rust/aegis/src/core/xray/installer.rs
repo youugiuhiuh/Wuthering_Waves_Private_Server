@@ -54,7 +54,11 @@ impl WarpInstaller {
             .unwrap_or(false)
     }
 
-    pub async fn install() -> Result<()> {
+    /// 只装 WireGuard 那一套（注册账号 + 写路由，保留既有配置）。
+    ///
+    /// 从 [`Self::install`] 拆出，供「按探测结果分派」的安装路径
+    /// （`install_smart`）单独调用。
+    pub async fn install_wireguard_only() -> Result<()> {
         // 1. Register Account
         let config = crate::core::network::warp_api::register_account()
             .await
@@ -87,6 +91,65 @@ impl WarpInstaller {
         .await?;
 
         Ok(())
+    }
+
+    /// 按探测结果只装需要的那一套（TG 安装按钮的入口）。
+    ///
+    /// # 为何用**实时**探测而非缓存
+    ///
+    /// 安装是一次性决策，基于过期数据选错实现会留下一个装了却没用的组件。
+    /// 探测只需 3s，完全可接受。
+    ///
+    /// # 安装后写缓存
+    ///
+    /// `current_egress()` 读的是 `global_probe_cache()`。若这里不写，
+    /// 缓存会一直为空 → 出口引擎保守回退 `Direct` → 即使装好了也不会启用。
+    /// 这正是「安装无调用点」之外的第二个断点。
+    ///
+    /// # 不做定时重探（用户决策 W3）
+    ///
+    /// 出口条件是机房级策略，不随时间漂移；再次启用只需**再点一次安装**
+    /// （幂等：已装的会跳过）。
+    pub async fn install_smart(arch: &str) -> Result<crate::core::usque::InstallPlan> {
+        use crate::core::usque::installer::{InstallPlan, install_plan};
+
+        // 1. 实时探测
+        let report = crate::core::network::warp_probe::run_probe().await;
+
+        // 探测是否「未能完成」而非「有结论」。
+        //
+        // `ProbeFailed`（本地发包失败）与 `Blocked`（静默超时）语义不同：
+        // 前者说明环境有问题（无路由/权限），后者是机房真实阻断。
+        // 只有当**两路都没拿到有效信号**时才视为探测失败。
+        let udp_failed = report.udp == crate::core::network::UdpVerdict::ProbeFailed;
+        let tcp_unusable = matches!(report.tcp, crate::core::network::TcpVerdict::Blocked);
+        let probe_failed = udp_failed && tcp_unusable;
+
+        // 2. 分派（拒绝时带具体原因）
+        let plan =
+            install_plan(report.conclusion, probe_failed).context("出口探测结果不支持安装 WARP")?;
+
+        // 3. 只装需要的那一套
+        match plan {
+            InstallPlan::WireGuard => Self::install_wireguard_only().await?,
+            InstallPlan::Usque => {
+                crate::core::usque::installer::install(arch).await?;
+            }
+        }
+
+        // 4. 写缓存——否则 current_egress() 永远读不到结论
+        crate::core::usque::engine::global_probe_cache()
+            .store(report, crate::core::usque::engine::now_monotonic());
+
+        Ok(plan)
+    }
+
+    /// 兼容入口：只装 WireGuard。
+    ///
+    /// **TG 的安装按钮不走这里** —— 它走 `install_smart`（按探测结果分派）。
+    /// 本函数保留给内部调用与既有测试。
+    pub async fn install() -> Result<()> {
+        Self::install_wireguard_only().await
     }
 
     /// 读现有路由配置供重装时保留；无配置时返回 `None`。

@@ -19,10 +19,67 @@ use std::process::Stdio;
 use tokio::fs;
 
 use crate::core::cmd_async::run_cmd_output;
+use crate::core::network::ProbeConclusion;
 use crate::core::paths::{usque as usque_paths, warp as warp_paths};
 use crate::core::usque::{pin, unit};
 
-/// 实际安装了哪些 WARP 实现。
+/// 安装时应该装哪一套 WARP 实现。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallPlan {
+    /// 装 Xray 内嵌的 WireGuard（走 UDP 2408）。
+    WireGuard,
+    /// 装 usque（MASQUE over TCP/443）。
+    Usque,
+}
+
+impl InstallPlan {
+    /// 供 bot 文案使用的 i18n key。
+    pub const fn i18n_key(&self) -> &'static str {
+        match self {
+            InstallPlan::WireGuard => "warp.install_done_wireguard",
+            InstallPlan::Usque => "warp.install_done_usque",
+        }
+    }
+}
+
+/// 由探测结论决定装哪一套。
+///
+/// # 为何是「只装需要的」（用户决策 W2）
+///
+/// 两套实现并存不是让它们都装一遍，而是**按机房实际条件选一套**：
+/// 机房封了 UDP 就装走 TCP 的 usque，UDP 通就装开销更低的原生 WireGuard。
+/// 装一套用不上的只会增加攻击面与维护面。
+///
+/// # 为何 `FullyBlocked` 与 `ProbeFailed` 都要拒绝
+///
+/// - `FullyBlocked`：两条通路都不可用，装了也无效。
+///   报成功会让管理员以为「已经好了」——这正是本次要消除的那类假阳性。
+/// - `ProbeFailed`：本地发包/连接都失败，说明环境本身有问题
+///   （无路由、权限、DNS 解释不了等）。基于**未知**状态安装是在猜。
+///
+/// 两者都返回 `Err` 且附带具体原因，供 bot 直接展示。
+pub fn install_plan(conclusion: ProbeConclusion, probe_failed: bool) -> Result<InstallPlan> {
+    if probe_failed {
+        anyhow::bail!(
+            "出口探测未能完成（本地发包或连接失败），无法判断该装哪一套。\
+             请先用「出口连通性探测」确认环境。"
+        );
+    }
+
+    match conclusion {
+        // UDP 可用（不管 TCP）→ 装原生 WireGuard。
+        ProbeConclusion::WgUsable | ProbeConclusion::UdpOnly => Ok(InstallPlan::WireGuard),
+        // 仅 TCP 可用 → 装 usque。
+        ProbeConclusion::TcpOnly => Ok(InstallPlan::Usque),
+        // 两条都不通 → 拒绝。
+        ProbeConclusion::FullyBlocked => anyhow::bail!(
+            "两条 WARP 通路都不可用（UDP 与 TCP/443 均被阻断），安装无意义。\
+             建议先确认机房策略，或更换机房。"
+        ),
+    }
+}
+
+/// 实测安装状态。
 ///
 /// 「安装」的判据是**数据文件存在**，不是「我以为装了什么」——
 /// 卸载必须基于真实文件状态，否则会留下幽灵残留。
@@ -481,5 +538,77 @@ mod tests {
         let present = Path::new("/run/systemd/system").exists();
         // 只断言判定函数不 panic 且语义直观
         assert_eq!(present, Path::new("/run/systemd/system").exists());
+    }
+
+    // ─────────────── T1: 安装分派 ───────────────
+
+    /// **穷举 4 态**。
+    #[test]
+    fn test_install_plan_exhaustive() {
+        use ProbeConclusion::*;
+        assert_eq!(
+            install_plan(WgUsable, false).unwrap(),
+            InstallPlan::WireGuard
+        );
+        assert_eq!(
+            install_plan(UdpOnly, false).unwrap(),
+            InstallPlan::WireGuard
+        );
+        assert_eq!(install_plan(TcpOnly, false).unwrap(), InstallPlan::Usque);
+        assert!(install_plan(FullyBlocked, false).is_err());
+    }
+
+    /// `FullyBlocked` 必须**拒绝安装**，而不是「照装但提示无效」。
+    ///
+    /// 报成功会让管理员以为已经好了——这正是本次要消除的假阳性。
+    #[test]
+    fn test_install_plan_refuses_when_fully_blocked() {
+        let e = install_plan(ProbeConclusion::FullyBlocked, false)
+            .expect_err("两条通路都不通时必须拒绝");
+        let msg = e.to_string();
+        assert!(
+            msg.contains("UDP") || msg.contains("TCP"),
+            "错误信息应说明具体原因: {msg}"
+        );
+    }
+
+    /// 探测本身失败（本地发包/连接失败）时也必须拒绝。
+    ///
+    /// 基于**未知**状态安装是在猜。
+    #[test]
+    fn test_install_plan_refuses_when_probe_failed() {
+        // 即使结论看起来乐观，探测失败也不能当依据。
+        for c in [
+            ProbeConclusion::WgUsable,
+            ProbeConclusion::TcpOnly,
+            ProbeConclusion::UdpOnly,
+            ProbeConclusion::FullyBlocked,
+        ] {
+            assert!(
+                install_plan(c, true).is_err(),
+                "探测失败时不得安装（结论={c:?}）"
+            );
+        }
+    }
+
+    /// 本部署的实际处境（UDP 被封、TCP 可用）必须选 usque。
+    /// 这条把线上实测结论固化成可执行断言。
+    #[test]
+    fn test_this_deployments_condition_installs_usque() {
+        assert_eq!(
+            install_plan(ProbeConclusion::TcpOnly, false).unwrap(),
+            InstallPlan::Usque,
+            "TCP-only 机房应装 usque（经 TCP/443）"
+        );
+    }
+
+    /// 两个 plan 的 i18n key 必须互不相同。
+    #[test]
+    fn test_install_plan_i18n_keys_distinct() {
+        let a = InstallPlan::WireGuard.i18n_key();
+        let b = InstallPlan::Usque.i18n_key();
+        assert_ne!(a, b);
+        assert!(a.starts_with("warp."));
+        assert!(b.starts_with("warp."));
     }
 }
