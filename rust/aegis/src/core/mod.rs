@@ -17,5 +17,6 @@ pub mod sni;
 pub mod system;
 pub mod totp;
 pub mod types;
+pub mod usque;
 pub mod utils;
 pub mod xray;
