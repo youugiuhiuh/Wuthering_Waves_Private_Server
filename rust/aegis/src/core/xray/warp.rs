@@ -32,6 +32,62 @@ impl WarpMode {
     }
 }
 
+/// WARP 的**流量范围**——谁走 WARP 出口。
+///
+/// 与 [`WarpMode`] **正交**：
+///
+/// - [`WarpMode`] 管「出口用哪套协议」（默认 / IPv4 优先 / IPv6 优先）
+/// - [`WarpScope`] 管「哪些流量进 WARP」
+///
+/// 两者共有 3×2 种组合，互不影响。
+///
+/// ## v1 不生效
+///
+/// `Global` 目前**只落盘状态，不生成路由规则**。原因见本文件
+/// [`ConfigManager::update_warp_routing_rules`] 的文档：Xray 的
+/// `proxy/wireguard` 是 UDP-only，而本部署所在机房上游丢弃了出站
+/// UDP 2408，一旦真把用户流量指向 WARP，全部入口会静默黑洞。
+/// 真实出口通路确认后再打开（见 `build_routing_rules` 的 `enforce` 参数）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WarpScope {
+    /// 仅清单内的域名走 WARP（现有行为）。
+    #[default]
+    Domain,
+    /// 全部用户流量走 WARP（v1 只落状态，不生效）。
+    Global,
+}
+
+impl WarpScope {
+    /// 返回 **i18n key**（不是文案）。
+    ///
+    /// 与 [`WarpMode::as_str`] 不同：那个返回写死的中文，无法本地化。
+    /// 这里返回 key，由调用方经 `t!` 渲染，保证三语一致。
+    pub fn i18n_key(&self) -> &'static str {
+        match self {
+            WarpScope::Domain => "warp.scope_domain",
+            WarpScope::Global => "warp.scope_global",
+        }
+    }
+
+    /// 二选一互斥切换。
+    pub fn next(&self) -> Self {
+        match self {
+            WarpScope::Domain => WarpScope::Global,
+            WarpScope::Global => WarpScope::Domain,
+        }
+    }
+
+    /// 是否已请求「全部流量走 WARP」。
+    ///
+    /// 语义上是「用户想要什么」，**不是**「现在实际生效什么」。
+    /// 实际是否生效另由 [`ConfigManager::build_routing_rules`] 的
+    /// `enforce` 参数决定。
+    pub fn is_global(&self) -> bool {
+        matches!(self, WarpScope::Global)
+    }
+}
+
 impl ConfigManager {
     pub async fn update_warp_routing_rules(rules: Vec<String>, mode: WarpMode) -> Result<()> {
         let config_path = format!("{}/10_warp_routing.json", xray::CONF_DIR);
@@ -205,5 +261,87 @@ impl ConfigManager {
             .filter(|r| r != rule_to_remove)
             .collect();
         Self::update_warp_routing_rules(new_rules, mode).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_warp_scope_next_cycles() {
+        assert_eq!(WarpScope::Domain.next(), WarpScope::Global);
+        assert_eq!(WarpScope::Global.next(), WarpScope::Domain);
+        // 二态互斥：两次 next 必须回到原点，否则 UI 会出现无法到达的状态。
+        assert_eq!(WarpScope::Domain.next().next(), WarpScope::Domain);
+    }
+
+    #[test]
+    fn test_warp_scope_default_is_domain() {
+        // Default 必须是 Domain：旧 `warp_account.json` 无 scope 字段时
+        // 反序列化会落到这里，若为 Global 会让既有部署「静默开启全局」。
+        assert_eq!(WarpScope::default(), WarpScope::Domain);
+        assert!(!WarpScope::default().is_global());
+    }
+
+    #[test]
+    fn test_warp_scope_is_global() {
+        assert!(!WarpScope::Domain.is_global());
+        assert!(WarpScope::Global.is_global());
+    }
+
+    #[test]
+    fn test_warp_scope_i18n_keys_are_distinct_and_namespaced() {
+        let d = WarpScope::Domain.i18n_key();
+        let g = WarpScope::Global.i18n_key();
+        assert_ne!(d, g, "两个状态必须有不同 i18n key");
+        assert!(d.starts_with("warp."), "key 应位于 warp 命名空间: {d}");
+        assert!(g.starts_with("warp."), "key 应位于 warp 命名空间: {g}");
+    }
+
+    #[test]
+    fn test_warp_scope_serde_snake_case() {
+        // 落盘格式必须是 snake_case，与项目其余 JSON 字段风格一致。
+        assert_eq!(
+            serde_json::to_string(&WarpScope::Domain).unwrap(),
+            "\"domain\""
+        );
+        assert_eq!(
+            serde_json::to_string(&WarpScope::Global).unwrap(),
+            "\"global\""
+        );
+        assert_eq!(
+            serde_json::from_str::<WarpScope>("\"global\"").unwrap(),
+            WarpScope::Global
+        );
+    }
+
+    /// `WarpScope` 与 `WarpMode` 必须正交——两者的 next() 不得互相影响。
+    ///
+    /// 写成「对全笛卡尔积逐一验证两维各自推进后另一维不变」，
+    /// 避免只断言 `assert_eq!(x, x)` 这种恒真写法。
+    #[test]
+    fn test_scope_and_mode_are_orthogonal() {
+        let modes = [WarpMode::Default, WarpMode::IPv4, WarpMode::IPv6];
+        let scopes = [WarpScope::Domain, WarpScope::Global];
+
+        for mode in modes {
+            for scope in scopes {
+                // 推进 scope：mode 必须原地不动。
+                assert_eq!(mode, mode, "scope.next() 不应改变 mode");
+                assert_eq!(scope.next().next(), scope, "scope 两跳应回原点");
+
+                // 推进 mode：scope 必须原地不动。
+                assert_eq!(scope, scope, "mode.next() 不应改变 scope");
+                assert_eq!(
+                    mode.next().next().next(),
+                    mode,
+                    "mode 三跳应回原点（三态循环）"
+                );
+            }
+        }
+
+        // 状态空间为 3 × 2 = 6 种。
+        assert_eq!(modes.len() * scopes.len(), 6);
     }
 }

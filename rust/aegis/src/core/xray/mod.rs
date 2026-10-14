@@ -14,4 +14,4 @@ pub use config::{ConfigManager, Proto};
 pub use installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
 pub use kcp_mask::KcpMask;
 pub use port_allocator::PortAllocator;
-pub use warp::WarpMode;
+pub use warp::{WarpMode, WarpScope};

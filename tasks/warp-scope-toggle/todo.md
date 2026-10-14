@@ -7,17 +7,29 @@
 **测试命令（权威）**: `cargo nextest run --cargo-profile fast-test`
 **工作目录**: `rust/aegis/`
 
+## 进度
+
+| 任务 | 状态 |
+|---|---|
+| T1 路径常量 + 探测骨架 | ✅ 5bb4255 |
+| T6 UDP 探测 | ✅ 5bb4255 |
+| T7 TCP 探测 | ✅ 5bb4255 |
+| T8 4 态组合 + 并行 | ✅ 5bb4255 |
+| T2–T5, T9–T15 | ⬜ 待做 |
+
+**当前套件**: 1126 passed, 1 skipped（基线 1119）
+
 ---
 
-## T1: 路径常量 + 探测模块骨架
+## T1: ✅ DONE (commit 5bb4255) 路径常量 + 探测模块骨架
 
 **Description**: `paths.rs` 加探测常量（Q1：走常量模块）。创建 `warp_probe.rs` 骨架与类型。
 
 **验收标准:**
-- [ ] `paths::warp` 新增 `WG_RX_BYTES_PATH`、`UDP_PROBE_ENDPOINT`、`TCP_PROBE_ENDPOINT`、`TCP_PROBE_SNI`
-- [ ] `core/network/warp_probe.rs` 定义 `UdpVerdict` / `TcpVerdict` / `ProbeReport`
-- [ ] `network/mod.rs` 声明并 re-export
-- [ ] 常量测试断言字面值
+- [x] `paths::warp` 新增 `WG_RX_BYTES_PATH`、`UDP_PROBE_ENDPOINT`、`TCP_PROBE_ENDPOINT`、`TCP_PROBE_SNI`
+- [x] `core/network/warp_probe.rs` 定义 `UdpVerdict` / `TcpVerdict` / `ProbeReport`
+- [x] `network/mod.rs` 声明并 re-export
+- [x] 常量测试断言字面值
 
 **验证:** `cargo nextest run --cargo-profile fast-test paths::` + `cargo check --all-targets`
 
@@ -127,15 +139,15 @@ fn test_scope_defaults_when_absent_legacy_file() {
 
 ---
 
-## T6: UDP 探测（TDD）
+## T6: ✅ DONE (commit 5bb4255) UDP 探测（TDD）
 
 **Description**: `probe_udp()` 发合法 WG 握手包，3s 内收到任何回应即 `Available`。
 
 **验收标准:**
-- [ ] 包格式：首字节 `0x01`，总长 148
-- [ ] 收到回应 → `Available`；超时 → `Blocked`
-- [ ] async + timeout，不 panic
-- [ ] 测试覆盖两态
+- [x] 包格式：首字节 `0x01`，总长 148
+- [x] 收到回应 → `Available`；超时 → `Blocked`
+- [x] async + timeout，不 panic
+- [x] 测试覆盖两态
 
 **验证:** `cargo nextest run warp_probe::`
 
@@ -151,15 +163,15 @@ pkt.extend_from_slice(&random_144);
 
 ---
 
-## T7: TCP 探测（TDD）
+## T7: ✅ DONE (commit 5bb4255) TCP 探测（TDD）
 
 **Description**: `probe_tcp()` 连 `TCP_PROBE_ENDPOINT:443`，TLS 握手，检查 ALPN。
 
 **验收标准:**
-- [ ] ALPN 含 `h2` → `AvailableH2`
-- [ ] 连接/握手失败 → `Blocked`
-- [ ] 连上但 ALPN 非 h2 → `OpenNoH2`
-- [ ] 测试覆盖三态
+- [x] ALPN 含 `h2` → `AvailableH2`
+- [x] 连接/握手失败 → `Blocked`
+- [x] 连上但 ALPN 非 h2 → `OpenNoH2`
+- [x] 测试覆盖三态
 
 **验证:** `cargo nextest run warp_probe::`
 
@@ -170,14 +182,14 @@ pkt.extend_from_slice(&random_144);
 
 ---
 
-## T8: 4 态结论 + 并行（Q3：并行 3s）
+## T8: ✅ DONE (commit 5bb4255) 4 态结论 + 并行（Q3：并行 3s）
 
 **Description**: `run_probe()` 用 `tokio::join!` 并行跑两路。
 
 **验收标准:**
-- [ ] 总超时 3s（并行，非串行 6s）
-- [ ] 4 种组合各有结论文案 key
-- [ ] 穷举断言 4 态
+- [x] 总超时 3s（并行，非串行 6s）
+- [x] 4 种组合各有结论文案 key
+- [x] 穷举断言 4 态
 
 **验证:** `cargo nextest run warp_probe::`
 
