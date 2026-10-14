@@ -128,8 +128,31 @@ impl WarpInstaller {
         }
     }
 
+    /// 卸载**所有** WARP 实现（WireGuard + usque），幂等。
+    ///
+    /// # 为什么两套一起卸
+    ///
+    /// 旧实现只清 WireGuard 的两个文件。Spec 2 落地后多出 usque 的
+    /// 一整套资产（systemd unit、账号配置、二进制），只清一半会留下：
+    ///
+    /// - `wwps-usque.service` 仍在，systemd 仍会拉起它，端口仍被占；
+    /// - 账号文件仍包着一个已注册的 Cloudflare 账号（含 `access_token`）；
+    /// - Xray 还指着 `127.0.0.1:1080` 的 socks outbound——现在指向一个死端口。
+    ///
+    /// 而管理员看到的是「卸载成功」，无从察觉。
+    ///
+    /// # 幂等
+    ///
+    /// 只装了一套、或两套都没装，都返回 `Ok`——卸载一个不存在的东西
+    /// 是成功，不是失败。
+    pub async fn uninstall_paired() -> Result<crate::core::usque::UninstallOutcome> {
+        crate::core::usque::installer::uninstall_all().await
+    }
+
+    /// 仅卸载 WireGuard 部分（保留供内部/兼容调用）。
+    ///
+    /// 对外（TG 卸载按钮）一律用 [`Self::uninstall_paired`]。
     pub async fn uninstall() -> Result<()> {
-        // Just remove the account config and the routing config
         let _ = fs::remove_file(warp_paths::ACCOUNT_FILE).await;
         let _ = fs::remove_file(warp_paths::ROUTING_FILE).await;
         crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
@@ -150,13 +173,45 @@ impl WarpInstaller {
     /// 没人能从 bot 侧看出隧道其实一个回包都收不到。
     ///
     /// 现改为三态：文件缺失 / 有文件但收不到回包 / 有文件且有回包。
+    /// usque（MASQUE over TCP/443）的状态行。
+    ///
+    /// 纯函数，便于穷举测试而不用碰真实文件系统/网络。
+    ///
+    /// 与 WireGuard 那行**并列**显示：两套实现是并存的，
+    /// 管理员需要同时看到两边的情况才能判断当前走的是哪条路。
+    ///
+    /// `installed == false` 不是错误——用户可能只装了其中一套。
+    fn usque_status_line(installed: bool, healthy: Option<bool>) -> String {
+        if !installed {
+            return "⚡ <b>usque</b>: ⚪ 未安装（MASQUE/HTTP-2 不可用）".to_string();
+        }
+        match healthy {
+            Some(true) => "⚡ <b>usque</b>: 🟢 隧道正常（warp=on）".to_string(),
+            Some(false) => "⚡ <b>usque</b>: 🟡 已安装，但隧道未转发流量".to_string(),
+            // 未探测——不谎报健康，也不谎报故障。
+            None => "⚡ <b>usque</b>: ⚪ 已安装（未探测）".to_string(),
+        }
+    }
+
     pub async fn status() -> Result<String> {
         let is_registered = fs::try_exists(warp_paths::ACCOUNT_FILE)
             .await
             .unwrap_or(false);
 
+        // usque 是否安装——与 WireGuard 独立判定。
+        let usque_installed = crate::core::usque::installer::detect_installed()
+            .await
+            .usque;
+        let usque_line = Self::usque_status_line(usque_installed, None);
+
         if !is_registered {
-            return Ok("⚙️ <b>账户状态</b>: 🔴 未注册\n(Native Mode 由核心服务托管)".to_string());
+            // WireGuard 没装不代表整体不可用——usque 可能装着呢。
+            return Ok(format!(
+                "⚙️ <b>WARP 状态</b>\n\
+                 WireGuard: 🔴 未注册\n\
+                 {usque_line}\n\
+                 (Native Mode 由核心服务托管)"
+            ));
         }
 
         // 采样两次 `rx_bytes`，用「是否有增长」而非「是否 > 0」判定。
@@ -170,17 +225,32 @@ impl WarpInstaller {
 
         let verdict = Self::verdict_from_samples(first, second);
 
-        Ok(match verdict {
-            WgTunnelHealth::Established => format!(
-                "⚙️ <b>账户状态</b>: 🟢 隧道正常（近 {WG_RX_SAMPLE_INTERVAL:?} 内收到回包）\n(Native Mode 由核心服务托管)"
-            ),
+        let wg_line = match verdict {
+            WgTunnelHealth::Established => {
+                format!("WireGuard: 🟢 隧道正常（近 {WG_RX_SAMPLE_INTERVAL:?} 内收到回包）")
+            }
             WgTunnelHealth::NoTraffic => format!(
-                "⚙️ <b>账户状态</b>: 🟡 已注册，但隧道未建立\n\
-                 已注册账号但 {WG_RX_SAMPLE_INTERVAL:?} 内 `wg0` 未收到任何回包。\n\
-                 常见原因：机房在出站方向丢弃了 UDP 2408（本部署实测被封锁）。\n\
-                 请用「出口连通性探测」确认，或改用 TCP/443（MASQUE）。"
+                "WireGuard: 🟡 已注册，但隧道未建立\n\
+                 └ {WG_RX_SAMPLE_INTERVAL:?} 内 `wg0` 未收到任何回包"
             ),
-        })
+        };
+
+        // 两套都不可用时给出明确结论（对应 OQ3：不假装可用）。
+        let unavailable_hint = if verdict == WgTunnelHealth::NoTraffic && !usque_installed {
+            "\n\n⚠️ <b>两条 WARP 通路都不可用</b>：\n\
+             走 UDP 的 WireGuard 收不到回包（机房常丢出站 UDP），\n\
+             而走 TCP/443 的 usque 未安装。\n\
+             请先用「出口连通性探测」确认出口情况。"
+        } else {
+            ""
+        };
+
+        Ok(format!(
+            "⚙️ <b>WARP 状态</b>\n\
+             {wg_line}\n\
+             {usque_line}\n\
+             (Native Mode 由核心服务托管){unavailable_hint}"
+        ))
     }
 }
 
@@ -944,5 +1014,49 @@ mod tests {
             crate::core::xray::WarpScope::Global,
         );
         assert_eq!(a, b, "scope 不应改变保留结果");
+    }
+
+    // ───────────────── T14: usque 状态行 ─────────────────
+
+    /// `usque_status_line` 穷举 4 种输入组合。
+    ///
+    /// 关键：**未安装不是错误**（用户可能只装了一套），
+    /// 且未探测时不得谎报健康或故障。
+    #[test]
+    fn test_usque_status_line_all_states() {
+        let not_installed = WarpInstaller::usque_status_line(false, None);
+        assert!(not_installed.contains("未安装"), "{not_installed}");
+
+        let installed_healthy = WarpInstaller::usque_status_line(true, Some(true));
+        assert!(installed_healthy.contains("正常"), "{installed_healthy}");
+
+        let installed_sick = WarpInstaller::usque_status_line(true, Some(false));
+        assert!(
+            installed_sick.contains("未转发"),
+            "已装但不健康必须明说: {installed_sick}"
+        );
+
+        let installed_unknown = WarpInstaller::usque_status_line(true, None);
+        assert!(
+            installed_unknown.contains("未探测"),
+            "未探测时不得谎报健康/故障: {installed_unknown}"
+        );
+    }
+
+    /// 「已装但不健康」与「已装且健康」必须产生**不同**文案——
+    /// 否则状态页看不出区别，又回到假阳性老路。
+    #[test]
+    fn test_usque_healthy_and_sick_differ() {
+        let h = WarpInstaller::usque_status_line(true, Some(true));
+        let s = WarpInstaller::usque_status_line(true, Some(false));
+        assert_ne!(h, s, "健康与不健康必须能区分");
+    }
+
+    /// 未安装时**不得**出现「正常」字样——否则会让人以为 MASQUE 可用。
+    #[test]
+    fn test_usque_not_installed_never_claims_healthy() {
+        let s = WarpInstaller::usque_status_line(false, None);
+        assert!(!s.contains("正常"), "未安装不得显示正常: {s}");
+        assert!(!s.contains("🟢"), "未安装不得显示绿灯: {s}");
     }
 }
