@@ -87,7 +87,7 @@ pub mod maintenance {
         "/root/.acme.sh",
         "/etc/systemd/system/wwps-aegis.service",
     ];
-    pub const DESTRUCT_SERVICES: &[&str] = &["wwps-core", "wwps-box", "nginx"];
+    pub const DESTRUCT_SERVICES: &[&str] = &["wwps-core", "wwps-box", "wwps-usque", "nginx"];
 }
 
 /// WARP 相关路径
@@ -126,6 +126,43 @@ pub mod warp {
 
     /// 上述探测使用的 SNI。
     pub const TCP_PROBE_SNI: &str = "consumer-masque.cloudflareclient.com";
+}
+
+/// usque（WARP over TCP/443）相关路径。
+///
+/// ## 为什么是独立组件
+///
+/// Xray 的 `proxy/wireguard` 是 **UDP-only**（WireGuard 协议本身不支持跑在 TCP 上）。
+/// 当机房在出站方向丢弃非 53 端口的 UDP 时，WireGuard 路径永远建立不起来，
+/// 而 usque 走 MASQUE/HTTP-2 over **TCP/443**，绕过该限制。
+///
+/// 两者不是同一实现的两个开关，而是两个独立进程：usque 跑自己的 systemd unit、
+/// 自己监听一个本地 SOCKS 端口，Xray 通过 `socks` outbound 指向它。
+/// 故路径也自成一组。
+pub mod usque {
+    pub const DIR: &str = "/etc/wwps/usque";
+    pub const BIN: &str = "/etc/wwps/usque/usque";
+
+    /// MASQUE 账号文件（`usque register` 的产物）。
+    ///
+    /// ⚠️ 与 `warp::ACCOUNT_FILE`（WireGuard 格式）**语义与字段完全不同**，
+    /// 不可互换：
+    ///
+    /// - WireGuard：`private_key` / `public_key` / `reserved` / `client_id`
+    /// - MASQUE：`private_key` / `access_token` / `id` / `endpoint_h2_v4` …
+    pub const CONFIG_FILE: &str = "/etc/wwps/usque/config.json";
+
+    pub const SERVICE_NAME: &str = "wwps-usque";
+    pub const SERVICE_PATH: &str = "/etc/systemd/system/wwps-usque.service";
+
+    /// usque 的 SOCKS 监听端口。
+    ///
+    /// 只监听 `127.0.0.1`（见 `core/usque/unit.rs` 的 `-b` 参数）——
+    /// usque 的 SOCKS **不加密也不认证**，对外暴露等于开放代理。
+    pub const SOCKS_PORT: u16 = 1080;
+
+    /// usque 健康检查用的 SOCKS 地址。
+    pub const SOCKS_ADDR: &str = "127.0.0.1";
 }
 
 /// 日志目录
@@ -197,6 +234,12 @@ mod tests {
         assert!(maintenance::DESTRUCT_TARGETS.contains(&"/etc/wwps"));
         assert!(!maintenance::DESTRUCT_SERVICES.is_empty());
         assert!(maintenance::DESTRUCT_SERVICES.contains(&"wwps-core"));
+        // usque 也是本项目自己的服务，自毁时必须一起停——
+        // 否则残留 unit 仍会被 systemd 拉起。
+        assert!(
+            maintenance::DESTRUCT_SERVICES.contains(&"wwps-usque"),
+            "自毁服务列表必须含 wwps-usque"
+        );
     }
 
     #[test]
@@ -218,6 +261,38 @@ mod tests {
     /// - TCP 162.159.198.2:443 → 可连但 **ALPN=None**（故未被选用）
     ///
     /// 这条测试把上述目标钉死，防止有人「顺手」改成一个不可用的端点。
+    /// usque 路径是**独立组件**的路径，与 WireGuard 的 `warp::*` 不同。
+    ///
+    /// 特别钉死两件事：
+    /// 1. `CONFIG_FILE` 与 `warp::ACCOUNT_FILE` 是**两个不同文件**——
+    ///    它们的 JSON 字段语义完全不兼容（MASQUE 有 `access_token`/`id`，
+    ///    WireGuard 有 `reserved`/`client_id`），写错会静默失效。
+    /// 2. SOCKS 端口与监听地址——usque 的 SOCKS 不加密不认证，
+    ///    必须只监听回环。
+    #[test]
+    fn test_usque_paths() {
+        assert_eq!(usque::DIR, "/etc/wwps/usque");
+        assert_eq!(usque::BIN, "/etc/wwps/usque/usque");
+        assert_eq!(usque::CONFIG_FILE, "/etc/wwps/usque/config.json");
+        assert_eq!(usque::SERVICE_NAME, "wwps-usque");
+        assert_eq!(
+            usque::SERVICE_PATH,
+            "/etc/systemd/system/wwps-usque.service"
+        );
+        assert_eq!(usque::SOCKS_PORT, 1080);
+        assert_eq!(usque::SOCKS_ADDR, "127.0.0.1");
+
+        assert_ne!(
+            usque::CONFIG_FILE,
+            warp::ACCOUNT_FILE,
+            "MASQUE 与 WireGuard 的账号文件必须不同（格式不兼容）"
+        );
+        assert!(
+            usque::SOCKS_ADDR.starts_with("127."),
+            "usque SOCKS 必须只监听回环（无认证无加密）"
+        );
+    }
+
     #[test]
     fn test_warp_probe_constants() {
         assert_eq!(

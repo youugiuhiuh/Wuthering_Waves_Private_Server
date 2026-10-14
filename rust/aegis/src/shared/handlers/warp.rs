@@ -713,14 +713,17 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 )
                 .await?;
 
-            match WarpInstaller::uninstall().await {
-                Ok(_) => {
+            match WarpInstaller::uninstall_paired().await {
+                Ok(outcome) => {
+                    // 文案由**实际卸了什么**决定（4 种组合），
+                    // 而不是笼统的「卸载成功」——否则管理员无法确认
+                    // 到底清掉了几套实现。
                     event
                         .adapter
                         .send_message(
                             &event.target,
                             MessageContent {
-                                text: t!("warp.uninstall_success").into(),
+                                text: t!(outcome.i18n_key()).into(),
                                 markup: None,
                             },
                         )

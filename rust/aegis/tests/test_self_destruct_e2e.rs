@@ -499,11 +499,14 @@ fn e2e_verify_destruct_targets_constant() {
 #[test]
 fn e2e_verify_destruct_services_constant() {
     let services = MaintenanceManager::DESTRUCT_SERVICES;
-    assert_eq!(services.len(), 3, "默认服务应为 3 个");
+    // 4 个：wwps-usque 随 Spec 2（WARP over TCP/443）加入。
+    // 自毁必须停掉本项目自己的**全部**服务，否则残留 unit 会被 systemd 拉起。
+    assert_eq!(services.len(), 4, "默认服务应为 4 个");
 
     assert_eq!(services[0], "wwps-core");
     assert_eq!(services[1], "wwps-box");
-    assert_eq!(services[2], "nginx");
+    assert_eq!(services[2], "wwps-usque");
+    assert_eq!(services[3], "nginx");
 }
 
 // ============================================================
