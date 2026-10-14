@@ -84,6 +84,17 @@ pub fn select_egress(conclusion: ProbeConclusion) -> Egress {
     }
 }
 
+/// 进程级探测缓存实例。
+///
+/// 放在此处而非调用方，是为了让「谁写过缓存」与「谁读它」共用一个实例——
+/// 否则配置生成读到的永远是空缓存，出口引擎会退化成永久的 `Direct`。
+///
+/// 由探测调度任务（或首次配置生成时的惰性探测）写入。
+pub fn global_probe_cache() -> &'static ProbeCache {
+    static CACHE: ProbeCache = ProbeCache::new();
+    &CACHE
+}
+
 /// 带时间戳的缓存项。
 #[derive(Debug, Clone, Copy)]
 struct Cached {

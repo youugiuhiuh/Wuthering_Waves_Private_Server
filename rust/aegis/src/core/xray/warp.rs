@@ -4,34 +4,58 @@ use std::path::Path;
 use tokio::fs;
 
 use super::config::ConfigManager;
-use crate::core::paths::{warp, xray};
+use crate::core::paths::{usque as usque_paths, warp, xray};
+use crate::core::usque::{Egress, select_egress};
 
-/// 是否允许「全局 WARP」真正生成 catch-all 路由规则。
+/// 出口引擎是否**真的可用**——`Global` 是否生成 catch-all 的判据。
 ///
-/// **默认 `false`**：v1 只落状态、不生效。
+/// # 为何不再是环境变量（Spec 1 → Spec 2）
 ///
-/// ## 为什么默认关
+/// Spec 1 曾用 `WARP_SCOPE_ENFORCE` 环境变量当护栏，其存在理由是
+/// 「**出口不可用**」：Xray 的 `proxy/wireguard` 是 UDP-only，
+/// 而本部署机房丢弃出站 UDP 的非 53 端口，因此一旦生成 catch-all，
+/// 全部用户 inbound 会被指向一条收不到回包的隧道（服务器日志曾证实：
+/// `XHTTP-*` 路由到 `proxy-warp`，而 `wg0` 的 `rx_bytes` 恒为 0）。
 ///
-/// Xray 的 `proxy/wireguard` 是 UDP-only（WireGuard 协议本身不支持跑在
-/// TCP 上）。本部署所在机房的上游 ACL 丢弃了出站 UDP 的**非 53 端口**：
-/// 真机实测 `2408` / `500` / `1701` / `4500` / `8443` 全部静默，而
-/// `162.159.192.1:443` TCP 与 `8.8.8.8:53` UDP 均正常。
+/// Spec 2 提供了走 TCP/443 的 usque，出口**真的可用**了，
+/// 于是护栏的理由消失。用**运行时的出口可用性**取代环境变量更准确：
 ///
-/// 所以一旦生成 catch-all，54 个用户 inbound 会全部被指向一条收不到回包的
-/// 隧道——包括管理员自己的救援通道。服务器日志已经证实过这一幕：
-/// `XHTTP-*` 路由到 `proxy-warp`，而 `wg0` 的 `rx_bytes` 恒为 0、
-/// `tx_bytes` 持续攀升。
+/// - 环境变量无法感知网络变化（机房改策略、隧道卡死都不会更新它）；
+/// - 运行时不变量本来就决定了用哪个出口引擎，复用它不会产生
+///   「配置说 MASQUE、实际探测却说 WireGuard 可用」这类不一致；
+/// - 少一个可以配错的外部输入。
 ///
-/// ## 如何打开
+/// 判据：出口引擎**不是** `Egress::Direct` 即视为可用——`Direct` 正是
+/// 「两条通路都不可用」的表达（见 [`select_egress`]）。
+fn egress_is_available(egress: Egress) -> bool {
+    egress.is_warp_enabled()
+}
+
+/// 用缓存中的探测结果选出口；无缓存（或已过期）时保守地回退。
 ///
-/// 把环境变量 `WARP_SCOPE_ENFORCE` 设为 `1` / `true` / `yes` 即可，
-/// 无需改代码。但**只有在真实出口通路确认可用后**才应这么做
-/// （见独立的 usque/TCP-443 spec）。
-fn enforce_global_warp() -> bool {
-    matches!(
-        std::env::var("WARP_SCOPE_ENFORCE").as_deref(),
-        Ok("1") | Ok("true") | Ok("yes")
-    )
+/// **回退到 `Direct` 而非某个具体引擎**：探测都没跑过就声称某条路可用，
+/// 等于在用未验证的假设配置生产流量。宁可先不启用 WARP，
+/// 等下一次探测给出结论。
+///
+/// 缓存本体在 [`crate::core::usque::engine::ProbeCache`]，
+/// 由探测调度任务写入。
+fn current_egress() -> Egress {
+    match crate::core::usque::engine::global_probe_cache()
+        .get(now_monotonic(), crate::core::usque::engine::CACHE_TTL)
+    {
+        Some(report) => select_egress(report.conclusion),
+        None => Egress::Direct,
+    }
+}
+
+/// 单调时刻（进程启动至今）。
+///
+/// 用单调时钟而非墙上时钟：TTL 比较不应受系统时间调整影响。
+fn now_monotonic() -> std::time::Duration {
+    use std::sync::OnceLock;
+    static START: OnceLock<std::time::Instant> = OnceLock::new();
+    let start = START.get_or_init(std::time::Instant::now);
+    start.elapsed()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -117,6 +141,40 @@ impl WarpScope {
 }
 
 impl ConfigManager {
+    /// 生成指向本地 usque 的 `socks` outbound。
+    ///
+    /// # ⚠️ 形状是「扁平」的——与其它协议不同
+    ///
+    /// Xray 的 `socks` outbound 把 `address` / `port` **直接挂在 `settings` 下**：
+    ///
+    /// ```json
+    /// { "protocol": "socks", "settings": { "address": "127.0.0.1", "port": 1080 } }
+    /// ```
+    ///
+    /// 而 `vless` / `vmess` / `trojan` / `wireguard` 全都是
+    /// `settings.servers[]` 数组。写成后者会**静默失效**——
+    /// Xray 对未知字段宽容（engine 仍会起，流量却不过隧道）。
+    /// 本项目已经在 `core_health.rs` 记录过这类「配置能起但功能已坏」的教训。
+    ///
+    /// 故本函数有专门的断言测试
+    /// （`test_masque_outbound_is_flat_socks_shape`）。
+    ///
+    /// # tag 保持 `proxy-warp`
+    ///
+    /// 与 WireGuard 路径的 wireguard outbound 同名——这样上层的
+    /// `freedom + dialerProxy` 中转与路由规则**不需要感知出口实现换了**。
+    /// 对 Xray 而言，只是 `proxy-warp` 这个 tag 后面挂的东西变了。
+    pub fn masque_outbound(addr: &str, port: u16) -> Value {
+        json!({
+            "tag": "proxy-warp",
+            "protocol": "socks",
+            "settings": {
+                "address": addr,
+                "port": port,
+            }
+        })
+    }
+
     /// 构造 `10_warp_routing.json` 的 `routing.rules`。
     ///
     /// 纯函数（无 I/O、无环境依赖），故可直接单测。
@@ -125,9 +183,16 @@ impl ConfigManager {
     ///
     /// - `rules`：域名清单（`domain:` / 裸域名均可，交给 Xray 解析）。
     /// - `scope`：用户请求的流量范围。
-    /// - `enforce`：是否**真的**把 `Global` 落成 catch-all 规则。
-    ///   为 `false` 时 `Global` 与 `Domain` 产出完全相同的规则集
-    ///   （即 v1 行为：状态记录，但不改变路由）。
+    /// - `enforce`：**出口引擎是否真的可用**（Spec 2 起语义变了）。
+    ///
+    ///   为 `false` 时 `Global` 与 `Domain` 产出完全相同的规则集——
+    ///   即「用户请求了全局，但出口不可用，故不生效」。
+    ///
+    ///   ⚠️ **语义变更史**：Spec 1 时该参数的含义是「管理员是否用
+    ///   `WARP_SCOPE_ENFORCE` 环境变量显式允许」。Spec 2 提供了
+    ///   走 TCP/443 的 usque 后，出口真的可用了，护栏由**运行时可用性**
+    ///   取代（见 [`egress_is_available`]）——环境变量无法感知网络变化，
+    ///   也更易配错。参数签名保留，语义以本节为准。
     ///
     /// ## 产出
     ///
@@ -239,29 +304,40 @@ impl ConfigManager {
         let peer_pub_key = "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=";
         let peer_endpoint = "engage.cloudflareclient.com:2408";
 
+        // 按出口引擎决定 `proxy-warp` 后面挂什么。
+        //
+        // - `Masque`：挂一个指向本地 usque 的 `socks` outbound；
+        //   账号在 usque 自己的 `config.json`，**不在**本文件里，
+        //   因此下面的 wireguard 字段（priv_key/v4/...）在本分支下不适用。
+        // - 其它（WireGuard / Direct）：保持既有 wireguard outbound。
+        let egress = current_egress();
         let wg_tag = if mode == WarpMode::Default {
             "warp"
         } else {
             "proxy-warp"
         };
 
-        let wg_outbound = json!({
-            "tag": wg_tag,
-            "protocol": "wireguard",
-            "settings": {
-                "secretKey": priv_key,
-                "address": [v4, v6],
-                "peers": [
-                    {
-                        "publicKey": peer_pub_key,
-                        "endpoint": peer_endpoint,
-                        "keepAlive": 30
-                    }
-                ],
-                "reserved": reserved,
-                "mtu": 1280
-            }
-        });
+        let wg_outbound = if egress == Egress::Masque {
+            Self::masque_outbound(usque_paths::SOCKS_ADDR, usque_paths::SOCKS_PORT)
+        } else {
+            json!({
+                "tag": wg_tag,
+                "protocol": "wireguard",
+                "settings": {
+                    "secretKey": priv_key,
+                    "address": [v4, v6],
+                    "peers": [
+                        {
+                            "publicKey": peer_pub_key,
+                            "endpoint": peer_endpoint,
+                            "keepAlive": 30
+                        }
+                    ],
+                    "reserved": reserved,
+                    "mtu": 1280
+                }
+            })
+        };
 
         let mut outbounds = vec![wg_outbound];
 
@@ -295,7 +371,8 @@ impl ConfigManager {
             }
         });
 
-        let routing_rules = Self::build_routing_rules(rules, scope, enforce_global_warp());
+        let routing_rules =
+            Self::build_routing_rules(rules, scope, egress_is_available(current_egress()));
         let config = json!({
             "inbounds": [socks_inbound],
             "outbounds": outbounds,
@@ -572,9 +649,15 @@ mod tests {
         );
     }
 
-    /// **v1 核心约束**：`Global` 但未 enforce 时，产出与 `Domain` 完全相同。
+    /// **核心不变式**：出口不可用时 `Global` 不得生效。
     ///
-    /// 这就是「开关只落状态、不改变路由」的机械保证。
+    /// 这条在 Spec 1 叫「v1 不生效」，Spec 2 后它的含义变成
+    /// 「**出口引擎不可用时**不生效」——`enforce` 参数从环境变量
+    /// 改成了运行时可用性（见 `egress_is_available`），
+    /// 但**不变量本身没变**：出口不可用 → 不生成 catch-all。
+    ///
+    /// 这是防黑洞的关键：两条通路都挂时若仍生成 catch-all，
+    /// 全部用户 inbound 会被指向一条收不到回包的隧道。
     #[test]
     fn test_global_without_enforce_is_identical_to_domain() {
         let rules = domains(&["domain:a.com", "domain:b.com"]);
@@ -585,14 +668,85 @@ mod tests {
 
         assert_eq!(
             domain_out, global_out,
-            "未 enforce 时 Global 必须与 Domain 逐字节相同（v1 不生效）"
+            "出口不可用时 Global 必须与 Domain 逐字节相同（不生效）"
         );
         assert!(
             global_out
                 .iter()
                 .all(|r| r.get("inboundTag").is_some() || r.get("domain").is_some()),
-            "未 enforce 时不应出现无条件的 catch-all 规则"
+            "出口不可用时不应出现无条件的 catch-all 规则"
         );
+    }
+
+    /// Spec 2：出口**可用**时，`Global` 必须真生成 catch-all。
+    ///
+    /// 与上一条测试成对——它们共同限定 `enforce` 参数的两种取值，
+    /// 把「何时生效」这个判断完整钉死。
+    #[test]
+    fn test_global_emits_catch_all_when_egress_available() {
+        let rules = domains(&["domain:a.com", "domain:b.com"]);
+        let out = ConfigManager::build_routing_rules(rules, WarpScope::Global, true);
+
+        assert_eq!(out.len(), 2, "warp-in + 一条 catch-all");
+        let catch_all = &out[1];
+        assert_eq!(catch_all["outboundTag"], "warp");
+        assert!(
+            catch_all.get("domain").is_none()
+                && catch_all.get("ip").is_none()
+                && catch_all.get("inboundTag").is_none(),
+            "catch-all 不得带任何匹配条件，否则达不到「全部流量」语义"
+        );
+    }
+
+    /// **出口可用性判据**：只有 `Direct` 算不可用。
+    ///
+    /// 这是 Spec 2 取代环境变量的那颗开关。取反或写错会让
+    /// `Global` 在两条通路都挂时仍然生成 catch-all——
+    /// 即全部用户流量指向一个收不到回包的黑洞。
+    #[test]
+    fn test_egress_availability_maps_only_direct_to_unavailable() {
+        assert!(egress_is_available(Egress::WireGuard));
+        assert!(egress_is_available(Egress::Masque));
+        assert!(
+            !egress_is_available(Egress::Direct),
+            "Direct 表示两条通路都不可用，必须判为不可用"
+        );
+    }
+
+    /// 无探测缓存时 `current_egress()` 必须保守地回退到 `Direct`。
+    ///
+    /// 探测都没跑过就声称某条路可用，等于用未验证的假设配置生产流量。
+    #[test]
+    fn test_current_egress_is_conservative_without_cache() {
+        crate::core::usque::engine::global_probe_cache().clear();
+        assert_eq!(
+            current_egress(),
+            Egress::Direct,
+            "无缓存时应回退 Direct（不启用 WARP）"
+        );
+    }
+
+    /// 缓存命中时 `current_egress()` 必须跟随探测结论。
+    #[test]
+    fn test_current_egress_follows_cached_probe() {
+        use crate::core::network::{ProbeConclusion, ProbeReport, TcpVerdict, UdpVerdict};
+
+        let cache = crate::core::usque::engine::global_probe_cache();
+        cache.clear();
+        cache.store(
+            ProbeReport {
+                udp: UdpVerdict::Blocked,
+                tcp: TcpVerdict::AvailableH2,
+                conclusion: ProbeConclusion::TcpOnly,
+            },
+            now_monotonic(),
+        );
+        assert_eq!(
+            current_egress(),
+            Egress::Masque,
+            "缓存说 TcpOnly 时应选 MASQUE"
+        );
+        cache.clear();
     }
 
     /// `Domain` 即使 enforce=true 也不得变成 catch-all。
@@ -671,5 +825,82 @@ mod tests {
             total, 1,
             "update_warp_routing_rules 内只应有一处 reload_core（排除注释与测试代码）"
         );
+    }
+
+    // ──────────── T8: MASQUE socks outbound ────────────
+
+    /// **硬约束 6**：Xray 的 `socks` outbound 形状是**扁平**的。
+    ///
+    /// `address` / `port` 直接挂在 `settings` 下，**不是** `settings.servers[]`。
+    /// 后者是 `vless`/`vmess`/`trojan`/`wireguard` 的形状；
+    /// 在 `socks` 上写错会静默失效——Xray 宽容未知字段，
+    /// engine 照常启动，但流量根本不过隧道。
+    #[test]
+    fn test_masque_outbound_is_flat_socks_shape() {
+        let o = ConfigManager::masque_outbound("127.0.0.1", 1080);
+
+        assert_eq!(o["protocol"], "socks");
+        assert_eq!(o["settings"]["address"], "127.0.0.1");
+        assert_eq!(o["settings"]["port"], 1080);
+
+        assert!(
+            o["settings"].get("servers").is_none(),
+            "socks outbound 不得用 servers[] 形状——会静默失效。实际: {o}"
+        );
+    }
+
+    /// tag 必须是 `proxy-warp`。
+    ///
+    /// 上层的中转 outbound（`freedom` + `dialerProxy: proxy-warp`）与
+    /// 路由规则都引用这个 tag；换出口实现**不应**改变它，
+    /// 否则路由会指向一个不存在的 tag，整条链断掉。
+    #[test]
+    fn test_masque_outbound_reuses_proxy_warp_tag() {
+        let o = ConfigManager::masque_outbound("127.0.0.1", 1080);
+        assert_eq!(o["tag"], "proxy-warp");
+    }
+
+    /// 不得携带任何 WireGuard 专有字段。
+    ///
+    /// MASQUE 与 WireGuard 是两套完全不同的实现：账号格式不同、
+    /// 传输层不同。把 `secretKey` / `reserved` 之类混进来
+    /// 说明实现把两者搞混了。
+    #[test]
+    fn test_masque_outbound_has_no_wireguard_fields() {
+        let o = ConfigManager::masque_outbound("127.0.0.1", 1080);
+        for forbidden in [
+            "secretKey",
+            "reserved",
+            "peers",
+            "publicKey",
+            "address_v4",
+            "mtu",
+        ] {
+            assert!(
+                o["settings"].get(forbidden).is_none(),
+                "MASQUE outbound 不应含 WireGuard 字段 `{forbidden}`: {o}"
+            );
+        }
+    }
+
+    /// 地址与端口必须是**参数化**的，不能硬编码——
+    /// 否则改监听端口时配置不会跟着变，且没法单测。
+    #[test]
+    fn test_masque_outbound_parameterised() {
+        let a = ConfigManager::masque_outbound("127.0.0.1", 1080);
+        let b = ConfigManager::masque_outbound("10.0.0.1", 9999);
+        assert_eq!(a["settings"]["port"], 1080);
+        assert_eq!(b["settings"]["port"], 9999);
+        assert_eq!(b["settings"]["address"], "10.0.0.1");
+        assert_ne!(a, b, "不同参数应产出不同 outbound");
+    }
+
+    /// SOCKS 不加密不认证——不得在配置里出现凭据字段
+    /// （即使为空也会诱导后人去填）。
+    #[test]
+    fn test_masque_outbound_has_no_credentials() {
+        let o = ConfigManager::masque_outbound("127.0.0.1", 1080);
+        assert!(o["settings"].get("user").is_none());
+        assert!(o["settings"].get("pass").is_none());
     }
 }
