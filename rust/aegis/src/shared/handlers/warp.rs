@@ -1,6 +1,6 @@
 use crate::common::{InlineButton, Markup, MessageContent};
 use crate::core::xray::installer::WarpInstaller;
-use crate::core::xray::{ConfigManager, WarpMode};
+use crate::core::xray::{ConfigManager, WarpMode, WarpScope};
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use crate::utils;
 use rust_i18n::t;
@@ -39,9 +39,12 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 return Ok(HandlerAction::Done);
             }
 
-            let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules()
-                .await
-                .unwrap_or((Vec::new(), WarpMode::Default));
+            let (current_rules, current_mode, current_scope) =
+                ConfigManager::get_warp_routing_rules().await.unwrap_or((
+                    Vec::new(),
+                    WarpMode::Default,
+                    WarpScope::default(),
+                ));
 
             let rule_display = if current_rules.is_empty() {
                 t!("warp.no_rules").to_string()
@@ -83,9 +86,25 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                         text: t!("warp.mode_label", "0" => current_mode.as_str()).into(),
                         data: "a_warp_switch_mode".into(),
                     }],
+                    // 流量范围：二态互斥切换。
+                    // v1 不生成 catch-all 规则，故文案必须显式标注未生效，
+                    // 否则管理员会以为点一下就已经「全部流量走 WARP」了。
+                    vec![InlineButton {
+                        text: t!(
+                            "warp.scope_button",
+                            "0" => t!(current_scope.i18n_key())
+                        )
+                        .into(),
+                        data: "a_warp_switch_scope".into(),
+                    }],
                     vec![InlineButton {
                         text: t!("warp.status_check").into(),
                         data: "a_warp_status".into(),
+                    }],
+                    // 出口连通性探测：分别查 UDP 与 TCP/443 两条路。
+                    vec![InlineButton {
+                        text: t!("warp.probe_button").into(),
+                        data: "a_warp_probe".into(),
                     }],
                     vec![
                         InlineButton {
@@ -127,12 +146,23 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             Ok(HandlerAction::Done)
         }
         "a_warp_switch_mode" => {
-            let (current_rules, current_mode) = ConfigManager::get_warp_routing_rules()
-                .await
-                .unwrap_or((Vec::new(), WarpMode::Default));
+            let (current_rules, current_mode, current_scope) =
+                ConfigManager::get_warp_routing_rules().await.unwrap_or((
+                    Vec::new(),
+                    WarpMode::Default,
+                    WarpScope::default(),
+                ));
             let next_mode = current_mode.next();
 
-            match ConfigManager::update_warp_routing_rules(current_rules, next_mode).await {
+            // 改出口协议需要重写路由文件，故 scope_only = false。
+            match ConfigManager::update_warp_routing_rules(
+                current_rules,
+                next_mode,
+                current_scope,
+                false,
+            )
+            .await
+            {
                 Ok(_) => Ok(HandlerAction::Redirect("m_warp".to_string())),
                 Err(e) => {
                     event
@@ -146,6 +176,102 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     Ok(HandlerAction::Done)
                 }
             }
+        }
+        // 流量范围二态互斥切换。
+        //
+        // `scope_only = true`：只写 `warp_account.json`，**不**重写路由规则、
+        // **不**重启 `wwps-core`。v1 的 Global 不改变任何路由行为，为一个纯状态
+        // 变更去重启核心只会白白抖动全体在线用户的连接。
+        "a_warp_switch_scope" => {
+            let (current_rules, current_mode, current_scope) =
+                ConfigManager::get_warp_routing_rules().await.unwrap_or((
+                    Vec::new(),
+                    WarpMode::Default,
+                    WarpScope::default(),
+                ));
+            let next_scope = current_scope.next();
+
+            match ConfigManager::update_warp_routing_rules(
+                current_rules,
+                current_mode,
+                next_scope,
+                true,
+            )
+            .await
+            {
+                Ok(_) => Ok(HandlerAction::Redirect("m_warp".to_string())),
+                Err(e) => {
+                    event
+                        .adapter
+                        .answer_callback(
+                            &event.target,
+                            &event.callback_id,
+                            Some(t!("warp.scope_switch_fail", "0" => e.to_string()).into()),
+                        )
+                        .await?;
+                    Ok(HandlerAction::Done)
+                }
+            }
+        }
+        // 出口连通性探测：并行跑 UDP 与 TCP 两路，给出组合结论。
+        "a_warp_probe" => {
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(t!("warp.probe_running").into()),
+                )
+                .await?;
+
+            let report = crate::core::network::warp_probe::run_probe().await;
+
+            let udp_text = match report.udp {
+                crate::core::network::UdpVerdict::Available => t!("warp.probe_yes"),
+                crate::core::network::UdpVerdict::Blocked => t!("warp.probe_no"),
+                crate::core::network::UdpVerdict::ProbeFailed => t!("warp.probe_unknown"),
+            };
+            let tcp_text = match report.tcp {
+                crate::core::network::TcpVerdict::AvailableH2 => t!("warp.probe_yes"),
+                crate::core::network::TcpVerdict::OpenNoH2 => t!("warp.probe_unknown"),
+                crate::core::network::TcpVerdict::Blocked => t!("warp.probe_no"),
+            };
+            let conclusion = match report.conclusion {
+                crate::core::network::ProbeConclusion::WgUsable => t!("warp.probe_conclusion_wg"),
+                crate::core::network::ProbeConclusion::TcpOnly => t!("warp.probe_conclusion_tcp"),
+                crate::core::network::ProbeConclusion::UdpOnly => t!("warp.probe_conclusion_udp"),
+                crate::core::network::ProbeConclusion::FullyBlocked => {
+                    t!("warp.probe_conclusion_blocked")
+                }
+            };
+
+            let markup = Markup {
+                buttons: vec![vec![InlineButton {
+                    text: t!("menu.back").into(),
+                    data: "m_warp".into(),
+                }]],
+            };
+
+            event
+                .adapter
+                .edit_message(
+                    &event.target,
+                    &event.msg_id,
+                    MessageContent {
+                        text: format!(
+                            "{}\n\n{}: {}\n{}: {}\n\n{}",
+                            t!("warp.probe_title"),
+                            t!("warp.probe_udp_label"),
+                            udp_text,
+                            t!("warp.probe_tcp_label"),
+                            tcp_text,
+                            conclusion
+                        ),
+                        markup: Some(markup),
+                    },
+                )
+                .await?;
+            Ok(HandlerAction::Done)
         }
         "a_inst_warp" => {
             event
@@ -211,9 +337,11 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             Ok(HandlerAction::Done)
         }
         "a_warp_del_menu" => {
-            let (current_rules, _) = ConfigManager::get_warp_routing_rules()
-                .await
-                .unwrap_or((Vec::new(), WarpMode::Default));
+            let (current_rules, _, _) = ConfigManager::get_warp_routing_rules().await.unwrap_or((
+                Vec::new(),
+                WarpMode::Default,
+                WarpScope::default(),
+            ));
 
             if current_rules.is_empty() {
                 event
@@ -276,7 +404,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     .await?;
                 return Ok(HandlerAction::Done);
             }
-            let (current_rules, _) = ConfigManager::get_warp_routing_rules()
+            let (current_rules, _, _) = ConfigManager::get_warp_routing_rules()
                 .await
                 .unwrap_or_default();
 
@@ -338,7 +466,7 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                     .await?;
                 return Ok(HandlerAction::Done);
             }
-            let (current_rules, _) = ConfigManager::get_warp_routing_rules()
+            let (current_rules, _, _) = ConfigManager::get_warp_routing_rules()
                 .await
                 .unwrap_or_default();
 
@@ -411,7 +539,15 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
             Ok(HandlerAction::Done)
         }
         "a_warp_clear_exec" => {
-            match ConfigManager::update_warp_routing_rules(Vec::new(), WarpMode::Default).await {
+            // 清空清单需要重写路由文件，故 scope_only = false。
+            match ConfigManager::update_warp_routing_rules(
+                Vec::new(),
+                WarpMode::Default,
+                WarpScope::Domain,
+                false,
+            )
+            .await
+            {
                 Ok(_) => {
                     event
                         .adapter
