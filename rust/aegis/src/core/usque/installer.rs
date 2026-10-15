@@ -112,6 +112,65 @@ impl InstalledKinds {
     }
 }
 
+/// 重启某套实现时**实际要做什么**。
+///
+/// # 为什么不能都叫「重启服务」
+///
+/// 两套的运行方式根本不同：
+///
+/// - **WireGuard** 跑在 Xray 进程**内部**，没有独立服务。所谓「重启」
+///   只能是让核心重新读取配置（`reload_core`）。
+/// - **usque** 是**独立 systemd 服务**（`wwps-usque`）。它卡死时
+///   `reload_core` **完全无效**——那只重读 Xray 配置，不碰 usque 进程。
+///
+/// 线上故障正出在这里：管理员点「重启服务」想救卡住的 usque，实际
+/// 什么都没发生，且界面报「重启成功」。按钮上说的事和实际做的事不一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestartAction {
+    /// 让核心重读配置（WireGuard 走这条）。
+    ReloadCore,
+    /// `systemctl restart <service>`（usque 走这条）。
+    RestartService(&'static str),
+}
+
+impl RestartAction {
+    /// 每套实现对应的重启方式。
+    ///
+    /// 纯函数，便于断言「usque 必须重启它自己的服务，而不是 reload core」。
+    pub const fn for_target(target: UninstallTarget) -> Self {
+        match target {
+            // WireGuard 由核心托管，没有可重启的服务。
+            UninstallTarget::WireGuard => Self::ReloadCore,
+            UninstallTarget::Usque => Self::RestartService(crate::core::paths::usque::SERVICE_NAME),
+            // 两套都要重启时，先重启独立服务，再让核心重读配置。
+            UninstallTarget::Both => Self::RestartService(crate::core::paths::usque::SERVICE_NAME),
+        }
+    }
+}
+
+/// 重启指定实现。
+///
+/// `Both` 时两步都做：usque 是独立进程必须先拉起，核心再重读配置引用它。
+pub async fn restart_one(target: UninstallTarget) -> Result<()> {
+    let action = RestartAction::for_target(target);
+
+    if let RestartAction::RestartService(name) = action {
+        crate::core::system::maintenance::MaintenanceManager::control_service(
+            name,
+            crate::core::cmd_action::ServiceAction::Restart,
+        )
+        .await
+        .context("重启 usque 服务失败")?;
+    }
+
+    // `Both` 需要「重启服务 + 重读核心」两步；单独一套只需各自那一步。
+    if matches!(target, UninstallTarget::WireGuard | UninstallTarget::Both) {
+        crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
+    }
+
+    Ok(())
+}
+
 /// 卸载范围。
 ///
 /// # 为何需要「只卸一套」
@@ -755,6 +814,78 @@ mod tests {
         assert!(
             !body.contains("remove_usque()"),
             "uninstall_all 不得自己再调一遍删除函数"
+        );
+    }
+
+    // ────────── 重启分派：usque 必须重启它自己的服务 ──────────
+
+    /// **线上故障的直接回归**：usque 的重启必须是 `systemctl restart
+    /// wwps-usque`，**不能**只是 `reload_core`。
+    ///
+    /// usque 卡死时 `reload_core` 完全无效——它只重读 Xray 配置，
+    /// 不碰 usque 进程。而界面会报「重启成功」，所以管理员以为修好了。
+    #[test]
+    fn test_usque_restart_targets_its_own_service() {
+        assert_eq!(
+            RestartAction::for_target(UninstallTarget::Usque),
+            RestartAction::RestartService(crate::core::paths::usque::SERVICE_NAME),
+            "usque 是独立 systemd 服务，重启它必须走 systemctl restart"
+        );
+    }
+
+    /// WireGuard 没有独立服务——重启它就是让核心重读配置。
+    #[test]
+    fn test_wireguard_restart_reloads_core() {
+        assert_eq!(
+            RestartAction::for_target(UninstallTarget::WireGuard),
+            RestartAction::ReloadCore,
+            "WireGuard 跑在 Xray 进程内，没有可重启的服务"
+        );
+    }
+
+    /// usque 的重启**不得**退化成 `ReloadCore`。
+    ///
+    /// 单独断言这一条，因为它是那个 bug 的确切形状。
+    #[test]
+    fn test_usque_restart_is_not_reload_core() {
+        assert_ne!(
+            RestartAction::for_target(UninstallTarget::Usque),
+            RestartAction::ReloadCore,
+            "若 usque 也 reload_core，卡死的隧道永远修不好——这正是已发生的故障"
+        );
+    }
+
+    /// `Both` 必须先拉起独立服务，再让核心重读配置。
+    #[test]
+    fn test_both_restart_includes_service_restart() {
+        assert_eq!(
+            RestartAction::for_target(UninstallTarget::Both),
+            RestartAction::RestartService(crate::core::paths::usque::SERVICE_NAME)
+        );
+    }
+
+    /// `restart_one` 的实际 IO 必须与 `for_target` 的决策一致——
+    /// 否则决策纯粹是装饰，真正的 bug 会藏在函数体里。
+    #[test]
+    fn test_restart_one_acts_on_the_decision() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("pub async fn restart_one")
+            .expect("restart_one 必须存在");
+        let body = &SRC[start..];
+        let body = &body[..body.find("\n}\n").unwrap_or(body.len())];
+
+        assert!(
+            body.contains("RestartAction::for_target"),
+            "restart_one 必须依据 for_target 的决策执行，不能在函数体里另写一套判断"
+        );
+        assert!(
+            body.contains("control_service"),
+            "必须真的调用 systemctl 重启服务，否则决策没有落地"
+        );
+        assert!(
+            body.contains("SERVICE_NAME") || body.contains("RestartService"),
+            "必须用到服务名——usque 的重启对象是 wwps-usque"
         );
     }
 }
