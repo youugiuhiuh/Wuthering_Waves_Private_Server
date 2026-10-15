@@ -32,6 +32,62 @@ fn truncate_for_button(rule: &str) -> String {
     format!("{}...", utils::escape_html(&head))
 }
 
+/// 子页的状态行。**纯函数**（除了一次实时的 usque 安装判定），
+/// 便于断言两套不会共用同一套文案。
+///
+/// WireGuard 需要采样 `wg0` 的 `rx_bytes`（要等一个采样间隔），
+/// 这一步有 IO，所以这里是 async。
+async fn subpage_status_line(
+    target: crate::core::usque::installer::UninstallTarget,
+    kinds: crate::core::usque::InstalledKinds,
+) -> String {
+    use crate::core::usque::installer::UninstallTarget;
+
+    match target {
+        UninstallTarget::WireGuard => {
+            if !kinds.wireguard {
+                return t!("warp.wg_status_absent").to_string();
+            }
+            // WG 健康判据：`wg0` 的 rx_bytes 是否在增长。
+            WarpInstaller::wireguard_status_line().await
+        }
+        UninstallTarget::Usque => {
+            if !kinds.usque {
+                return t!("warp.status_absent_usque").to_string();
+            }
+            let healthy = crate::core::usque::health::current_health();
+            WarpInstaller::usque_status_line(true, healthy)
+        }
+        // 子页不会传 Both——它是「只讲一套」的页面。
+        UninstallTarget::Both => String::new(),
+    }
+}
+
+/// 子页要管理的实现。
+///
+/// 与 `UninstallTarget::WireGuard` / `Usque` 一一对应——用同一个枚举，
+/// 避免「子页认为自己在管 A、操作实际作用于 B」。
+fn subpage_target(data: &str) -> Option<crate::core::usque::installer::UninstallTarget> {
+    use crate::core::usque::installer::UninstallTarget;
+    match data {
+        "m_warp_wg" => Some(UninstallTarget::WireGuard),
+        "m_warp_usque" => Some(UninstallTarget::Usque),
+        _ => None,
+    }
+}
+
+/// 子页的 i18n key 前缀——`m_warp_wg` → `warp.wg_page`。
+///
+/// 纯函数，便于断言两种子页不会拿到同一套文案（那会让管理员
+/// 在 usque 页看到 WireGuard 的说明）。
+fn subpage_key_prefix(data: &str) -> Option<&'static str> {
+    match data {
+        "m_warp_wg" => Some("wg"),
+        "m_warp_usque" => Some("usque"),
+        _ => None,
+    }
+}
+
 pub async fn handle(event: &CallbackEvent) -> HandlerResult {
     let data = event.data.as_str();
 
@@ -99,62 +155,84 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
             };
 
-            let markup = Markup {
-                buttons: vec![
-                    vec![
-                        InlineButton {
-                            text: t!("warp.add_rule").into(),
-                            data: "a_warp_add_input".into(),
-                        },
-                        InlineButton {
-                            text: t!("warp.del_rule").into(),
-                            data: "a_warp_del_menu".into(),
-                        },
-                    ],
+            // 子页入口行——**只列已装的那一套**。
+            //
+            // 重启与卸载都必须落到具体实现上：两套的重启方式
+            // （reload 核心 vs systemctl）与卸载对象都不同，在主页
+            // 共用一个按钮正是之前混淆的根源。未装时不给按钮——
+            // 点进去无事可做，是个死按钮。
+            //
+            // 每个入口独占一行：文案较长（「WireGuard 管理」），
+            // 两个并排会在窄屏被截断成无法辨认的前缀。
+            let subpage_entries_inline: Vec<Vec<InlineButton>> = installed_kinds
+                .subpage_entries()
+                .iter()
+                .map(|&(key, data)| {
                     vec![InlineButton {
-                        text: t!("warp.mode_label", "0" => current_mode.as_str()).into(),
-                        data: "a_warp_switch_mode".into(),
-                    }],
-                    // 流量范围：二态互斥切换。
-                    // v1 不生成 catch-all 规则，故文案必须显式标注未生效，
-                    // 否则管理员会以为点一下就已经「全部流量走 WARP」了。
-                    vec![InlineButton {
-                        text: t!(
-                            "warp.scope_button",
-                            "0" => t!(current_scope.i18n_key())
-                        )
-                        .into(),
-                        data: "a_warp_switch_scope".into(),
-                    }],
-                    vec![InlineButton {
-                        text: t!("warp.status_check").into(),
-                        data: "a_warp_status".into(),
-                    }],
-                    // 出口连通性探测：分别查 UDP 与 TCP/443 两条路。
-                    vec![InlineButton {
-                        text: t!("warp.probe_button").into(),
-                        data: "a_warp_probe".into(),
-                    }],
-                    vec![
-                        InlineButton {
-                            text: t!("warp.restart_service").into(),
-                            data: "a_warp_restart".into(),
-                        },
-                        InlineButton {
-                            text: t!("warp.uninstall_service").into(),
-                            data: "a_warp_uninstall".into(),
-                        },
-                    ],
-                    vec![InlineButton {
-                        text: t!("warp.clear_all").into(),
-                        data: "a_warp_clear_confirm".into(),
-                    }],
-                    vec![InlineButton {
-                        text: t!("menu.back_net_opt").into(),
-                        data: "m_net_opt".into(),
-                    }],
+                        text: t!(key).into(),
+                        data: data.to_string(),
+                    }]
+                })
+                .collect();
+
+            let mut buttons: Vec<Vec<InlineButton>> = vec![
+                vec![
+                    InlineButton {
+                        text: t!("warp.add_rule").into(),
+                        data: "a_warp_add_input".into(),
+                    },
+                    InlineButton {
+                        text: t!("warp.del_rule").into(),
+                        data: "a_warp_del_menu".into(),
+                    },
                 ],
-            };
+                vec![InlineButton {
+                    text: t!("warp.mode_label", "0" => current_mode.as_str()).into(),
+                    data: "a_warp_switch_mode".into(),
+                }],
+                // 流量范围：二态互斥切换。
+                // v1 不生成 catch-all 规则，故文案必须显式标注未生效，
+                // 否则管理员会以为点一下就已经「全部流量走 WARP」了。
+                vec![InlineButton {
+                    text: t!(
+                        "warp.scope_button",
+                        "0" => t!(current_scope.i18n_key())
+                    )
+                    .into(),
+                    data: "a_warp_switch_scope".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("warp.status_check").into(),
+                    data: "a_warp_status".into(),
+                }],
+                // 出口连通性探测：分别查 UDP 与 TCP/443 两条路。
+                vec![InlineButton {
+                    text: t!("warp.probe_button").into(),
+                    data: "a_warp_probe".into(),
+                }],
+                // 配对卸载保留在主页面：它是「全部清掉」的便捷入口，
+                // 与子页里的单套卸载并存，语义不重叠。
+                vec![InlineButton {
+                    text: t!("warp.uninstall_service").into(),
+                    data: "a_warp_uninstall".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("warp.clear_all").into(),
+                    data: "a_warp_clear_confirm".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("menu.back_net_opt").into(),
+                    data: "m_net_opt".into(),
+                }],
+            ];
+
+            // 把子页入口插进 buttons（保持顺序：规则 → 模式 → 探测 →
+            // 子页 → 卸载 → 返回）。
+            let tail = buttons.split_off(buttons.len() - 2); // 卸载 + 返回
+            buttons.extend(subpage_entries_inline);
+            buttons.extend(tail);
+
+            let markup = Markup { buttons };
 
             event
                 .adapter
@@ -645,6 +723,136 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 Ok(HandlerAction::Done)
             }
         },
+        // ────────────── 子页：按实现分开管理 ──────────────
+        //
+        // 为什么不共用一个页面：两套实现的**每一个操作都不同**——
+        // 重启方式（reload 核心 vs systemctl restart）、卸载对象、
+        // 健康判据（wg0 rx_bytes vs SOCKS trace）。共用页面时这些差异
+        // 只能藏在一个「重启服务」按钮后面，而那个按钮对 usque 无效。
+        d if subpage_target(d).is_some() => {
+            let kind = subpage_target(d).expect("已判定为子页回调");
+            let prefix = subpage_key_prefix(d).expect("子页必须有 key 前缀");
+            let installed_kinds = crate::core::usque::installer::detect_installed().await;
+
+            // 页内状态行：本子页只讲自己那一套。
+            let status = subpage_status_line(kind, installed_kinds).await;
+
+            let restart_data = format!("a_warp_{}_restart", prefix);
+            let uninstall_data = format!("a_warp_{}_uninstall", prefix);
+
+            let markup = Markup {
+                buttons: vec![
+                    vec![InlineButton {
+                        text: t!(format!("warp.{prefix}_restart")).into(),
+                        data: restart_data,
+                    }],
+                    vec![InlineButton {
+                        text: t!(format!("warp.{prefix}_uninstall")).into(),
+                        data: uninstall_data,
+                    }],
+                    vec![InlineButton {
+                        text: t!("menu.back").into(),
+                        data: "m_warp".into(),
+                    }],
+                ],
+            };
+
+            event
+                .adapter
+                .edit_message(
+                    &event.target,
+                    &event.msg_id,
+                    MessageContent {
+                        text: format!("{}\n\n{status}", t!(format!("warp.{prefix}_page_title"))),
+                        markup: Some(markup),
+                    },
+                )
+                .await?;
+            Ok(HandlerAction::Done)
+        }
+        // 子页里的重启——只重启本子页那一套。
+        d if d.starts_with("a_warp_wg_restart") || d.starts_with("a_warp_usque_restart") => {
+            let target = if d.starts_with("a_warp_wg_restart") {
+                crate::core::usque::installer::UninstallTarget::WireGuard
+            } else {
+                crate::core::usque::installer::UninstallTarget::Usque
+            };
+
+            event
+                .adapter
+                .answer_callback(
+                    &event.target,
+                    &event.callback_id,
+                    Some(t!("warp.restarting").into()),
+                )
+                .await?;
+
+            match crate::core::usque::installer::restart_one(target).await {
+                Ok(()) => {
+                    event
+                        .adapter
+                        .answer_callback(
+                            &event.target,
+                            &event.callback_id,
+                            Some(t!("warp.restart_success").into()),
+                        )
+                        .await?;
+                    Ok(HandlerAction::Redirect("m_warp".to_string()))
+                }
+                Err(e) => {
+                    event
+                        .adapter
+                        .send_message(
+                            &event.target,
+                            MessageContent {
+                                text: t!("warp.restart_fail", "0" => e.to_string()).into(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                    Ok(HandlerAction::Done)
+                }
+            }
+        }
+        // 子页里的卸载——只卸本子页那一套（与主页面的配对卸载不同）。
+        d if d.starts_with("a_warp_wg_uninstall") || d.starts_with("a_warp_usque_uninstall") => {
+            let (target, prefix) = if d.starts_with("a_warp_wg_uninstall") {
+                (
+                    crate::core::usque::installer::UninstallTarget::WireGuard,
+                    "wg",
+                )
+            } else {
+                (
+                    crate::core::usque::installer::UninstallTarget::Usque,
+                    "usque",
+                )
+            };
+
+            match crate::core::usque::installer::uninstall_one(target).await {
+                Ok(_) => {
+                    event
+                        .adapter
+                        .answer_callback(
+                            &event.target,
+                            &event.callback_id,
+                            Some(t!(format!("warp.uninstalled_{prefix}")).into()),
+                        )
+                        .await?;
+                    Ok(HandlerAction::Redirect("m_warp".to_string()))
+                }
+                Err(e) => {
+                    event
+                        .adapter
+                        .answer_callback(
+                            &event.target,
+                            &event.callback_id,
+                            Some(t!("warp.uninstall_fail", "0" => e.to_string()).into()),
+                        )
+                        .await?;
+                    Ok(HandlerAction::Done)
+                }
+            }
+        }
         "a_warp_restart" => {
             event
                 .adapter

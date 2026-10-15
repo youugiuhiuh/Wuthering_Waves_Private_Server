@@ -103,6 +103,26 @@ impl InstalledKinds {
         self.wireguard || self.usque
     }
 
+    /// 子页入口按钮——**只列出已装的那一套**。
+    ///
+    /// 返回 `(i18n key, 回调 data)` 列表。抽成纯函数是为了可穷举测试：
+    /// 「未装就不给入口」这条规则必须被钉死，否则会出现死按钮
+    /// （点进去无事可做）。
+    ///
+    /// 顺序固定（WireGuard 在前），避免 UI 随探测结果跳动。
+    pub const fn subpage_entries(self) -> &'static [(&'static str, &'static str)] {
+        match (self.wireguard, self.usque) {
+            (true, true) => &[
+                ("warp.subpage_wireguard", "m_warp_wg"),
+                ("warp.subpage_usque", "m_warp_usque"),
+            ],
+            (true, false) => &[("warp.subpage_wireguard", "m_warp_wg")],
+            (false, true) => &[("warp.subpage_usque", "m_warp_usque")],
+            // 都没装——不给任何入口。
+            (false, false) => &[],
+        }
+    }
+
     /// 由两个「文件是否存在」的布尔值构造。**纯函数，便于穷举测试。**
     pub const fn detect(wireguard_account_exists: bool, usque_config_exists: bool) -> Self {
         Self {
@@ -886,6 +906,58 @@ mod tests {
         assert!(
             body.contains("SERVICE_NAME") || body.contains("RestartService"),
             "必须用到服务名——usque 的重启对象是 wwps-usque"
+        );
+    }
+
+    // ────────── 子页入口：只显示已装的那一套 ──────────
+
+    /// 只装一套时，入口只该有一个——另一个是死按钮。
+    #[test]
+    fn test_subpage_entries_only_lists_installed() {
+        let wg_only = InstalledKinds::detect(true, false).subpage_entries();
+        assert_eq!(wg_only.len(), 1, "只装 WireGuard 只该有一个入口");
+        assert_eq!(wg_only[0].1, "m_warp_wg");
+
+        let uq_only = InstalledKinds::detect(false, true).subpage_entries();
+        assert_eq!(uq_only.len(), 1, "只装 usque 只该有一个入口（线上情形）");
+        assert_eq!(uq_only[0].1, "m_warp_usque");
+    }
+
+    /// 都没装时**不得**给出任何入口。
+    #[test]
+    fn test_subpage_entries_empty_when_nothing_installed() {
+        assert!(
+            InstalledKinds::none().subpage_entries().is_empty(),
+            "什么都没装却给出管理入口 → 死按钮"
+        );
+    }
+
+    /// 两套都装时给出两个入口。
+    #[test]
+    fn test_subpage_entries_two_when_both_installed() {
+        let both = InstalledKinds::detect(true, true).subpage_entries();
+        assert_eq!(both.len(), 2);
+        assert_eq!(both[0].1, "m_warp_wg");
+        assert_eq!(both[1].1, "m_warp_usque");
+    }
+
+    /// 入口顺序固定，不随探测结果跳动（否则按钮位置会变，容易误点）。
+    #[test]
+    fn test_subpage_entry_order_is_stable() {
+        let a = InstalledKinds::detect(true, true).subpage_entries();
+        let b = InstalledKinds::detect(true, true).subpage_entries();
+        assert_eq!(a, b, "同一状态两次调用必须给出相同顺序");
+        assert_eq!(a[0].1, "m_warp_wg", "WireGuard 固定在前");
+    }
+
+    /// 两个入口的 i18n key 必须不同——否则两个按钮文案一样，
+    /// 管理员分不清点哪个。
+    #[test]
+    fn test_subpage_entries_have_distinct_labels() {
+        let both = InstalledKinds::detect(true, true).subpage_entries();
+        assert_ne!(
+            both[0].0, both[1].0,
+            "两个子页入口的文案 key 必须不同，否则按钮无法分辨"
         );
     }
 }
