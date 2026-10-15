@@ -853,41 +853,6 @@ pub async fn handle(event: &CallbackEvent) -> HandlerResult {
                 }
             }
         }
-        "a_warp_restart" => {
-            event
-                .adapter
-                .answer_callback(
-                    &event.target,
-                    &event.callback_id,
-                    Some(t!("warp.restarting").into()),
-                )
-                .await?;
-            match WarpInstaller::restart_service().await {
-                Ok(_) => {
-                    event
-                        .adapter
-                        .answer_callback(
-                            &event.target,
-                            &event.callback_id,
-                            Some(t!("warp.restart_success").into()),
-                        )
-                        .await?;
-                }
-                Err(e) => {
-                    event
-                        .adapter
-                        .send_message(
-                            &event.target,
-                            MessageContent {
-                                text: t!("warp.restart_fail", "0" => e.to_string()).into(),
-                                markup: None,
-                            },
-                        )
-                        .await?;
-                }
-            }
-            Ok(HandlerAction::Done)
-        }
         "a_warp_uninstall" => {
             let markup = Markup {
                 buttons: vec![

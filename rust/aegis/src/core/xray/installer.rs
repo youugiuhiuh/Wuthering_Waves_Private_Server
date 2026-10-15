@@ -251,10 +251,28 @@ impl WarpInstaller {
         Ok(())
     }
 
+    /// 重启 WARP。
+    ///
+    /// # 已废弃的语义陷阱
+    ///
+    /// 这个函数原名 `restart_service`，只做 `reload_core()`。对
+    /// WireGuard 是对的（它跑在核心进程内），但名字让人以为它能重启
+    /// **任何** WARP 服务——而 usque 是独立 systemd 服务，reload 核心
+    /// 对它毫无作用。
+    ///
+    /// 线上故障正出在这里：点「重启服务」救卡住的 usque，什么都没发生，
+    /// 界面却报成功。
+    ///
+    /// 现按实现分派，与子页按钮走同一条路径
+    /// （[`crate::core::usque::installer::restart_one`]），避免两处语义分叉。
+    ///
+    /// **新代码应直接用 `restart_one(target)`** —— 它要求调用方显式
+    /// 说明重启哪一套，不再有「不知道重启的是什么」的空间。
     pub async fn restart_service() -> Result<()> {
-        // No service to restart, just reload core
-        crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
-        Ok(())
+        crate::core::usque::installer::restart_one(
+            crate::core::usque::installer::UninstallTarget::Both,
+        )
+        .await
     }
 
     /// 入口横幅的 i18n key——按**实际装了哪一套**分派。
