@@ -215,15 +215,22 @@ impl WarpInstaller {
     /// 重装（幂等跳过）时保留已配的域名清单与模式，避免把用户的分流
     /// 配置清空。`scope` 沿用既有值，缺失时回退 `Domain`（保守）。
     async fn wire_up_usque() -> Result<()> {
-        let (rules, mode, scope) = crate::core::xray::ConfigManager::get_warp_routing_rules()
+        // 既有配置存在时尊重它；全新安装取 usque 的默认（`Global`）。
+        //
+        // 不能用 `WarpScope::default()`（`Domain`）：那会让刚装好的
+        // usque 在空域名清单下**完全没有流量经过**——隧道健康、进程在跑，
+        // 出口却还是机房 IP，看起来像「装了没用」。
+        let existing = crate::core::xray::ConfigManager::get_warp_routing_rules()
             .await
-            .unwrap_or_else(|_| {
-                (
-                    Vec::new(),
-                    crate::core::xray::WarpMode::Default,
-                    crate::core::xray::WarpScope::default(),
-                )
-            });
+            .ok();
+
+        let (rules, mode) = match &existing {
+            Some((r, m, _)) => (r.clone(), *m),
+            None => (Vec::new(), crate::core::xray::WarpMode::Default),
+        };
+        let scope = crate::core::xray::ConfigManager::resolve_install_scope(
+            existing.as_ref().map(|(_, _, s)| *s),
+        );
 
         // `scope_only = false`：需要真正生成 outbound，而非只改流量范围。
         crate::core::xray::ConfigManager::update_warp_routing_rules(rules, mode, scope, false)
@@ -1530,20 +1537,107 @@ mod tests {
             body.contains("scope_only = false") || body.contains("false"),
             "必须以 scope_only=false 调用，否则只改 scope、不生成 outbound"
         );
-        // 断言既有配置被**解构进变量**再写回，而不是在调用处新建空值。
-        let bind_at = body
-            .find("let (rules, mode, scope)")
-            .expect("必须把既有配置解构进变量");
-        let get_at = body.find("get_warp_routing_rules").expect("必须读既有配置");
+        // 断言既有配置先被读进 `existing`，再从中取出 rules/mode/scope。
+        // 关键性质：传给写入函数的必须是**读到的值**，而不是新建的空值。
+        let read_at = body.find("get_warp_routing_rules").expect("必须读既有配置");
+        let rules_at = body
+            .find("let (rules, mode)")
+            .expect("必须从既有配置解构出 rules/mode");
         assert!(
-            get_at > bind_at,
-            "解构必须取自 get_warp_routing_rules() 的返回值——\
-             否则重装会清空用户已配的分流规则"
+            read_at < rules_at,
+            "必须先读既有配置再解构，否则解构的是空值（重装即清空用户的分流规则）"
+        );
+        assert!(
+            body.contains("existing.as_ref()"),
+            "scope 必须取自既有配置（存在时尊重用户设定），\
+             而不是无条件新建"
         );
         assert!(
             body.contains("update_warp_routing_rules(rules, mode, scope"),
             "必须把**读到的** rules/mode/scope 传给写入函数，\
              否则写进去的是另一份值（重装即清空配置）"
+        );
+    }
+
+    // ────────── usque 安装后的默认流量范围 ──────────
+
+    /// **全新安装 usque 时默认全部流量走 WARP。**
+    ///
+    /// # 为什么是 Global 而不是 Domain
+    ///
+    /// usque 存在的理由就是绕开「机房封出口 UDP」——管理员装它，是想让
+    /// 流量经 WARP 出去，不是想手工维护一份域名清单。默认 `Domain` 且
+    /// 清单为空时，装完之后**没有任何流量走 WARP**，看起来像「装了没用」。
+    ///
+    /// 这与 WireGuard 路径的默认也不同（那边是 `Domain`）：WireGuard
+    /// 在 UDP 可用时通常用于「只让特定站点走 WARP」，而 usque 是在
+    /// 出口受限时的**兜底通路**，语义上就是「全都走」。
+    #[test]
+    fn test_usque_fresh_install_defaults_to_global_scope() {
+        assert_eq!(
+            crate::core::xray::ConfigManager::usque_install_default_scope(),
+            crate::core::xray::WarpScope::Global,
+            "usque 是出口受限时的兜底通路，默认应全部流量走 WARP"
+        );
+    }
+
+    /// **重装不得覆盖用户已设的范围。**
+    ///
+    /// 用户可能特意切回「仅指定域名」。重装若强推 `Global`，
+    /// 会让他的调整被静默撤销。
+    #[test]
+    fn test_reinstall_preserves_user_scope() {
+        assert_eq!(
+            crate::core::xray::ConfigManager::resolve_install_scope(Some(
+                crate::core::xray::WarpScope::Domain
+            )),
+            crate::core::xray::WarpScope::Domain,
+            "已有配置时必须尊重用户设定，不得强推 Global"
+        );
+        assert_eq!(
+            crate::core::xray::ConfigManager::resolve_install_scope(Some(
+                crate::core::xray::WarpScope::Global
+            )),
+            crate::core::xray::WarpScope::Global
+        );
+    }
+
+    /// 无既有配置（全新安装）时采用 usque 的默认值。
+    #[test]
+    fn test_fresh_install_uses_usque_default() {
+        assert_eq!(
+            crate::core::xray::ConfigManager::resolve_install_scope(None),
+            crate::core::xray::WarpScope::Global
+        );
+    }
+
+    /// `wire_up_usque` 必须走 `resolve_install_scope`，而不是
+    /// `WarpScope::default()`——后者是 `Domain`，会让新装的 usque 闲置。
+    #[test]
+    fn test_wire_up_uses_install_default_not_type_default() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("async fn wire_up_usque")
+            .expect("wire_up_usque 必须存在");
+        let tail = &SRC[start..];
+        let raw = &tail[..tail.find("\n    }\n").unwrap_or(tail.len())];
+
+        // 只看代码行，去掉注释——否则断言会匹配到**描述这条规则的注释**，
+        // 那正是本次遇到的假失败（注释里写了被禁用的写法）。
+        let body: String = raw
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(
+            body.contains("resolve_install_scope"),
+            "必须用 resolve_install_scope 决定范围——直接取类型默认值（Domain）\
+             会让全新安装的 usque 停在空清单，等于没有流量走 WARP"
+        );
+        assert!(
+            !body.contains("WarpScope::default()"),
+            "不得在代码里回退到类型默认值（Domain）"
         );
     }
 }

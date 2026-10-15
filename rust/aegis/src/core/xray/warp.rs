@@ -101,7 +101,10 @@ pub enum WarpScope {
     /// 仅清单内的域名走 WARP（现有行为）。
     #[default]
     Domain,
-    /// 全部用户流量走 WARP（v1 只落状态，不生效）。
+    /// 全部用户流量走 WARP。
+    ///
+    /// 是否**实际生效**取决于 `build_routing_rules` 的 `enforce`
+    /// 参数（出口可用时才生成 catch-all 规则）。
     Global,
 }
 
@@ -192,6 +195,38 @@ impl ConfigManager {
                 .map(|arr| arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect())
                 .unwrap_or_else(|| vec![0, 0, 0]),
         })
+    }
+
+    /// 全新安装 usque 时的默认流量范围：**全部流量走 WARP**。
+    ///
+    /// # 为什么不是 `WarpScope::default()`（`Domain`）
+    ///
+    /// usque 存在的理由就是绕开「机房封出口 UDP」。管理员装它，是想让
+    /// 流量经 WARP 出去，而不是想手工维护一份域名清单。
+    ///
+    /// 用 `Domain` 且清单为空的结果是：装完之后**没有任何流量走 WARP**——
+    /// 隧道健康、进程在跑，但出口仍是机房 IP，看起来像「装了没用」。
+    ///
+    /// 与 WireGuard 路径的默认不同（那边保持 `Domain`）：UDP 可用时通常
+    /// 只让特定站点走 WARP；而 usque 是出口受限时的**兜底通路**，
+    /// 语义上就是「全都走」。
+    pub const fn usque_install_default_scope() -> WarpScope {
+        WarpScope::Global
+    }
+
+    /// 决定安装时采用哪个流量范围。
+    ///
+    /// - `existing = Some(s)`：**尊重用户设定**。用户可能特意切回
+    ///   「仅指定域名」，重装不得静默撤销他的调整。
+    /// - `existing = None`：全新安装，采用 usque 的默认
+    ///   （[`Self::usque_install_default_scope`]，即 `Global`）。
+    ///
+    /// 纯函数，便于穷举「有/无既有配置 × 两种范围」。
+    pub const fn resolve_install_scope(existing: Option<WarpScope>) -> WarpScope {
+        match existing {
+            Some(s) => s,
+            None => Self::usque_install_default_scope(),
+        }
     }
 
     pub fn masque_outbound(addr: &str, port: u16) -> Value {
@@ -1201,6 +1236,48 @@ mod tests {
             !body.contains("warp::ACCOUNT_FILE"),
             "不得在函数体内直接读 ACCOUNT_FILE——必须走 read_wireguard_account()，\
              否则「哪些分支需要账号」就无法被断言"
+        );
+    }
+
+    /// **端到端语义**：usque 装完后（`Global` + 出口可用）必须真的
+    /// 生成 catch-all 规则——否则「全部流量走 WARP」只是记录了一个状态。
+    ///
+    /// 这条把三段串起来验证：
+    /// 1. usque 安装默认 `Global`
+    /// 2. usque 可用 → `Egress::Masque` → `enforce = true`
+    /// 3. `build_routing_rules` 因此发出无条件规则（匹配一切）
+    #[test]
+    fn test_usque_install_default_actually_enforces_global() {
+        let scope = ConfigManager::usque_install_default_scope();
+
+        // 步骤 2：usque 正常在线时出口引擎给出 Masque。
+        let egress = Egress::Masque;
+        let enforce = egress_is_available(egress);
+        assert!(enforce, "usque 可用时出口必须被判为可用");
+
+        // 步骤 3：应生成一条**无 domain 条件**的规则 = 匹配一切。
+        let rules = ConfigManager::build_routing_rules(Vec::new(), scope, enforce);
+        let catch_all = rules.iter().any(|r| {
+            r.get("domain").is_none() && r.get("inboundTag").is_none() && r["outboundTag"] == "warp"
+        });
+        assert!(
+            catch_all,
+            "Global + 出口可用必须生成 catch-all，否则「全部流量走 WARP」不生效：{rules:?}"
+        );
+    }
+
+    /// 反向：出口不可用时**不得**生成 catch-all。
+    ///
+    /// 否则流量会被引向一个不可用的出口 → 黑洞。
+    #[test]
+    fn test_global_scope_does_not_enforce_when_egress_unavailable() {
+        let rules = ConfigManager::build_routing_rules(Vec::new(), WarpScope::Global, false);
+        let catch_all = rules
+            .iter()
+            .any(|r| r.get("domain").is_none() && r.get("inboundTag").is_none());
+        assert!(
+            !catch_all,
+            "出口不可用时不得生成 catch-all——那会把流量导向黑洞：{rules:?}"
         );
     }
 }
