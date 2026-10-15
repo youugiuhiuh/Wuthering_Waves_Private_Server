@@ -261,7 +261,7 @@ impl ConfigManager {
         out
     }
 
-    /// 写回 `warp_account.json` 中的 `scope` 字段，其余字段保持不变。
+    /// 写回**路由文件**中的 `scope` 字段，其余键保持不变。
     ///
     /// 单独抽出是因为「只改 scope」不应该重写整份 Xray 配置（见
     /// [`Self::update_warp_routing_rules`] 的 `scope_only`）。
@@ -311,7 +311,7 @@ impl ConfigManager {
     ///
     /// - `rules`：域名清单。
     /// - `mode`：出口协议偏好（与 `scope` 正交）。
-    /// - `scope`：流量范围（落盘到 `warp_account.json`，不写进本文件）。
+    /// - `scope`：流量范围（与路由规则同存于本函数写出的路由文件）。
     /// - `scope_only`：**只改 scope，不碰路由规则、不重启核心**。
     ///
     /// ## `scope_only` 为何存在
@@ -446,7 +446,7 @@ impl ConfigManager {
 
     /// 读取当前配置：`(域名清单, 出口协议偏好, 流量范围)`。
     ///
-    /// `scope` 从 `warp_account.json` 读取（与 [`Self::update_warp_routing_rules`]
+    /// `scope` 从**路由文件**读取（与 [`Self::update_warp_routing_rules`]
     /// 的写入位置对应）。文件缺失或字段缺失均回退 [`WarpScope::Domain`]。
     pub async fn get_warp_routing_rules() -> Result<(Vec<String>, WarpMode, WarpScope)> {
         let scope = Self::read_scope().await;
@@ -454,7 +454,7 @@ impl ConfigManager {
         Ok((rules, mode, scope))
     }
 
-    /// 从 `warp_account.json` 读 `scope`；任何异常都回退 `Domain`。
+    /// 从**路由文件**读 `scope`；任何异常都回退 `Domain`。
     ///
     /// 刻意不把读失败向上抛：调用方（菜单渲染）宁可显示保守的
     /// `Domain`，也不应因状态文件损坏而整块菜单报错。
@@ -568,8 +568,8 @@ mod tests {
 
     #[test]
     fn test_warp_scope_default_is_domain() {
-        // Default 必须是 Domain：旧 `warp_account.json` 无 scope 字段时
-        // 反序列化会落到这里，若为 Global 会让既有部署「静默开启全局」。
+        // Default 必须是 Domain：旧路由文件无 scope 键时反序列化会
+        // 落到这里，若为 Global 会让既有部署「静默开启全局」。
         assert_eq!(WarpScope::default(), WarpScope::Domain);
         assert!(!WarpScope::default().is_global());
     }
