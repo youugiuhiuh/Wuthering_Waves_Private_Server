@@ -159,18 +159,83 @@ impl WarpInstaller {
         let plan =
             install_plan(report.conclusion, probe_failed).context("出口探测结果不支持安装 WARP")?;
 
-        // 3. 只装需要的那一套
-        match plan {
-            InstallPlan::WireGuard => Self::install_wireguard_only().await?,
-            InstallPlan::Usque => {
-                crate::core::usque::installer::install(arch).await?;
-            }
-        }
-
-        // 4. 写缓存——否则 current_egress() 永远读不到结论
+        // 3. **先写缓存，再生成路由**。
+        //
+        // 顺序不能反：`update_warp_routing_rules` 内部用
+        // `current_egress()` 决定挂 wireguard 还是 socks outbound，而
+        // `current_egress()` 读的就是这个缓存。缓存为空时它保守回退
+        // `Direct`——那会生成一个指向 WireGuard 的 outbound，而
+        // WireGuard 账号在 usque-only 机房根本不存在。
+        //
+        // 之前缓存是在安装**之后**才写的，于是 usque 装好了也没有
+        // warp outbound：Xray 里查不到任何 WARP 出口，流量全走直连。
         Self::record_probe_result(report);
 
+        // 4. 装需要的那一套，并**接线**到 Xray 出口。
+        //
+        // 接线不是可选项：usque 装完只是一个在监听 SOCKS 的进程，
+        // 不生成 `10_warp_routing.json` 的话 Xray 里根本没有 warp
+        // outbound——进程跑着，流量却全走直连。
+        let outcome = match plan {
+            InstallPlan::WireGuard => Self::install_wireguard_only().await,
+            InstallPlan::Usque => match crate::core::usque::installer::install(arch).await {
+                Ok(()) => Self::wire_up_usque().await,
+                Err(e) => Err(e),
+            },
+        };
+
+        // 安装失败时清掉刚写的缓存：留着一个「已探测」的结论但没有
+        // 对应实现，会让出口引擎选一个不存在的出口。
+        if outcome.is_err() {
+            crate::core::usque::engine::global_probe_cache().clear();
+        }
+        outcome?;
+
         Ok(plan)
+    }
+
+    /// 把 usque 接到 Xray 出口：写路由文件并重载核心。
+    ///
+    /// # 为什么必须做这一步
+    ///
+    /// `usque::install()` 只负责把进程装起来（下载、注册、写 unit、
+    /// 启动服务）。**它不碰 Xray 配置**——产出的结果是一个监听
+    /// `127.0.0.1:1080` 的 SOCKS 代理，而 Xray 完全不知道它存在。
+    ///
+    /// 之前 usque 装完后没有任何地方生成路由文件，于是：
+    ///
+    /// - `10_warp_routing.json` 不存在 → Xray 里没有 warp outbound
+    /// - 分流规则无处可写 → 点「添加规则」报「WARP 未安装」
+    /// - 流量全部走直连（用户看到的出口是机房 IP，不是 WARP IP）
+    ///
+    /// 隧道的健康检查显示 🟢（它确实在转发），但没有任何流量经过它。
+    ///
+    /// # 保留既有规则
+    ///
+    /// 重装（幂等跳过）时保留已配的域名清单与模式，避免把用户的分流
+    /// 配置清空。`scope` 沿用既有值，缺失时回退 `Domain`（保守）。
+    async fn wire_up_usque() -> Result<()> {
+        // 既有配置存在时尊重它；全新安装取 usque 的默认（`Global`）。
+        //
+        // 不能用 `WarpScope::default()`（`Domain`）：那会让刚装好的
+        // usque 在空域名清单下**完全没有流量经过**——隧道健康、进程在跑，
+        // 出口却还是机房 IP，看起来像「装了没用」。
+        let existing = crate::core::xray::ConfigManager::get_warp_routing_rules()
+            .await
+            .ok();
+
+        let (rules, mode) = match &existing {
+            Some((r, m, _)) => (r.clone(), *m),
+            None => (Vec::new(), crate::core::xray::WarpMode::Default),
+        };
+        let scope = crate::core::xray::ConfigManager::resolve_install_scope(
+            existing.as_ref().map(|(_, _, s)| *s),
+        );
+
+        // `scope_only = false`：需要真正生成 outbound，而非只改流量范围。
+        crate::core::xray::ConfigManager::update_warp_routing_rules(rules, mode, scope, false)
+            .await
+            .context("生成 usque 出口配置失败")
     }
 
     /// 兼容入口：只装 WireGuard。
@@ -1375,6 +1440,204 @@ mod tests {
         assert_ne!(
             key, "warp.not_installed",
             "只装 usque 就报「未检测到 WARP」——这正是线上那个死循环"
+        );
+    }
+
+    // ────────── usque 安装后必须接线到 Xray 出口 ──────────
+
+    /// **线上故障的直接回归**：usque 装完必须生成路由文件。
+    ///
+    /// # 已发生的故障
+    ///
+    /// `usque::install()` 只把进程装起来（下载/注册/写 unit/启动），
+    /// **完全不碰 Xray 配置**。安装路径里没有任何地方生成
+    /// `10_warp_routing.json`，于是：
+    ///
+    /// - Xray 里没有 warp outbound → usque 的流量一个都不过去
+    /// - 点「添加规则」报「WARP 未安装」（路由文件不存在）
+    /// - 用户出口是机房 IP 而非 WARP IP
+    ///
+    /// 而 usque 自己的健康检查是 🟢 —— 隧道确实在转发，只是没人用它。
+    /// 这种「进程健康但功能未接线」是最难从界面看出来的故障。
+    #[test]
+    fn test_usque_install_wires_routing() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("pub async fn install_smart")
+            .expect("install_smart 必须存在");
+        let tail = &SRC[start..];
+        let body = &tail[..tail.find("\n    }\n").unwrap_or(tail.len())];
+
+        assert!(
+            body.contains("wire_up_usque"),
+            "usque 安装分支必须调用 wire_up_usque()——\
+             否则进程装好了但 Xray 里没有对应 outbound，流量仍走直连"
+        );
+    }
+
+    /// **顺序**：缓存必须在生成路由**之前**写入。
+    ///
+    /// `update_warp_routing_rules` 用 `current_egress()` 决定挂哪一种
+    /// outbound，而它读的就是探测缓存。缓存为空时保守回退 `Direct`
+    /// → 生成 wireguard outbound → 而 usque-only 机房没有账号。
+    #[test]
+    fn test_probe_cache_is_written_before_routing_generation() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("pub async fn install_smart")
+            .expect("install_smart 必须存在");
+        let tail = &SRC[start..];
+        let body = &tail[..tail.find("\n    }\n").unwrap_or(tail.len())];
+
+        let cache_at = body.find("record_probe_result").expect("必须写探测缓存");
+        let wire_at = body.find("wire_up_usque").expect("必须接线 usque");
+
+        assert!(
+            cache_at < wire_at,
+            "探测缓存必须在生成路由**之前**写入——\
+             否则 current_egress() 回退 Direct，会为 usque-only 机房\
+             生成一个指向不存在的 WireGuard 账号的 outbound"
+        );
+    }
+
+    /// 安装失败时必须清掉刚写的缓存。
+    ///
+    /// 留着一个「已探测」的结论却没有对应实现，出口引擎会选一个
+    /// 不存在的出口 → 流量黑洞。
+    #[test]
+    fn test_failed_install_clears_probe_cache() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("pub async fn install_smart")
+            .expect("install_smart 必须存在");
+        let tail = &SRC[start..];
+        let body = &tail[..tail.find("\n    }\n").unwrap_or(tail.len())];
+
+        assert!(
+            body.contains("is_err()") && body.contains(".clear()"),
+            "安装失败时必须清探测缓存——否则出口引擎会选一个不存在的出口"
+        );
+    }
+
+    /// `wire_up_usque` 必须真正写路由（而不是只读一下配置）。
+    #[test]
+    fn test_wire_up_usque_actually_writes_routing() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("async fn wire_up_usque")
+            .expect("wire_up_usque 必须存在");
+        let tail = &SRC[start..];
+        let body = &tail[..tail.find("\n    }\n").unwrap_or(tail.len())];
+
+        assert!(
+            body.contains("update_warp_routing_rules"),
+            "wire_up_usque 必须调用 update_warp_routing_rules 真正落盘路由"
+        );
+        assert!(
+            body.contains("scope_only = false") || body.contains("false"),
+            "必须以 scope_only=false 调用，否则只改 scope、不生成 outbound"
+        );
+        // 断言既有配置先被读进 `existing`，再从中取出 rules/mode/scope。
+        // 关键性质：传给写入函数的必须是**读到的值**，而不是新建的空值。
+        let read_at = body.find("get_warp_routing_rules").expect("必须读既有配置");
+        let rules_at = body
+            .find("let (rules, mode)")
+            .expect("必须从既有配置解构出 rules/mode");
+        assert!(
+            read_at < rules_at,
+            "必须先读既有配置再解构，否则解构的是空值（重装即清空用户的分流规则）"
+        );
+        assert!(
+            body.contains("existing.as_ref()"),
+            "scope 必须取自既有配置（存在时尊重用户设定），\
+             而不是无条件新建"
+        );
+        assert!(
+            body.contains("update_warp_routing_rules(rules, mode, scope"),
+            "必须把**读到的** rules/mode/scope 传给写入函数，\
+             否则写进去的是另一份值（重装即清空配置）"
+        );
+    }
+
+    // ────────── usque 安装后的默认流量范围 ──────────
+
+    /// **全新安装 usque 时默认全部流量走 WARP。**
+    ///
+    /// # 为什么是 Global 而不是 Domain
+    ///
+    /// usque 存在的理由就是绕开「机房封出口 UDP」——管理员装它，是想让
+    /// 流量经 WARP 出去，不是想手工维护一份域名清单。默认 `Domain` 且
+    /// 清单为空时，装完之后**没有任何流量走 WARP**，看起来像「装了没用」。
+    ///
+    /// 这与 WireGuard 路径的默认也不同（那边是 `Domain`）：WireGuard
+    /// 在 UDP 可用时通常用于「只让特定站点走 WARP」，而 usque 是在
+    /// 出口受限时的**兜底通路**，语义上就是「全都走」。
+    #[test]
+    fn test_usque_fresh_install_defaults_to_global_scope() {
+        assert_eq!(
+            crate::core::xray::ConfigManager::usque_install_default_scope(),
+            crate::core::xray::WarpScope::Global,
+            "usque 是出口受限时的兜底通路，默认应全部流量走 WARP"
+        );
+    }
+
+    /// **重装不得覆盖用户已设的范围。**
+    ///
+    /// 用户可能特意切回「仅指定域名」。重装若强推 `Global`，
+    /// 会让他的调整被静默撤销。
+    #[test]
+    fn test_reinstall_preserves_user_scope() {
+        assert_eq!(
+            crate::core::xray::ConfigManager::resolve_install_scope(Some(
+                crate::core::xray::WarpScope::Domain
+            )),
+            crate::core::xray::WarpScope::Domain,
+            "已有配置时必须尊重用户设定，不得强推 Global"
+        );
+        assert_eq!(
+            crate::core::xray::ConfigManager::resolve_install_scope(Some(
+                crate::core::xray::WarpScope::Global
+            )),
+            crate::core::xray::WarpScope::Global
+        );
+    }
+
+    /// 无既有配置（全新安装）时采用 usque 的默认值。
+    #[test]
+    fn test_fresh_install_uses_usque_default() {
+        assert_eq!(
+            crate::core::xray::ConfigManager::resolve_install_scope(None),
+            crate::core::xray::WarpScope::Global
+        );
+    }
+
+    /// `wire_up_usque` 必须走 `resolve_install_scope`，而不是
+    /// `WarpScope::default()`——后者是 `Domain`，会让新装的 usque 闲置。
+    #[test]
+    fn test_wire_up_uses_install_default_not_type_default() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("async fn wire_up_usque")
+            .expect("wire_up_usque 必须存在");
+        let tail = &SRC[start..];
+        let raw = &tail[..tail.find("\n    }\n").unwrap_or(tail.len())];
+
+        // 只看代码行，去掉注释——否则断言会匹配到**描述这条规则的注释**，
+        // 那正是本次遇到的假失败（注释里写了被禁用的写法）。
+        let body: String = raw
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(
+            body.contains("resolve_install_scope"),
+            "必须用 resolve_install_scope 决定范围——直接取类型默认值（Domain）\
+             会让全新安装的 usque 停在空清单，等于没有流量走 WARP"
+        );
+        assert!(
+            !body.contains("WarpScope::default()"),
+            "不得在代码里回退到类型默认值（Domain）"
         );
     }
 }

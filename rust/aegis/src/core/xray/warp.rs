@@ -101,7 +101,10 @@ pub enum WarpScope {
     /// 仅清单内的域名走 WARP（现有行为）。
     #[default]
     Domain,
-    /// 全部用户流量走 WARP（v1 只落状态，不生效）。
+    /// 全部用户流量走 WARP。
+    ///
+    /// 是否**实际生效**取决于 `build_routing_rules` 的 `enforce`
+    /// 参数（出口可用时才生成 catch-all 规则）。
     Global,
 }
 
@@ -135,6 +138,17 @@ impl WarpScope {
     }
 }
 
+/// WireGuard 账号中生成 outbound 所需的字段。
+///
+/// 抽成结构体而非就地解构，是为了让「哪些字段是 WireGuard 专有的」
+/// 在类型上可见——MASQUE 分支一个都不需要，因此也不该被迫去读它。
+struct WireGuardAccount {
+    private_key: String,
+    address_v4: String,
+    address_v6: String,
+    reserved: Vec<u8>,
+}
+
 impl ConfigManager {
     /// 生成指向本地 usque 的 `socks` outbound。
     ///
@@ -159,6 +173,62 @@ impl ConfigManager {
     /// 与 WireGuard 路径的 wireguard outbound 同名——这样上层的
     /// `freedom + dialerProxy` 中转与路由规则**不需要感知出口实现换了**。
     /// 对 Xray 而言，只是 `proxy-warp` 这个 tag 后面挂的东西变了。
+    /// 读 WireGuard 账号。**只有 WireGuard 分支才该调用。**
+    ///
+    /// 错误信息明确指向账号文件，因为调用点已确定走 WireGuard 路径——
+    /// 此时文件缺失才是真的「未安装」。
+    async fn read_wireguard_account() -> Result<WireGuardAccount> {
+        let content = fs::read_to_string(warp::ACCOUNT_FILE)
+            .await
+            .context("WARP 未安装 (WireGuard 账号文件 warp_account.json 缺失)")?;
+        let account: Value = serde_json::from_str(&content)?;
+
+        Ok(WireGuardAccount {
+            private_key: account["private_key"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            address_v4: account["address_v4"].as_str().unwrap_or("").to_string(),
+            address_v6: account["address_v6"].as_str().unwrap_or("").to_string(),
+            reserved: account["reserved"]
+                .as_array()
+                .map(|arr| arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect())
+                .unwrap_or_else(|| vec![0, 0, 0]),
+        })
+    }
+
+    /// 全新安装 usque 时的默认流量范围：**全部流量走 WARP**。
+    ///
+    /// # 为什么不是 `WarpScope::default()`（`Domain`）
+    ///
+    /// usque 存在的理由就是绕开「机房封出口 UDP」。管理员装它，是想让
+    /// 流量经 WARP 出去，而不是想手工维护一份域名清单。
+    ///
+    /// 用 `Domain` 且清单为空的结果是：装完之后**没有任何流量走 WARP**——
+    /// 隧道健康、进程在跑，但出口仍是机房 IP，看起来像「装了没用」。
+    ///
+    /// 与 WireGuard 路径的默认不同（那边保持 `Domain`）：UDP 可用时通常
+    /// 只让特定站点走 WARP；而 usque 是出口受限时的**兜底通路**，
+    /// 语义上就是「全都走」。
+    pub const fn usque_install_default_scope() -> WarpScope {
+        WarpScope::Global
+    }
+
+    /// 决定安装时采用哪个流量范围。
+    ///
+    /// - `existing = Some(s)`：**尊重用户设定**。用户可能特意切回
+    ///   「仅指定域名」，重装不得静默撤销他的调整。
+    /// - `existing = None`：全新安装，采用 usque 的默认
+    ///   （[`Self::usque_install_default_scope`]，即 `Global`）。
+    ///
+    /// 纯函数，便于穷举「有/无既有配置 × 两种范围」。
+    pub const fn resolve_install_scope(existing: Option<WarpScope>) -> WarpScope {
+        match existing {
+            Some(s) => s,
+            None => Self::usque_install_default_scope(),
+        }
+    }
+
     pub fn masque_outbound(addr: &str, port: u16) -> Value {
         json!({
             "tag": "proxy-warp",
@@ -226,7 +296,7 @@ impl ConfigManager {
         out
     }
 
-    /// 写回 `warp_account.json` 中的 `scope` 字段，其余字段保持不变。
+    /// 写回**路由文件**中的 `scope` 字段，其余键保持不变。
     ///
     /// 单独抽出是因为「只改 scope」不应该重写整份 Xray 配置（见
     /// [`Self::update_warp_routing_rules`] 的 `scope_only`）。
@@ -234,20 +304,39 @@ impl ConfigManager {
     /// 文件不存在时返回 `Ok(false)`（未写入）——调用方据此决定是否
     /// 报「WARP 未安装」。用 `Value` 而非 `WarpAccountConfig` 读写，
     /// 以免因未来新增字段而在升级时丢失未知键。
+    /// 把 `scope` 写进**路由文件**（`10_warp_routing.json`）。
+    ///
+    /// # 为什么存在路由文件里
+    ///
+    /// 路由文件是 WARP 相关的**唯一必然存在**的产物——装 WireGuard 会写它，
+    /// 装 usque 也会写它。而两套实现的**账号文件是各自私有**的：
+    ///
+    /// - WireGuard：`warp_account.json`
+    /// - usque：`usque/config.json`
+    ///
+    /// 之前把 `scope` 塞进 WireGuard 的账号文件，于是只装 usque 的机房
+    /// （UDP 被封的机房正是这种）完全没有 scope：写入报「WARP 未安装」，
+    /// 读取永远回退 `Domain`。
+    ///
+    /// # 返回 `false` 的含义
+    ///
+    /// 路由文件不存在 = 没有任何 WARP 实现被配置过。此时 `false` 是
+    /// **正确**的结论，调用方据此报「未安装」。这与之前「只看 WireGuard
+    /// 账号文件」有本质区别：那个判据对 usque-only 是错的。
     async fn persist_scope(scope: WarpScope) -> Result<bool> {
-        let account_path = warp::ACCOUNT_FILE;
-        let content = match fs::read_to_string(account_path).await {
+        let config_path = warp::ROUTING_FILE;
+        let content = match fs::read_to_string(config_path).await {
             Ok(c) => c,
             Err(_) => return Ok(false),
         };
 
-        let mut account: Value = serde_json::from_str(&content)
-            .context("warp_account.json 格式非法，无法写入流量范围")?;
+        let mut cfg: Value =
+            serde_json::from_str(&content).context("路由文件格式非法，无法写入流量范围")?;
 
-        account["scope"] = serde_json::to_value(scope)?;
+        cfg["scope"] = serde_json::to_value(scope)?;
 
-        let pretty = serde_json::to_string_pretty(&account)?;
-        fs::write(account_path, pretty).await?;
+        let pretty = serde_json::to_string_pretty(&cfg)?;
+        fs::write(config_path, pretty).await?;
         Ok(true)
     }
 
@@ -257,7 +346,7 @@ impl ConfigManager {
     ///
     /// - `rules`：域名清单。
     /// - `mode`：出口协议偏好（与 `scope` 正交）。
-    /// - `scope`：流量范围（落盘到 `warp_account.json`，不写进本文件）。
+    /// - `scope`：流量范围（与路由规则同存于本函数写出的路由文件）。
     /// - `scope_only`：**只改 scope，不碰路由规则、不重启核心**。
     ///
     /// ## `scope_only` 为何存在
@@ -272,32 +361,21 @@ impl ConfigManager {
         scope_only: bool,
     ) -> Result<()> {
         if scope_only {
+            // 只改 scope：不重写路由规则，避免无谓地重建 outbound
+            // （那会重启核心、抖动全体在线用户）。
             let written = Self::persist_scope(scope).await?;
             if !written {
-                anyhow::bail!("WARP 未安装 (配置文件 warp_account.json 缺失)");
+                // 路由文件不存在 = 没有任何 WARP 实现被配置过。
+                //
+                // 这里**不能**说「warp_account.json 缺失」——那是
+                // WireGuard 私有文件，只装 usque 的机房本来就没有它，
+                // 而那恰恰是能正常使用 scope 的情形（线上误报过）。
+                anyhow::bail!("WARP 未安装（未找到 WARP 路由配置）");
             }
             return Ok(());
         }
 
         let config_path = format!("{}/10_warp_routing.json", xray::CONF_DIR);
-        let account_path = warp::ACCOUNT_FILE;
-
-        let account_content = fs::read_to_string(account_path)
-            .await
-            .context("WARP 未安装 (配置文件 warp_account.json 缺失)")?;
-        let account: Value = serde_json::from_str(&account_content)?;
-
-        let priv_key = account["private_key"].as_str().unwrap_or_default();
-        let v4 = account["address_v4"].as_str().unwrap_or("");
-        let v6 = account["address_v6"].as_str().unwrap_or("");
-        let reserved: Vec<u8> = if let Some(arr) = account["reserved"].as_array() {
-            arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect()
-        } else {
-            vec![0, 0, 0]
-        };
-
-        let peer_pub_key = "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=";
-        let peer_endpoint = "engage.cloudflareclient.com:2408";
 
         // 按出口引擎决定 `proxy-warp` 后面挂什么。
         //
@@ -313,22 +391,30 @@ impl ConfigManager {
         };
 
         let wg_outbound = if egress == Egress::Masque {
+            // MASQUE 分支**不读** WireGuard 账号——账号在 usque 自己的
+            // `config.json` 里。这个分支必须在读账号**之前**返回。
+            //
+            // 之前账号在本函数顶部**无条件**读，于是只装 usque 的机房
+            // 走到这里就报「WARP 未安装 (配置文件 warp_account.json 缺失)」，
+            // 连一条域名规则都加不了——而它根本不需要那个文件。
             Self::masque_outbound(usque_paths::SOCKS_ADDR, usque_paths::SOCKS_PORT)
         } else {
+            // 只有 WireGuard 分支才需要账号字段。
+            let wg = Self::read_wireguard_account().await?;
             json!({
                 "tag": wg_tag,
                 "protocol": "wireguard",
                 "settings": {
-                    "secretKey": priv_key,
-                    "address": [v4, v6],
+                    "secretKey": wg.private_key,
+                    "address": [wg.address_v4, wg.address_v6],
                     "peers": [
                         {
-                            "publicKey": peer_pub_key,
-                            "endpoint": peer_endpoint,
+                            "publicKey": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
+                            "endpoint": "engage.cloudflareclient.com:2408",
                             "keepAlive": 30
                         }
                     ],
-                    "reserved": reserved,
+                    "reserved": wg.reserved,
                     "mtu": 1280
                 }
             })
@@ -368,22 +454,26 @@ impl ConfigManager {
 
         let routing_rules =
             Self::build_routing_rules(rules, scope, egress_is_available(current_egress()));
+        // `scope` 与路由规则一起落在这个文件里。
+        //
+        // 必须**在这里**一并写入：本文件是整体重写的，若只在
+        // `persist_scope`（scope_only 分支）里写，那么任何一次
+        // 「增删规则 / 切换模式」都会把 scope 抹掉——切换范围后
+        // 再加一条规则，范围就悄悄回到默认了。
+        //
+        // 顶层 `scope` 键 Xray 会忽略（它只读 inbounds/outbounds/routing），
+        // 因此与核心配置同文件不冲突。
         let config = json!({
             "inbounds": [socks_inbound],
             "outbounds": outbounds,
             "routing": {
                 "rules": routing_rules
-            }
+            },
+            "scope": scope,
         });
 
         let content = serde_json::to_string_pretty(&config)?;
         fs::write(config_path, content).await?;
-
-        // scope 落在 warp_account.json（Xray 不读该文件，写入零侵入）。
-        // 失败不阻断：路由规则已落盘并重载，scope 只是附带状态。
-        if let Err(e) = Self::persist_scope(scope).await {
-            log::warn!("写入 WARP 流量范围失败（不影响路由）: {e}");
-        }
 
         crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
         Ok(())
@@ -391,7 +481,7 @@ impl ConfigManager {
 
     /// 读取当前配置：`(域名清单, 出口协议偏好, 流量范围)`。
     ///
-    /// `scope` 从 `warp_account.json` 读取（与 [`Self::update_warp_routing_rules`]
+    /// `scope` 从**路由文件**读取（与 [`Self::update_warp_routing_rules`]
     /// 的写入位置对应）。文件缺失或字段缺失均回退 [`WarpScope::Domain`]。
     pub async fn get_warp_routing_rules() -> Result<(Vec<String>, WarpMode, WarpScope)> {
         let scope = Self::read_scope().await;
@@ -399,20 +489,31 @@ impl ConfigManager {
         Ok((rules, mode, scope))
     }
 
-    /// 从 `warp_account.json` 读 `scope`；任何异常都回退 `Domain`。
+    /// 从**路由文件**读 `scope`；任何异常都回退 `Domain`。
     ///
     /// 刻意不把读失败向上抛：调用方（菜单渲染）宁可显示保守的
     /// `Domain`，也不应因状态文件损坏而整块菜单报错。
+    /// 从路由文件的顶层 `scope` 键读出流量范围。
+    ///
+    /// 纯函数，便于穷举：缺键、非法值、正常值三种情况都要有确定行为。
+    ///
+    /// 与旧实现的区别：旧版读 WireGuard 的账号文件，只装 usque 的机房
+    /// 永远读到 `Domain`——**即使写入已经成功**。存储位置不统一时，
+    /// 写和读会双双失效，而症状只在界面上表现为「切换没反应」。
+    fn scope_from_config(v: &Value) -> WarpScope {
+        v.get("scope")
+            .and_then(|s| serde_json::from_value::<WarpScope>(s.clone()).ok())
+            .unwrap_or_default()
+    }
+
     async fn read_scope() -> WarpScope {
-        let Ok(content) = fs::read_to_string(warp::ACCOUNT_FILE).await else {
+        let Ok(content) = fs::read_to_string(warp::ROUTING_FILE).await else {
             return WarpScope::Domain;
         };
         let Ok(v) = serde_json::from_str::<Value>(&content) else {
             return WarpScope::Domain;
         };
-        v.get("scope")
-            .and_then(|s| serde_json::from_value::<WarpScope>(s.clone()).ok())
-            .unwrap_or_default()
+        Self::scope_from_config(&v)
     }
 
     /// 读 `10_warp_routing.json` 得出 `(域名清单, 出口协议偏好)`。
@@ -502,8 +603,8 @@ mod tests {
 
     #[test]
     fn test_warp_scope_default_is_domain() {
-        // Default 必须是 Domain：旧 `warp_account.json` 无 scope 字段时
-        // 反序列化会落到这里，若为 Global 会让既有部署「静默开启全局」。
+        // Default 必须是 Domain：旧路由文件无 scope 键时反序列化会
+        // 落到这里，若为 Global 会让既有部署「静默开启全局」。
         assert_eq!(WarpScope::default(), WarpScope::Domain);
         assert!(!WarpScope::default().is_global());
     }
@@ -969,5 +1070,214 @@ mod tests {
         assert!(u.contains(&format!("-b {a}")) && u.contains(&format!("-p {p}")));
         assert_eq!(o["settings"]["address"], a);
         assert_eq!(o["settings"]["port"], p);
+    }
+
+    // ────────── scope 的存储位置 ──────────
+
+    /// **线上故障的直接回归**：`scope` 不得再依赖 WireGuard 账号文件。
+    ///
+    /// # 已发生的故障
+    ///
+    /// `persist_scope` 把 `scope` 写进 `warp_account.json`（WireGuard 的
+    /// 账号文件）。只装 usque 的机房没有这个文件，于是：
+    ///
+    /// - 点「流量范围」→ `persist_scope` 返回 `false` → 报
+    ///   「WARP 未安装 (配置文件 warp_account.json 缺失)」——
+    ///   而 usque 明明装着且在转发流量。
+    /// - `read_scope` 也读同一个文件 → 永远回退 `Domain`。
+    ///   **即使写入修好了，读也读不回来。**
+    ///
+    /// 两个函数都不得再碰 WireGuard 的账号文件。
+    #[test]
+    fn test_scope_no_longer_depends_on_wireguard_account() {
+        const SRC: &str = include_str!("warp.rs");
+        for fname in [
+            "async fn persist_scope",
+            "async fn read_scope",
+            "fn scope_from_config",
+        ] {
+            let Some(start) = SRC.find(fname) else {
+                continue;
+            };
+            let body = &SRC[start..];
+            let body = &body[..body.find("\n    }").unwrap_or(body.len())];
+            assert!(
+                !body.contains("warp::ACCOUNT_FILE") && !body.contains("account_path"),
+                "{fname} 不得依赖 WireGuard 账号文件——\
+                 只装 usque 的机房没有该文件，scope 会完全失效（线上已发生）"
+            );
+        }
+    }
+
+    /// `scope` 必须落在路由文件里，且能被读回。
+    #[test]
+    fn test_scope_round_trips_through_routing_config() {
+        use serde_json::json;
+
+        // 写入后的文件形状：scope 是顶层键。
+        let cfg = json!({
+            "inbounds": [],
+            "outbounds": [],
+            "routing": { "rules": [] },
+            "scope": WarpScope::Global,
+        });
+
+        assert_eq!(
+            ConfigManager::scope_from_config(&cfg),
+            WarpScope::Global,
+            "scope 必须能从路由文件读回，否则切换后重进菜单会显示旧值"
+        );
+    }
+
+    /// 缺 `scope` 键时回退 `Domain`（保守）——不得报错。
+    ///
+    /// 旧版本写出的路由文件没有这个键；渲染菜单宁可显示保守值，
+    /// 也不应因缺一个字段就整块报错。
+    #[test]
+    fn test_scope_defaults_to_domain_when_absent() {
+        use serde_json::json;
+        let cfg = json!({ "routing": { "rules": [] } });
+        assert_eq!(ConfigManager::scope_from_config(&cfg), WarpScope::Domain);
+    }
+
+    /// 非法 `scope` 值同样回退 `Domain`，不得 panic。
+    #[test]
+    fn test_scope_invalid_value_falls_back() {
+        use serde_json::json;
+        let cfg = json!({ "scope": "not-a-valid-scope" });
+        assert_eq!(ConfigManager::scope_from_config(&cfg), WarpScope::Domain);
+    }
+
+    /// 路由文件是 WARP 相关的**唯一必然存在**的文件——
+    /// 装任何一套实现都会写它。这正是它适合存 scope 的理由。
+    #[test]
+    fn test_routing_file_is_the_shared_artifact() {
+        // 记录这个设计约束：若将来有人把 scope 挪去实现私有文件，
+        // 那条「装一套就该能用 scope」的性质会被破坏。
+        const SRC: &str = include_str!("warp.rs");
+        let start = SRC
+            .find("async fn persist_scope")
+            .expect("persist_scope 必须存在");
+        let body = &SRC[start..];
+        let body = &body[..body.find("\n    }").unwrap_or(body.len())];
+        assert!(
+            body.contains("ROUTING_FILE"),
+            "scope 必须写进 ROUTING_FILE——它是两套实现共享的产物，\
+             放进任何一套的私有文件都会让另一套用不了 scope"
+        );
+    }
+
+    /// **写入路径必须一并落 `scope`**——否则规则编辑会把它悄悄抹掉。
+    ///
+    /// 路由文件是**整体重写**的。若只在 `persist_scope`（scope_only
+    /// 分支）里写 scope，那么任何一次「增删规则 / 切换模式」都会让
+    /// scope 回到默认——用户设了「全部流量」，加一条域名规则后就
+    /// 变回「仅指定域名」，而界面上没有任何提示。
+    ///
+    /// 这条测试断言的是**构造配置的那一处**包含 scope，而非
+    /// `persist_scope`。
+    #[test]
+    fn test_routing_write_includes_scope() {
+        const SRC: &str = include_str!("warp.rs");
+        // 找到构造路由配置的块（含 routing.rules 的那个 json!）
+        let start = SRC
+            .find("let config = json!({")
+            .expect("必须存在构造路由配置处");
+        let body = &SRC[start..];
+        let body = &body[..body.find("});").unwrap_or(body.len()) + 3];
+
+        assert!(
+            body.contains("\"scope\": scope") || body.contains("\"scope\":scope"),
+            "整体重写路由文件时必须一并写入 scope，\
+             否则增删规则会把已设的流量范围抹掉（且界面无提示）"
+        );
+    }
+
+    /// **MASQUE 路径不得依赖 WireGuard 账号。**
+    ///
+    /// 只装 usque 的机房没有 `warp_account.json`。之前账号是在
+    /// `update_warp_routing_rules` 顶部**无条件**读的，于是那种机房
+    /// 走 MASQUE 分支时也会报「WARP 未安装」——连一条域名规则都加不了，
+    /// 而 MASQUE 分支根本不需要那些字段。
+    ///
+    /// 断言「读账号」出现在 MASQUE 分支**之后**，即它属于 WireGuard 分支。
+    #[test]
+    fn test_masque_path_does_not_require_wireguard_account() {
+        const SRC: &str = include_str!("warp.rs");
+        let start = SRC
+            .find("pub async fn update_warp_routing_rules")
+            .expect("update_warp_routing_rules 必须存在");
+        let tail = &SRC[start..];
+        let body = &tail[..tail.find("\n    }\n").unwrap_or(tail.len())];
+
+        let masque_at = body.find("Egress::Masque").expect("必须有 MASQUE 分支");
+        let read_at = body
+            .find("read_wireguard_account")
+            .expect("WireGuard 分支必须通过 read_wireguard_account 读账号");
+
+        assert!(
+            read_at > masque_at,
+            "读 WireGuard 账号必须在 MASQUE 分支**之后**（即只在 WireGuard 分支内）。\
+             放在函数顶部无条件读，会让只装 usque 的机房连规则都加不了。"
+        );
+    }
+
+    /// WireGuard 账号读取必须收敛到单一入口，便于上面那条断言成立。
+    #[test]
+    fn test_account_read_is_single_entry_point() {
+        const SRC: &str = include_str!("warp.rs");
+        let start = SRC
+            .find("pub async fn update_warp_routing_rules")
+            .expect("update_warp_routing_rules 必须存在");
+        let tail = &SRC[start..];
+        let body = &tail[..tail.find("\n    }\n").unwrap_or(tail.len())];
+
+        assert!(
+            !body.contains("warp::ACCOUNT_FILE"),
+            "不得在函数体内直接读 ACCOUNT_FILE——必须走 read_wireguard_account()，\
+             否则「哪些分支需要账号」就无法被断言"
+        );
+    }
+
+    /// **端到端语义**：usque 装完后（`Global` + 出口可用）必须真的
+    /// 生成 catch-all 规则——否则「全部流量走 WARP」只是记录了一个状态。
+    ///
+    /// 这条把三段串起来验证：
+    /// 1. usque 安装默认 `Global`
+    /// 2. usque 可用 → `Egress::Masque` → `enforce = true`
+    /// 3. `build_routing_rules` 因此发出无条件规则（匹配一切）
+    #[test]
+    fn test_usque_install_default_actually_enforces_global() {
+        let scope = ConfigManager::usque_install_default_scope();
+
+        // 步骤 2：usque 正常在线时出口引擎给出 Masque。
+        let egress = Egress::Masque;
+        let enforce = egress_is_available(egress);
+        assert!(enforce, "usque 可用时出口必须被判为可用");
+
+        // 步骤 3：应生成一条**无 domain 条件**的规则 = 匹配一切。
+        let rules = ConfigManager::build_routing_rules(Vec::new(), scope, enforce);
+        let catch_all = rules.iter().any(|r| {
+            r.get("domain").is_none() && r.get("inboundTag").is_none() && r["outboundTag"] == "warp"
+        });
+        assert!(
+            catch_all,
+            "Global + 出口可用必须生成 catch-all，否则「全部流量走 WARP」不生效：{rules:?}"
+        );
+    }
+
+    /// 反向：出口不可用时**不得**生成 catch-all。
+    ///
+    /// 否则流量会被引向一个不可用的出口 → 黑洞。
+    #[test]
+    fn test_global_scope_does_not_enforce_when_egress_unavailable() {
+        let rules = ConfigManager::build_routing_rules(Vec::new(), WarpScope::Global, false);
+        let catch_all = rules
+            .iter()
+            .any(|r| r.get("domain").is_none() && r.get("inboundTag").is_none());
+        assert!(
+            !catch_all,
+            "出口不可用时不得生成 catch-all——那会把流量导向黑洞：{rules:?}"
+        );
     }
 }
