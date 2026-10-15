@@ -112,6 +112,40 @@ impl InstalledKinds {
     }
 }
 
+/// 卸载范围。
+///
+/// # 为何需要「只卸一套」
+///
+/// 两套实现并存且不可互换（内核 TUN vs 本地 SOCKS），但它们的**账号
+/// 与配置是独立的**。之前只有配对卸载，于是「只想重装 usque」的操作
+/// 会把 WireGuard 账号一并删掉——而 WireGuard 的账号里含有 Cloudflare
+/// 分配的 `reserved`，删除后必须重新注册，出口 IP 会变。
+///
+/// 这是一个**破坏性副作用**：用户以为在修一套，实际动了另一套。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UninstallTarget {
+    /// 只卸 WireGuard。
+    WireGuard,
+    /// 只卸 usque。
+    Usque,
+    /// 两套都卸。
+    Both,
+}
+
+impl UninstallTarget {
+    /// 返回 `(是否删 WireGuard, 是否删 usque)`。
+    ///
+    /// 抽成纯函数是为了可穷举测试：删除本身要碰真实文件系统与服务，
+    /// 但「该删哪一套」这个决策必须被钉死。
+    pub const fn scope(self) -> (bool, bool) {
+        match self {
+            Self::WireGuard => (true, false),
+            Self::Usque => (false, true),
+            Self::Both => (true, true),
+        }
+    }
+}
+
 /// 卸载结果——供 bot 文案决定「实际卸了什么」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct UninstallOutcome {
@@ -159,28 +193,49 @@ pub async fn detect_installed() -> InstalledKinds {
 ///
 /// 每一步（stop / disable / 删文件）的失败都被记录并继续。
 /// 整体只要「尽力清干净」；最后清理 Xray 路由配置并重载核心。
-pub async fn uninstall_all() -> Result<UninstallOutcome> {
-    let installed = detect_installed().await;
+/// 按 [`UninstallTarget`] 卸载指定范围，幂等。
+///
+/// # 卸载后必须刷新出口缓存
+///
+/// `current_egress()` 读的是探测缓存。若刚把缓存所指向的那一套卸了，
+/// 缓存仍会选它 → 生成的 Xray 配置指向一个**已不存在的出口** → 黑洞
+/// （流量被静默丢弃，而不是回退直连）。
+///
+/// 因此这里清空缓存，让出口引擎保守回退 `Direct`。代价是需要重新探测
+/// 才会再次启用 WARP，但「暂时不用 WARP」远好于「流量黑洞」。
+pub async fn uninstall_one(target: UninstallTarget) -> Result<UninstallOutcome> {
     let mut outcome = UninstallOutcome::default();
 
-    if installed.wireguard {
+    let (remove_wg, remove_uq) = target.scope();
+
+    if remove_wg {
         remove_wireguard_files().await;
         outcome.removed_wireguard = true;
     }
 
-    if installed.usque {
+    if remove_uq {
         remove_usque().await;
         outcome.removed_usque = true;
     }
 
-    // 无论卸了哪一套，路由配置都可能引用 WARP 出口——清掉它，
-    // 让核心回到无 WARP 状态。这一步在什么都没卸时也执行：
-    // 路由文件可能早于账号文件被手工删除而残留。
+    // 路由文件可能引用刚被删掉的出口——一并清掉，让核心回到无 WARP 状态。
     let _ = fs::remove_file(warp_paths::ROUTING_FILE).await;
+
+    // 关键：清探测缓存。否则出口引擎仍会选被删的那一套 → 黑洞。
+    crate::core::usque::engine::global_probe_cache().clear();
 
     crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
 
     Ok(outcome)
+}
+
+pub async fn uninstall_all() -> Result<UninstallOutcome> {
+    // 委托给参数化入口，避免两处各写一遍删除逻辑（那样迟早会分叉）。
+    //
+    // 语义差别：本函数**无条件**尝试删两套（不看是否装过），
+    // 与旧行为一致——路由文件可能早于账号文件被手工删除而残留，
+    // 那种情况下仍要清理。
+    uninstall_one(UninstallTarget::Both).await
 }
 
 async fn remove_wireguard_files() {
@@ -610,5 +665,96 @@ mod tests {
         assert_ne!(a, b);
         assert!(a.starts_with("warp."));
         assert!(b.starts_with("warp."));
+    }
+
+    // ────────── 卸载粒度：可以只卸一套 ──────────
+
+    /// 目标枚举 → 该删哪一套。**穷举全部组合**，因为漏掉任一格
+    /// 都会造成「以为在卸一套、实际动了另一套」。
+    #[test]
+    fn test_uninstall_target_scope_is_exhaustive() {
+        // (目标, 应删 WireGuard, 应删 usque)
+        let cases = [
+            (UninstallTarget::WireGuard, true, false),
+            (UninstallTarget::Usque, false, true),
+            (UninstallTarget::Both, true, true),
+        ];
+        for (target, expect_wg, expect_uq) in cases {
+            assert_eq!(
+                UninstallTarget::scope(target).0,
+                expect_wg,
+                "{target:?} 对 WireGuard 的处置错误"
+            );
+            assert_eq!(
+                UninstallTarget::scope(target).1,
+                expect_uq,
+                "{target:?} 对 usque 的处置错误"
+            );
+        }
+    }
+
+    /// **本次重构要修的核心问题**：只卸 usque 时不得触碰 WireGuard。
+    ///
+    /// WireGuard 账号里含 Cloudflare 分配的 `reserved`，删掉就得重新注册，
+    /// 出口 IP 会变——用户以为在修一套，实际动了另一套。
+    #[test]
+    fn test_uninstall_usque_does_not_touch_wireguard() {
+        assert!(
+            !UninstallTarget::scope(UninstallTarget::Usque).0,
+            "只卸 usque 不得删 WireGuard 账号"
+        );
+    }
+
+    /// 对称：只卸 WireGuard 时不得触碰 usque。
+    #[test]
+    fn test_uninstall_wireguard_does_not_touch_usque() {
+        assert!(
+            !UninstallTarget::scope(UninstallTarget::WireGuard).1,
+            "只卸 WireGuard 不得删 usque 的 config.json / systemd 服务"
+        );
+    }
+
+    /// **黑洞防护**：卸载后必须清探测缓存。
+    ///
+    /// 若不清，`current_egress()` 仍会选刚被删掉的那一套 →
+    /// 生成的 Xray 配置指向不存在的出口 → 流量被**静默丢弃**
+    /// （而不是回退直连）。这是比「WARP 不生效」严重得多的故障。
+    #[test]
+    fn test_uninstall_clears_probe_cache() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("pub async fn uninstall_one")
+            .expect("uninstall_one 必须存在");
+        let body = &SRC[start..];
+        let body = &body[..body.find("\n}\n").unwrap_or(body.len())];
+
+        assert!(
+            body.contains("global_probe_cache()"),
+            "卸载后必须清探测缓存，否则出口引擎会选一个已不存在的出口 → 黑洞"
+        );
+        assert!(
+            body.contains(".clear()"),
+            "必须调用 clear()——只读取缓存是没有意义的"
+        );
+    }
+
+    /// 两处删除逻辑不得各写一遍（否则迟早分叉）。
+    #[test]
+    fn test_uninstall_all_delegates_to_one() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("pub async fn uninstall_all")
+            .expect("uninstall_all 必须存在");
+        let body = &SRC[start..];
+        let body = &body[..body.find("\n}\n").unwrap_or(body.len())];
+
+        assert!(
+            body.contains("uninstall_one"),
+            "uninstall_all 必须委托给 uninstall_one，避免删除逻辑分叉"
+        );
+        assert!(
+            !body.contains("remove_usque()"),
+            "uninstall_all 不得自己再调一遍删除函数"
+        );
     }
 }
