@@ -59,7 +59,12 @@ pub(crate) fn route_callback(data: &str) -> Option<CallbackRoute> {
     {
         return Some(CallbackRoute::Singbox);
     }
-    if data == "m_warp" || data == "a_inst_warp" || data.starts_with("a_warp_") {
+    if data == "m_warp"
+        || data == "m_warp_wg"
+        || data == "m_warp_usque"
+        || data == "a_inst_warp"
+        || data.starts_with("a_warp_")
+    {
         return Some(CallbackRoute::Warp);
     }
     if data == "m_sched"

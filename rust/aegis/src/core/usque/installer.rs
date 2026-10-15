@@ -103,11 +103,124 @@ impl InstalledKinds {
         self.wireguard || self.usque
     }
 
+    /// 子页入口按钮——**只列出已装的那一套**。
+    ///
+    /// 返回 `(i18n key, 回调 data)` 列表。抽成纯函数是为了可穷举测试：
+    /// 「未装就不给入口」这条规则必须被钉死，否则会出现死按钮
+    /// （点进去无事可做）。
+    ///
+    /// 顺序固定（WireGuard 在前），避免 UI 随探测结果跳动。
+    pub const fn subpage_entries(self) -> &'static [(&'static str, &'static str)] {
+        match (self.wireguard, self.usque) {
+            (true, true) => &[
+                ("warp.subpage_wireguard", "m_warp_wg"),
+                ("warp.subpage_usque", "m_warp_usque"),
+            ],
+            (true, false) => &[("warp.subpage_wireguard", "m_warp_wg")],
+            (false, true) => &[("warp.subpage_usque", "m_warp_usque")],
+            // 都没装——不给任何入口。
+            (false, false) => &[],
+        }
+    }
+
     /// 由两个「文件是否存在」的布尔值构造。**纯函数，便于穷举测试。**
     pub const fn detect(wireguard_account_exists: bool, usque_config_exists: bool) -> Self {
         Self {
             wireguard: wireguard_account_exists,
             usque: usque_config_exists,
+        }
+    }
+}
+
+/// 重启某套实现时**实际要做什么**。
+///
+/// # 为什么不能都叫「重启服务」
+///
+/// 两套的运行方式根本不同：
+///
+/// - **WireGuard** 跑在 Xray 进程**内部**，没有独立服务。所谓「重启」
+///   只能是让核心重新读取配置（`reload_core`）。
+/// - **usque** 是**独立 systemd 服务**（`wwps-usque`）。它卡死时
+///   `reload_core` **完全无效**——那只重读 Xray 配置，不碰 usque 进程。
+///
+/// 线上故障正出在这里：管理员点「重启服务」想救卡住的 usque，实际
+/// 什么都没发生，且界面报「重启成功」。按钮上说的事和实际做的事不一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestartAction {
+    /// 让核心重读配置（WireGuard 走这条）。
+    ReloadCore,
+    /// `systemctl restart <service>`（usque 走这条）。
+    RestartService(&'static str),
+}
+
+impl RestartAction {
+    /// 每套实现对应的重启方式。
+    ///
+    /// 纯函数，便于断言「usque 必须重启它自己的服务，而不是 reload core」。
+    pub const fn for_target(target: UninstallTarget) -> Self {
+        match target {
+            // WireGuard 由核心托管，没有可重启的服务。
+            UninstallTarget::WireGuard => Self::ReloadCore,
+            UninstallTarget::Usque => Self::RestartService(crate::core::paths::usque::SERVICE_NAME),
+            // 两套都要重启时，先重启独立服务，再让核心重读配置。
+            UninstallTarget::Both => Self::RestartService(crate::core::paths::usque::SERVICE_NAME),
+        }
+    }
+}
+
+/// 重启指定实现。
+///
+/// `Both` 时两步都做：usque 是独立进程必须先拉起，核心再重读配置引用它。
+pub async fn restart_one(target: UninstallTarget) -> Result<()> {
+    let action = RestartAction::for_target(target);
+
+    if let RestartAction::RestartService(name) = action {
+        crate::core::system::maintenance::MaintenanceManager::control_service(
+            name,
+            crate::core::cmd_action::ServiceAction::Restart,
+        )
+        .await
+        .context("重启 usque 服务失败")?;
+    }
+
+    // `Both` 需要「重启服务 + 重读核心」两步；单独一套只需各自那一步。
+    if matches!(target, UninstallTarget::WireGuard | UninstallTarget::Both) {
+        crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
+    }
+
+    Ok(())
+}
+
+/// 卸载范围。
+///
+/// # 为何需要「只卸一套」
+///
+/// 两套实现并存且不可互换（内核 TUN vs 本地 SOCKS），但它们的**账号
+/// 与配置是独立的**。之前只有配对卸载，于是「只想重装 usque」的操作
+/// 会把 WireGuard 账号一并删掉——而 WireGuard 的账号里含有 Cloudflare
+/// 分配的 `reserved`，删除后必须重新注册，出口 IP 会变。
+///
+/// 这是一个**破坏性副作用**：用户以为在修一套，实际动了另一套。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UninstallTarget {
+    /// 只卸 WireGuard。
+    WireGuard,
+    /// 只卸 usque。
+    Usque,
+    /// 两套都卸。
+    Both,
+}
+
+impl UninstallTarget {
+    /// 返回 `(是否删 WireGuard, 是否删 usque)`。
+    ///
+    /// 抽成纯函数是为了可穷举测试：删除本身要碰真实文件系统与服务，
+    /// 但「该删哪一套」这个决策必须被钉死。
+    pub const fn scope(self) -> (bool, bool) {
+        match self {
+            Self::WireGuard => (true, false),
+            Self::Usque => (false, true),
+            Self::Both => (true, true),
         }
     }
 }
@@ -159,28 +272,49 @@ pub async fn detect_installed() -> InstalledKinds {
 ///
 /// 每一步（stop / disable / 删文件）的失败都被记录并继续。
 /// 整体只要「尽力清干净」；最后清理 Xray 路由配置并重载核心。
-pub async fn uninstall_all() -> Result<UninstallOutcome> {
-    let installed = detect_installed().await;
+/// 按 [`UninstallTarget`] 卸载指定范围，幂等。
+///
+/// # 卸载后必须刷新出口缓存
+///
+/// `current_egress()` 读的是探测缓存。若刚把缓存所指向的那一套卸了，
+/// 缓存仍会选它 → 生成的 Xray 配置指向一个**已不存在的出口** → 黑洞
+/// （流量被静默丢弃，而不是回退直连）。
+///
+/// 因此这里清空缓存，让出口引擎保守回退 `Direct`。代价是需要重新探测
+/// 才会再次启用 WARP，但「暂时不用 WARP」远好于「流量黑洞」。
+pub async fn uninstall_one(target: UninstallTarget) -> Result<UninstallOutcome> {
     let mut outcome = UninstallOutcome::default();
 
-    if installed.wireguard {
+    let (remove_wg, remove_uq) = target.scope();
+
+    if remove_wg {
         remove_wireguard_files().await;
         outcome.removed_wireguard = true;
     }
 
-    if installed.usque {
+    if remove_uq {
         remove_usque().await;
         outcome.removed_usque = true;
     }
 
-    // 无论卸了哪一套，路由配置都可能引用 WARP 出口——清掉它，
-    // 让核心回到无 WARP 状态。这一步在什么都没卸时也执行：
-    // 路由文件可能早于账号文件被手工删除而残留。
+    // 路由文件可能引用刚被删掉的出口——一并清掉，让核心回到无 WARP 状态。
     let _ = fs::remove_file(warp_paths::ROUTING_FILE).await;
+
+    // 关键：清探测缓存。否则出口引擎仍会选被删的那一套 → 黑洞。
+    crate::core::usque::engine::global_probe_cache().clear();
 
     crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
 
     Ok(outcome)
+}
+
+pub async fn uninstall_all() -> Result<UninstallOutcome> {
+    // 委托给参数化入口，避免两处各写一遍删除逻辑（那样迟早会分叉）。
+    //
+    // 语义差别：本函数**无条件**尝试删两套（不看是否装过），
+    // 与旧行为一致——路由文件可能早于账号文件被手工删除而残留，
+    // 那种情况下仍要清理。
+    uninstall_one(UninstallTarget::Both).await
 }
 
 async fn remove_wireguard_files() {
@@ -610,5 +744,220 @@ mod tests {
         assert_ne!(a, b);
         assert!(a.starts_with("warp."));
         assert!(b.starts_with("warp."));
+    }
+
+    // ────────── 卸载粒度：可以只卸一套 ──────────
+
+    /// 目标枚举 → 该删哪一套。**穷举全部组合**，因为漏掉任一格
+    /// 都会造成「以为在卸一套、实际动了另一套」。
+    #[test]
+    fn test_uninstall_target_scope_is_exhaustive() {
+        // (目标, 应删 WireGuard, 应删 usque)
+        let cases = [
+            (UninstallTarget::WireGuard, true, false),
+            (UninstallTarget::Usque, false, true),
+            (UninstallTarget::Both, true, true),
+        ];
+        for (target, expect_wg, expect_uq) in cases {
+            assert_eq!(
+                UninstallTarget::scope(target).0,
+                expect_wg,
+                "{target:?} 对 WireGuard 的处置错误"
+            );
+            assert_eq!(
+                UninstallTarget::scope(target).1,
+                expect_uq,
+                "{target:?} 对 usque 的处置错误"
+            );
+        }
+    }
+
+    /// **本次重构要修的核心问题**：只卸 usque 时不得触碰 WireGuard。
+    ///
+    /// WireGuard 账号里含 Cloudflare 分配的 `reserved`，删掉就得重新注册，
+    /// 出口 IP 会变——用户以为在修一套，实际动了另一套。
+    #[test]
+    fn test_uninstall_usque_does_not_touch_wireguard() {
+        assert!(
+            !UninstallTarget::scope(UninstallTarget::Usque).0,
+            "只卸 usque 不得删 WireGuard 账号"
+        );
+    }
+
+    /// 对称：只卸 WireGuard 时不得触碰 usque。
+    #[test]
+    fn test_uninstall_wireguard_does_not_touch_usque() {
+        assert!(
+            !UninstallTarget::scope(UninstallTarget::WireGuard).1,
+            "只卸 WireGuard 不得删 usque 的 config.json / systemd 服务"
+        );
+    }
+
+    /// **黑洞防护**：卸载后必须清探测缓存。
+    ///
+    /// 若不清，`current_egress()` 仍会选刚被删掉的那一套 →
+    /// 生成的 Xray 配置指向不存在的出口 → 流量被**静默丢弃**
+    /// （而不是回退直连）。这是比「WARP 不生效」严重得多的故障。
+    #[test]
+    fn test_uninstall_clears_probe_cache() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("pub async fn uninstall_one")
+            .expect("uninstall_one 必须存在");
+        let body = &SRC[start..];
+        let body = &body[..body.find("\n}\n").unwrap_or(body.len())];
+
+        assert!(
+            body.contains("global_probe_cache()"),
+            "卸载后必须清探测缓存，否则出口引擎会选一个已不存在的出口 → 黑洞"
+        );
+        assert!(
+            body.contains(".clear()"),
+            "必须调用 clear()——只读取缓存是没有意义的"
+        );
+    }
+
+    /// 两处删除逻辑不得各写一遍（否则迟早分叉）。
+    #[test]
+    fn test_uninstall_all_delegates_to_one() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("pub async fn uninstall_all")
+            .expect("uninstall_all 必须存在");
+        let body = &SRC[start..];
+        let body = &body[..body.find("\n}\n").unwrap_or(body.len())];
+
+        assert!(
+            body.contains("uninstall_one"),
+            "uninstall_all 必须委托给 uninstall_one，避免删除逻辑分叉"
+        );
+        assert!(
+            !body.contains("remove_usque()"),
+            "uninstall_all 不得自己再调一遍删除函数"
+        );
+    }
+
+    // ────────── 重启分派：usque 必须重启它自己的服务 ──────────
+
+    /// **线上故障的直接回归**：usque 的重启必须是 `systemctl restart
+    /// wwps-usque`，**不能**只是 `reload_core`。
+    ///
+    /// usque 卡死时 `reload_core` 完全无效——它只重读 Xray 配置，
+    /// 不碰 usque 进程。而界面会报「重启成功」，所以管理员以为修好了。
+    #[test]
+    fn test_usque_restart_targets_its_own_service() {
+        assert_eq!(
+            RestartAction::for_target(UninstallTarget::Usque),
+            RestartAction::RestartService(crate::core::paths::usque::SERVICE_NAME),
+            "usque 是独立 systemd 服务，重启它必须走 systemctl restart"
+        );
+    }
+
+    /// WireGuard 没有独立服务——重启它就是让核心重读配置。
+    #[test]
+    fn test_wireguard_restart_reloads_core() {
+        assert_eq!(
+            RestartAction::for_target(UninstallTarget::WireGuard),
+            RestartAction::ReloadCore,
+            "WireGuard 跑在 Xray 进程内，没有可重启的服务"
+        );
+    }
+
+    /// usque 的重启**不得**退化成 `ReloadCore`。
+    ///
+    /// 单独断言这一条，因为它是那个 bug 的确切形状。
+    #[test]
+    fn test_usque_restart_is_not_reload_core() {
+        assert_ne!(
+            RestartAction::for_target(UninstallTarget::Usque),
+            RestartAction::ReloadCore,
+            "若 usque 也 reload_core，卡死的隧道永远修不好——这正是已发生的故障"
+        );
+    }
+
+    /// `Both` 必须先拉起独立服务，再让核心重读配置。
+    #[test]
+    fn test_both_restart_includes_service_restart() {
+        assert_eq!(
+            RestartAction::for_target(UninstallTarget::Both),
+            RestartAction::RestartService(crate::core::paths::usque::SERVICE_NAME)
+        );
+    }
+
+    /// `restart_one` 的实际 IO 必须与 `for_target` 的决策一致——
+    /// 否则决策纯粹是装饰，真正的 bug 会藏在函数体里。
+    #[test]
+    fn test_restart_one_acts_on_the_decision() {
+        const SRC: &str = include_str!("installer.rs");
+        let start = SRC
+            .find("pub async fn restart_one")
+            .expect("restart_one 必须存在");
+        let body = &SRC[start..];
+        let body = &body[..body.find("\n}\n").unwrap_or(body.len())];
+
+        assert!(
+            body.contains("RestartAction::for_target"),
+            "restart_one 必须依据 for_target 的决策执行，不能在函数体里另写一套判断"
+        );
+        assert!(
+            body.contains("control_service"),
+            "必须真的调用 systemctl 重启服务，否则决策没有落地"
+        );
+        assert!(
+            body.contains("SERVICE_NAME") || body.contains("RestartService"),
+            "必须用到服务名——usque 的重启对象是 wwps-usque"
+        );
+    }
+
+    // ────────── 子页入口：只显示已装的那一套 ──────────
+
+    /// 只装一套时，入口只该有一个——另一个是死按钮。
+    #[test]
+    fn test_subpage_entries_only_lists_installed() {
+        let wg_only = InstalledKinds::detect(true, false).subpage_entries();
+        assert_eq!(wg_only.len(), 1, "只装 WireGuard 只该有一个入口");
+        assert_eq!(wg_only[0].1, "m_warp_wg");
+
+        let uq_only = InstalledKinds::detect(false, true).subpage_entries();
+        assert_eq!(uq_only.len(), 1, "只装 usque 只该有一个入口（线上情形）");
+        assert_eq!(uq_only[0].1, "m_warp_usque");
+    }
+
+    /// 都没装时**不得**给出任何入口。
+    #[test]
+    fn test_subpage_entries_empty_when_nothing_installed() {
+        assert!(
+            InstalledKinds::none().subpage_entries().is_empty(),
+            "什么都没装却给出管理入口 → 死按钮"
+        );
+    }
+
+    /// 两套都装时给出两个入口。
+    #[test]
+    fn test_subpage_entries_two_when_both_installed() {
+        let both = InstalledKinds::detect(true, true).subpage_entries();
+        assert_eq!(both.len(), 2);
+        assert_eq!(both[0].1, "m_warp_wg");
+        assert_eq!(both[1].1, "m_warp_usque");
+    }
+
+    /// 入口顺序固定，不随探测结果跳动（否则按钮位置会变，容易误点）。
+    #[test]
+    fn test_subpage_entry_order_is_stable() {
+        let a = InstalledKinds::detect(true, true).subpage_entries();
+        let b = InstalledKinds::detect(true, true).subpage_entries();
+        assert_eq!(a, b, "同一状态两次调用必须给出相同顺序");
+        assert_eq!(a[0].1, "m_warp_wg", "WireGuard 固定在前");
+    }
+
+    /// 两个入口的 i18n key 必须不同——否则两个按钮文案一样，
+    /// 管理员分不清点哪个。
+    #[test]
+    fn test_subpage_entries_have_distinct_labels() {
+        let both = InstalledKinds::detect(true, true).subpage_entries();
+        assert_ne!(
+            both[0].0, both[1].0,
+            "两个子页入口的文案 key 必须不同，否则按钮无法分辨"
+        );
     }
 }

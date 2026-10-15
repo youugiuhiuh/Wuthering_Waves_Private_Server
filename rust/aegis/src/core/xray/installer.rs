@@ -251,10 +251,28 @@ impl WarpInstaller {
         Ok(())
     }
 
+    /// 重启 WARP。
+    ///
+    /// # 已废弃的语义陷阱
+    ///
+    /// 这个函数原名 `restart_service`，只做 `reload_core()`。对
+    /// WireGuard 是对的（它跑在核心进程内），但名字让人以为它能重启
+    /// **任何** WARP 服务——而 usque 是独立 systemd 服务，reload 核心
+    /// 对它毫无作用。
+    ///
+    /// 线上故障正出在这里：点「重启服务」救卡住的 usque，什么都没发生，
+    /// 界面却报成功。
+    ///
+    /// 现按实现分派，与子页按钮走同一条路径
+    /// （[`crate::core::usque::installer::restart_one`]），避免两处语义分叉。
+    ///
+    /// **新代码应直接用 `restart_one(target)`** —— 它要求调用方显式
+    /// 说明重启哪一套，不再有「不知道重启的是什么」的空间。
     pub async fn restart_service() -> Result<()> {
-        // No service to restart, just reload core
-        crate::core::system::maintenance::MaintenanceManager::reload_core().await?;
-        Ok(())
+        crate::core::usque::installer::restart_one(
+            crate::core::usque::installer::UninstallTarget::Both,
+        )
+        .await
     }
 
     /// 入口横幅的 i18n key——按**实际装了哪一套**分派。
@@ -282,6 +300,33 @@ impl WarpInstaller {
         }
     }
 
+    /// WireGuard 单套的状态行（子页用）。
+    ///
+    /// 与 [`Self::status`] 的区别：`status` 同时讲两套，本函数只讲
+    /// WireGuard——子页里混进 usque 的说明正是要消除的混淆。
+    pub async fn wireguard_status_line() -> String {
+        let registered = fs::try_exists(warp_paths::ACCOUNT_FILE)
+            .await
+            .unwrap_or(false);
+        if !registered {
+            return "WireGuard: 🔴 未注册".to_string();
+        }
+
+        let first = read_wg_rx_bytes().await;
+        tokio::time::sleep(WG_RX_SAMPLE_INTERVAL).await;
+        let second = read_wg_rx_bytes().await;
+
+        match Self::verdict_from_samples(first, second) {
+            WgTunnelHealth::Established => {
+                format!("WireGuard: 🟢 隧道正常（近 {WG_RX_SAMPLE_INTERVAL:?} 内收到回包）")
+            }
+            WgTunnelHealth::NoTraffic => format!(
+                "WireGuard: 🟡 已注册，但隧道未建立\n\
+                 └ {WG_RX_SAMPLE_INTERVAL:?} 内 `wg0` 未收到任何回包"
+            ),
+        }
+    }
+
     /// WARP 状态：账号是否注册 **且隧道是否真的通**。
     ///
     /// 修复前这里只 `try_exists(warp_account.json)`，于是**永远**显示
@@ -298,7 +343,7 @@ impl WarpInstaller {
     /// 管理员需要同时看到两边的情况才能判断当前走的是哪条路。
     ///
     /// `installed == false` 不是错误——用户可能只装了其中一套。
-    fn usque_status_line(installed: bool, healthy: Option<bool>) -> String {
+    pub fn usque_status_line(installed: bool, healthy: Option<bool>) -> String {
         if !installed {
             return "⚡ <b>usque</b>: ⚪ 未安装（MASQUE/HTTP-2 不可用）".to_string();
         }
