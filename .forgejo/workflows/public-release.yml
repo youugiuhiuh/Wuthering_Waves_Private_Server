@@ -290,7 +290,7 @@ jobs:
       - name: Download Build Artifacts
         if: "contains(github.server_url, 'github.com')"
         continue-on-error: true
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dist-${{ needs.build.outputs.version }}
           path: dist
