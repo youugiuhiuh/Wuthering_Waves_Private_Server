@@ -16,7 +16,7 @@ trait FirewallD1 {
 
     // config() method returns the object path to the config interface
     #[zbus(property)]
-    fn config(&self) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn config(&self) -> zbus::Result<zbus::OwnedObjectPath>;
 }
 
 // Runtime - Zone Interface
@@ -44,7 +44,7 @@ trait FirewallD1Zone {
 )]
 trait FirewallD1Config {
     #[zbus(name = "getZoneByName")]
-    fn get_zone_by_name(&self, name: &str) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
+    fn get_zone_by_name(&self, name: &str) -> zbus::Result<zbus::OwnedObjectPath>;
 }
 
 // Config (Permanent) - Zone Interface
@@ -64,8 +64,8 @@ trait FirewallD1ConfigZone {
     fn set_target(&self, target: &str) -> zbus::Result<()>;
 }
 
-fn default_config_path() -> Result<zbus::zvariant::OwnedObjectPath> {
-    zbus::zvariant::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
+fn default_config_path() -> Result<zbus::OwnedObjectPath> {
+    zbus::OwnedObjectPath::try_from("/org/fedoraproject/FirewallD1/config")
         .map_err(|e| anyhow::anyhow!("Invalid default firewalld config path: {}", e))
 }
 
@@ -111,14 +111,14 @@ impl FirewalldClient {
             Err(_) => default_config_path()?,
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
-            .path(config_path)?
+            .path(config_path)
             .build()
             .await?;
 
         // Get permanent zone object path
         if let Ok(zone_path) = config_proxy.get_zone_by_name(&zone).await {
             let config_zone_proxy = FirewallD1ConfigZoneProxy::builder(&connection)
-                .path(zone_path)?
+                .path(zone_path)
                 .build()
                 .await?;
 
@@ -164,13 +164,13 @@ impl FirewalldClient {
             Err(_) => default_config_path()?,
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
-            .path(config_path)?
+            .path(config_path)
             .build()
             .await?;
 
         if let Ok(zone_path) = config_proxy.get_zone_by_name(&zone).await {
             let config_zone_proxy = FirewallD1ConfigZoneProxy::builder(&connection)
-                .path(zone_path)?
+                .path(zone_path)
                 .build()
                 .await?;
 
@@ -256,13 +256,13 @@ impl FirewalldClient {
             Err(_) => default_config_path()?,
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
-            .path(config_path)?
+            .path(config_path)
             .build()
             .await?;
 
         if let Ok(zone_path) = config_proxy.get_zone_by_name(&zone).await {
             let config_zone_proxy = FirewallD1ConfigZoneProxy::builder(&connection)
-                .path(zone_path)?
+                .path(zone_path)
                 .build()
                 .await?;
 
@@ -318,13 +318,13 @@ impl FirewalldClient {
             Err(_) => default_config_path()?,
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
-            .path(config_path)?
+            .path(config_path)
             .build()
             .await?;
 
         if let Ok(zone_path) = config_proxy.get_zone_by_name(&zone).await {
             let config_zone_proxy = FirewallD1ConfigZoneProxy::builder(&connection)
-                .path(zone_path)?
+                .path(zone_path)
                 .build()
                 .await?;
 
@@ -378,14 +378,14 @@ impl FirewalldClient {
             Err(_) => default_config_path()?,
         };
         let config_proxy = FirewallD1ConfigProxy::builder(&connection)
-            .path(config_path)?
+            .path(config_path)
             .build()
             .await?;
 
         // Get zone object path (Permanent)
         let zone_path = config_proxy.get_zone_by_name(&zone).await?;
         let config_zone_proxy = FirewallD1ConfigZoneProxy::builder(&connection)
-            .path(zone_path)?
+            .path(zone_path)
             .build()
             .await?;
 
