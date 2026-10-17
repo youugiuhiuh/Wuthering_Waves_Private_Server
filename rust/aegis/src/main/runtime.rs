@@ -38,10 +38,49 @@ enum TeloxideCommand {
 }
 
 pub(crate) async fn register_bot_commands(bot: &Bot) -> Result<()> {
-    bot.set_my_commands(TeloxideCommand::bot_commands())
+    // Telegram 原生支持按用户客户端语言区分的命令表（language_code）。
+    // 先注册一份默认表作为兜底，再为 zh/en/ja 各注册一份本地化表。
+    //
+    // 兜底表的语言用全局 locale（main.rs 已在连接平台前根据 config.enc 设好），
+    // 不再重复读 config：configured_lang() 会再解一次密，而结果早已应用。
+    let default_lang = i18n::current_lang();
+    bot.set_my_commands(localized_commands(default_lang))
         .await
         .map_err(|e| anyhow::anyhow!("无法向 Telegram 注册主命令: {e}"))?;
+
+    for lang in [i18n::Lang::Zh, i18n::Lang::En, i18n::Lang::Ja] {
+        if let Err(e) = bot
+            .set_my_commands(localized_commands(lang))
+            .language_code(lang.as_str())
+            .await
+        {
+            // 单一语言的注册失败不应阻断启动（Telegram 侧仍有默认表可用）。
+            log::warn!("向 Telegram 注册 {} 语言命令失败: {}", lang.as_str(), e);
+        }
+    }
     Ok(())
+}
+
+/// 按指定语言构造斜杠菜单命令表。
+///
+/// `rust_i18n::t!` 读取的是进程全局 locale，无法逐次传参，因此这里临时切换
+/// locale 渲染完毕立即恢复，避免污染调用方的全局语言状态。
+/// 调用方传入的 `lang` 优先于当前全局 locale，因此本函数不受启动顺序影响。
+fn localized_commands(lang: i18n::Lang) -> Vec<teloxide::types::BotCommand> {
+    let previous = i18n::current_lang();
+    i18n::set_lang(lang);
+    let commands = vec![
+        teloxide::types::BotCommand::new("help", rust_i18n::t!("bot_commands.help").into_owned()),
+        teloxide::types::BotCommand::new("start", rust_i18n::t!("bot_commands.start").into_owned()),
+        teloxide::types::BotCommand::new("menu", rust_i18n::t!("bot_commands.menu").into_owned()),
+        teloxide::types::BotCommand::new("auth", rust_i18n::t!("bot_commands.auth").into_owned()),
+        teloxide::types::BotCommand::new(
+            "setsecurityfile",
+            rust_i18n::t!("bot_commands.set_security_file").into_owned(),
+        ),
+    ];
+    i18n::set_lang(previous);
+    commands
 }
 
 fn teloxide_to_bot(cmd: TeloxideCommand) -> BotCommand {
@@ -704,6 +743,85 @@ pub(crate) fn classify_simplex_inbound(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 斜杠菜单描述必须走 i18n：同一个命令在不同语言下描述文本必须不同，
+    /// 且不得残留硬编码英文。
+    ///
+    /// `localized_commands` 内部临时改写进程全局 locale，因此与 i18n 模块里
+    /// 其它 `#[serial]` 的 locale 写入者互斥，否则会读到中间值。
+    #[serial_test::serial]
+    #[test]
+    fn localized_commands_translates_descriptions_per_lang() {
+        let zh = localized_commands(aegis::core::i18n::Lang::Zh);
+        let en = localized_commands(aegis::core::i18n::Lang::En);
+        let ja = localized_commands(aegis::core::i18n::Lang::Ja);
+
+        // 命令名本身不随语言变化（Telegram 要求小写英文/数字/下划线）。
+        let names: Vec<&str> = zh.iter().map(|c| c.command.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["help", "start", "menu", "auth", "setsecurityfile"]
+        );
+        for (other, lang) in [(&en, "en"), (&ja, "ja")] {
+            let other_names: Vec<&str> = other.iter().map(|c| c.command.as_str()).collect();
+            assert_eq!(names, other_names, "[{}] 命令名必须与 zh 一致", lang);
+        }
+
+        // 描述必须真正本地化：zh 与 en/ja 不能雷同。
+        let zh_help = &zh[0].description;
+        assert_ne!(zh_help, &en[0].description, "zh/en help 描述不应相同");
+        assert_ne!(zh_help, &ja[0].description, "zh/ja help 描述不应相同");
+
+        // 不得等于 i18n key 本身（rust-i18n 找不到 key 时原样返回 key）。
+        for cmd in zh.iter().chain(en.iter()).chain(ja.iter()) {
+            assert!(!cmd.description.is_empty(), "描述不得为空");
+            assert!(
+                !cmd.description.starts_with("bot_commands."),
+                "描述未翻译，仍是 key 本身: {}",
+                cmd.description
+            );
+        }
+    }
+
+    /// zh 描述必须与 locale 文件中的 `bot_commands.*` 一致，防止再次漂移成硬编码英文。
+    #[serial_test::serial]
+    #[test]
+    fn localized_commands_zh_matches_locale_file() {
+        let cmds = localized_commands(aegis::core::i18n::Lang::Zh);
+        let expect = [
+            "bot_commands.help",
+            "bot_commands.start",
+            "bot_commands.menu",
+        ];
+        for (cmd, key) in cmds.iter().zip(expect) {
+            assert!(
+                !cmd.description.contains("Show ") && !cmd.description.contains("Start bot"),
+                "[{}] 疑似硬编码英文: {}",
+                key,
+                cmd.description
+            );
+        }
+    }
+
+    /// `localized_commands` 不得污染调用方的全局 locale。
+    #[serial_test::serial]
+    #[test]
+    fn localized_commands_restores_global_locale() {
+        for before in [
+            aegis::core::i18n::Lang::Zh,
+            aegis::core::i18n::Lang::En,
+            aegis::core::i18n::Lang::Ja,
+        ] {
+            i18n::set_lang(before);
+            let _ = localized_commands(aegis::core::i18n::Lang::Ja);
+            assert_eq!(
+                i18n::current_lang(),
+                before,
+                "调用后应恢复为调用前的 locale {:?}",
+                before
+            );
+        }
+    }
 
     #[test]
     fn contact_connected_log_line_reports_contact_id_and_name() {
