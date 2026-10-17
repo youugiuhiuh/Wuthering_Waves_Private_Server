@@ -55,39 +55,31 @@
 
 > CodeGraph 是高效的**代码阅读器**——最适合理解已有代码。
 
-## codebase-memory-mcp CLI（项目分析引擎）
+## codebase-memory-mcp（项目分析引擎）
 
 **适用场景**：架构分析、寻找重构目标、热点识别、跨模块依赖、语义搜索。
 
-**⚠️ 使用 CLI 而非 MCP**：pi 的 codebase-memory-mcp MCP 工具当前不可用（配置指向无效二进制）。统一通过命令行调用：
+**✅ 优先使用 MCP 工具**（已实测可用）。所有查询直接调用同名 MCP 工具，每次调用需传 `project`（单数，非 `projects`）：
 
-```bash
-codebase-memory-mcp cli <tool> --project <PROJECT> [--flag value ...]
+```
+search_graph(project, name_pattern="...")
+trace_path(project, function_name="...", direction="inbound")
 ```
 
-- 项目名：先运行 `codebase-memory-mcp cli list_projects` 获取（本项目为 `home-fe-Dark-Wuthering_Waves_Private_Server`）。
-- 性能优化：每次 cli 调用会启动临时 daemon，`codebase-memory-mcp daemon start` 可保持热进程、消除启动成本。
+- **project 名**：`home-ub-Dark-Wuthering_Waves_Private_Server`（用 `list_projects` 确认；注意是 `home-ub-...` 不是 `home-fe-...`）。
+- **首次使用 / 新项目**：先 `index_repository(repo_path=...)` 建索引；`index_status` 查看状态；`list_projects` 列出已有项目。
+- **MCP 不可用时才回退 CLI**：`codebase-memory-mcp cli <tool> --project <PROJECT> [--flag value ...]`。
+  - 性能优化：每次 cli 调用会启动临时 daemon，`codebase-memory-mcp daemon start` 可保持热进程。
 
 ### 推荐查询模式
 
-Cypher 通过 `query_graph` 执行，基础命令：
-
-```bash
-codebase-memory-mcp cli query_graph --project <PROJECT> --query "MATCH ... RETURN ..."
-```
-
-常用 Cypher（找巨型函数 / 热点 / 模块 / 类）：
+常用 Cypher（找巨型函数 / 热点 / 模块 / 类），通过 `query_graph(project, query=...)` 执行：
 
 ```cypher
--- 找巨型函数（重构候选）
+-- 找热门函数（重构候选）
 MATCH (f:Function) WHERE f.file_path CONTAINS "路径"
-RETURN f.name, f.file_path, f.end_line - f.start_line AS length
-ORDER BY length DESC LIMIT 10
-
--- 找热点（高 fan-in 瓶颈）
-MATCH (f:Function)-[r:CALLS]-( )
-WITH f, count(r) AS fan_in ORDER BY fan_in DESC LIMIT 10
-RETURN f.name, f.file_path, f.start_line, fan_in
+RETURN f.name, f.start_line, f.end_line
+ORDER BY f.end_line DESC LIMIT 10
 
 -- 查看模块结构
 MATCH (m:Module) WHERE m.file_path CONTAINS "路径"
@@ -98,17 +90,22 @@ MATCH (c:Class) WHERE c.file_path CONTAINS "路径"
 RETURN c.name, c.file_path, c.start_line ORDER BY c.file_path
 ```
 
-CLI 工具速查（均需 `--project <PROJECT>`）：
+> ⚠️ **`query_graph` 不支持 `RETURN` 中的算术表达式**：`f.end_line - f.start_line AS length` 会被 parser 拒绝
+> （`unexpected input at pos N ('-')`）。请分别回传 `start_line` / `end_line` 后自行相减，或改用 `get_architecture(aspects=["hotspots"])` 取得 fan-in 排名。
 
-- **`search_graph`**：自然语言语义搜索（BM25），适合模糊查询。`--name-pattern ".*Handler.*"` 按名匹配；`--query "telegram message send"` 按语义搜索。
-- **`trace_path`**：调用链追踪。`--function-name <X> --direction inbound|outbound|both --depth N`。
-- **`get_code_snippet`**：读取特定函数/类的源码。`--qualified-name <qn>`（需先用 search_graph 找到 qn）。
-- **`get_architecture`**：获取项目架构总览（聚类/分层/热点/边界）。
-- **`check_index_coverage`**：验证索引覆盖。`--paths "a.rs" --paths "b.rs"`（数组参数需重复 flag）或 `--scopes "."`。
-- **`search_code`**：代码文本搜索。`--pattern <regex> --file-pattern *.rs`。
+MCP 工具速查（均需 `project`）：
+
+- **`search_graph`**：自然语言语义搜索（BM25），适合模糊查询。`name_pattern=".*Handler.*"` 按名匹配；`query="telegram message send"` 按语义搜索。
+- **`trace_path`**：调用链追踪。`function_name=<X>`, `direction=inbound|outbound|both`, `depth=N`。
+  - 名称歧义时回传 `status: ambiguous` + suggestions，改用 qualified_name，或加 `file` 参数缩小范围。
+- **`get_code_snippet`**：读取特定函数/类的源码。`qualified_name=<qn>`（需先用 search_graph 找到 qn）。
+- **`get_architecture`**：获取项目架构总览。`aspects=["languages","packages","entry_points","hotspots","layers","clusters","cycles"]`。
+- **`check_index_coverage`**：验证索引覆盖。`paths=["a.rs","b.rs"]` 或 `scopes=["."]`。
+- **`search_code`**：代码文本搜索。`pattern=<regex>`, `file_pattern=*.rs`。
+- **`query_graph`**：Cypher 查询（见上方语法限制）。
 - **`list_projects` / `index_status` / `detect_changes` / `manage_adr`**：项目管理、索引状态、git diff 影响分析、ADR 管理。
 
-> codebase-memory-mcp CLI 是强大的**项目分析器**——最适合做架构评估和重构规划。
+> codebase-memory-mcp 是强大的**项目分析器**——最适合做架构评估和重构规划。CLI 与 MCP 结果一致，但 MCP 更省 token、无需 shell。
 
 ## 选择策略
 
@@ -116,14 +113,14 @@ CLI 工具速查（均需 `--project <PROJECT>`）：
 |------|---------|------|
 | 理解某函数怎么工作的 | `codegraph_explore` | 一次调用 = 源码 + 调用链 |
 | 读文件 + 看依赖 | `codegraph_node` | 替代 Read，附带 blast radius |
-| 架构总览 / 模块清单 | `codebase-memory-mcp cli get_architecture` / `query_graph` | 完整的节点和关系查询 |
-| 找巨型函数 / 重构目标 | `codebase-memory-mcp cli query_graph` | `ORDER BY length DESC` |
-| 热点 / 瓶颈识别 | `codebase-memory-mcp cli query_graph` | fan-in 聚合查询 |
-| 语义搜索（记不住符号名） | `codebase-memory-mcp cli search_graph --query` | BM25 语义搜索 |
-| 跨服务 / 跨语言追踪 | `codebase-memory-mcp cli trace_path` | HTTP_CALLS 边 |
+| 架构总览 / 模块清单 | MCP `get_architecture` / `query_graph` | 完整的节点和关系查询 |
+| 找巨型函数 / 重构目标 | MCP `query_graph` | 回传 start_line/end_line 后自行相减 |
+| 热点 / 瓶颈识别 | MCP `get_architecture(aspects=["hotspots"])` | fan-in 排名直接可用 |
+| 语义搜索（记不住符号名） | MCP `search_graph(query=...)` | BM25 语义搜索 |
+| 跨服务 / 跨语言追踪 | MCP `trace_path` | HTTP_CALLS 边 |
 | 快速定位符号位置 | `codegraph_search` | 轻量快速 |
 
-**黄金法则**：日常开发读代码用 CodeGraph（快、省 token）；做架构分析、重构评估、找瓶颈时用 `codebase-memory-mcp cli`。
+**黄金法则**：日常开发读代码用 CodeGraph（快、省 token）；做架构分析、重构评估、找瓶颈时用 codebase-memory-mcp **MCP 工具**。
 
 **回退规则**：
 仅当两个系统都不可用时，才回退到 `grep`/`Read` 等常规工具。
