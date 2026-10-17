@@ -3,8 +3,8 @@ package pkg
 import (
 	"fmt"
 	"io"
-	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/oschwald/geoip2-golang"
+	"github.com/oschwald/geoip2-golang/v2"
 )
 
 var countryCache sync.Map
@@ -24,12 +24,14 @@ func GetCachedCountry(ip string, geoDB *geoip2.Reader) string {
 	}
 
 	countryCode := "UNKNOWN"
-	record, err := geoDB.Country(net.ParseIP(ip))
-	if err == nil {
-		if record.Country.IsoCode != "" {
-			countryCode = record.Country.IsoCode
-		} else if record.RegisteredCountry.IsoCode != "" {
-			countryCode = record.RegisteredCountry.IsoCode
+	if addr, err := netip.ParseAddr(ip); err == nil {
+		record, err := geoDB.Country(addr)
+		if err == nil {
+			if record.Country.ISOCode != "" {
+				countryCode = record.Country.ISOCode
+			} else if record.RegisteredCountry.ISOCode != "" {
+				countryCode = record.RegisteredCountry.ISOCode
+			}
 		}
 	}
 
@@ -42,13 +44,16 @@ func GetCachedASN(ip string, asnDB *geoip2.Reader) (ASNResult, error) {
 		return cached.(ASNResult), nil
 	}
 
-	asn, org := GetASN(net.ParseIP(ip), asnDB)
-	result := ASNResult{ASN: asn, Org: org}
+	result := ASNResult{}
+	if addr, err := netip.ParseAddr(ip); err == nil {
+		asn, org := GetASN(addr, asnDB)
+		result = ASNResult{ASN: asn, Org: org}
+	}
 	asnResultCache.Store(ip, result)
 	return result, nil
 }
 
-func GetASN(ip net.IP, db *geoip2.Reader) (uint32, string) {
+func GetASN(ip netip.Addr, db *geoip2.Reader) (uint32, string) {
 	record, err := db.ASN(ip)
 	if err != nil {
 		return 0, ""
