@@ -1,6 +1,6 @@
 [package]
 name = "aegis"
-version = "1.9.1"
+version = "1.9.2"
 edition = "2024"
 
 [dependencies]
@@ -33,8 +33,8 @@ dashmap = "6.2.1"
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 regex = "1.13.1"
 self-replace = "1.5"
-zbus = { version = "6.0.0", features = ["tokio"] }
 zip = { version = "9.0.4", default-features = false, features = ["deflate"] }
+zbus = { version = "6.0.0", features = ["tokio"] }
 x25519-dalek = { version = "3.0.0", features = ["static_secrets", "getrandom"] }
 log = "0.4.34"
 rust-embed = "8.13.0"
