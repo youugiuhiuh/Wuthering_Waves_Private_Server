@@ -181,6 +181,12 @@ mod tests {
         assert!(link.contains("host=example%2Ecom"));
     }
 
+    /// Cloudflare 只建 443 一个节点。
+    ///
+    /// 同一域名下 CF 会把流量随机回源到它支持的多个 HTTPS 备用端口之一；
+    /// 若服务端也在这些端口上建 inbound，且各自 `path` 不同，CF 会把请求
+    /// 甩到 path 不匹配的 inbound，表现为 403 或断连（实测确认过 CF 曾打到
+    /// 8443 与 2096）。因此只保留 443，让回源端口唯一。
     #[test]
     fn cloudflare_cdn_ports_each_build_valid_node() {
         let certs = CertPaths {
@@ -188,7 +194,7 @@ mod tests {
             privkey: "key.pem".into(),
         };
         let cdn_ports = DnsProvider::Cloudflare.cdn_ports();
-        assert_eq!(cdn_ports.len(), 6, "Cloudflare should have 6 CDN ports");
+        assert_eq!(cdn_ports, &[443], "Cloudflare 应只产出 443");
         for (i, &port) in cdn_ports.iter().enumerate() {
             let (config, link) = ConfigManager::build_tls_xhttp_node(
                 i,
