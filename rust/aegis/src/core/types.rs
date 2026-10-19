@@ -25,9 +25,19 @@ impl DnsProvider {
         }
     }
 
+    /// 该 provider 下应该建 inbound 的端口。
+    ///
+    /// Cloudflare 公开支持 443/8443/2053/2083/2087/2096 等 HTTPS 备用端口，
+    /// 但在「一个域名指向源站」的场景下，CF 会在这些端口间随机选择回源端口。
+    /// 若服务端在这些端口上都建了 inbound，且每个 inbound 的 `path` 不同，
+    /// 客户端请求就会落到 path 不匹配的 inbound，表现为 403 或断连
+    /// （实测观察到 CF 曾把请求打到 8443 与 2096）。
+    ///
+    /// 因此这里只返回 443，保证回源端口唯一。若将来要恢复多端口，
+    /// 必须同时让所有 inbound 共用同一 `path` 与同一 UUID，否则依旧会错配。
     pub const fn cdn_ports(self) -> &'static [u16] {
         match self {
-            Self::Cloudflare => &[443, 8443, 2053, 2083, 2087, 2096],
+            Self::Cloudflare => &[443],
             Self::Route53 => &[443],
         }
     }
@@ -129,13 +139,28 @@ mod tests {
         );
     }
 
+    /// Cloudflare 只保留 443。
+    ///
+    /// 同一域名下 CF 会随机回源到它支持的多个 HTTPS 备用端口之一；
+    /// 若服务端在这些端口都建了 inbound 且 path 各不相同，回源会落到错误的
+    /// inbound，表现为 403 或断连。只保留 443 使回源端口唯一。
     #[test]
     fn dns_provider_cdn_ports() {
-        assert_eq!(
-            DnsProvider::Cloudflare.cdn_ports(),
-            &[443, 8443, 2053, 2083, 2087, 2096]
-        );
+        assert_eq!(DnsProvider::Cloudflare.cdn_ports(), &[443]);
         assert_eq!(DnsProvider::Route53.cdn_ports(), &[443]);
+    }
+
+    /// 所有 CDN provider 都必须只产出 443，避免任何一家回源端口歧义。
+    #[test]
+    fn all_providers_expose_only_port_443() {
+        for p in [DnsProvider::Cloudflare, DnsProvider::Route53] {
+            assert_eq!(
+                p.cdn_ports(),
+                &[443],
+                "{:?} 只应产出 443，否则 CF 回源会随机落到其它端口",
+                p
+            );
+        }
     }
 
     #[test]

@@ -251,7 +251,14 @@ impl ConfigManager {
                 "xhttpSettings": {
                     "host": "",
                     "path": path,
-                    "mode": "auto"
+                    // 显式 `packet-up`，不能依赖 `auto`。
+                    //
+                    // `auto` 在 TLS + H2 下会选中 `stream-up`，而 `stream-up`
+                    // 需要 h2c 全双工保活；Cloudflare 回源是 HTTP/1.1 半双工，
+                    // 服务端一旦回包连接就被掐断（XTLS/Xray-core#4359）。
+                    // 官方结论：「无法穿透其它 CDN 或反代软件的话，建议 mode
+                    // 选 packet-up，兼容性最强」。
+                    "mode": "packet-up"
                 }
             },
             "sniffing": {
@@ -277,7 +284,9 @@ impl ConfigManager {
         let encoded_email = utf8_percent_encode(email, NON_ALPHANUMERIC).to_string();
 
         format!(
-            "vless://{}@{}:{}?encryption=none&security=tls&sni={}&fp=chrome&alpn=h2&type=xhttp&host={}&path={}&mode=auto#{}",
+            // 链接也显式带 `mode=packet-up`，避免客户端按 `auto` 选中
+            // `stream-up` 而过 CF 失败（同 #4359）。
+            "vless://{}@{}:{}?encryption=none&security=tls&sni={}&fp=chrome&alpn=h2&type=xhttp&host={}&path={}&mode=packet-up#{}",
             uuid, domain, port, encoded_sni, encoded_host, encoded_path, encoded_email
         )
     }
@@ -1203,8 +1212,75 @@ mod tests {
         assert_eq!(value["streamSettings"]["tlsSettings"]["minVersion"], "1.2");
     }
 
+    /// 回归：XHTTP+TLS 服务端必须显式写 `packet-up`，不能依赖 `auto`。
+    ///
+    /// `auto` 在 TLS + H2 下会选中 `stream-up`，而 `stream-up` 需要 h2c 全双工；
+    /// Cloudflare 回源为 HTTP/1.1 半双工，会导致连接被掐断
+    /// （见 XTLS/Xray-core#4359「xhttp无法使用stream-up通过CloudflareCDN」）。
     #[test]
-    fn tls_xhttp_link_matches_716_and_excludes_reality_parameters() {
+    fn tls_xhttp_inbound_uses_packet_up_not_auto() {
+        let certs = CertPaths {
+            fullchain: "/root/cert/example.com/fullchain.pem".into(),
+            privkey: "/root/cert/example.com/privkey.pem".into(),
+        };
+        let value = ConfigManager::build_tls_xhttp_inbound(
+            "XHTTP-abcd-0",
+            443,
+            "uuid",
+            "mail",
+            "example.com",
+            &certs,
+            IpVersion::IPv4,
+            "/events/abc123",
+        );
+        assert_eq!(
+            value["streamSettings"]["xhttpSettings"]["mode"], "packet-up",
+            "XHTTP+TLS inbound 必须显式用 packet-up"
+        );
+    }
+
+    /// 回归：XHTTP+TLS 订阅链接必须带 `mode=packet-up`，引导客户端用正确模式。
+    #[test]
+    fn tls_xhttp_link_carries_packet_up_mode() {
+        let link = ConfigManager::generate_client_link_tls(
+            "uuid",
+            "example.com",
+            443,
+            "mail",
+            "/events/abc123",
+        );
+        assert!(
+            link.contains("mode=packet-up"),
+            "订阅链接必须显式带 packet-up，实际: {link}"
+        );
+        assert!(
+            !link.contains("mode=auto"),
+            "订阅链接不应再用 auto，实际: {link}"
+        );
+    }
+
+    /// 回归：REALITY 场景保持 `auto` 不变（REALITY 的 auto 走 stream-one，不受影响）。
+    #[test]
+    fn reality_xhttp_keeps_auto_mode() {
+        let src = include_str!("config.rs");
+        let reality_link = src
+            .lines()
+            .find(|l| l.contains("security=reality") && l.contains("type=xhttp"))
+            .expect("应存在 REALITY 的 xhttp 链接模板");
+        assert!(
+            reality_link.contains("mode=auto"),
+            "REALITY 链接应保持 mode=auto，实际: {reality_link}"
+        );
+    }
+
+    /// 回归：Cloudflare 只保留 443 一个端口。
+    ///
+    /// 同一域名下 CF 会随机回源到它支持的多个 HTTPS 备用端口
+    /// （8443/2053/2083/2087/2096）之一。若服务端在这些端口都开了 inbound，
+    /// 但各自 path 不同，CF 会把请求甩到错误的 inbound，导致 403/断连。
+    /// 因此只保留 443，保证回源端口唯一。
+    #[test]
+    fn xhttp_tls_link_matches_716_and_excludes_reality_parameters() {
         let link = ConfigManager::generate_client_link_tls(
             "uuid",
             "Example.COM",
@@ -1214,7 +1290,7 @@ mod tests {
         );
         assert_eq!(
             link,
-            "vless://uuid@example.com:2053?encryption=none&security=tls&sni=example%2Ecom&fp=chrome&alpn=h2&type=xhttp&host=example%2Ecom&path=%2Fxhttp%5Fa%20b&mode=auto#mail%20tag"
+            "vless://uuid@example.com:2053?encryption=none&security=tls&sni=example%2Ecom&fp=chrome&alpn=h2&type=xhttp&host=example%2Ecom&path=%2Fxhttp%5Fa%20b&mode=packet-up#mail%20tag"
         );
         for forbidden in ["pbk=", "sid=", "pqv=", "flow="] {
             assert!(!link.contains(forbidden));
