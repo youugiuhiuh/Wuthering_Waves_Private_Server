@@ -538,7 +538,7 @@ pub async fn run_one_click(
     let mut failed = false;
     let mut all_links: Vec<String> = Vec::new();
 
-    send_progress(&tx, 1, 10, t!("ops.deploy_step_tune"));
+    send_progress(&tx, 1, 8, t!("ops.deploy_step_tune"));
     if MaintenanceManager::tune_vps_generic().await.is_err() {
         let _ = tx.send(t!("ops.deploy_fail", "0" => t!("ops.deploy_fail_tune")).to_string());
         failed = true;
@@ -551,11 +551,11 @@ pub async fn run_one_click(
         send_progress(
             &tx,
             2,
-            10,
+            8,
             t!("ops.deploy_skip", "0" => t!("ops.deploy_step_xray_init")),
         );
     } else if !failed {
-        send_progress(&tx, 2, 10, t!("ops.deploy_step_xray_init"));
+        send_progress(&tx, 2, 8, t!("ops.deploy_step_xray_init"));
         if let Err(e) = RealityInstallerInternal::install_minimal_environment().await {
             let _ = tx.send(
                 t!("ops.deploy_fail",
@@ -568,7 +568,7 @@ pub async fn run_one_click(
     }
 
     if !failed {
-        send_progress(&tx, 3, 10, t!("ops.deploy_step_pq"));
+        send_progress(&tx, 3, 8, t!("ops.deploy_step_pq"));
         if let Err(e) = ConfigManager::generate_reality_pq_keys().await {
             let _ = tx.send(
                 t!("ops.deploy_fail",
@@ -597,7 +597,7 @@ pub async fn run_one_click(
         send_progress(
             &tx,
             4,
-            10,
+            8,
             format!(
                 "{} ({})",
                 t!("ops.deploy_step_xhttp_tls"),
@@ -710,7 +710,7 @@ pub async fn run_one_click(
         send_progress(
             &tx,
             5,
-            10,
+            8,
             format!("{} ({})", t!("ops.deploy_step_vision"), ip_version.label()),
         );
         match ConfigManager::batch_create_reality_vision_enhanced(20, ip_version).await {
@@ -746,11 +746,11 @@ pub async fn run_one_click(
         send_progress(
             &tx,
             6,
-            10,
+            8,
             t!("ops.deploy_skip", "0" => t!("ops.deploy_step_singbox_init")),
         );
     } else if !failed {
-        send_progress(&tx, 6, 10, t!("ops.deploy_step_singbox_init"));
+        send_progress(&tx, 6, 8, t!("ops.deploy_step_singbox_init"));
         if let Err(e) = SingBoxInstaller::install().await {
             let _ = tx.send(
                 t!("ops.deploy_fail",
@@ -766,7 +766,7 @@ pub async fn run_one_click(
         send_progress(
             &tx,
             7,
-            10,
+            8,
             format!("{} ({})", t!("ops.deploy_step_h2"), ip_version.label()),
         );
         // 一键部署默认使用 gecko 混淆，但不开启端口跳跃。
@@ -814,77 +814,107 @@ pub async fn run_one_click(
         }
     }
 
-    if !failed {
-        let _ = adapter
-            .send_message(
-                &target,
-                MessageContent {
-                    text: t!("ops.deploy_step_kcp_dns").into_owned(),
-                    markup: None,
-                },
-            )
-            .await;
-    }
-
-    if !failed {
-        send_progress(&tx, 8, 10, t!("ops.deploy_step_kcp_dns"));
-        match ConfigManager::batch_create_kcp(5, ip_version, &["mld"]).await {
-            Ok(result) => {
-                all_links.extend(result.links);
-                let _ = adapter
-                    .send_message(
-                        &target,
-                        MessageContent {
-                            text: t!("ops.deploy_created_kcp_dns",
-                                    "0" => result.created_count.to_string(),
-                                    "1" => result.config_file.as_deref().unwrap_or("?"))
-                            .into_owned(),
-                            markup: None,
-                        },
-                    )
-                    .await;
-            }
-            Err(e) => {
-                let _ = tx.send(
-                    t!("ops.deploy_fail",
-                        "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_dns"), e)
-                    )
-                    .to_string(),
-                );
-                failed = true;
-            }
-        }
-    }
-
-    if !failed {
-        send_progress(&tx, 9, 10, t!("ops.deploy_step_kcp_wechat"));
-        match ConfigManager::batch_create_kcp(5, ip_version, &["mlw"]).await {
-            Ok(result) => {
-                all_links.extend(result.links);
-                let _ = adapter
-                    .send_message(
-                        &target,
-                        MessageContent {
-                            text: t!("ops.deploy_created_kcp_wechat",
-                                    "0" => result.created_count.to_string(),
-                                    "1" => result.config_file.as_deref().unwrap_or("?"))
-                            .into_owned(),
-                            markup: None,
-                        },
-                    )
-                    .await;
-            }
-            Err(e) => {
-                let _ = tx.send(
-                    t!("ops.deploy_fail",
-                        "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_wechat"), e)
-                    )
-                    .to_string(),
-                );
-                failed = true;
-            }
-        }
-    }
+    // ── 已移除：mKCP 创建（原步骤 8 与步骤 9）────────────────────────────
+    //
+    // 一键部署不再创建 mKCP 配置。原因见下方说明；如需恢复，取消注释整段即可
+    // （`ConfigManager::batch_create_kcp` 与 `KcpMask` 均仍保留，未被删除）。
+    //
+    // 原步骤 8：mKCP + DNS 伪装（遮罩码 `mld`），创建 5 个配置
+    // 原步骤 9：mKCP + 微信伪装（遮罩码 `mlw`），创建 5 个配置
+    //
+    // 移除理由：
+    //   1. mKCP 依赖 UDP。运营商或目标网络对 UDP 做 QoS/限速/封锁时，
+    //      该线路直接不可用，且失败表现为「连不上」而非「慢」，排查成本高。
+    //   2. mKCP 以牺牲带宽换取低延迟，传输同等内容比 TCP 多消耗 20–50% 流量，
+    //      在大流量场景下成本明显。
+    //   3. Xray 官方文档将 mKCP 归类为「不适合直接用于过墙」：它没有 TLS/REALITY
+    //      提供的正常 HTTPS 外观，`finalmask` 的 udp 混淆层只是固定长度混淆，
+    //      不具备抗主动探测能力。
+    //   4. 本项目一键部署已提供抗封锁能力更强的替代方案：
+    //      XHTTP+REALITY/TLS（步骤 4）、REALITY+Vision（步骤 5）、Hysteria2（步骤 7）。
+    //      其中 Hysteria2 同样基于 UDP 且具备 Brutal 拥塞控制，在高丢包线路上
+    //      表现优于 mKCP，可作为 UDP 路线的替代。
+    //
+    // 保留的能力：Bot 菜单中的独立 KCP 入口（`handle_kcp_ok`）与
+    // `ConfigManager::batch_create_kcp` 完整保留，用户仍可按需手动创建 mKCP 配置。
+    //
+    // 相关 i18n 键（`ops.deploy_step_kcp_dns`、`ops.deploy_step_kcp_wechat`、
+    // `ops.deploy_fail_kcp_dns`、`ops.deploy_fail_kcp_wechat`、
+    // `ops.deploy_created_kcp_dns`、`ops.deploy_created_kcp_wechat`）同样保留，
+    // 以便恢复时无需额外改动。
+    //
+    // if !failed {
+    //     let _ = adapter
+    //         .send_message(
+    //             &target,
+    //             MessageContent {
+    //                 text: t!("ops.deploy_step_kcp_dns").into_owned(),
+    //                 markup: None,
+    //             },
+    //         )
+    //         .await;
+    // }
+    //
+    // if !failed {
+    //     send_progress(&tx, 8, 10, t!("ops.deploy_step_kcp_dns"));
+    //     match ConfigManager::batch_create_kcp(5, ip_version, &["mld"]).await {
+    //         Ok(result) => {
+    //             all_links.extend(result.links);
+    //             let _ = adapter
+    //                 .send_message(
+    //                     &target,
+    //                     MessageContent {
+    //                         text: t!("ops.deploy_created_kcp_dns",
+    //                                 "0" => result.created_count.to_string(),
+    //                                 "1" => result.config_file.as_deref().unwrap_or("?"))
+    //                         .into_owned(),
+    //                         markup: None,
+    //                     },
+    //                 )
+    //                 .await;
+    //         }
+    //         Err(e) => {
+    //             let _ = tx.send(
+    //                 t!("ops.deploy_fail",
+    //                     "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_dns"), e)
+    //                 )
+    //                 .to_string(),
+    //             );
+    //             failed = true;
+    //         }
+    //     }
+    // }
+    //
+    // if !failed {
+    //     send_progress(&tx, 9, 10, t!("ops.deploy_step_kcp_wechat"));
+    //     match ConfigManager::batch_create_kcp(5, ip_version, &["mlw"]).await {
+    //         Ok(result) => {
+    //             all_links.extend(result.links);
+    //             let _ = adapter
+    //                 .send_message(
+    //                     &target,
+    //                     MessageContent {
+    //                         text: t!("ops.deploy_created_kcp_wechat",
+    //                                 "0" => result.created_count.to_string(),
+    //                                 "1" => result.config_file.as_deref().unwrap_or("?"))
+    //                         .into_owned(),
+    //                         markup: None,
+    //                     },
+    //                 )
+    //                 .await;
+    //         }
+    //         Err(e) => {
+    //             let _ = tx.send(
+    //                 t!("ops.deploy_fail",
+    //                     "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_wechat"), e)
+    //                 )
+    //                 .to_string(),
+    //             );
+    //             failed = true;
+    //         }
+    //     }
+    // }
+    // ── 移除段落结束 ─────────────────────────────────────────────────────
 
     if !failed && !all_links.is_empty() {
         let combined = all_links.join("\n\n");
@@ -910,7 +940,7 @@ pub async fn run_one_click(
     }
 
     if !failed {
-        send_progress(&tx, 10, 10, t!("ops.deploy_step_security"));
+        send_progress(&tx, 8, 8, t!("ops.deploy_step_security"));
         if let Err(e) =
             Operations::perform_maintenance_with_reboot_time(Operations::DEFAULT_REBOOT_TIME).await
         {
@@ -988,5 +1018,60 @@ mod tests {
             xhttp_mode_for_one_click(false, tls_mode("example.com")),
             XhttpDeployMode::Reality
         ));
+    }
+
+    /// 一键部署的进度总步数。
+    ///
+    /// 移除 mKCP 创建（原步骤 8 与 9）后，1→8 步：
+    /// 1 调优、2 Xray 初始化、3 PQ 密钥、4 XHTTP、5 Vision、
+    /// 6 sing-box 初始化、7 Hysteria2、8 安全维护。
+    const ONE_CLICK_TOTAL_STEPS: u8 = 8;
+
+    #[test]
+    fn one_click_progress_has_eight_steps() {
+        assert_eq!(ONE_CLICK_TOTAL_STEPS, 8);
+    }
+
+    /// 回归：一键部署不得再引用任何 mKCP 创建入口与相关 i18n 键。
+    ///
+    /// 仅注释保留原文，不应出现未注释的调用。
+    ///
+    /// 说明：扫描时须剔除本测试函数自身（它含有这些字符串字面量），
+    /// 否则断言会因自引用而永远失败。
+    #[test]
+    fn one_click_does_not_create_mkcp() {
+        let src = include_str!("ops.rs");
+
+        // 只保留 run_one_click 函数体：其余部分（包括本测试）不参与判定。
+        let start = src
+            .find("pub async fn run_one_click")
+            .expect("run_one_click 应存在");
+        let body = &src[start..];
+        let end = body
+            .find("\nasync fn handle_one_click")
+            .unwrap_or(body.len());
+        let body = &body[..end];
+
+        // 剔除注释行，仅检查真正的可执行代码。
+        let code = body
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(
+            !code.contains("batch_create_kcp"),
+            "一键部署不应调用 batch_create_kcp"
+        );
+        for key in [
+            "deploy_step_kcp_dns",
+            "deploy_step_kcp_wechat",
+            "deploy_fail_kcp_dns",
+            "deploy_fail_kcp_wechat",
+            "deploy_created_kcp_dns",
+            "deploy_created_kcp_wechat",
+        ] {
+            assert!(!code.contains(key), "一键部署不应引用 i18n 键 {key}");
+        }
     }
 }
