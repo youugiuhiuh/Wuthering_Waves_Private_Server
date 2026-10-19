@@ -1,7 +1,7 @@
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent};
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::singbox::SingBoxInstaller;
-use crate::core::singbox::hysteria2::Hy2LinkStyle;
+use crate::core::singbox::hysteria2::{Hy2LinkStyle, Hysteria2ObfsType};
 
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
@@ -769,10 +769,18 @@ pub async fn run_one_click(
             10,
             format!("{} ({})", t!("ops.deploy_step_h2"), ip_version.label()),
         );
+        // 一键部署默认使用 gecko 混淆，但不开启端口跳跃。
+        //
+        // 注意：这里走的是 Xray 的 Hysteria2 创建路径
+        // (`ConfigManager::batch_create_hysteria2_xray`)，而不是 sing-box 的
+        // `SingBoxConfigManager::batch_create_hysteria2`。两者都叫 Hysteria2，
+        // 但写出的协议标识不同 —— Xray 写 `"protocol": "hysteria"`（配置落在
+        // `xray::CONF_DIR`），sing-box 写 `"type": "hysteria2"`（配置落在
+        // `singbox::CONF_DIR`）。因此改这里不会影响 sing-box 侧行为，反之亦然。
         match ConfigManager::batch_create_hysteria2_xray(
             3,
             ip_version,
-            None,
+            Some(Hysteria2ObfsType::Gecko),
             false,
             Hy2LinkStyle::Official,
         )
