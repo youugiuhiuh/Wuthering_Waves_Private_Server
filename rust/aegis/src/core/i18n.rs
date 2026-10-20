@@ -181,7 +181,13 @@ mod tests {
             "domain.gen_progress",
             "domain.processing",
             "domain.flow_expired",
+            // 一键部署步骤 4 / 5 的文案：步骤 4 按 XhttpDeployMode 分派，
+            // 两种模式各有一个 key；步骤 5 固定为 Vision Reality。
+            "ops.deploy_step_xhttp",
             "ops.deploy_step_xhttp_tls",
+            "ops.deploy_step_vision",
+            "ops.deploy_created_xhttp",
+            "ops.deploy_created_vision",
             "ops.deploy_created_xhttp_tls",
             "ops.deploy_created_xhttp_bonus",
             "ops.deploy_fail_xhttp_tls",

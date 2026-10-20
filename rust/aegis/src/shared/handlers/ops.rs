@@ -594,18 +594,17 @@ pub async fn run_one_click(
     };
 
     if !failed {
-        send_progress(
-            &tx,
-            4,
-            8,
-            format!(
-                "{} ({})",
-                t!("ops.deploy_step_xhttp_tls"),
-                ip_version.label()
-            ),
-        );
+        // 步骤 4 的文案必须按 mode 分派：Reality 分支产出的是 XHTTP Reality 配置，
+        // TLS 分支产出的是 TLS XHTTP 配置。曾经把 TLS 文案写在 match 之前，
+        // 导致无域名的一键部署（Reality）错报成「正在创建 TLS XHTTP」。
         match &mode {
             XhttpDeployMode::Reality => {
+                send_progress(
+                    &tx,
+                    4,
+                    8,
+                    format!("{} ({})", t!("ops.deploy_step_xhttp"), ip_version.label()),
+                );
                 match ConfigManager::batch_create_xhttp_reality_enhanced(20, ip_version, true).await
                 {
                     Ok(result) => {
@@ -636,6 +635,16 @@ pub async fn run_one_click(
                 }
             }
             XhttpDeployMode::Tls { domain, cert_paths } => {
+                send_progress(
+                    &tx,
+                    4,
+                    8,
+                    format!(
+                        "{} ({})",
+                        t!("ops.deploy_step_xhttp_tls"),
+                        ip_version.label()
+                    ),
+                );
                 match ConfigManager::batch_create_xhttp_tls_enhanced(domain, cert_paths, ip_version)
                     .await
                 {
@@ -1073,5 +1082,79 @@ mod tests {
         ] {
             assert!(!code.contains(key), "一键部署不应引用 i18n 键 {key}");
         }
+    }
+
+    /// 取出 `run_one_click` 的可执行代码（剔除注释行），并裁到 `match &mode` 为止。
+    ///
+    /// 返回 `(match 之前的代码, match 之后的代码)`。两者都不含注释，
+    /// 以免文档里出现的 key 名被误计为真实引用。
+    fn one_click_mode_split() -> (String, String) {
+        let src = include_str!("ops.rs");
+
+        let start = src
+            .find("pub async fn run_one_click")
+            .expect("run_one_click 应存在");
+        let body = &src[start..];
+        let end = body
+            .find("\nasync fn handle_one_click")
+            .unwrap_or(body.len());
+        let body = &body[..end];
+
+        // 剔除注释行，仅检查真正的可执行代码。
+        let code = body
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let (before, after) = code
+            .split_once("match &mode")
+            .expect("run_one_click 应包含 match &mode 分支");
+        (before.to_string(), after.to_string())
+    }
+
+    /// 回归：步骤 4 的进度文案必须按 `XhttpDeployMode` 分派。
+    ///
+    /// 曾经的问题：`send_progress(4, 8, deploy_step_xhttp_tls)` 写在 `match &mode`
+    /// **之前**，无域名的一键部署（走 `XhttpDeployMode::Reality`）会错报成
+    /// 「正在创建 TLS XHTTP」，而实际产出的是 Reality XHTTP 配置。
+    ///
+    /// 断言的是**位置**而不只是存在性：把文案 key 移到 match 之外、
+    /// 让两个分支共用同一文案，都必须让本测试失败。
+    #[test]
+    fn one_click_step4_progress_text_matches_mode() {
+        let (before_mode, after_mode) = one_click_mode_split();
+
+        // 两个分支各自的步骤 4 文案，都必须出现在 match 之后（即分支内部）。
+        assert!(
+            after_mode.contains("ops.deploy_step_xhttp\""),
+            "Reality 分支必须有专属的步骤 4 文案（ops.deploy_step_xhttp）"
+        );
+        assert!(
+            after_mode.contains("ops.deploy_step_xhttp_tls"),
+            "TLS 分支必须有专属的步骤 4 文案（ops.deploy_step_xhttp_tls）"
+        );
+
+        // 反向断言：match 之前不得出现任何步骤 4 的文案 key。
+        // 这正是原 bug 的形态 —— 无条件发送一次 TLS 文案，再进分支。
+        for key in ["ops.deploy_step_xhttp\"", "ops.deploy_step_xhttp_tls"] {
+            assert!(
+                !before_mode.contains(key),
+                "步骤 4 文案 {key} 不得写在 match &mode 之前，否则会与分支脱钩"
+            );
+        }
+
+        // 两个 key 在分支内必须分属不同分支：Reality key 先于 TLS key 出现，
+        // 且中间隔着分支边界。若两者被塞进同一分支，这里会失败。
+        let reality_at = after_mode
+            .find("ops.deploy_step_xhttp\"")
+            .expect("Reality key 应存在");
+        let tls_at = after_mode
+            .find("ops.deploy_step_xhttp_tls")
+            .expect("TLS key 应存在");
+        assert!(
+            reality_at < tls_at,
+            "Reality 分支应先于 TLS 分支定义各自的步骤 4 文案"
+        );
     }
 }
