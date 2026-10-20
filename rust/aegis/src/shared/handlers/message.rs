@@ -1275,11 +1275,15 @@ mod tests {
         let target = TargetId("test_chat".to_string());
         let state = FakeState::domain(DomainInputStep::AwaitDomain);
 
+        // locale 必须在被测调用**之前**设置：`handle_message` 内部按当时的
+        // 进程全局 locale 渲染文案，若放到调用之后，断言看到的其实是上一个
+        // 测试残留的语言。曾经这条 set_lang 写在 handle_message 之后，
+        // 在 plain `cargo test` 下会随测试执行顺序随机失败。
+        i18n::set_lang(Lang::En);
         let action = handle_message(&adapter, &target, Some("  "), false, &state)
             .await
             .unwrap();
 
-        i18n::set_lang(Lang::En);
         assert!(matches!(action, MessageAction::Handled));
         assert!(matches!(state.snapshot(), DomainInputStep::AwaitDomain));
         assert_eq!(
