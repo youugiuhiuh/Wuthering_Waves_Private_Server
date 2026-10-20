@@ -8,20 +8,27 @@ name: Build and Test
 # 本工作流是纯只读的，没有任何写操作（不贴标签、不合并、不关 PR），
 # 因此可以安全地设为分支保护的 required status check。
 # 自动合并由 Renovate 原生 platformAutomerge 完成。
+# 只在 PR 上运行。合并 PR（push 到 main）后刻意不再重跑：
+# 同一个 commit 在 PR 上已经完整编译+测试过，合并后重跑只是重复消耗
+# 40 分钟 runner 时间，不增加任何信息。
+#
+# 代价（知情）：
+#   - main 上不再有该工作流的 check run，B3 缓存写入路径随之消失；
+#     target/go-build 缓存退回「只读 + restore-keys 模糊命中」，
+#     Save 步骤保留但条件是 github.ref == 'refs/heads/main'，永远不会触发
+#     （见文件末尾注释，改动此项时一并清理）。
+#   - main 分支本身不再有编译门禁，靠 PR 门禁 + 标签发布前的
+#     public-release.yml 兜底。
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # 合并到 main 后再跑一次，作为 target 缓存的唯一写入路径（B3 策略）。
-  # PR 上只读缓存，避免每个依赖更新 PR 各写一份 677MB 把 10GB 配额挤爆。
-  push:
-    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  # push 分支下 github.event.pull_request.number 为空，回退到 run_id 避免所有 main 运行互相取消
-  group: build-test-${{ github.event.pull_request.number || github.run_id }}
+  # 只按 PR 号分组：同一 PR 的新推送取消旧运行，不同 PR 互不影响。
+  group: build-test-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -258,29 +265,16 @@ jobs:
               ;;
           esac
 
-      # 缓存写入：仅在 main 上（B3 策略）。
+      # 缓存策略：PR 只读，本工作流不再写缓存。
       #
-      # 必须放在构建之后，才能把本次编译产物存进去。
-      # `actions/cache/restore` 不会自动保存，需要显式调 save。
-      # 用 `github.ref == refs/heads/main` 判定：PR 运行只读，不消耗 10GB 配额。
-      - name: Save Rust build outputs
-        if: matrix.project.language == 'rust' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            ~/.cargo/git
-            ~/.cargo/registry
-            ${{ matrix.project.path }}/target/release/.fingerprint
-            ${{ matrix.project.path }}/target/release/build
-            ${{ matrix.project.path }}/target/release/deps
-          key: ${{ steps.rust-target-cache.outputs.cache-primary-key }}
-
-      - name: Save Go build outputs
-        if: matrix.project.language == 'go' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v6
-        with:
-          path: ~/.cache/go-build
-          key: ${{ steps.go-build-cache.outputs.cache-primary-key }}
+      # 原来靠「合并后 push 到 main 跑一次 → save」作为唯一写入路径（B3 策略），
+      # 现在 push 触发器已移除，那个 job 不复存在，因此 Save 步骤一并删除
+      # （保留它们只会是永不满足的 if: github.ref == 'refs/heads/main'）。
+      #
+      # 后果（知情）：缓存只能命中此前已存在的 key 或 restore-keys 前缀，
+      # 冷启动时无缓存（rust release 全量编译约 90s，可接受）。
+      # 若将来重新需要自建缓存，正确做法是加回 push 触发器并用
+      # `if: github.ref == 'refs/heads/main'` 守卫 save，而不是在 PR 上写。
 
   # 分支保护的 required status check 指向本 job，而非矩阵 job `build-test`。
   #
