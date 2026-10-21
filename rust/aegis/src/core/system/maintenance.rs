@@ -306,11 +306,11 @@ impl MaintenanceManager {
         let sources = [
             (
                 "geoip.dat",
-                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat",
+                "https://github.com/XTLS/Xray-rules-dat/releases/latest/download/geoip-lite.dat",
             ),
             (
                 "geosite.dat",
-                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat",
+                "https://github.com/XTLS/Xray-rules-dat/releases/latest/download/geosite.dat",
             ),
         ];
 
@@ -365,11 +365,11 @@ impl MaintenanceManager {
         let sources = [
             (
                 "geoip.dat",
-                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat",
+                "https://github.com/XTLS/Xray-rules-dat/releases/latest/download/geoip-lite.dat",
             ),
             (
                 "geosite.dat",
-                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat",
+                "https://github.com/XTLS/Xray-rules-dat/releases/latest/download/geosite.dat",
             ),
         ];
 

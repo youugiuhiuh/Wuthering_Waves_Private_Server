@@ -819,6 +819,15 @@ impl WwpsCoreUpgradeManager {
             .await;
         let unpack_dir = manager.extract_archive(&archive_path).await?;
 
+        // ── 预检前规范化：确保现网配置对齐最新内建 direct 规则（如 apple-cn -> apple@cn）──
+        // 存量部署若仍有旧规则名，新核心携带的官方 geosite.dat 预检会因 Code 缺失直接报错；
+        // 在预检前主动幂等刷新一次，确保老节点平滑升级，且失败不致命（放行至预检）。
+        if let Err(err) =
+            crate::core::xray::routing::RoutingManager::ensure_direct_rules_in_base().await
+        {
+            log::warn!("升级预检前规范化 Xray direct 规则失败（仍尝试预检）: {err}");
+        }
+
         // ── 防线 1：替换前预检（零风险）──
         // 用新核心验现网配置。不通过则完全不碰现网二进制——这是最安全的一层，
         // 因为此时备份尚未产生、服务未被重启。
