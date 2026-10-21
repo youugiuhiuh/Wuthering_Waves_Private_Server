@@ -85,9 +85,10 @@ pub static ROUTING_RULES: &[RuleDef] = &[
             "domain:googlevideo.com",
             "domain:youtube-dubbing.com",
             // ── Apple（2）──
-            // 165 条，覆盖 ocsp/crl/mesu/swscan/swdist/swcdn/gs-loc/cl2-cl5/init.ess/guzzoni/...
-            "geosite:apple-cn",
-            // apple-cn 唯一漏项
+            // 覆盖 ocsp/crl/mesu/swscan/swdist/swcdn/gs-loc/cl2-cl5/init.ess/guzzoni/...
+            // 上游 v2fly / XTLS/Xray-rules-dat 官方规范为 geosite:apple@cn（属性标签）
+            "geosite:apple@cn",
+            // apple 直连唯一漏项
             "domain:init.itunes.apple.com",
             // ── Microsoft（8）──
             // crl/ocsp.microsoft.com 等 6 条
@@ -515,7 +516,7 @@ mod tests {
             39,
             "清单必须恰为 39 条（SPEC 逐字清单：29 Google + 2 Apple + 8 Microsoft）"
         );
-        const ALLOWED_GEOSITE: &[&str] = &["geosite:apple-cn", "geosite:microsoft-pki"];
+        const ALLOWED_GEOSITE: &[&str] = &["geosite:apple@cn", "geosite:microsoft-pki"];
         for &t in rule.targets {
             let ok = t.starts_with("domain:") || ALLOWED_GEOSITE.contains(&t);
             assert!(
@@ -614,7 +615,7 @@ mod tests {
             "domain:recaptcha.net",
             "domain:googlevideo.com",
             "domain:safebrowsing.googleapis.com",
-            "geosite:apple-cn",
+            "geosite:apple@cn",
             "geosite:microsoft-pki",
             "domain:init.itunes.apple.com",
         ] {
