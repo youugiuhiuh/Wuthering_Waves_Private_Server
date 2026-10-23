@@ -14,10 +14,8 @@ const SNI_DIR: &str = "src/resources/sni";
 #[derive(Clone, PartialEq, Message)]
 struct DomainList {
     #[prost(string, repeated, tag = "1")]
-    domains: Vec<String>,
-    #[prost(string, repeated, tag = "2")]
     pq_domains: Vec<String>,
-    #[prost(string, repeated, tag = "3")]
+    #[prost(string, repeated, tag = "2")]
     classic_domains: Vec<String>,
 }
 
@@ -58,10 +56,11 @@ fn emit_largest_pb_constant() {
             std::fs::read(&path).unwrap_or_else(|e| panic!("读取 {} 失败: {e}", path.display()));
 
         // 解码失败的文件不参与评选：与原实现一致（原实现用 filter_map 跳过）。
-        if let Ok(list) = DomainList::decode(bytes.as_slice())
-            && best.as_ref().is_none_or(|(_, n)| list.domains.len() > *n)
-        {
-            best = Some((name.to_string(), list.domains.len()));
+        if let Ok(list) = DomainList::decode(bytes.as_slice()) {
+            let total = list.pq_domains.len() + list.classic_domains.len();
+            if best.as_ref().is_none_or(|(_, n)| total > *n) {
+                best = Some((name.to_string(), total));
+            }
         }
     }
 

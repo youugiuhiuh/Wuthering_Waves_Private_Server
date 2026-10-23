@@ -87,8 +87,7 @@ make android-deploy
    - 必须支持 HTTP/2 或 HTTP/3 至少一种应用层协议
 2. **密钥交换与后量子（PQ）分流**：
    - **PQ 主卡牌池 (`pq_domains`)**：服务端在 `ServerHello` 中选定了后量子混合密钥组（RFC 10024 `X25519MLKEM768` [0x11EC]、`X25519Kyber768Draft00` [0x6399]、`SecP256r1MLKEM768` [0x11ED]）；
-   - **经典手牌备用池 (`classic_domains`)**：服务端降级协商至经典 `X25519` (0x001D)；
-   - **全集兼容池 (`domains`)**：包含去重后的所有可用域名，保证旧版 Rust `build.rs` 与客户端完全向后兼容。
+   - **经典手牌备用池 (`classic_domains`)**：服务端降级协商至经典 `X25519` (0x001D)。
 
 ---
 
@@ -98,9 +97,8 @@ make android-deploy
 
 ```protobuf
 message DomainList {
-    repeated string domains = 1;          // 全集域名（向后兼容）
-    repeated string pq_domains = 2;       // 后量子优先主卡池
-    repeated string classic_domains = 3;  // 传统 X25519 备用手牌池
+    repeated string pq_domains = 1;       // 后量子优先主卡池
+    repeated string classic_domains = 2;  // 传统 X25519 备用手牌池
 }
 ```
 

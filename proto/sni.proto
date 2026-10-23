@@ -3,9 +3,8 @@ package sni;
 
 option go_package = "sni_tester/proto";
 
-// DomainList stores a list of validated domain names for a country
+// DomainList stores validated domain names classified into PQ and Classic pools
 message DomainList {
-    repeated string domains = 1;
-    repeated string pq_domains = 2;
-    repeated string classic_domains = 3;
+    repeated string pq_domains = 1;
+    repeated string classic_domains = 2;
 }

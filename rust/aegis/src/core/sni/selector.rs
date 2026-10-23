@@ -67,26 +67,11 @@ fn load_protobuf_detailed(data: &[u8]) -> Option<LoadedDomains> {
     sni_proto::DomainList::decode(data).ok().map(|dl| {
         let mut pq = dl.pq_domains;
         let mut classic = dl.classic_domains;
-        let all_raw = dl.domains;
-
-        if pq.is_empty() && classic.is_empty() {
-            return LoadedDomains {
-                domains: all_raw,
-                pq_count: 0,
-            };
-        }
 
         pq.sort();
         pq.dedup();
         let pq_set: std::collections::HashSet<_> = pq.iter().cloned().collect();
 
-        if classic.is_empty() {
-            for d in all_raw {
-                if !pq_set.contains(&d) {
-                    classic.push(d);
-                }
-            }
-        }
         classic.sort();
         classic.dedup();
         classic.retain(|d| !pq_set.contains(d));
@@ -463,11 +448,9 @@ mod tests {
     #[test]
     #[serial]
     fn load_protobuf_decodes_valid_data() {
-        let domains = vec!["example.com".to_string(), "test.com".to_string()];
         let list = sni_proto::DomainList {
-            domains,
-            pq_domains: vec![],
-            classic_domains: vec![],
+            pq_domains: vec!["example.com".to_string()],
+            classic_domains: vec!["test.com".to_string()],
         };
         let mut buf = Vec::new();
         list.encode(&mut buf).unwrap();

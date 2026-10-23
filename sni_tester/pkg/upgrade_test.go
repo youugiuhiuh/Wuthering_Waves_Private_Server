@@ -57,9 +57,12 @@ func TestWriteProtobufDualDomainFile(t *testing.T) {
 	if len(pb.ClassicDomains) != 2 {
 		t.Errorf("ClassicDomains len = %d; want 2", len(pb.ClassicDomains))
 	}
-	// 全集去重后应为 3: cloudflare.com, example.com, google.com
-	if len(pb.Domains) != 3 {
-		t.Errorf("Domains len = %d; want 3", len(pb.Domains))
+	all, err := ParseProtobufDomains(data)
+	if err != nil {
+		t.Fatalf("ParseProtobufDomains failed: %v", err)
+	}
+	if len(all) != 3 {
+		t.Errorf("all domains len = %d; want 3", len(all))
 	}
 }
 

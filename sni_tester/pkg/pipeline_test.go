@@ -48,7 +48,7 @@ func TestTwoStageStreamingPipeline(t *testing.T) {
 		t.Fatalf("Failed to parse output pb: %v", err)
 	}
 
-	if len(dl.Domains) == 0 && stats.PQCount+stats.ClassicCount > 0 {
+	if (len(dl.PqDomains)+len(dl.ClassicDomains)) == 0 && stats.PQCount+stats.ClassicCount > 0 {
 		t.Errorf("Expected non-empty domains in output")
 	}
 }

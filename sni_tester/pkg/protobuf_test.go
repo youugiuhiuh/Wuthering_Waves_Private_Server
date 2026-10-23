@@ -33,17 +33,17 @@ func TestWriteProtobufDomainFile_Deduplication(t *testing.T) {
 		t.Fatalf("failed to read file: %v", err)
 	}
 
-	var pb snipb.DomainList
-	if err := proto.Unmarshal(data, &pb); err != nil {
-		t.Fatalf("failed to unmarshal: %v", err)
+	parsed, err := ParseProtobufDomains(data)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
 	}
 
 	expected := []string{"another.com", "example.com", "test.com", "zzz.com"}
-	if len(pb.Domains) != len(expected) {
-		t.Errorf("expected %d domains, got %d", len(expected), len(pb.Domains))
+	if len(parsed) != len(expected) {
+		t.Errorf("expected %d domains, got %d", len(expected), len(parsed))
 	}
 
-	for i, d := range pb.Domains {
+	for i, d := range parsed {
 		if i < len(expected) && d != expected[i] {
 			t.Errorf("domain[%d]: expected %s, got %s", i, expected[i], d)
 		}
@@ -85,19 +85,19 @@ func TestWriteProtobufDomainFile_Sorting(t *testing.T) {
 		t.Fatalf("failed to read file: %v", err)
 	}
 
-	var pb snipb.DomainList
-	if err := proto.Unmarshal(data, &pb); err != nil {
-		t.Fatalf("failed to unmarshal: %v", err)
+	parsed, err := ParseProtobufDomains(data)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
 	}
 
-	if !sort.StringsAreSorted(pb.Domains) {
-		t.Errorf("domains are not sorted: %v", pb.Domains)
+	if !sort.StringsAreSorted(parsed) {
+		t.Errorf("domains are not sorted: %v", parsed)
 	}
 }
 
 func TestParseProtobufDomains_ValidData(t *testing.T) {
 	domains := []string{"example.com", "test.com", "demo.org"}
-	pb := &snipb.DomainList{Domains: domains}
+	pb := &snipb.DomainList{ClassicDomains: domains}
 
 	data, err := proto.Marshal(pb)
 	if err != nil {
@@ -109,20 +109,21 @@ func TestParseProtobufDomains_ValidData(t *testing.T) {
 		t.Fatalf("ParseProtobufDomains failed: %v", err)
 	}
 
-	if len(parsed) != len(domains) {
-		t.Errorf("expected %d domains, got %d", len(domains), len(parsed))
+	expected := []string{"demo.org", "example.com", "test.com"}
+	if len(parsed) != len(expected) {
+		t.Errorf("expected %d domains, got %d", len(expected), len(parsed))
 	}
 
 	for i, d := range parsed {
-		if i < len(domains) && d != domains[i] {
-			t.Errorf("domain[%d]: expected %s, got %s", i, domains[i], d)
+		if i < len(expected) && d != expected[i] {
+			t.Errorf("domain[%d]: expected %s, got %s", i, expected[i], d)
 		}
 	}
 }
 
 func TestParseProtobufDomains_InvalidDomain(t *testing.T) {
 	domains := []string{"example.com", "invalid", "test.com", ""}
-	pb := &snipb.DomainList{Domains: domains}
+	pb := &snipb.DomainList{ClassicDomains: domains}
 
 	data, err := proto.Marshal(pb)
 	if err != nil {
@@ -205,7 +206,11 @@ func TestSaveBatchDual(t *testing.T) {
 	if len(dl.ClassicDomains) != 1 || dl.ClassicDomains[0] != "classic.us.com" {
 		t.Errorf("ClassicDomains = %v; want [classic.us.com]", dl.ClassicDomains)
 	}
-	if len(dl.Domains) != 2 {
-		t.Errorf("Domains len = %d; want 2", len(dl.Domains))
+	all, err := ParseProtobufDomains(usData)
+	if err != nil {
+		t.Fatalf("Failed to parse all domains: %v", err)
+	}
+	if len(all) != 2 {
+		t.Errorf("all domains len = %d; want 2", len(all))
 	}
 }

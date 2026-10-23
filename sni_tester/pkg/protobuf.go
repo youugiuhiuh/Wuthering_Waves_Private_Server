@@ -58,17 +58,11 @@ func WriteProtobufDualDomainFile(pqDomains, classicDomains []string, filePath st
 	uniquePQ := DedupeSorted(pqDomains)
 	uniqueClassic := DedupeSorted(classicDomains)
 
-	all := make([]string, 0, len(uniquePQ)+len(uniqueClassic))
-	all = append(all, uniquePQ...)
-	all = append(all, uniqueClassic...)
-	uniqueAll := DedupeSorted(all)
-
-	if len(uniqueAll) == 0 {
+	if len(uniquePQ) == 0 && len(uniqueClassic) == 0 {
 		return nil
 	}
 
 	pb := &snipb.DomainList{
-		Domains:        uniqueAll,
 		PqDomains:      uniquePQ,
 		ClassicDomains: uniqueClassic,
 	}
@@ -94,46 +88,18 @@ func ParseProtobufDomainList(data []byte) (*snipb.DomainList, error) {
 }
 
 func WriteProtobufDomainFile(domains []string, filePath string) error {
-	if len(domains) == 0 {
-		return nil
-	}
-
-	sort.Strings(domains)
-	uniqueDomains := []string{}
-	for i, d := range domains {
-		if i == 0 || d != domains[i-1] {
-			uniqueDomains = append(uniqueDomains, d)
-		}
-	}
-
-	pb := &snipb.DomainList{Domains: uniqueDomains}
-
-	data, err := proto.Marshal(pb)
-	if err != nil {
-		return fmt.Errorf("failed to marshal protobuf: %w", err)
-	}
-
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-
-	return nil
+	return WriteProtobufDualDomainFile(nil, domains, filePath)
 }
 
 func ParseProtobufDomains(data []byte) ([]string, error) {
-	var pb snipb.DomainList
-	if err := proto.Unmarshal(data, &pb); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal protobuf: %w", err)
+	pb, err := ParseProtobufDomainList(data)
+	if err != nil {
+		return nil, err
 	}
 
-	domains := []string{}
-	for _, domain := range pb.Domains {
-		if domain != "" && strings.Contains(domain, ".") {
-			domains = append(domains, domain)
-		}
-	}
-
-	return domains, nil
+	all := append([]string{}, pb.PqDomains...)
+	all = append(all, pb.ClassicDomains...)
+	return DedupeSorted(all), nil
 }
 
 func CleanDomain(raw string) string {
@@ -266,9 +232,6 @@ func SaveBatchDual(ctx context.Context, targetDir string, pqMap, classicMap map[
 				if dl, err := ParseProtobufDomainList(data); err == nil {
 					existPQ = dl.PqDomains
 					existClassic = dl.ClassicDomains
-					if len(existPQ) == 0 && len(existClassic) == 0 && len(dl.Domains) > 0 {
-						existClassic = dl.Domains
-					}
 				}
 			}
 

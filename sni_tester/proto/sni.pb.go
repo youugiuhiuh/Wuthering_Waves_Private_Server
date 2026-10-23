@@ -21,12 +21,11 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// DomainList stores a list of validated domain names for a country
+// DomainList stores validated domain names classified into PQ and Classic pools
 type DomainList struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	Domains        []string               `protobuf:"bytes,1,rep,name=domains,proto3" json:"domains,omitempty"`
-	PqDomains      []string               `protobuf:"bytes,2,rep,name=pq_domains,json=pqDomains,proto3" json:"pq_domains,omitempty"`
-	ClassicDomains []string               `protobuf:"bytes,3,rep,name=classic_domains,json=classicDomains,proto3" json:"classic_domains,omitempty"`
+	PqDomains      []string               `protobuf:"bytes,1,rep,name=pq_domains,json=pqDomains,proto3" json:"pq_domains,omitempty"`
+	ClassicDomains []string               `protobuf:"bytes,2,rep,name=classic_domains,json=classicDomains,proto3" json:"classic_domains,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -61,13 +60,6 @@ func (*DomainList) Descriptor() ([]byte, []int) {
 	return file_proto_sni_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *DomainList) GetDomains() []string {
-	if x != nil {
-		return x.Domains
-	}
-	return nil
-}
-
 func (x *DomainList) GetPqDomains() []string {
 	if x != nil {
 		return x.PqDomains
@@ -86,13 +78,12 @@ var File_proto_sni_proto protoreflect.FileDescriptor
 
 const file_proto_sni_proto_rawDesc = "" +
 	"\n" +
-	"\x0fproto/sni.proto\x12\x03sni\"n\n" +
+	"\x0fproto/sni.proto\x12\x03sni\"T\n" +
 	"\n" +
-	"DomainList\x12\x18\n" +
-	"\adomains\x18\x01 \x03(\tR\adomains\x12\x1d\n" +
+	"DomainList\x12\x1d\n" +
 	"\n" +
-	"pq_domains\x18\x02 \x03(\tR\tpqDomains\x12'\n" +
-	"\x0fclassic_domains\x18\x03 \x03(\tR\x0eclassicDomainsB\x12Z\x10sni_tester/protob\x06proto3"
+	"pq_domains\x18\x01 \x03(\tR\tpqDomains\x12'\n" +
+	"\x0fclassic_domains\x18\x02 \x03(\tR\x0eclassicDomainsB\x12Z\x10sni_tester/protob\x06proto3"
 
 var (
 	file_proto_sni_proto_rawDescOnce sync.Once
