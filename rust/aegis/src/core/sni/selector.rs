@@ -31,13 +31,77 @@ static SNI_PERSISTENCE: Lazy<Option<SNIPersistence>> = Lazy::new(|| match SNIPer
 const LARGEST_PB: &str = env!("AEGIS_LARGEST_PB");
 const LARGEST_PB_COUNT: &str = env!("AEGIS_LARGEST_PB_COUNT");
 
-fn load_protobuf(data: &[u8]) -> Option<Vec<String>> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SNIExtractEvent {
+    /// 正常从 PQ 主卡池抽取
+    PQ,
+    /// 降级临界点：PQ 主卡池刚好耗尽，首次切换进入经典手牌池
+    DegradedToClassicFirstTime,
+    /// 处于经典手牌池抽取中
+    Classic,
+    /// 全池耗尽，开启新一轮轮转
+    RoundReset,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct LoadedDomains {
+    /// [0..pq_count) 为 PQ 域名，[pq_count..total) 为经典域名
+    pub domains: Vec<String>,
+    pub pq_count: usize,
+}
+
+impl LoadedDomains {
+    pub fn is_empty(&self) -> bool {
+        self.domains.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.domains.len()
+    }
+}
+
+fn load_protobuf_detailed(data: &[u8]) -> Option<LoadedDomains> {
     #[cfg(test)]
     DECODE_PROBE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    sni_proto::DomainList::decode(data)
-        .ok()
-        .map(|dl| dl.domains)
+    sni_proto::DomainList::decode(data).ok().map(|dl| {
+        let mut pq = dl.pq_domains;
+        let mut classic = dl.classic_domains;
+        let all_raw = dl.domains;
+
+        if pq.is_empty() && classic.is_empty() {
+            return LoadedDomains {
+                domains: all_raw,
+                pq_count: 0,
+            };
+        }
+
+        pq.sort();
+        pq.dedup();
+        let pq_set: std::collections::HashSet<_> = pq.iter().cloned().collect();
+
+        if classic.is_empty() {
+            for d in all_raw {
+                if !pq_set.contains(&d) {
+                    classic.push(d);
+                }
+            }
+        }
+        classic.sort();
+        classic.dedup();
+        classic.retain(|d| !pq_set.contains(d));
+
+        let pq_count = pq.len();
+        let mut domains = pq;
+        domains.extend(classic);
+
+        LoadedDomains { domains, pq_count }
+    })
+}
+
+#[cfg(test)]
+fn load_protobuf(data: &[u8]) -> Option<Vec<String>> {
+    load_protobuf_detailed(data).map(|ld| ld.domains)
 }
 
 /// 测试专用：protobuf **解码**次数。
@@ -47,20 +111,38 @@ fn load_protobuf(data: &[u8]) -> Option<Vec<String>> {
 #[cfg(test)]
 static DECODE_PROBE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-/// 从种子确定性重建排列，并跳过已消耗的 `used_count` 个。
-fn build_order(len: usize, seed: u64, used_count: u32) -> Vec<usize> {
-    let mut order: Vec<usize> = (0..len).collect();
-    let mut rng = SmallRng::seed_from_u64(seed);
-    order.shuffle(&mut rng);
+/// 从种子确定性重建双池排列，并跳过已消耗的 `used_count` 个。
+/// 栈顶（末尾）优先弹出 PQ 域名，随后弹出经典域名。
+fn build_order(total_len: usize, pq_count: usize, seed: u64, used_count: u32) -> Vec<usize> {
+    if total_len == 0 {
+        return Vec::new();
+    }
+    let pq_n = pq_count.min(total_len);
+    let classic_n = total_len - pq_n;
 
-    // used_count 可能超过当前域名数（例如 .pb 更新后变短），不能直接索引。
-    let skip = (used_count as usize).min(len);
-    order.truncate(len - skip);
-    order
+    let mut classic_indices: Vec<usize> = (pq_n..total_len).collect();
+    if classic_n > 0 {
+        let mut classic_rng = SmallRng::seed_from_u64(seed.rotate_left(13) ^ 0x5555_5555_5555_5555);
+        classic_indices.shuffle(&mut classic_rng);
+    }
+
+    let mut pq_indices: Vec<usize> = (0..pq_n).collect();
+    if pq_n > 0 {
+        let mut pq_rng = SmallRng::seed_from_u64(seed);
+        pq_indices.shuffle(&mut pq_rng);
+    }
+
+    let mut full_stack = classic_indices;
+    full_stack.extend(pq_indices);
+
+    let skip = (used_count as usize).min(total_len);
+    full_stack.truncate(total_len - skip);
+    full_stack
 }
 
 pub struct SNISelector {
     domains: Vec<String>,
+    pq_count: usize,
     /// 运行期缓存的剩余排列。**只存在于内存**，不落盘。
     shuffled_indices: Vec<usize>,
     used_count: u32,
@@ -69,6 +151,8 @@ pub struct SNISelector {
     cache_key: String,
     /// 是否有尚未落盘的进度。
     dirty: bool,
+    /// 本轮是否已发送过 PQ 耗尽告警（防风暴）
+    pub pq_exhausted_notified: bool,
 }
 
 impl SNISelector {
@@ -79,7 +163,9 @@ impl SNISelector {
             c => c,
         };
 
-        let domains = Self::load_domains(code).await;
+        let loaded = Self::load_domains(code).await;
+        let domains = loaded.domains;
+        let pq_count = loaded.pq_count;
 
         let cache_key = format!("sni_{}", code);
 
@@ -87,38 +173,43 @@ impl SNISelector {
             && let Some(state) = persistence.load(&cache_key)
         {
             let total = domains.len();
-            let shuffled_indices = build_order(total, state.seed, state.used_count);
+            let shuffled_indices = build_order(total, pq_count, state.seed, state.used_count);
             log::info!(
-                "Loaded persisted SNI state for {}: {} domains, remaining={}, used={}",
+                "Loaded persisted SNI state for {}: {} domains ({} PQ), remaining={}, used={}",
                 cache_key,
                 total,
+                pq_count,
                 shuffled_indices.len(),
                 state.used_count
             );
             return Self {
                 domains,
+                pq_count,
                 shuffled_indices,
                 used_count: state.used_count,
                 seed: state.seed,
                 cache_key,
                 dirty: false,
+                pq_exhausted_notified: false,
             };
         }
 
         let seed = rand::rng().random::<u64>();
         let mut selector = Self {
-            shuffled_indices: build_order(domains.len(), seed, 0),
+            shuffled_indices: build_order(domains.len(), pq_count, seed, 0),
             domains,
+            pq_count,
             used_count: 0,
             seed,
             cache_key,
             dirty: true,
+            pq_exhausted_notified: false,
         };
         selector.persist();
         selector
     }
 
-    async fn load_domains(code: &str) -> Vec<String> {
+    async fn load_domains(code: &str) -> LoadedDomains {
         const MIN_DOMAINS: usize = 3;
 
         let code_upper = code.to_uppercase();
@@ -126,14 +217,14 @@ impl SNISelector {
 
         let country_domains = Self::load_embedded_async(&pb_file).await;
 
-        if let Some(domains) = country_domains {
-            if domains.len() >= MIN_DOMAINS {
-                return domains;
+        if let Some(ld) = country_domains {
+            if ld.domains.len() >= MIN_DOMAINS {
+                return ld;
             }
             log::warn!(
                 "SNI file for {} has only {} domains (< {}), falling back to file with most domains",
                 code_upper,
-                domains.len(),
+                ld.domains.len(),
                 MIN_DOMAINS
             );
         }
@@ -143,51 +234,77 @@ impl SNISelector {
             LARGEST_PB,
             LARGEST_PB_COUNT
         );
-        if let Some(domains) = Self::load_embedded_async(LARGEST_PB).await {
-            return domains;
+        if let Some(ld) = Self::load_embedded_async(LARGEST_PB).await {
+            return ld;
         }
 
-        // R4: 走到这里意味着 REALITY 的伪装目标会是空的，属于功能降级。
-        // 旧实现在此静默返回 vec![]，只留一行 log::info，极难发现。
         log::error!(
             "SNI fallback 失败：无法解码编译期选定的最大文件 {LARGEST_PB}，\
              REALITY 伪装目标将为空（功能已降级）"
         );
 
-        vec![]
+        LoadedDomains::default()
     }
 
-    pub fn get_next(&mut self) -> String {
+    pub fn get_next_with_event(&mut self) -> (String, SNIExtractEvent) {
         if self.domains.is_empty() {
-            return String::new();
+            return (String::new(), SNIExtractEvent::Classic);
         }
 
+        let mut round_reset = false;
         if self.shuffled_indices.is_empty() {
             self.start_new_round();
+            round_reset = true;
         }
+
+        let is_at_boundary = self.pq_count > 0 && (self.used_count as usize) + 1 == self.pq_count;
+        let is_pq = self.pq_count > 0 && (self.used_count as usize) < self.pq_count;
 
         let idx = self
             .shuffled_indices
             .pop()
             .expect("shuffled_indices should not be empty after reset");
         self.used_count += 1;
-        // 关键：这里**不再落盘**。
-        // 修复前每次抽样都重写完整状态（真机 19,591,273 字节），
-        // 而这些数据完全可以由 seed + used_count 重建。
         self.dirty = true;
 
-        self.domains[idx].clone()
+        let event = if is_at_boundary {
+            SNIExtractEvent::DegradedToClassicFirstTime
+        } else if is_pq {
+            SNIExtractEvent::PQ
+        } else if round_reset {
+            SNIExtractEvent::RoundReset
+        } else {
+            SNIExtractEvent::Classic
+        };
+
+        (self.domains[idx].clone(), event)
+    }
+
+    pub fn get_next(&mut self) -> String {
+        self.get_next_with_event().0
+    }
+
+    /// 消费降级告警通知：如果事件为降级临界点且本轮未告警过，返回 true 并置位
+    pub fn take_degraded_alert(&mut self, event: SNIExtractEvent) -> bool {
+        if event == SNIExtractEvent::DegradedToClassicFirstTime && !self.pq_exhausted_notified {
+            self.pq_exhausted_notified = true;
+            true
+        } else {
+            false
+        }
     }
 
     /// 域名耗尽：换新种子开启下一轮，并立即落盘。
     fn start_new_round(&mut self) {
         self.seed = rand::rng().random::<u64>();
         self.used_count = 0;
-        self.shuffled_indices = build_order(self.domains.len(), self.seed, 0);
+        self.pq_exhausted_notified = false;
+        self.shuffled_indices = build_order(self.domains.len(), self.pq_count, self.seed, 0);
         log::info!(
-            "SNI rotation exhausted, starting new round with seed {} ({} domains)",
+            "SNI rotation exhausted, starting new round with seed {} ({} domains, {} PQ)",
             self.seed,
-            self.domains.len()
+            self.domains.len(),
+            self.pq_count
         );
         self.dirty = true;
         self.persist();
@@ -213,10 +330,14 @@ impl SNISelector {
         self.shuffled_indices.len()
     }
 
-    async fn load_embedded_async(filename: &str) -> Option<Vec<String>> {
+    pub fn pq_count(&self) -> usize {
+        self.pq_count
+    }
+
+    async fn load_embedded_async(filename: &str) -> Option<LoadedDomains> {
         let file = SniAssets::get(filename)?;
         let data = file.data.into_owned();
-        tokio::task::spawn_blocking(move || load_protobuf(&data))
+        tokio::task::spawn_blocking(move || load_protobuf_detailed(&data))
             .await
             .ok()?
     }
@@ -276,12 +397,14 @@ mod tests {
     fn test_selector(domains: &[&str], shuffled_indices: Vec<usize>) -> SNISelector {
         SNISelector {
             domains: domains.iter().map(|d| d.to_string()).collect(),
+            pq_count: 0,
             shuffled_indices,
             used_count: 0,
             seed: 0,
             // cache_key 留空 → persist() 直接返回，测试不会碰磁盘。
             cache_key: String::new(),
             dirty: false,
+            pq_exhausted_notified: false,
         }
     }
 
@@ -341,7 +464,11 @@ mod tests {
     #[serial]
     fn load_protobuf_decodes_valid_data() {
         let domains = vec!["example.com".to_string(), "test.com".to_string()];
-        let list = sni_proto::DomainList { domains };
+        let list = sni_proto::DomainList {
+            domains,
+            pq_domains: vec![],
+            classic_domains: vec![],
+        };
         let mut buf = Vec::new();
         list.encode(&mut buf).unwrap();
         let decoded = load_protobuf(&buf).unwrap();
@@ -448,11 +575,11 @@ mod tests {
     #[test]
     fn t5_build_order_is_deterministic_for_same_seed() {
         for seed in [0u64, 1, u64::MAX, 0xDEAD_BEEF_CAFE_F00D] {
-            let a = build_order(1000, seed, 0);
-            let b = build_order(1000, seed, 0);
+            let a = build_order(1000, 0, seed, 0);
+            let b = build_order(1000, 0, seed, 0);
             assert_eq!(a, b, "seed={seed} 两次重建结果不同");
 
-            let c = build_order(1000, seed.wrapping_add(1), 0);
+            let c = build_order(1000, 0, seed.wrapping_add(1), 0);
             assert_ne!(a, c, "不同 seed 不应产生相同排列");
         }
     }
@@ -460,8 +587,8 @@ mod tests {
     /// T5b: used_count 必须精确地「跳过已消耗的前缀」，而不是重置轮转。
     #[test]
     fn t5_build_order_skips_consumed_prefix() {
-        let full = build_order(100, 42, 0);
-        let after_37 = build_order(100, 42, 37);
+        let full = build_order(100, 0, 42, 0);
+        let after_37 = build_order(100, 0, 42, 37);
 
         assert_eq!(after_37.len(), 63);
         assert_eq!(
@@ -474,8 +601,53 @@ mod tests {
     /// T5c: used_count 超过域名数时不能 panic（.pb 更新后变短的情况）。
     #[test]
     fn t5_build_order_tolerates_used_count_overflow() {
-        let o = build_order(10, 42, 9999);
+        let o = build_order(10, 0, 42, 9999);
         assert!(o.is_empty(), "越界的 used_count 应退化为空排列而非 panic");
+    }
+
+    #[test]
+    fn test_dual_pool_extraction_order_and_events() {
+        let pq = vec!["pq1.com".to_string(), "pq2.com".to_string()];
+        let classic = vec!["c1.com".to_string(), "c2.com".to_string()];
+        let mut domains = pq;
+        domains.extend(classic);
+        let total = domains.len();
+        let pq_count = 2;
+
+        let seed = 0xCAFE_BABE;
+        let mut selector = SNISelector {
+            domains,
+            pq_count,
+            shuffled_indices: build_order(total, pq_count, seed, 0),
+            used_count: 0,
+            seed,
+            cache_key: String::new(),
+            dirty: false,
+            pq_exhausted_notified: false,
+        };
+
+        // 抽取 1: PQ 域名
+        let (d1, e1) = selector.get_next_with_event();
+        assert!(d1.starts_with("pq"));
+        assert_eq!(e1, SNIExtractEvent::PQ);
+        assert!(!selector.take_degraded_alert(e1));
+
+        // 抽取 2: 最后一个 PQ 域名，触发降级临界点
+        let (d2, e2) = selector.get_next_with_event();
+        assert!(d2.starts_with("pq"));
+        assert_eq!(e2, SNIExtractEvent::DegradedToClassicFirstTime);
+        assert!(selector.take_degraded_alert(e2), "首次降级应触发告警");
+        assert!(!selector.take_degraded_alert(e2), "重复调用不应二次触发告警 (防风暴)");
+
+        // 抽取 3: 经典手牌池
+        let (d3, e3) = selector.get_next_with_event();
+        assert!(d3.starts_with('c'));
+        assert_eq!(e3, SNIExtractEvent::Classic);
+
+        // 抽取 4: 经典手牌池
+        let (d4, e4) = selector.get_next_with_event();
+        assert!(d4.starts_with('c'));
+        assert_eq!(e4, SNIExtractEvent::Classic);
     }
 
     /// T4: 连续抽样不得产生任何落盘。

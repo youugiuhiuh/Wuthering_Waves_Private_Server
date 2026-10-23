@@ -15,6 +15,10 @@ const SNI_DIR: &str = "src/resources/sni";
 struct DomainList {
     #[prost(string, repeated, tag = "1")]
     domains: Vec<String>,
+    #[prost(string, repeated, tag = "2")]
+    pq_domains: Vec<String>,
+    #[prost(string, repeated, tag = "3")]
+    classic_domains: Vec<String>,
 }
 
 /// 找出域数最多的 .pb，把结果作为编译期常量交给运行期使用。
