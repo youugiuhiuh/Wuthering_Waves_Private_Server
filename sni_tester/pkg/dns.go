@@ -248,6 +248,7 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 			c := &dns.Client{
 				Timeout: baseTimeout,
 				Net:     "udp4",
+				Dialer:  NewUDPDialer(baseTimeout),
 			}
 
 			start := time.Now()
@@ -291,7 +292,10 @@ func resolveWithUDP(ctx context.Context, domain string) ([]string, error) {
 
 func lookupHostDoHWire(client *http.Client, endpoint string, name string) ([]string, error) {
 	if client == nil {
-		client = &http.Client{Timeout: 5 * time.Second}
+		transport := &http.Transport{
+			DialContext: NewDialer(5 * time.Second).DialContext,
+		}
+		client = &http.Client{Transport: transport, Timeout: 5 * time.Second}
 	}
 
 	msg := new(dns.Msg)
@@ -351,13 +355,17 @@ func lookupHostDoT(server string, name string) ([]string, error) {
 
 	timeout := 5 * time.Second
 
-	conn, err := dns.DialWithTLS("tcp", server, &tls.Config{
-		ServerName: strings.Split(server, ":")[0],
-		MinVersion: tls.VersionTLS12,
-	})
+	dialer := NewDialer(timeout)
+	rawConn, err := dialer.Dial("tcp", server)
 	if err != nil {
 		return nil, fmt.Errorf("DoT connection failed: %w", err)
 	}
+	tlsConfig := &tls.Config{
+		ServerName: strings.Split(server, ":")[0],
+		MinVersion: tls.VersionTLS12,
+	}
+	tlsConn := tls.Client(rawConn, tlsConfig)
+	conn := &dns.Conn{Conn: tlsConn}
 	defer conn.Close()
 
 	conn.SetDeadline(time.Now().Add(timeout))

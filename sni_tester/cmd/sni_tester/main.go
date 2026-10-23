@@ -31,7 +31,16 @@ func main() {
 	upgradePb := flag.String("upgrade-pb", "", "Directly upgrade a single .pb file to dual-pool (PQ/Classic)")
 	keepDead := flag.Bool("keep-dead", false, "Keep failed domains in classic pool during upgrade")
 	outDir := flag.String("out-dir", "", "Output directory for upgraded .pb files (default: overwrite in-place)")
+	ifaceName := flag.String("iface", "", "Bind outbound traffic to network interface (e.g. wlp6s0) or IP to isolate from main broadband")
 	flag.Parse()
+
+	if *ifaceName != "" {
+		if err := pkg.SetOutboundInterface(*ifaceName); err != nil {
+			fmt.Printf("Error binding interface %s: %v\n", *ifaceName, err)
+			os.Exit(1)
+		}
+		fmt.Printf("Successfully bound traffic to interface %s (IP: %s)\n", *ifaceName, pkg.GetBoundIP())
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	sigChan := make(chan os.Signal, 1)

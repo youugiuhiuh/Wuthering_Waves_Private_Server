@@ -61,7 +61,7 @@ func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duratio
 		IP:     targetIP,
 	}
 
-	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	dialer := NewDialer(5 * time.Second)
 	addr := net.JoinHostPort(targetIP, "443")
 	rawConn, err := dialer.DialContext(context.Background(), "tcp", addr)
 	if err != nil {
@@ -143,7 +143,7 @@ func CheckH3Support(domain string, targetIP string) bool {
 				_, port, _ := net.SplitHostPort(addr)
 				connectAddr = net.JoinHostPort(targetIP, port)
 			}
-			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", connectAddr)
+			return NewDialer(5*time.Second).DialContext(ctx, "tcp", connectAddr)
 		},
 		ForceAttemptHTTP2: true,
 	}
