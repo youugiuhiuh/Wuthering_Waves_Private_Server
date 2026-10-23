@@ -71,10 +71,11 @@ func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duratio
 
 	alpn := PickALPNProfile()
 	config := &utls.Config{
-		ServerName: domain,
-		MinVersion: utls.VersionTLS12,
-		MaxVersion: utls.VersionTLS13,
-		NextProtos: alpn,
+		ServerName:         domain,
+		InsecureSkipVerify: true,
+		MinVersion:         utls.VersionTLS12,
+		MaxVersion:         utls.VersionTLS13,
+		NextProtos:         alpn,
 	}
 	if needTLS13 {
 		config.MinVersion = utls.VersionTLS13
@@ -132,10 +133,12 @@ func ValidateDomain(result *TLSResult) (bool, string) {
 }
 
 func CheckH3Support(domain string, targetIP string) bool {
+	h3Timeout := 1500 * time.Millisecond
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			ServerName: domain,
-			NextProtos: PickALPNProfile(),
+			ServerName:         domain,
+			InsecureSkipVerify: true,
+			NextProtos:         PickALPNProfile(),
 		},
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			connectAddr := addr
@@ -143,11 +146,11 @@ func CheckH3Support(domain string, targetIP string) bool {
 				_, port, _ := net.SplitHostPort(addr)
 				connectAddr = net.JoinHostPort(targetIP, port)
 			}
-			return NewDialer(5*time.Second).DialContext(ctx, "tcp", connectAddr)
+			return NewDialer(h3Timeout).DialContext(ctx, "tcp", connectAddr)
 		},
 		ForceAttemptHTTP2: true,
 	}
-	client := &http.Client{Transport: transport, Timeout: 8 * time.Second}
+	client := &http.Client{Transport: transport, Timeout: h3Timeout}
 
 	req, err := http.NewRequest("HEAD", "https://"+domain, nil)
 	if err != nil {

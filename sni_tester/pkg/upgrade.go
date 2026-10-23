@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -152,6 +153,16 @@ func UpgradePbDir(ctx context.Context, dir string, outDir string, workers int, t
 			return nil, err
 		}
 	}
+
+	// 按文件大小升序排序：数以百计的小国家文件秒级完成，大国家随后集中并发处理
+	sort.Slice(files, func(i, j int) bool {
+		fi, err1 := os.Stat(files[i])
+		fj, err2 := os.Stat(files[j])
+		if err1 == nil && err2 == nil {
+			return fi.Size() < fj.Size()
+		}
+		return files[i] < files[j]
+	})
 
 	var allStats []UpgradeStats
 	for _, f := range files {
