@@ -1,3 +1,0 @@
-
-adi.dj
-edu.dj
