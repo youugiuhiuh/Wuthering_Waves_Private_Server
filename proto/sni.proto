@@ -6,4 +6,6 @@ option go_package = "sni_tester/proto";
 // DomainList stores a list of validated domain names for a country
 message DomainList {
     repeated string domains = 1;
+    repeated string pq_domains = 2;
+    repeated string classic_domains = 3;
 }

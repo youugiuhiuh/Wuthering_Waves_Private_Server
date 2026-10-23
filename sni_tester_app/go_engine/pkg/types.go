@@ -61,6 +61,7 @@ type TLSResult struct {
 	TLSVersion  uint16
 	ALPN        string
 	KeyGroup    utls.CurveID
+	IsPQ        bool
 	HandshakeOK bool
 	Error       string
 }

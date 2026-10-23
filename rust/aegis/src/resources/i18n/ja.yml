@@ -774,3 +774,6 @@ simplex:
   approval_failed: "❌ 処理に失敗しました: %{0}"
   approval_failed_short: "処理に失敗しました"
   bad_request_id: "無効なリクエスト ID"
+
+sni:
+  alert_pq_exhausted: "⚠️ <b>[SNI 警告]</b> %{country} ノードの耐量子 (PQ) カモフラージュドメインプールを使い切りました。クラシック X25519 プールへ自動的にフォールバックしました。SNI リソースを適時更新してください。"

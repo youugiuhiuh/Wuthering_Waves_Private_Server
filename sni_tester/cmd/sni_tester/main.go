@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/schollz/progressbar/v3"
 	"sni_tester/pkg"
@@ -26,7 +27,68 @@ func main() {
 	forceRetry := flag.Bool("force", false, "Re-test skipped domains")
 	resetAll := flag.Bool("reset", false, "Clear all history")
 	proxyString := flag.String("p", "", "Proxy for Geo download")
+	upgradeDir := flag.String("upgrade-dir", "", "Directly upgrade all .pb files in a directory to dual-pool (PQ/Classic)")
+	upgradePb := flag.String("upgrade-pb", "", "Directly upgrade a single .pb file to dual-pool (PQ/Classic)")
+	keepDead := flag.Bool("keep-dead", false, "Keep failed domains in classic pool during upgrade")
+	outDir := flag.String("out-dir", "", "Output directory for upgraded .pb files (default: overwrite in-place)")
 	flag.Parse()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Println("Interrupt received, stopping...")
+		cancel()
+		<-sigChan
+		os.Exit(130)
+	}()
+	defer cancel()
+
+	if *upgradePb != "" {
+		workers := *fixedWorkers
+		if workers <= 0 {
+			workers = 20
+		}
+		targetOut := *upgradePb
+		if *outDir != "" {
+			targetOut = filepath.Join(*outDir, filepath.Base(*upgradePb))
+		}
+		fmt.Printf("Upgrading single PB file: %s -> %s (workers=%d)\n", *upgradePb, targetOut, workers)
+		stats, err := pkg.UpgradePbFile(ctx, *upgradePb, targetOut, workers, 5*time.Second, *keepDead)
+		if err != nil {
+			fmt.Printf("Error upgrading %s: %v\n", *upgradePb, err)
+			os.Exit(1)
+		}
+		fmt.Printf("Done: Total=%d, PQ=%d, Classic=%d, Dead=%d\n", stats.Total, stats.PQCount, stats.ClassicCount, stats.DeadCount)
+		return
+	}
+
+	if *upgradeDir != "" {
+		workers := *fixedWorkers
+		if workers <= 0 {
+			workers = 30
+		}
+		fmt.Printf("Upgrading PB directory: %s (workers=%d)\n", *upgradeDir, workers)
+		allStats, err := pkg.UpgradePbDir(ctx, *upgradeDir, *outDir, workers, 5*time.Second, *keepDead)
+		if err != nil {
+			fmt.Printf("Error upgrading directory %s: %v\n", *upgradeDir, err)
+			os.Exit(1)
+		}
+		totalPQ := 0
+		totalClassic := 0
+		totalDead := 0
+		totalDomains := 0
+		for _, s := range allStats {
+			totalDomains += s.Total
+			totalPQ += s.PQCount
+			totalClassic += s.ClassicCount
+			totalDead += s.DeadCount
+		}
+		fmt.Printf("\n=== Directory Upgrade Complete ===\nFiles: %d | Total Domains: %d | PQ: %d | Classic: %d | Dead: %d\n",
+			len(allStats), totalDomains, totalPQ, totalClassic, totalDead)
+		return
+	}
 
 	if *inputFile == "" {
 		flag.Usage()
@@ -60,17 +122,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer engine.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		fmt.Println("Interrupt received, stopping...")
-		cancel()
-		<-sigChan
-		os.Exit(130)
-	}()
 
 	domains := readDomains(*inputFile, cfg.MaxLines)
 

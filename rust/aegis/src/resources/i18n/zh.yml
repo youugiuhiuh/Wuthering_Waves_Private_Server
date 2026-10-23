@@ -794,3 +794,6 @@ simplex:
   approval_failed: "❌ 处理失败: %{0}"
   approval_failed_short: "处理失败"
   bad_request_id: "无效的请求 ID"
+
+sni:
+  alert_pq_exhausted: "⚠️ <b>[SNI 警告]</b> %{country} 节点的后量子 (PQ) 伪装域名池已用尽，目前已自动降级使用经典 X25519 手牌池。请适时补充或重新测试 SNI 资源库。"

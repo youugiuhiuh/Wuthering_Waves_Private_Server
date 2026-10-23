@@ -774,3 +774,6 @@ simplex:
   approval_failed: "❌ Failed: %{0}"
   approval_failed_short: "Failed"
   bad_request_id: "Invalid request ID"
+
+sni:
+  alert_pq_exhausted: "⚠️ <b>[SNI Warning]</b> The post-quantum (PQ) camouflage domain pool for %{country} has been exhausted. Automatically degraded to the classic X25519 pool. Please replenish or re-test SNIs promptly."
