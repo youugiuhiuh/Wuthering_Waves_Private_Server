@@ -450,6 +450,87 @@ func resolveWithDNS(ctx context.Context, domain string) ([]string, error) {
 	return resolveWithUDP(ctx, domain)
 }
 
+var FastDnsCache sync.Map
+
+// ResolveFast resolves domain using high-performance concurrent UDP 53 with memory caching.
+// It skips slow DoH/DoT handshakes and delivers results in 10-30ms.
+func ResolveFast(ctx context.Context, domain string) ([]string, error) {
+	if cached, ok := FastDnsCache.Load(domain); ok {
+		return cached.([]string), nil
+	}
+
+	msg := new(dns.Msg)
+	msg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+
+	servers := []string{
+		"223.5.5.5",
+		"119.29.29.29",
+		"180.184.1.1",
+		"114.114.114.114",
+		"1.1.1.1",
+		"8.8.8.8",
+	}
+
+	fastTimeout := 1200 * time.Millisecond
+	client := &dns.Client{
+		Timeout: fastTimeout,
+		Net:     "udp4",
+		Dialer:  NewUDPDialer(fastTimeout),
+	}
+
+	type queryResult struct {
+		ips []string
+		err error
+	}
+	resChan := make(chan queryResult, 2)
+	queryCtx, cancel := context.WithTimeout(ctx, fastTimeout)
+	defer cancel()
+
+	s1 := servers[randIndex(len(servers))]
+	s2 := servers[randIndex(len(servers))]
+	for _, server := range []string{s1, s2} {
+		go func(srv string) {
+			in, _, err := client.ExchangeContext(queryCtx, msg, srv+":53")
+			if err != nil {
+				resChan <- queryResult{nil, err}
+				return
+			}
+			var ips []string
+			for _, rr := range in.Answer {
+				if a, ok := rr.(*dns.A); ok {
+					ips = append(ips, a.A.String())
+				}
+			}
+			if len(ips) > 0 {
+				resChan <- queryResult{ips, nil}
+			} else {
+				resChan <- queryResult{nil, fmt.Errorf("no A records")}
+			}
+		}(server)
+	}
+
+	var firstErr error
+	for i := 0; i < 2; i++ {
+		select {
+		case r := <-resChan:
+			if r.err == nil && len(r.ips) > 0 {
+				FastDnsCache.Store(domain, r.ips)
+				return r.ips, nil
+			}
+			if firstErr == nil {
+				firstErr = r.err
+			}
+		case <-queryCtx.Done():
+			return nil, queryCtx.Err()
+		}
+	}
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return nil, fmt.Errorf("dns resolve failed for %s", domain)
+}
+
 func ResolveWithFailover(ctx context.Context, domain string) ([]string, error) {
 	return resolveWithDNS(ctx, domain)
 }

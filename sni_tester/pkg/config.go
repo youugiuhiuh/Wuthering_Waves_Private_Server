@@ -46,14 +46,14 @@ const (
 
 // DNS Rate Limiter Configuration
 const (
-	dnsGlobalLimit        = 300
-	dnsAliyunDoHLimit     = 15
-	dnsAliyunUDPLimit     = 80
-	dnsTencentLimit       = 50
-	dnsDomesticLimit      = 50
-	dnsInternationalLimit = 500
-	dnsMaxConcurrent      = 100
-	dnsBurstSize          = 20
+	dnsGlobalLimit        = 5000
+	dnsAliyunDoHLimit     = 500
+	dnsAliyunUDPLimit     = 2000
+	dnsTencentLimit       = 2000
+	dnsDomesticLimit      = 2000
+	dnsInternationalLimit = 3000
+	dnsMaxConcurrent      = 1000
+	dnsBurstSize          = 500
 )
 
 // DNSConfig separates DNS servers by protocol

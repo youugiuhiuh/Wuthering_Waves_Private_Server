@@ -38,7 +38,7 @@ func UpgradePbFile(ctx context.Context, pbPath string, outPath string, workers i
 		workers = 20
 	}
 	if timeout <= 0 {
-		timeout = 5 * time.Second
+		timeout = 2 * time.Second
 	}
 	if outPath == "" {
 		outPath = pbPath
@@ -70,8 +70,8 @@ func UpgradePbFile(ctx context.Context, pbPath string, outPath string, workers i
 				default:
 				}
 
-				// 快速解析并做 TLS 握手
-				ips, err := ResolveWithFailover(ctx, d)
+				// 极速并发 UDP 解析并做 TLS 握手
+				ips, err := ResolveFast(ctx, d)
 				if err != nil || len(ips) == 0 {
 					results <- domainTaskResult{domain: d, isValid: false}
 					continue

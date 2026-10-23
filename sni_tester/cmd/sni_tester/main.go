@@ -32,6 +32,7 @@ func main() {
 	keepDead := flag.Bool("keep-dead", false, "Keep failed domains in classic pool during upgrade")
 	outDir := flag.String("out-dir", "", "Output directory for upgraded .pb files (default: overwrite in-place)")
 	ifaceName := flag.String("iface", "", "Bind outbound traffic to network interface (e.g. wlp6s0) or IP to isolate from main broadband")
+	timeoutSec := flag.Int("timeout", 2, "TLS & DNS timeout in seconds (default 2s for fast pruning)")
 	flag.Parse()
 
 	if *ifaceName != "" {
@@ -63,8 +64,12 @@ func main() {
 		if *outDir != "" {
 			targetOut = filepath.Join(*outDir, filepath.Base(*upgradePb))
 		}
-		fmt.Printf("Upgrading single PB file: %s -> %s (workers=%d)\n", *upgradePb, targetOut, workers)
-		stats, err := pkg.UpgradePbFile(ctx, *upgradePb, targetOut, workers, 5*time.Second, *keepDead)
+		timeout := time.Duration(*timeoutSec) * time.Second
+		if timeout <= 0 {
+			timeout = 2 * time.Second
+		}
+		fmt.Printf("Upgrading single PB file: %s -> %s (workers=%d, timeout=%v)\n", *upgradePb, targetOut, workers, timeout)
+		stats, err := pkg.UpgradePbFile(ctx, *upgradePb, targetOut, workers, timeout, *keepDead)
 		if err != nil {
 			fmt.Printf("Error upgrading %s: %v\n", *upgradePb, err)
 			os.Exit(1)
@@ -78,8 +83,12 @@ func main() {
 		if workers <= 0 {
 			workers = 30
 		}
-		fmt.Printf("Upgrading PB directory: %s (workers=%d)\n", *upgradeDir, workers)
-		allStats, err := pkg.UpgradePbDir(ctx, *upgradeDir, *outDir, workers, 5*time.Second, *keepDead)
+		timeout := time.Duration(*timeoutSec) * time.Second
+		if timeout <= 0 {
+			timeout = 2 * time.Second
+		}
+		fmt.Printf("Upgrading PB directory: %s (workers=%d, timeout=%v)\n", *upgradeDir, workers, timeout)
+		allStats, err := pkg.UpgradePbDir(ctx, *upgradeDir, *outDir, workers, timeout, *keepDead)
 		if err != nil {
 			fmt.Printf("Error upgrading directory %s: %v\n", *upgradeDir, err)
 			os.Exit(1)
