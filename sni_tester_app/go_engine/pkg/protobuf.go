@@ -35,6 +35,62 @@ func isNumeric(s string) bool {
 	return true
 }
 
+func DedupeSorted(list []string) []string {
+	if len(list) == 0 {
+		return []string{}
+	}
+	sort.Strings(list)
+	res := []string{}
+	for i, d := range list {
+		if d == "" {
+			continue
+		}
+		if i == 0 || d != list[i-1] {
+			res = append(res, d)
+		}
+	}
+	return res
+}
+
+func WriteProtobufDualDomainFile(pqDomains, classicDomains []string, filePath string) error {
+	uniquePQ := DedupeSorted(pqDomains)
+	uniqueClassic := DedupeSorted(classicDomains)
+
+	all := make([]string, 0, len(uniquePQ)+len(uniqueClassic))
+	all = append(all, uniquePQ...)
+	all = append(all, uniqueClassic...)
+	uniqueAll := DedupeSorted(all)
+
+	if len(uniqueAll) == 0 {
+		return nil
+	}
+
+	pb := &snipb.DomainList{
+		Domains:        uniqueAll,
+		PqDomains:      uniquePQ,
+		ClassicDomains: uniqueClassic,
+	}
+
+	data, err := proto.Marshal(pb)
+	if err != nil {
+		return fmt.Errorf("failed to marshal protobuf: %w", err)
+	}
+
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
+}
+
+func ParseProtobufDomainList(data []byte) (*snipb.DomainList, error) {
+	var pb snipb.DomainList
+	if err := proto.Unmarshal(data, &pb); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal protobuf: %w", err)
+	}
+	return &pb, nil
+}
+
 func WriteProtobufDomainFile(domains []string, filePath string) error {
 	if len(domains) == 0 {
 		return nil

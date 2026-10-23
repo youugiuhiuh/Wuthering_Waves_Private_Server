@@ -40,10 +40,19 @@ func PickUserAgent() string {
 	return UserAgentPool[randIndex(len(UserAgentPool))]
 }
 
+const CurveSecP256r1MLKEM768 utls.CurveID = 4589
+
+func IsPQGroup(group utls.CurveID) bool {
+	return group == utls.X25519MLKEM768 ||
+		group == utls.X25519Kyber768Draft00 ||
+		group == CurveSecP256r1MLKEM768
+}
+
 func IsValidKeyGroup(group utls.CurveID) bool {
 	return group == utls.X25519 ||
 		group == utls.X25519MLKEM768 ||
-		group == utls.X25519Kyber768Draft00
+		group == utls.X25519Kyber768Draft00 ||
+		group == CurveSecP256r1MLKEM768
 }
 
 func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duration, needTLS13 bool) (*TLSResult, error) {
@@ -88,6 +97,7 @@ func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duratio
 	result.ALPN = state.NegotiatedProtocol
 	if hs.ServerHello != nil {
 		result.KeyGroup = hs.ServerHello.ServerShare.Group
+		result.IsPQ = IsPQGroup(result.KeyGroup)
 	}
 	result.HandshakeOK = true
 
