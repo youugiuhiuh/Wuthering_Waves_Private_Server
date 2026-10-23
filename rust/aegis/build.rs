@@ -28,9 +28,19 @@ struct DomainList {
 /// 这类与运行期无关的构建期事实，不该由线上进程反复重算。
 fn emit_largest_pb_constant() {
     let dir = std::path::Path::new(SNI_DIR);
+    if !dir.exists() {
+        let _ = std::fs::create_dir_all(dir);
+    }
     let mut best: Option<(String, usize)> = None;
 
-    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| panic!("读取 {SNI_DIR} 失败: {e}"));
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => {
+            println!("cargo:rustc-env=AEGIS_LARGEST_PB=UNKNOWN.pb");
+            println!("cargo:rustc-env=AEGIS_LARGEST_PB_COUNT=0");
+            return;
+        }
+    };
 
     let mut count = 0usize;
     for entry in entries {
@@ -61,7 +71,11 @@ fn emit_largest_pb_constant() {
             println!("cargo:rustc-env=AEGIS_LARGEST_PB_COUNT={domains}");
             println!("cargo:warning=SNI 最大文件: {name} ({domains} 域名 / 共扫描 {count} 个 .pb)");
         }
-        None => panic!("{SNI_DIR} 下没有可解码的 .pb 文件"),
+        None => {
+            println!("cargo:rustc-env=AEGIS_LARGEST_PB=UNKNOWN.pb");
+            println!("cargo:rustc-env=AEGIS_LARGEST_PB_COUNT=0");
+            println!("cargo:warning={SNI_DIR} 暂无可解码的 .pb 文件，使用默认占位值");
+        }
     }
 }
 
