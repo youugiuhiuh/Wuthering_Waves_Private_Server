@@ -192,10 +192,10 @@ const (
 	JobBuffer          = 5000
 	StreamingThreshold = 10 * 1024 * 1024
 	GeoDBFile          = "ipinfo_lite.mmdb"
-	GeoDBURL           = "https://github.com/NetworkCats/IPinfoLite-Download/releases/latest/download/ipinfo_lite.mmdb"
+	GeoDBURL           = "https://github.com/youugiuhiuh/IPinfoLite-Download/releases/latest/download/ipinfo_lite.mmdb"
 	GeoASNFile         = "ipinfo_lite.mmdb"
-	GeoASNURL          = "https://github.com/NetworkCats/IPinfoLite-Download/releases/latest/download/ipinfo_lite.mmdb"
-	GeoDBGitHubPath    = "/NetworkCats/IPinfoLite-Download/releases/latest/download/"
+	GeoASNURL          = "https://github.com/youugiuhiuh/IPinfoLite-Download/releases/latest/download/ipinfo_lite.mmdb"
+	GeoDBGitHubPath    = "/youugiuhiuh/IPinfoLite-Download/releases/latest/download/"
 	BadgerDBDir        = "badger_db"
 )
 
