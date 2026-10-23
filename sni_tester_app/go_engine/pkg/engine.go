@@ -12,6 +12,7 @@ import (
 type jobResult struct {
 	domain  string
 	success bool
+	isPQ    bool
 	ip      string
 	country string
 	asn     uint32
@@ -185,7 +186,8 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 	total := len(toTest)
 	var stats Stats
 	stats.Total = total
-	countryDomains := make(map[string][]string)
+	countryPQDomains := make(map[string][]string)
+	countryClassicDomains := make(map[string][]string)
 	var failedBatch []string
 	var batchCount int
 
@@ -194,12 +196,17 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 		defer close(done)
 		for r := range results {
 			if r.success {
-				countryDomains[r.country] = append(countryDomains[r.country], r.domain)
+				if r.isPQ {
+					countryPQDomains[r.country] = append(countryPQDomains[r.country], r.domain)
+				} else {
+					countryClassicDomains[r.country] = append(countryClassicDomains[r.country], r.domain)
+				}
 				stats.Success++
 				batchCount++
 				if batchCount >= BatchSaveSize {
-					SaveBatch(e.cfg.OutputDir, countryDomains, e.storage.DB())
-					countryDomains = make(map[string][]string)
+					SaveBatchDual(e.cfg.OutputDir, countryPQDomains, countryClassicDomains, e.storage.DB())
+					countryPQDomains = make(map[string][]string)
+					countryClassicDomains = make(map[string][]string)
 					batchCount = 0
 				}
 			} else {
@@ -230,8 +237,8 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 	close(results)
 	<-done
 
-	if len(countryDomains) > 0 {
-		SaveBatch(e.cfg.OutputDir, countryDomains, e.storage.DB())
+	if len(countryPQDomains) > 0 || len(countryClassicDomains) > 0 {
+		SaveBatchDual(e.cfg.OutputDir, countryPQDomains, countryClassicDomains, e.storage.DB())
 	}
 	if !e.cfg.Debug && len(failedBatch) > 0 {
 		e.storage.AppendFailureHistory(failedBatch)
@@ -303,6 +310,7 @@ func (e *Engine) processDomain(ctx context.Context, domain string) jobResult {
 	return jobResult{
 		domain:  domain,
 		success: success,
+		isPQ:    tlsResult.IsPQ,
 		ip:      finalIP,
 		country: country,
 		asn:     asnRes.ASN,

@@ -225,31 +225,54 @@ func DedupeStrings(sorted []string) []string {
 }
 
 func SaveBatch(targetDir string, m map[string][]string, db *badger.DB) error {
-	for country, list := range m {
+	return SaveBatchDual(targetDir, nil, m, db)
+}
+
+func SaveBatchDual(targetDir string, pqMap, classicMap map[string][]string, db *badger.DB) error {
+	allCountries := make(map[string]struct{})
+	for c := range pqMap {
+		allCountries[c] = struct{}{}
+	}
+	for c := range classicMap {
+		allCountries[c] = struct{}{}
+	}
+
+	for country := range allCountries {
 		filename := fmt.Sprintf("%s.pb", strings.ToUpper(country))
 		targetPath := filepath.Join(targetDir, filename)
-		os.MkdirAll(targetDir, 0o755)
+		_ = os.MkdirAll(targetDir, 0o755)
 
-		existingDomains := []string{}
+		var existPQ []string
+		var existClassic []string
 		if data, err := os.ReadFile(targetPath); err == nil {
-			existingDomains, _ = ParseProtobufDomains(data)
+			if dl, err := ParseProtobufDomainList(data); err == nil {
+				existPQ = dl.PqDomains
+				existClassic = dl.ClassicDomains
+				if len(existPQ) == 0 && len(existClassic) == 0 && len(dl.Domains) > 0 {
+					existClassic = dl.Domains
+				}
+			}
 		}
 
-		allDomains := append(existingDomains, list...)
-		if len(allDomains) > 0 {
-			WriteProtobufDomainFile(allDomains, targetPath)
+		mergedPQ := append(existPQ, pqMap[country]...)
+		mergedClassic := append(existClassic, classicMap[country]...)
+
+		if len(mergedPQ) > 0 || len(mergedClassic) > 0 {
+			_ = WriteProtobufDualDomainFile(mergedPQ, mergedClassic, targetPath)
 		}
 	}
 
-	if db != nil && len(m) > 0 {
+	if db != nil && len(allCountries) > 0 {
 		now := time.Now().Unix()
 		ttl := time.Duration(30) * 24 * time.Hour
 
 		wb := db.NewWriteBatch()
 		defer wb.Cancel()
 
-		for country, list := range m {
-			for _, domain := range list {
+		for country := range allCountries {
+			allList := append([]string{}, pqMap[country]...)
+			allList = append(allList, classicMap[country]...)
+			for _, domain := range allList {
 				info := SuccessInfo{
 					Domain:   domain,
 					Country:  country,
@@ -264,7 +287,7 @@ func SaveBatch(targetDir string, m map[string][]string, db *badger.DB) error {
 				})
 			}
 		}
-		wb.Flush()
+		_ = wb.Flush()
 	}
 	return nil
 }

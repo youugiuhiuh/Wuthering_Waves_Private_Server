@@ -227,32 +227,56 @@ func DedupeStrings(sorted []string) []string {
 }
 
 func SaveBatch(ctx context.Context, targetDir string, m map[string][]string, db *badger.DB) error {
+	return SaveBatchDual(ctx, targetDir, nil, m, db)
+}
+
+func SaveBatchDual(ctx context.Context, targetDir string, pqMap, classicMap map[string][]string, db *badger.DB) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var firstErr error
 
-	for country, list := range m {
+	allCountries := make(map[string]struct{})
+	for c := range pqMap {
+		allCountries[c] = struct{}{}
+	}
+	for c := range classicMap {
+		allCountries[c] = struct{}{}
+	}
+
+	for country := range allCountries {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		wg.Add(1)
-		go func(country string, list []string) {
-			defer wg.Done()
-			filename := fmt.Sprintf("%s.pb", strings.ToUpper(country))
-			targetPath := filepath.Join(targetDir, filename)
-			os.MkdirAll(targetDir, 0o755)
+		newPQ := pqMap[country]
+		newClassic := classicMap[country]
 
-			existingDomains := []string{}
+		wg.Add(1)
+		go func(c string, addPQ, addClassic []string) {
+			defer wg.Done()
+			filename := fmt.Sprintf("%s.pb", strings.ToUpper(c))
+			targetPath := filepath.Join(targetDir, filename)
+			_ = os.MkdirAll(targetDir, 0o755)
+
+			var existPQ []string
+			var existClassic []string
 			if data, err := os.ReadFile(targetPath); err == nil {
-				existingDomains, _ = ParseProtobufDomains(data)
+				if dl, err := ParseProtobufDomainList(data); err == nil {
+					existPQ = dl.PqDomains
+					existClassic = dl.ClassicDomains
+					if len(existPQ) == 0 && len(existClassic) == 0 && len(dl.Domains) > 0 {
+						existClassic = dl.Domains
+					}
+				}
 			}
 
-			allDomains := append(existingDomains, list...)
-			if len(allDomains) > 0 {
-				if err := WriteProtobufDomainFile(allDomains, targetPath); err != nil {
+			mergedPQ := append(existPQ, addPQ...)
+			mergedClassic := append(existClassic, addClassic...)
+
+			if len(mergedPQ) > 0 || len(mergedClassic) > 0 {
+				if err := WriteProtobufDualDomainFile(mergedPQ, mergedClassic, targetPath); err != nil {
 					mu.Lock()
 					if firstErr == nil {
 						firstErr = err
@@ -260,7 +284,7 @@ func SaveBatch(ctx context.Context, targetDir string, m map[string][]string, db 
 					mu.Unlock()
 				}
 			}
-		}(country, list)
+		}(country, newPQ, newClassic)
 	}
 	wg.Wait()
 
@@ -268,20 +292,22 @@ func SaveBatch(ctx context.Context, targetDir string, m map[string][]string, db 
 		return firstErr
 	}
 
-	if db != nil && len(m) > 0 {
+	if db != nil && len(allCountries) > 0 {
 		now := time.Now().Unix()
 		ttl := time.Duration(30) * 24 * time.Hour
 
 		wb := db.NewWriteBatch()
 
-		for country, list := range m {
+		for country := range allCountries {
 			select {
 			case <-ctx.Done():
 				wb.Flush()
 				return ctx.Err()
 			default:
 			}
-			for _, domain := range list {
+			allList := append([]string{}, pqMap[country]...)
+			allList = append(allList, classicMap[country]...)
+			for _, domain := range allList {
 				info := SuccessInfo{
 					Domain:   domain,
 					Country:  country,

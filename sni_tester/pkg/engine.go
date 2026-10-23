@@ -12,6 +12,7 @@ import (
 type jobResult struct {
 	domain  string
 	success bool
+	isPQ    bool
 	ip      string
 	country string
 	asn     uint32
@@ -97,14 +98,15 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 	now := time.Now().Unix()
 	var toTest []string
 	var stats Stats
-	countryDomains := make(map[string][]string)
+	countryPQDomains := make(map[string][]string)
+	countryClassicDomains := make(map[string][]string)
 	if !e.cfg.ForceRetry {
 		fmt.Println("Loading success/blocked history...")
 		successCountry := e.storage.LoadSuccessHistory()
 		blocked := e.storage.LoadBlockedHistory()
 		for _, d := range domains {
 			if country, ok := successCountry[d]; ok {
-				countryDomains[country] = append(countryDomains[country], d)
+				countryClassicDomains[country] = append(countryClassicDomains[country], d)
 				stats.Skipped++
 				if cb != nil {
 					cb(ProgressEvent{Type: "skipped", Domain: d, Stats: stats})
@@ -215,7 +217,11 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 		defer close(done)
 		for r := range results {
 			if r.success {
-				countryDomains[r.country] = append(countryDomains[r.country], r.domain)
+				if r.isPQ {
+					countryPQDomains[r.country] = append(countryPQDomains[r.country], r.domain)
+				} else {
+					countryClassicDomains[r.country] = append(countryClassicDomains[r.country], r.domain)
+				}
 				stats.Success++
 			} else {
 				failedDomains = append(failedDomains, r.domain)
@@ -252,7 +258,7 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 
 	if !e.cfg.Debug {
 		fmt.Println("Saving results...")
-		SaveBatch(ctx, e.cfg.OutputDir, countryDomains, e.storage.DB())
+		SaveBatchDual(ctx, e.cfg.OutputDir, countryPQDomains, countryClassicDomains, e.storage.DB())
 		if len(failedDomains) > 0 {
 			e.storage.AppendFailureHistory(failedDomains)
 		}
@@ -327,6 +333,7 @@ func (e *Engine) processDomain(ctx context.Context, domain string) jobResult {
 	return jobResult{
 		domain:  domain,
 		success: success,
+		isPQ:    tlsResult.IsPQ,
 		ip:      finalIP,
 		country: country,
 		asn:     asnRes.ASN,
