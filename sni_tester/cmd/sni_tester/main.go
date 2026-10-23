@@ -32,7 +32,7 @@ func main() {
 	keepDead := flag.Bool("keep-dead", false, "Keep failed domains in classic pool during upgrade")
 	outDir := flag.String("out-dir", "", "Output directory for upgraded .pb files (default: overwrite in-place)")
 	ifaceName := flag.String("iface", "", "Bind outbound traffic to network interface (e.g. wlp6s0) or IP to isolate from main broadband")
-	timeoutSec := flag.Int("timeout", 2, "TLS & DNS timeout in seconds (default 2s for fast pruning)")
+	timeoutSec := flag.Int("timeout", 5, "TLS & DNS timeout in seconds (default 5s for overseas endpoints)")
 	flag.Parse()
 
 	if *ifaceName != "" {

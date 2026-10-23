@@ -471,7 +471,7 @@ func ResolveFast(ctx context.Context, domain string) ([]string, error) {
 		"8.8.8.8",
 	}
 
-	fastTimeout := 1200 * time.Millisecond
+	fastTimeout := 2500 * time.Millisecond
 	client := &dns.Client{
 		Timeout: fastTimeout,
 		Net:     "udp4",
@@ -482,13 +482,14 @@ func ResolveFast(ctx context.Context, domain string) ([]string, error) {
 		ips []string
 		err error
 	}
-	resChan := make(chan queryResult, 2)
+	resChan := make(chan queryResult, 3)
 	queryCtx, cancel := context.WithTimeout(ctx, fastTimeout)
 	defer cancel()
 
 	s1 := servers[randIndex(len(servers))]
 	s2 := servers[randIndex(len(servers))]
-	for _, server := range []string{s1, s2} {
+	s3 := servers[randIndex(len(servers))]
+	for _, server := range []string{s1, s2, s3} {
 		go func(srv string) {
 			in, _, err := client.ExchangeContext(queryCtx, msg, srv+":53")
 			if err != nil {
@@ -510,7 +511,7 @@ func ResolveFast(ctx context.Context, domain string) ([]string, error) {
 	}
 
 	var firstErr error
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		select {
 		case r := <-resChan:
 			if r.err == nil && len(r.ips) > 0 {
@@ -521,8 +522,16 @@ func ResolveFast(ctx context.Context, domain string) ([]string, error) {
 				firstErr = r.err
 			}
 		case <-queryCtx.Done():
-			return nil, queryCtx.Err()
+			// 超时回退尝试 UDP failover
+			return resolveWithUDP(ctx, domain)
 		}
+	}
+
+	// 若高速解析失败，优雅回退到多服务器 UDP 轮换
+	fallbackIps, fallbackErr := resolveWithUDP(ctx, domain)
+	if fallbackErr == nil && len(fallbackIps) > 0 {
+		FastDnsCache.Store(domain, fallbackIps)
+		return fallbackIps, nil
 	}
 
 	if firstErr != nil {

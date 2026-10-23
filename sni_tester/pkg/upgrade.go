@@ -38,7 +38,7 @@ func UpgradePbFile(ctx context.Context, pbPath string, outPath string, workers i
 		workers = 20
 	}
 	if timeout <= 0 {
-		timeout = 2 * time.Second
+		timeout = 5 * time.Second
 	}
 	if outPath == "" {
 		outPath = pbPath
