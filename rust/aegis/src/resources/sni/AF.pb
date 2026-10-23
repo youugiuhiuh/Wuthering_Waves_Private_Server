@@ -1,2 +1,0 @@
-
-nexa.gov.af
