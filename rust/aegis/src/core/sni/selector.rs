@@ -637,7 +637,10 @@ mod tests {
         assert!(d2.starts_with("pq"));
         assert_eq!(e2, SNIExtractEvent::DegradedToClassicFirstTime);
         assert!(selector.take_degraded_alert(e2), "首次降级应触发告警");
-        assert!(!selector.take_degraded_alert(e2), "重复调用不应二次触发告警 (防风暴)");
+        assert!(
+            !selector.take_degraded_alert(e2),
+            "重复调用不应二次触发告警 (防风暴)"
+        );
 
         // 抽取 3: 经典手牌池
         let (d3, e3) = selector.get_next_with_event();
