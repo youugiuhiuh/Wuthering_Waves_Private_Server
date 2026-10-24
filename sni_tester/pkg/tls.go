@@ -4,6 +4,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"crypto/tls"
+	"fmt"
 	"math/big"
 	"net"
 	"net/http"
@@ -100,6 +101,12 @@ func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duratio
 		result.KeyGroup = hs.ServerHello.ServerShare.Group
 		result.IsPQ = IsPQGroup(result.KeyGroup)
 	}
+	result.CertChainLen = len(state.PeerCertificates)
+	totalBytes := 0
+	for _, cert := range state.PeerCertificates {
+		totalBytes += len(cert.Raw)
+	}
+	result.TotalCertBytes = totalBytes
 	result.HandshakeOK = true
 
 	remoteAddr := uConn.RemoteAddr().String()
@@ -111,6 +118,24 @@ func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duratio
 	return result, nil
 }
 
+const (
+	// MaxCertChainDepth REALITY 凭证链最大深度：终端证书 + 最多2张中间CA，严禁4层及以上的超长链
+	MaxCertChainDepth = 3
+	// MaxCertRecordBytes REALITY 凭证总大小安全阈值：Xray 核心内部硬编码 8192 字节缓冲区，限制在 5500 预留充足裕量
+	MaxCertRecordBytes = 5500
+)
+
+// ValidateCertLimits 校验目标凭证链深度与总长度，防止触发 Xray REALITY 8192 字节硬限制
+func ValidateCertLimits(result *TLSResult) (bool, string) {
+	if result.CertChainLen > MaxCertChainDepth {
+		return false, fmt.Sprintf("Certificate chain too long (%d > %d)", result.CertChainLen, MaxCertChainDepth)
+	}
+	if result.TotalCertBytes > MaxCertRecordBytes {
+		return false, fmt.Sprintf("Certificate total size too large (%d > %d bytes, exceeds REALITY safe limit)", result.TotalCertBytes, MaxCertRecordBytes)
+	}
+	return true, ""
+}
+
 func ValidateDomain(result *TLSResult) (bool, string) {
 	if result.TLSVersion != utls.VersionTLS13 {
 		return false, "TLS 1.3 required"
@@ -118,6 +143,11 @@ func ValidateDomain(result *TLSResult) (bool, string) {
 
 	if !IsValidKeyGroup(result.KeyGroup) {
 		return false, "X25519-based key exchange required"
+	}
+
+	// 凭证规范审查：排除畸形超长凭证链与大体积证书（防 Xray 8192 缓冲区溢出）
+	if valid, reason := ValidateCertLimits(result); !valid {
+		return false, reason
 	}
 
 	if result.ALPN != "h2" && !CheckH3Support(result.Domain, result.IP) {

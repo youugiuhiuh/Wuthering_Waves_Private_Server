@@ -56,14 +56,16 @@ type BlockedInfo struct {
 }
 
 type TLSResult struct {
-	Domain      string
-	IP          string
-	TLSVersion  uint16
-	ALPN        string
-	KeyGroup    utls.CurveID
-	IsPQ        bool
-	HandshakeOK bool
-	Error       string
+	Domain         string
+	IP             string
+	TLSVersion     uint16
+	ALPN           string
+	KeyGroup       utls.CurveID
+	IsPQ           bool
+	CertChainLen   int
+	TotalCertBytes int
+	HandshakeOK    bool
+	Error          string
 }
 
 type ProgressEvent struct {
