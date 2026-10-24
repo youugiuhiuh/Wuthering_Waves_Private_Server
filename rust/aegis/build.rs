@@ -57,7 +57,15 @@ fn emit_largest_pb_constant() {
 
         // 解码失败的文件不参与评选：与原实现一致（原实现用 filter_map 跳过）。
         if let Ok(list) = DomainList::decode(bytes.as_slice()) {
-            let total = list.pq_domains.len() + list.classic_domains.len();
+            let mut pq = list.pq_domains;
+            let mut classic = list.classic_domains;
+            pq.sort();
+            pq.dedup();
+            let pq_set: std::collections::HashSet<_> = pq.iter().cloned().collect();
+            classic.sort();
+            classic.dedup();
+            classic.retain(|d| !pq_set.contains(d));
+            let total = pq.len() + classic.len();
             if best.as_ref().is_none_or(|(_, n)| total > *n) {
                 best = Some((name.to_string(), total));
             }
