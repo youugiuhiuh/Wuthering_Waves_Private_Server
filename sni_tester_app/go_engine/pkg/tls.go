@@ -56,6 +56,132 @@ func IsValidKeyGroup(group utls.CurveID) bool {
 		group == CurveSecP256r1MLKEM768
 }
 
+// PerformCombinedProbe 在单个 TCP + TLS 连接上复合完成 TLS1.3/PQ 判断与 HTTP 响应头审查，杜绝 2 次重复握手开销
+func PerformCombinedProbe(ctx context.Context, domain string, targetIP string, timeout time.Duration) (*TLSResult, error) {
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+
+	result := &TLSResult{
+		Domain: domain,
+		IP:     targetIP,
+	}
+
+	var capturedState *utls.ConnectionState
+	var capturedGroup utls.CurveID
+
+	transport := &http.Transport{
+		DialTLSContext: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
+			connectAddr := addr
+			if targetIP != "" {
+				_, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					port = "443"
+				}
+				connectAddr = net.JoinHostPort(targetIP, port)
+			}
+
+			dialer := NewDialer(timeout)
+			rawConn, err := dialer.DialContext(dialCtx, "tcp", connectAddr)
+			if err != nil {
+				return nil, err
+			}
+
+			config := &utls.Config{
+				ServerName:         domain,
+				InsecureSkipVerify: true,
+				MinVersion:         utls.VersionTLS13,
+				MaxVersion:         utls.VersionTLS13,
+				NextProtos:         PickALPNProfile(),
+			}
+
+			helloID := PickClientHelloID()
+			uConn := utls.UClient(rawConn, config, helloID)
+			uConn.SetDeadline(time.Now().Add(timeout))
+
+			if err := uConn.Handshake(); err != nil {
+				uConn.Close()
+				return nil, err
+			}
+
+			state := uConn.ConnectionState()
+			capturedState = &state
+			if uConn.HandshakeState.ServerHello != nil {
+				capturedGroup = uConn.HandshakeState.ServerHello.ServerShare.Group
+			}
+
+			remoteAddr := uConn.RemoteAddr().String()
+			ip, _, _ := net.SplitHostPort(remoteAddr)
+			if ip != "" {
+				result.IP = ip
+			}
+
+			return uConn, nil
+		},
+		DisableKeepAlives: true,
+		ForceAttemptHTTP2: true,
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	reqURL := "https://" + domain + "/"
+	req, err := http.NewRequestWithContext(ctx, "HEAD", reqURL, nil)
+	if err != nil {
+		result.Error = err.Error()
+		return result, err
+	}
+	req.Header.Set("User-Agent", PickUserAgent())
+
+	resp, err := client.Do(req)
+	if err != nil {
+		// 某些极端服务器拒绝 HEAD，回退尝试 GET
+		getReq, getErr := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+		if getErr == nil {
+			getReq.Header.Set("User-Agent", PickUserAgent())
+			if getResp, getDoErr := client.Do(getReq); getDoErr == nil {
+				resp = getResp
+				err = nil
+			}
+		}
+	}
+
+	// 记录握手解析结果
+	if capturedState != nil {
+		result.TLSVersion = capturedState.Version
+		result.ALPN = capturedState.NegotiatedProtocol
+		result.CertChainLen = len(capturedState.PeerCertificates)
+		totalBytes := 0
+		for _, cert := range capturedState.PeerCertificates {
+			totalBytes += len(cert.Raw)
+		}
+		result.TotalCertBytes = totalBytes
+		result.KeyGroup = capturedGroup
+		result.IsPQ = IsPQGroup(capturedGroup)
+		result.HandshakeOK = true
+	}
+
+	if err != nil {
+		result.Error = err.Error()
+		return result, err
+	}
+	defer resp.Body.Close()
+
+	valid, reason := EvaluateHTTPResponse(domain, resp.StatusCode, resp.Header)
+	if !valid {
+		result.Error = reason
+		return result, fmt.Errorf("%s", reason)
+	}
+
+	return result, nil
+}
+
+// PerformTLSHandshake 发起标准的单次 TLS 1.3 握手
 func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duration, needTLS13 bool) (*TLSResult, error) {
 	result := &TLSResult{
 		Domain: domain,

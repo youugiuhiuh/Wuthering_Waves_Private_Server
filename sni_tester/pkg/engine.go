@@ -134,77 +134,197 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 	}
 	fmt.Printf("Filtering: %d total, %d to test, %d skipped\n", len(domains), len(toTest), stats.Skipped)
 
-	jobs := make(chan string, 5000)
-	results := make(chan jobResult, 2000)
-
-	maxWorkers := 2000
+	workers := InitialWorkers
 	if e.cfg.FixedWorkers > 0 {
-		maxWorkers = e.cfg.FixedWorkers
+		workers = e.cfg.FixedWorkers
 	}
 
-	var wg sync.WaitGroup
-	workerSem := make(chan struct{}, maxWorkers)
-	for i := 0; i < maxWorkers; i++ {
-		workerSem <- struct{}{}
+	type dnsResolvedItem struct {
+		domain  string
+		ip      string
+		country string
+		asn     uint32
+		org     string
 	}
 
-	initialWorkers := InitialWorkers
-	if e.cfg.FixedWorkers > 0 {
-		initialWorkers = e.cfg.FixedWorkers
-	}
+	taskChan := make(chan string, workers*2)
+	dnsReadyChan := make(chan dnsResolvedItem, workers*2)
+	results := make(chan jobResult, workers*2)
 
-	spawnWorker := func() {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case <-workerSem:
-				case <-ctx.Done():
-					return
-				default:
-					return
-				}
-
-				var domain string
-				var ok bool
-				select {
-				case domain, ok = <-jobs:
-					if !ok {
-						workerSem <- struct{}{}
-						return
-					}
-				case <-ctx.Done():
-					workerSem <- struct{}{}
-					return
-				}
-
-				result := e.processDomain(ctx, domain)
-
-				select {
-				case results <- result:
-				case <-ctx.Done():
-					workerSem <- struct{}{}
-					return
-				}
-				workerSem <- struct{}{}
-			}
-		}()
-	}
-
-	for i := 0; i < initialWorkers; i++ {
-		spawnWorker()
-	}
-
+	// 1. 流式投喂待测域名
 	go func() {
+		defer close(taskChan)
 		for _, d := range toTest {
 			select {
-			case jobs <- d:
+			case taskChan <- d:
 			case <-ctx.Done():
 				return
 			}
 		}
-		close(jobs)
+	}()
+
+	// 2. 阶段 1: 专用 DNS 并发解析池 (UDP 预解析 + GeoIP/Cloudflare 前置淘汰，零 TLS 阻塞)
+	var dnsWg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		dnsWg.Add(1)
+		go func() {
+			defer dnsWg.Done()
+			dnsTimeout := e.timeoutCtrl.GetTimeout("dns")
+			for domain := range taskChan {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				dnsCtx, cancel := context.WithTimeout(ctx, dnsTimeout)
+				start := time.Now()
+				ips, err := ResolveFast(dnsCtx, domain)
+				e.timeoutCtrl.Record(time.Since(start), "dns")
+				cancel()
+
+				if err != nil || len(ips) == 0 {
+					errMsg := "DNS resolution failed"
+					if err != nil {
+						errMsg = fmt.Sprintf("DNS failed: %v", err)
+					}
+					select {
+					case results <- jobResult{domain: domain, success: false, info: errMsg}:
+					case <-ctx.Done():
+						return
+					}
+					continue
+				}
+
+				ip := ips[0]
+				country := GetCachedCountry(ip, e.geoDB)
+				if country == "" {
+					country = "UNKNOWN"
+				}
+
+				if IsBlockedCountry(country) {
+					asnRes, _ := GetCachedASN(ip, e.asnDB)
+					if asnRes.ASN > 0 {
+						e.storage.AddASNToBlocklist(asnRes.ASN, asnRes.Org, country)
+					}
+					e.storage.AddBlockedDomain(domain, "COUNTRY", country)
+					select {
+					case results <- jobResult{domain: domain, success: false, ip: ip, country: country, info: "Country blocked"}:
+					case <-ctx.Done():
+						return
+					}
+					continue
+				}
+
+				asnRes, _ := GetCachedASN(ip, e.asnDB)
+				if IsCloudflare(ip, asnRes.ASN, asnRes.Org) {
+					e.storage.AddBlockedDomain(domain, "CLOUDFLARE_INCOMPATIBLE", country)
+					select {
+					case results <- jobResult{domain: domain, success: false, ip: ip, country: country, asn: asnRes.ASN, org: asnRes.Org, info: "Cloudflare incompatible with REALITY"}:
+					case <-ctx.Done():
+						return
+					}
+					continue
+				}
+
+				select {
+				case dnsReadyChan <- dnsResolvedItem{
+					domain:  domain,
+					ip:      ip,
+					country: country,
+					asn:     asnRes.ASN,
+					org:     asnRes.Org,
+				}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	go func() {
+		dnsWg.Wait()
+		close(dnsReadyChan)
+	}()
+
+	// 3. 阶段 2: 专用 TLS/HTTP 验证池 (直接消费已解析 IP 目标，单连接复合探测，零 DNS 等待)
+	var tlsWg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		tlsWg.Add(1)
+		go func() {
+			defer tlsWg.Done()
+			tlsTimeout := e.timeoutCtrl.GetTimeout("tls")
+			for target := range dnsReadyChan {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				start := time.Now()
+				probeCtx, cancel := context.WithTimeout(ctx, tlsTimeout)
+				tlsResult, err := PerformCombinedProbe(probeCtx, target.domain, target.ip, tlsTimeout)
+				e.timeoutCtrl.Record(time.Since(start), "tls")
+				cancel()
+
+				if err != nil || tlsResult == nil || !tlsResult.HandshakeOK {
+					errMsg := "TLS handshake failed"
+					if tlsResult != nil && tlsResult.Error != "" {
+						errMsg = tlsResult.Error
+					} else if err != nil {
+						errMsg = err.Error()
+					}
+					select {
+					case results <- jobResult{
+						domain:  target.domain,
+						success: false,
+						ip:      target.ip,
+						country: target.country,
+						asn:     target.asn,
+						org:     target.org,
+						info:    errMsg,
+					}:
+					case <-ctx.Done():
+						return
+					}
+					continue
+				}
+
+				valid, info := ValidateDomain(tlsResult)
+				finalIP := tlsResult.IP
+				if finalIP == "" {
+					finalIP = target.ip
+				}
+
+				if valid && target.country == "UNKNOWN" && finalIP != "" {
+					target.country = GetCachedCountry(finalIP, e.geoDB)
+				}
+
+				if valid {
+					e.storage.SaveSuccess(target.domain, target.country)
+				}
+
+				select {
+				case results <- jobResult{
+					domain:  target.domain,
+					success: valid,
+					isPQ:    tlsResult.IsPQ,
+					ip:      finalIP,
+					country: target.country,
+					asn:     target.asn,
+					org:     target.org,
+					info:    info,
+				}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	go func() {
+		tlsWg.Wait()
+		close(results)
 	}()
 
 	total := len(toTest)
@@ -227,15 +347,19 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 				failedDomains = append(failedDomains, r.domain)
 				stats.Failed++
 			}
-			resultList = append(resultList, DomainResult{
-				Domain:  r.domain,
-				Success: r.success,
-				IP:      r.ip,
-				Country: r.country,
-				ASN:     r.asn,
-				Org:     r.org,
-				Info:    r.info,
-			})
+
+			// 内存优化：仅在 debug 模式下在 RAM 中维护百万级全量结构体切片，避免频繁 GC 停顿
+			if e.cfg.Debug {
+				resultList = append(resultList, DomainResult{
+					Domain:  r.domain,
+					Success: r.success,
+					IP:      r.ip,
+					Country: r.country,
+					ASN:     r.asn,
+					Org:     r.org,
+					Info:    r.info,
+				})
+			}
 
 			if cb != nil {
 				cb(ProgressEvent{
@@ -252,8 +376,6 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 		}
 	}()
 
-	wg.Wait()
-	close(results)
 	<-done
 
 	if !e.cfg.Debug {

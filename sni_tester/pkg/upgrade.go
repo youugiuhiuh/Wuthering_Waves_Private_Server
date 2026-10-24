@@ -143,7 +143,7 @@ func UpgradePbFile(ctx context.Context, pbPath string, outPath string, workers i
 				default:
 				}
 
-				tlsRes, err := PerformTLSHandshake(target.domain, target.ip, timeout, true)
+				tlsRes, err := PerformCombinedProbe(ctx, target.domain, target.ip, timeout)
 				if err != nil || tlsRes == nil || !tlsRes.HandshakeOK {
 					select {
 					case <-ctx.Done():
