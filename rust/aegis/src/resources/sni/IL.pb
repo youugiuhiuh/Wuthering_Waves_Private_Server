@@ -47,12 +47,12 @@ flixbus.be
 vauva.fi
 veteranscrisisline.net
 wrc.com
-yoomi.health3delightcloud.comaceableagent.comadmonis.comadpresearch.com
+yoomi.health1jour1actu.com3delightcloud.comaceableagent.comadkit-advertising.amazonadmonis.comadpresearch.comaftenbladet.noagilewebsolutions.comairly.eu
 akiads.netaldaily.comamway.ua
-askp.co.ilatmoskop.czautocar.co.ukautorola.esayahpath.combaunetzwissen.debgate-erp.combluesphere.jpboligsiden.dkburtsbees.comcasavant.org	centra.ieceop.police.ukceopeducation.co.ukcinema.co.ilcityplumbing.co.ukcookieconfirm.comcopcisa.com	deejay.itdigication.comdigitalroom.comdiscoverchampions.comdocomomo-us.orgelnacional.com.doescaperoom.co.ilfaircode.eufit-mit-wessinghage.com	fl511.comgamedev-tech.ccgeisel.software"greenwichcommunitydirectory.org.ukgtai.deguardian.co.tthapisga.co.il
-hbomax.comheadrushfx.comhidabroot.orghyundai-ta.co.ilimaot.co.ilinteli.edu.brjlrexcellence.comjow.frkindercare.comkmvlehti.fikoyadesign.co.illapinkansa.fi	login.govlogyptiveadvothic.comlundbeck.commake-it-in-germany.com
-masa.co.ilmaster-tools.co.ilmegalean.co.ilmenora.co.ilmpac.ca	mr.gov.il	myf2b.comoriginhq.comouteast.comoxfordmusiconline.compandavideochat.comparismatch.compizzahut.co.ilportagelearning.edupromopage.netrededorsaoluiz.com.brrepubliconboard.comscholarific.comservigroup.comsight-sound.comsmiles.com.arsnunit.k12.ilsportinglife.comstarcrest.comswanbitcoin.comtalktofrank.com
-tapnav.comtheunioncard.comtheworker.co.ilthexcite.comthinkuknow.co.uktoner-partner.chtrekomania.co.il
-tuta.co.ilubisoft.comultrasignup.comupsales.com
-vader.newswallsauce.comwbgames.com
-winamax.eswirkaufendeinauto.dewizzo.media	yolawo.de
+askp.co.ilatmoskop.czautocar.co.ukautorola.esayahpath.combaunetzwissen.de	betty.combgate-erp.combigislandnow.combluesphere.jpboligsiden.dkburtsbees.comcasavant.org	centra.ieceop.police.ukceopeducation.co.ukchangecompanies.appcinema.co.ilcityplumbing.co.ukclean.emailcognitiondigital.ioconvert2.infocookieconfirm.comcoolblue.nlcopcisa.com	deejay.itdigication.comdigitalroom.comdiscoverchampions.comdocomomo-us.orgdropi.ecedhplay.comegain.cloudelnacional.com.doescaperoom.co.ilfaircode.eufit-mit-wessinghage.com	fl511.comgamedev-tech.ccgeisel.software"greenwichcommunitydirectory.org.ukgtai.deguardian.co.tthapisga.co.il
+hbomax.comheadrushfx.comhidabroot.orghobbyconsolas.comhyundai-ta.co.ilimaot.co.ilinteli.edu.brironsrc.comjlrexcellence.comjow.frkindercare.comkmvlehti.fikoyadesign.co.illapinkansa.fi	login.govlogyptiveadvothic.comlundbeck.commadlan.co.ilmake-it-in-germany.commantecabulletin.com
+masa.co.ilmaster-tools.co.ilmegalean.co.ilmenora.co.ilmpac.ca	mr.gov.il	myf2b.comnts.liveoriginhq.comouteast.comoxfordmusiconline.compandavideochat.comparismatch.compizzahut.co.ilportagelearning.edupowerleague.compremaccess.compromopage.netqualifybenefitsnow.comrededorsaoluiz.com.brrepubliconboard.comscholarific.comsearch-sprint.comsearchmobius.orgservigroup.comsight-sound.comsmiles.com.arsnunit.k12.ilsportinglife.comstarcrest.comsuperprof.frswanbitcoin.comtalkshop.livetalktofrank.com
+tapnav.comteliasmartconnect.comthebanker.comthenurserystore.comtheunioncard.comtheworker.co.ilthexcite.comthinkuknow.co.ukticketco.eventstoner-partner.chtrekomania.co.iltrustbadge.com
+tuta.co.ilubisoft.comultrasignup.comuniversobubble.com.brupsales.com
+vader.newsvauva.fiveteranscrisisline.netwallsauce.comwbgames.com
+winamax.eswirkaufendeinauto.dewizzo.mediawrc.com	yolawo.de

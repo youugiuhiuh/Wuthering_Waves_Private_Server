@@ -15,11 +15,11 @@ kai.edu.ua
 karting.uakatran.vn.uakomfort21vek.rukondratiuk.uakram.ua
 ktc-ua.comkyrier.com.ualadoshki.comladyhealth.com.ualanet.melanet.networklanet.tvlaptopchik.topleadercoffee.ualesia.ualink-kremen.netliqberry.ualitsa.com.ualocalka.netmaak.com.uamamindom.ua	maxnet.uamebelok.commedlabtest.uamir-roz.com.uamotomafia.com.uamotorcar.com.uamotozapchasti24.com.uamyoberig.com
 naditok.uanardinum.comnash.net.ua
-nbi.com.ua
+nbi.com.uancore.sh
 nest.vn.ua
-newlcn.comnext-property.comniko.uanikolab.com.ua	nikom.biznikpravda.com.uanltu.edu.ua	norven.uanta.uaobmen.today	odessa.tvokna.uaonua.edu.uaoruzeyka.com.ua	ostrov.at	ova.in.uapanda-lviv.com.uaparfumcity.com.uaporapoparam.compremiori.comprocraft.ua
+newlcn.comnext-property.comniko.uanikolab.com.ua	nikom.biznikpravda.com.uanltu.edu.ua	norven.uanta.uanupp.edu.uaobmen.today	odessa.tvokna.uaonua.edu.uaoruzeyka.com.ua	ostrov.at	ova.in.uapanda-lviv.com.uaparfumcity.com.uaporapoparam.compremiori.comprocraft.ua
 profish.uaprokit.org.ua	prosto.tvreabit.org.ua
-releem.comrobloxbeta.netsanchobag.uasanwell.bizsatel.net.uashkolyar-shop.com.uashkura.com.uashop-online.org.ua	sim.if.uasmalltalk2.mespider-net.od.uasportschedule.tv	stalar.uastar-sat.com.uastatus.ks.uastoragexhd.comsviatobum.uasynergytools.com.uatabakkings.com.uatea4you.com.uatehkom.com.uateren.in.uathe-most.ai	tk-dt.com	tkani5.uatopgps.com.uatophosting.com.uatoptul-ukraine.com.uaua-travel.infougccif.org.ua
+releem.comrobloxbeta.netroznica.com.uasanchobag.uasanwell.bizsatel.net.uashkolyar-shop.com.uashkura.com.uashop-online.org.ua	sim.if.uasmalltalk2.mespider-net.od.uasportschedule.tv	stalar.uastar-sat.com.uastatus.ks.uastoragexhd.comsviatobum.uasynergytools.com.uatabakkings.com.uatea4you.com.uatehkom.com.uateren.in.uathe-most.ai	tk-dt.com	tkani5.uatopgps.com.uatophosting.com.uatoptul-ukraine.com.uaua-travel.infougccif.org.ua
 ukd.edu.uaukrnafta.comukrpack.netukrpoliv.com.ua
 uku.com.ua
 utf.tennisutlandia.comvamdarunok.comvanrise.com.uavbikini.com.uavikna.if.uavodokanal.dp.uavodokanal.kiev.uavvpgroup.comweb-promo.uawestgard.com.uazasynai.onlineznaimo.gov.ua

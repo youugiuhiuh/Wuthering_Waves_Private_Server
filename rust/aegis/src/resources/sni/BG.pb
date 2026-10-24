@@ -17,7 +17,7 @@ biotica.bgblagosoft.combnr.bgboec.bgboerixmoto.bgbresbets.combtu.bg
 clinica.bgclownfish-translator.comdacia.bg	damski.bgdbk-dimitrov.comdek.bgdevopedia.org	dght8.com
 digi84.comdioporno.com
 dkw-nz.netdogsandcats.bg	domaza.ae
-domaza.netdomex-uk.co.ukdossier.nete-invoice.bge-uchebnici.come-vestnik.bgeaff.eueastafricadatarecovery.comecuadortenisclub.com
+domaza.netdomex-uk.co.ukdossier.netdwaprices.come-invoice.bge-uchebnici.come-vestnik.bgeaff.eueastafricadatarecovery.comecuadortenisclub.com
 emk-33.com#eradicationofblackmoneyscammers.com
 eranova.bg
 eternal.mseuchebnici.com
@@ -25,10 +25,12 @@ fastpay.bgfishing-market.comfishingzone.bgflemmix.cloud	flicka.bgfree-s
 gaziro.comgerak.bgggbg.bghomebulgaria.bghop-mebeli.comhs.vchyper-casino.netideaconsult.netimpresia.bginfosysmicro.com
 iptvdc.comiristech.coivo.bgkai.bg	kensol.eukeramo-bg.comkia.bgkilimche.com
 manager.bgmaq-parts.commatrakhouse.bgmicro.bg
-mjdance.bgmpogtop.com	mymoto.bgnet1.bg	nodexa.stnomination.bgnorbits.netnova.bgnovinata.bgown-server.companda-bg.compariteni.bg
+mjdance.bgmpogtop.com	mymoto.bg
+nastech.bgnet1.bg	nodexa.stnomination.bgnorbits.netnova.bgnovinata.bgown-server.companda-bg.compariteni.bg
 parnici.bgpharmalife.bgpipilota.bgpossibile.bgpronewsdobrich.bgradiotangra.com	raimar.bgramuslab.comrevolution-estate.bg
-robicam.bgrual-travel.comruoplovdiv.bgsatovcha.netsdi.bgsex-erotika.comshopcenter.bgsilistra.tvsliveninfo.bgsportihobi.bgstad.bgtabcloud.nettac.bgthe3-dns.com
+robicam.bgrual-travel.comruoplovdiv.bgsatovcha.net
+scarm.infosdi.bgsex-erotika.comshopcenter.bgsilistra.tvsliveninfo.bgsportihobi.bgstad.bgsunspotstudio.nettabcloud.nettac.bgthe3-dns.com
 tih.org.pktimberland.bg
 ubc-bg.comuniversalhospitalitytravel.comvesti.bgvimax.bg
 vitania.bg
-watch24.bg xn----7sbkofbbj4akz.xn--80asehdb
+watch24.bg xn----7sbkofbbj4akz.xn--80asehdbzdravnitza.com
