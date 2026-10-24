@@ -302,6 +302,10 @@ func (e *Engine) processDomain(ctx context.Context, domain string) jobResult {
 	}
 
 	asnRes, _ := GetCachedASN(ip, e.asnDB)
+	if IsCloudflare(ip, asnRes.ASN, asnRes.Org) {
+		e.storage.AddBlockedDomain(domain, "CLOUDFLARE_INCOMPATIBLE", country)
+		return jobResult{domain: domain, success: false, ip: ip, country: country, asn: asnRes.ASN, org: asnRes.Org, info: "Cloudflare incompatible with REALITY"}
+	}
 
 	tlsTimeout := e.timeoutCtrl.GetTimeout("tls")
 	start = time.Now()

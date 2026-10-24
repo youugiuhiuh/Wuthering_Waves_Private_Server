@@ -15,8 +15,7 @@ func TestTwoStageStreamingPipeline(t *testing.T) {
 
 	// 构造测试数据
 	testDomains := []string{
-		"1.1.1.1", // IP 形式或合法域名
-		"google.com",
+		"microsoft.com",
 		"cloudflare.com",
 		"invalid-non-existent-domain-xyz-12345.com",
 	}
@@ -28,7 +27,7 @@ func TestTwoStageStreamingPipeline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	stats, err := UpgradePbFile(ctx, inPath, outPath, 10, 2*time.Second, false)
+	stats, err := UpgradePbFile(ctx, inPath, outPath, 10, 2*time.Second, true)
 	if err != nil {
 		t.Fatalf("UpgradePbFile failed: %v", err)
 	}

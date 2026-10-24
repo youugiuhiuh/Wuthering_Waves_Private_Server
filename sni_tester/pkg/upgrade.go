@@ -106,6 +106,15 @@ func UpgradePbFile(ctx context.Context, pbPath string, outPath string, workers i
 					continue
 				}
 
+				if IsCloudflareIP(ips[0]) {
+					select {
+					case <-ctx.Done():
+						return
+					case resultsChan <- domainTaskResult{domain: d, isValid: false}:
+					}
+					continue
+				}
+
 				select {
 				case <-ctx.Done():
 					return

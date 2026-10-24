@@ -6,8 +6,8 @@ import (
 	"sort"
 	"testing"
 
-	snipb "go_engine/proto"
 	"google.golang.org/protobuf/proto"
+	snipb "go_engine/proto"
 )
 
 func TestWriteProtobufDomainFile_Deduplication(t *testing.T) {
@@ -33,17 +33,17 @@ func TestWriteProtobufDomainFile_Deduplication(t *testing.T) {
 		t.Fatalf("failed to read file: %v", err)
 	}
 
-	var pb snipb.DomainList
-	if err := proto.Unmarshal(data, &pb); err != nil {
-		t.Fatalf("failed to unmarshal: %v", err)
+	parsed, err := ParseProtobufDomains(data)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
 	}
 
 	expected := []string{"another.com", "example.com", "test.com", "zzz.com"}
-	if len(pb.Domains) != len(expected) {
-		t.Errorf("expected %d domains, got %d", len(expected), len(pb.Domains))
+	if len(parsed) != len(expected) {
+		t.Errorf("expected %d domains, got %d", len(expected), len(parsed))
 	}
 
-	for i, d := range pb.Domains {
+	for i, d := range parsed {
 		if i < len(expected) && d != expected[i] {
 			t.Errorf("domain[%d]: expected %s, got %s", i, expected[i], d)
 		}
@@ -85,19 +85,19 @@ func TestWriteProtobufDomainFile_Sorting(t *testing.T) {
 		t.Fatalf("failed to read file: %v", err)
 	}
 
-	var pb snipb.DomainList
-	if err := proto.Unmarshal(data, &pb); err != nil {
-		t.Fatalf("failed to unmarshal: %v", err)
+	parsed, err := ParseProtobufDomains(data)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
 	}
 
-	if !sort.StringsAreSorted(pb.Domains) {
-		t.Errorf("domains are not sorted: %v", pb.Domains)
+	if !sort.StringsAreSorted(parsed) {
+		t.Errorf("domains are not sorted: %v", parsed)
 	}
 }
 
 func TestParseProtobufDomains_ValidData(t *testing.T) {
 	domains := []string{"example.com", "test.com", "demo.org"}
-	pb := &snipb.DomainList{Domains: domains}
+	pb := &snipb.DomainList{ClassicDomains: domains}
 
 	data, err := proto.Marshal(pb)
 	if err != nil {
@@ -109,20 +109,21 @@ func TestParseProtobufDomains_ValidData(t *testing.T) {
 		t.Fatalf("ParseProtobufDomains failed: %v", err)
 	}
 
-	if len(parsed) != len(domains) {
-		t.Errorf("expected %d domains, got %d", len(domains), len(parsed))
+	expected := []string{"demo.org", "example.com", "test.com"}
+	if len(parsed) != len(expected) {
+		t.Errorf("expected %d domains, got %d", len(expected), len(parsed))
 	}
 
 	for i, d := range parsed {
-		if i < len(domains) && d != domains[i] {
-			t.Errorf("domain[%d]: expected %s, got %s", i, domains[i], d)
+		if i < len(expected) && d != expected[i] {
+			t.Errorf("domain[%d]: expected %s, got %s", i, expected[i], d)
 		}
 	}
 }
 
 func TestParseProtobufDomains_InvalidDomain(t *testing.T) {
 	domains := []string{"example.com", "invalid", "test.com", ""}
-	pb := &snipb.DomainList{Domains: domains}
+	pb := &snipb.DomainList{ClassicDomains: domains}
 
 	data, err := proto.Marshal(pb)
 	if err != nil {
@@ -171,5 +172,45 @@ func TestProtobufRoundTrip(t *testing.T) {
 	expected := []string{"alpha.com", "beta.com", "delta.com", "gamma.com"}
 	if len(parsed) != len(expected) {
 		t.Errorf("expected %d domains after dedup, got %d", len(expected), len(parsed))
+	}
+}
+
+func TestSaveBatchDual(t *testing.T) {
+	tmpDir := t.TempDir()
+	pqMap := map[string][]string{
+		"US": {"pq.us.com"},
+		"JP": {"pq.jp.com"},
+	}
+	classicMap := map[string][]string{
+		"US": {"classic.us.com"},
+		"SG": {"classic.sg.com"},
+	}
+
+	err := SaveBatchDual(tmpDir, pqMap, classicMap, nil)
+	if err != nil {
+		t.Fatalf("SaveBatchDual failed: %v", err)
+	}
+
+	usData, err := os.ReadFile(filepath.Join(tmpDir, "US.pb"))
+	if err != nil {
+		t.Fatalf("Failed to read US.pb: %v", err)
+	}
+	dl, err := ParseProtobufDomainList(usData)
+	if err != nil {
+		t.Fatalf("Failed to parse US.pb: %v", err)
+	}
+
+	if len(dl.PqDomains) != 1 || dl.PqDomains[0] != "pq.us.com" {
+		t.Errorf("PqDomains = %v; want [pq.us.com]", dl.PqDomains)
+	}
+	if len(dl.ClassicDomains) != 1 || dl.ClassicDomains[0] != "classic.us.com" {
+		t.Errorf("ClassicDomains = %v; want [classic.us.com]", dl.ClassicDomains)
+	}
+	all, err := ParseProtobufDomains(usData)
+	if err != nil {
+		t.Fatalf("Failed to parse all domains: %v", err)
+	}
+	if len(all) != 2 {
+		t.Errorf("all domains len = %d; want 2", len(all))
 	}
 }
