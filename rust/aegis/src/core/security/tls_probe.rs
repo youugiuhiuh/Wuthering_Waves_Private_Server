@@ -156,13 +156,6 @@ pub async fn probe_tls_cached(sni: &str, port: u16) -> Result<TlsProbeResult> {
     Ok(res)
 }
 
-pub async fn sni_is_pq_friendly(sni: &str) -> bool {
-    match probe_tls_cached(sni, 443).await {
-        Ok(res) => res.total_cert_len > 3500,
-        Err(_) => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,19 +214,5 @@ mod tests {
             other => other,
         };
         assert_eq!(result, "1.3.6.1.4.1.99999.1");
-    }
-
-    #[test]
-    fn test_sni_is_pq_friendly_threshold() {
-        let result = TlsProbeResult {
-            total_cert_len: 3501,
-            leaf_pubkey_alg: "RSA".to_string(),
-        };
-        assert!(result.total_cert_len > 3500);
-        let small_result = TlsProbeResult {
-            total_cert_len: 3000,
-            leaf_pubkey_alg: "EC".to_string(),
-        };
-        assert!(small_result.total_cert_len <= 3500);
     }
 }

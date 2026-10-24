@@ -231,9 +231,10 @@ impl SNISelector {
         LoadedDomains::default()
     }
 
-    pub fn get_next_with_event(&mut self) -> (String, SNIExtractEvent) {
+    /// 抽取下一张 SNI 卡牌，同时返回域名、是否为后量子(PQ)域名、以及卡池事件
+    pub fn get_next_card(&mut self) -> (String, bool, SNIExtractEvent) {
         if self.domains.is_empty() {
-            return (String::new(), SNIExtractEvent::Classic);
+            return (String::new(), false, SNIExtractEvent::Classic);
         }
 
         let mut round_reset = false;
@@ -243,30 +244,36 @@ impl SNISelector {
         }
 
         let is_at_boundary = self.pq_count > 0 && (self.used_count as usize) + 1 == self.pq_count;
-        let is_pq = self.pq_count > 0 && (self.used_count as usize) < self.pq_count;
+        let is_pq_phase = self.pq_count > 0 && (self.used_count as usize) < self.pq_count;
 
         let idx = self
             .shuffled_indices
             .pop()
             .expect("shuffled_indices should not be empty after reset");
+        let is_pq = idx < self.pq_count;
         self.used_count += 1;
         self.dirty = true;
 
         let event = if is_at_boundary {
             SNIExtractEvent::DegradedToClassicFirstTime
-        } else if is_pq {
-            SNIExtractEvent::PQ
         } else if round_reset {
             SNIExtractEvent::RoundReset
+        } else if is_pq_phase {
+            SNIExtractEvent::PQ
         } else {
             SNIExtractEvent::Classic
         };
 
-        (self.domains[idx].clone(), event)
+        (self.domains[idx].clone(), is_pq, event)
+    }
+
+    pub fn get_next_with_event(&mut self) -> (String, SNIExtractEvent) {
+        let (sni, _, event) = self.get_next_card();
+        (sni, event)
     }
 
     pub fn get_next(&mut self) -> String {
-        self.get_next_with_event().0
+        self.get_next_card().0
     }
 
     /// 消费降级告警通知：如果事件为降级临界点且本轮未告警过，返回 true 并置位
@@ -599,7 +606,7 @@ mod tests {
 
         let seed = 0xCAFE_BABE;
         let mut selector = SNISelector {
-            domains,
+            domains: domains.clone(),
             pq_count,
             shuffled_indices: build_order(total, pq_count, seed, 0),
             used_count: 0,
@@ -634,6 +641,29 @@ mod tests {
         let (d4, e4) = selector.get_next_with_event();
         assert!(d4.starts_with('c'));
         assert_eq!(e4, SNIExtractEvent::Classic);
+
+        // 验证 get_next_card 的 is_pq 标志位精准度
+        let mut selector2 = SNISelector {
+            domains,
+            pq_count,
+            shuffled_indices: build_order(total, pq_count, seed, 0),
+            used_count: 0,
+            seed,
+            cache_key: String::new(),
+            dirty: false,
+            pq_exhausted_notified: false,
+        };
+        let (c1, is_pq1, _) = selector2.get_next_card();
+        assert!(is_pq1, "第 1 张卡牌应为 PQ 域名");
+        assert!(c1.starts_with("pq"));
+
+        let (c2, is_pq2, _) = selector2.get_next_card();
+        assert!(is_pq2, "第 2 张卡牌仍为 PQ 域名（边界卡牌）");
+        assert!(c2.starts_with("pq"));
+
+        let (c3, is_pq3, _) = selector2.get_next_card();
+        assert!(!is_pq3, "第 3 张卡牌应为经典域名");
+        assert!(c3.starts_with('c'));
     }
 
     /// T4: 连续抽样不得产生任何落盘。

@@ -175,9 +175,7 @@ impl ConfigManager {
         let mut batch_configs = Vec::new();
 
         for i in 0..count {
-            let sni = selector.get_next();
-
-            let pq_ok = crate::core::security::tls_probe::sni_is_pq_friendly(&sni).await;
+            let (sni, pq_ok, _) = selector.get_next_card();
 
             let preferred = if i == 0 && port_443_available {
                 Some(443u16)
