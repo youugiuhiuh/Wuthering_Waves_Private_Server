@@ -158,6 +158,11 @@ async fn main() -> Result<()> {
     // 同步 AppState 语言状态 + 一次性系统副作用（时区、apt-daily timer）。
     main::runtime::apply_configured_language(&state).await;
 
+    // 确保与自愈 Xray 基础配置（自动检测主机 IPv6 出口路由并适配 UseIPv4 策略）
+    if let Err(e) = aegis::core::xray::config::ConfigManager::ensure_base_config().await {
+        log::warn!("确保 Xray 基础配置失败: {}", e);
+    }
+
     main::runtime::run(
         state,
         matrix_handle,
