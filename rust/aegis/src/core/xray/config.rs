@@ -821,6 +821,36 @@ impl ConfigManager {
         Ok(ports)
     }
 
+    /// 检查并按需修补 direct outbound 的 domainStrategy 设置：
+    /// 当主机无 IPv6 出口路由时，确保 domainStrategy 为 "UseIPv4"；
+    /// 返回值指示是否对 config 产生了实质性修改。
+    pub fn patch_direct_outbound_ipv6(config: &mut Value, has_ipv6: bool) -> bool {
+        let mut modified = false;
+        if let Some(outbounds) = config.get_mut("outbounds").and_then(|v| v.as_array_mut()) {
+            for ob in outbounds {
+                if ob.get("tag").and_then(|v| v.as_str()) == Some("direct") && !has_ipv6 {
+                    let current_strategy = ob
+                        .get("settings")
+                        .and_then(|s| s.get("domainStrategy"))
+                        .and_then(|ds| ds.as_str());
+                    if current_strategy != Some("UseIPv4") {
+                        if let Some(settings) =
+                            ob.get_mut("settings").and_then(|s| s.as_object_mut())
+                        {
+                            settings
+                                .insert("domainStrategy".to_string(), serde_json::json!("UseIPv4"));
+                            modified = true;
+                        } else {
+                            ob["settings"] = serde_json::json!({"domainStrategy": "UseIPv4"});
+                            modified = true;
+                        }
+                    }
+                }
+            }
+        }
+        modified
+    }
+
     pub async fn ensure_base_config() -> Result<()> {
         use crate::core::paths::xray;
 
@@ -839,7 +869,21 @@ impl ConfigManager {
                 false
             }
         };
+
+        let has_ipv6 = crate::core::system::SystemMonitor::has_ipv6_egress();
+
         if exists {
+            if let Ok(content) = tokio::fs::read_to_string(&base_path).await
+                && let Ok(mut config) = serde_json::from_str::<serde_json::Value>(&content)
+                && Self::patch_direct_outbound_ipv6(&mut config, has_ipv6)
+                && let Ok(new_content) = serde_json::to_string_pretty(&config)
+                && tokio::fs::write(&base_path, new_content).await.is_ok()
+            {
+                log::info!(
+                    "已自愈 00_base.json 的 direct outbound: has_ipv6={}",
+                    has_ipv6
+                );
+            }
             return Ok(());
         }
 
@@ -853,6 +897,12 @@ impl ConfigManager {
             .map(RoutingManager::rule_def_to_json)
             .collect();
 
+        let direct_settings = if !has_ipv6 {
+            serde_json::json!({"domainStrategy": "UseIPv4"})
+        } else {
+            serde_json::json!({})
+        };
+
         let base_config = serde_json::json!({
             "log": {"loglevel": "warning"},
             "dns": {
@@ -864,7 +914,7 @@ impl ConfigManager {
                 "rules": default_rules
             },
             "outbounds": [
-                {"protocol": "freedom", "settings": {}, "tag": "direct"},
+                {"protocol": "freedom", "settings": direct_settings, "tag": "direct"},
                 {"protocol": "blackhole", "settings": {}, "tag": "blocked"}
             ]
         });
@@ -874,7 +924,11 @@ impl ConfigManager {
             .await
             .context("写入基础配置失败")?;
 
-        log::info!("已创建 wwps-core 基础配置: {}", base_path);
+        log::info!(
+            "已创建 wwps-core 基础配置 (has_ipv6={}): {}",
+            has_ipv6,
+            base_path
+        );
         Ok(())
     }
 }
@@ -1360,6 +1414,59 @@ mod tests {
                 "cn_ip",
                 "cn_domain"
             ]
+        );
+    }
+
+    #[test]
+    fn test_patch_direct_outbound_adds_use_ipv4_when_no_ipv6() {
+        let mut config = serde_json::json!({
+            "outbounds": [
+                {"protocol": "freedom", "settings": {}, "tag": "direct"},
+                {"protocol": "blackhole", "settings": {}, "tag": "blocked"}
+            ]
+        });
+
+        let modified = ConfigManager::patch_direct_outbound_ipv6(&mut config, false);
+        assert!(modified);
+        assert_eq!(
+            config["outbounds"][0]["settings"]["domainStrategy"],
+            "UseIPv4"
+        );
+    }
+
+    #[test]
+    fn test_patch_direct_outbound_idempotent_when_already_use_ipv4() {
+        let mut config = serde_json::json!({
+            "outbounds": [
+                {"protocol": "freedom", "settings": {"domainStrategy": "UseIPv4"}, "tag": "direct"},
+                {"protocol": "blackhole", "settings": {}, "tag": "blocked"}
+            ]
+        });
+
+        let modified = ConfigManager::patch_direct_outbound_ipv6(&mut config, false);
+        assert!(!modified);
+        assert_eq!(
+            config["outbounds"][0]["settings"]["domainStrategy"],
+            "UseIPv4"
+        );
+    }
+
+    #[test]
+    fn test_patch_direct_outbound_leaves_alone_when_has_ipv6() {
+        let mut config = serde_json::json!({
+            "outbounds": [
+                {"protocol": "freedom", "settings": {}, "tag": "direct"},
+                {"protocol": "blackhole", "settings": {}, "tag": "blocked"}
+            ]
+        });
+
+        let modified = ConfigManager::patch_direct_outbound_ipv6(&mut config, true);
+        assert!(!modified);
+        assert!(
+            config["outbounds"][0]["settings"]
+                .as_object()
+                .unwrap()
+                .is_empty()
         );
     }
 

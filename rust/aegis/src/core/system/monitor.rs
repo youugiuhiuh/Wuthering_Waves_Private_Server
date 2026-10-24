@@ -281,6 +281,18 @@ impl SystemMonitor {
         anyhow::bail!("无法获取公网 IPv6 地址")
     }
 
+    /// 极速内核级路由探针：检测当前主机是否具备可达的外网 IPv6 出口路由
+    pub fn has_ipv6_egress() -> bool {
+        use std::net::{SocketAddr, UdpSocket};
+        if let Ok(target) = "[2001:4860:4860::8888]:53".parse::<SocketAddr>()
+            && let Ok(socket) = UdpSocket::bind("[::]:0")
+            && socket.connect(target).is_ok()
+        {
+            return true;
+        }
+        false
+    }
+
     // Check service status utilizing systemctl asynchronously
     pub async fn check_service_status(service_name: &str) -> bool {
         let output = Command::new("systemctl")
@@ -339,5 +351,12 @@ mod tests {
         for part in parts {
             assert!(part.parse::<f32>().is_ok());
         }
+    }
+
+    #[test]
+    fn test_has_ipv6_egress_does_not_panic() {
+        // 确保探针在任何网络环境（有或无 IPv6）下均能安全返回 bool，不 panic
+        let has_v6 = SystemMonitor::has_ipv6_egress();
+        let _ = has_v6;
     }
 }
