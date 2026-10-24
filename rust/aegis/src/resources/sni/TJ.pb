@@ -1,2 +1,0 @@
-
-tcell.tjparimatch.tj

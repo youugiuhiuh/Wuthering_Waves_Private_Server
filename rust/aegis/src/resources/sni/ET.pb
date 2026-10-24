@@ -1,1 +1,0 @@
-amharabank.com.etanbesabank.et	uu.edu.et

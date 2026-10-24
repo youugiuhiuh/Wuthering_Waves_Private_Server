@@ -1,1 +1,0 @@
-clicplus.comfstbm.ac.masorec.mauca.ma

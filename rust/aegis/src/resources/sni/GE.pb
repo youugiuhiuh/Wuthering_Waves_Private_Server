@@ -1,2 +1,0 @@
-369.ge8000vintages.gea-mobile.bizcaravani.ge
-connect.ge	digest.gedomenebi.com	geopay.gegrena.geguriismoambe.comiplus.com.geixp.ge	museum.geregistrator.geserv.gess.geultra.gexn--lodg4a3d.xn--node

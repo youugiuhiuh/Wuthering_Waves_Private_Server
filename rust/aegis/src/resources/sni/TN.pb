@@ -1,1 +1,0 @@
-hexabyte.tnkamaana.com	mpshop.tnpharma-shop.tntunisiabeds.tn
