@@ -180,6 +180,8 @@ func CheckH3Support(domain string, targetIP string) bool {
 			return NewDialer(h3Timeout).DialContext(ctx, "tcp", connectAddr)
 		},
 		ForceAttemptHTTP2: true,
+		// 单次探测禁用连接复用，避免连接池出现 idle channel 延迟脏数据
+		DisableKeepAlives: true,
 	}
 	client := &http.Client{Transport: transport, Timeout: h3Timeout}
 

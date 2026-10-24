@@ -51,9 +51,10 @@ func ValidateHTTP(domain, targetIP string, timeout time.Duration) (bool, string)
 			}
 			return NewDialer(timeout).DialContext(ctx, "tcp", connectAddr)
 		},
-		ForceAttemptHTTP2:   true,
-		DisableKeepAlives:   false,
-		MaxIdleConnsPerHost: 2,
+		ForceAttemptHTTP2: true,
+		// 探测为单次短连接验证，禁用连接复用（Keep-Alive），握手完成后立即彻底关闭 TCP 连接，
+		// 彻底根除部分迟钝/畸形服务器在连接归还空闲池后延迟发包导致的 "Unsolicited response received on idle HTTP channel" 告警。
+		DisableKeepAlives: true,
 	}
 
 	client := &http.Client{

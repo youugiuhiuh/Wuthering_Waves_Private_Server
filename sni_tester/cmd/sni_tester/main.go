@@ -5,6 +5,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -34,6 +36,12 @@ func main() {
 	ifaceName := flag.String("iface", "", "Bind outbound traffic to network interface (e.g. wlp6s0) or IP to isolate from main broadband")
 	timeoutSec := flag.Int("timeout", 5, "TLS & DNS timeout in seconds (default 5s for overseas endpoints)")
 	flag.Parse()
+
+	if !*debugMode {
+		// 非 debug 模式下静音 Go 标准库底层的网络/HTTP2 协议告警（如 received DATA on a HEAD request、UnknownFrame 等），
+		// 避免非标野鸡服务器打断刷屏终端进度条；如需排查底层协议细节，可传入 -debug 开启。
+		log.SetOutput(io.Discard)
+	}
 
 	if *ifaceName != "" {
 		if err := pkg.SetOutboundInterface(*ifaceName); err != nil {
