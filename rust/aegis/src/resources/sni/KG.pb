@@ -1,0 +1,1 @@
+eldik.kgkao.kgmega.kgns2.kgoshsu.kg
