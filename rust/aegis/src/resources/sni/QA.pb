@@ -1,1 +1,0 @@
-alrayan.commmaa.gov.qatrikart.com

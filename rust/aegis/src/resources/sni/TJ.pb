@@ -1,1 +1,0 @@
-amit.tjeprocurement.gov.tjintercom.tj	tajnet.tjzet-mobile.com
