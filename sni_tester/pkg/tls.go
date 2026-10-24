@@ -120,16 +120,17 @@ func ValidateDomain(result *TLSResult) (bool, string) {
 		return false, "X25519-based key exchange required"
 	}
 
-	if result.ALPN == "h2" {
-		return true, "Validated (H2)"
+	if result.ALPN != "h2" && !CheckH3Support(result.Domain, result.IP) {
+		return false, "Neither H2 nor H3 support detected"
 	}
 
-	h3Supported := CheckH3Support(result.Domain, result.IP)
-	if h3Supported {
-		return true, "Validated (H3)"
+	// 深入验证 HTTP 响应标头与重定向行为（排除套皮 CDN 与跨域 301 站点）
+	httpValid, httpReason := ValidateHTTP(result.Domain, result.IP, 2*time.Second)
+	if !httpValid {
+		return false, httpReason
 	}
 
-	return false, "Neither H2 nor H3 support detected"
+	return true, "Validated (H2/HTTP)"
 }
 
 func CheckH3Support(domain string, targetIP string) bool {
