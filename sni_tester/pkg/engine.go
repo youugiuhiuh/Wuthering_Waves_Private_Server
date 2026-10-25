@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/oschwald/geoip2-golang/v2"
+	maxminddb "github.com/oschwald/maxminddb-golang/v2"
 )
 
 type jobResult struct {
@@ -21,8 +21,8 @@ type jobResult struct {
 
 type Engine struct {
 	cfg         Config
-	geoDB       *geoip2.Reader
-	asnDB       *geoip2.Reader
+	geoDB       *maxminddb.Reader
+	asnDB       *maxminddb.Reader
 	storage     *StorageManager
 	dnsLimiter  *DNSRateLimiter
 	timeoutCtrl *TimeoutController
@@ -30,21 +30,28 @@ type Engine struct {
 }
 
 func NewEngine(cfg Config) (*Engine, error) {
-	geoDB, err := geoip2.Open(cfg.GeoDBFile)
+	geoDB, err := maxminddb.Open(cfg.GeoDBFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open GeoIP database: %w", err)
 	}
 
-	asnDB, err := geoip2.Open(cfg.GeoASNFile)
-	if err != nil {
-		geoDB.Close()
-		return nil, fmt.Errorf("failed to open GeoASN database: %w", err)
+	var asnDB *maxminddb.Reader
+	if cfg.GeoASNFile == cfg.GeoDBFile {
+		asnDB = geoDB
+	} else {
+		asnDB, err = maxminddb.Open(cfg.GeoASNFile)
+		if err != nil {
+			geoDB.Close()
+			return nil, fmt.Errorf("failed to open GeoASN database: %w", err)
+		}
 	}
 
 	storage, err := NewStorageManager(cfg.BadgerDBDir, cfg.TTLDays)
 	if err != nil {
 		geoDB.Close()
-		asnDB.Close()
+		if asnDB != geoDB {
+			asnDB.Close()
+		}
 		return nil, fmt.Errorf("failed to create storage manager: %w", err)
 	}
 
@@ -62,7 +69,7 @@ func (e *Engine) Close() {
 	if e.geoDB != nil {
 		e.geoDB.Close()
 	}
-	if e.asnDB != nil {
+	if e.asnDB != nil && e.asnDB != e.geoDB {
 		e.asnDB.Close()
 	}
 	if e.storage != nil {

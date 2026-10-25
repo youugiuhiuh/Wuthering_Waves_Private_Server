@@ -29,8 +29,8 @@ func DefaultConfig() Config {
 	return Config{
 		FixedWorkers:  0,
 		TTLDays:       7,
-		GeoDBFile:     "GeoLite2-Country.mmdb",
-		GeoASNFile:    "GeoLite2-ASN.mmdb",
+		GeoDBFile:     "ipinfo_lite.mmdb",
+		GeoASNFile:    "ipinfo_lite.mmdb",
 		BadgerDBDir:   "badger_db",
 		UseBuiltinDNS: true,
 	}
@@ -191,11 +191,11 @@ const (
 	MinWorkers         = 10
 	JobBuffer          = 5000
 	StreamingThreshold = 10 * 1024 * 1024
-	GeoDBFile          = "GeoLite2-Country.mmdb"
-	GeoDBURL           = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-Country.mmdb"
-	GeoASNFile         = "GeoLite2-ASN.mmdb"
-	GeoASNURL          = "https://github.com/P3TERX/GeoLite.mmdb/releases/latest/download/GeoLite2-ASN.mmdb"
-	GeoDBGitHubPath    = "/P3TERX/GeoLite.mmdb/releases/latest/download/"
+	GeoDBFile          = "ipinfo_lite.mmdb"
+	GeoDBURL           = "https://github.com/youugiuhiuh/IPinfoLite-Download/releases/latest/download/ipinfo_lite.mmdb"
+	GeoASNFile         = "ipinfo_lite.mmdb"
+	GeoASNURL          = "https://github.com/youugiuhiuh/IPinfoLite-Download/releases/latest/download/ipinfo_lite.mmdb"
+	GeoDBGitHubPath    = "/youugiuhiuh/IPinfoLite-Download/releases/latest/download/"
 	BadgerDBDir        = "badger_db"
 	BatchSaveSize      = 10000
 )

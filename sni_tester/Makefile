@@ -8,8 +8,7 @@ build:
 
 phone-deploy: build
 	adb push $(BINARY) /data/local/tmp/
-	adb push GeoLite2-Country.mmdb /data/local/tmp/ 2>/dev/null || true
-	adb push GeoLite2-ASN.mmdb /data/local/tmp/ 2>/dev/null || true
+	adb push ipinfo_lite.mmdb /data/local/tmp/ 2>/dev/null || true
 	adb shell "mkdir -p /data/local/tmp/$(OUTPUT_DIR)"
 	adb shell "cd /data/local/tmp && SNI_OUTPUT_DIR=/data/local/tmp/$(OUTPUT_DIR) chmod +x $(BINARY) && ./$(BINARY)"
 	adb forward tcp:18080 tcp:18080

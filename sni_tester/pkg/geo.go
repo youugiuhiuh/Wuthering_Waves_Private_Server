@@ -8,29 +8,85 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/oschwald/geoip2-golang/v2"
+	maxminddb "github.com/oschwald/maxminddb-golang/v2"
 )
 
 var countryCache sync.Map
 var asnResultCache sync.Map
 
-func GetCachedCountry(ip string, geoDB *geoip2.Reader) string {
+// UnifiedGeoRecord seamlessly supports both IPinfo Lite MMDB and MaxMind GeoLite2 schemas.
+type UnifiedGeoRecord struct {
+	// IPinfo schema top-level fields
+	Country     string `maxminddb:"country"`
+	CountryCode string `maxminddb:"country_code"`
+	CountryName string `maxminddb:"country_name"`
+	ASN         string `maxminddb:"asn"`
+	ASName      string `maxminddb:"as_name"`
+	ASDomain    string `maxminddb:"as_domain"`
+
+	// MaxMind schema nested fields
+	MaxMindCountry struct {
+		ISOCode string `maxminddb:"iso_code"`
+	} `maxminddb:"country"`
+	MaxMindRegisteredCountry struct {
+		ISOCode string `maxminddb:"iso_code"`
+	} `maxminddb:"registered_country"`
+	MaxMindASN uint32 `maxminddb:"autonomous_system_number"`
+	MaxMindOrg string `maxminddb:"autonomous_system_organization"`
+}
+
+func (r *UnifiedGeoRecord) ExtractCountry() string {
+	if r.CountryCode != "" {
+		return strings.ToUpper(r.CountryCode)
+	}
+	if len(r.Country) == 2 {
+		return strings.ToUpper(r.Country)
+	}
+	if r.MaxMindCountry.ISOCode != "" {
+		return strings.ToUpper(r.MaxMindCountry.ISOCode)
+	}
+	if r.MaxMindRegisteredCountry.ISOCode != "" {
+		return strings.ToUpper(r.MaxMindRegisteredCountry.ISOCode)
+	}
+	return "UNKNOWN"
+}
+
+func (r *UnifiedGeoRecord) ExtractASN() (uint32, string) {
+	if r.ASN != "" {
+		clean := strings.TrimPrefix(strings.ToUpper(r.ASN), "AS")
+		if n, err := strconv.ParseUint(clean, 10, 32); err == nil {
+			org := r.ASName
+			if org == "" {
+				org = r.ASDomain
+			}
+			return uint32(n), org
+		}
+	}
+	if r.MaxMindASN > 0 {
+		return r.MaxMindASN, r.MaxMindOrg
+	}
+	return 0, ""
+}
+
+func GetCachedCountry(ip string, geoDB *maxminddb.Reader) string {
 	if cached, ok := countryCache.Load(ip); ok {
 		return cached.(string)
 	}
 
 	countryCode := "UNKNOWN"
-	if addr, err := netip.ParseAddr(ip); err == nil {
-		record, err := geoDB.Country(addr)
-		if err == nil {
-			if record.Country.ISOCode != "" {
-				countryCode = record.Country.ISOCode
-			} else if record.RegisteredCountry.ISOCode != "" {
-				countryCode = record.RegisteredCountry.ISOCode
+	if geoDB != nil {
+		if addr, err := netip.ParseAddr(ip); err == nil {
+			res := geoDB.Lookup(addr)
+			if res.Found() {
+				var rec UnifiedGeoRecord
+				if err := res.Decode(&rec); err == nil {
+					countryCode = rec.ExtractCountry()
+				}
 			}
 		}
 	}
@@ -39,26 +95,35 @@ func GetCachedCountry(ip string, geoDB *geoip2.Reader) string {
 	return countryCode
 }
 
-func GetCachedASN(ip string, asnDB *geoip2.Reader) (ASNResult, error) {
+func GetCachedASN(ip string, asnDB *maxminddb.Reader) (ASNResult, error) {
 	if cached, ok := asnResultCache.Load(ip); ok {
 		return cached.(ASNResult), nil
 	}
 
 	result := ASNResult{}
-	if addr, err := netip.ParseAddr(ip); err == nil {
-		asn, org := GetASN(addr, asnDB)
-		result = ASNResult{ASN: asn, Org: org}
+	if asnDB != nil {
+		if addr, err := netip.ParseAddr(ip); err == nil {
+			asn, org := GetASN(addr, asnDB)
+			result = ASNResult{ASN: asn, Org: org}
+		}
 	}
 	asnResultCache.Store(ip, result)
 	return result, nil
 }
 
-func GetASN(ip netip.Addr, db *geoip2.Reader) (uint32, string) {
-	record, err := db.ASN(ip)
-	if err != nil {
+func GetASN(ip netip.Addr, db *maxminddb.Reader) (uint32, string) {
+	if db == nil {
 		return 0, ""
 	}
-	return uint32(record.AutonomousSystemNumber), record.AutonomousSystemOrganization
+	res := db.Lookup(ip)
+	if !res.Found() {
+		return 0, ""
+	}
+	var rec UnifiedGeoRecord
+	if err := res.Decode(&rec); err != nil {
+		return 0, ""
+	}
+	return rec.ExtractASN()
 }
 
 func IsBlockedCountry(code string) bool {
@@ -80,14 +145,23 @@ func PrepareGeoDBs(geoFile, asnFile, proxyURL string) error {
 		return nil
 	}
 
+	// 若两个目标文件相同（如统一使用 ipinfo_lite.mmdb），只下载一次
+	if geoFile == asnFile && needCountry {
+		fmt.Println("[GeoDB] Downloading unified IPinfo Lite database (Country + ASN)...")
+		if err := downloadWithMirrors(geoFile, GeoDBURL, proxyURL); err != nil {
+			return fmt.Errorf("failed to download unified IPinfo Lite database: %w", err)
+		}
+		return nil
+	}
+
 	if needCountry {
 		if err := downloadWithMirrors(geoFile, GeoDBURL, proxyURL); err != nil {
-			return fmt.Errorf("failed to download GeoLite2-Country: %w", err)
+			return fmt.Errorf("failed to download GeoIP database: %w", err)
 		}
 	}
 	if needASN {
 		if err := downloadWithMirrors(asnFile, GeoASNURL, proxyURL); err != nil {
-			return fmt.Errorf("failed to download GeoLite2-ASN: %w", err)
+			return fmt.Errorf("failed to download GeoASN database: %w", err)
 		}
 	}
 
@@ -108,7 +182,7 @@ func downloadWithMirrors(filePath, primaryURL, proxyString string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("all GeoDB mirror sources failed: %s", filename)
+	return tryDownload(filePath, primaryURL, proxyString)
 }
 
 func tryDownload(filePath, urlStr, proxyString string) error {
