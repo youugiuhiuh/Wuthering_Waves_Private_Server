@@ -1,4 +1,4 @@
-# SNI Tester — High-Performance Dual-Pool Censorship-Resistant Probe Engine
+# SNI Tester — High-Performance Three-Phase Censorship-Resistant Probe Engine
 [English](#english) | [فارسی (Persian)](#فارسی-persian) | [Русский (Russian)](#русский-russian)
 
 ---
@@ -8,49 +8,66 @@
 
 High-performance concurrent SNI testing and Post-Quantum (PQ) camouflage domain management engine, tailored for anti-censorship systems (REALITY / XHTTP).
 
-### Key Features
-- **Decoupled Two-Phase Pipeline**:
-  - **Phase 1 (`probe-survival`)**: Lightweight survival check running inside censored regions (China, Iran, Russia) to detect GFW / TSP RST injection and active filtering without triggering ISP scrutiny.
-  - **Phase 2 (`build-pools`)**: Deep inspection on overseas VPS to evaluate TLS 1.3, Post-Quantum key exchange (`X25519MLKEM768`), ALPN H2/H3, cert-chain length limits (3500–5500B), and exclude CDNs/Cloudflare.
-- **Post-Quantum Dual-Pool Classification**: Separates domains into `pq_domains` (ML-KEM / Kyber hybrid) and `classic_domains` (standard X25519) per country.
-- **Global Outbound Proxy Support (`-p socks5://...`)**: Routes all DNS lookups and TLS probing traffic through SOCKS5 to hide local residential broadband IPs.
-- **Hardware Interface Isolation (`-iface`)**: Binds traffic to a secondary wireless interface (e.g. `wlp6s0`) using `SO_BINDTODEVICE` to prevent saturated test traffic from interrupting local browsing or SSH sessions.
-- **Fast In-Place Upgrade (`-upgrade-dir`)**: Scans existing `.pb` country resources in parallel to refresh and prune dead nodes.
+### The Three-Phase Decoupled Architecture
+To achieve absolute safety and lightning-fast execution, testing is strictly decoupled into three specialized phases:
 
-### Quick Start
+```text
+  Phase 1: resolve-map (Overseas VPS)
+  Input: top-1m.csv
+  Output: resolved_targets.csv (domain,ip mapping)
+  - Uses pure overseas Anycast DNS (Cloudflare, Google, Quad9, OpenDNS). Zero China DNS.
+  - Filters Cloudflare IP ranges in advance. 100% free from GFW/censor interference.
+           │
+           ▼
+  Phase 2: probe-survival (Inside China / Iran / Russia)
+  Input: resolved_targets.csv
+  Output: survived_candidates.csv
+  - ZERO DNS QUERIES! Connects directly to pre-resolved IPs.
+  - Minimal byte-level Chrome TLS ClientHello handshake.
+  - Built-in 150ms post-handshake probe to capture delayed GFW TCP RST injection.
+  - Leaves zero scanning or crawling footprint. Zero domestic ISP audit risk.
+           │
+           ▼
+  Phase 3: build-pools (Overseas User VPS)
+  Input: survived_candidates.csv
+  Output: rust/aegis/src/resources/sni/*.pb
+  - Reuses pre-resolved IPs without repeating DNS.
+  - Evaluates TLS 1.3, Post-Quantum key exchange (X25519MLKEM768), H2 ALPN, and HTTP CDN headers.
+  - Filters bloated cert chains (3500–5500B) and strictly discards CN/HK/MO/IR/RU/KP domains.
+  - Incrementally merges into existing .pb country pools without losing historical assets.
+```
 
-#### Phase 1: Local Survival Probe (Run inside censored regions / local network)
-Fast and lightweight — checks DNS resolution, filters Cloudflare, and tests whether TCP/TLS 443 is blocked or reset:
+### Quick Start (Three-Phase Workflow)
+
+#### 1. Phase 1: Pre-Resolve (Run on Overseas VPS)
 ```bash
 go build -o sni_tester ./cmd/sni_tester/
-./sni_tester probe-survival -f top-1m.csv -o survived_candidates.txt -w 50 -p socks5://127.0.0.1:10808
+./sni_tester resolve-map -f top-1m.csv -o resolved_targets.csv -w 100
 ```
 
-#### Phase 2: VPS Dual-Pool Builder (Run on your overseas VPS)
-Takes `survived_candidates.txt` and performs deep inspection with zero risk from local censorship:
+#### 2. Phase 2: Survival Probe (Run Inside Censored Region / Local Network)
 ```bash
-./sni_tester build-pools -f survived_candidates.txt -out-dir rust/aegis/src/resources/sni -w 50
+./sni_tester probe-survival -f resolved_targets.csv -o survived_candidates.csv -w 50 -p socks5://127.0.0.1:10808
 ```
 
-#### Upgrading Existing Country `.pb` Files Directly
+#### 3. Phase 3: Dual-Pool Builder (Run on User Overseas VPS)
 ```bash
-./sni_tester -upgrade-dir rust/aegis/src/resources/sni -w 50 -p socks5://127.0.0.1:10808
+./sni_tester build-pools -f survived_candidates.csv -out-dir rust/aegis/src/resources/sni -w 50
 ```
 
-### CLI Options
+### CLI Subcommands & Options
 
-| Command / Flag | Description | Example |
+| Command / Flag | Purpose | Example |
 | :--- | :--- | :--- |
-| `probe-survival` | Phase 1: Lightweight survival probe for censored regions | `./sni_tester probe-survival -f list.txt -o survived.txt` |
-| `build-pools` | Phase 2: Deep inspection and dual-pool `.pb` generator | `./sni_tester build-pools -f survived.txt` |
+| `resolve-map` | Phase 1: Overseas concurrent DNS pre-resolver (`domain,ip`) | `./sni_tester resolve-map -f top-1m.csv -o resolved.csv` |
+| `probe-survival` | Phase 2: Zero-DNS survival probe for censored regions | `./sni_tester probe-survival -f resolved.csv -o survived.csv` |
+| `build-pools` | Phase 3: VPS deep inspector and dual-pool `.pb` generator | `./sni_tester build-pools -f survived.csv` |
 | `-p` | Global outbound SOCKS5 proxy URL (TLS + DNS + GeoDB) | `-p socks5://127.0.0.1:1080` |
 | `-iface` | Bind outbound traffic to network interface or IP | `-iface wlp6s0` |
 | `-upgrade-dir` | In-place batch upgrade of existing `.pb` files | `-upgrade-dir rust/aegis/src/resources/sni` |
 | `-upgrade-pb` | Upgrade a single `.pb` file | `-upgrade-pb rust/aegis/src/resources/sni/US.pb` |
 | `-timeout` | Connection & handshake timeout in seconds | `-timeout 3` |
 | `-w` | Concurrency worker count | `-w 50` |
-| `-f` | Input TXT/CSV domain list | `-f domains.txt` |
-| `-out-dir` | Output directory for `.pb` files | `-out-dir ./output` |
 
 ---
 
@@ -59,49 +76,51 @@ Takes `survived_candidates.txt` and performs deep inspection with zero risk from
 
 موتور قدرتمند و پرسرعت برای تست SNI و مدیریت دامنه‌های استتاری پساکوانتومی (Post-Quantum)، طراحی‌شده برای مقابله با فیلترینگ شدید (سیستم‌های REALITY و XHTTP).
 
-### ویژگی‌های کلیدی
-- **ساختار دومرحله‌ای مجزا (Two-Phase Pipeline)**:
-  - **مرحله اول (`probe-survival`)**: تست سبک و سریع بقا در داخل مناطق تحت سانسور (ایران، چین، روسیه) برای تشخیص فیلترینگ فعال و بسته‌های RST تزریقی فیلترچی (بدون بارگذاری دیتابیس‌های سنگین و بدون جلب توجه سیستم‌های نظارتی ISP).
-  - **مرحله دوم (`build-pools`)**: اعتبارسنجی عمیق روی سرور مجازی (VPS) خارج از کشور برای بررسی TLS 1.3، الگوریتم‌های پساکوانتومی (`X25519MLKEM768`)، استانداردهای ALPN H2/H3، طول زنجیره گواهی (۳۵۰۰ تا ۵۵۰۰ بایت) و حذف CDNهای شناسایی‌پذیر مانند Cloudflare.
-- **دسته‌بندی در دو مخزن پساکوانتومی و کلاسیک**: تفکیک دامنه‌ها به دو مخزن `pq_domains` (مبتنی بر ML-KEM/Kyber) و `classic_domains` (الگوریتم X25519) برای هر کشور.
-- **پشتیبانی کامل از پروکسی سراسری خروجی (`-p socks5://...`)**: هدایت کلیه پرس‌وجوهای DNS و ترافیک بررسی TLS از طریق پروکسی SOCKS5 جهت پنهان‌سازی کامل IP اینترنت خانگی.
-- **جداسازی رابط شبکه با (`-iface`)**: امکان قفل کردن ترافیک تست روی یک کارت شبکه بی‌سیم مجزا (مانند مودم 4G روی `wlp6s0`) تا سرعت مرور وب و اتصال SSH اصلی دچار اختلال نشود.
-- **بروزرسانی مستقیم فایل‌های باینری موجود (`-upgrade-dir`)**: بررسی مجدد فایل‌های `.pb` موجود در ۱۷۲ کشور و حذف لینک‌های از کار افتاده.
+### معماری تفکیک‌شده سه‌مرحله‌ای (Three-Phase Architecture)
+برای دستیابی به نهایت امنیت و سرعت خارق‌العاده، فرآیند تست به سه فاز مستقل تقسیم شده است:
 
-### راهنمای سریع
+```text
+  مرحله ۱: resolve-map (روی سرور خارج از کشور)
+  ورودی: top-1m.csv
+  خروجی: resolved_targets.csv (نگاشت دامنه به آی‌پی)
+  - استفاده اختصاصی از Anycast DNSهای خارجی (Cloudflare، Google، Quad9، OpenDNS).
+  - حذف پیشاپیش رنج‌های کلودفلر و دور از هرگونه اختلال یا آلودگی فیلترینگ.
+           │
+           ▼
+  مرحله ۲: probe-survival (داخل ایران / شبکه فیلترشده)
+  ورودی: resolved_targets.csv
+  خروجی: survived_candidates.csv
+  - بدون هیچ‌گونه درخواست DNS محلی! اتصال مستقیم به آی‌پی‌های آماده.
+  - ارسال کمترین بایت ممکن با اثر انگشت استاندارد Chrome TLS ClientHello.
+  - تاخیر اختصاصی ۱۵۰ میلی‌ثانیه‌ای برای شکار بسته‌های تزریقی TCP RST فیلترچی.
+  - بدون هیچ ردپای اسکن یا بار اضافه بر اینترنت خانگی.
+           │
+           ▼
+  مرحله ۳: build-pools (روی سرور خارج کاربر)
+  ورودی: survived_candidates.csv
+  خروجی: rust/aegis/src/resources/sni/*.pb
+  - بررسی دقیق TLS 1.3، کلیدهای پساکوانتومی (X25519MLKEM768)، طول زنجیره گواهی (۳۵۰۰ تا ۵۵۰۰ بایت).
+  - حذف خودکار دامنه‌های تحت کنترل سانسور (CN, IR, RU, KP).
+  - ادغام افزایشی با دیتابیس‌های موجود بدون پاک شدن دامنه‌های قبلی.
+```
 
-#### مرحله ۱: بررسی بقا در داخل شبکه فیلترشده (ایران / کلاینت محلی)
-بسیار سریع و سبک — حل نام دامنه‌ها، حذف آی‌پی‌های کلودفلر، و اطمینان از مسدود نبودن اتصال به پورت 443:
+### راهنمای اجرای سه‌مرحله‌ای
+
+#### ۱. مرحله اول: پیش‌حل نام دامنه‌ها (روی سرور خارجی)
 ```bash
 go build -o sni_tester ./cmd/sni_tester/
-./sni_tester probe-survival -f top-1m.csv -o survived_candidates.txt -w 50 -p socks5://127.0.0.1:10808
+./sni_tester resolve-map -f top-1m.csv -o resolved_targets.csv -w 100
 ```
 
-#### مرحله ۲: ساخت مخزن دامنه‌ها در سرور خارج (VPS)
-فایل `survived_candidates.txt` را دریافت کرده و اعتبارسنجی دقیق را بدون خطر مسدودسازی انجام می‌دهد:
+#### ۲. مرحله دوم: بررسی بقا در داخل کشور (ایران / بدون DNS محلی)
 ```bash
-./sni_tester build-pools -f survived_candidates.txt -out-dir rust/aegis/src/resources/sni -w 50
+./sni_tester probe-survival -f resolved_targets.csv -o survived_candidates.csv -w 50 -p socks5://127.0.0.1:10808
 ```
 
-#### بروزرسانی مستقیم فایل‌های `.pb` موجود
+#### ۳. مرحله سوم: ساخت مخزن دامنه‌ها (روی سرور خارجی کاربر)
 ```bash
-./sni_tester -upgrade-dir rust/aegis/src/resources/sni -w 50 -p socks5://127.0.0.1:10808
+./sni_tester build-pools -f survived_candidates.csv -out-dir rust/aegis/src/resources/sni -w 50
 ```
-
-### راهنمای پارامترهای خط فرمان
-
-| دستور / سوئیچ | توضیحات | مثال |
-| :--- | :--- | :--- |
-| `probe-survival` | مرحله ۱: بررسی سبک بقای دامنه در مناطق تحت فیلترینگ | `./sni_tester probe-survival -f list.txt -o survived.txt` |
-| `build-pools` | مرحله ۲: بررسی عمیق و ایجاد فایل‌های Protobuf دو مخزنه | `./sni_tester build-pools -f survived.txt` |
-| `-p` | نشانی پروکسی SOCKS5 خروجی برای کلیه ترافیک TLS و DNS | `-p socks5://127.0.0.1:1080` |
-| `-iface` | اتصال ترافیک خروجی به کارت شبکه یا آی‌پی خاص | `-iface wlp6s0` |
-| `-upgrade-dir` | ارتقای دسته‌ای فایل‌های دایرکتوری به فرمت دو مخزنه | `-upgrade-dir rust/aegis/src/resources/sni` |
-| `-upgrade-pb` | ارتقای یک فایل اختصاصی `.pb` | `-upgrade-pb rust/aegis/src/resources/sni/US.pb` |
-| `-timeout` | مهلت برقراری ارتباط به ثانیه | `-timeout 3` |
-| `-w` | تعداد رشته‌های همزمان (Worker) | `-w 50` |
-| `-f` | مسیر فایل ورودی شامل فهرست دامنه‌ها | `-f domains.txt` |
-| `-out-dir` | مسیر ذخیره فایل‌های نهایی `.pb` | `-out-dir ./output` |
 
 ---
 
@@ -110,49 +129,51 @@ go build -o sni_tester ./cmd/sni_tester/
 
 Высокопроизводительный движок параллельного тестирования SNI и управления маскировочными доменами с поддержкой постквантовой криптографии (Post-Quantum), разработанный для обхода блокировок (REALITY и XHTTP в условиях ТСПУ / РКН).
 
-### Ключевые возможности
-- **Двухэтапная раздельная архитектура (Two-Phase Pipeline)**:
-  - **Этап 1 (`probe-survival`)**: Легковесная быстрая проверка выживаемости внутри цензурируемых сетей (Россия, Иран, Китай) для выявления сбросов соединений (TCP RST) и блокировок ТСПУ без нагрузки и без привлечения внимания систем аудита провайдеров.
-  - **Этап 2 (`build-pools`)**: Глубокий анализ на зарубежном VPS для проверки TLS 1.3, постквантового обмена ключами (`X25519MLKEM768`), протоколов ALPN H2/H3, длины цепочки сертификатов (3500–5500 байт) и отсеивания Cloudflare/сторонних CDN.
-- **Классификация на два пула (Dual-Pool)**: Разделение доменов на `pq_domains` (гибриды ML-KEM/Kyber) и `classic_domains` (стандартный X25519) по каждой стране.
-- **Поддержка глобального исходящего прокси (`-p socks5://...`)**: Перенаправление всех DNS-запросов (DoH/DoT) и TLS-проб через SOCKS5 для полной маскировки реального IP-адреса домашнего провайдера.
-- **Изоляция сетевого интерфейса (`-iface`)**: Привязка всего трафика к отдельной сетевой карте (например, 4G-модем на `wlp6s0`) через `SO_BINDTODEVICE`, предотвращающая просадку домашнего интернета и SSH.
-- **Пакетное обновление существующих баз (`-upgrade-dir`)**: Быстрая параллельная перепроверка существующих файлов `.pb` по 172 странам с удалением неработающих доменов.
+### Трехэтапная раздельная архитектура (Three-Phase Architecture)
+Для обеспечения абсолютной безопасности и максимальной скорости процесс разделен на три независимых этапа:
 
-### Быстрый старт
+```text
+  Этап 1: resolve-map (Зарубежный сервер)
+  Вход: top-1m.csv
+  Выход: resolved_targets.csv (связка домен,IP)
+  - Использует исключительно зарубежные Anycast DNS (Cloudflare, Google, Quad9, OpenDNS).
+  - Заранее отсекает Cloudflare IP, полностью исключая DNS-спуфинг цензуры.
+           │
+           ▼
+  Этап 2: probe-survival (Внутри РФ / цензурируемой сети)
+  Вход: resolved_targets.csv
+  Выход: survived_candidates.csv
+  - ПОЛНОЕ ОТСУТСТВИЕ ЛОКАЛЬНЫХ DNS-ЗАПРОСОВ! Прямое подключение к готовым IP.
+  - Минимальный ClientHello со слепком Google Chrome без утечек трафика.
+  - Встроенная задержка 150 мс для детекции отложенных TCP RST пакетов от ТСПУ.
+  - Нулевой риск привлечения внимания провайдера.
+           │
+           ▼
+  Этап 3: build-pools (Зарубежный VPS пользователя)
+  Вход: survived_candidates.csv
+  Выход: rust/aegis/src/resources/sni/*.pb
+  - Глубокая валидация TLS 1.3, постквантовых ключей (X25519MLKEM768), длины сертификатов (3500–5500 байт).
+  - Автоматическая фильтрация подконтрольных цензуре доменов (CN, IR, RU, KP).
+  - Инкрементальное объединение с существующими базами 172 стран без потери старых доменов.
+```
 
-#### Этап 1: Проверка выживаемости (Запуск из РФ / локальной сети)
-Максимально быстро и незаметно — резолвит адреса, отфильтровывает Cloudflare и проверяет доступность порта 443 без сброса TCP:
+### Порядок работы (Три шага)
+
+#### 1. Этап 1: Предварительный резолв (На зарубежном VPS)
 ```bash
 go build -o sni_tester ./cmd/sni_tester/
-./sni_tester probe-survival -f top-1m.csv -o survived_candidates.txt -w 50 -p socks5://127.0.0.1:10808
+./sni_tester resolve-map -f top-1m.csv -o resolved_targets.csv -w 100
 ```
 
-#### Этап 2: Построение пулов на VPS (Запуск на зарубежном сервере)
-Принимает `survived_candidates.txt` и производит полный анализ сертификатов и протоколов без ограничений цензуры:
+#### 2. Этап 2: Проверка выживаемости (Внутри РФ / локально)
 ```bash
-./sni_tester build-pools -f survived_candidates.txt -out-dir rust/aegis/src/resources/sni -w 50
+./sni_tester probe-survival -f resolved_targets.csv -o survived_candidates.csv -w 50 -p socks5://127.0.0.1:10808
 ```
 
-#### Прямое обновление существующих файлов `.pb`
+#### 3. Этап 3: Генерация пулов (На зарубежном VPS пользователя)
 ```bash
-./sni_tester -upgrade-dir rust/aegis/src/resources/sni -w 50 -p socks5://127.0.0.1:10808
+./sni_tester build-pools -f survived_candidates.csv -out-dir rust/aegis/src/resources/sni -w 50
 ```
-
-### Параметры командной строки
-
-| Команда / Флаг | Описание | Пример |
-| :--- | :--- | :--- |
-| `probe-survival` | Этап 1: Быстрая проверка выживаемости в зоне цензуры | `./sni_tester probe-survival -f list.txt -o survived.txt` |
-| `build-pools` | Этап 2: Глубокая инспекция и генерация двухпуловых `.pb` | `./sni_tester build-pools -f survived.txt` |
-| `-p` | URL исходящего SOCKS5-прокси для TLS, DNS и загрузки баз | `-p socks5://127.0.0.1:1080` |
-| `-iface` | Привязка исходящего трафика к интерфейсу или IP | `-iface wlp6s0` |
-| `-upgrade-dir` | Пакетное обновление директории с файлами `.pb` | `-upgrade-dir rust/aegis/src/resources/sni` |
-| `-upgrade-pb` | Обновление одного выбранного файла `.pb` | `-upgrade-pb rust/aegis/src/resources/sni/US.pb` |
-| `-timeout` | Таймаут соединения и рукопожатия в секундах | `-timeout 3` |
-| `-w` | Количество параллельных воркеров | `-w 50` |
-| `-f` | Путь к входному TXT/CSV файлу с доменами | `-f domains.txt` |
-| `-out-dir` | Директория для сохранения готовых `.pb` файлов | `-out-dir ./output` |
 
 ---
 
