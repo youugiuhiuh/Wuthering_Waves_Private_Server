@@ -10,6 +10,7 @@ mod cloudflare;
 mod connectivity;
 mod dns;
 mod geo;
+mod geodl;
 mod h2;
 mod pb;
 mod pipeline;
@@ -188,13 +189,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 timeout,
                 max_lines,
             } => {
-                let geodb = geo::GeoDb::open(&geo).ok().map(Arc::new);
-                if geodb.is_none() {
-                    eprintln!(
-                        "warning: 未找到 {}，国家码将全部记作 UNKNOWN（管辖国过滤失效）",
-                        geo.display()
-                    );
-                }
+                geodl::ensure_mmdb(&geo, None, |msg| println!("{msg}"))
+                    .await
+                    .map_err(|e| format!("GeoDB 不可用：{e}"))?;
+                let geodb =
+                    Some(Arc::new(geo::GeoDb::open(&geo).map_err(|e| {
+                        format!("GeoDB 打开失败 {}: {e}", geo.display())
+                    })?));
                 let stats = pipeline::run_build_pools(
                     &input,
                     &out_dir,

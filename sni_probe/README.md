@@ -54,6 +54,19 @@ build-pools    海外 VPS        domain,ip 存活 -> 双池 .pb              （
 
 **断点续跑**：`state.bin` 里记录已完成阶段的位掩码，中断后重跑会自动跳过已完成阶段。
 
+**GeoDB 自动下载**：`--geo` 指向的文件不存在时，会自动从 11 个地址按序尝试
+（10 个 GitHub 加速镜像 + 官方地址），下载到临时文件再原子 rename，中断不会留下半个库。
+响应小于 1 MB 视为错误页直接丢弃：
+
+```text
+[GeoDB] 尝试 1/11: https://gh.h233.eu.org/...
+[GeoDB] 失败：HTTP 403 Forbidden
+[GeoDB] 尝试 4/11: https://gh-proxy.org/...
+[GeoDB] 下载完成：ipinfo_lite.mmdb（24.6 MB）
+```
+
+下载失败会**直接中止**而不是静默放行——否则管辖国过滤会因国家码全为 `UNKNOWN` 而失效。
+
 **状态文件**（`state.bin`，proto3，`src/state.rs`）：
 
 ```proto
@@ -115,6 +128,7 @@ cargo build --release
 | `src/connectivity.rs` | Google 连通性检测（DNS + TLS 1.3 握手） |
 | `src/run.rs` | 一键编排：网络闸门 + 阶段串联 |
 | `src/progress.rs` | 进度条（无 TTY 自动静默） |
+| `src/geodl.rs` | IPinfo Lite MMDB 自动下载（镜像轮询 + 原子替换） |
 
 ## 已知限制（`shortcut:`）
 

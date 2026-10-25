@@ -28,6 +28,7 @@ use std::time::Duration;
 use crate::connectivity::{self, Connectivity};
 use crate::dns;
 use crate::geo;
+use crate::geodl;
 use crate::pipeline;
 use crate::state::{Entry, PHASE_BUILD, PHASE_RESOLVE, PHASE_SURVIVAL, State};
 use crate::target;
@@ -183,13 +184,14 @@ pub async fn run(opts: RunOptions) -> Result<(), Box<dyn std::error::Error + Sen
         println!("\n[阶段三] 海外深度质检 —— 需要【海外网络】");
         gate_expect_reachable(opts.timeout).await?;
 
-        let geodb = geo::GeoDb::open(&opts.geo).ok().map(Arc::new);
-        if geodb.is_none() {
-            eprintln!(
-                "  warning: 未找到 {}，管辖国过滤将失效（国家码全部记作 UNKNOWN）",
-                opts.geo.display()
-            );
+        // 缺库则自动下载（镜像轮询），下载失败直接中止而不是静默放行管辖国目标
+        if let Err(e) = geodl::ensure_mmdb(&opts.geo, None, |msg| println!("  {msg}")).await {
+            return Err(format!("GeoDB 不可用：{e}").into());
         }
+        let geodb =
+            Some(Arc::new(geo::GeoDb::open(&opts.geo).map_err(|e| {
+                format!("GeoDB 打开失败 {}: {e}", opts.geo.display())
+            })?));
 
         let accepted = pipeline::build_pools_entries(
             state.phase2.clone(),
