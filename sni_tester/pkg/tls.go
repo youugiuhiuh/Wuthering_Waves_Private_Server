@@ -244,6 +244,29 @@ func PerformTLSHandshake(domain string, targetIP string, tlsTimeout time.Duratio
 	return result, nil
 }
 
+// ----------------------------------------------------------------------------
+// 暂停中（Hold）：等 2028 之后 PQ 普及再启用
+// ----------------------------------------------------------------------------
+// 本分支 feature/pq-min-cert 于 2026-10-25 从 main 切出后按计划暂停。
+// 当时决定先不启用：PQ 域名只占公网的 15.1%（已剔除 Cloudflare），而这个下限过滤器
+// 会再砍掉 US.pb 的 4.9%、SG.pb 的 11.6%，代价大于收益。
+//
+// 触发重审的条件（任一成立就该回来看一眼）：
+//  1. 公网 PQ 占比显著上升（原判断是 OpenSSL 3.4+ / Ubuntu 24.04+ / Debian 13 铺开，
+//     预计 2027~2028）。用 `sni_tester` 重扫 Tranco Top 10 万跑一次就能量化。
+//  2. 短链 PQ 域名（证书链 < 3500 字节）在 PQ 池里占比超过 20%，说明可用池要被砍太多，
+//     那时该换思路（比如 PQ 池只对长链域名下发 mldsa65Seed，而不是直接踢出池子）。
+//  3. XTLS/REALITY 上游改掉 3499 字节固定假凭证的做法（届时 MinCertBytes 直接失效）。
+//
+// 启用时要连带做的事：
+//  - 重新生成全部 .pb，让短链域名真的落到 classic_domains。
+//  - 核对 rust/aegis/src/core/xray/config.rs 里下发 mldsa65Seed 的判据：
+//    目前是 `enable_pq && !REALITY_PQ_SEED.is_empty()`，没有链长信息，
+//    所以本分支的过滤是唯一的防线，别只 merge 一边。
+//  - 别忘了 main 上 archive/pre-2aa473b-reset 里的其余 PQ 实现（双池 selector、
+//    proto 精简、两阶段管道等），它们也随这次暂停一起被归档了。
+// ----------------------------------------------------------------------------
+
 const (
 	// MaxCertChainDepth REALITY 凭证链最大深度：终端证书 + 最多2张中间CA，严禁4层及以上的超长链
 	MaxCertChainDepth = 3
@@ -251,6 +274,7 @@ const (
 	MaxCertRecordBytes = 5500
 	// MinCertBytes 开启 ML-DSA-65 的 REALITY 目标下限：REALITY 的假凭证固定 3499 字节，
 	// 服务端会把自身 Certificate record padding 到与目标站等长，目标链更短则 padding < 0 直接握手失败。
+	// 已知实测反例：annsummers.com 2363B、accio.ai 2287B、acronis.com 3030B 均为短链 PQ 站。
 	MinCertBytes = 3500
 )
 
@@ -267,6 +291,9 @@ func ValidateCertLimits(result *TLSResult) (bool, string) {
 
 // SupportsRealityPQ 该目标能否进后量子池：链太短时 REALITY 装不下 3499 字节的 ML-DSA-65 假凭证，
 // 只能降级为普通（不开启 mldsa65Seed）的经典目标。
+//
+// shortcut: 暂未启用（见上方「暂停中」说明），等 PQ 普及后重新评估；
+// 若将来改为「PQ 池内按需开关 mldsa65Seed」，这个布尔判断要拆成两个维度。
 func (r *TLSResult) SupportsRealityPQ() bool {
 	return r.IsPQ && r.TotalCertBytes >= MinCertBytes
 }
