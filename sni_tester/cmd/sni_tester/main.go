@@ -21,6 +21,9 @@ import (
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "resolve-map":
+			handlePreResolve(os.Args[2:])
+			return
 		case "probe-survival":
 			handleProbeSurvival(os.Args[2:])
 			return
@@ -332,4 +335,46 @@ func handleBuildPools(args []string) {
 
 	fmt.Printf("\n[Phase 2 Complete] Total: %d | Post-Quantum (PQ): %d | Classic: %d | Rejected: %d | Elapsed: %v\nDual-pool .pb files written to %s\n",
 		stats.Total, stats.PQCount, stats.ClassicCount, stats.Rejected, stats.Duration.Round(time.Millisecond), *outDir)
+}
+
+func handlePreResolve(args []string) {
+	fs := flag.NewFlagSet("resolve-map", flag.ExitOnError)
+	inputFile := fs.String("f", "", "Input raw domain list (TXT/CSV)")
+	outputFile := fs.String("o", "resolved_targets.csv", "Output file for pre-resolved domain,ip mapping")
+	workers := fs.Int("w", 100, "DNS worker concurrency")
+	maxLines := fs.Int("max", 0, "Max lines to read")
+	proxyString := fs.String("p", "", "Outbound proxy URL")
+	fs.Parse(args)
+
+	if *inputFile == "" {
+		fmt.Println("Usage: sni_tester resolve-map -f <raw_domains.csv> [-o resolved_targets.csv] [-w 100]")
+		os.Exit(1)
+	}
+
+	if *proxyString != "" {
+		if err := pkg.SetOutboundProxy(*proxyString); err != nil {
+			fmt.Printf("Error setting outbound proxy %q: %v\n", *proxyString, err)
+			os.Exit(1)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	fmt.Printf("[Phase 1: Overseas Pre-Resolve] Resolving %s -> %s (workers=%d, zero China DNS)\n", *inputFile, *outputFile, *workers)
+	opts := pkg.PreResolveOptions{
+		InputFile:  *inputFile,
+		OutputFile: *outputFile,
+		Workers:    *workers,
+		MaxLines:   *maxLines,
+	}
+
+	stats, err := pkg.RunResolvePreMap(ctx, opts)
+	if err != nil {
+		fmt.Printf("Error during pre-resolve: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\n[Phase 1 Complete] Total: %d | Resolved: %d | Failed/Cloudflare: %d | Elapsed: %v\nTargets saved to %s\n",
+		stats.Total, stats.Resolved, stats.Failed, stats.Duration.Round(time.Millisecond), *outputFile)
 }

@@ -46,19 +46,24 @@ func RunBuildPools(ctx context.Context, opts BuildPoolsOptions) (*BuildPoolsStat
 	}
 	defer inFile.Close()
 
-	var domains []string
+	type buildPoolTarget struct {
+		domain string
+		ip     string
+	}
+
+	var targets []buildPoolTarget
 	scanner := bufio.NewScanner(inFile)
 	for scanner.Scan() {
-		line := CleanDomain(scanner.Text())
-		if line != "" {
-			domains = append(domains, line)
+		d, ip := ParseDomainIPLine(scanner.Text())
+		if d != "" {
+			targets = append(targets, buildPoolTarget{domain: d, ip: ip})
 		}
-		if opts.MaxLines > 0 && len(domains) >= opts.MaxLines {
+		if opts.MaxLines > 0 && len(targets) >= opts.MaxLines {
 			break
 		}
 	}
 
-	total := len(domains)
+	total := len(targets)
 	if total == 0 {
 		return &BuildPoolsStats{}, nil
 	}
@@ -93,7 +98,7 @@ func RunBuildPools(ctx context.Context, opts BuildPoolsOptions) (*BuildPoolsStat
 	}
 
 	// Two-stage pipeline: DNS Stage -> TLS Stage
-	taskChan := make(chan string, workers*2)
+	taskChan := make(chan buildPoolTarget, workers*2)
 	dnsReadyChan := make(chan dnsResolvedTarget, workers*2)
 
 	type probeResult struct {
@@ -107,11 +112,11 @@ func RunBuildPools(ctx context.Context, opts BuildPoolsOptions) (*BuildPoolsStat
 	// Stream domains
 	go func() {
 		defer close(taskChan)
-		for _, d := range domains {
+		for _, t := range targets {
 			select {
 			case <-ctx.Done():
 				return
-			case taskChan <- d:
+			case taskChan <- t:
 			}
 		}
 	}()
@@ -126,28 +131,32 @@ func RunBuildPools(ctx context.Context, opts BuildPoolsOptions) (*BuildPoolsStat
 		dnsWg.Add(1)
 		go func() {
 			defer dnsWg.Done()
-			for d := range taskChan {
+			for t := range taskChan {
 				select {
 				case <-ctx.Done():
 					return
 				default:
 				}
 
-				ips, err := ResolveFast(ctx, d)
-				if err != nil || len(ips) == 0 {
-					resultsChan <- probeResult{domain: d, isValid: false}
-					continue
+				targetIP := t.ip
+				if targetIP == "" {
+					ips, err := ResolveFast(ctx, t.domain)
+					if err != nil || len(ips) == 0 {
+						resultsChan <- probeResult{domain: t.domain, isValid: false}
+						continue
+					}
+					targetIP = ips[0]
 				}
 
-				if IsCloudflareIP(ips[0]) {
-					resultsChan <- probeResult{domain: d, isValid: false}
+				if IsCloudflareIP(targetIP) {
+					resultsChan <- probeResult{domain: t.domain, isValid: false}
 					continue
 				}
 
 				select {
 				case <-ctx.Done():
 					return
-				case dnsReadyChan <- dnsResolvedTarget{domain: d, ip: ips[0]}:
+				case dnsReadyChan <- dnsResolvedTarget{domain: t.domain, ip: targetIP}:
 				}
 			}
 		}()
