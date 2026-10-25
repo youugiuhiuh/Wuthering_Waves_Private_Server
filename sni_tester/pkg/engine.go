@@ -308,7 +308,7 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 				case results <- jobResult{
 					domain:  target.domain,
 					success: valid,
-					isPQ:    tlsResult.SupportsRealityPQ(),
+					isPQ:    tlsResult.IsPQ,
 					ip:      finalIP,
 					country: target.country,
 					asn:     target.asn,
@@ -459,7 +459,7 @@ func (e *Engine) processDomain(ctx context.Context, domain string) jobResult {
 	return jobResult{
 		domain:  domain,
 		success: success,
-		isPQ:    tlsResult.SupportsRealityPQ(),
+		isPQ:    tlsResult.IsPQ,
 		ip:      finalIP,
 		country: country,
 		asn:     asnRes.ASN,
