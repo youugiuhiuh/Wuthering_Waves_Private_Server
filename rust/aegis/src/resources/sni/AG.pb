@@ -1,3 +1,0 @@
-
-contest.com
-	kvan.tech

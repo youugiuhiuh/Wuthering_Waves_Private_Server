@@ -1,3 +1,0 @@
-
-ams.ax
-nyan.ax

@@ -1,2 +1,0 @@
-
-vodafone.com.ki
