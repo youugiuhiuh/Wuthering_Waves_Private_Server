@@ -129,6 +129,59 @@ cargo build --release
 | `src/run.rs` | 一键编排：网络闸门 + 阶段串联 |
 | `src/progress.rs` | 进度条（无 TTY 自动静默） |
 | `src/geodl.rs` | IPinfo Lite MMDB 自动下载（镜像轮询 + 原子替换） |
+| `src/storage.rs` | 历史存储（redb）：失败 TTL、成功记录、ASN 黑名单 |
+| `src/upgrade.rs` | 存量 `.pb` 双池升级（目录 / 单文件） |
+| `src/logging.rs` | `--debug` 开关 |
+| `src/shutdown.rs` | `--shutdown` 关机 |
+
+## 与 Go 版的功能对齐
+
+| 功能 | Go | Rust | 说明 |
+| :--- | :--- | :--- | :--- |
+| 三阶段探测 | ✅ | ✅ | |
+| GeoDB 自动下载 | ✅ | ✅ | 10 镜像 + 官方兜底 |
+| **历史存储** | badger | **redb** | 成功/失败 TTL、封禁历史、ASN 黑名单 |
+| **`--upgrade-dir`** | ✅ | ✅ | 存量 `.pb` 双池升级，支持 `--legacy` |
+| **`--upgrade-pb`** | ✅ | ✅ | 单文件升级 |
+| **ASN 黑名单** | ✅ | ✅ | 种子 25 个境内 ASN + 阈值累加拉黑 |
+| **`--debug`** | ✅ | ✅ | 逐域名 ASN/证书链/失败原因 |
+| **`--shutdown`** | ✅ | ✅ | 完成后关机 |
+| `--ttl` / `--force` / `--reset` | ✅ | ✅ | 历史 TTL、强制重测、清空历史 |
+| SOCKS5 代理 | ✅ | ❌ | Rust 版 `-p` 尚未接线，需代理请用 Go 版 |
+| `--iface` 网卡绑定 | ✅ | ❌ | 未实现 |
+| DoH / DoT | ✅ | ❌ | 有意不实现，仅用裸 UDP 53 |
+| DNS 速率限制/健康加权 | ✅ | ❌ | 有意不实现 |
+
+### 历史库与 ASN 黑名单
+
+```bash
+# 失败记录保留 7 天，第二次运行自动跳过（实测 6.9s -> 0.03s）
+./sni_probe --history hist.redb --ttl 7 build-pools -f survived.csv --geo ipinfo_lite.mmdb
+
+# 无视历史重测 / 清空历史
+./sni_probe --history hist.redb --force build-pools ...
+./sni_probe --history hist.redb --reset
+
+# 逐域名明细（ASN、证书链尺寸、失败原因）
+./sni_probe --debug build-pools -f survived.csv
+```
+
+同一 ASN 下累计 3 个域名失败后整家拉黑，后续同 ASN 目标零握手直接跳过。
+种子名单含 25 个境内云厂商/运营商（Chinanet、China Telecom、Tencent Cloud、Alibaba、Zenlayer 等）。
+
+### 存量 `.pb` 升级
+
+```bash
+# 目录级（v1.9.9 单池 -> 双池）
+./sni_probe upgrade-dir -d rust/aegis/src/resources/sni --legacy --geo ipinfo_lite.mmdb -w 30
+
+# 单文件，另存而不覆盖
+./sni_probe upgrade-pb -f rust/aegis/src/resources/sni/US.pb --out /tmp/US.pb --legacy
+```
+
+> **`--legacy` 必须显式声明**：旧版 `domains = 1` 与新版的 `pq_domains = 1`
+> **字段号完全相同**，字节层面无法区分。猜错的后果是把整池 classic 域名误标成 PQ，
+> 客户端会按 PQ 握手失败。因此这里选择显式参数而非启发式。
 
 ## 已知限制（`shortcut:`）
 

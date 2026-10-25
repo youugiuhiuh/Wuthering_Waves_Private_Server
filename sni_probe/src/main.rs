@@ -12,13 +12,17 @@ mod dns;
 mod geo;
 mod geodl;
 mod h2;
+mod logging;
 mod pb;
 mod pipeline;
 mod progress;
 mod run;
+mod shutdown;
 mod state;
+mod storage;
 mod target;
 mod tls;
+mod upgrade;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -33,8 +37,26 @@ use clap::{Parser, Subcommand};
     version
 )]
 struct Cli {
+    /// 打印逐域名明细日志
+    #[arg(long, global = true)]
+    debug: bool,
+    /// 全部阶段完成后关机
+    #[arg(long, global = true)]
+    shutdown: bool,
+    /// 历史库路径（记录成功/失败/ASN 黑名单）
+    #[arg(long, global = true, default_value = "sni_probe_history.redb")]
+    history: PathBuf,
+    /// 失败记录保留天数（对应 Go -ttl）
+    #[arg(long = "ttl", global = true, default_value_t = 7)]
+    ttl_days: u32,
+    /// 无视历史记录重新测试（对应 Go -force）
+    #[arg(long, global = true)]
+    force: bool,
+    /// 清空全部历史后退出（对应 Go -reset）
+    #[arg(long, global = true)]
+    reset: bool,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -85,6 +107,44 @@ enum Command {
         #[arg(long = "max", default_value_t = 0)]
         max_lines: usize,
     },
+    /// 升级目录下所有存量 .pb 为双池格式（对应 Go -upgrade-dir）
+    UpgradeDir {
+        /// 源目录
+        #[arg(short = 'd', long = "dir")]
+        dir: PathBuf,
+        /// 输出目录（缺省原地覆盖）
+        #[arg(long = "out-dir")]
+        out_dir: Option<PathBuf>,
+        /// 源文件是 v1.9.9 单池格式（domains=1），全部按 classic 处理
+        #[arg(long = "legacy")]
+        legacy: bool,
+        /// 把失败域名保留到 classic 池（对应 Go -keep-dead）
+        #[arg(long = "keep-dead")]
+        keep_dead: bool,
+        #[arg(long = "geo", default_value = "ipinfo_lite.mmdb")]
+        geo: PathBuf,
+        #[arg(short = 'w', long, default_value_t = 30)]
+        workers: usize,
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+    },
+    /// 升级单个 .pb 为双池格式（对应 Go -upgrade-pb）
+    UpgradePb {
+        #[arg(short = 'f', long = "file")]
+        file: PathBuf,
+        #[arg(long = "out")]
+        out: Option<PathBuf>,
+        #[arg(long = "legacy")]
+        legacy: bool,
+        #[arg(long = "keep-dead")]
+        keep_dead: bool,
+        #[arg(long = "geo", default_value = "ipinfo_lite.mmdb")]
+        geo: PathBuf,
+        #[arg(short = 'w', long, default_value_t = 30)]
+        workers: usize,
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+    },
     /// 阶段三：海外深度质检，生成双池 .pb（与磁盘已有内容增量合并）
     BuildPools {
         #[arg(short = 'f', long = "file", default_value = "survived_candidates.csv")]
@@ -114,12 +174,40 @@ fn report(stage: &str, stats: pipeline::StageStats, extra: &str) {
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli = Cli::parse();
+    logging::set_debug(cli.debug);
+
+    // -reset：清空历史后立即退出
+    if cli.reset {
+        match storage::Storage::open(&cli.history, cli.ttl_days) {
+            Ok(s) => {
+                s.clear_all()?;
+                println!("已清空历史库 {}", cli.history.display());
+            }
+            Err(e) => eprintln!("打开历史库失败（可能本就不存在）: {e}"),
+        }
+        return Ok(());
+    }
+
+    // 打开历史库（供各子命令复用）
+    let history = match storage::Storage::open(&cli.history, cli.ttl_days) {
+        Ok(s) => Some(std::sync::Arc::new(s)),
+        Err(e) => {
+            eprintln!("warning: 历史库不可用（{e}），本次不记录成功/失败历史");
+            None
+        }
+    };
+    let force = cli.force;
+
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
 
-    rt.block_on(async {
-        match cli.command {
+    let result = rt.block_on(async {
+        let Some(cmd) = cli.command else {
+            eprintln!("缺少子命令，使用 --help 查看用法");
+            return Ok(());
+        };
+        match cmd {
             Command::ResolveMap {
                 input,
                 output,
@@ -181,6 +269,82 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 })
                 .await?;
             }
+            Command::UpgradeDir {
+                dir,
+                out_dir,
+                legacy,
+                keep_dead,
+                geo,
+                workers,
+                timeout,
+            } => {
+                geodl::ensure_mmdb(&geo, None, |m| println!("{m}"))
+                    .await
+                    .map_err(|e| format!("GeoDB 不可用：{e}"))?;
+                let geodb = Some(Arc::new(geo::GeoDb::open(&geo)?));
+                let format = if legacy {
+                    upgrade::PbFormat::LegacySinglePool
+                } else {
+                    upgrade::PbFormat::DualPool
+                };
+                let stats = upgrade::upgrade_pb_dir(
+                    &dir,
+                    out_dir.as_deref(),
+                    geodb,
+                    upgrade::UpgradeOptions {
+                        workers,
+                        timeout: Duration::from_secs(timeout),
+                        keep_dead,
+                        storage: history.clone(),
+                        force,
+                        format,
+                    },
+                )
+                .await?;
+                let total: usize = stats.iter().map(|s| s.total).sum();
+                let pq: usize = stats.iter().map(|s| s.pq_count).sum();
+                let classic: usize = stats.iter().map(|s| s.classic_count).sum();
+                println!(
+                    "\n[upgrade-dir] {} 个文件 | 域名 {} | PQ {} | classic {}",
+                    stats.len(),
+                    total,
+                    pq,
+                    classic
+                );
+            }
+            Command::UpgradePb {
+                file,
+                out,
+                legacy,
+                keep_dead,
+                geo,
+                workers,
+                timeout,
+            } => {
+                geodl::ensure_mmdb(&geo, None, |m| println!("{m}"))
+                    .await
+                    .map_err(|e| format!("GeoDB 不可用：{e}"))?;
+                let geodb = Some(Arc::new(geo::GeoDb::open(&geo)?));
+                let format = if legacy {
+                    upgrade::PbFormat::LegacySinglePool
+                } else {
+                    upgrade::PbFormat::DualPool
+                };
+                upgrade::upgrade_pb_file(
+                    &file,
+                    out.as_deref(),
+                    geodb,
+                    upgrade::UpgradeOptions {
+                        workers,
+                        timeout: Duration::from_secs(timeout),
+                        keep_dead,
+                        storage: history.clone(),
+                        force,
+                        format,
+                    },
+                )
+                .await?;
+            }
             Command::BuildPools {
                 input,
                 out_dir,
@@ -196,18 +360,32 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     Some(Arc::new(geo::GeoDb::open(&geo).map_err(|e| {
                         format!("GeoDB 打开失败 {}: {e}", geo.display())
                     })?));
-                let stats = pipeline::run_build_pools(
+                let blocklist = history
+                    .as_ref()
+                    .map(|h| Arc::new(storage::AsnBlocklist::new(h, 3)));
+                let stats = pipeline::run_build_pools_with_history(
                     &input,
                     &out_dir,
                     geodb,
                     workers,
                     max_lines,
                     Duration::from_secs(timeout),
+                    history.clone(),
+                    blocklist,
+                    force,
                 )
                 .await?;
                 report("build-pools", stats, &format!(" -> {}", out_dir.display()));
             }
         }
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-    })
+    });
+
+    if result.is_ok()
+        && cli.shutdown
+        && let Err(e) = shutdown::request_shutdown(false)
+    {
+        eprintln!("[shutdown] 关机失败: {e}");
+    }
+    result
 }

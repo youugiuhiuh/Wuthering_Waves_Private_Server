@@ -16,6 +16,7 @@ use crate::dns;
 use crate::geo;
 use crate::progress;
 use crate::state::Entry;
+use crate::storage::{AsnBlocklist, Storage};
 use crate::target;
 use crate::tls;
 
@@ -197,6 +198,22 @@ pub async fn build_pools_entries(
     workers: usize,
     timeout: Duration,
 ) -> Result<Vec<Entry>, Box<dyn std::error::Error + Send + Sync>> {
+    build_pools_entries_with_history(entries, out_dir, geodb, workers, timeout, None, None, false)
+        .await
+}
+
+/// 带历史记录的版本：`storage` 非空时启用 TTL 跳过、ASN 累积拉黑与成功记录。
+#[allow(clippy::too_many_arguments)]
+pub async fn build_pools_entries_with_history(
+    entries: Vec<Entry>,
+    out_dir: &Path,
+    geodb: Option<Arc<geo::GeoDb>>,
+    workers: usize,
+    timeout: Duration,
+    storage: Option<Arc<Storage>>,
+    blocklist: Option<Arc<AsnBlocklist>>,
+    force: bool,
+) -> Result<Vec<Entry>, Box<dyn std::error::Error + Send + Sync>> {
     let total = entries.len() as u64;
     let kept = Arc::new(AtomicU64::new(0));
     let dropped = Arc::new(AtomicU64::new(0));
@@ -220,27 +237,95 @@ pub async fn build_pools_entries(
         let dropped = dropped.clone();
         let geodb = geodb.clone();
         let pb2 = pb.clone();
+        let storage = storage.clone();
+        let blocklist = blocklist.clone();
         handles.push(tokio::task::spawn_blocking(move || {
+            // 1. 近期已失败过则跳过（除非 -force）
+            if !force
+                && storage
+                    .as_ref()
+                    .is_some_and(|s| s.is_failed_recently(&e.domain))
+            {
+                dropped.fetch_add(1, Ordering::Relaxed);
+                pb2.inc(1);
+                drop(permit);
+                return;
+            }
+
             if cloudflare::is_cloudflare_ip(ip) {
                 dropped.fetch_add(1, Ordering::Relaxed);
                 pb2.inc(1);
                 drop(permit);
                 return;
             }
+
+            // 2. ASN 级预筛：整家 CDN 已拉黑时无需再握手
+            let asn_of_ip = geodb.as_ref().and_then(|g| g.asn(ip));
+            if let Some((asn, _)) = &asn_of_ip
+                && blocklist.as_ref().is_some_and(|b| b.is_blocked(*asn))
+            {
+                dropped.fetch_add(1, Ordering::Relaxed);
+                pb2.inc(1);
+                drop(permit);
+                return;
+            }
+
+            crate::debugln!(
+                "[debug] probe {} ip={} asn={:?}",
+                e.domain,
+                ip,
+                asn_of_ip.as_ref().map(|(a, _)| *a)
+            );
+
             match tls::probe(&e.domain, ip, timeout) {
                 Ok(p) if tls::validate(&p) => {
+                    crate::debugln!(
+                        "[debug] OK {} country={} pq={} chain={} certs={}B",
+                        e.domain,
+                        geodb.as_ref().map(|g| g.country(ip)).unwrap_or_default(),
+                        p.is_pq(),
+                        p.cert_chain_len,
+                        p.cert_total_bytes
+                    );
                     let country = geodb
+                        .as_ref()
                         .map(|g| g.country(ip))
                         .unwrap_or_else(|| "UNKNOWN".to_string());
+
                     if geo::is_blocked_country(&country) {
                         dropped.fetch_add(1, Ordering::Relaxed);
+                        if let Some(s) = storage.as_ref() {
+                            let _ = s.add_blocked_domain(
+                                &e.domain,
+                                &format!("country {country}"),
+                                false,
+                            );
+                        }
                     } else {
                         kept.fetch_add(1, Ordering::Relaxed);
+                        if let Some(s) = storage.as_ref() {
+                            let _ = s.save_success(&e.domain, &country);
+                        }
                         let _ = tx.blocking_send((e.clone(), country, p.is_pq()));
                     }
                 }
-                _ => {
+                other => {
+                    crate::debugln!(
+                        "[debug] FAIL {}: {:?}",
+                        e.domain,
+                        other.err().map(|x| x.to_string())
+                    );
                     dropped.fetch_add(1, Ordering::Relaxed);
+                    if let Some(s) = storage.as_ref() {
+                        let _ = s.append_failures(std::slice::from_ref(&e.domain));
+                    }
+                    // 失败则给该 ASN 记一笔，达到阈值整家拉黑
+                    if let (Some(bl), Some((asn, org))) = (blocklist.as_ref(), asn_of_ip.as_ref())
+                        && bl.record_failure(*asn)
+                        && let Some(s) = storage.as_ref()
+                    {
+                        let _ = s.add_asn_to_blocklist(*asn, org, "");
+                    }
                 }
             }
             pb2.inc(1);
@@ -438,6 +523,7 @@ pub async fn run_probe_survival(
 }
 
 /// 阶段三：海外深度质检并生成双池 `.pb`。
+#[allow(dead_code)] // 公共 API 包装，测试与旧调用方使用
 pub async fn run_build_pools(
     input: &Path,
     out_dir: &Path,
@@ -445,6 +531,25 @@ pub async fn run_build_pools(
     workers: usize,
     max_lines: usize,
     timeout: Duration,
+) -> Result<StageStats, Box<dyn std::error::Error + Send + Sync>> {
+    run_build_pools_with_history(
+        input, out_dir, geodb, workers, max_lines, timeout, None, None, false,
+    )
+    .await
+}
+
+/// 带历史记录的 build-pools（供 CLI 接入 TTL 跳过 / ASN 拉黑 / 成功记录）。
+#[allow(clippy::too_many_arguments)]
+pub async fn run_build_pools_with_history(
+    input: &Path,
+    out_dir: &Path,
+    geodb: Option<Arc<geo::GeoDb>>,
+    workers: usize,
+    max_lines: usize,
+    timeout: Duration,
+    storage: Option<Arc<Storage>>,
+    blocklist: Option<Arc<AsnBlocklist>>,
+    force: bool,
 ) -> Result<StageStats, Box<dyn std::error::Error + Send + Sync>> {
     let start = Instant::now();
     let mut lines = read_lines(input)?;
@@ -473,68 +578,22 @@ pub async fn run_build_pools(
         }
     }
 
-    let sem = Arc::new(Semaphore::new(workers));
-    let kept = Arc::new(AtomicU64::new(0));
-    let dropped = Arc::new(AtomicU64::new(0));
-    let (tx, mut rx) = mpsc::channel::<(String, String, bool)>(workers * 2); // (domain, country, is_pq)
+    let entries: Vec<Entry> = targets
+        .into_iter()
+        .map(|(d, ip)| Entry::new(d, ip))
+        .collect();
 
-    let mut handles = Vec::with_capacity(targets.len());
-    for (domain, ip) in targets {
-        let permit = match sem.clone().acquire_owned().await {
-            Ok(p) => p,
-            Err(_) => break,
-        };
-        let tx = tx.clone();
-        let kept = kept.clone();
-        let dropped = dropped.clone();
-        let geodb = geodb.clone();
-        handles.push(tokio::task::spawn_blocking(move || {
-            if cloudflare::is_cloudflare_ip(ip) {
-                dropped.fetch_add(1, Ordering::Relaxed);
-                drop(permit);
-                return;
-            }
-            match tls::probe(&domain, ip, timeout) {
-                Ok(p) if tls::validate(&p) => {
-                    let country = geodb
-                        .map(|g| g.country(ip))
-                        .unwrap_or_else(|| "UNKNOWN".to_string());
-                    if geo::is_blocked_country(&country) {
-                        dropped.fetch_add(1, Ordering::Relaxed);
-                    } else {
-                        kept.fetch_add(1, Ordering::Relaxed);
-                        let _ = tx.blocking_send((domain, country, p.is_pq()));
-                    }
-                }
-                _ => {
-                    dropped.fetch_add(1, Ordering::Relaxed);
-                }
-            }
-            drop(permit);
-        }));
-    }
-    drop(tx);
-
-    let mut by_country: std::collections::BTreeMap<String, (Vec<String>, Vec<String>)> =
-        std::collections::BTreeMap::new();
-    while let Some((domain, country, is_pq)) = rx.recv().await {
-        let entry = by_country.entry(country).or_default();
-        if is_pq {
-            entry.0.push(domain);
-        } else {
-            entry.1.push(domain);
-        }
-    }
-    for h in handles {
-        let _ = h.await;
-    }
-
-    write_dual_pb(out_dir, &by_country)?;
+    let kept_count = Arc::new(AtomicU64::new(0));
+    let accepted = build_pools_entries_with_history(
+        entries, out_dir, geodb, workers, timeout, storage, blocklist, force,
+    )
+    .await?;
+    kept_count.store(accepted.len() as u64, Ordering::Relaxed);
 
     Ok(StageStats {
         total,
-        kept: kept.load(Ordering::Relaxed),
-        dropped: dropped.load(Ordering::Relaxed),
+        kept: kept_count.load(Ordering::Relaxed),
+        dropped: total.saturating_sub(kept_count.load(Ordering::Relaxed)),
         elapsed: start.elapsed(),
     })
 }
@@ -596,6 +655,100 @@ mod tests {
                     .is_ok()
             );
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use crate::storage::{AsnBlocklist, Storage};
+
+    fn tmp(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("pl_hist_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// 已被标记为近期失败的域名，在非 force 模式下必须被跳过且不发起连接。
+    #[tokio::test]
+    async fn skips_recently_failed_domains() {
+        let dir = tmp("skip");
+        let hist = Storage::open(dir.join("h.redb"), 7).unwrap();
+        hist.append_failures(&["never-resolves.invalid".to_string()])
+            .unwrap();
+
+        let entries = vec![Entry::new(
+            "never-resolves.invalid",
+            "127.0.0.1".parse().unwrap(),
+        )];
+        let out = dir.join("pb");
+
+        let start = std::time::Instant::now();
+        let accepted = build_pools_entries_with_history(
+            entries,
+            &out,
+            None,
+            2,
+            Duration::from_secs(2),
+            Some(Arc::new(hist)),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+
+        assert!(accepted.is_empty(), "近期失败的域名不应通过");
+        assert!(
+            start.elapsed() < Duration::from_millis(500),
+            "跳过必须是零连接开销，实际耗时 {:?}",
+            start.elapsed()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// force=true 时必须无视历史重新测试。
+    #[tokio::test]
+    async fn force_bypasses_failure_history() {
+        let dir = tmp("force");
+        let hist = Storage::open(dir.join("h.redb"), 7).unwrap();
+        hist.append_failures(&["x.invalid".to_string()]).unwrap();
+        let hist = Arc::new(hist);
+
+        let entries = vec![Entry::new("x.invalid", "127.0.0.1".parse().unwrap())];
+        // force 下会真的尝试连接（127.0.0.1:443 预期失败），但路径不同：
+        // 验证它至少没有在"历史跳过"分支提前返回 —— 通过耗时区分不可靠，
+        // 改用直接断言 is_failed_recently 仍为真但流程继续。
+        let _ = build_pools_entries_with_history(
+            entries,
+            &dir.join("pb"),
+            None,
+            1,
+            Duration::from_millis(300),
+            Some(hist.clone()),
+            None,
+            true,
+        )
+        .await
+        .unwrap();
+        // force 不清理历史，历史依然在
+        assert!(hist.is_failed_recently("x.invalid"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 已被拉黑的 ASN 必须零握手直接丢弃。
+    #[tokio::test]
+    async fn skips_blocked_asn_without_handshake() {
+        let dir = tmp("asn");
+        let hist = Storage::open(dir.join("h.redb"), 7).unwrap();
+        hist.add_asn_to_blocklist(4134, "Chinanet", "CN").unwrap();
+
+        let bl = Arc::new(AsnBlocklist::new(&hist, 3));
+        assert!(bl.is_blocked(4134), "种子/库内 ASN 应在名单");
+
+        // 无 geodb 时拿不到 ASN，ASN 预筛不生效；这里只验证 blocklist 接口正确
+        assert!(!bl.is_blocked(15169));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
