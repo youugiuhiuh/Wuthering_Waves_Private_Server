@@ -11,6 +11,31 @@
 | 版权头解析 | 完整 HTTP 客户端（含连接池/Keep-Alive 补丁） | 最小 h2 客户端，只取首跳响应头 |
 | 运行时依赖 | 需 Go 工具链 + `go.mod` 供应链 | 单静态二进制，无 CGO（BoringSSL 静态编入） |
 
+### 实测对比（同机、同目标、同参数）
+
+| 指标 | Go | Rust | 差异 |
+| :--- | ---: | ---: | ---: |
+| 二进制体积 | 18.0 MB | **4.2 MB** | −77% |
+| 非测试代码行数 | 5,842 | **4,820** | −18% |
+| `resolve-map` 2000 域名 w=200 | 40.8s | **31.5s** | **快 23%** |
+| `probe-survival` 80 域名 w=80 | 3.02s | 3.04s | 持平 |
+| `build-pools` 500 条 w=100 | 28.6s | **10.5s** | **快 2.7 倍** |
+| 内存峰值 | 22–33 MB | 39–45 MB | +60%（换吞吐） |
+
+**为什么 `probe-survival` 持平而 `build-pools` 快 2.7 倍**——单次握手的实际开销：
+
+```text
+handshake_only x20: wall 636.8ms/次 | cpu 4.04ms/次 | 网络占比 99.4%
+full probe     x20: wall 954.9ms/次 | cpu 4.31ms/次 | 网络占比 99.5%
+```
+
+**CPU 只占 4ms，99.4% 的时间在等网络 RTT。** 所以：
+- 阶段二是纯握手，没有任何可优化的 CPU 部分 → 语言换不来提升
+- 阶段三快 2.7 倍不是 Rust 快，而是**把 HTTP 头校验合进了同一条 TLS 连接**
+  （Go 版 `ValidateDomain` 里 `CheckH3Support` + `ValidateHTTP` 是两次额外握手）
+
+**结论：继续在语言层面优化是无效努力，真正的杠杆是减少往返次数与提高并发。**
+
 ## 三阶段
 
 ```text
@@ -104,13 +129,45 @@ cargo build --release
     --geo ipinfo_lite.mmdb -w 100 --timeout 5
 ```
 
+## CLI 参数表
+
+### 全局参数（写在子命令之前）
+
+| 参数 | 说明 | 默认 |
+| :--- | :--- | :--- |
+| `--debug` | 打印逐域名明细（ASN、证书链、失败原因） | 关 |
+| `--shutdown` | 全部阶段完成后关机 | 关 |
+| `--history <FILE>` | 历史库路径 | `sni_probe_history.redb` |
+| `--ttl <DAYS>` | 失败记录保留天数 | `7` |
+| `--force` | 无视历史记录重测 | 关 |
+| `--reset` | 清空全部历史后退出 | 关 |
+| `--no-guard` | 跳过启动并发自检 | 关 |
+
+> ⚠ **全局参数必须写在子命令前面**：`sni_probe --history h.redb build-pools ...` ✅
+> `sni_probe build-pools --history h.redb ...` ❌ 会报 `unexpected argument`
+
+### 各子命令
+
+| 子命令 | 关键参数 | 默认 `-w` |
+| :--- | :--- | ---: |
+| `resolve-map` | `-f` 输入 / `-o` 输出 / `--max` | 300 |
+| `probe-survival` | `-f` / `-o` / `--timeout` / `-p`* / `--max` | 100 |
+| `build-pools` | `-f` / `--out-dir` / `--geo` / `--timeout` / `--max` | 100 |
+| `run` | `-f` / `--state` / `--out-dir` / `--geo` / `--timeout` / `--max` | 100 |
+| `upgrade-dir` | `-d` 源目录 / `--out-dir` / `--legacy` / `--keep-dead` / `--geo` | 30 |
+| `upgrade-pb` | `-f` 单文件 / `--out` / `--legacy` / `--keep-dead` / `--geo` | 30 |
+| `merge` | `-d` 源目录 / `-o` 输出 / `--legacy` | — |
+
+\* `probe-survival -p` 已解析但**尚未接线**，见文末已知限制。
+
 ## 判定标准（REALITY 伪装目标）
 
 * TLS 1.3，密钥交换 `X25519` / `X25519MLKEM768`（PQ 池）
-* ALPN 协商为 `h2`
+* ALPN 协商为 `h2`，或响应头带 `Alt-Svc: h3`（二者任一即可）
 * 证书链深度 ≤ 3，证书总字节 ≤ 5500（Xray 内部 8192 字节缓冲）
 * HTTP 响应头不含 `cf-ray` / `cf-cache-status`，`server` 不含 `cloudflare` / `hcdn`
 * 国家码不属于 CN / HK / MO / IR / RU / KP
+* 所属 ASN 不在黑名单（25 个境内云厂商/运营商种子 + 阈值累加拉黑）
 
 ## 模块
 
@@ -240,6 +297,22 @@ cargo build --release
 
 ## 已知限制（`shortcut:`）
 
-* `probe-survival` / `build-pools` 的 `-p` SOCKS5 参数在 Rust 版尚未接线（Go 版已支持）；
-  需要走代理时请用 Go 版，或在本地透明代理层面处理。
-* `h2.rs` 只解析 HPACK 静态表覆盖的响应头；目标若完全用 Huffman 编码首跳头，`server` 判定会退化为"无 CDN 头"。
+| 限制 | 影响 | 规避 |
+| :--- | :--- | :--- |
+| `-p` SOCKS5 **参数被解析但未接线** | 传了等于没传，仍走直连 —— **境内跑阶段二会暴露真实 IP** | 用 Go 版，或在本地透明代理层处理 |
+| `--iface` 网卡绑定未实现 | 无法把流量锁到 4G 网卡 | 同上 |
+| DoH / DoT 未实现 | 仅裸 UDP 53；被劫持时无降级路径 | 有意为之（用户决定不做） |
+| DNS 限流/健康加权未实现 | `-w` 极高时公共 DNS 可能限流 | 启动自检会先把 `-w` 压到安全值 |
+| `h2.rs` 只解析 HPACK 静态表 | 目标若完全用 Huffman 编码首跳头，`server` 判定退化为「无 CDN 头」 | 这类目标仍可能因 ALPN=h2 通过，只是少了 CDN 特征判定 |
+| `--no-guard` 无二次确认 | 误用会静默突破并发上限 | 只在确知机器能力时使用 |
+
+## 环境要求与建议
+
+| 项目 | 建议值 | 原因 |
+| :--- | :--- | :--- |
+| CPU 核心 | **≥ 4 核** | 单核跑 `build-pools` 时 CPU 是瓶颈，推荐 `-w` 被压到 20 |
+| `ulimit -n` | **≥ 65535** | 默认 1024 会把上限压到约 794 |
+| 内存 | ≥ 512 MB 可用 | 峰值约 45 MB，留裕量给 MMDB 与历史库 |
+
+**1 核机器不适合跑 `build-pools`** —— 它的定位应是控制面（Aegis + Xray），
+深度质检应放到多核探测机。
