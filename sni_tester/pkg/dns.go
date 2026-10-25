@@ -462,14 +462,7 @@ func ResolveFast(ctx context.Context, domain string) ([]string, error) {
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
 
-	servers := []string{
-		"223.5.5.5",
-		"119.29.29.29",
-		"180.184.1.1",
-		"114.114.114.114",
-		"1.1.1.1",
-		"8.8.8.8",
-	}
+	servers := FastDNSServers
 
 	fastTimeout := 2500 * time.Millisecond
 	client := &dns.Client{

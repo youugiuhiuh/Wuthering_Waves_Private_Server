@@ -73,22 +73,8 @@ const (
 )
 
 // DNS Provider IP Mapping (UDP/TCP)
+// DNS Provider IP Mapping (UDP/TCP)
 var DNSProviderMapUDP = map[string]DNSProvider{
-	"223.5.5.5":       ProviderAliyunUDP,
-	"223.6.6.6":       ProviderAliyunUDP,
-	"119.29.29.29":    ProviderTencent,
-	"182.254.116.116": ProviderTencent,
-	"120.53.53.53":    ProviderTencent,
-	"1.12.12.12":      ProviderTencent,
-	"114.114.114.114": ProviderDomestic,
-	"114.114.115.115": ProviderDomestic,
-	"180.76.76.76":    ProviderDomestic,
-	"1.2.4.8":         ProviderDomestic,
-	"210.2.4.8":       ProviderDomestic,
-	"117.50.22.22":    ProviderDomestic,
-	"117.50.11.11":    ProviderDomestic,
-	"180.184.1.1":     ProviderDomestic,
-	"180.184.2.2":     ProviderDomestic,
 	"1.1.1.1":         ProviderGlobal,
 	"1.0.0.1":         ProviderGlobal,
 	"8.8.8.8":         ProviderGlobal,
@@ -101,23 +87,25 @@ var DNSProviderMapUDP = map[string]DNSProvider{
 
 // DNS Provider IP Mapping (DoH/DoT)
 var DNSProviderMapDoH = map[string]DNSProvider{
-	"223.5.5.5":       ProviderAliyunDoH,
-	"223.6.6.6":       ProviderAliyunDoH,
-	"119.29.29.29":    ProviderTencent,
-	"182.254.116.116": ProviderTencent,
-	"180.184.1.1":     ProviderDomestic,
-	"1.2.4.8":         ProviderDomestic,
-	"1.1.1.1":         ProviderGlobal,
-	"8.8.8.8":         ProviderGlobal,
-	"9.9.9.9":         ProviderGlobal,
+	"1.1.1.1": ProviderGlobal,
+	"8.8.8.8": ProviderGlobal,
+	"9.9.9.9": ProviderGlobal,
 }
 
-// DefaultDNSServers is the default DNS server pool by protocol (IPv4 only)
+// FastDNSServers defines pure overseas high-performance Anycast UDP DNS servers for ResolveFast race
+var FastDNSServers = []string{
+	"1.1.1.1",         // Cloudflare Primary
+	"1.0.0.1",         // Cloudflare Secondary
+	"8.8.8.8",         // Google Primary
+	"8.8.4.4",         // Google Secondary
+	"9.9.9.9",         // Quad9 Primary
+	"149.112.112.112", // Quad9 Secondary
+	"208.67.222.222",  // OpenDNS Primary
+	"208.67.220.220",  // OpenDNS Secondary
+}
+
 var DefaultDNSServers = DNSConfig{
 	DoH: []string{
-		"https://doh.pub/dns-query",
-		"https://dns.alidns.com/dns-query",
-		"https://dns.360.cn/dns-query",
 		"https://1.1.1.1/dns-query",
 		"https://dns.google/dns-query",
 		"https://dns.quad9.net/dns-query",
@@ -125,9 +113,6 @@ var DefaultDNSServers = DNSConfig{
 		"https://dns.adguard.com/dns-query",
 	},
 	DoT: []string{
-		"dot.pub:853",
-		"dns.alidns.com:853",
-		"dns.360.cn:853",
 		"1.1.1.1:853",
 		"dns.google:853",
 		"dns.quad9.net:853",
@@ -141,22 +126,10 @@ var DefaultDNSServers = DNSConfig{
 		"8.26.56.26", "8.20.247.20",
 		"94.140.14.14", "94.140.15.15",
 		"64.6.64.6", "64.6.65.6",
-		"4.2.2.1", "4.2.2.2", "4.2.2.3",
-		"77.88.8.1", "77.88.8.2", "77.88.8.7", "77.88.8.8",
-		"80.80.80.80", "80.80.81.81",
+		"4.2.2.1", "4.2.2.2", "4.2.2.3", "4.2.2.4",
+		"77.88.8.1", "77.88.8.2", "77.88.8.7", "77.88.8.8", // Yandex
+		"80.80.80.80", "80.80.81.81", // Freenom
 		"45.11.45.11", "185.222.222.222",
-		"119.29.29.29", "119.28.28.28",
-		"223.5.5.5", "223.6.6.6",
-		"114.114.114.114", "114.114.115.115",
-		"114.114.114.110", "114.114.115.110",
-		"114.114.114.119", "114.114.115.119",
-		"180.76.76.76",
-		"180.184.1.1", "180.184.2.2",
-		"101.226.4.6", "218.30.118.6", "123.125.81.6",
-		"1.2.4.8", "210.2.4.8",
-		"117.50.22.22", "117.50.11.11",
-		"52.80.66.66",
-		"120.53.53.53", "1.12.12.12",
 	},
 }
 
