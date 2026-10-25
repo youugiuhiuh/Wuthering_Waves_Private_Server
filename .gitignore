@@ -17,6 +17,8 @@ sni_tester/GeoLite2-City.mmdb
 sni_tester/*.csv
 sni_tester/sni_tester
 sni_probe/sni_probe
+sni_probe/*.redb
+sni_probe/*.bin
 go/installer/installer
 .github/workflows/SETUP.md
 
