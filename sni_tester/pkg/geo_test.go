@@ -1,7 +1,10 @@
 package pkg
 
 import (
+	"os"
 	"testing"
+
+	maxminddb "github.com/oschwald/maxminddb-golang/v2"
 )
 
 func TestExtractCountryFromUnifiedRecord(t *testing.T) {
@@ -70,5 +73,51 @@ func TestGetCachedASNInvalidIPFallsBackToZero(t *testing.T) {
 	}
 	if res.ASN != 0 || res.Org != "" {
 		t.Fatalf("GetCachedASN(%q) = %+v, want zero ASNResult", "not-an-ip", res)
+	}
+}
+
+// 真实 IPinfo Lite 库验证：一条 IP 必须同时给出 Country 与 ASN，
+// 这正是「一个 mmdb 取代 GeoLite2-Country + GeoLite2-ASN」的核心收益。
+func TestRealIPinfoLiteProvidesBothCountryAndASN(t *testing.T) {
+	dbPath := "../ipinfo_lite.mmdb"
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Skipf("ipinfo_lite.mmdb not present: %v", err)
+	}
+
+	db, err := maxminddb.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open %s: %v", dbPath, err)
+	}
+	defer db.Close()
+
+	tests := []struct {
+		ip      string
+		country string
+		asn     uint32
+	}{
+		{"8.8.8.8", "US", 15169},
+		{"1.1.1.1", "AU", 13335},
+		{"144.76.0.1", "DE", 24940},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.ip, func(t *testing.T) {
+			countryCache.Clear()
+			asnResultCache.Clear()
+
+			if got := GetCachedCountry(tt.ip, db); got != tt.country {
+				t.Errorf("Country(%s) = %q, want %q", tt.ip, got, tt.country)
+			}
+			got, err := GetCachedASN(tt.ip, db)
+			if err != nil {
+				t.Fatalf("GetCachedASN(%s): %v", tt.ip, err)
+			}
+			if got.ASN != tt.asn {
+				t.Errorf("ASN(%s) = %d, want %d", tt.ip, got.ASN, tt.asn)
+			}
+			if got.Org == "" {
+				t.Errorf("Org(%s) is empty, want organization name", tt.ip)
+			}
+		})
 	}
 }
