@@ -84,8 +84,14 @@ func GetBoundIP() string {
 	return boundIP.String()
 }
 
-// NewDialer creates a net.Dialer bound to the configured interface and local IP.
-func NewDialer(timeout time.Duration) *net.Dialer {
+// NewDialer creates a ContextDialer respecting globalProxy, interface, and local IP.
+func NewDialer(timeout time.Duration) ContextDialer {
+	proxyMu.RLock()
+	pd := proxyDialer
+	proxyMu.RUnlock()
+	if pd != nil {
+		return pd
+	}
 	bindMu.RLock()
 	iface := boundInterface
 	ip := boundIP

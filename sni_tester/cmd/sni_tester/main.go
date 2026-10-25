@@ -28,7 +28,7 @@ func main() {
 	autoShutdown := flag.Bool("shutdown", false, "Shutdown after completion")
 	forceRetry := flag.Bool("force", false, "Re-test skipped domains")
 	resetAll := flag.Bool("reset", false, "Clear all history")
-	proxyString := flag.String("p", "", "Proxy for Geo download")
+	proxyString := flag.String("p", "", "Outbound proxy URL for all DNS, TLS probes, and GeoDB download (e.g. socks5://127.0.0.1:1080)")
 	upgradeDir := flag.String("upgrade-dir", "", "Directly upgrade all .pb files in a directory to dual-pool (PQ/Classic)")
 	upgradePb := flag.String("upgrade-pb", "", "Directly upgrade a single .pb file to dual-pool (PQ/Classic)")
 	keepDead := flag.Bool("keep-dead", false, "Keep failed domains in classic pool during upgrade")
@@ -137,6 +137,14 @@ func main() {
 	cfg.UseBuiltinDNS = *dnsAddr == ""
 	cfg.DNSAddr = *dnsAddr
 	cfg.OutputDir = targetDir
+
+	if *proxyString != "" {
+		if err := pkg.SetOutboundProxy(*proxyString); err != nil {
+			fmt.Printf("Error setting outbound proxy %q: %v\n", *proxyString, err)
+			os.Exit(1)
+		}
+		fmt.Printf("[Proxy] All outbound TLS probes and DNS queries routed via %s\n", *proxyString)
+	}
 
 	if err := pkg.PrepareGeoDBs(cfg.GeoDBFile, cfg.GeoASNFile, *proxyString); err != nil {
 		fmt.Printf("Warning: GeoDB download failed: %v\n", err)

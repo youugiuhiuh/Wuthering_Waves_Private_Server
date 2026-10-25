@@ -356,7 +356,7 @@ func lookupHostDoT(server string, name string) ([]string, error) {
 	timeout := 5 * time.Second
 
 	dialer := NewDialer(timeout)
-	rawConn, err := dialer.Dial("tcp", server)
+	rawConn, err := dialer.DialContext(context.Background(), "tcp", server)
 	if err != nil {
 		return nil, fmt.Errorf("DoT connection failed: %w", err)
 	}

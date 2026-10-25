@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"net"
 	"testing"
 	"time"
 )
@@ -29,8 +30,12 @@ func TestSetOutboundInterface(t *testing.T) {
 
 	// 测试生成的 Dialer
 	dialer := NewDialer(2 * time.Second)
-	if dialer.LocalAddr == nil {
-		t.Fatal("Expected dialer.LocalAddr to be set")
+	if netDialer, ok := dialer.(*net.Dialer); ok {
+		if netDialer.LocalAddr == nil {
+			t.Fatal("Expected dialer.LocalAddr to be set")
+		}
+	} else {
+		t.Fatal("Expected *net.Dialer type")
 	}
 
 	// 测试直接传 IP
