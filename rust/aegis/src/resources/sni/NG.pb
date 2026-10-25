@@ -1,9 +1,26 @@
 
-	alcott.eu
-buyoutsinsider.com
-	fdlng.xyz
-fulyx.ai
-joydramashorttv.com
-onequince.com
-yazigi.com.br	alcott.eubuyoutsinsider.comcashkaro.comfulyx.aijoydramashorttv.comkarcher.com
-nbc.gov.khoakandluna.comonequince.comordbokene.noovertime.tvsttbet4.comtohoentertainmentonline.comviax.io
+betwinner.ng
+carding.icu
+cedarcresthospitals.com
+clubkash.com
+diaspora-bridge.ng
+leadwaypfa.com
+modhip.gov.ng
+
+mxcltd.com
+nasrda.gov.ng
+nerdc.gov.ng
+
+nln.gov.ng
+
+nrc.gov.ng
+oauife.edu.ng
+
+psc.gov.ng
+sabinet.works
+
+sitehub.ng
+spesse.edu.ng
+teras.ng
+
+yy4747.com

@@ -1,1 +1,3 @@
-pass.pspbaps.ps
+
+alwatanieh.ps
+paluniv.edu.ps

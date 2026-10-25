@@ -1,1 +1,9 @@
-bankgaborone.co.bwbankwindhoek.com.najud.nanust.natw.na
+
+bankgaborone.co.bw
+iway.na
+jud.na
+namwater.com.na
+ombudsman.org.na
+paratus.africa
+tw.na
+visitnamibia.com.na

@@ -1,2 +1,3 @@
 
-edu.djedu.dj
+adi.dj
+edu.dj

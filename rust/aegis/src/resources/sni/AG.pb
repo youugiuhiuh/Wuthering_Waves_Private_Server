@@ -1,0 +1,3 @@
+
+contest.com
+	kvan.tech

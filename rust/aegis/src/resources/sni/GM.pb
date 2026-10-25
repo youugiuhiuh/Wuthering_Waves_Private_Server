@@ -1,1 +1,4 @@
-qanet.gm
+
+	gamtel.gm
+gnswgambia.com
+qcell.gm
