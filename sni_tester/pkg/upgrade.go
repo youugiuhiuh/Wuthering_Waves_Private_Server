@@ -168,7 +168,7 @@ func UpgradePbFile(ctx context.Context, pbPath string, outPath string, workers i
 					return
 				case resultsChan <- domainTaskResult{
 					domain:  target.domain,
-					isPQ:    tlsRes.IsPQ,
+					isPQ:    tlsRes.SupportsRealityPQ(),
 					isValid: true,
 				}:
 				}

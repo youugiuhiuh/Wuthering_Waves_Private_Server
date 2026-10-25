@@ -249,6 +249,9 @@ const (
 	MaxCertChainDepth = 3
 	// MaxCertRecordBytes REALITY 凭证总大小安全阈值：Xray 核心内部硬编码 8192 字节缓冲区，限制在 5500 预留充足裕量
 	MaxCertRecordBytes = 5500
+	// MinCertBytes 开启 ML-DSA-65 的 REALITY 目标下限：REALITY 的假凭证固定 3499 字节，
+	// 服务端会把自身 Certificate record padding 到与目标站等长，目标链更短则 padding < 0 直接握手失败。
+	MinCertBytes = 3500
 )
 
 // ValidateCertLimits 校验目标凭证链深度与总长度，防止触发 Xray REALITY 8192 字节硬限制
@@ -260,6 +263,12 @@ func ValidateCertLimits(result *TLSResult) (bool, string) {
 		return false, fmt.Sprintf("Certificate total size too large (%d > %d bytes, exceeds REALITY safe limit)", result.TotalCertBytes, MaxCertRecordBytes)
 	}
 	return true, ""
+}
+
+// SupportsRealityPQ 该目标能否进后量子池：链太短时 REALITY 装不下 3499 字节的 ML-DSA-65 假凭证，
+// 只能降级为普通（不开启 mldsa65Seed）的经典目标。
+func (r *TLSResult) SupportsRealityPQ() bool {
+	return r.IsPQ && r.TotalCertBytes >= MinCertBytes
 }
 
 func ValidateDomain(result *TLSResult) (bool, string) {

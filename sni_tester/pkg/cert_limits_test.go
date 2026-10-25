@@ -82,3 +82,36 @@ func TestValidateDomainCertLimits(t *testing.T) {
 		})
 	}
 }
+
+// REALITY 开启 ML-DSA-65 时用的假凭证是固定 3499 字节（含 3309 字节签名扩展），
+// 服务端会把自己的 Certificate record 用 padding 补到与目标站一样长；
+// 目标链太短则 padding < 0，握手当场失败（payload[0]: 22, padding: -N）。
+func TestSupportsRealityPQRequiresMinCertBytes(t *testing.T) {
+	// 假凭证 3499 + 握手消息头 10 = 3509 明文 → record 3514+17 = 3531，链 DER 需 ≥3499
+	if MinCertBytes < 3499 {
+		t.Fatalf("MinCertBytes = %d, must be >= 3499 to fit REALITY's 3499-byte ML-DSA-65 fake cert", MinCertBytes)
+	}
+
+	tests := []struct {
+		name           string
+		isPQ           bool
+		totalCertBytes int
+		want           bool
+	}{
+		{"PQ with exact minimum", true, MinCertBytes, true},
+		{"PQ one byte below minimum", true, MinCertBytes - 1, false},
+		{"PQ with short ECDSA chain (e.g. annsummers.com 2363B)", true, 2363, false},
+		{"PQ with RSA fullchain", true, 4800, true},
+		{"classic long chain is not PQ", false, 4800, false},
+		{"classic short chain is not PQ", false, 2363, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &TLSResult{IsPQ: tt.isPQ, TotalCertBytes: tt.totalCertBytes}
+			if got := r.SupportsRealityPQ(); got != tt.want {
+				t.Errorf("SupportsRealityPQ() = %v, want %v (isPQ=%v certBytes=%d)", got, tt.want, tt.isPQ, tt.totalCertBytes)
+			}
+		})
+	}
+}
