@@ -1,1 +1,0 @@
-domus.am	jivo.chatjivosite.commymarket.am

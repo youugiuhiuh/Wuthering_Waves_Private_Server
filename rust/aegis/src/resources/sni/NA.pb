@@ -1,1 +1,0 @@
-bankgaborone.co.bwbankwindhoek.com.najud.nanust.natw.na

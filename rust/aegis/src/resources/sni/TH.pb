@@ -1,3 +1,0 @@
-
-thaidriveexam.comallwellhealthcare.combazaarvietnam.vnbbb-kbvip.combizsoftone.combj.ac.th	bmdns.netbu.ac.thburmesexnx.comcalintertrade.co.th
-cat.net.thclaimdi.comhosttook.comhuakaticreation.comitcity.co.th	lpt.ac.thmoresheet.cooneplusmedia.complantoneintl.comprimal.co.thpronetdonjai.comsawad.co.thsmtvonline.comsuperrichthailand.comtaladrod.comthaidriveexam.comthaiticketmajor.comturbo.co.thvitvithubb.comxburmahub.comxz91mqla.comzoothailand.org

@@ -1,1 +1,0 @@
-etugen.edu.mnhorecasoft.mn	itools.mn
