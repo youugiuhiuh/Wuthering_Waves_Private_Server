@@ -142,6 +142,8 @@ cargo build --release
 | `--force` | 无视历史记录重测 | 关 |
 | `--reset` | 清空全部历史后退出 | 关 |
 | `--no-guard` | 跳过启动并发自检 | 关 |
+| `--iface <NAME>` | 出站绑定网卡名或本地 IP | 不绑定 |
+| `--list-ifaces` | 列出本机网卡与 IPv4 后退出 | — |
 
 > ⚠ **全局参数必须写在子命令前面**：`sni_probe --history h.redb build-pools ...` ✅
 > `sni_probe build-pools --history h.redb ...` ❌ 会报 `unexpected argument`
@@ -192,6 +194,7 @@ cargo build --release
 | `src/shutdown.rs` | `--shutdown` 关机 |
 | `src/merge.rs` | 跨文件 `.pb` 合并去重 |
 | `src/resource.rs` | 启动时 ulimit / CPU 自检 |
+| `src/bind.rs` | 出站网卡/本地 IP 绑定（`SO_BINDTODEVICE`） |
 
 ## 与 Go 版的功能对齐
 
@@ -208,10 +211,11 @@ cargo build --release
 | `--ttl` / `--force` / `--reset` | ✅ | ✅ | 历史 TTL、强制重测、清空历史 |
 | **H3 检测** | ✅ | ✅ | `Alt-Svc: h3` 判定，h2 或 h3 任一即可 |
 | **跨文件 `.pb` 合并去重** | ✅ | ✅ | `merge` 子命令 |
+| **`--iface` 网卡绑定** | ✅ | ✅ | `SO_BINDTODEVICE` + 本地 IP，TCP 与 DNS 都生效 |
 | SOCKS5 代理 | ✅ | ❌ | Rust 版 `-p` 尚未接线，需代理请用 Go 版 |
-| `--iface` 网卡绑定 | ✅ | ❌ | 未实现 |
 | DoH / DoT | ✅ | ❌ | 有意不实现，仅用裸 UDP 53 |
 | DNS 速率限制/健康加权 | ✅ | ❌ | 有意不实现 |
+| ClientHello 指纹轮换 | ✅ | ❌ | BoringSSL 固定 Chrome，对 REALITY 反而更稳 |
 
 ### 启动时并发安全自检
 
@@ -257,6 +261,45 @@ cargo build --release
 同一 ASN 下累计 3 个域名失败后整家拉黑，后续同 ASN 目标零握手直接跳过。
 种子名单含 25 个境内云厂商/运营商（Chinanet、China Telecom、Tencent Cloud、Alibaba、Zenlayer 等）。
 
+### 出站网卡绑定（`--iface`）
+
+把测试流量锁到指定网卡或本地 IP，避免打满主宽带、掐断 SSH：
+
+```bash
+# 先看有哪些网卡
+./sni_probe --list-ifaces
+# enp7s0      192.168.2.49
+# lo          127.0.0.1
+# wlp6s0      192.168.2.143    <- 4G 网卡
+# xray_tun    10.1.0.1
+
+# 绑到 4G 网卡跑
+./sni_probe --iface wlp6s0 probe-survival -f resolved.csv -o survived.csv -w 80
+
+# 也可直接绑本地 IP
+./sni_probe --iface 192.168.2.143 probe-survival -f resolved.csv -o survived.csv
+```
+
+两种绑法同时用（与 Go 版一致）：
+
+| 方式 | 机制 | TCP | DNS | 需要权限 |
+| :--- | :--- | :--- | :--- | :--- |
+| 按 IP | `bind()` 到本地地址 | ✅ | ✅ | 否 |
+| 按网卡 | `SO_BINDTODEVICE` | ✅ | ✅ | **root / `CAP_NET_RAW`** |
+
+给网卡名时两者都用：先取该网卡的 IPv4 做 `bind()`，再叠 `SO_BINDTODEVICE`。
+
+**验证绑定真的生效**——跑的时候另开一个终端：
+
+```bash
+ss -tan | grep 443
+# TIME-WAIT  192.168.2.143%wlp6s0:36659  ->  104.16.132.229:443
+#            ^^^^^^^^^^^^^ 源地址明确带 %wlp6s0
+```
+
+> DNS 侧通过 hickory 的 `bind_addr` 固定源 IP。hickory 不支持 `SO_BINDTODEVICE`，
+> 但同源 IP 必然同网卡，实际效果一致。
+
 ### 跨文件合并去重（#13）
 
 磁盘上散落多份不同时期的 `.pb` 时，合并成一个去重总池：
@@ -300,7 +343,6 @@ cargo build --release
 | 限制 | 影响 | 规避 |
 | :--- | :--- | :--- |
 | `-p` SOCKS5 **参数被解析但未接线** | 传了等于没传，仍走直连 —— **境内跑阶段二会暴露真实 IP** | 用 Go 版，或在本地透明代理层处理 |
-| `--iface` 网卡绑定未实现 | 无法把流量锁到 4G 网卡 | 同上 |
 | DoH / DoT 未实现 | 仅裸 UDP 53；被劫持时无降级路径 | 有意为之（用户决定不做） |
 | DNS 限流/健康加权未实现 | `-w` 极高时公共 DNS 可能限流 | 启动自检会先把 `-w` 压到安全值 |
 | `h2.rs` 只解析 HPACK 静态表 | 目标若完全用 Huffman 编码首跳头，`server` 判定退化为「无 CDN 头」 | 这类目标仍可能因 ALPN=h2 通过，只是少了 CDN 特征判定 |
@@ -313,6 +355,7 @@ cargo build --release
 | CPU 核心 | **≥ 4 核** | 单核跑 `build-pools` 时 CPU 是瓶颈，推荐 `-w` 被压到 20 |
 | `ulimit -n` | **≥ 65535** | 默认 1024 会把上限压到约 794 |
 | 内存 | ≥ 512 MB 可用 | 峰值约 45 MB，留裕量给 MMDB 与历史库 |
+| 权限（仅 `--iface` 绑网卡时） | root 或 `CAP_NET_RAW` | 按 IP 绑定不需要 |
 
 **1 核机器不适合跑 `build-pools`** —— 它的定位应是控制面（Aegis + Xray），
 深度质检应放到多核探测机。
