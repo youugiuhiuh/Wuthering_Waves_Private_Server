@@ -17,6 +17,7 @@ mod merge;
 mod pb;
 mod pipeline;
 mod progress;
+mod resource;
 mod run;
 mod shutdown;
 mod state;
@@ -56,6 +57,9 @@ struct Cli {
     /// 清空全部历史后退出（对应 Go -reset）
     #[arg(long, global = true)]
     reset: bool,
+    /// 跳过启动时的并发安全自检（不推荐）
+    #[arg(long = "no-guard", global = true)]
+    no_guard: bool,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -220,6 +224,16 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             eprintln!("缺少子命令，使用 --help 查看用法");
             return Ok(());
         };
+
+        // 启动自检：-w 超限会导致假失败（并污染历史库）
+        if !cli.no_guard {
+            let (requested, stage) = command_workers(&cmd);
+            let budget = resource::budget();
+            if let Some(w) = resource::warn_text(&budget, requested, stage) {
+                eprintln!("{w}");
+            }
+        }
+
         match cmd {
             Command::ResolveMap {
                 input,
@@ -416,4 +430,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         eprintln!("[shutdown] 关机失败: {e}");
     }
     result
+}
+
+/// 取出各子命令请求的并发数，用于启动自检。
+fn command_workers(cmd: &Command) -> (u64, &'static str) {
+    match cmd {
+        Command::ResolveMap { workers, .. } => (*workers as u64, "resolve-map"),
+        Command::ProbeSurvival { workers, .. } => (*workers as u64, "probe-survival"),
+        Command::Run { workers, .. } => (*workers as u64, "run"),
+        Command::BuildPools { workers, .. } => (*workers as u64, "build-pools"),
+        Command::UpgradeDir { workers, .. } => (*workers as u64, "upgrade-dir"),
+        Command::UpgradePb { workers, .. } => (*workers as u64, "upgrade-pb"),
+        Command::Merge { .. } => (1, "merge"),
+    }
 }
