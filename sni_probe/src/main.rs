@@ -6,6 +6,7 @@
 //! build-pools    海外 VPS        domain,ip 存活    -> 双池 .pb
 //! ```
 
+mod bind;
 mod cloudflare;
 mod connectivity;
 mod dns;
@@ -60,6 +61,12 @@ struct Cli {
     /// 跳过启动时的并发安全自检（不推荐）
     #[arg(long = "no-guard", global = true)]
     no_guard: bool,
+    /// 出站绑定到网卡（如 wlp6s0）或本地 IP，隔离测试流量与主宽带
+    #[arg(long = "iface", global = true)]
+    iface: Option<String>,
+    /// 列出本机所有网卡名后退出
+    #[arg(long = "list-ifaces", global = true)]
+    list_ifaces: bool,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -192,6 +199,28 @@ fn report(stage: &str, stats: pipeline::StageStats, extra: &str) {
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cli = Cli::parse();
     logging::set_debug(cli.debug);
+
+    if cli.list_ifaces {
+        for name in bind::list_interfaces() {
+            match bind::iface_ipv4(&name) {
+                Some(ip) => println!("{name:20} {ip}"),
+                None => println!("{name:20} (无 IPv4)"),
+            }
+        }
+        return Ok(());
+    }
+
+    // -iface：设置出站绑定
+    if let Some(target) = cli.iface.as_deref()
+        && let Err(e) = bind::set_outbound(target)
+    {
+        return Err(format!("--iface {target} 设置失败: {e}").into());
+    }
+    if cli.iface.is_some()
+        && let Some(w) = bind::validate_binding()
+    {
+        eprintln!("{w}");
+    }
 
     // -reset：清空历史后立即退出
     if cli.reset {

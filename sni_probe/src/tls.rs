@@ -5,7 +5,7 @@
 //! ClientHello wire format（含 PQ 混合 kex、GREASE）。
 
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr, TcpStream};
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use boring::ssl::{SslConnector, SslMethod, SslVerifyMode, SslVersion};
@@ -72,7 +72,7 @@ pub fn probe(
 ) -> Result<TlsProbe, Box<dyn std::error::Error + Send + Sync>> {
     let connector = build_connector()?;
 
-    let tcp = TcpStream::connect_timeout(&SocketAddr::new(ip, 443), timeout)?;
+    let tcp = crate::bind::connect_tcp(SocketAddr::new(ip, 443), timeout)?;
     tcp.set_read_timeout(Some(timeout))?;
     tcp.set_write_timeout(Some(timeout))?;
 
@@ -172,7 +172,7 @@ pub fn handshake_only(
     timeout: Duration,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let connector = build_connector()?;
-    let tcp = TcpStream::connect_timeout(&SocketAddr::new(ip, 443), timeout)?;
+    let tcp = crate::bind::connect_tcp(SocketAddr::new(ip, 443), timeout)?;
     let _ = tcp.set_read_timeout(Some(timeout));
     let _ = tcp.set_write_timeout(Some(timeout));
     let _stream = connector.connect(domain, tcp)?;
@@ -189,7 +189,7 @@ pub fn probe_survival(domain: &str, ip: IpAddr, timeout: Duration) -> bool {
     let Ok(connector) = build_connector() else {
         return false;
     };
-    let Ok(tcp) = TcpStream::connect_timeout(&SocketAddr::new(ip, 443), timeout) else {
+    let Ok(tcp) = crate::bind::connect_tcp(SocketAddr::new(ip, 443), timeout) else {
         return false;
     };
     let _ = tcp.set_read_timeout(Some(timeout));
@@ -248,7 +248,7 @@ pub fn check_h3_support(domain: &str, ip: IpAddr, timeout: Duration) -> bool {
     let Ok(connector) = build_connector() else {
         return false;
     };
-    let Ok(tcp) = TcpStream::connect_timeout(&SocketAddr::new(ip, 443), timeout) else {
+    let Ok(tcp) = crate::bind::connect_tcp(SocketAddr::new(ip, 443), timeout) else {
         return false;
     };
     let _ = tcp.set_read_timeout(Some(timeout));

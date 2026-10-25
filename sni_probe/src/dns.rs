@@ -25,10 +25,20 @@ pub const FAST_DNS_SERVERS: &[&str] = &[
 pub fn build_resolver(
     timeout: Duration,
 ) -> Result<TokioResolver, Box<dyn std::error::Error + Send + Sync>> {
+    // 绑定了本地 IP 时，DNS 也要从同一源地址出去，否则查询会走默认网卡
+    let local_ip = crate::bind::current().local_ip;
+
     let mut servers = Vec::with_capacity(FAST_DNS_SERVERS.len());
     for s in FAST_DNS_SERVERS {
         let ip: IpAddr = s.parse().map_err(|e| format!("bad DNS {s}: {e}"))?;
-        servers.push(NameServerConfig::udp_and_tcp(ip));
+        let mut cfg = NameServerConfig::udp_and_tcp(ip);
+        if let Some(local) = local_ip {
+            for conn in &mut cfg.connections {
+                // 源端口 0 = 由内核选择；这里只固定源 IP
+                conn.bind_addr = Some(std::net::SocketAddr::new(local, 0));
+            }
+        }
+        servers.push(cfg);
     }
 
     let mut opts = ResolverOpts::default();
