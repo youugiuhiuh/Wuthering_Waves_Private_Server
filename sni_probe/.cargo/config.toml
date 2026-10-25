@@ -1,0 +1,4 @@
+# cargo 产物统一放到 ./build，再由 Makefile 拷成 ./sni_probe
+# （target-dir 只能写在 config.toml，不能写在 Cargo.toml）
+[build]
+target-dir = "build"

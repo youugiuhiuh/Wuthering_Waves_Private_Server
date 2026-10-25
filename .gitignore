@@ -9,6 +9,7 @@ rust/tgbot/target
 rust/aegis/target
 rust/version-sync/target
 sni_probe/target
+sni_probe/build
 References/
 sni_tester/*.txt
 sni_tester/GeoLite2-Country.mmdb

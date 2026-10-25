@@ -110,8 +110,27 @@ message State {
 需要 `cmake`（BoringSSL 构建期依赖）：
 
 ```bash
+make build
+# => ./sni_probe  (release)
+```
+
+`make build` 会编译并把二进制拷到 **crate 根目录的 `./sni_probe`**，
+可直接 `./sni_probe --help` 运行，不用再记 `target/release/` 路径。
+
+| 命令 | 作用 |
+| :--- | :--- |
+| `make build` | release 构建 → `./sni_probe` |
+| `make build MODE=debug` | debug 构建 |
+| `make test` | 跑全部测试 |
+| `make lint` | clippy（零告警门禁） |
+| `make fmt` | 格式检查 |
+| `make clean` | 清掉构建产物与 `./sni_probe` |
+
+也可以直接用 cargo（产物落在 `build/release/sni_probe`）：
+
+```bash
 cargo build --release
-# 产物：target/release/sni_probe（约 4 MB）
+./build/release/sni_probe --help
 ```
 
 ## 用法
