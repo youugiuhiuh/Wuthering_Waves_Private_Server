@@ -280,10 +280,12 @@ pub async fn build_pools_entries_with_history(
             match tls::probe(&e.domain, ip, timeout) {
                 Ok(p) if tls::validate(&p) => {
                     crate::debugln!(
-                        "[debug] OK {} country={} pq={} chain={} certs={}B",
+                        "[debug] OK {} country={} pq={} alpn={:?} h3={} chain={} certs={}B",
                         e.domain,
                         geodb.as_ref().map(|g| g.country(ip)).unwrap_or_default(),
                         p.is_pq(),
+                        p.alpn,
+                        p.h3_support,
                         p.cert_chain_len,
                         p.cert_total_bytes
                     );

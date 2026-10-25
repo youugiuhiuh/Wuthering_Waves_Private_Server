@@ -23,6 +23,8 @@ pub struct TlsProbe {
     pub cert_total_bytes: usize,
     pub headers: HashMap<String, String>,
     pub http_status: Option<u16>,
+    /// 目标是否宣告支持 HTTP/3（`Alt-Svc: h3`）
+    pub h3_support: bool,
 }
 
 impl TlsProbe {
@@ -102,6 +104,9 @@ pub fn probe(
         HashMap::new()
     };
 
+    result.h3_support = headers
+        .get("alt-svc")
+        .is_some_and(|v| v.to_ascii_lowercase().contains("h3"));
     result.http_status = headers
         .get(":status")
         .and_then(|s| s.parse::<u16>().ok())
@@ -221,8 +226,49 @@ pub fn validate(p: &TlsProbe) -> bool {
         && p.is_valid_group()
         && p.cert_chain_len <= MAX_CERT_CHAIN_DEPTH
         && p.cert_total_bytes <= MAX_CERT_BYTES
-        && p.alpn.as_deref() == Some("h2")
+        && (p.alpn.as_deref() == Some("h2") || p.h3_support || has_h3_altsvc(p))
         && is_compatible_http(&p.headers)
+}
+
+/// 从已抓到的响应头里判断是否宣告了 HTTP/3（`Alt-Svc: h3=...`）。
+///
+/// 优先用这种方式：`probe` 已经在同一条连接上取回了响应头，
+/// 无需再为 H3 判断额外发起一次请求。
+pub fn has_h3_altsvc(p: &TlsProbe) -> bool {
+    p.headers
+        .get("alt-svc")
+        .is_some_and(|v| v.to_ascii_lowercase().contains("h3"))
+}
+
+/// 在没有响应头时主动探测 H3（对齐 Go `CheckH3Support`）。
+///
+/// 只在 `alpn` 既不是 h2 也没有 Alt-Svc 时才需要，作为最后的补充手段。
+#[allow(dead_code)] // 主动探测：仅在没有响应头可查时作为兜底
+pub fn check_h3_support(domain: &str, ip: IpAddr, timeout: Duration) -> bool {
+    let Ok(connector) = build_connector() else {
+        return false;
+    };
+    let Ok(tcp) = TcpStream::connect_timeout(&SocketAddr::new(ip, 443), timeout) else {
+        return false;
+    };
+    let _ = tcp.set_read_timeout(Some(timeout));
+    let _ = tcp.set_write_timeout(Some(timeout));
+    let Ok(mut stream) = connector.connect(domain, tcp) else {
+        return false;
+    };
+
+    let alpn = stream
+        .ssl()
+        .selected_alpn_protocol()
+        .map(|p| String::from_utf8_lossy(p).to_string());
+    let headers = match alpn.as_deref() {
+        Some("h2") => h2::head(&mut stream, domain, SNI_USER_AGENT).unwrap_or_default(),
+        Some("http/1.1") => head_request_http11(&mut stream, domain).unwrap_or_default(),
+        _ => HashMap::new(),
+    };
+    headers
+        .get("alt-svc")
+        .is_some_and(|v| v.to_ascii_lowercase().contains("h3"))
 }
 
 /// Cloudflare / hcdn 等 CDN 边缘会把 REALITY 伪装彻底打穿，必须在 HTTP 层再次拦截。
@@ -279,6 +325,67 @@ mod tests {
         assert!(is_compatible_http(&h));
 
         assert!(is_compatible_http(&HashMap::new()));
+    }
+
+    #[test]
+    fn h3_altsvc_is_detected_case_insensitively() {
+        let mut h = HashMap::new();
+        h.insert("alt-svc".to_string(), "h3=\":443\"; ma=86400".to_string());
+        let p = TlsProbe {
+            headers: h,
+            ..Default::default()
+        };
+        assert!(has_h3_altsvc(&p));
+
+        let mut h2h = HashMap::new();
+        h2h.insert("alt-svc".to_string(), "H3=\":443\"".to_string());
+        let p2 = TlsProbe {
+            headers: h2h,
+            ..Default::default()
+        };
+        assert!(has_h3_altsvc(&p2), "Alt-Svc 值大小写不敏感");
+
+        let mut h3h = HashMap::new();
+        h3h.insert("alt-svc".to_string(), "h2=\":443\"".to_string());
+        let p3 = TlsProbe {
+            headers: h3h,
+            ..Default::default()
+        };
+        assert!(!has_h3_altsvc(&p3), "只有 h2 不算 H3");
+
+        assert!(!has_h3_altsvc(&TlsProbe::default()), "无头不得误判");
+    }
+
+    /// H3 目标：无 h2 但宣告 Alt-Svc: h3 时也应通过质检。
+    #[test]
+    fn validate_accepts_h3_only_targets() {
+        let mut h = HashMap::new();
+        h.insert("alt-svc".to_string(), "h3=\":443\"".to_string());
+        let p = TlsProbe {
+            tls13: true,
+            alpn: Some("http/1.1".into()),
+            curve: Some("X25519MLKEM768".into()),
+            cert_chain_len: 3,
+            cert_total_bytes: 4000,
+            headers: h,
+            h3_support: true,
+            ..Default::default()
+        };
+        assert!(validate(&p), "宣告 H3 的目标应通过");
+    }
+
+    /// 既无 h2 也无 H3 的目标必须被拒。
+    #[test]
+    fn validate_rejects_targets_without_h2_or_h3() {
+        let p = TlsProbe {
+            tls13: true,
+            alpn: Some("http/1.1".into()),
+            curve: Some("X25519".into()),
+            cert_chain_len: 3,
+            cert_total_bytes: 4000,
+            ..Default::default()
+        };
+        assert!(!validate(&p));
     }
 
     #[test]

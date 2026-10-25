@@ -133,6 +133,7 @@ cargo build --release
 | `src/upgrade.rs` | 存量 `.pb` 双池升级（目录 / 单文件） |
 | `src/logging.rs` | `--debug` 开关 |
 | `src/shutdown.rs` | `--shutdown` 关机 |
+| `src/merge.rs` | 跨文件 `.pb` 合并去重 |
 
 ## 与 Go 版的功能对齐
 
@@ -147,6 +148,8 @@ cargo build --release
 | **`--debug`** | ✅ | ✅ | 逐域名 ASN/证书链/失败原因 |
 | **`--shutdown`** | ✅ | ✅ | 完成后关机 |
 | `--ttl` / `--force` / `--reset` | ✅ | ✅ | 历史 TTL、强制重测、清空历史 |
+| **H3 检测** | ✅ | ✅ | `Alt-Svc: h3` 判定，h2 或 h3 任一即可 |
+| **跨文件 `.pb` 合并去重** | ✅ | ✅ | `merge` 子命令 |
 | SOCKS5 代理 | ✅ | ❌ | Rust 版 `-p` 尚未接线，需代理请用 Go 版 |
 | `--iface` 网卡绑定 | ✅ | ❌ | 未实现 |
 | DoH / DoT | ✅ | ❌ | 有意不实现，仅用裸 UDP 53 |
@@ -168,6 +171,30 @@ cargo build --release
 
 同一 ASN 下累计 3 个域名失败后整家拉黑，后续同 ASN 目标零握手直接跳过。
 种子名单含 25 个境内云厂商/运营商（Chinanet、China Telecom、Tencent Cloud、Alibaba、Zenlayer 等）。
+
+### 跨文件合并去重（#13）
+
+磁盘上散落多份不同时期的 `.pb` 时，合并成一个去重总池：
+
+```bash
+./sni_probe merge -d rust/aegis/src/resources/sni -o /tmp/MERGED.pb
+# [merge] ... | PQ=3 classic=2
+```
+
+规则：
+- 跨文件去重；同一域名同时出现在两池时**以 PQ 为准**（避免客户端按错池握手）
+- 自动跳过 CN / HK / MO / IR / RU / KP 的国家文件
+- 旧格式需加 `--legacy`
+
+### HTTP/3 检测（#12）
+
+判定顺序（越靠前越省一次连接）：
+
+1. 已取回的响应头里有 `Alt-Svc: h3`（**首选**，复用同一条 TLS 连接，零额外开销）
+2. 否则看 ALPN 是否为 `h2`
+3. 两者皆无时才主动调 `check_h3_support` 再探一次
+
+因此「只支持 H3 没有 h2」的目标现在也能通过质检，而 v1.9.9 的严格 h2 判定会把它丢掉。
 
 ### 存量 `.pb` 升级
 

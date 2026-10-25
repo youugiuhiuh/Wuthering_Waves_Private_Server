@@ -13,6 +13,7 @@ mod geo;
 mod geodl;
 mod h2;
 mod logging;
+mod merge;
 mod pb;
 mod pipeline;
 mod progress;
@@ -144,6 +145,18 @@ enum Command {
         workers: usize,
         #[arg(long, default_value_t = 5)]
         timeout: u64,
+    },
+    /// 把目录下所有 .pb 合并成一个去重总池（跨文件去重）
+    Merge {
+        /// 源目录
+        #[arg(short = 'd', long = "dir")]
+        dir: PathBuf,
+        /// 输出文件
+        #[arg(short = 'o', long = "out")]
+        out: PathBuf,
+        /// 源文件是 v1.9.9 单池格式
+        #[arg(long = "legacy")]
+        legacy: bool,
     },
     /// 阶段三：海外深度质检，生成双池 .pb（与磁盘已有内容增量合并）
     BuildPools {
@@ -344,6 +357,21 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     },
                 )
                 .await?;
+            }
+            Command::Merge { dir, out, legacy } => {
+                let format = if legacy {
+                    upgrade::PbFormat::LegacySinglePool
+                } else {
+                    upgrade::PbFormat::DualPool
+                };
+                let (npq, nclassic) = merge::merge_dir_into(&dir, &out, format)?;
+                println!(
+                    "[merge] {} -> {} | PQ={} classic={}",
+                    dir.display(),
+                    out.display(),
+                    npq,
+                    nclassic
+                );
             }
             Command::BuildPools {
                 input,
