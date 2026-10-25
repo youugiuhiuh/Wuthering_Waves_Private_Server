@@ -1,0 +1,71 @@
+# sni_probe — 三阶段 SNI 探测引擎（Rust 热路径实现）
+
+`./sni_tester`（Go）中三条热路径的 Rust 重写版。Go 版保留原样做对照，两者输入输出格式完全一致，可以混用。
+
+## 为什么是 Rust
+
+| 关注点 | Go 版 (`utls`) | Rust 版 (`boring`) |
+| :--- | :--- | :--- |
+| ClientHello 指纹 | 需按 profile 逐个模拟，profile 更新滞后 | 直接用 BoringSSL，与 Chrome 同一 wire format |
+| PQ 混合 kex | `utls` 手写扩展 | `boring` `pq-experimental` feature，`X25519MLKEM768` |
+| 版权头解析 | 完整 HTTP 客户端（含连接池/Keep-Alive 补丁） | 最小 h2 客户端，只取首跳响应头 |
+| 运行时依赖 | 需 Go 工具链 + `go.mod` 供应链 | 单静态二进制，无 CGO（BoringSSL 静态编入） |
+
+## 三阶段
+
+```text
+resolve-map    海外 VPS        raw 域名       -> domain,ip 映射表      （纯海外 Anycast DNS）
+probe-survival 审查境内/代理    domain,ip      -> 存活名单              （零 DNS、零 HTTP、150ms 防 RST）
+build-pools    海外 VPS        domain,ip 存活 -> 双池 .pb              （TLS1.3/PQ/证链/管辖国过滤）
+```
+
+## 编译
+
+需要 `cmake`（BoringSSL 构建期依赖）：
+
+```bash
+cargo build --release
+# 产物：target/release/sni_probe（约 4 MB）
+```
+
+## 用法
+
+```bash
+# 阶段一：海外预解析
+./sni_probe resolve-map -f tranco_raw.csv -o resolved_targets.csv -w 300
+
+# 阶段二：境内存活探测（输入必须含 IP，本阶段不发任何 DNS 查询）
+./sni_probe probe-survival -f resolved_targets.csv -o survived_candidates.csv -w 100 --timeout 3
+
+# 阶段三：深度质检 + 双池 .pb（与磁盘已有内容增量合并）
+./sni_probe build-pools -f survived_candidates.csv \
+    --out-dir rust/aegis/src/resources/sni \
+    --geo ipinfo_lite.mmdb -w 100 --timeout 5
+```
+
+## 判定标准（REALITY 伪装目标）
+
+* TLS 1.3，密钥交换 `X25519` / `X25519MLKEM768`（PQ 池）
+* ALPN 协商为 `h2`
+* 证书链深度 ≤ 3，证书总字节 ≤ 5500（Xray 内部 8192 字节缓冲）
+* HTTP 响应头不含 `cf-ray` / `cf-cache-status`，`server` 不含 `cloudflare` / `hcdn`
+* 国家码不属于 CN / HK / MO / IR / RU / KP
+
+## 模块
+
+| 文件 | 职责 |
+| :--- | :--- |
+| `src/target.rs` | 输入行解析（纯域名 / Tranco / `domain,ip`） |
+| `src/dns.rs` | 纯海外 Anycast DNS 解析器 |
+| `src/cloudflare.rs` | Cloudflare CIDR / ASN 排除 |
+| `src/tls.rs` | BoringSSL TLS 1.3 探测、PQ 判定、证链限制、存活探测 |
+| `src/h2.rs` | 最小 HTTP/2 客户端（只取响应头） |
+| `src/geo.rs` | IPinfo Lite / MaxMind MMDB 国家与 ASN、管辖国过滤 |
+| `src/pb.rs` | `DomainList` protobuf 手写编解码 |
+| `src/pipeline.rs` | 三阶段并发执行器与增量 `.pb` 写入 |
+
+## 已知限制（`shortcut:`）
+
+* `probe-survival` / `build-pools` 的 `-p` SOCKS5 参数在 Rust 版尚未接线（Go 版已支持）；
+  需要走代理时请用 Go 版，或在本地透明代理层面处理。
+* `h2.rs` 只解析 HPACK 静态表覆盖的响应头；目标若完全用 Huffman 编码首跳头，`server` 判定会退化为"无 CDN 头"。

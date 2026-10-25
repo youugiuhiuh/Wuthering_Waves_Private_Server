@@ -8,6 +8,7 @@ GEMINI.zh-CN.md
 rust/tgbot/target
 rust/aegis/target
 rust/version-sync/target
+sni_probe/target
 References/
 sni_tester/*.txt
 sni_tester/GeoLite2-Country.mmdb
@@ -15,6 +16,7 @@ sni_tester/GeoLite2-ASN.mmdb
 sni_tester/GeoLite2-City.mmdb
 sni_tester/*.csv
 sni_tester/sni_tester
+sni_probe/sni_probe
 go/installer/installer
 .github/workflows/SETUP.md
 
