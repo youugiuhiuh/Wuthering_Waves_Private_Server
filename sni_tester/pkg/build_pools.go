@@ -192,6 +192,12 @@ func RunBuildPools(ctx context.Context, opts BuildPoolsOptions) (*BuildPoolsStat
 					country = GetCachedCountry(targetIP, geoDB)
 				}
 
+				// 严禁将审查管辖国（CN, HK, MO, IR, RU, KP）作为 REALITY 伪装目标，直接丢弃
+				if IsBlockedCountry(country) {
+					resultsChan <- probeResult{domain: target.domain, isValid: false}
+					continue
+				}
+
 				resultsChan <- probeResult{
 					domain:  target.domain,
 					country: country,
