@@ -19,6 +19,54 @@ probe-survival 审查境内/代理    domain,ip      -> 存活名单            
 build-pools    海外 VPS        domain,ip 存活 -> 双池 .pb              （TLS1.3/PQ/证链/管辖国过滤）
 ```
 
+## 一键串联：`run` 子命令
+
+三段不再需要手搓 CSV —— `run` 用一个 `state.bin` 串起全部阶段，并在每次网络切换时
+用 Google 连通性检测把关、等用户回车确认后才继续：
+
+```bash
+./sni_probe run -f tranco_raw.csv --state sni_probe_state.bin \
+    --out-dir rust/aegis/src/resources/sni --geo ipinfo_lite.mmdb \
+    -w 100 --timeout 5
+```
+
+```text
+=== sni_probe run：一键三阶段 ===
+
+[阶段一] 海外预解析 —— 需要【海外网络】
+  → 可连通（www.google.com → 11.27.97.214，TLS 1.3 握手成功）
+  ⠹ resolve-map [========>          ] 1204/3000 (40%) 250/s ETA 7s
+
+[阶段二] 境内存活探测 —— 需要【境内网络】，本阶段不发任何 DNS 查询
+  → 不可访问：www.google.com → 142.250.x.x TLS 握手失败（connection reset by peer）
+  ⠹ probe-survival [=====>         ] 612/1204 (51%) 180/s ETA 3s
+
+[阶段三] 海外深度质检 —— 需要【海外网络】
+  → 可连通（www.google.com → 11.27.97.214，TLS 1.3 握手成功）
+  ⠹ build-pools [=============>    ] 480/612 (78%) 60/s ETA 2s
+
+=== 全部完成 ===
+```
+
+**网络闸门**：每次阶段启动前都会检测 `www.google.com:443` 的完整 TLS 1.3 握手
+（不是单看 TCP 连通 —— 审查系统常表现为 TCP 通、ClientHello 后被 RST），
+不满足要求会提示切换网络并等待回车复检。
+
+**断点续跑**：`state.bin` 里记录已完成阶段的位掩码，中断后重跑会自动跳过已完成阶段。
+
+**状态文件**（`state.bin`，proto3，`src/state.rs`）：
+
+```proto
+message State {
+    repeated Entry phase1 = 1;  // 预解析结果 domain,ip
+    repeated Entry phase2 = 2;  // 存活候选 domain,ip
+    repeated Entry phase3 = 3;  // 深度质检通过 domain
+    uint32 completed = 4;       // 已完成阶段位掩码
+}
+```
+
+> `shortcut:` 自动化测试可用 `SNI_PROBE_SKIP_GATES=1` 绕过网络闸门（仅供 CI/冒烟测试）。
+
 ## 编译
 
 需要 `cmake`（BoringSSL 构建期依赖）：
@@ -63,6 +111,10 @@ cargo build --release
 | `src/geo.rs` | IPinfo Lite / MaxMind MMDB 国家与 ASN、管辖国过滤 |
 | `src/pb.rs` | `DomainList` protobuf 手写编解码 |
 | `src/pipeline.rs` | 三阶段并发执行器与增量 `.pb` 写入 |
+| `src/state.rs` | `state.bin` 编解码、原子写入、阶段位掩码 |
+| `src/connectivity.rs` | Google 连通性检测（DNS + TLS 1.3 握手） |
+| `src/run.rs` | 一键编排：网络闸门 + 阶段串联 |
+| `src/progress.rs` | 进度条（无 TTY 自动静默） |
 
 ## 已知限制（`shortcut:`）
 

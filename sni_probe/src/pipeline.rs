@@ -14,6 +14,8 @@ use tokio::sync::{Semaphore, mpsc};
 use crate::cloudflare;
 use crate::dns;
 use crate::geo;
+use crate::progress;
+use crate::state::Entry;
 use crate::target;
 use crate::tls;
 
@@ -30,6 +32,251 @@ pub struct StageStats {
 fn read_lines(path: &Path) -> std::io::Result<Vec<String>> {
     let file = File::open(path)?;
     Ok(BufReader::new(file).lines().map_while(Result::ok).collect())
+}
+
+/// 把 `Entry` 列表写回 `domain,ip` 文本（阶段一/二的 CLI 输出格式，可与 Go 版互换）。
+fn write_entries(path: &Path, entries: &[Entry]) -> std::io::Result<()> {
+    let mut out = std::io::BufWriter::new(File::create(path)?);
+    for e in entries {
+        match e.ip {
+            Some(ip) => writeln!(out, "{},{}", e.domain, ip)?,
+            None => writeln!(out, "{}", e.domain)?,
+        }
+    }
+    out.flush()
+}
+
+/// 从 `Vec<Entry>` 出发跑阶段一（供 `run` 子命令复用，无需中间 CSV）。
+pub async fn resolve_map_entries(
+    entries: Vec<Entry>,
+    resolver: Arc<dns::TokioResolver>,
+    workers: usize,
+) -> Result<(Vec<Entry>, StageStats), Box<dyn std::error::Error + Send + Sync>> {
+    let start = Instant::now();
+    let total = entries.len() as u64;
+    let kept = Arc::new(AtomicU64::new(0));
+    let dropped = Arc::new(AtomicU64::new(0));
+    let (tx, mut rx) = mpsc::channel::<Entry>(workers * 2);
+    let pb = progress::bar(total, "resolve-map");
+
+    let sem = Arc::new(Semaphore::new(workers));
+    let mut handles = Vec::with_capacity(entries.len());
+    for e in entries {
+        let permit = match sem.clone().acquire_owned().await {
+            Ok(p) => p,
+            Err(_) => break,
+        };
+        let tx = tx.clone();
+        let kept = kept.clone();
+        let dropped = dropped.clone();
+        let resolver = resolver.clone();
+        handles.push(tokio::spawn(async move {
+            let ip = match e.ip {
+                Some(ip) => Some(ip),
+                None => dns::resolve_first(&resolver, &e.domain).await.ok(),
+            };
+            match ip {
+                Some(ip) if !cloudflare::is_cloudflare_ip(ip) => {
+                    kept.fetch_add(1, Ordering::Relaxed);
+                    let _ = tx.send(Entry::new(e.domain, ip)).await;
+                }
+                _ => {
+                    dropped.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            drop(permit);
+        }));
+    }
+    drop(tx);
+
+    let mut collected = Vec::new();
+    while let Some(entry) = rx.recv().await {
+        pb.inc(1);
+        collected.push(entry);
+    }
+    for h in handles {
+        let _ = h.await;
+    }
+    progress::finish(
+        &pb,
+        &format!(
+            "[resolve-map] total={total} kept={} dropped={} elapsed={:.1}s",
+            kept.load(Ordering::Relaxed),
+            dropped.load(Ordering::Relaxed),
+            start.elapsed().as_secs_f64()
+        ),
+    );
+
+    Ok((
+        collected,
+        StageStats {
+            total,
+            kept: kept.load(Ordering::Relaxed),
+            dropped: dropped.load(Ordering::Relaxed),
+            elapsed: start.elapsed(),
+        },
+    ))
+}
+
+/// 从 `Vec<Entry>` 出发跑阶段二（零 DNS）。
+pub async fn probe_survival_entries(
+    entries: Vec<Entry>,
+    workers: usize,
+    timeout: Duration,
+) -> Result<(Vec<Entry>, StageStats), Box<dyn std::error::Error + Send + Sync>> {
+    let start = Instant::now();
+    let total = entries.len() as u64;
+    let kept = Arc::new(AtomicU64::new(0));
+    let dropped = Arc::new(AtomicU64::new(0));
+    let (tx, mut rx) = mpsc::channel::<Entry>(workers * 2);
+    let sem = Arc::new(Semaphore::new(workers));
+    let pb = progress::bar(total, "probe-survival");
+
+    let mut handles = Vec::with_capacity(entries.len());
+    for e in entries {
+        let Some(ip) = e.ip else {
+            // 阶段二不发任何 DNS 查询；缺 IP 直接丢弃
+            dropped.fetch_add(1, Ordering::Relaxed);
+            pb.inc(1);
+            continue;
+        };
+        let permit = match sem.clone().acquire_owned().await {
+            Ok(p) => p,
+            Err(_) => break,
+        };
+        let tx = tx.clone();
+        let kept = kept.clone();
+        let dropped = dropped.clone();
+        let pb = pb.clone();
+        handles.push(tokio::task::spawn_blocking(move || {
+            if tls::probe_survival(&e.domain, ip, timeout) {
+                kept.fetch_add(1, Ordering::Relaxed);
+                let _ = tx.blocking_send(Entry::new(e.domain, ip));
+            } else {
+                dropped.fetch_add(1, Ordering::Relaxed);
+            }
+            pb.inc(1);
+            drop(permit);
+        }));
+    }
+    drop(tx);
+
+    let mut collected = Vec::new();
+    while let Some(entry) = rx.recv().await {
+        collected.push(entry);
+    }
+    for h in handles {
+        let _ = h.await;
+    }
+    progress::finish(
+        &pb,
+        &format!(
+            "[probe-survival] total={total} kept={} dropped={} elapsed={:.1}s",
+            kept.load(Ordering::Relaxed),
+            dropped.load(Ordering::Relaxed),
+            start.elapsed().as_secs_f64()
+        ),
+    );
+
+    Ok((
+        collected,
+        StageStats {
+            total,
+            kept: kept.load(Ordering::Relaxed),
+            dropped: dropped.load(Ordering::Relaxed),
+            elapsed: start.elapsed(),
+        },
+    ))
+}
+
+/// 从 `Vec<Entry>` 出发跑阶段三，返回通过质检的记录，并把双池 `.pb` 写入 `out_dir`。
+pub async fn build_pools_entries(
+    entries: Vec<Entry>,
+    out_dir: &Path,
+    geodb: Option<Arc<geo::GeoDb>>,
+    workers: usize,
+    timeout: Duration,
+) -> Result<Vec<Entry>, Box<dyn std::error::Error + Send + Sync>> {
+    let total = entries.len() as u64;
+    let kept = Arc::new(AtomicU64::new(0));
+    let dropped = Arc::new(AtomicU64::new(0));
+    let (tx, mut rx) = mpsc::channel::<(Entry, String, bool)>(workers * 2);
+    let sem = Arc::new(Semaphore::new(workers));
+    let pb = progress::bar(total, "build-pools");
+
+    let mut handles = Vec::with_capacity(entries.len());
+    for e in entries {
+        let Some(ip) = e.ip else {
+            dropped.fetch_add(1, Ordering::Relaxed);
+            pb.inc(1);
+            continue;
+        };
+        let permit = match sem.clone().acquire_owned().await {
+            Ok(p) => p,
+            Err(_) => break,
+        };
+        let tx = tx.clone();
+        let kept = kept.clone();
+        let dropped = dropped.clone();
+        let geodb = geodb.clone();
+        let pb2 = pb.clone();
+        handles.push(tokio::task::spawn_blocking(move || {
+            if cloudflare::is_cloudflare_ip(ip) {
+                dropped.fetch_add(1, Ordering::Relaxed);
+                pb2.inc(1);
+                drop(permit);
+                return;
+            }
+            match tls::probe(&e.domain, ip, timeout) {
+                Ok(p) if tls::validate(&p) => {
+                    let country = geodb
+                        .map(|g| g.country(ip))
+                        .unwrap_or_else(|| "UNKNOWN".to_string());
+                    if geo::is_blocked_country(&country) {
+                        dropped.fetch_add(1, Ordering::Relaxed);
+                    } else {
+                        kept.fetch_add(1, Ordering::Relaxed);
+                        let _ = tx.blocking_send((e.clone(), country, p.is_pq()));
+                    }
+                }
+                _ => {
+                    dropped.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            pb2.inc(1);
+            drop(permit);
+        }));
+    }
+    drop(tx);
+
+    let mut by_country: std::collections::BTreeMap<String, (Vec<String>, Vec<String>)> =
+        std::collections::BTreeMap::new();
+    let mut accepted = Vec::new();
+    while let Some((entry, country, is_pq)) = rx.recv().await {
+        let bucket = by_country.entry(country).or_default();
+        if is_pq {
+            bucket.0.push(entry.domain.clone());
+        } else {
+            bucket.1.push(entry.domain.clone());
+        }
+        accepted.push(entry);
+    }
+    for h in handles {
+        let _ = h.await;
+    }
+
+    write_dual_pb(out_dir, &by_country)?;
+    progress::finish(
+        &pb,
+        &format!(
+            "[build-pools] total={total} kept={} dropped={} -> {}",
+            kept.load(Ordering::Relaxed),
+            dropped.load(Ordering::Relaxed),
+            out_dir.display()
+        ),
+    );
+
+    Ok(accepted)
 }
 
 /// 阶段一：海外预解析，输出 `domain,ip`。
@@ -96,13 +343,24 @@ pub async fn run_resolve_map(
         })
     };
 
-    let file = File::create(output)?;
-    let mut out = BufWriter::new(file);
+    let pb = progress::bar(total, "resolve-map");
+    let mut collected = Vec::new();
     while let Some((domain, ip)) = rx.recv().await {
-        writeln!(out, "{domain},{ip}")?;
+        collected.push(Entry::new(domain, ip));
+        pb.inc(1);
     }
-    out.flush()?;
     let _ = producer.await;
+    progress::finish(
+        &pb,
+        &format!(
+            "[resolve-map] total={total} kept={} dropped={} elapsed={:.1}s",
+            kept.load(Ordering::Relaxed),
+            dropped.load(Ordering::Relaxed),
+            start.elapsed().as_secs_f64()
+        ),
+    );
+
+    write_entries(output, &collected)?;
 
     Ok(StageStats {
         total,

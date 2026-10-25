@@ -7,11 +7,15 @@
 //! ```
 
 mod cloudflare;
+mod connectivity;
 mod dns;
 mod geo;
 mod h2;
 mod pb;
 mod pipeline;
+mod progress;
+mod run;
+mod state;
 mod target;
 mod tls;
 
@@ -57,6 +61,26 @@ enum Command {
         timeout: u64,
         #[arg(short = 'p', long)]
         proxy: Option<String>,
+        #[arg(long = "max", default_value_t = 0)]
+        max_lines: usize,
+    },
+    /// 一键三阶段：网络切换提示 + Google 连通性闸门 + 进度条 + 单文件状态
+    Run {
+        /// 原始域名清单（Tranco CSV 或纯域名）
+        #[arg(short = 'f', long = "file")]
+        input: PathBuf,
+        /// 阶段间状态文件（替代三段 CSV 传参，支持断点续跑）
+        #[arg(long = "state", default_value = "sni_probe_state.bin")]
+        state_file: PathBuf,
+        #[arg(long = "out-dir", default_value = "rust/aegis/src/resources/sni")]
+        out_dir: PathBuf,
+        #[arg(long = "geo", default_value = "ipinfo_lite.mmdb")]
+        geo: PathBuf,
+        #[arg(short = 'w', long, default_value_t = 100)]
+        workers: usize,
+        /// 单目标 TLS 超时（秒）
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
         #[arg(long = "max", default_value_t = 0)]
         max_lines: usize,
     },
@@ -126,6 +150,35 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     stats,
                     &format!(" -> {}", output.display()),
                 );
+            }
+            Command::Run {
+                input,
+                state_file,
+                out_dir,
+                geo,
+                workers,
+                timeout,
+                max_lines,
+            } => {
+                if !run::state_outside_output(&state_file, &out_dir) {
+                    return Err(format!(
+                        "状态文件 {} 不能放在输出目录 {} 内",
+                        state_file.display(),
+                        out_dir.display()
+                    )
+                    .into());
+                }
+                println!("流程：{}", run::FLOW_HINT);
+                run::run(run::RunOptions {
+                    input,
+                    state_file,
+                    out_dir,
+                    geo,
+                    workers,
+                    timeout: Duration::from_secs(timeout),
+                    max_lines,
+                })
+                .await?;
             }
             Command::BuildPools {
                 input,

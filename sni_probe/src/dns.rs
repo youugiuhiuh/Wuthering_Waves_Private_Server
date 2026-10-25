@@ -5,7 +5,7 @@
 use std::net::IpAddr;
 use std::time::Duration;
 
-use hickory_resolver::TokioResolver;
+pub use hickory_resolver::TokioResolver;
 use hickory_resolver::config::{NameServerConfig, ResolverConfig, ResolverOpts};
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
 

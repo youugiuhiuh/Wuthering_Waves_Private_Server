@@ -158,6 +158,22 @@ pub const MAX_CERT_CHAIN_DEPTH: usize = 3;
 /// REALITY 证书总字节上限：Xray 内部 8192 字节缓冲区，留足裕量。
 pub const MAX_CERT_BYTES: usize = 5500;
 
+/// 只完成 TLS 1.3 握手，不解析证书链、不发任何 HTTP 请求。
+///
+/// 用于连通性判定（判断"能不能连上"），因此比 `probe_survival` 更轻。
+pub fn handshake_only(
+    domain: &str,
+    ip: IpAddr,
+    timeout: Duration,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let connector = build_connector()?;
+    let tcp = TcpStream::connect_timeout(&SocketAddr::new(ip, 443), timeout)?;
+    let _ = tcp.set_read_timeout(Some(timeout));
+    let _ = tcp.set_write_timeout(Some(timeout));
+    let _stream = connector.connect(domain, tcp)?;
+    Ok(())
+}
+
 /// 阶段二：极轻量存活探测，**不解析证书、不发任何 HTTP 请求**。
 ///
 /// 握手成功后再等 150ms 做一次非阻塞读，用于捕获审查设备迟发的 TCP RST
