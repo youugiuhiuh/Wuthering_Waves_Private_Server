@@ -287,11 +287,13 @@ func (s *StorageManager) GetASNBlocklistCount(blocklist *sync.Map) int {
 	return count
 }
 
-func (s *StorageManager) SaveSuccess(domain, country string) error {
+func (s *StorageManager) SaveSuccess(domain, country string, asn ASNResult) error {
 	now := time.Now().Unix()
 	info := SuccessInfo{
 		Domain:   domain,
 		Country:  country,
+		ASN:      asn.ASN,
+		Org:      asn.Org,
 		TestedAt: now,
 	}
 	data, _ := json.Marshal(info)

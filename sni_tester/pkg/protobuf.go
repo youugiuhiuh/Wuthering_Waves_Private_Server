@@ -170,12 +170,19 @@ func DedupeStrings(sorted []string) []string {
 	return result
 }
 
-func SaveBatch(ctx context.Context, targetDir string, m map[string][]string, db *badger.DB) error {
+func SaveBatch(ctx context.Context, targetDir string, m map[string][]jobResult, db *badger.DB) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var firstErr error
 
+	domainsByCountry := make(map[string][]string, len(m))
 	for country, list := range m {
+		for _, r := range list {
+			domainsByCountry[country] = append(domainsByCountry[country], r.domain)
+		}
+	}
+
+	for country, list := range domainsByCountry {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -225,14 +232,16 @@ func SaveBatch(ctx context.Context, targetDir string, m map[string][]string, db 
 				return ctx.Err()
 			default:
 			}
-			for _, domain := range list {
+			for _, r := range list {
 				info := SuccessInfo{
-					Domain:   domain,
+					Domain:   r.domain,
 					Country:  country,
+					ASN:      r.asn,
+					Org:      r.org,
 					TestedAt: now,
 				}
 				data, _ := json.Marshal(info)
-				key := append(keyPrefixSuccess(), domain...)
+				key := append(keyPrefixSuccess(), r.domain...)
 				wb.SetEntry(&badger.Entry{
 					Key:       key,
 					Value:     data,

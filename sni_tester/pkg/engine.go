@@ -97,14 +97,14 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 	now := time.Now().Unix()
 	var toTest []string
 	var stats Stats
-	countryDomains := make(map[string][]string)
+	countryDomains := make(map[string][]jobResult)
 	if !e.cfg.ForceRetry {
 		fmt.Println("Loading success/blocked history...")
 		successCountry := e.storage.LoadSuccessHistory()
 		blocked := e.storage.LoadBlockedHistory()
 		for _, d := range domains {
 			if country, ok := successCountry[d]; ok {
-				countryDomains[country] = append(countryDomains[country], d)
+				countryDomains[country] = append(countryDomains[country], jobResult{domain: d, success: true, country: country})
 				stats.Skipped++
 				if cb != nil {
 					cb(ProgressEvent{Type: "skipped", Domain: d, Stats: stats})
@@ -215,7 +215,7 @@ func (e *Engine) Run(ctx context.Context, domains []string, cb ProgressCallback)
 		defer close(done)
 		for r := range results {
 			if r.success {
-				countryDomains[r.country] = append(countryDomains[r.country], r.domain)
+				countryDomains[r.country] = append(countryDomains[r.country], r)
 				stats.Success++
 			} else {
 				failedDomains = append(failedDomains, r.domain)
@@ -321,7 +321,7 @@ func (e *Engine) processDomain(ctx context.Context, domain string) jobResult {
 	}
 
 	if success {
-		e.storage.SaveSuccess(domain, country)
+		e.storage.SaveSuccess(domain, country, asnRes)
 	}
 
 	return jobResult{
