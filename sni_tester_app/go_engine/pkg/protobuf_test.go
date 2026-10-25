@@ -6,8 +6,8 @@ import (
 	"sort"
 	"testing"
 
-	"google.golang.org/protobuf/proto"
 	snipb "go_engine/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestWriteProtobufDomainFile_Deduplication(t *testing.T) {

@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
-	"google.golang.org/protobuf/proto"
 	snipb "go_engine/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 func keyPrefixSuccess() []byte {
