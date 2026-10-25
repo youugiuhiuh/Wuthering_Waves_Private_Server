@@ -250,12 +250,28 @@ func RunBuildPools(ctx context.Context, opts BuildPoolsOptions) (*BuildPoolsStat
 	}
 
 	for country := range allCountries {
-		pqList := countryPQ[country]
-		classicList := countryClassic[country]
+		addPQ := countryPQ[country]
+		addClassic := countryClassic[country]
 
 		pbPath := filepath.Join(outDir, fmt.Sprintf("%s.pb", strings.ToUpper(country)))
-		if err := WriteProtobufDualDomainFile(pqList, classicList, pbPath); err != nil {
-			fmt.Printf("Warning: failed to write %s: %v\n", pbPath, err)
+
+		// 合并磁盘上已有的 .pb，保留原有的可用域名池，实现增量沉淀
+		var existPQ []string
+		var existClassic []string
+		if data, err := os.ReadFile(pbPath); err == nil {
+			if dl, err := ParseProtobufDomainList(data); err == nil {
+				existPQ = dl.PqDomains
+				existClassic = dl.ClassicDomains
+			}
+		}
+
+		mergedPQ := append(existPQ, addPQ...)
+		mergedClassic := append(existClassic, addClassic...)
+
+		if len(mergedPQ) > 0 || len(mergedClassic) > 0 {
+			if err := WriteProtobufDualDomainFile(mergedPQ, mergedClassic, pbPath); err != nil {
+				fmt.Printf("Warning: failed to write %s: %v\n", pbPath, err)
+			}
 		}
 	}
 
