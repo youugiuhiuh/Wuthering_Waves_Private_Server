@@ -198,6 +198,12 @@ jobs:
             Out-File -Encoding ascii "$exe.sha256"
           Get-Content "$exe.sha256"
 
+          # 必须显式 exit 0。runner 会在 step 末尾追加：
+          #   if ((Test-Path -LiteralPath variable:\LASTEXITCODE)) { exit $LASTEXITCODE }
+          # 上面那个预期失败的调用把 $LASTEXITCODE 留成了 1，不清掉的话
+          # step 就算断言全对也会以 1 退出（actions/runner#351）。
+          exit 0
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
