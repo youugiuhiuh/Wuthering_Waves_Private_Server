@@ -20,6 +20,8 @@ prost = "0.14.4"
 tokio-socks = "0.5.3"
 ipnet = "2.12.2"
 redb = "2.6.4"
+# Windows 侧按 IP 绑定出站用（std 无 bind+connect_timeout 组合）
+socket2 = "0.6"
 serde_json = "1.0.154"
 indicatif = "0.18.6"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "stream", "socks"] }
@@ -27,9 +29,6 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.191"
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock"] }
 
 [profile.release]
 opt-level = 3
