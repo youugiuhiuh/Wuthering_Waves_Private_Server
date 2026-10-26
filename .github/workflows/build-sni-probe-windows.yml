@@ -18,6 +18,13 @@ name: Build Windows sni_probe
 # Windows 平台限制：--iface 只支持按本地 IP 绑定，不支持按网卡名
 # （Windows 无 SO_BINDTODEVICE 等价物）；给网卡名会明确报错。
 on:
+  # PR 里只编译 Windows 目标（`cargo check`，不链接、不跑测试），
+  # 让 `cfg(windows)` 代码不会在合并前带着编译错误溜进主分支。
+  # 真正的原生构建+测试仍由下面的 workflow_dispatch 负责。
+  pull_request:
+    paths:
+      - 'sni_probe/**'
+      - '.github/workflows/build-sni-probe-windows.yml'
   workflow_dispatch:
     inputs:
       release:
@@ -38,6 +45,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 快速门禁：只 check，不链接（ring/boring 的 C 依赖在 check 下不必真编译）。
+  check-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sni_probe
+          key: windows-check
+      - name: cargo check (x86_64-pc-windows-msvc)
+        working-directory: sni_probe
+        run: |
+          cargo check --all-targets
+          if ($LASTEXITCODE -ne 0) { throw "cargo check 失败，exit=$LASTEXITCODE" }
+
   build-windows:
     runs-on: windows-latest
     timeout-minutes: 60
