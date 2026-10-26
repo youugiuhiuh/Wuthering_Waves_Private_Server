@@ -35,6 +35,19 @@ fn read_lines(path: &Path) -> std::io::Result<Vec<String>> {
     Ok(BufReader::new(file).lines().map_while(Result::ok).collect())
 }
 
+/// 逐行流式读取（不载入内存），保留 `Vec` 版本供小输入使用。
+fn read_lines_stream(path: &Path) -> std::io::Result<std::io::Lines<BufReader<File>>> {
+    Ok(BufReader::new(File::open(path)?).lines())
+}
+
+/// 统计输入行数（流式扫描，不载入内存）。
+fn count_lines(path: &Path) -> std::io::Result<u64> {
+    Ok(read_lines_stream(path)?
+        .map_while(Result::ok)
+        .filter(|l| target::parse_line(l).is_some())
+        .count() as u64)
+}
+
 /// 把 `Entry` 列表写回 `domain,ip` 文本（阶段一/二的 CLI 输出格式，可与 Go 版互换）。
 fn write_entries(path: &Path, entries: &[Entry]) -> std::io::Result<()> {
     let mut out = std::io::BufWriter::new(File::create(path)?);
@@ -374,11 +387,13 @@ pub async fn run_resolve_map(
     max_lines: usize,
 ) -> Result<StageStats, Box<dyn std::error::Error + Send + Sync>> {
     let start = Instant::now();
-    let mut lines = read_lines(input)?;
-    if max_lines > 0 {
-        lines.truncate(max_lines);
-    }
-    let total = lines.len() as u64;
+    // shortcut: 行数统计要完整扫一遍文件；百万行约 0.2s，换进度条精确 ETA
+    let total = count_lines(input)?;
+    let total = if max_lines > 0 {
+        total.min(max_lines as u64)
+    } else {
+        total
+    };
 
     let resolver = Arc::new(dns::build_resolver(Duration::from_millis(2500))?);
     let sem = Arc::new(Semaphore::new(workers));
@@ -386,18 +401,31 @@ pub async fn run_resolve_map(
 
     let kept = Arc::new(AtomicU64::new(0));
     let dropped = Arc::new(AtomicU64::new(0));
+    let pb = progress::bar(total, "resolve-map");
 
     let producer = {
         let resolver = resolver.clone();
         let sem = sem.clone();
         let kept = kept.clone();
         let dropped = dropped.clone();
+        let input = input.to_path_buf();
         tokio::spawn(async move {
+            // 逐行流式读取：百万行输入也不会把全部域名压进内存
+            let mut lines = match read_lines_stream(&input) {
+                Ok(l) => l,
+                Err(_) => return,
+            };
+            let mut spawned = 0usize;
             let mut tasks = Vec::new();
-            for line in lines {
+            for line in lines.by_ref() {
+                if max_lines > 0 && spawned >= max_lines {
+                    break;
+                }
+                let Ok(line) = line else { continue };
                 let Some((domain, known_ip)) = target::parse_line(&line) else {
                     continue;
                 };
+                spawned += 1;
                 let permit = match sem.clone().acquire_owned().await {
                     Ok(p) => p,
                     Err(_) => break,
@@ -430,7 +458,6 @@ pub async fn run_resolve_map(
         })
     };
 
-    let pb = progress::bar(total, "resolve-map");
     let mut collected = Vec::new();
     while let Some((domain, ip)) = rx.recv().await {
         collected.push(Entry::new(domain, ip));
@@ -467,22 +494,26 @@ pub async fn run_probe_survival(
     _proxy: Option<&str>,
 ) -> Result<StageStats, Box<dyn std::error::Error + Send + Sync>> {
     let start = Instant::now();
-    let mut lines = read_lines(input)?;
-    if max_lines > 0 {
-        lines.truncate(max_lines);
-    }
-    let total = lines.len() as u64;
+    // shortcut: 行数统计要完整扫一遍文件；百万行约 0.2s，换进度条精确 ETA
+    let total = count_lines(input)?;
+    let total = if max_lines > 0 {
+        total.min(max_lines as u64)
+    } else {
+        total
+    };
 
-    let targets: Vec<(String, std::net::IpAddr)> = lines
-        .iter()
-        .filter_map(|l| target::parse_line(l))
+    let targets: Vec<(String, std::net::IpAddr)> = read_lines_stream(input)?
+        .map_while(Result::ok)
+        .filter_map(|l| target::parse_line(&l))
         .filter_map(|(d, ip)| ip.and_then(|s| s.parse().ok()).map(|ip| (d, ip)))
+        .take(if max_lines > 0 { max_lines } else { usize::MAX })
         .collect();
 
     let sem = Arc::new(Semaphore::new(workers));
     let kept = Arc::new(AtomicU64::new(0));
     let dropped = Arc::new(AtomicU64::new(0));
     let (tx, mut rx) = mpsc::channel::<(String, std::net::IpAddr)>(workers * 2);
+    let pb = progress::bar(total, "probe-survival");
 
     let mut handles = Vec::with_capacity(targets.len());
     for (domain, ip) in targets {
@@ -493,6 +524,7 @@ pub async fn run_probe_survival(
         let tx = tx.clone();
         let kept = kept.clone();
         let dropped = dropped.clone();
+        let pb2 = pb.clone();
         handles.push(tokio::task::spawn_blocking(move || {
             let alive = tls::probe_survival(&domain, ip, timeout);
             if alive {
@@ -501,6 +533,7 @@ pub async fn run_probe_survival(
             } else {
                 dropped.fetch_add(1, Ordering::Relaxed);
             }
+            pb2.inc(1);
             drop(permit);
         }));
     }
@@ -515,6 +548,15 @@ pub async fn run_probe_survival(
     for h in handles {
         let _ = h.await;
     }
+    progress::finish(
+        &pb,
+        &format!(
+            "[probe-survival] total={total} kept={} dropped={} elapsed={:.1}s",
+            kept.load(Ordering::Relaxed),
+            dropped.load(Ordering::Relaxed),
+            start.elapsed().as_secs_f64()
+        ),
+    );
 
     Ok(StageStats {
         total,
