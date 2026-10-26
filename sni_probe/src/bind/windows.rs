@@ -12,8 +12,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::os::windows::io::FromRawSocket;
 
 use windows_sys::Win32::Networking::WinSock::{
-    AF_INET, AF_INET6, IN6_ADDR, IN6_ADDR_0, INVALID_SOCKET, IPPROTO_TCP, SOCK_STREAM, WSAGetLastError,
-    closesocket, connect, htons, sockaddr, sockaddr_in, sockaddr_in6, socket,
+    AF_INET, AF_INET6, IN6_ADDR, IN6_ADDR_0, IPPROTO_TCP, SOCK_STREAM, SOCKADDR, SOCKADDR_IN,
+    SOCKADDR_IN6, SOCKET, WSAGetLastError, closesocket, connect, htons, socket,
 };
 
 use super::BindTarget;
@@ -51,16 +51,19 @@ pub fn connect_bound(
         ));
     }
 
+    // windows-sys 0.61：AF_* 是 u16，socket() 要 i32；SOCKET 是 usize（不是 u64）
     let family = if local.is_ipv4() { AF_INET } else { AF_INET6 };
     // SAFETY: socket() 返回原始 socket 或 INVALID_SOCKET。
-    let raw = unsafe { socket(family, SOCK_STREAM, IPPROTO_TCP as i32) };
-    if raw == INVALID_SOCKET {
+    let raw: SOCKET = unsafe { socket(family as i32, SOCK_STREAM, IPPROTO_TCP) };
+    if raw == 0 || raw == usize::MAX {
         // SAFETY: 上一次 socket 调用刚失败，取线程本地 WinSock 错误码。
-        return Err(std::io::Error::from_raw_os_error(unsafe { WSAGetLastError() }));
+        return Err(std::io::Error::from_raw_os_error(unsafe {
+            WSAGetLastError()
+        }));
     }
 
     // 从这里开始 socket 归我们管，任何失败都要 closesocket
-    let close_on_err = |raw: usize, e: std::io::Error| -> std::io::Error {
+    let close_on_err = |raw: SOCKET, e: std::io::Error| -> std::io::Error {
         // SAFETY: raw 有效，且所有权尚未交给 TcpStream。
         unsafe { closesocket(raw) };
         e
@@ -76,18 +79,19 @@ pub fn connect_bound(
     }
 
     // SAFETY: raw 有效，所有权转移给 TcpStream。
-    Ok(unsafe { std::net::TcpStream::from_raw_socket(raw) })
+    Ok(unsafe { std::net::TcpStream::from_raw_socket(raw as _) })
 }
 
 /// 把 `SocketAddr` 转成 `(sockaddr 指针, 长度)`。
 ///
 /// 与 `unix.rs` 一样 `Box::leak` 出静态块：`connect()` 只读，泄漏量可忽略。
-fn sockaddr_of(addr: &SocketAddr) -> (*const sockaddr, i32) {
+fn sockaddr_of(addr: &SocketAddr) -> (*const SOCKADDR, i32) {
     match addr {
         SocketAddr::V4(a) => {
-            let sin = sockaddr_in {
+            let sin = SOCKADDR_IN {
                 sin_family: AF_INET,
-                sin_port: htons(a.port()),
+                // SAFETY: 纯字节序转换，无前置条件。
+                sin_port: unsafe { htons(a.port()) },
                 sin_addr: windows_sys::Win32::Networking::WinSock::IN_ADDR {
                     S_un: windows_sys::Win32::Networking::WinSock::IN_ADDR_0 {
                         S_addr: u32::from_ne_bytes(a.ip().octets()),
@@ -96,25 +100,28 @@ fn sockaddr_of(addr: &SocketAddr) -> (*const sockaddr, i32) {
                 sin_zero: [0; 8],
             };
             (
-                Box::leak(Box::new(sin)) as *const sockaddr_in as *const sockaddr,
-                std::mem::size_of::<sockaddr_in>() as i32,
+                Box::leak(Box::new(sin)) as *const SOCKADDR_IN as *const SOCKADDR,
+                std::mem::size_of::<SOCKADDR_IN>() as i32,
             )
         }
         SocketAddr::V6(a) => {
-            let sin6 = sockaddr_in6 {
+            let sin6 = SOCKADDR_IN6 {
                 sin6_family: AF_INET6,
-                sin6_port: htons(a.port()),
+                // SAFETY: 纯字节序转换，无前置条件。
+                sin6_port: unsafe { htons(a.port()) },
                 sin6_flowinfo: a.flowinfo(),
                 sin6_addr: IN6_ADDR {
                     u: IN6_ADDR_0 {
                         Byte: a.ip().octets(),
                     },
                 },
-                sin6_scope_id: a.scope_id(),
+                Anonymous: windows_sys::Win32::Networking::WinSock::SOCKADDR_IN6_0 {
+                    sin6_scope_id: a.scope_id(),
+                },
             };
             (
-                Box::leak(Box::new(sin6)) as *const sockaddr_in6 as *const sockaddr,
-                std::mem::size_of::<sockaddr_in6>() as i32,
+                Box::leak(Box::new(sin6)) as *const SOCKADDR_IN6 as *const SOCKADDR,
+                std::mem::size_of::<SOCKADDR_IN6>() as i32,
             )
         }
     }
@@ -134,9 +141,15 @@ mod tests {
     #[test]
     fn sockaddr_len_matches_family() {
         let v4: SocketAddr = "127.0.0.1:443".parse().unwrap();
-        assert_eq!(sockaddr_of(&v4).1, std::mem::size_of::<sockaddr_in>() as i32);
+        assert_eq!(
+            sockaddr_of(&v4).1,
+            std::mem::size_of::<SOCKADDR_IN>() as i32
+        );
         let v6: SocketAddr = "[::1]:443".parse().unwrap();
-        assert_eq!(sockaddr_of(&v6).1, std::mem::size_of::<sockaddr_in6>() as i32);
+        assert_eq!(
+            sockaddr_of(&v6).1,
+            std::mem::size_of::<SOCKADDR_IN6>() as i32
+        );
     }
 
     /// 源地址族与目标不一致必须在建 socket 之前被拒绝。
