@@ -177,11 +177,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw '--list-ifaces 执行失败' }
 
           Write-Host '--- --iface 给网卡名应明确报错（提示改用 IP）---'
-          $out = & $exe --iface Ethernet merge -d $env:RUNNER_TEMP -o "$env:RUNNER_TEMP\x.pb" 2>&1 | Out-String
+          # 这个调用本就应该失败（exit 1），$ErrorActionPreference='Stop' 加
+          # `2>&1 |` 会让 PowerShell 7 把 stderr 当原生命令失败抛出，所以：
+          #   - if/else 之外用 try/catch 吞掉这个预期失败
+          #   - 临时关掉 ErrorActionPreference，只靠 $LASTEXITCODE 判断
+          $prev = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            $out = & $exe --iface Ethernet merge -d $env:RUNNER_TEMP -o "$env:RUNNER_TEMP\x.pb" 2>&1 | Out-String
+            $code = $LASTEXITCODE
+          } finally {
+            $ErrorActionPreference = $prev
+          }
           Write-Host $out
+          if ($code -eq 0) {
+            throw '期望非零退出码，实际 exit=0'
+          }
           if ($out -notmatch '不支持按网卡名绑定') {
             throw "期望出现「不支持按网卡名绑定」提示，实际输出：$out"
           }
+          Write-Host "✅ 预期内失败（exit=$code）且提示正确"
 
           (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower() + '  sni_probe.exe' |
             Out-File -Encoding ascii "$exe.sha256"
