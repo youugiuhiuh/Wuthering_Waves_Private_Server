@@ -166,3 +166,4 @@ app.*.symbols
 .codegraph
 rust/aegis/src/resources/sni/UNKNOWN.pb
 sni_tester/ipinfo_lite.mmdb
+sni_probe/ipinfo_lite.mmdb

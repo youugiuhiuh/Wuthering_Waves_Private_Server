@@ -1,5 +1,2 @@
-
-banknizwa.om
-
-caa.gov.om
-opendata.gov.om
+banknizwa.om
+caa.gov.omopendata.gov.om

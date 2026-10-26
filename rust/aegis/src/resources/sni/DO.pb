@@ -1,8 +1,1 @@
-
-damplips.net
-dominicanaxxx.com
-lotterynet.net
-pornoslatino.com
-servipath.net
-xorgasmo.org
-xxxdominicano.com
+damplips.netdominicanaxxx.compornoslatino.comxorgasmo.orgxxxdominicano.com

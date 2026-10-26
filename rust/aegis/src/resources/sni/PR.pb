@@ -1,4 +1,2 @@
 
-everydaydata.net
-innetpr.com
-	wntpr.com
+	wntpr.cominnetpr.com

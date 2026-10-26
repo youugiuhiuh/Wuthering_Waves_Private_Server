@@ -1,5 +1,3 @@
 
 elende-alojamento.ao
-gov.ao
-mayacom.co.ao
-pccare-angola.com
+pccare-angola.comgov.aomayacom.co.ao

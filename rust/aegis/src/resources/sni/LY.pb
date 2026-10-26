@@ -1,9 +1,3 @@
 
-dic.ly
-
-edu-uob.ly
-hala-cosmetics.com.ly
-llbeanukstore.com
-smartwave.ly
-sooma.ly
-tomsshoesnewzealand.com
+hala-cosmetics.com.lydic.ly
+edu-uob.lysmartwave.ly

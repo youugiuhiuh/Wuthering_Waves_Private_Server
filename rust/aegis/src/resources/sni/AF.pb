@@ -1,2 +1,1 @@
-
-nexa.gov.af
+nexa.gov.af

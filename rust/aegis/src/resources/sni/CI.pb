@@ -1,5 +1,1 @@
-
-education.gouv.ci
-enseignement.gouv.ci
-famille.gouv.ci
-mugef-ci.org
+enseignement.gouv.cimugef-ci.org

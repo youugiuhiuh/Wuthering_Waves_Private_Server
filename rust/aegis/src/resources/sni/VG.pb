@@ -1,6 +1,4 @@
 
-0397.casino
-0575.casino
 12clubvulkan47.com
 133redirect.com
 14clubvulkan29.com
@@ -9,23 +7,15 @@
 162redirect.com
 16clubvulkan74.com
 174clubvulkan96.com
-1762.casino
 17royalrussia592.com
-1win-casinoslots.net
 1win.cam
-1wincasinos.click
-1winclb.info
-1winkasino.net
 1x-bet-zerkalo.com
 1xbet-onlinecasino.com
 1xbetcasino-game.com
 1xbetcasino-games.net
 1xbetcasino-slot.info
 1xbetcasino-slot.net
-1xbetkasino.autos
-1xbetkasino.bar
 24clubvulkan15.com
-2559.casino
 26clubvulkan.com
 271redirect.com
 271vstars.com
@@ -42,24 +32,18 @@
 52vstars21.com
 54clubvulkan82.com
 551redirect.com
-5775.casino
 58clubvulkan3.com
 5gw6rwr1paetho.com
 600redirect.com
 60clubvulkan14.com
-6724.casino
 73clubvulkan8.com
-7502.casino
-7674.casino
 76cookie.services
 79clubvulkan635.com
 7clubvulkan21.com
 7slots2521.com
 7slots5362.com
-8238.casino
 82clubvulkan63.com
 83clubvulkan.com
-8731.casino
 87vstars.com
 8eldoradocasino3.com
 919redirect.com
@@ -72,41 +56,20 @@
 admiral-777-casino.date
 admiral-777-casino.estate
 admiral-777-casino.fun
-admiral-club.live
 admiral-officialclub.one
 admiral.wtf
-admiralx-kasino.net
-armada-kasino.biz
 armadacasino32.com
-azino-777-club.net
-azino777-zerkalo.com
-azino777casino.blog
-azino777club.work
-azino777official.net
-azino777site.net
 box-joycasino.com
-casino-39.online
-casino-admiral-online.club
-casino-azino777.bike
-casino-azino777.hair
-casino-columbus.bike
 casino-eldorado24.com
-casino-friends.website
 casino-gmsdeluxe.info
 casino-grand.life
-casino-joy.info
-casino-joy.xyz
 casino-maxslots.biz
 casino-maxslots.click
 casino-maxslots.com
 casino-maxslots.info
 casino-maxslots.ninja
 casino-maxslots.xyz
-casino-melbet.co
-casino-mostbet.pro
 casino-royalrussia.biz
-casino-vavada-official.com
-casino-vavada-online.net
 casino-vstars.dev
 casino-vstars.xyz
 casino-vulcan-pobeda.net
@@ -114,12 +77,7 @@
 casino-vulcan24.vip
 casino-vulkan-on-line.com
 casino-vulkanplatinum.vip
-casino0013.online
 casino1xbet.vip
-casino5446.online
-casino63.online
-casinoadmiral.best
-casinoadmiral.pro
 casinojoy-zerkalo.com
 casinorubin-stavka.com
 casinorubin-stavka.info
@@ -128,8 +86,6 @@
 casinovulkan24.xyz
 casvulkano.com
 catcasino-official.vip
-chempion-casino.art
-club-azino777.xyz
 club-vulkan.live
 clubvulkan.net
 clubvulkan10.com
@@ -181,11 +137,8 @@
 clubvulkangambling.net
 clubvulkanwinners.com
 clubvulkanwinners.net
-columbus-casino.run
-columbus-kasino.online
 cookie1-manager.com
 dgxinshi.cn
-drawbridge-pvz72.vip
 drift-online-casino.xyz
 e1dorado-cazino.com
 eldorado-24.co
@@ -222,8 +175,6 @@
 eldoradoclb.biz
 eldoradoclb.vip
 eldoradoo24.click
-fevilsor5.net
-fleursdebach-eprth.fr
 free-joycasino.cc
 gmsd-games.com
 gmsdbet.com
@@ -248,52 +199,26 @@
 
 go2win.bid
 goldsgym.co.id
-ilovekatya.ru
-j0ycasino.com
-jet-casino-ru.top
-joy-casino.co
 joy-casinosite.net
-joy-kasino-online.info
-joycasino-club.bid
-joycasino-club.pro
-joycasino-club.wiki
 joycasino-game.info
 joycasino-official.wiki
 joycasino-slots.best
-joycasino-slots.bet
 joycasino-slots.ink
 joycasino-slots.net
 joycasino-slots.wiki
-joycasinoo.info
 joycasinosite.bid
 joycasinosite.biz
 joycasinosite.click
 joycasinosite.ink
 joycasinosite.link
 joycasinowin.fan
-joycazinoo.club
-joykas-online.com
-joykasino-officialsite.com
-joykasino-officialsite.net
 joykasino-slot.xyz
 joykazino.tech
 joyspins.com
-kasino-columbus.com
 kasino-pokerdom.com
-kasino-pokerdom.vip
 kasino-royalrussia.club
 kasino-royalrussia.net
 kasinogrand.net
-kazino777-games.top
-kazinocolumbus.net
-kent-casino.cfd
-kent-casino.ink
-kent-casino.live
-kingkong39quest.store
-kometa-casino.bond
-legzo-casino.pro
-leon-casino.com
-leonbets-official.com
 maxbet-club.best
 maxbet-kasino.co
 maxbet-slotsbonus.com
@@ -349,18 +274,10 @@ go2win.bid
 maxslotskasino.vip
 maxslotskasino.wiki
 maxwinnergamehub.com
-
-med.gov.sy
-melbet-casino.wiki
-melbetcasino.info
-michaeljordan.fr
-mostbetcasino-online.com
 	newmod.es
 odmtrack.com
-omggi.space
 online-kasino.rocks
 onlinecasinovulcan.net
-onlineslots.cool
 pharaon-place.com
 pharaon-spin.com
 pharaoncasino-slots.top
@@ -370,17 +287,10 @@ med.gov.sy
 platinumcasino201.com
 platinumcasino22.com
 platinumcasino26.com
-play-casino.beauty
 pokerdom-casino-official.com
 pokerdom-casino-official.net
-pokerdom-game.info
-pokerdom-game.net
-pokerdom-kasino.net
 pokerdom-mobile.vip
-pokerdomslot.net
 r-spins.net
-r7-casino.buzz
-r7-casino.space
 re-e1dorado.com
 redirect137.com
 redirect147.com
@@ -390,9 +300,6 @@ med.gov.sy
 redirect426.com
 redirect482.com
 redirect85.com
-reg-gartexindia.com
-riobetcasino-online.net
-roxkasino-zerkalo.com
 royal-rus.net
 royal-russia-casino.com
 royal-russia.com
@@ -414,25 +321,16 @@ med.gov.sy
 royalvulkanplay.com
 royalvulkanplayground.com
 royalvulkanspin.com
-	ruall.com
 rubin-casino.bid
 rubin-casino.pro
 rubin-stavka.net
 rubincasino.bid
 rubincasino.vip
 slot-na-dengi.com
-sloto-zal-bonus.com
-sloto-zal-zone.com
-sloto-zal-zone.net
-slotozal-bonuses.net
-slotozal-casino.club
 slotozal-official.rocks
 slotozal-officialsite.pro
 slotozal31.com
-slotozal41.com
 slotozal56.com
-slotozal96.com
-slotozalzone.net
 stars-vulcan.xyz
 starsvulkan.company
 superslots-kasino.biz
@@ -441,14 +339,7 @@ med.gov.sy
 tracking-gg.com
 trackingslot.com
 trackingverde.com
-vavada-official.info
-vavada-registration.net
-
-vavada.fun
-vavada0nline.net
-vavadakasino.co
 vlkstars.biz
-volnacasino-online.com
 vstars-casinosite.biz
 vstars-games.com
 vstars-games.info
@@ -547,9 +438,8 @@ vavada.fun
 vulroyaljackpotplace.com
 winnita-online.com
 winnita.org
-wsmaoyi.com
 wulkanroyal.com
 wylkanstars.club
 zasyfiy4.com
-zooma-casino.website
-zulyxeu9.com
+zulyxeu9.comkingkong39quest.store
+med.gov.symichaeljordan.frwsmaoyi.com

@@ -1,3 +1,1 @@
-
-telikom.com.pg
-telinet.com.pg
+telikom.com.pgtelinet.com.pg

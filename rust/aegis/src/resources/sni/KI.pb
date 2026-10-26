@@ -1,2 +1,1 @@
-
-vodafone.com.ki
+vodafone.com.ki

@@ -1,3 +1,1 @@
-
-	bec.co.bw
-btc.bw
+	bec.co.bwbtc.bw

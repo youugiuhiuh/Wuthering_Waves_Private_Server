@@ -1,671 +1,201 @@
 
-1881.no
 2000m.no
-	22bet.onl
-24sevenoffice.com
-4585.no
-aasanetidende.no
-adresseavisen.no
-ahmedabadtophotels.com
-aho.no
-aisenseapi.com
-
-aiterp.net
-akuttportalen.no
-akvaforum.no
-altaposten.no
-
-amathea.no
 	amedia.no
-an.no
-andalsnes-avis.no
 anon.no
-antarctica.no
 antikvarius.no
-ao.no
-api.no
-apotekhjem.no
 arbeidslivet.no
-arbeidsmandsforbundet.no
-
-arctic.com
-arcticfrontiers.com
-arctickids.no
 ardalsnett.no
-argo.no
-arkeliet.no
 arkivverket.no
-arribatec.com
 asker.kommune.no
-	asroma.no
-atb.no
-ats.no
 attensi.com
 auksjonarius.no
-auraavis.no
-austagderblad.no
-autosync.no
-
-av-avis.no
-avfallsdeklarering.no
-avisa-st.no
-avisafroya.no
-banknorwegian.dk
-banknorwegian.fi
-banknorwegian.no
 barentsobserver.com
 barentswatch.no
 barnebokkritikk.no
 	bbnett.no
-bedriftsidretten.no
-	bedsys.no
-bek.no
-bekkelund.net
-bergenklatreklubb.no
-bergstiger.no
-besteonlinecasinos.com
-bibelvers.no
-	bikez.net
-
-bilnytt.no
-birkebeiner.no
 bitsofnews.com
-bjornhaug.no
 bjornjohansen.no
-	bladet.no
 blindeforbundet.no
-bloc.net
-boardshop.no
-bofk.no
-bomlo-nytt.no
-bondebladet.no
 borealisfestival.no
-botaniskverden.no
-
-braathe.no
 brandmaster.com
 bravida.com
 
 bravida.no
-buddy.no
-bukta.no
-bus.no
 buskerudweb.com
-bygdebladet.no
 bystokkeholm.no
-campingportalen.no
 canis.no
-	cateno.no
-cdn-bloc.no
 chooose.today
 clairekidshaugesund.no
-clanworks.no
-classicnorway.no
 cognitionhub.no
-commbox.com
-compendiamedlem.no
 conexus.net
 conjoiner.org
 consilimo.com
-copyleft.no
-creokultur.no
-csskill.com
-custompublish.com
-cyber24.xyz
-datacity.no
 defigohome.com
 designhandel.no
-	dhis2.org
-dialecta.net
-digiflow.cloud
 diku.no
 dips.no
-directdemsec.com
 	dirnat.no
 dirtcellar.net
-dn.no
 
 dngroup.no
 dnt.no
 
 dntoslo.no
-dolphinics.com
-
-domingo.no
-donfosscamping.no
 	dreier.no
-
-drofus.com
-dstsurvey.dk
-dt.no
 
 dykking.no
 
 e-cloud.no
 	e-park.dk
-eagle.fishing
 
 ecoflow.no
-educloud.no
 efa.no
 efn.no
-eiendomsmegler1.no
-eikerbladet.no
-elektron.no
-	elogit.no
-enebakkavis.no
-energinorge.no
-engine-sim.parts
-epd-global.com
-epd-norge.no
-epla.no
 
 eqology.uk
 erikgjerdrum.no
 err.no
-etterforsker1.no
 europower.no
-exely.eu
-exely.net.tr
-exely.uz
 experiment-resources.com
-explorable.com
-f-b.no
-f4c.no
-fanaposten.no
 farte.no
 felixfeatures.com
-fgsikring.no
-fiken.no
-fileditchfiles.st
 
 filmweb.no
-finansportalen.no
-finnmarkdagblad.no
-finnmarksposten.no
-firda.no
-firdaposten.no
-fiskersiden.no
-fjordbase.top
-flightsim.no
-fluefiskesiden.no
-flysmart24.no
-fni.no
-fod.no
-folkehogskole.no
-folkemusikklaget.no
-fomo.no
-
-fontene.no
-foreningenfri.no
-fornebuklinikken.no
-forskerfabrikken.no
-fortunaweb.no
-fremtind.no
-
-fribyte.no
-frifagbevegelse.no
-frisenberg.no
 frodesen.name
-
-fs-uae.net
 garnius.co.uk
-gauldalsposten.no
-	gbnett.no
-gd.no
-
-genialt.no
-getinternet.no
-gilde.no
-gjengangeren.no
-gjetargut.no
-gjolbergbil.no
-glomdalen.no
-
-gnomos.org
 godtsagt.no
 	golden.as
 gratefulnature.uk
-grida.no
 	grunt.pro
-h-a.no
-	h-avis.no
-h-breed.com
-haat.fi
-hadeland.no
-hallingdolen.no
 harbourmaps.com
-hardanger-folkeblad.no
-hellspin-app.com
-
-helsami.no
-helsekompetanse.no
-helsenorge.no
-hentaihaven.online
-historiskmuseum.no
-hjelseth.com
-hjemmeside.com
-hkit.no
-hlsenteret.no
-	hostex.no
-	hostit.se
-hoydebutikken.no
-hsh.no
 hydrogeninsight.com
-	ibloom.no
 ice.net
-idrettenonline.no
-igroshage.no
-iharstad.no
-ikm.com
-ikt-agder.no
-ilevanger.no
-
-ilrunar.no
-imc.no
-indianklubb.no
 ingresso.com
-inn.no
-interflora.no
-interhost.no
 interiorkos.no
-ipmsnorge.org
 ipv6.org
-isabelle-rr.com
 	itxuc.com
-jaermuseet.no
-jagajazzist.com
-jarlsbergavis.no
-jarnvag.net
-jvdtoorn.net
 	kaberg.me
-kaholaz.net
-kanarifansen.no
-karlsbakk.net
 
 keklolw.tf
 keklolwtf.net
 keklolwtf.no
-ketilhustad.no
-kfl.no
 kidsplanet.no
-kjartanohr.no
-
-kjendis.no
-klubogbalselskabet.no
 "kompetansesenter-bedriftshjelp.com
-korrekturavdelingen.no
-korus.no
-kredinor.no
-kreftforeningen.no
-krefting.no
-kreftlex.no
 
 kringom.no
-krs.no
-kryssord.org
-kulturminnesok.no
 kulturverk.com
-kunnskap.no
-kursguiden.no
-kvadratnorge.no
 
 kvamnet.no
-kvisvik.net
-kystriksveien.no
-la4o.no
-laagendalsposten.no
-lamasti.net
 landbruksforum.no
-landinfo.no
 landkredittbank.no
 larvik.kommune.no
-laserlegene.no
-legehandboka.no
 leirdue.net
-leknes.info
-lemmygrad.ml
 lerduvor.net
-liavaag.org
 
 lindbak.no
-linderud.dev
-	linpro.no
-lofot-tidende.no
-lofotposten.no
-lokalstarten.no
-
-lomedia.no
-londonsecrets.icu
-lookmovie2.to
-looptackle.no
-loppo.no
-
-lovdata.no
-lp.no
 lyse.no
 	macron.no
-make.as
-marsteinen.no
-martials.no
-master-lengs.org
-mat-norge.no
-
-mcivta.com
-mesterbrev.no
-met.no
-miklagaard.no
 milientsoftware.com
 miljodirektoratet.no
 miljostatus.no
-	milkie.cc
 modellbil.no
 montages.no
-morenytt.no
-moss-avis.no
 mtest.no
 mygofish.no
-naaf.no
 
 nabobil.no
-nafsiden.no
-namdalsavisa.no
-namnlappar.se
 nanolearning.com
-nationen.no
-natur.no
 naturarkivet.no
-naturviterne.no
-neo-tokyo.no
-
-netlife.no
-nettavisen.no
-nettbutikk-tmu.no
 nettdoktor.no
-
-nexthop.no
-ngu.no
-nhi.no
-nicsdata.no
-
-nidaros.no
-nifs.no
-	nikita.no
-nikitahair.se
-	nilsnh.no
-nisk.no
-
-nixtra.net
 nofence.com
 nogne-o.com
-nora.ai
-norborg.com
-	norcut.no
 norid.no
 
 norkon.net
 	norled.no
 	noroff.no
-	norsar.no
-norse-cutting.no
-norskeskog.com
 norskhavneguide.no
-norskinteraktiv.no
-norsklapphundklubb.no
-
-nortura.no
-norwaycup.no
 nostalgia.no
-	nosyko.no
-notebutikken.no
-nqf.no
-nsf.no
 nyebilder.no
-nyetroms.no
-nymusikk.no
-oa.no
-oblad.no
 obosnett.no
-offentligservice.no
-
-okokrim.no
 okonomi-deler.no
-	okside.no
-olenbetong.no
 olenmobel.no
-	olikol.no
-
-onecall.no
 	onesti.io
-onestopreporting.com
-ookamikun.tv
-op.no
-opendesk.family
 
 openra.net
 	ordtak.no
-oslofolk.org
 oslomyntgalleri.no
-oslonap.com
 osm.no
 
 osteraa.no
-ostlendingen.no
-
-ovit.cloud
-oyene.no
-oyposten.no
-palby.dk
-pameldingssystem.no
 pblmentor.no
-	pc-aid.no
 pgpi.org
 
 phonect.no
 plannersrusnorge.no
-planteportalen.no
-plusoffice.no
 pokemadness.no
-polarbear.no
-pornbimbo.com
 	powel.com
-prime-time.no
-primeload.co
 	proisp.eu
-	prolyd.no
 propcloud.no
-prosentret.no
 provisoevent.no
 	pswin.com
-psykiskhelse.no
 ptil.no
-pvv.org
-pyatigorsk-me.top
-	qybele.no
-	rablad.no
-rambase.net
-ranablad.no
-	ranano.no
-rastavanger.no
-rb.no
-	rbdata.no
-rbnet.no
-reddbarna.no
 regionstavanger.com
-regnskapstall.no
-reisegarantifondet.no
-rha.no
-riffraff.no
-rikdombitrad.com
-riksantikvaren.no
-riksmalsforbundet.no
-ringblad.no
-romm.no
-rs.no
-s-fossen.no
-sa.no
-sageneavis.no
-	salmar.no
-salomonsen.info
-salt-peanuts.eu
-samfunnsforskning.no
-samla.no
-satellittdata.no
-sax.pl
-scandicshine.no
 scandinavianaturist.org
-scandoil.com
-sceneweb.no
-scramble.no
 	se2a1.net
-serverbolt.com
-serverdrift.no
-shif.org
-ship-info.com
-shoplabs.no
-simco.no
-sit.no
 sjule.no
 skatteetaten.no
-skeivtarkiv.no
 skiforeningen.no
 skiperformance.com
-skynordic.no
-	skypat.no
-slektsforum.net
 sndr.no
 socialboards.com
-softwolves.pp.se
-sognavis.no
-solabladet.no
-	solved.no
-somsenteret.no
-sosofte.com
 sparelys.no
-spgr.no
-springbook.no
 sshopencloud.eu
-staimporter.com
-start.no
-startpunktet.com
 stavangervarmesenter.no
-steinkjer-avisa.no
-strandbuen.no
-strandconsulting.no
-stromsnes.info
 
 student.no
-studentersamfundet.no
-studieplus.dk
-
-subjekt.no
 sukrinusa.com
-sunnhordland.no
-
-susoft.com
-sva.no
-sviddgummi.no
-sykkelhub.no
-t-a.no
-ta.no
-tamrotter.com
-tb.no
-tda.nu
 techbliss.org
-tegninger.no
-teknograd.no
-teks.no
-telefiber.no
-thalberg.no
-	theck1.no
-thommessen.no
-thon.no
-thonhotels.com
-thonhotels.no
-
-tikkio.com
-timharek.no
-	tnnss.net
-toi.no
-tonje.no
-tono.no
-topsmarsm.com
 torghatten.no
 tothegame.com
-
-traktor.no
-troensliv.no
-trollfjord.no
-tronderdebatt.no
 trondheimkino.no
-trondheimparkering.no
-trudelutt.com
-tryggivann.no
-tuningfileserver.com
-	tunmed.no
 turbukse.no
-tvedestrandsposten.no
-uia.no
-uip.se
-ullagarn.no
-ung.no
 unghusflid.no
-
-unilamp.no
-
-unilamp.se
-unitedforum.no
-unityarena.no
 unleash-hosted.com
-usn-stage.no
 utrop.se
-
-valeryd.se
-vard.com
-	varden.no
-vav.oslo.no
-velogen.net
-verdidata.no
-verketblomsterbinderi.no
 	vestec.no
-vestlandsnytt.no
-
-vetnett.no
-vhosting.no
-viken.no
 	viking.no
-vikingtidsmuseet.no
-villrein.no
 visitflam.com
-visittrondheim.no
-vitamin1.no
 vitimusea.no
 vkt.no
-vol.no
-	volse.net
 volse.no
-vossfiber.no
-vp.no
-vrp.fi
 vulkaner.no
-walleniuswilhelmsen.com
-wayscloud.dk
-wayscloud.fi
-webio.no
-weblogin.no
-westra-engineering.no
 whonamedit.com
-	wingok.no
-wisebooking.no
-woow.no
 xenu.net
-xfs.co
 xhl.no
-xn--btfrerregisteret-dob85a.no
 xn--musikkpnett-38a.no
-xn--sehrehandle-igb.no
-you.no
 zdata.no
 zecondfloor.no
-zizzi.no
-zlatanou.net
+zizzi.no1881.no	22bet.onl24sevenoffice.com4585.noaasanetidende.noaho.no
+aiterp.netakvaforum.noan.noao.noapi.noapotekhjem.no
+arctic.comarcticfrontiers.comarctickids.noargo.noarkeliet.noatb.noauraavis.noaustagderblad.noautosync.noavfallsdeklarering.nobanknorwegian.dkbanknorwegian.fibanknorwegian.nobedriftsidretten.no	bedsys.nobergenklatreklubb.nobibelvers.no
+bilnytt.nobjornhaug.nobloc.netboardshop.nobondebladet.nobuddy.nobus.nobygdebladet.no	cateno.nocdn-bloc.noclanworks.noclassicnorway.nocompendiamedlem.nocopyleft.nocustompublish.comcyber24.xyz	dhis2.orgdn.nodonfosscamping.nodstsurvey.dkdt.noeducloud.noeiendomsmegler1.noeikerbladet.noelektron.no	elogit.noenebakkavis.noepd-global.comepd-norge.noepla.noetterforsker1.noexely.uzf-b.nofanaposten.nofgsikring.nofinansportalen.nofinnmarkdagblad.nofinnmarksposten.nofirda.nofirdaposten.nofjordbase.topfni.nofomo.nofornebuklinikken.nofortunaweb.nofremtind.no
+fribyte.nofrisenberg.no	gbnett.nogd.no
+genialt.nogetinternet.nogilde.nogjengangeren.nogjetargut.noglomdalen.nogrida.noh-a.no	h-avis.nohadeland.nohardanger-folkeblad.nohellspin-app.comhentaihaven.onlinehistoriskmuseum.nohjemmeside.comhlsenteret.no	hostex.no	ibloom.noidrettenonline.noigroshage.noiharstad.noikm.comikt-agder.noilevanger.no
+ilrunar.noinn.nointerhost.noipmsnorge.orgjarlsbergavis.no
+kjendis.nokorus.nokreftforeningen.nokrefting.nokreftlex.nokrs.nokvadratnorge.nokvisvik.netla4o.nolaagendalsposten.nolegehandboka.noleknes.infolemmygrad.mllofot-tidende.nolofotposten.nolokalstarten.nolondonsecrets.iculoppo.no
+lovdata.nomaster-lengs.orgmat-norge.nomesterbrev.nomet.nomoss-avis.nonaaf.nonafsiden.nonamdalsavisa.nonationen.nonatur.nonaturviterne.nonettavisen.no
+nexthop.nongu.nonhi.no
+nidaros.nonifs.no	nikita.nonikitahair.se	nilsnh.nonisk.no
+nixtra.netnora.ainorborg.com	norcut.nonorse-cutting.nonorskinteraktiv.no
+nortura.no	nosyko.nonotebutikken.nonyetroms.nonymusikk.nooa.nooblad.nooffentligservice.no
+okokrim.noolenbetong.no
+onecall.noop.noopendesk.familyoslofolk.orgoslonap.comostlendingen.no
+ovit.cloudoyene.no	pc-aid.noplanteportalen.noplusoffice.nopolarbear.nopornbimbo.com	prolyd.noprosentret.nopsykiskhelse.nopyatigorsk-me.top	qybele.no	rablad.norambase.netranablad.no	ranano.norastavanger.norb.no	rbdata.norbnet.noreddbarna.noregnskapstall.norha.noriffraff.noriksmalsforbundet.noringblad.nors.nosa.nosageneavis.no	salmar.nosalomonsen.infosamfunnsforskning.nosamla.nosatellittdata.noscandoil.comsceneweb.noserverbolt.comserverdrift.noship-info.comskynordic.nosognavis.nosolabladet.nosomsenteret.nososofte.comstart.nostartpunktet.comsteinkjer-avisa.nostrandbuen.nostudentersamfundet.no
+subjekt.no
+susoft.comsva.nosykkelhub.not-a.nota.notb.notda.nutegninger.noteknograd.noteks.notelefiber.no	theck1.nothommessen.nothonhotels.comthonhotels.no
+tikkio.comtoi.notono.no
+traktor.notrollfjord.notronderdebatt.notuningfileserver.com	tunmed.notvedestrandsposten.nouia.nouip.seullagarn.noung.no
+unilamp.seunityarena.nousn-stage.no
+valeryd.sevard.comvelogen.netverdidata.no
+vetnett.novikingtidsmuseet.novillrein.novossfiber.novp.nowalleniuswilhelmsen.comwisebooking.noxn--btfrerregisteret-dob85a.noyou.no

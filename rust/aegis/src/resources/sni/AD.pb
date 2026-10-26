@@ -1,6 +1,1 @@
-
-bdrinformatica.com
-elllobregat.com
-gamersmafia.com
-hosting-andorra.com
-mypic.ad
+hosting-andorra.commypic.ad

@@ -1,2 +1,1 @@
-
-ditc.ky
+ditc.ky

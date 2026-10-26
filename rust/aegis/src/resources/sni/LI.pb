@@ -1,6 +1,1 @@
-
-ifm.li
-	mikado.li
-mxm.li
-ospeltdruck.li
-talentx.camp
+	mikado.limxm.liospeltdruck.litalentx.camp

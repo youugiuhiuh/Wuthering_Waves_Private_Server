@@ -1,4 +1,1 @@
-
-	gamtel.gm
-gnswgambia.com
-qcell.gm
+	gamtel.gmgnswgambia.comqcell.gm

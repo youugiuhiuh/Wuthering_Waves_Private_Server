@@ -1,2 +1,0 @@
-
-amba-senegal.ga

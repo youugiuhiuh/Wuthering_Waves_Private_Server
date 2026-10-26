@@ -1,3 +1,1 @@
-
-alwatanieh.ps
-paluniv.edu.ps
+paluniv.edu.ps

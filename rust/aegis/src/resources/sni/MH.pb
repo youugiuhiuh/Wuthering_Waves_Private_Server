@@ -7,11 +7,9 @@
 
 3spnbr.com
 5820b00merang-bet.com
-5cas6tyri.com
 60om3rangb3zt.com
 8lgndply.com
 alawin-8590.com
-alfcasino-2074.com
 alfcasino-3157.com
 alfcasino-4585.com
 allyspin-4562.com
@@ -36,15 +34,12 @@ amunra.com
 billybets-8826.com
 billybets.com
 boomerang-bet0999.com
-boomerang-bet2237.com
 boomerang-bet5983.com
 boomerang-bet9832.com
 boomerang-casino-3940.com
-boomerang-casino.com
 boomerang-casino7.com
 boomerang-casino752415.com
 boomerang11.com
-burancasino.com
 cadoola.com
 cashed-2956.com
 
@@ -65,16 +60,9 @@ cashed.com
 dragonia-1162.com
 dragonia-3146.com
 dragonia.com
-elaapi-6356.com
-elaapi-6955.com
-excitewin.com
 fatpirate.com
 fatpirate1.com
-
-fezbet.com
 frumzi-0911.com
-
-frumzi.com
 ft43--fatpirate.com
 
 funbet.com
@@ -101,7 +89,6 @@ funbet.com
 mafiacasino.com
 mafiacasino2.com
 mal1nacasino.com
-malinacasino.com
 monsterwin.com
 mr54--mrpunter.com
 mrpacho2.com
@@ -117,30 +104,17 @@ ninlay.com
 
 nomini.com
 nominispins.com
-onlyspins-3383.com
-onlyspins-3593.com
 onlyspins.com
 pistolo-9090.com
 pistolo1.com
 pistolo3.com
-
-playid.com
 playio465768.com
-playzilla.com
 playzilla236410.com
-polestarcasino.com
 posido-9911.com
-
-powbet.com
 powbet731198.com
-powerupcasino.com
 quickwin-1424.com
 quickwin.com
-rab0na-1088.com
-rab0na-2624.com
-rab0na-5127.com
 rab0na-8258.com
-rab0na-8466.com
 
 rabona.com
 ragnaro1.com
@@ -175,9 +149,7 @@ spinsy.com
 talismania.com
 vegasino-4886.com
 vg88--vegashero.com
-wazamba-2162.com
 wazamba-8605.com
-wazamba.com
 wazg3amba.com
 wildrobin.com
 wildsino.com
@@ -188,7 +160,6 @@ spinsy.com
 winrolla1.com
 wintino3.com
 	wyns1.com
-zetcasino.com
 zetspins.com
 zoccer100.com
 zoccer2.com

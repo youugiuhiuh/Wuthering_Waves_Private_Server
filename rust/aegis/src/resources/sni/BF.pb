@@ -1,6 +1,1 @@
-
-bfs.bf
-ecasier-judiciaire.gov.bf
-ecertificat-nationalite.gov.bf
-registre.bf
-uv.bf
+bfs.bfregistre.bf

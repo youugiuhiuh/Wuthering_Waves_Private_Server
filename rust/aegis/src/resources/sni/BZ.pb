@@ -12,23 +12,17 @@
 18merhabet204.com
 198vstars.com
 1win-casino.net
-1winkasino.com
 1xbet-onlinecasino.net
 1xbet-play.co
 1xbet-zerkalo.xyz
 1xbetcasino-games.vip
-1xbetcasino-games.xyz
 1xbetcasino-official.com
 1xbetcasino-official.info
 1xbetcasino-site.pro
 1xbetcasino-site.vip
 1xbetcasino-slots.com
-1xbetcasino-slots.net
 1xbetkasino.biz
 1xbetkasino.blog
-1xbetkasino.buzz
-1xbetkasino.cafe
-1xbetslots.net
 24-vulkan.link
 24-vulkan.page
 24-vulkan.racing
@@ -99,32 +93,20 @@
 armadaofficial.info
 armadaofficial.net
 armadazerkalo.net
-avtomaty-casino.live
 azartplay-online.co
 azartplay-online.net
-azino777-casino.net
-azino777online.info
-bahisbey2978.com
-brns-click.com
-casino-azino777.best
-casino-azino777.bid
-casino-azino777.biz
 casino-eldorado.company
 casino-eldorado.top
 casino-frank.biz
 casino-frunk.net
 casino-gmsdeluxe.biz
-casino-joy.rocks
 casino-leon.info
-casino-leon.ltd
-casino-leon.wiki
 casino-royal.tips
 casino-royalrussia.dev
 casino-rubin-official.com
 casino-rubin-official.net
 casino-rubin-online.info
 casino-rubin-online.net
-casino-slotozal.ink
 casino-vstavka.com
 casino-vulcan-royal.com
 casino-vulcanpl.com
@@ -136,7 +118,6 @@
 casino1xbet.cloud
 casino1xbet.info
 casino1xbet.ink
-casino1xbet.link
 casino1xbet.promo
 casino1xbet.wtf
 casinoadmiral-na-dengi.biz
@@ -149,7 +130,6 @@
 casinogms.co
 casinogms.net
 casinojoy-online.com
-casinoleon.pro
 casinoslotozal.net
 casinovulcan.futbol
 casinovulkan-online.biz
@@ -247,7 +227,6 @@
 	crwds.net
 ctavka1.com
 deluks-wulkan24.com
-deluxe-vulcan.info
 deluxe-vulkanonline.com
 drift-casino.bike
 drift-casino.link
@@ -327,11 +306,9 @@
 frank-casino.uno
 frankcazino.work
 fresh-casino-slots.online
-fresh-casino1.co
 games-online-gmsdeluxe.com
 gms-kasino.net
 gms-onlinecasino.com
-gms-slots.online
 gms777.website
 
 gmsd24.com
@@ -381,7 +358,6 @@ gmsd24.com
 joycasino.ltd
 joycasino.men
 joycasino.rodeo
-joycasino19.com
 joycazino-live.xyz
 joycazino.company
 joycazino.live
@@ -394,7 +370,6 @@ gmsd24.com
 joykasinoonline.tech
 joykazino.dev
 joykazino3.com
-kasino-1xbet.pro
 kasino-1xbet.xyz
 kasino-eldorado.info
 kasino-leon.info
@@ -410,7 +385,6 @@ gmsd24.com
 kazino-playfort.club
 kazino-playfort.net
 kazino-vulkan24.xyz
-kentcasino-online.net
 king-vulcanoffical.com
 king-vulkan-club.net
 king-vulkan-club.online
@@ -429,12 +403,6 @@ gmsd24.com
 kingvulkanclub.com
 klubwulkan.club
 klyb-vylkan.club
-leon-kasino.com
-leon-kazino.com
-leonbet365.com
-leoncasino-official.info
-leoncasino-online.vip
-letztalk.ru
 mail-vulkan.com
 maxbbetsslots.com
 maxbet-slotscash.com
@@ -458,13 +426,11 @@ gmsd24.com
 maxslotszerkalo.net
 mbsstrack.com
 	mc-96.com
-melbet-casino.online
 merhabet67.com
 online-cazino1.com
 online-cazino1.net
 online-vulcan-club-2018.pro
 online-vull24.com
-onlinecasino-games.info
 pharaon-777play.com
 pharaon-casino.info
 pharaon-coin.com
@@ -489,22 +455,14 @@ gmsd24.com
 platinumcasino58.com
 platinumcasino64.com
 platinumcasino89.com
-play-casino.bar
 play-fortuna-kasino.click
-play-fortuna-online.net
-play-fortuna.shop
 play-vulkangames.com
 playdom-casino.one
 playfortuna-club.net
 playfortuna.rocks
 playonline-casino.net
-poker-dom-zerkalo.com
-poker-dom-zerkalo.site
 pokerdom-zerkalo.vip
-pokerdomcasino-zerkalo.com
-pokerdomcasino-zerkalo.vip
 pokerdomzerkalo-online.com
-pokerdomzerkalo-online.net
 pokerdomzerkalo.net
 re-vdelux.com
 redirect238.com
@@ -544,51 +502,29 @@ gmsd24.com
 rubin-casino-online.info
 rubin-casino-online.net
 rubincasino-online.net
-sale-store.site
 sea-star-kumarhane.com
-sl0tozal.click
 sl0tozal.space
-sl0tozal.xyz
 sloto-zal-casino.com
-sloto-zal-casino.net
 slotozaal.com
-slotozal-casino-official.com
-slotozal-casino.best
-slotozal-casino.bid
-slotozal-casino.co
 slotozal-casinosite.net
 slotozal-casinosite.vip
-slotozal-club.net
-slotozal-game.com
 slotozal-games.com
 slotozal-games.net
-slotozal-kasino.com
-slotozal-officialclub.com
-slotozal-officialsite.com
-slotozal-officialsite.info
-slotozal-online.info
-slotozal-online.top
-slotozal.app
 slotozal.dev
 slotozal.money
 slotozal.name
-slotozal.pro
 slotozal26.com
-slotozalcash.com
-slotozalcasino-official.com
 slotozalcasino-online.com
 slotozalcasino-zerkalo.biz
 slotozalcasino.bet
 slotozalcasino.plus
 slotozalclub.com
-slotozalclub.pro
 slotozalzerkalo.biz
 slotozalzerkalo.info
 slotozalzerkalo.net
 slots-onl1ne.com
 sol-kasino.company
 sol-online.xyz
-spearhead.systems
 stars-777.com
 stars-go.com
 stars-vulkan.wiki
@@ -598,9 +534,7 @@ gmsd24.com
 stv-na16.com
 super-vulkan.net
 the-gmslots.email
-tonyclaude.ru
 topvulkan.top
-upx-kasino.info
 v-platinum1.net
 vdlx.fun
 vdlx.online
@@ -631,7 +565,6 @@ gmsd24.com
 vulcan-avtomats.club
 vulcan-avtomats.rocks
 vulcan-casino.futbol
-vulcan-casino.shop
 vulcan-casino.site
 vulcan-deluxe.business
 vulcan-delyx.net
@@ -856,8 +789,6 @@ gmsd24.com
 vulkanrussia-zerkalo.net
 
 vulkans.co
-vulkanstars-club.info
-vulkanstars-club.net
 vulkanstars-official.com
 vulkanstars-officialsite.com
 vulkanstars-zerkalo.com
@@ -869,7 +800,6 @@ vulkans.co
 vyl-stars24.com
 vylkan1stars.online
 vylkan1stars.vip
-warez-v3.org
 wholesport.ru
 win24dzoy.com
 winplatinum.com
@@ -894,8 +824,5 @@ vulkans.co
 wulkanmoney.com
 wulkanmoney.dev
 wulkanmoney.net
-wwwbetgit1119.com
 wylk-cl.com
-wylkan-club777.net
-zerkalopokerdom.net
-zerkaloslotozal.com
+wylkan-club777.netdeluxe-vulcan.infotonyclaude.ruvulkanstars-club.infovulkanstars-club.net
