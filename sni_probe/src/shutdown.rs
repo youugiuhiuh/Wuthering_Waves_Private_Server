@@ -9,9 +9,24 @@ use std::time::Duration;
 pub const GRACE_SECS: u64 = 60;
 
 /// 构造关机命令（不含执行，便于测试）。
+///
+/// - Linux: `shutdown -h now` 立即停机
+/// - Windows: `shutdown /s /t 0` 立即关机
+#[cfg(unix)]
 pub fn shutdown_command() -> (&'static str, Vec<&'static str>) {
     ("shutdown", vec!["-h", "now"])
 }
+
+#[cfg(windows)]
+pub fn shutdown_command() -> (&'static str, Vec<&'static str>) {
+    ("shutdown", vec!["/s", "/t", "0"])
+}
+
+/// 取消关机的命令（跨平台）。
+#[cfg(unix)]
+pub const CANCEL_HINT: &str = "shutdown -c";
+#[cfg(windows)]
+pub const CANCEL_HINT: &str = "shutdown /a";
 
 /// 执行关机。`dry_run` 只打印不真正执行。
 pub fn request_shutdown(dry_run: bool) -> Result<(), String> {
@@ -23,7 +38,7 @@ pub fn request_shutdown(dry_run: bool) -> Result<(), String> {
         return Ok(());
     }
 
-    println!("[shutdown] {GRACE_SECS} 秒后关机，可用 Ctrl+C 取消或执行 shutdown -c 取消");
+    println!("[shutdown] 即将关机，可用 Ctrl+C 取消或执行 `{CANCEL_HINT}` 取消");
     match std::process::Command::new(cmd).args(&args).status() {
         Ok(st) if st.success() => Ok(()),
         Ok(st) => Err(format!("{printable} 退出码 {:?}", st.code())),
@@ -45,8 +60,25 @@ mod tests {
     fn command_uses_halt_flag() {
         let (cmd, args) = shutdown_command();
         assert_eq!(cmd, "shutdown");
-        assert!(args.contains(&"-h"), "必须用 -h 断电而不是 -r 重启");
-        assert!(args.contains(&"now"));
+        #[cfg(unix)]
+        {
+            assert!(args.contains(&"-h"), "必须用 -h 断电而不是 -r 重启");
+            assert!(args.contains(&"now"));
+        }
+        #[cfg(windows)]
+        {
+            assert!(args.contains(&"/s"), "必须用 /s 关机而不是 /r 重启");
+        }
+        // 任何平台都不得是重启
+        assert!(!args.contains(&"-r") && !args.contains(&"/r"), "不得重启");
+    }
+
+    #[test]
+    fn cancel_hint_matches_platform() {
+        #[cfg(unix)]
+        assert_eq!(CANCEL_HINT, "shutdown -c");
+        #[cfg(windows)]
+        assert_eq!(CANCEL_HINT, "shutdown /a");
     }
 
     #[test]

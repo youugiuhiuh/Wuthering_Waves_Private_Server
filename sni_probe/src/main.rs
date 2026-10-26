@@ -197,6 +197,11 @@ fn report(stage: &str, stats: pipeline::StageStats, extra: &str) {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // reqwest 用 rustls-no-provider：必须先装一个 crypto provider，
+    // 否则任何 HTTPS 请求（GeoDB 下载）会 panic。
+    // 选 ring 而非 aws-lc-rs：后者跨平台交叉编译需要完整 C 工具链。
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let cli = Cli::parse();
     logging::set_debug(cli.debug);
 

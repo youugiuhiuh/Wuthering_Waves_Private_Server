@@ -81,6 +81,10 @@ const FD_RESERVE_RATIO: f64 = 0.10;
 const PER_CORE: u64 = 20;
 
 /// 读取当前进程的 soft `RLIMIT_NOFILE`。
+///
+/// Windows 没有 `ulimit` 概念（句柄上限远高于此），返回一个足够大的值
+/// 让 FD 不成为约束，实际瓶颈交给 CPU 那一侧判断。
+#[cfg(unix)]
 pub fn fd_soft_limit() -> u64 {
     // 不能用 `ulimit` shell 命令：那会新起进程，且拿到的是 shell 的限制。
     let mut lim = libc::rlimit {
@@ -93,6 +97,15 @@ pub fn fd_soft_limit() -> u64 {
         return 1024; // 取保守默认
     }
     lim.rlim_cur
+}
+
+/// Windows 没有 `RLIMIT_NOFILE`，返回与 Linux 默认 hard limit 同量级的值，
+/// 使 FD 不成为约束（真实约束交给 CPU 核心数）。
+#[cfg(windows)]
+pub fn fd_soft_limit() -> u64 {
+    // shortcut: 未调用 GetProcessHandleCount 动态探测，固定 8192 足够覆盖
+    // 探测并发；若将来在 Windows 上跑 w>8000，需改为动态查询。
+    8192
 }
 
 /// 可用 CPU 核心数。

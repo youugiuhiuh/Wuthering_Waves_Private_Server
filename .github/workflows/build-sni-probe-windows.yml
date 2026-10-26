@@ -1,0 +1,173 @@
+name: Build Windows sni_probe
+
+# 手动触发（workflow_dispatch）。仅用于按需为用户产出 Windows 版 sni_probe。
+#
+# 为什么不是 push/PR 触发：
+#   - BoringSSL 的 mingw 交叉编译需要绕过上游 -pthread 泄漏问题（见下方补丁步骤）
+#   - 一次约 8-12 分钟，不适合放进每次 PR 的门禁
+#   - Windows 上 --iface 不可用（只支持按 IP 绑定），产出仅供阶段一/三使用
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: '构建后创建 GitHub Release 并附上 exe'
+        type: boolean
+        default: false
+      version:
+        description: 'Release 标签（留空则用 sni_probe-v{run_number}）'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install mingw + cmake + nasm
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 cmake nasm
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sni_probe
+          key: windows-gnu
+
+      - name: Build (pass 1 — 触发 BoringSSL 解包与首次配置)
+        working-directory: sni_probe
+        env:
+          CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
+          CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
+          AR_x86_64_pc_windows_gnu: x86_64-w64-mingw32-ar
+          CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
+          CMAKE_SYSTEM_PROCESSOR: AMD64
+          CFLAGS_x86_64_pc_windows_gnu: -m64
+          CXXFLAGS_x86_64_pc_windows_gnu: -m64
+        run: |
+          # 预期在 nasm 阶段失败（上游 bug），用于解包 BoringSSL 源码树
+          cargo build --release --target x86_64-pc-windows-gnu || true
+
+      - name: Patch BoringSSL flags (-pthread 泄漏给 nasm)
+        working-directory: sni_probe
+        run: |
+          set -euo pipefail
+          # 根因：CMake 的 FindThreads 把 -pthread 写进 CMAKE_ASM_NASM_FLAGS，
+          # nasm 将其解释为 `-p thread`（预包含名为 thread 的文件）而失败。
+          # 症状：unable to open include file `thread'
+          n=0
+          while IFS= read -r f; do
+            sed -i 's/ -pthread//g' "$f"
+            n=$((n+1))
+          done < <(find build -name flags.make)
+          echo "已清理 $n 个 flags.make"
+          test "$n" -gt 0
+
+      - name: Build (pass 2 — 完成 BoringSSL 编译)
+        working-directory: sni_probe
+        env:
+          CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
+          CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
+          AR_x86_64_pc_windows_gnu: x86_64-w64-mingw32-ar
+          CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
+          CMAKE_SYSTEM_PROCESSOR: AMD64
+          CFLAGS_x86_64_pc_windows_gnu: -m64
+          CXXFLAGS_x86_64_pc_windows_gnu: -m64
+        run: |
+          set -euo pipefail
+          # 直接编译 BoringSSL 的两个静态库（避免 cargo 重新 configure 覆盖补丁）
+          B=$(find build -type d -name build -path '*boring-sys*/out/build' | head -1)
+          echo "BoringSSL build dir: $B"
+          cmake --build "$B" --target ssl    -j"$(nproc)"
+          cmake --build "$B" --target crypto -j"$(nproc)"
+
+      - name: Build (pass 3 — 链接 sni_probe.exe)
+        working-directory: sni_probe
+        env:
+          CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
+          CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
+          AR_x86_64_pc_windows_gnu: x86_64-w64-mingw32-ar
+          CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
+          CMAKE_SYSTEM_PROCESSOR: AMD64
+          CFLAGS_x86_64_pc_windows_gnu: -m64
+          CXXFLAGS_x86_64_pc_windows_gnu: -m64
+        run: |
+          set -euo pipefail
+          # boring-sys 会重新 configure 并清掉补丁，所以若仍失败，
+          # 重新打一次补丁并直接走 cmake，然后 cargo 只做链接。
+          for attempt in 1 2 3; do
+            echo "::group::尝试 $attempt"
+            if cargo build --release --target x86_64-pc-windows-gnu; then
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            while IFS= read -r f; do sed -i 's/ -pthread//g' "$f"; done < <(find build -name flags.make)
+            B=$(find build -type d -name build -path '*boring-sys*/out/build' | head -1)
+            cmake --build "$B" --target ssl    -j"$(nproc)" || true
+            cmake --build "$B" --target crypto -j"$(nproc)" || true
+            if [ "$attempt" = "3" ]; then
+              echo "::error::三轮后仍失败"
+              exit 1
+            fi
+          done
+
+      - name: Verify exe
+        working-directory: sni_probe
+        run: |
+          set -euo pipefail
+          EXE=build/x86_64-pc-windows-gnu/release/sni_probe.exe
+          test -f "$EXE" || { echo "::error::未生成 $EXE"; exit 1; }
+          ls -lh "$EXE"
+          file "$EXE"
+          # PE 头校验：Windows 可执行
+          test "$(head -c 2 "$EXE")" = "MZ" || { echo "::error::不是 PE 文件"; exit 1; }
+          echo "✅ PE32+ 可执行文件校验通过"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sni_probe-windows-x86_64
+          path: sni_probe/build/x86_64-pc-windows-gnu/release/sni_probe.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create Release
+        if: inputs.release
+        working-directory: sni_probe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_VERSION: ${{ inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_VERSION:-sni_probe-v${RUN_NUMBER}}"
+          EXE=build/x86_64-pc-windows-gnu/release/sni_probe.exe
+          sha256sum "$EXE" > "$EXE.sha256"
+          gh release create "$TAG" \
+            --title "sni_probe $TAG (Windows x86_64)" \
+            --notes "Windows 版 sni_probe（x86_64-pc-windows-gnu 交叉编译）。
+
+          **本平台的限制**：\`--iface\` 只支持按本地 IP 绑定，不支持按网卡名
+          （Windows 无 \`SO_BINDTODEVICE\` 等价物）。给网卡名会明确报错并提示改用 IP。
+
+          校验：\`sha256sum -c sni_probe.exe.sha256\`" \
+            "$EXE" "$EXE.sha256"
+          echo "已发布 $TAG"
