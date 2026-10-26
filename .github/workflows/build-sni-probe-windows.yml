@@ -2,12 +2,18 @@ name: Build Windows sni_probe
 
 # 手动触发（workflow_dispatch）。在真实 Windows runner 上原生构建。
 #
-# 为什么用 windows-latest 而不是 Ubuntu 交叉编译：
-#   BoringSSL 在 mingw 交叉编译时，CMake 的 FindThreads 会向 nasm 泄漏
-#   `-pthread`，nasm 将其解释为 `-p thread`（预包含名为 thread 的文件）而失败。
-#   在 Windows 上原生构建走 MSVC 工具链，boring-sys 会直接设 OPENSSL_NO_ASM
-#   （见 boring-sys build/main.rs: `"windows" if config.host.contains("windows")`），
-#   完全绕开该问题，且产出的是原生 MSVC 二进制，性能与兼容性都更好。
+# 关于 BoringSSL 的两个坑（均已在下方 step 中处理）：
+#
+# 1) 交叉编译（Ubuntu+mingw）时 CMake 的 FindThreads 会把 `-pthread` 泄漏到
+#    CMAKE_ASM_NASM_FLAGS，nasm 解释为 `-p thread`（预包含名为 thread 的文件）而失败。
+#    在 Windows 原生构建时 boring-sys 命中
+#      `"windows" if config.host.contains("windows") => OPENSSL_NO_ASM=YES`
+#    直接关闭 BoringSSL 汇编，不再有 nasm 参与，此坑自然消失。
+#
+# 2) 原生 MSVC 构建时，runner 预设的 CFLAGS 含 `-Brepro`，它被 cmake 传给
+#    MSBuild 后与 FileTracker 冲突：
+#      FileTracker : error FTK1011: could not create the new file tracking log file
+#    因此构建前清空 CFLAGS/CXXFLAGS，避免污染 BoringSSL 的 CMake 配置。
 #
 # Windows 平台限制：--iface 只支持按本地 IP 绑定，不支持按网卡名
 # （Windows 无 SO_BINDTODEVICE 等价物）；给网卡名会明确报错。
@@ -38,6 +44,15 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    env:
+      # 关键：清空 runner 预设的 CFLAGS/CXXFLAGS。
+      # windows-latest 默认带 `-nologo -MD -Brepro -W0`，其中 -Brepro 会让
+      # MSVC 的 FileTracker 无法创建 tlog 目录（FTK1011），导致 CMake 的
+      # 编译器探测直接失败。
+      CFLAGS: ''
+      CXXFLAGS: ''
+      # 缩短 BoringSSL 的构建路径，规避 Windows 深层路径限制
+      CARGO_TARGET_DIR: ${{ github.workspace }}\target-win
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,48 +62,51 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      # BoringSSL 构建需要 cmake 与 nasm。
-      # windows-latest 自带 cmake 与 VS Build Tools（cl.exe），
-      # nasm 通常也预装；这里显式检查，缺失则用 choco 装。
       - name: Ensure cmake + nasm
         run: |
-          function Get-Tool($name, $cmd) {
-            $p = Get-Command $cmd -ErrorAction SilentlyContinue
-            if ($p) { Write-Host "$name : $($p.Source)"; return $true }
-            Write-Host "$name : 缺失"; return $false
+          foreach ($t in @(@{n='cmake';c='cmake'}, @{n='nasm';c='nasm'}, @{n='cl';c='cl'})) {
+            $p = Get-Command $t.c -ErrorAction SilentlyContinue
+            if ($p) { Write-Host "$($t.n) : $($p.Source)" } else { Write-Host "$($t.n) : 缺失" }
           }
-          $hasCmake = Get-Tool 'cmake' 'cmake'
-          $hasNasm  = Get-Tool 'nasm'  'nasm'
-          $hasCl    = Get-Tool 'cl'    'cl'
-
-          if (-not $hasCmake) { choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y --no-progress }
-          if (-not $hasNasm)  { choco install nasm -y --no-progress }
-          if (-not $hasCl) {
-            Write-Host 'cl.exe 不在 PATH：尝试定位 VS Build Tools 并注入环境'
-            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-            if (Test-Path $vswhere) {
-              & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-                -property installationPath
-            }
+          if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+            choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y --no-progress
+          }
+          if (-not (Get-Command nasm -ErrorAction SilentlyContinue)) {
+            choco install nasm -y --no-progress
           }
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: sni_probe
-          key: windows-msvc
+          key: windows-msvc-v2
 
-      - name: Install protoc
+      # 显式验证 CMake 能探测到编译器：把本次踩到的 FTK1011 变成早期可见的失败，
+      # 而不是等到 BoringSSL 深处才炸。
+      - name: Preflight — CMake 编译器探测
         run: |
-          # 目前未用 prost-build，但保留以防将来引入 .proto 代码生成
-          if (-not (Get-Command protoc -ErrorAction SilentlyContinue)) {
-            choco install protoc -y --no-progress
-          }
+          $ErrorActionPreference = 'Stop'
+          $d = Join-Path $env:RUNNER_TEMP 'cmake-preflight'
+          New-Item -ItemType Directory -Force -Path $d | Out-Null
+          Set-Content -Path "$d\CMakeLists.txt" -Value @'
+          cmake_minimum_required(VERSION 3.20)
+          project(preflight C)
+          add_executable(hello hello.c)
+          '@
+          Set-Content -Path "$d\hello.c" -Value 'int main(void){return 0;}'
+          # 不硬编码生成器版本（runner 可能是 VS 17 2022 或 18 2026），
+          # 让 CMake 选默认的 Visual Studio 生成器。
+          cmake -S $d -B "$d\build"
+          if ($LASTEXITCODE -ne 0) { throw "CMake 编译器探测失败（exit=$LASTEXITCODE）" }
+          cmake --build "$d\build" --config Release
+          if ($LASTEXITCODE -ne 0) { throw "CMake 试编译失败（exit=$LASTEXITCODE）" }
+          Write-Host '✅ CMake + MSVC 探测通过'
 
       - name: Build
         working-directory: sni_probe
         run: |
           $ErrorActionPreference = 'Stop'
+          Write-Host "CFLAGS=[$env:CFLAGS]  CXXFLAGS=[$env:CXXFLAGS]"
           cargo build --release --target x86_64-pc-windows-msvc
           if ($LASTEXITCODE -ne 0) { throw "cargo build 失败，exit=$LASTEXITCODE" }
 
@@ -107,32 +125,38 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "cargo test 失败，exit=$LASTEXITCODE" }
 
       - name: Verify exe
-        working-directory: sni_probe
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = 'build\x86_64-pc-windows-msvc\release\sni_probe.exe'
+          $exe = Join-Path $env:CARGO_TARGET_DIR 'x86_64-pc-windows-msvc\release\sni_probe.exe'
           if (-not (Test-Path $exe)) { throw "未生成 $exe" }
 
           Get-Item $exe | Format-List Name, Length, LastWriteTime
 
           # PE 头校验
-          $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $exe))
-          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw '不是 PE 文件（缺 MZ 头）' }
+          $fs = [System.IO.File]::OpenRead($exe)
+          try {
+            $hdr = New-Object byte[] 2
+            $fs.Read($hdr, 0, 2) | Out-Null
+            if ($hdr[0] -ne 0x4D -or $hdr[1] -ne 0x5A) { throw '不是 PE 文件（缺 MZ 头）' }
+          } finally { $fs.Close() }
           Write-Host '✅ PE 头校验通过'
 
-          # 真正跑一下：--version 与 --list-ifaces（Windows 下应为空但不报错）
-          & ".\$exe" --version
+          # 真正运行，验证 Windows 平台分支
+          & $exe --version
           if ($LASTEXITCODE -ne 0) { throw '--version 执行失败' }
 
-          Write-Host '--- --list-ifaces（Windows 下按网卡绑定不支持，应输出为空）---'
-          & ".\$exe" --list-ifaces
+          Write-Host '--- --list-ifaces（Windows 不支持按网卡绑定，应为空且不报错）---'
+          & $exe --list-ifaces
           if ($LASTEXITCODE -ne 0) { throw '--list-ifaces 执行失败' }
 
-          Write-Host '--- --iface 给网卡名应明确报错 ---'
-          & ".\$exe" --iface Ethernet probe-survival -f NUL -o NUL 2>&1 | Out-String | Write-Host
+          Write-Host '--- --iface 给网卡名应明确报错（提示改用 IP）---'
+          $out = & $exe --iface Ethernet merge -d $env:RUNNER_TEMP -o "$env:RUNNER_TEMP\x.pb" 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch '不支持按网卡名绑定') {
+            throw "期望出现「不支持按网卡名绑定」提示，实际输出：$out"
+          }
 
-          # 校验哈希
-          (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower() + "  sni_probe.exe" |
+          (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower() + '  sni_probe.exe' |
             Out-File -Encoding ascii "$exe.sha256"
           Get-Content "$exe.sha256"
 
@@ -141,14 +165,13 @@ jobs:
         with:
           name: sni_probe-windows-x86_64-msvc
           path: |
-            sni_probe/build/x86_64-pc-windows-msvc/release/sni_probe.exe
-            sni_probe/build/x86_64-pc-windows-msvc/release/sni_probe.exe.sha256
+            ${{ env.CARGO_TARGET_DIR }}/x86_64-pc-windows-msvc/release/sni_probe.exe
+            ${{ env.CARGO_TARGET_DIR }}/x86_64-pc-windows-msvc/release/sni_probe.exe.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Create Release
         if: inputs.release
-        working-directory: sni_probe
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_VERSION: ${{ inputs.version }}
@@ -156,7 +179,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $tag = if ($env:INPUT_VERSION) { $env:INPUT_VERSION } else { "sni_probe-v$($env:RUN_NUMBER)" }
-          $dir = 'build\x86_64-pc-windows-msvc\release'
+          $dir = Join-Path $env:CARGO_TARGET_DIR 'x86_64-pc-windows-msvc\release'
           $exe = "$dir\sni_probe.exe"
           $sha = "$dir\sni_probe.exe.sha256"
 
