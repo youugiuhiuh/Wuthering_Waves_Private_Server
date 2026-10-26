@@ -335,6 +335,48 @@ mod tests {
         assert!(b2.set_curves_list("X25519MLKEM768:X25519").is_ok());
     }
 
+    /// 联网验证：真实目标协商出的组名能否被正确分类。
+    ///
+    /// 单测里的 "X25519MLKEM768" 是手写字符串；必须确认 BoringSSL
+    /// 的 curve_name() 实际返回值确实长这样，否则判定逻辑只是自洽而非正确。
+    #[test]
+    fn live_targets_classify_correctly() {
+        if std::env::var("SNI_PROBE_NET_TESTS").is_err() {
+            return;
+        }
+        use std::net::ToSocketAddrs;
+        let hosts = ["www.cloudflare.com", "www.google.com", "example.com"];
+        let mut checked = 0;
+
+        for host in hosts {
+            let Ok(mut addrs) = (host, 443u16).to_socket_addrs() else {
+                continue;
+            };
+            let Some(ip) = addrs.next().map(|s| s.ip()) else {
+                continue;
+            };
+            let Ok(p) = probe(host, ip, Duration::from_secs(6)) else {
+                continue;
+            };
+            let curve = p.curve.as_deref().unwrap_or("");
+            let valid = is_valid_group(curve);
+            let pq = p.is_pq();
+            eprintln!("{host:22} curve={curve:20} valid={valid} pq={pq}");
+
+            assert!(valid, "{host} 协商出 {curve:?} 却被判非法组");
+            assert_eq!(
+                pq,
+                is_pq_group(curve),
+                "{host}: is_pq 与 is_pq_group 不一致"
+            );
+            if pq {
+                assert!(valid, "{host}: PQ 组必须是合法组");
+            }
+            checked += 1;
+        }
+        assert!(checked > 0, "一个目标都没测到，检查网络");
+    }
+
     #[test]
     fn accepts_only_x25519_family() {
         assert!(is_valid_group("X25519"));
