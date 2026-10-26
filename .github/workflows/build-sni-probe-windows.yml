@@ -154,6 +154,14 @@ jobs:
       - name: Verify exe
         run: |
           $ErrorActionPreference = 'Stop'
+
+          # 这个 step 刻意跑一个「预期内失败」的命令（--iface 给网卡名，exit 1）。
+          # 坑：PowerShell 7 的 $PSNativeCommandUseErrorActionPreference 会把
+          # 原生命令的非零退出码翻成 ##[error] 注解，step 就判失败 —— 无论
+          # 断言是否全对；改 $ErrorActionPreference、用 exit 0 都救不回来。
+          # 所以：局部关掉这个开关（try/finally 复原）。
+          $PSNativeCommandUseErrorActionPreference = $false
+
           $exe = Join-Path $env:CARGO_TARGET_DIR 'x86_64-pc-windows-msvc\release\sni_probe.exe'
           if (-not (Test-Path $exe)) { throw "未生成 $exe" }
 
@@ -177,19 +185,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw '--list-ifaces 执行失败' }
 
           Write-Host '--- --iface 给网卡名应明确报错（提示改用 IP）---'
-          # 这个调用本来就该失败（exit 1）。坑：PowerShell 7 的
-          # $PSNativeCommandUseErrorActionPreference 会把非零退出码翻成
-          # NativeCommandExitException / ##[error] 注解，即使断言全对，
-          # runner 仍然判 step 失败 —— 改 $ErrorActionPreference 无效。
-          # 必须临时关掉这个开关，try/finally 复原。
-          $prevNative = $PSNativeCommandUseErrorActionPreference
-          $PSNativeCommandUseErrorActionPreference = $false
-          try {
-            $out = & $exe --iface Ethernet merge -d $env:RUNNER_TEMP -o "$env:RUNNER_TEMP\x.pb" 2>&1 | Out-String
-            $code = $LASTEXITCODE
-          } finally {
-            $PSNativeCommandUseErrorActionPreference = $prevNative
-          }
+          $out = & $exe --iface Ethernet merge -d $env:RUNNER_TEMP -o "$env:RUNNER_TEMP\x.pb" 2>&1 | Out-String
+          $code = $LASTEXITCODE
           Write-Host $out
           if ($code -eq 0) { throw '期望非零退出码，实际 exit=0' }
           if ($out -notmatch '不支持按网卡名绑定') {
