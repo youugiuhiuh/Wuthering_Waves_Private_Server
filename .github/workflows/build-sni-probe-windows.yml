@@ -1,11 +1,16 @@
 name: Build Windows sni_probe
 
-# 手动触发（workflow_dispatch）。仅用于按需为用户产出 Windows 版 sni_probe。
+# 手动触发（workflow_dispatch）。在真实 Windows runner 上原生构建。
 #
-# 为什么不是 push/PR 触发：
-#   - BoringSSL 的 mingw 交叉编译需要绕过上游 -pthread 泄漏问题（见下方补丁步骤）
-#   - 一次约 8-12 分钟，不适合放进每次 PR 的门禁
-#   - Windows 上 --iface 不可用（只支持按 IP 绑定），产出仅供阶段一/三使用
+# 为什么用 windows-latest 而不是 Ubuntu 交叉编译：
+#   BoringSSL 在 mingw 交叉编译时，CMake 的 FindThreads 会向 nasm 泄漏
+#   `-pthread`，nasm 将其解释为 `-p thread`（预包含名为 thread 的文件）而失败。
+#   在 Windows 上原生构建走 MSVC 工具链，boring-sys 会直接设 OPENSSL_NO_ASM
+#   （见 boring-sys build/main.rs: `"windows" if config.host.contains("windows")`），
+#   完全绕开该问题，且产出的是原生 MSVC 二进制，性能与兼容性都更好。
+#
+# Windows 平台限制：--iface 只支持按本地 IP 绑定，不支持按网卡名
+# （Windows 无 SO_BINDTODEVICE 等价物）；给网卡名会明确报错。
 on:
   workflow_dispatch:
     inputs:
@@ -28,124 +33,116 @@ concurrency:
 
 jobs:
   build-windows:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
+      - name: Install Rust toolchain (MSVC)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-gnu
+          targets: x86_64-pc-windows-msvc
 
-      - name: Install mingw + cmake + nasm
+      # BoringSSL 构建需要 cmake 与 nasm。
+      # windows-latest 自带 cmake 与 VS Build Tools（cl.exe），
+      # nasm 通常也预装；这里显式检查，缺失则用 choco 装。
+      - name: Ensure cmake + nasm
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends \
-            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 cmake nasm
+          function Get-Tool($name, $cmd) {
+            $p = Get-Command $cmd -ErrorAction SilentlyContinue
+            if ($p) { Write-Host "$name : $($p.Source)"; return $true }
+            Write-Host "$name : 缺失"; return $false
+          }
+          $hasCmake = Get-Tool 'cmake' 'cmake'
+          $hasNasm  = Get-Tool 'nasm'  'nasm'
+          $hasCl    = Get-Tool 'cl'    'cl'
+
+          if (-not $hasCmake) { choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y --no-progress }
+          if (-not $hasNasm)  { choco install nasm -y --no-progress }
+          if (-not $hasCl) {
+            Write-Host 'cl.exe 不在 PATH：尝试定位 VS Build Tools 并注入环境'
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            if (Test-Path $vswhere) {
+              & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+                -property installationPath
+            }
+          }
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: sni_probe
-          key: windows-gnu
+          key: windows-msvc
 
-      - name: Build (pass 1 — 触发 BoringSSL 解包与首次配置)
-        working-directory: sni_probe
-        env:
-          CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
-          CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
-          AR_x86_64_pc_windows_gnu: x86_64-w64-mingw32-ar
-          CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
-          CMAKE_SYSTEM_PROCESSOR: AMD64
-          CFLAGS_x86_64_pc_windows_gnu: -m64
-          CXXFLAGS_x86_64_pc_windows_gnu: -m64
+      - name: Install protoc
         run: |
-          # 预期在 nasm 阶段失败（上游 bug），用于解包 BoringSSL 源码树
-          cargo build --release --target x86_64-pc-windows-gnu || true
+          # 目前未用 prost-build，但保留以防将来引入 .proto 代码生成
+          if (-not (Get-Command protoc -ErrorAction SilentlyContinue)) {
+            choco install protoc -y --no-progress
+          }
 
-      - name: Patch BoringSSL flags (-pthread 泄漏给 nasm)
+      - name: Build
         working-directory: sni_probe
         run: |
-          set -euo pipefail
-          # 根因：CMake 的 FindThreads 把 -pthread 写进 CMAKE_ASM_NASM_FLAGS，
-          # nasm 将其解释为 `-p thread`（预包含名为 thread 的文件）而失败。
-          # 症状：unable to open include file `thread'
-          n=0
-          while IFS= read -r f; do
-            sed -i 's/ -pthread//g' "$f"
-            n=$((n+1))
-          done < <(find build -name flags.make)
-          echo "已清理 $n 个 flags.make"
-          test "$n" -gt 0
+          $ErrorActionPreference = 'Stop'
+          cargo build --release --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw "cargo build 失败，exit=$LASTEXITCODE" }
 
-      - name: Build (pass 2 — 完成 BoringSSL 编译)
+      - name: Run unit tests
         working-directory: sni_probe
-        env:
-          CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
-          CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
-          AR_x86_64_pc_windows_gnu: x86_64-w64-mingw32-ar
-          CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
-          CMAKE_SYSTEM_PROCESSOR: AMD64
-          CFLAGS_x86_64_pc_windows_gnu: -m64
-          CXXFLAGS_x86_64_pc_windows_gnu: -m64
         run: |
-          set -euo pipefail
-          # 直接编译 BoringSSL 的两个静态库（避免 cargo 重新 configure 覆盖补丁）
-          B=$(find build -type d -name build -path '*boring-sys*/out/build' | head -1)
-          echo "BoringSSL build dir: $B"
-          cmake --build "$B" --target ssl    -j"$(nproc)"
-          cmake --build "$B" --target crypto -j"$(nproc)"
-
-      - name: Build (pass 3 — 链接 sni_probe.exe)
-        working-directory: sni_probe
-        env:
-          CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
-          CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
-          AR_x86_64_pc_windows_gnu: x86_64-w64-mingw32-ar
-          CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
-          CMAKE_SYSTEM_PROCESSOR: AMD64
-          CFLAGS_x86_64_pc_windows_gnu: -m64
-          CXXFLAGS_x86_64_pc_windows_gnu: -m64
-        run: |
-          set -euo pipefail
-          # boring-sys 会重新 configure 并清掉补丁，所以若仍失败，
-          # 重新打一次补丁并直接走 cmake，然后 cargo 只做链接。
-          for attempt in 1 2 3; do
-            echo "::group::尝试 $attempt"
-            if cargo build --release --target x86_64-pc-windows-gnu; then
-              echo "::endgroup::"
-              break
-            fi
-            echo "::endgroup::"
-            while IFS= read -r f; do sed -i 's/ -pthread//g' "$f"; done < <(find build -name flags.make)
-            B=$(find build -type d -name build -path '*boring-sys*/out/build' | head -1)
-            cmake --build "$B" --target ssl    -j"$(nproc)" || true
-            cmake --build "$B" --target crypto -j"$(nproc)" || true
-            if [ "$attempt" = "3" ]; then
-              echo "::error::三轮后仍失败"
-              exit 1
-            fi
-          done
+          # 只跳过真正依赖外网的测试（--skip 是子串匹配，写得越精确越好）：
+          #   live_targets_classify_correctly  需真握手真实站点
+          #   downloads_real_mmdb_when_opted_in 需下载 MMDB
+          #   resolves_public_domain           需海外 DNS
+          # resource::live_probe 只读 getrlimit，不联网，必须跑（验证 Windows 分支）。
+          cargo test --release --target x86_64-pc-windows-msvc -- `
+            --skip live_targets_classify `
+            --skip downloads_real_mmdb `
+            --skip resolves_public_domain
+          if ($LASTEXITCODE -ne 0) { throw "cargo test 失败，exit=$LASTEXITCODE" }
 
       - name: Verify exe
         working-directory: sni_probe
         run: |
-          set -euo pipefail
-          EXE=build/x86_64-pc-windows-gnu/release/sni_probe.exe
-          test -f "$EXE" || { echo "::error::未生成 $EXE"; exit 1; }
-          ls -lh "$EXE"
-          file "$EXE"
-          # PE 头校验：Windows 可执行
-          test "$(head -c 2 "$EXE")" = "MZ" || { echo "::error::不是 PE 文件"; exit 1; }
-          echo "✅ PE32+ 可执行文件校验通过"
+          $ErrorActionPreference = 'Stop'
+          $exe = 'build\x86_64-pc-windows-msvc\release\sni_probe.exe'
+          if (-not (Test-Path $exe)) { throw "未生成 $exe" }
+
+          Get-Item $exe | Format-List Name, Length, LastWriteTime
+
+          # PE 头校验
+          $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $exe))
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw '不是 PE 文件（缺 MZ 头）' }
+          Write-Host '✅ PE 头校验通过'
+
+          # 真正跑一下：--version 与 --list-ifaces（Windows 下应为空但不报错）
+          & ".\$exe" --version
+          if ($LASTEXITCODE -ne 0) { throw '--version 执行失败' }
+
+          Write-Host '--- --list-ifaces（Windows 下按网卡绑定不支持，应输出为空）---'
+          & ".\$exe" --list-ifaces
+          if ($LASTEXITCODE -ne 0) { throw '--list-ifaces 执行失败' }
+
+          Write-Host '--- --iface 给网卡名应明确报错 ---'
+          & ".\$exe" --iface Ethernet probe-survival -f NUL -o NUL 2>&1 | Out-String | Write-Host
+
+          # 校验哈希
+          (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower() + "  sni_probe.exe" |
+            Out-File -Encoding ascii "$exe.sha256"
+          Get-Content "$exe.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sni_probe-windows-x86_64
-          path: sni_probe/build/x86_64-pc-windows-gnu/release/sni_probe.exe
+          name: sni_probe-windows-x86_64-msvc
+          path: |
+            sni_probe/build/x86_64-pc-windows-msvc/release/sni_probe.exe
+            sni_probe/build/x86_64-pc-windows-msvc/release/sni_probe.exe.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -157,17 +154,24 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
-          set -euo pipefail
-          TAG="${INPUT_VERSION:-sni_probe-v${RUN_NUMBER}}"
-          EXE=build/x86_64-pc-windows-gnu/release/sni_probe.exe
-          sha256sum "$EXE" > "$EXE.sha256"
-          gh release create "$TAG" \
-            --title "sni_probe $TAG (Windows x86_64)" \
-            --notes "Windows 版 sni_probe（x86_64-pc-windows-gnu 交叉编译）。
+          $ErrorActionPreference = 'Stop'
+          $tag = if ($env:INPUT_VERSION) { $env:INPUT_VERSION } else { "sni_probe-v$($env:RUN_NUMBER)" }
+          $dir = 'build\x86_64-pc-windows-msvc\release'
+          $exe = "$dir\sni_probe.exe"
+          $sha = "$dir\sni_probe.exe.sha256"
 
-          **本平台的限制**：\`--iface\` 只支持按本地 IP 绑定，不支持按网卡名
-          （Windows 无 \`SO_BINDTODEVICE\` 等价物）。给网卡名会明确报错并提示改用 IP。
+          $notes = @'
+          Windows 原生构建（x86_64-pc-windows-msvc）。
 
-          校验：\`sha256sum -c sni_probe.exe.sha256\`" \
-            "$EXE" "$EXE.sha256"
-          echo "已发布 $TAG"
+          **平台限制**：`--iface` 只支持按本地 IP 绑定，不支持按网卡名
+          （Windows 无 `SO_BINDTODEVICE` 等价物）。给网卡名会明确报错并提示改用 IP。
+
+          校验（PowerShell）：
+          ```powershell
+          (Get-FileHash .\sni_probe.exe -Algorithm SHA256).Hash
+          ```
+          '@
+
+          gh release create $tag $exe $sha --title "sni_probe $tag (Windows x86_64)" --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw "gh release 失败，exit=$LASTEXITCODE" }
+          Write-Host "已发布 $tag"
