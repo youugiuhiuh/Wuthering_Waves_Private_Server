@@ -40,12 +40,22 @@ impl TlsProbe {
 }
 
 /// 判定协商出的组名是否属于 PQ 混合。
+///
+/// 与 Go `IsPQGroup` 对齐：Go 用的是**X25519 系**的三种 PQ 组
+/// （`X25519MLKEM768` / `X25519Kyber768Draft00` / `SecP256r1MLKEM768`）。
+/// 这里用「必须是合法组 且 含 MLKEM/KYBER」双重条件，避免把未来出现的
+/// 非 X25519 系 PQ 组（如 `P-384MLKEM1024`）误判为可用的 PQ 池目标。
 pub fn is_pq_group(curve: &str) -> bool {
     let c = curve.to_ascii_uppercase();
-    c.contains("MLKEM") || c.contains("KYBER")
+    is_valid_group(&c) && (c.contains("MLKEM") || c.contains("KYBER"))
 }
 
 /// 判定协商出的组名是否在 REALITY 可接受集合内。
+///
+/// 与 Go `IsValidKeyGroup` 对齐。Go 列了四个常量，但其中
+/// `CurveSecP256r1MLKEM768`（0x11ED）BoringSSL 不支持
+/// （`set_curves_list` 返回 `UNSUPPORTED_ELLIPTIC_CURVE`），
+/// 因此实际能协商出来的只有 `X25519` 系三种，用前缀判断是完备的。
 pub fn is_valid_group(curve: &str) -> bool {
     let c = curve.to_ascii_uppercase();
     c.starts_with("X25519")
@@ -293,17 +303,46 @@ mod tests {
     fn classifies_pq_groups() {
         assert!(is_pq_group("X25519MLKEM768"));
         assert!(is_pq_group("X25519Kyber768Draft00"));
-        assert!(is_pq_group("SecP256r1MLKEM768"));
-        assert!(!is_pq_group("X25519"));
+        assert!(!is_pq_group("X25519"), "经典 X25519 不是 PQ");
         assert!(!is_pq_group("prime256v1"));
+    }
+
+    /// PQ 判定必须以「合法组」为前提。
+    ///
+    /// 与 Go `IsPQGroup` 的差异：Go 把 `SecP256r1MLKEM768` 也算 PQ，
+    /// 但 BoringSSL 不支持该组（见 `secp256r1mlkem_unsupported_by_boringssl`），
+    /// 实际永远不会协商出来。这里额外拒掉未来可能出现的非 X25519 系 PQ 组，
+    /// 避免它们被误分进 PQ 池导致客户端握手失败。
+    #[test]
+    fn pq_group_must_also_be_valid_group() {
+        assert!(!is_pq_group("SecP256r1MLKEM768"), "非X25519系不得进 PQ 池");
+        assert!(!is_pq_group("P-384MLKEM1024"), "未来未支持的组也必须拦掉");
+        assert!(!is_valid_group("SecP256r1MLKEM768"));
+    }
+
+    /// 固定前提：BoringSSL 不支持 SecP256r1MLKEM768。
+    /// 若将来升级 boring 后支持了，这个测试会失败，提醒我们同步更新判定逻辑。
+    #[test]
+    fn secp256r1mlkem_unsupported_by_boringssl() {
+        let mut b = SslConnector::builder(SslMethod::tls()).expect("builder");
+        let r = b.set_curves_list("SecP256r1MLKEM768");
+        assert!(
+            r.is_err(),
+            "BoringSSL 开始支持 SecP256r1MLKEM768 了，需重新审视 IsValidKeyGroup 对齐"
+        );
+        // 对照：X25519 系必须支持
+        let mut b2 = SslConnector::builder(SslMethod::tls()).expect("builder");
+        assert!(b2.set_curves_list("X25519MLKEM768:X25519").is_ok());
     }
 
     #[test]
     fn accepts_only_x25519_family() {
         assert!(is_valid_group("X25519"));
         assert!(is_valid_group("X25519MLKEM768"));
+        assert!(is_valid_group("X25519Kyber768Draft00"));
         assert!(!is_valid_group("prime256v1"));
         assert!(!is_valid_group("ffdhe2048"));
+        assert!(!is_valid_group(""));
     }
 
     #[test]
