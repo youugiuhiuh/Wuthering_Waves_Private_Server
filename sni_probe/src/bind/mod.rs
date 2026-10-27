@@ -241,4 +241,24 @@ mod tests {
         );
         reset();
     }
+
+    /// 绑定路径必须尊重 timeout：SO_SNDTIMEO 不约束 connect()，
+    /// 漏了非阻塞 + poll 就会等满内核 SYN 重传超时（~130s）。
+    #[test]
+    fn bound_connect_honors_timeout() {
+        // 192.0.2.0/24 是 TEST-NET-1，不可路由，connect 不会立刻拒绝
+        set_outbound("127.0.0.1").unwrap();
+        let start = std::time::Instant::now();
+        let r = connect_tcp(
+            "192.0.2.1:9".parse().unwrap(),
+            std::time::Duration::from_millis(300),
+        );
+        let elapsed = start.elapsed();
+        reset();
+        assert!(r.is_err(), "不可路由地址应连接失败");
+        assert!(
+            elapsed < std::time::Duration::from_secs(3),
+            "绑定路径必须在 timeout 附近返回，实际 {elapsed:?}"
+        );
+    }
 }

@@ -172,7 +172,9 @@ pub fn connect_bound(
         }
     }
 
-    // 超时
+    // 超时：SO_SNDTIMEO 只约束 send()，在 Linux 上对 connect() 无效。
+    // 必须用非阻塞 connect + poll 自己算截止时间，否则会一直等到内核
+    // TCP SYN 重传超时（~130s），--timeout 形同虚设。
     let tv = libc::timeval {
         tv_sec: timeout.as_secs() as libc::time_t,
         tv_usec: timeout.subsec_micros() as libc::suseconds_t,
@@ -188,15 +190,76 @@ pub fn connect_bound(
         );
     }
 
-    // connect
+    // 设为非阻塞以便给 connect 加真超时
+    // SAFETY: fd 有效；F_GETFL/F_SETFL 不改变所有权。
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(close_on_err(fd, std::io::Error::last_os_error()));
+    }
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(close_on_err(fd, std::io::Error::last_os_error()));
+    }
+
+    // connect：非阻塞下立即返回 EINPROGRESS
     let (ptr, len) = sockaddr_of(&target);
     // SAFETY: ptr/len 描述合法 sockaddr，fd 有效。
     let rc = unsafe { libc::connect(fd, ptr, len) };
     if rc != 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() != Some(libc::EINPROGRESS) {
+            return Err(close_on_err(fd, err));
+        }
+        // 等可写 = 连接完成或失败，最多等到 timeout
+        let ms = timeout.as_millis().min(u32::MAX as u128) as libc::c_int;
+        let mut pfd = libc::pollfd {
+            fd,
+            events: libc::POLLOUT,
+            revents: 0,
+        };
+        // SAFETY: pfd 是合法的单元素数组。
+        let prc = unsafe { libc::poll(&mut pfd, 1, ms) };
+        if prc == 0 {
+            return Err(close_on_err(
+                fd,
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "connect 超时"),
+            ));
+        }
+        if prc < 0 {
+            let e = std::io::Error::last_os_error();
+            if e.kind() == std::io::ErrorKind::Interrupted {
+                return Err(close_on_err(
+                    fd,
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "connect 被中断"),
+                ));
+            }
+            return Err(close_on_err(fd, e));
+        }
+        // 可写不代表成功，必须取 SO_ERROR
+        let mut so_err: libc::c_int = 0;
+        let mut elen = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+        // SAFETY: so_err/elen 是合法的输出缓冲区。
+        let grc = unsafe {
+            libc::getsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_ERROR,
+                &mut so_err as *mut _ as *mut libc::c_void,
+                &mut elen,
+            )
+        };
+        if grc != 0 {
+            return Err(close_on_err(fd, std::io::Error::last_os_error()));
+        }
+        if so_err != 0 {
+            return Err(close_on_err(fd, std::io::Error::from_raw_os_error(so_err)));
+        }
+    }
+
+    // 恢复阻塞模式交给 TcpStream（后续 read/write 依赖它 + SO_*TIMEO）
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, flags) } < 0 {
         return Err(close_on_err(fd, std::io::Error::last_os_error()));
     }
 
-    // 恢复为阻塞 socket 交给 TcpStream
     // SAFETY: fd 有效且所有权转移给 TcpStream。
     Ok(unsafe { std::net::TcpStream::from_raw_fd(fd) })
 }
