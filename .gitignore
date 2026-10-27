@@ -20,6 +20,8 @@ sni_tester/sni_tester
 sni_probe/sni_probe
 sni_probe/*.redb
 sni_probe/*.bin
+# 探测产物：本地数据，不是仓库内容（避免被当作临时文件清理）
+sni_probe/*.csv
 go/installer/installer
 .github/workflows/SETUP.md
 
