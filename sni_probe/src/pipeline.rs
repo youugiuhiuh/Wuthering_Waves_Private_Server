@@ -552,6 +552,9 @@ pub async fn run_probe_survival(
         })
     };
 
+    // 外层这份 tx 也必须 drop，否则 rx.recv() 永远等不到 None（死等到 shutdown）
+    drop(tx);
+
     let file = File::create(output)?;
     let mut out = BufWriter::new(file);
     while let Some((domain, ip)) = rx.recv().await {
