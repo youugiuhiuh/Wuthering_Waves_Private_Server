@@ -494,13 +494,6 @@ pub async fn run_probe_survival(
     _proxy: Option<&str>,
 ) -> Result<StageStats, Box<dyn std::error::Error + Send + Sync>> {
     let start = Instant::now();
-    // shortcut: 行数统计要完整扫一遍文件；百万行约 0.2s，换进度条精确 ETA
-    let total = count_lines(input)?;
-    let total = if max_lines > 0 {
-        total.min(max_lines as u64)
-    } else {
-        total
-    };
 
     let targets: Vec<(String, std::net::IpAddr)> = read_lines_stream(input)?
         .map_while(Result::ok)
@@ -509,35 +502,55 @@ pub async fn run_probe_survival(
         .take(if max_lines > 0 { max_lines } else { usize::MAX })
         .collect();
 
+    // 阶段二零 DNS：缺 IP 的行会被上面的 filter 丢掉，进度条分母必须用实际目标数，
+    // 否则 pos 永远到不了 total，ETA 会算出天文数字。
+    let total = targets.len() as u64;
+    if total == 0 {
+        return Err(
+            "probe-survival 需要 `domain,ip` 格式的输入（先跑 resolve-map），本次没有可用目标"
+                .into(),
+        );
+    }
+
     let sem = Arc::new(Semaphore::new(workers));
     let kept = Arc::new(AtomicU64::new(0));
     let dropped = Arc::new(AtomicU64::new(0));
     let (tx, mut rx) = mpsc::channel::<(String, std::net::IpAddr)>(workers * 2);
     let pb = progress::bar(total, "probe-survival");
 
-    let mut handles = Vec::with_capacity(targets.len());
-    for (domain, ip) in targets {
-        let permit = match sem.clone().acquire_owned().await {
-            Ok(p) => p,
-            Err(_) => break,
-        };
-        let tx = tx.clone();
+    // 派发与回收必须并发：worker 在 blocking_send 上阻塞时会占着 permit，
+    // 若先把整个输入 spawn 完再 recv，channel 一满就双方互等（死锁）。
+    let producer = {
+        let sem = sem.clone();
         let kept = kept.clone();
         let dropped = dropped.clone();
-        let pb2 = pb.clone();
-        handles.push(tokio::task::spawn_blocking(move || {
-            let alive = tls::probe_survival(&domain, ip, timeout);
-            if alive {
-                kept.fetch_add(1, Ordering::Relaxed);
-                let _ = tx.blocking_send((domain, ip));
-            } else {
-                dropped.fetch_add(1, Ordering::Relaxed);
+        let pb = pb.clone();
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            for (domain, ip) in targets {
+                let permit = match sem.clone().acquire_owned().await {
+                    Ok(p) => p,
+                    Err(_) => break,
+                };
+                let tx = tx.clone();
+                let kept = kept.clone();
+                let dropped = dropped.clone();
+                let pb = pb.clone();
+                // 句柄用 detach：permit 已由信号量兜住并发上限，无需逐个 await
+                tokio::task::spawn_blocking(move || {
+                    if tls::probe_survival(&domain, ip, timeout) {
+                        kept.fetch_add(1, Ordering::Relaxed);
+                        let _ = tx.blocking_send((domain, ip));
+                    } else {
+                        dropped.fetch_add(1, Ordering::Relaxed);
+                    }
+                    pb.inc(1);
+                    drop(permit);
+                });
             }
-            pb2.inc(1);
-            drop(permit);
-        }));
-    }
-    drop(tx);
+            drop(tx);
+        })
+    };
 
     let file = File::create(output)?;
     let mut out = BufWriter::new(file);
@@ -545,9 +558,7 @@ pub async fn run_probe_survival(
         writeln!(out, "{domain},{ip}")?;
     }
     out.flush()?;
-    for h in handles {
-        let _ = h.await;
-    }
+    let _ = producer.await;
     progress::finish(
         &pb,
         &format!(
