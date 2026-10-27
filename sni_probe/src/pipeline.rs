@@ -234,119 +234,137 @@ pub async fn build_pools_entries_with_history(
     let sem = Arc::new(Semaphore::new(workers));
     let pb = progress::bar(total, "build-pools");
 
-    let mut handles = Vec::with_capacity(entries.len());
-    for e in entries {
-        let Some(ip) = e.ip else {
-            dropped.fetch_add(1, Ordering::Relaxed);
-            pb.inc(1);
-            continue;
-        };
-        let permit = match sem.clone().acquire_owned().await {
-            Ok(p) => p,
-            Err(_) => break,
-        };
-        let tx = tx.clone();
+    // 派发与回收必须并发：worker 在 blocking_send 上阻塞时仍占着 permit，
+    // 若先把整个输入 spawn 完再 recv，channel 一满就双方互等（死锁）。
+    // 句柄用 detach，并发上限由信号量兜住，不再为全部目标攒 JoinHandle。
+    let producer = {
+        let sem = sem.clone();
         let kept = kept.clone();
         let dropped = dropped.clone();
+        let pb = pb.clone();
         let geodb = geodb.clone();
-        let pb2 = pb.clone();
         let storage = storage.clone();
         let blocklist = blocklist.clone();
-        handles.push(tokio::task::spawn_blocking(move || {
-            // 1. 近期已失败过则跳过（除非 -force）
-            if !force
-                && storage
-                    .as_ref()
-                    .is_some_and(|s| s.is_failed_recently(&e.domain))
-            {
-                dropped.fetch_add(1, Ordering::Relaxed);
-                pb2.inc(1);
-                drop(permit);
-                return;
-            }
-
-            if cloudflare::is_cloudflare_ip(ip) {
-                dropped.fetch_add(1, Ordering::Relaxed);
-                pb2.inc(1);
-                drop(permit);
-                return;
-            }
-
-            // 2. ASN 级预筛：整家 CDN 已拉黑时无需再握手
-            let asn_of_ip = geodb.as_ref().and_then(|g| g.asn(ip));
-            if let Some((asn, _)) = &asn_of_ip
-                && blocklist.as_ref().is_some_and(|b| b.is_blocked(*asn))
-            {
-                dropped.fetch_add(1, Ordering::Relaxed);
-                pb2.inc(1);
-                drop(permit);
-                return;
-            }
-
-            crate::debugln!(
-                "[debug] probe {} ip={} asn={:?}",
-                e.domain,
-                ip,
-                asn_of_ip.as_ref().map(|(a, _)| *a)
-            );
-
-            match tls::probe(&e.domain, ip, timeout) {
-                Ok(p) if tls::validate(&p) => {
-                    crate::debugln!(
-                        "[debug] OK {} country={} pq={} alpn={:?} h3={} chain={} certs={}B",
-                        e.domain,
-                        geodb.as_ref().map(|g| g.country(ip)).unwrap_or_default(),
-                        p.is_pq(),
-                        p.alpn,
-                        p.h3_support,
-                        p.cert_chain_len,
-                        p.cert_total_bytes
-                    );
-                    let country = geodb
-                        .as_ref()
-                        .map(|g| g.country(ip))
-                        .unwrap_or_else(|| "UNKNOWN".to_string());
-
-                    if geo::is_blocked_country(&country) {
-                        dropped.fetch_add(1, Ordering::Relaxed);
-                        if let Some(s) = storage.as_ref() {
-                            let _ = s.add_blocked_domain(
-                                &e.domain,
-                                &format!("country {country}"),
-                                false,
-                            );
-                        }
-                    } else {
-                        kept.fetch_add(1, Ordering::Relaxed);
-                        if let Some(s) = storage.as_ref() {
-                            let _ = s.save_success(&e.domain, &country);
-                        }
-                        let _ = tx.blocking_send((e.clone(), country, p.is_pq()));
-                    }
-                }
-                other => {
-                    crate::debugln!(
-                        "[debug] FAIL {}: {:?}",
-                        e.domain,
-                        other.err().map(|x| x.to_string())
-                    );
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            for e in entries {
+                let Some(ip) = e.ip else {
                     dropped.fetch_add(1, Ordering::Relaxed);
-                    if let Some(s) = storage.as_ref() {
-                        let _ = s.append_failures(std::slice::from_ref(&e.domain));
-                    }
-                    // 失败则给该 ASN 记一笔，达到阈值整家拉黑
-                    if let (Some(bl), Some((asn, org))) = (blocklist.as_ref(), asn_of_ip.as_ref())
-                        && bl.record_failure(*asn)
-                        && let Some(s) = storage.as_ref()
+                    pb.inc(1);
+                    continue;
+                };
+                let permit = match sem.clone().acquire_owned().await {
+                    Ok(p) => p,
+                    Err(_) => break,
+                };
+                let tx = tx.clone();
+                let kept = kept.clone();
+                let dropped = dropped.clone();
+                let geodb = geodb.clone();
+                let pb2 = pb.clone();
+                let storage = storage.clone();
+                let blocklist = blocklist.clone();
+                tokio::task::spawn_blocking(move || {
+                    // 1. 近期已失败过则跳过（除非 -force）
+                    if !force
+                        && storage
+                            .as_ref()
+                            .is_some_and(|s| s.is_failed_recently(&e.domain))
                     {
-                        let _ = s.add_asn_to_blocklist(*asn, org, "");
+                        dropped.fetch_add(1, Ordering::Relaxed);
+                        pb2.inc(1);
+                        drop(permit);
+                        return;
                     }
-                }
+
+                    if cloudflare::is_cloudflare_ip(ip) {
+                        dropped.fetch_add(1, Ordering::Relaxed);
+                        pb2.inc(1);
+                        drop(permit);
+                        return;
+                    }
+
+                    // 2. ASN 级预筛：整家 CDN 已拉黑时无需再握手
+                    let asn_of_ip = geodb.as_ref().and_then(|g| g.asn(ip));
+                    if let Some((asn, _)) = &asn_of_ip
+                        && blocklist.as_ref().is_some_and(|b| b.is_blocked(*asn))
+                    {
+                        dropped.fetch_add(1, Ordering::Relaxed);
+                        pb2.inc(1);
+                        drop(permit);
+                        return;
+                    }
+
+                    crate::debugln!(
+                        "[debug] probe {} ip={} asn={:?}",
+                        e.domain,
+                        ip,
+                        asn_of_ip.as_ref().map(|(a, _)| *a)
+                    );
+
+                    match tls::probe(&e.domain, ip, timeout) {
+                        Ok(p) if tls::validate(&p) => {
+                            crate::debugln!(
+                                "[debug] OK {} country={} pq={} alpn={:?} h3={} chain={} certs={}B",
+                                e.domain,
+                                geodb.as_ref().map(|g| g.country(ip)).unwrap_or_default(),
+                                p.is_pq(),
+                                p.alpn,
+                                p.h3_support,
+                                p.cert_chain_len,
+                                p.cert_total_bytes
+                            );
+                            let country = geodb
+                                .as_ref()
+                                .map(|g| g.country(ip))
+                                .unwrap_or_else(|| "UNKNOWN".to_string());
+
+                            if geo::is_blocked_country(&country) {
+                                dropped.fetch_add(1, Ordering::Relaxed);
+                                if let Some(s) = storage.as_ref() {
+                                    let _ = s.add_blocked_domain(
+                                        &e.domain,
+                                        &format!("country {country}"),
+                                        false,
+                                    );
+                                }
+                            } else {
+                                kept.fetch_add(1, Ordering::Relaxed);
+                                if let Some(s) = storage.as_ref() {
+                                    let _ = s.save_success(&e.domain, &country);
+                                }
+                                let _ = tx.blocking_send((e.clone(), country, p.is_pq()));
+                            }
+                        }
+                        other => {
+                            crate::debugln!(
+                                "[debug] FAIL {}: {:?}",
+                                e.domain,
+                                other.err().map(|x| x.to_string())
+                            );
+                            dropped.fetch_add(1, Ordering::Relaxed);
+                            if let Some(s) = storage.as_ref() {
+                                let _ = s.append_failures(std::slice::from_ref(&e.domain));
+                            }
+                            // 失败则给该 ASN 记一笔，达到阈值整家拉黑
+                            if let (Some(bl), Some((asn, org))) =
+                                (blocklist.as_ref(), asn_of_ip.as_ref())
+                                && bl.record_failure(*asn)
+                                && let Some(s) = storage.as_ref()
+                            {
+                                let _ = s.add_asn_to_blocklist(*asn, org, "");
+                            }
+                        }
+                    }
+                    pb2.inc(1);
+                    drop(permit);
+                });
             }
-            pb2.inc(1);
-            drop(permit);
-        }));
-    }
+            drop(tx);
+        })
+    };
+
+    // 外层这份 tx 也必须 drop，否则 rx.recv() 永远等不到 None
     drop(tx);
 
     let mut by_country: std::collections::BTreeMap<String, (Vec<String>, Vec<String>)> =
@@ -361,9 +379,7 @@ pub async fn build_pools_entries_with_history(
         }
         accepted.push(entry);
     }
-    for h in handles {
-        let _ = h.await;
-    }
+    let _ = producer.await;
 
     write_dual_pb(out_dir, &by_country)?;
     progress::finish(
@@ -792,6 +808,42 @@ mod history_tests {
         .unwrap();
         // force 不清理历史，历史依然在
         assert!(hist.is_failed_recently("x.invalid"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 派发与回收必须并发，否则 channel 背压会互等死锁。
+    ///
+    /// 死锁前提是 worker 走到 `blocking_send`（即 kept>0）。本测试用全失败
+    /// 目标，构造不出该路径，因此只能当「进程不整体挂住」的冒烟守卫：
+    /// 真正捕获 kept>0 死锁需要可握手的本地 TLS 服务，见 probe 固定连 443。
+    #[tokio::test]
+    async fn dispatch_and_drain_run_concurrently() {
+        let dir = tmp("conc");
+        // 目标数 200 >> workers*2（channel 容量 8），全部快速失败以免拖慢测试
+        let entries: Vec<Entry> = (0..200)
+            .map(|i| Entry::new(format!("c{i}.invalid"), "127.0.0.1".parse().unwrap()))
+            .collect();
+
+        let res = tokio::time::timeout(
+            Duration::from_secs(60),
+            build_pools_entries_with_history(
+                entries,
+                &dir.join("pb"),
+                None,
+                4,
+                Duration::from_millis(200),
+                None,
+                None,
+                true,
+            ),
+        )
+        .await;
+
+        assert!(
+            res.is_ok(),
+            "派发与回收未并发，在 channel 背压上死锁（超时 60s）"
+        );
+        res.unwrap().unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 
