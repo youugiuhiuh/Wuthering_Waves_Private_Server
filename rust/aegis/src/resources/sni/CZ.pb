@@ -101,6 +101,7 @@ archery.cz
 	atreya.cz
 audi-sport.net
 autobazarvysocina.cz
+autocentral.cz
 automaty777.sk
 autosamolepky.cz
 
@@ -320,6 +321,7 @@ cnews24.ru
 corsicko.cz
 	cotrex.cz
 countrylife.cz
+cra.cz
 
 creammy.cz
 crossword-kingdom.com
@@ -336,6 +338,7 @@ csbeton.cz
 cyclers.app
 cyklistevitani.cz
 cyklocestovani.cz
+cyklodiskont.cz
 cykloshop.sk
 czechia.com
 czechitas.cz
@@ -403,6 +406,7 @@ deramax.cz
 dicholding.com
 digiskills.cz
 digitalsport.co
+dinopark.cz
 	diochi.cz
 disk.cz
 	distyk.pl
@@ -507,6 +511,7 @@ elvisia.hu
 energiezivota.com
 enjoystyle.cz
 ennyroom.sk
+eox.at
 epitbike.cz
 	epuap.org
 
@@ -644,6 +649,8 @@ goldbee.cz
 gorolweb.cz
 gothicz.net
 gotobrno.cz
+
+gransy.com
 	gravon.cz
 green-heads.cz
 greensteps.cn
@@ -651,6 +658,7 @@ goldbee.cz
 grego.site
 grilovani.cz
 growcity.cz
+growmarket.cz
 gsm-suciastky.sk
 	gunlex.cz
 gymnaziumslany.cz
@@ -668,6 +676,7 @@ grego.site
 	hdat2.com
 healthfactory.cz
 heavenshop.hu
+heavenshop.sk
 heliosrace.cz
 heliumking.cz
 heliumking.hu
@@ -778,6 +787,7 @@ janperi.cz
 jasnapaka.com
 jatekokminiszteriuma.hu
 jawamarkt.cz
+jcu.cz
 jeans-shop.cz
 jedensvet.cz
 	jezdci.cz
@@ -964,6 +974,7 @@ madvell.cz
 magickids.sk
 magickyobchod.sk
 magicstudio2000.cz
+magieprirody.cz
 
 makovec.cz
 	mamido.cz
@@ -1025,6 +1036,7 @@ miryoku.cz
 mkz-ltm.cz
 mmsw.cz
 	mntech.cz
+mobilizujeme.cz
 mobilnidomy-kolin.cz
 mobilnireziser.cz
 mocafino.sk
@@ -1041,6 +1053,7 @@ mkz-ltm.cz
 montessori.cz
 moolbike.cz
 	mornet.cz
+morskeakvarium.cz
 motokramek.cz
 motokramok.sk
 
@@ -1057,6 +1070,7 @@ motomax.cz
 mtt-brno.cz
 	muffik.cz
 mujmiband.cz
+multilaserwifi.com.br
 musicaflorea.cz
 muzeum-meteoritu.cz
 muzeumhry.cz
@@ -1292,6 +1306,7 @@ proglas.cz
 prosebe.cz
 proteinaco.hu
 proteinaco.sk
+protilatky.cz
 protilatky.sk
 protisedi.cz
 
@@ -1381,6 +1396,8 @@ rockway.cz
 rosgenerator.ru
 rosvetrogenerator.ru
 
+rpgnuke.ru
+
 rprshop.cz
 rsko.cz
 rsts.cz
@@ -1466,6 +1483,7 @@ slippsy.cz
 smart-log.sk
 smart-switch.cz
 smart.sk
+smartape.net
 smarthost.cz
 smartnakup.cz
 smokepipe.cz
@@ -1481,6 +1499,7 @@ smoula.net
 solarninovinky.cz
 solarniplachtacornisun.cz
 solen.cz
+sonar-prg1-1.xx.fbcdn.net
 sonoviny.cz
 
 sousede.cz
@@ -1552,6 +1571,7 @@ tenolix.cz
 
 texbase.cz
 	textil.eu
+	texy.info
 thecelticblog.com
 themag.co.uk
 thewoodcraft.org
@@ -1629,6 +1649,7 @@ valvera.cz
 vendyatelier.cz
 ventishop.cz
 vermione.cz
+veselezvire.cz
 vesna.cz
 	vesnet.cz
 veterankalendar.cz
@@ -1705,6 +1726,8 @@ webgame.cz
 weedshop.cz
 weedshop.hu
 werawerk.cz
+
+wic-net.cz
 wildlifefotoforum.cz
 	wilens.cz
 windguru.cz
@@ -1715,6 +1738,10 @@ worknow.cz
 wpjshop.cz
 	wvg.cloud
 wwa.cz
+www.elerhetootthon.hu
+www.gonet.tv
+www.jabkolevne.cz
+www.vypredajobliecok.sk
 wy.sk
 x-armyshop.cz
 
@@ -1759,6 +1786,7 @@ zidle24.cz
 
 znkshop.cz
 znojmoregion.cz
+zonercloud.cz
 zonercloud.net
 zonercloud.sk
 zoodecin.cz
@@ -1773,7 +1801,7 @@ znkshop.cz
 zuty.pl
 zuty.sk
 zuzadesignstore.cz
-zvireci-potreby.cz1-2-3-ubytovanie.sk14-15.cz1913.cz1a-pujcovna.cz1by-day.com1m.cz200.solutions22betpartners.com24casino.cz24sportnetwork.com2n.com3v.cz420koalaheadshop.com4home.cz4home.hu4home.pl777score-es.com777score-th.com777score.coma-weather.ruaaadodavatel.czaaapoptavka.czaaapozyczka.plaarongroup.netabcapartments.euaccelerando.czachievethatonline.comactive24.catactive24.comactive24.deactive24.esactive24.nladbeatum.czadex.comadiktologie.czadombontul.huadriadatabanka.xyzadrialenti.itadriarent.czadvertmail.czaero.czafricanliberty.org	agados.cz	agados.skagama-sex.czagatinsvet.czagenturasport.cz	agroad.esagromanualshop.czagroportal24h.cz	ahifi.comairport-pardubice.czakap.czaktivni-rybolov.czakumo.czalahednews.com.lb
+zvireci-potreby.cz1-2-3-ubytovanie.sk123dopyt.sk14-15.cz1913.cz1a-pujcovna.cz1by-day.com1m.cz200.solutions22betpartners.com24casino.cz24sportnetwork.com2n.com3v.cz420koalaheadshop.com4home.cz4home.hu4home.pl777score-es.com777score-th.com777score.coma-weather.ruaaadodavatel.czaaapoptavka.czaaapozyczka.plaarongroup.netabcapartments.euaccelerando.czachievethatonline.comactive24.catactive24.comactive24.deactive24.esactive24.nladbeatum.czadex.comadiktologie.czadombontul.huadriadatabanka.xyzadrialenti.itadriarent.czadvertmail.czaero.czafricanliberty.org	agados.cz	agados.skagama-sex.czagatinsvet.czagenturasport.cz	agroad.esagromanualshop.czagroportal24h.cz	ahifi.comairport-pardubice.czakap.czaktivni-rybolov.czakumo.czalahednews.com.lb
 alarab.com
 alarab.netalbaretos.comalcadrain.comalchymisthotel.comaldagames.com	alemat.sk	alensa.ae	alensa.at	alensa.be	alensa.bg	alensa.chalensa.co.ukalensa.com.mt	alensa.cz	alensa.dk	alensa.es	alensa.fi	alensa.fr	alensa.hu	alensa.nl	alensa.pl	alensa.se	alensa.si	alensa.skalfadog24.hu
 aliaweb.czalis.czaliso.czameco.czamitomation.cz
@@ -1786,7 +1814,7 @@ armyweb.cz
 arnika.orgaroha.czarta.czartevini.cz	arties.czarub.czarvalauto.czasijskejidlo.czastronomy.czatkm.czatlas-net.czatlasgroup.czatlasskolstvi.czatriumhotel.sk
 aubiri.com	aubiri.cz	aubiri.eu	aubiri.skauctions-art.czaulix.cz
 aunika.comauportal.czautio.czautolaky1.skautolouda.czautomaty-zdarma-online.czautonorma.huautonorma.roautotechna.sk
-autoweb.czav-host.comazscore-kr.comazscore.co.it
+autoweb.czav-host.comazscore-kr.comazscore.co.itazscore.co.za
 azscore.de
 azscore.es
 azscore.fr
@@ -1795,26 +1823,26 @@ azscore.ng
 azscore.pl	badoo.combadoocdn.combadsystem.czbagmaster.czbagosport.sk
 baharis.czbakalari.czbaleasing.czbalikdozahranici.cz
 baltrio.skbankeryd.infobaobab-books.net
-bastard.czbatohy-online.czbazenslovany.cz	bdshop.sk	beetle.cz	befoto.cz
-belabel.sk	berlet.debeste-immobilien-kroatien.atbestseries.czbestsslots.combetarena.skbetonpres.czbeves.czbezeckyzavod.czbezkempu.czbezrealitky.combezvapostele.cz
+bastard.czbatohy-online.czbazenslovany.czbddubina2.cz	bdshop.sk	beetle.cz	befoto.cz
+belabel.sk	berlet.debeste-immobilien-kroatien.atbestseries.czbestsslots.combetarena.skbetexplorer.combetonpres.czbeves.czbezeckyzavod.czbezkempu.czbezrealitky.combezvapostele.cz
 bffcdn.com	bibloo.hubijuterii-eshop.robikeporn.czbirdlife.czbitrix24.aebitrix24.cnbitrix24.combitrix24.com.brbitrix24.com.trbitrix24.debitrix24.eubitrix24.frbitrix24.idbitrix24.inbitrix24.jpbitrix24.netbitrix24.plbizhuta-eshop.bg
 bizinet.eubktrutnov.czblack-reality.czblackcomb-shop.eublackcomb.czblackcomb.sk	blazek.czbloguji.cool	blogus.cz
 bob2023.czbobcasino.reviewbohemiajobstart.czbohemiasoft.com
-bohnice.czbookoloengine.combookshop.cz	bourky.czbrainquest.debrandcloud.pro	brilon.czbrna.czbrnenskamuzejninoc.czbrno-net.cz	brnoid.czbrokertrust.czbrontosaurus.czbruderland.atbruderland.ro	brumla.cz	brumla.skbrunetavkuchyni.cz	bsshop.czbubibubi.czbuddhabarhotelprague.com
+bohnice.czbontonland.czbookoloengine.combookshop.cz	boukal.cz	bourky.czbrainquest.debrandcloud.pro	brilon.czbrna.czbrnenskamuzejninoc.czbrno-net.cz	brnoid.czbrokertrust.czbrontosaurus.czbruderland.atbruderland.ro	brumla.cz	brumla.skbrunetavkuchyni.cz	bsshop.czbubibubi.czbuddhabarhotelprague.com
 bugelo.combumbcdn.com
 bumble.combumblexternalstatic.combuscoamor.mx	bydlet.czbydlisnami.czcadforum.czcadstudio.czcalculat.orgcalla.czcampu.eucandy-store.czcanis.czcanliskor.comcannabisfood.czcapibohuslavice.czcappa.czcaravan24.czcarboservis.czcardcasino.skcasadelprofumo.itcasino-kartac.czcasinoarena.skcasinoautomaty.czcasinohryzdarma.sk	catler.czcbreproperties.czcek.cz
-centrio.czcentropol.czcentroquote.itcenyprizemi.czcesky-hosting.czcesky-hosting.euceskycichlidklub.eu	cesnet.cz
-cestoma.czcge.ascgf.czchappyapp.comchatdate.appchemicke-listy.czchillistyle.euchoco-story-praha.czcinemart.cz	cirihk.czcirkevnituristika.czcisarskavinice.czcitrus-shop.skcity-webcams.comciur.czckgo2.czckgo2.sk	ckveva.skclarioncongresshotelprague.comclick.uzclovekavira.czcmku.czcmmj.czcocky-optika.czcollegiumbohemicum.czcolorfullmade-shop.skcontact-lentile.rocontipro.comcookie-lista.czcoop.cz	coptkm.czcoquetearcolombia.comcorerestart.czcoreyoga.cz	corial.sk	cortex.czcpska.czcreasoft.czcrmcarecloud.comcrs-company.comcrtv.cz
+centrio.czcentropol.czcentroquote.itcenyprizemi.czceskeporno.czcesky-hosting.czcesky-hosting.euceskycichlidklub.eu	cesnet.cz
+cestoma.czcge.ascgf.czchappyapp.comchatdate.appchemicke-listy.czchillistyle.euchoco-story-praha.cz	cihar.comcinemart.cz	cirihk.czcirkevnituristika.czcisarskavinice.czcitrus-shop.skcity-webcams.comciur.czckgo2.czckgo2.sk	ckveva.skclarioncongresshotelprague.comclick.uzclost.work.gdclovekavira.czcmku.czcmmj.czcocky-optika.czcollegiumbohemicum.czcolorfullmade-shop.skcontact-lentile.rocontipro.comconvert-units.infocookie-lista.czcool-server.czcoop.cz	coptkm.czcoquetearcolombia.comcorerestart.czcoreyoga.cz	corial.sk	cortex.czcpska.czcreasoft.czcrmcarecloud.comcrs-company.comcrtv.cz
 crulle.comcs-dopravak.czcso.czcsop.czctu.cz	cubu.infocuni.czcuotasahora.comcurele-ceas.rocyklosvec.czczechmycology.orgczechtop100.czd4n.czd5t5.com
 dac1904.skdalnicesko.com	dalten.czdancinghouse.cz
 danovky.czdanyk.czdarcekeshop.skdatacamp.co.ukdatahost.czdatasystem.czdateefy.comdbsportal.czdc3.czdcit.czddfnetwork.comdead-code.orgdekolamp.czdekordort.cz
 deluxea.skdeluxpets.comdetskydum.czdetskyeshop.czdevcontact.czdevojkeimomci.comdfpartner.eudgft.comdi.city
 dianacb.czdigitalnitelevize.czdigitalsys.czdildoteka.czdilynakotle.czdirectalpine.comdirectalpine.czdirectalpine.eu
 diretta.it
-dish.guidediskreteflirts.comditekrize.czdivadlozlin.czdjkt.eudkteplice.czdlhe-videa.skdnaelektro.czdns-station.netdoggpshunter.clouddognet.systemsdogoffice.czdolnimorava.czdomybytypozemky.czdopravnivychova.cz
-dorper.bizdovolena.czdovolenkovani.czdpmk.sk	dracik.skdrama.czdreamlux.czdrevenedarky.czdrevenyzahradnidomek.czdrogy-info.czdrot.rodrotik-elektro.skdszo.cze-bezpeci.cze-ck.cze-deniky.cze-elektro.cze-kladensko.cze-mostecko.cz	e-news.cze-shop.report	e4home.ro	ealink.esearch.czeasy-stock.czeasyoptic.cz
+dish.guidediskreteflirts.comditekrize.czdivadlozlin.czdjkt.eudkteplice.czdlhe-videa.skdnaelektro.czdns-station.netdoggpshunter.clouddognet.systemsdogoffice.czdolnimorava.czdolnivitkovice.czdomybytypozemky.czdopravnivychova.cz
+dorper.bizdovolena.czdovolenkovani.czdpmk.sk	dracik.skdrama.czdreamlux.czdrevenedarky.czdrevenyzahradnidomek.czdrogy-info.czdrot.rodrotik-elektro.skdszo.cze-bezpeci.cze-ck.cze-deniky.cze-elektro.cze-glamour.ple-kladensko.cze-mostecko.cz	e-news.cze-shop.report	e4home.ro	ealink.esearch.czeasy-stock.czeasyoptic.cz
 eco-rec.czeconomia.czedera.czedisonline.skedrive-hosting.czedsystem.cz	edusan.skefa-kaeufl.deegit.czegofashion.czekohosting.czekolekaren.sk
-ekolist.czekszer-eshop.huelektra-dvorak.czelektrokola.czelektroobchod-elspo.skelektrosms.czelementstore.czemailkampane.czemailprofi.czemi.czemi.skemmanuel.plencontrosquentes.ptencuentrosmilf.comencuentrospasionales.coenergeto.deenergycloud.czenglishka.cz	enigoo.czenii.czenlogit.com	epenta.hu	epenta.pl	epenta.skequichannel.czereading.czergebnisselive.comescape4x4.eu
+ekolist.czekszer-eshop.huelektra-dvorak.czelektrokola.czelektroobchod-elspo.skelektrosms.czelementstore.czelnino-parfum.plemailkampane.czemailprofi.czemi.czemi.skemmanuel.plencontrosquentes.ptencuentrosmilf.comencuentrospasionales.coenergeto.deenergycloud.czenglishka.cz	enigoo.czenii.czenlogit.com	epenta.hu	epenta.pl	epenta.skequichannel.czereading.czergebnisselive.comescape4x4.eu
 escape6.czescortdimension.netesgo.orgeshop-franke.cz
 eshopit.cz
 esports.cz	essens.bgessens.co.uk	essens.cy	essens.gr	essens.hu	essens.kg	essens.lt	essens.ro	essens.siesthe-plastika.cz	etenis.skeucty.czeukraken.comeuroeducation.czeurofotbal.czeuronumis.eueurotecasia.comeurotravel.hu
@@ -1822,11 +1850,11 @@ evatour.cz
 evropa2.czewafarna.comexekuce24.czexpanzo.comextra.czextrafit.czextrainspirace.czextrastory.cz
 eztraty.czfahrrad-marcks.defajnradio.czfajnradiohity.czfanshopfcb.czfantasyplanet.czfapi.cz	farmen.cz	farmet.czfba.czfcmodding.comfcslovacko.czfctables.comfcviktoria.czfebiofest.czferbotky.czfertility.czfestivalstraznice.czfieldmap.czfightlive.skfilmprylar.sefilmyzive.czfinarbitr.czfinesoftware.esfinmero.com
 firedog.eufirmy.cz
-firstit.czfishingcentrum.czfishmaster.czfitbazar.czfkpribram.czflashscore.aeflashscore.atflashscore.bgflashscore.co.ukflashscore.com.trflashscore.dkflashscore.fiflashscore.grflashscore.itflashscore.mobiflashscore.ninjaflashscore.nlflashscore.roflashscore.seflashscore.uaflashscores.co.ukflashtips.comflexcloud.czflexcloud.infoflexcloud.xyzflirtrande.com	florea.czfnshp.czfod.czfolksongs.eufomaobchod.czfondkinematografie.czfootball-coefficient.eu
+firstit.czfishingcentrum.czfishmaster.czfitbazar.czfkpribram.czflashscore.aeflashscore.atflashscore.bgflashscore.co.ukflashscore.com.trflashscore.com.uaflashscore.dkflashscore.fiflashscore.grflashscore.itflashscore.mobiflashscore.ninjaflashscore.nlflashscore.roflashscore.seflashscore.uaflashscores.co.ukflashtips.comflexcloud.czflexcloud.infoflexcloud.xyzflirtrande.com	florea.czfnshp.czfod.czfolksongs.eufomaobchod.czfondkinematografie.czfootball-coefficient.eu
 footbee.skforbescasino.czformulastore.skfortion.netfotbalovavidea.czfragranza.czfragranza.skfrantisek.eufrauenmarkt.comfraus.czfreerande.czfreevideo-porno-zdarma.czfrekvence1.czfscore-bd.comfscore-sn.comfscore-vn.comfscore.co.tzfscore.co.zafscore.com.arfscore.com.gh	fscore.es	fscore.fr	fscore.in	fscore.kz	fscore.mx
 fscore.net	fscore.slfscores.com.brftpplastics.czftsun.czfulfillment.czfundektris.app	funrun.czfutbalspravy.skfxstreet.czfzu.czgalen.czgamax-motor.czgamechange.partnersgaraz.czgastrochladenie.skgastromall.skgastrozona.plgastrozone.hu
 georgia.czgiant.czgigaexotic.eugigaprint.cz
-giorico.czgivsport.comgladiatorrace.czglobula.spacegoodgoods.czgovzalla.comgramodesky.shopgrandstarsorchestra.comgrandwin.czgranofyt.cz
+giorico.czgirlsgonewild.comgivsport.comgladiatorrace.czglobula.spacegoodgoods.czgovzalla.comgramodesky.shopgrandstarsorchestra.comgrandwin.czgranofyt.czgraphic-vinyl.eu
 grendel.czgrolsch.comguttashop.cz	gymtce.czgynem.czhabilis-shop.euhajduszoboszlo.huhaltexracing.skhamrsport.cz
 hanibal.cz	hannah.czhavelpartners.czhc-kometa.cz	hdclub.skhealthplace.comhedurio.comhejduksport.cz
 hellspy.to
@@ -1834,22 +1862,23 @@ herando.deherbaprodukt.plhernaudedka.czhezkakoupelna.czhidden-audio.de
 homolka.cz
 honcdn.comhonda-crx.infohonzuvkod.dev
 hook-tz.czhoroskopy.czhorsefeathers.czhospiclitomerice.czhoszigetelesplaza.huhotelduo.czhotelgram.comhotelsenec.skhouseoftaboo.comhracipht.czhradeckralove.czhrady-zriceniny.czhrubonovo.skhucr.czhudebniny-shop.czhudebnisvet.cz
-huggle.comhukot.czhurabazar.czhuseyingozlu.comhustopece.czi-b2c.eui4net.euiabio.euic.czicpraha.com
+huggle.comhukot.czhurabazar.czhuseyingozlu.comhustopece.cz
+hvfree.nethzscr.gov.czi-b2c.eui4net.euiabio.euib.trinitybank.czic.czicpraha.com
 ict-nn.comictx.czideska.info	idigit.sk
 idoklad.cz
-idoklad.skidrug.pwielektra.cz	ifauna.czignisbrunensis.cz	igoods.czimagehosting.cz
+idoklad.skidrug.pwielektra.cz	ifauna.czifotovideo.czignisbrunensis.cz	igoods.czimagehosting.cz
 imghost.czimportworld.czimpressionmedia.czindigoumi.czinfoglobe.cz	infoma.sk
 infotip.czinginails.siinginails.skingredients-store.com
 inisoft.czinstructor.czintercloud.czinterlighting.netinternet1.czinterval.czinzertos.czinzertos.pliprivaty.cziqlandia.czirontime.cz
 iscarex.czishopforipsos.comiskolavilag.hu	isotra.cz	ispepa.czit.atitalieonline.euitalskamodavm.czitalskamodavm.sk
 itglobe.cz
 itglobe.euitica.czitin.czitmco.cz
-itmedia.cz	itwolf.czizus.czjablonec-krkonose.czjacon.czjahodovyweb.czjamu.czjaromirstetina.czjaw.czjawa-korda.czjediwear.czjennezavazne.czjenreality.cz
+itmedia.czitmix.cz	itwolf.czizus.czjablonec-krkonose.czjacon.czjahodovyweb.czjamu.czjaromirstetina.czjaw.czjawa-korda.czjediwear.czjennezavazne.czjenreality.cz
 jesenik.czjeseniky.czjfo.czjftattoo.czji-hlava.czjjh.cz	jk-box.pljo-polcrendszer.hujobgirl24.rujobstrail.comjohn-king.czjoweb.czjtx.czjumpfamily.cz	junior.czjupii.cz
 jurasek.czjust4web.cz
 jvgfoto.sekafkamuseum.czkamir.cz
 kamsnim.czkancional.cz	kaocko.czkarma-as.czkatalog-obchodu.czkavalirka.czkcreality.czkemp-kristyna.czkemp-merkur.czkempstribrnyrybnik.czketodiet.cz
-ketomix.cz	ketris.cz	ketris.plkhscb.czklatovynet.czklatovynet.euklempirsky-eshop.czklicovyservis.czklimavex.euknihacek.czknizecirybnik.czknizniklub.cz
+ketomix.cz	ketris.cz	ketris.plkhscb.czkiloohm.infoklatovynet.czklatovynet.euklempirsky-eshop.czklicovyservis.czklimavex.euknihacek.czknizecirybnik.czknizniklub.cz
 kocarky.czkoha-system.czkokiskashop.hukokiskashop.rokolemsveta.czkoloshop.czkoloshop.skkoloshop24.dekonkolski.comkonkordia.czkontaktlinsen-billig.at
 koongo.comkooperativa.skkoordinacesvateb.czkopacak.com
 koping.netkosice-dh.skkosmetika-zdravi.czkoupelny-badideal.czkouzlodomova.eukrabiceodbot.czkralovstvi-tiande.czkrasy-slovenska.skkreativnisvet.czkrestanska-predajna.skkristian.czkrizovkarsky-slovnik-online.czkrizovky-slovnik.czkrokodylizoo.cz	kromhl.czkscm.czkszcb.czkupele-bojnice.sk
@@ -1857,83 +1886,87 @@ kupkolo.czkurzy-online.skkvalitnipujcka.czkvetinyexpres.cz
 kvinono.sk	kytary.cz	kytary.de	kytary.pl	kytary.skkzcr.eukzkraken.comkzmj.czlabas.sklabo.czlabskaplavebni.cz
 lahudky.czlama.sklands-po.comlaros.czlaserint.netlast-minute.cz
 lastyle.czlasvegaskasino.czlavaliere.czlavycosmetics.com
-lazadov.czlebis.cz	lecka.netleda.cz
+lazadov.czlebis.cz	lecka.netleda.czlegalporno.com
 legnex.com	legnex.delekarnapohoda.czlekarnaprodeti.czlekarskyemail.czlekizczech.pllencsebolt.hulentiamo.atlentiamo.co.uklentiamo.delentiamo.dklentiamo.eelentiamo.eslentiamo.hrlentiamo.itlentiamo.ltlentiamo.lvlentiamo.ptlentiamo.rolentiamo.sk	leshti.bg	lesycr.czlevnealarmy.czlezec.cz
 libinst.czlide.czlidovalekarna.czlifee.czligue.frlimbo.czlimoo.czlinkabezpeci.czlinuxsoft.cz
 lipno.infolipoelastic.itliter.cz	live24.amlivelivelive.comlivescore.czlivescores.bizlivescores.bzlivesport.eulivesportmedia.eull-c.czllpgroup.comlodipolabi.cz	loreta.czloterie-tikety.czlouda.cz	loutky.czloveseznamka.czlsapp.eu	lsfeed.eulsid.euluhacovice.eului.czlumenapp.com	lustit.cz
-luxoria.czluxusnemilovanie.comluxusrande.cz	m-shop.skmachmotors.czmadix.czmadurasconganas.commamaison.commamincinohackovani.czmanga-boomers.czmanufaktura.skmapa-sex.czmarasportscards.czmarianne.czmarksandspencerstore.czmarmaracanta.commascawebshop.humasco.humatesova.czmauricio.czmcslatina.czmechanizaceweb.czmedia4web.cz	mediar.czmegaknihy.czmegaknihy.skmegaksiazki.plmegamega.czmemberzone.czmemoryandconscience.eumerk.czmesto-uh.czmestojablonec.czmestokralupy.czmestosusice.czmetropolitni.czmfkskalica.skmicavujicic.commichal-sokolov.czmidkemiauo.commikov.czmilcollectibles.commilujivareni.czmimiaukce.czmimibazar.czmineral-blaha.commineralomat.czminiserver.cz	mioweb.cz
+luxoria.czluxusnemilovanie.comluxusrande.cz	m-shop.skm.eredmenyek.comm.flashscore.rom.flashscorekz.comm.pocketoption.commachmotors.czmadix.czmadurasconganas.commailocator.commailocator.czmamaison.commamincinohackovani.czmanga-boomers.czmanufaktura.czmanufaktura.skmapa-sex.czmarasportscards.czmarianne.czmarksandspencerstore.czmarmaracanta.commascawebshop.humasco.humatesova.czmauricio.czmcslatina.czmechanizaceweb.czmedia4web.cz	mediar.czmedium.seznam.czmegaknihy.czmegaknihy.skmegaksiazki.plmegamega.czmemberzone.czmemoryandconscience.eumerk.czmesto-uh.czmestojablonec.czmestokralupy.czmestosusice.czmetropolitni.czmfkskalica.skmicavujicic.commichal-sokolov.czmidkemiauo.commikov.czmilcollectibles.commilujivareni.czmimiaukce.czmimibazar.czmineral-blaha.commineralomat.czminiserver.cz	mioweb.cz
 mistore.czmix.it	mixxer.sk
-mjoules.cz	mk999.onemkstrebic.czmlekarna-kunin.czmluvenypanacek.czmmashorties.czmobilrank.humobilyskalka.czmocrsjablunkov.czmodaprostejov.czmodernatex.bemoderniobec.czmoderntv.eu	moebel.czmojadovolenka.eumojamilfka.skmojedopyty.skmojeprazdniny.czmoney.cz	montan.demoravska-galerie.czmoravskedivadlo.czmotv.eumountfieldhk.czmovipick.com
+mjoules.cz	mk999.onemkstrebic.czmlekarna-kunin.czmluvenypanacek.czmmashorties.czmmr.cz
+mmr.gov.czmobilrank.humobilyskalka.czmocrsjablunkov.czmodaprostejov.czmodernatex.bemoderniobec.czmoderntv.eu	moebel.czmojadovolenka.eumojamilfka.skmojedopyty.skmojeprazdniny.czmoney.cz	montan.demoravska-galerie.czmoravskedivadlo.czmotv.eumountfieldhk.czmovipick.com
 mpohoda.cz
 mpohoda.sk
 mraknet.cz
-mrcloud.czmrgroup.xyzmsmt.czmstrutnov.czmte.czmucha.czmucha.eu	muj.cloudmujhost.netmujotrok.czmuni.czmusicahispanica.eumusicrecords.cz	musmed.eumuzeumliteratury.czmuzeumradovesnice.czmydla.czmygreenway.commyslivost-lovectvi.czmywhooshinfo.com	nabrno.cznabytek-market.cz
+mrcloud.czmrgroup.xyzmsmt.czmstrutnov.czmte.czmucha.czmucha.eu	muj.cloudmujhost.netmujotrok.czmultiplace.orgmuni.czmusicahispanica.eumusicrecords.cz	musmed.eumuzeumliteratury.czmuzeumradovesnice.czmydla.czmygreenway.commyslivost-lovectvi.czmywhooshinfo.com	nabrno.cznabytek-market.cz
 naflirt.cznajlepsierande.sk
 nakluky.cznako.cz
 nakupik.cz
-nakupik.eunaprivat.infonaramkylenny.cznarodnikvalifikace.cznastrojecz.cz
+nakupik.eunaprivat.infonaradi-vesely.cznaramkylenny.cznarodnikvalifikace.cznastrojecz.cz
 natreku.cznaturtravel.cznavitel.comnaxxforge.runej-karoserie.cz
 nejkola.cznejlevnejsi-stavba.cznejremeslnici.cznemhb.cznemocnicehavirov.cznemocnicenachod.czneomezeny-hosting.cz
 neon-el.czneousys-tech.sk
 neousys.eu
 neousys.sknet-connect.cznetdatacomm.cz
-nethost.cznetio.cznetto.sknikal.cznipathfinder.comnody.cz
+nethost.cznetio.cznetto.sknikal.cznipathfinder.comnipax.cznkp.cznody.cz
 nomadem.cz
 norbeck.nunorrlandet.senosice-autoboxy.cznotebook.cz
 notino.com
 novalja.cz
-novalja.sknovinyvm.czns.boonscores.comnsoud.cznspartners.cznubis.cznudz.cznzip.czobchodcerpadel.czobchodmistramalka.czobecretuvka.cz
+novalja.sk
+novinky.cznovinyvm.czns.boonscores.comnsoud.cznspartners.cznubis.cznudz.cznzip.czobchodcerpadel.czobchodmistramalka.czobecretuvka.cz
 objevit.cz
 obrazky.czochrance.czochranna-skla.czoddsportal.comoddsportal1.comoddsportal2.comodpovidat.czoez.czoffia.huoffia.sk	okcomp.czokfin.czoknonemovitosti.czolaszorszagonline.hu
 olomouc.czone1.euoneid.czonemoresecure.comopravelektro.cz
-optonet.czorangeacademy.czoredo.czorgo.czorigo-reality.czorzo.czosa.czosel.czoutdoor-fashion.czoutfit4events.comoutfit4events.czoutfit4events.de	ovanet.czoveckarna.czownexams.com	padabo.hupagefive.compamatniknarodnihopisemnictvi.cz	papper.czparanoiaworks.mobipardubice-net.czpardubice.eupardubickeobchody.czparfemy-elnino.czparfemy-elnino.sk
+optonet.czorangeacademy.czoredo.czorgo.czorigo-reality.czorzo.czosa.czosel.czotvpavlu.czoutdoor-fashion.czoutfit4events.comoutfit4events.czoutfit4events.de	ovanet.czoveckarna.czownexams.com	padabo.hupagefive.compamatniknarodnihopisemnictvi.cz	papper.czparanoiaworks.mobipardubice-net.czpardubice.eupardubickeobchody.czparfemy-elnino.czparfemy-elnino.sk
 parfimo.bg
 parfimo.grparfumsetmoi.frparticle.czpartners-po.compartsdepot.czpartynabytek.czpasas.czpasswordrecoverytools.compbspe.czpearshealthcyber.com	pekass.eupenax.cz
 penax.infopersefona.czpet-distributor.czpeterlancfuresz.hupetrinska-rozhledna.cz	petrs.comphen.czpiaristestraznice.cz	pignus.czpivovary-staropramen.czpizzaalcapone.czplanobnovycr.cz
 plastia.euplayamologin.complodyvenkova.cz
 pneub2b.eu
-pneubrt.czpo.tradepobzykamy.compocket-broker.compocketoption.compocketpartners.compoda.tvpodaneruce.czpodcastroku.cz	podnos.eupoex.czpoflirtujmy.compoharrozhlasu.czpohrebnictvi-drozd.czpohrebniustavmusil.cz	pointa.czpokerarena.czpokeronline.skponal.skponozkozrout.czpoockovani.czpoptavky.czpopulariswp.compornovidea.sk	portal.cz	poski.composkireal.czpostylky-postele.czpotrade-zone.compotravinynapranyri.czpotrestajma.skpovleceni-obchod.czpowerlifter.czpowerlifting-csst.cz
+pneubrt.czpo.tradepobzykamy.compocket-broker.compocketoption.compocketpartners.compoda.tvpodaneruce.czpodcastroku.cz	podnos.eupoex.czpoflirtujmy.compoharrozhlasu.czpohrebnictvi-drozd.czpohrebniustavmusil.cz	pointa.czpokerarena.czpokeronline.skpolicie.gov.czponal.skponozkozrout.czpoockovani.czpoptavky.czpopulariswp.compornovidea.sk	portal.cz	poski.composkireal.czpostylky-postele.czpotrade-zone.compotravinynapranyri.czpotrestajma.skpovleceni-obchod.czpowerlifter.czpowerlifting-csst.cz
 pozoruj.cz
 pozoruj.sk	pphifi.czprace-brigady.czpragueivf.compraguerealestate.cz
 praha14.cz	praha4.czprahanadlani.czpravopisne.czpreciosalighting.com
-prehraj.toprehrajto.czpremiumcdn.netpressmedia.cz
+prehraj.toprehrajto.czpremiumcdn.netpressmedia.czprg.aero
 prgphil.czpribram.netprihlaskadozus.czpritomnost.cz
-proarms.cz	profem.czprofeskontakt.czprofi-parfemy.skprofikosmetika.czprofilihne.czprofimodel.czprofisvitidla.czprogress-sportswear.comprogress-sportswear.deprohledej.czpromaledobrodruhy.czproskoly.czprotetika-ergona.czprotivna-blondyna.czprozdravevlasy.czprozeta.netprumyslove-naradi.czprva-lekaren.skprvni-lekarna.czpshornicek.cz	ptacek.czptakoviny.bizpujcovna-lodi.czpvmsystem.sk	q-comp.czradio.cz	rafiki.cz
+proarms.cz	profem.czprofeskontakt.czprofi-parfemy.skprofikosmetika.czprofilihne.czprofimodel.czprofisvitidla.czprogress-sportswear.comprogress-sportswear.deprohledej.czpromaledobrodruhy.czproskoly.czprotetika-ergona.czprotivna-blondyna.czprozdravevlasy.czprozeta.netprumyslove-naradi.czprva-lekaren.skprvni-lekarna.czpshornicek.cz	ptacek.czptakoviny.bizpujcovna-lodi.cz2push-notification-token-service.livesport.servicespvmsystem.sk	q-comp.czradio.cz	rafiki.cz
 ragtime.nuraitrading.group	rajnys.czrajpapiera.skrajponozek.czrapidnet.cz
-rasovka.czrathouska.czrazdvapujcka.czrcobchod.cz	rdmoto.eureadzone.czrealitymat.czrealitypro.eu
+rasovka.czrathouska.czrazdvapujcka.czrcobchod.cz	rdmoto.eureadzone.czrealitycechy.czrealitymat.czrealitypro.eu
 recenze.cz
-recepty.czreckonasbavi.czregiofoto.czregiony24.czrehracky.onlinereoamos.comreservanto.skresortsobotin.cz
+recepty.czreckonasbavi.czregiofoto.czregiojet.czregiony24.czrehracky.onlinereoamos.comreservanto.skresortsobotin.cz
 respect.czresslovaci.netrestauraceeverest.czresultat.dkreviloshop.czrevizetypologie.czrevolutionhair.czreznictvirabbit.czrfa.cz
-rikplus.czrjelinek.czrno.skrockovyradio.czrockpoint.bgrockpoint.czrodatour.czroger.czrohembygdsforening.seroihunter.comromaniskolabattonya.hu	rosice.cz
+rikplus.czrjelinek.czrno.skrockovyradio.czrockpoint.bgrockpoint.czrockpoint.skrodatour.czroger.czrohembygdsforening.seroihunter.comromaniskolabattonya.hu	rosice.cz
 roznava.skrsrc-evpatoriya.ru	rubico.czrudolfinum.czruleta-zdarma-online.czrusnauka.comrybashop.com	rybina.cz	rybina.skrychleberle.cz	sablio.czsafaripark.czsafariparkresort.czsafariresort.cz
 safeart.cz	sagecz.cz
-sailing.sksanatoria-klimkovice.czsanubabu.czsanubabu.sksartor-stoffe.desartorbohemia.comsauna-in.czsauna.cz	saunia.czsbaeduca.skscarfbot.comschools-uk.euschulliste.euscorespro.comsdn.czsecurityguide.czsedesatka.czsefismoto.czsegwaypowersports.hrsekskontakt-rs.comsemerinka.czseolight.czserialguru.czserverzone.euserverzone.skservicedesk.netseverske-svetlo.czsevt.sksexkontakt.comsexkontakty.czsexprivatek.czsexshop-erotic.czsexxseznamka.czsexyschuzky.czsexznamka.cz	seznam.czseznamzpravy.czsferabubeniku.infoshaheed.com.lb	shakes.czshoozers.cz	shopiq.cz
+sailing.sksanatoria-klimkovice.czsanubabu.czsanubabu.sksartor-stoffe.desartorbohemia.comsauna-in.czsauna.cz	saunia.czsauto.czsbaeduca.skscarfbot.comschools-uk.euschulliste.euscorespro.comsdn.czsearch.seznam.czsecurityguide.czsedesatka.czsefismoto.czsegwaypowersports.hrsekskontakt-rs.comsemerinka.czseolight.czserialguru.czserverzone.euserverzone.proserverzone.skservicedesk.netseverske-svetlo.czsevt.sksexkontakt.comsexkontakty.czsexprivatek.czsexshop-erotic.czsexxseznamka.czsexyschuzky.czsexznamka.cz	seznam.czseznamzpravy.czsferabubeniku.infoshaheed.com.lb	shakes.czshooting.czshoozers.cz	shopiq.cz
 siemens.czsifos.czsimpless.cz	simplo.czsiteinformation.co.uk
-siteone.czsitepark.czskalnickari.czskateparkpardubice.czskijizerky.czskiricky.czskladova-okna.czskladove-okna.sksklik.czskoda-diely.skskoda-dily.czskoda-parts.comskolni-fotograf.czskolniprogram.czskor-express.comskutecnost.czskutocnost.sk	skutry.czslapanice.czslavicin.orgslavnostichrestuavina.czslavnostijihu.czsleviste.cz	sluzby.czsmartballoons.eusmenarna-praha1.czsmero-reklama.czsnbz.czsnow.czsnowboard-online.czsnowboard-online.plsodastream.hu
+siteone.czsitepark.czskalnickari.czskateparkpardubice.czskijizerky.czskiricky.czskladajpuzzle.skskladejpuzzle.czskladova-okna.czskladove-okna.sksklik.czskoda-diely.skskoda-dily.czskoda-parts.comskolni-fotograf.czskolniprogram.czskor-express.comskutecnost.czskutocnost.sk	skutry.czslapanice.czslavicin.orgslavnostichrestuavina.czslavnostijihu.czsledovanitv.czsleviste.cz	sluzby.czsmartballoons.eusmenarna-praha1.czsmero-reklama.czsnbz.czsnow.czsnowboard-online.czsnowboard-online.plsnowboard-zezula.czsodastream.hu
 softici.czsolocircumnavigation.comsorrygravity.czsoukromerybarskereviry.czsoundbrothers-berlin.desoutezezus.czspacecom.czspahoteldevin.czsparklypool.czspcr.cz
-speedlo.cz	speleo.czsperky-marre.czsport-mix.eusporthotarek.czsportjim.comsportovniautodoplnky.czspyobchod.czsrecepty.czsrovnano.czsrp-shkolskasrbia.comstadionsedlcany.eustahuj-programy.cz	stapro.czstarcasinogroup.czstarojickalhota.czstavebniceprochytredeti.czstdin.czstojanyregaly.czstormware.czstormware.sk	strava.cz
+speedlo.cz	speleo.czsperky-marre.czsport-mix.eusport.czsporthotarek.czsportjim.comsportovniautodoplnky.czspyobchod.czsrecepty.czsrovnano.czsrp-shkolskasrbia.comsrw.czstadionsedlcany.eustahuj-programy.cz	stapro.czstarcasinogroup.czstarojickalhota.czstavebniceprochytredeti.czstdin.czstojanyregaly.czstormware.czstormware.sk	strava.cz
 strazne.eu	stream.cz	strobl.cz
 stugnet.sesue-ryder.cz
 sumava.netsumavanet.cz	sunfun.plsupergames.czsupertip.cz
-superto.czsusi.czsutka.eusvatbasnu.czsvet-filatelie.czsvet-koupelny.czsvet-oken.czsvetplodu.czsympatie.sk
+superto.czsusi.czsutka.eusvatbasnu.czsvet-filatelie.czsvet-koupelny.czsvet-oken.czsvetplodu.czsvetzeny.czsympatie.sk
 syncare.czszijak-okosorakhoz.hut-mobile.cztalianskoonline.sktanecnimagazin.cztapety-folie.cztapxphone.comtatra.cztazna-zarizeni-praha.cztchiboblog.cztcmeshop.cztcservis.czteamlibrary.cztechbooks.cztechnoline.cz
 telecon.cztelevizeseznam.cztelexion.cztenis-zive.cztennisexplorer.com	tereus.eutermosan.sk
-tescosw.cztess-lab.comtestcalculateur.frtestyojetin.cztetehacko.eu
+tescosw.cztess-lab.comtestcalculateur.frtestflashscore.comtestyojetin.cztetehacko.eu
 themama.aithematronic.czthinline.cztipli.cztipli.pltipli.ro	tlacme.sktomasradil.netton.eu
-toner.shoptonerpartner.cztonerpartner.sitonerpartners.hutoolzone.cztopas.sktopcentrumcar.cz	topkur.detornadoshop.cztrailpoint.cztransferhighway.comtravel-free.cztrinitybank.cz	triola.sktrixiecz.cztrnet.czttnet.cztugendhat.eutuningstyle.czturbopizza.czturnaje.org
+toner.shoptonerpartner.cztonerpartner.sitonerpartners.hutoolzone.cztopas.sktopcentrumcar.cz	topkur.detornadoshop.cztrailpoint.cztransferhighway.comtravel-free.cztrinitybank.cz	triola.cz	triola.sktrixiecz.cztrnet.czttnet.cztugendhat.eutuningstyle.czturbopizza.czturnaje.org
 tvhotel.cztvojerande.cztvrdene-skla.sktvrdeneskla.euudelejsiplacku.czuhk.czukrajinci.cz
 ulekare.czumelekvetiny.cz
 unicars.cz
 unicorn.euunicornroleplay.comuniforminsignia.netuniforminsignia.org
-unihost.czunimagnet.czunium.czunyp.czuprazeno.czuredninastenka.czuvuhk.czvaclavhavel.czvagnerpool.comvagnerpool.hrvakcinace.euvalidcoupons.netvanocnikoncerty.czvape.euvapezone.czvary-net.czvase-krmivo.czvasenechty.sk	vashop.czvcas.bizvcelarstvi.czveba.czvedavyzkum.czvelgo.czvelichovky.czvelkyzpevnik.czvelsa.czverygoodhighway.comviaaurea.cz	viakom.czvibrancecraft.comvibratory.netvideobydleni.czvidet.ro	vikpap.czvinarskecentrum.czvinarskepotreby.czvinarstviukaplicky.czvirtualnibeh.czvistacar.czvitibet.comvitio.czvitisport.devitisport.huvitisport.nlviztisztitomarket.hu
+unihost.czunimagnet.czunium.czunyp.czuoou.gov.czuprazeno.czuredninastenka.czuvuhk.czvaclavhavel.czvagnerpool.comvagnerpool.hrvakcinace.euvalidcoupons.netvanocnikoncerty.czvape.euvapezone.czvary-net.czvase-krmivo.czvasenechty.sk	vashop.czvcas.bizvcelarstvi.czveba.czvedavyzkum.czvelgo.czvelichovky.czvelkyzpevnik.czvelsa.czverygoodhighway.comviaaurea.cz	viakom.czvibrancecraft.comvibratory.netvideobydleni.czvidet.ro	vikpap.czvinarskecentrum.czvinarskepotreby.czvinarstviukaplicky.czvirtualnibeh.czvistacar.czvitibet.comvitio.czvitisport.devitisport.huvitisport.nlviztisztitomarket.hu
 vk-bike.euvkol.czvkzaluzie365.czvlackarna.czvladimirmanda.comvladimirmanda.devlakyzezulka.cz	vlesku.czvlna.plvmo.czvodackanavigace.czvojtechkodet.czvolimosezestoko.comvolnamista.czvolowishlist.com	vonekl.czvorcz.czvps1.netvrabciak.sk	vtelce.czvumop.czvut.czvychytavecky.czvyfakturuj.czvyhledavacvozu.czvykladysnu.czvykupujeme-online.skvypos.czvysledky.czvytisknuti.czvzor-eshop.cz	w24cdn.czwallpaper.cz	wantie.huweb-rychle.euwebareal.czwebareal.skwebidentity.skwebovy-servis.cz
 webtron.sk	weby24.czwerehub.orgwhitehome.skwia.cz
 wikizus.czwildgame.czwioslujcie.plwms.czwnet.czwoolville.comwoolville.dewoolville.huwoolville.nlwoolville.roworldtrade.wtf
-wunwork.czwzd.czx4trace.comxtian.nu
-xticket.cz	yenkee.czyouradio.czzachranny-kruh.czzahradkarske-potreby.cz
+wunwork.czwww.diretta.itwww.eredmenyek.comwww.eurofotbal.czwww.flashscore.atwww.flashscore.co.ukwww.flashscore.com.uawww.flashscore.fiwww.flashscore.grwww.flashscore.nlwww.flashscore.siwww.flashscorekz.comwww.frekvence1.czwww.izus.czwww.justporn.comwww.novinky.cz	www.o2.skwww.prozeny.czwww.seznam.czwww.seznamzpravy.czwww.sreality.czwww.tennisexplorer.comwww.wyniki.plwzd.czx4trace.comxtian.nu
+xticket.czyachting.com	yenkee.czyouradio.czzachranny-kruh.czzahradkarske-potreby.cz
+zajezdy.cz
 zakazka.czzalavkou.czzamekdecin.czzapardrobnych.skzaparkorun.czzbozi.cz	zbrane.czzbraneesako.czzdravamesta.czzelenysport.czzeleziarstvoplus.skzeleznicni-modelarstvi.czzenyzenam.czzeppelin.czzetor-shop.cz	zetor.comzetorna.com
 zlataky.skzltackatypuc.skznojemskabeseda.cz	znovin.czzodia.studiozofi.cz
 zolcomp.hu
+zombeek.cz
 zombeek.huzoner-inshop.czzonerai.comzoo-ostrava.cz
 zoobrno.czzoodvurkralove.cz	zookee.czzoznamenie50.skzralalaska.czzs-zalany.cz
 zsdobra.czzsgagarinova.czzsgajdosova.czzskninice.czzsvhejny.czzszakupy.czzupajihoceska.czzuss.czzvirevnouzi.czzvladneme.cz

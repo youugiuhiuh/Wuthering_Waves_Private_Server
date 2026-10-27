@@ -72,18 +72,21 @@ aleroma.ro
 alfaomega.tv
 alfaromtrans.ro
 alistmagazine.ro
+allgraph.ro
 allphonesgsm.ro
 allsaints-northstreet.org.uk
 	alt77.com
 	altius.ro
 amalashes.com
 	amatur.ro
+amcwebsoft.ro
 amershamphotosoc.com
 amethysta.ro
 	amigio.ro
 amiq.com
 amparfum.ro
 ampec.ro
+amura.ro
 
 anafarm.ro
 analyzecasino.com
@@ -221,6 +224,7 @@ bmfgrup.eu
 bookaholic.ro
 bookingpedia.ro
 bookopolis.ro
+bootic.store
 boschfuturemobility.com
 	boxdns.ro
 	braius.ro
@@ -333,6 +337,9 @@ cnppmsu.ro
 colingroup.ro
 colorksba.com
 colorsmart.ro
+comandacarti.ro
+comenzi.bebetei.ro
+comenzi.farmaciatei.ro
 comuna.info
 comunadezna.ro
 comunatirgsoruvechi.ro
@@ -357,6 +364,7 @@ concris.ro
 crearesite.ro
 creative-dev.ro
 	creatx.ro
+crego.ro
 creosnet.com
 	cresti.ro
 	crinel.ro
@@ -381,6 +389,7 @@ dabacco.ro
 dancovision.com
 danysoft.ro
 darkhound.ro
+dauto.ro
 daver.ro
 davo.ro
 dbtromania.ro
@@ -437,6 +446,7 @@ deturex.ro
 dizolvarefirma.ro
 dnctrafic.ro
 dobrogeanews.ro
+doctorplant.ro
 dof.digital
 dogavgrup.ro
 domehome.ro
@@ -446,6 +456,7 @@ deturex.ro
 dornamedical.ro
 dotdesign.ro
 	doudou.ro
+doxologia.ro
 drholhos.ro
 drogheriavara.ro
 dru-global.com
@@ -547,6 +558,7 @@ esirius.hu
 euroclassb2b.ro
 eurogazongarden.ro
 euronet.work
+europafm.ro
 europeanflora.com
 eurostoc.ro
 eurotuning.ro
@@ -569,6 +581,7 @@ evomark.ro
 facemexceptie.ro
 fallinlovefestival.ro
 farmaciacanadiana.ro
+farmaciatei.ro
 farmaciilemyosotis.ro
 farmasi.com.ro
 farulconstanta.com
@@ -602,6 +615,7 @@ fisheye.ro
 floors4you.ro
 florariavenus.ro
 florintrips.com
+	fluxit.ro
 
 fluxone.ro
 fmhost.co.uk
@@ -615,6 +629,7 @@ fluxone.ro
 forumgeografic.ro
 forumhyundai.ro
 fotohobby.ro
+	fplayt.ro
 
 freecam.ro
 freelancersem.ro
@@ -706,6 +721,7 @@ gravpho.eu
 harom.ro
 hartabucuresti.ro
 hartastrazi.info
+headlines-world.com
 health-tiande.com
 heliossecurity.ro
 hellopark.ro
@@ -820,6 +836,7 @@ jecweb.net
 jsri.ro
 
 jtgroup.ro
+jucatorul.ro
 jumbo-officeprint.ro
 jurnaldeolt.ro
 just-visit.com
@@ -839,6 +856,7 @@ jtgroup.ro
 kingstongraphics.co.uk
 	kirvad.ro
 klio.ro
+kludistudio.ro
 knockoutsound.uk
 korcula.net
 korculainfo.com
@@ -851,6 +869,7 @@ jtgroup.ro
 
 lamavro.ro
 landtech.ro
+lansoftdata.ro
 laptopstrong.ro
 
 lapunkt.ro
@@ -930,6 +949,7 @@ margele.ro
 matcris-utilaje.ro
 materialedeconstructii-mm.ro
 matrilab.ro
+	mbtweb.ro
 mcb-institute.org
 	mcnino.ro
 mecanique-web.co.uk
@@ -1004,6 +1024,7 @@ motopro.ro
 moze.ro
 muccelmic.com
 municipiulbacau.ro
+muslimheritage.com
 
 mustash.ro
 muzas.eu
@@ -1172,6 +1193,8 @@ pnthost.ro
 powertrust.ro
 pqb.ro
 pravaliacutimbre.ro
+
+presasm.ro
 prettywomen.ro
 preturi-parbrize.ro
 preturibune.ro
@@ -1254,12 +1277,14 @@ redcode.ro
 registru-reumatologie.ro
 remorcioradea.ro
 rempaddesign.com
+renew.ro
 renne.ro
 rentacar4.ro
 reparatiicardane.ro
 repotrailers.ro
 retail-fmcg.ro
 reumadiagnostic.ro
+revista-ferma.ro
 revistaconstructiilor.eu
 revistacultura.ro
 revistamedicinamilitara.ro
@@ -1296,6 +1321,7 @@ romleas.ro
 roserve.net
 rosieshop.ro
 rosiianu.ro
+rotdesign.ro
 rtsa.ro
 rubicon89.ro
 rulmenticurele.ro
@@ -1308,6 +1334,7 @@ romleas.ro
 safirgift.ro
 samoyede.ro
 sanatate-si-frumusete.ro
+sancogrup.ro
 sanitare-online.ro
 sanotechnik.ro
 sanoterm.ro
@@ -1526,6 +1553,7 @@ topitoy.ro
 
 ucv1948.ro
 ufit.ro
+ulbsibiu.ro
 	umfcv.org
 unelm.ro
 uniformemedicalelotus.ro
@@ -1620,6 +1648,7 @@ weehost.ro
 woot.ro
 workleto.com
 wplaymusic.ro
+www.cursbnr.ro
 
 wwwboo.com
 x-server.ro
@@ -1658,9 +1687,11 @@ ziareph.ro
 ziaruldepenet.ro
 ziarulfaclia.ro
 zileleclujului.ro
+zilesinopti.ro
+zimbrotop.com
 zix.ro
 zodiacool.ro
-zoomhost.eu3wdesign.ro	4esoft.roabdirect.roabsolutprint.roaccesoriinuntafe.roactivenews.roadcs.org.ukadoodbr.comadoodpt.com
+zoomhost.eu3wdesign.ro	4esoft.ro4love.roaaz.roabdirect.roabsolutprint.roacasa.roaccesoriinuntafe.roactivenews.roadcs.org.ukadoodbr.comadoodpt.com
 adydev.comaer.roagf.roagir.ro
 agrosel.roags-bijuterie.ro
 aidoma.comaiqdesign.ro
@@ -1674,19 +1705,20 @@ avashop.roavocatpavel.roavolo.robaar.robabymatters.robafo.robaile-fe
 bibibox.robiblacad.robimmershop.ro	biosel.robiroucrediterapide.robit4u.roblastwave.netblockwave.bondbluediamond.robluxy.robmb-clothing.robobnet.techbodytailors.euboemurban.robookingsmed.combookzone.ro
 borcane.robraininstitute.robrandathlon.combrandlivehost.combreakingpoint.ro
 brielle.robsnt.robtechmedia.robucurestimall.robusinessmagazin.robutterfly.ro
-buymore.robvl.rocaiaadvertise.comcameliastavarache.rocameredigitale.rocampinatv.ro	carcfr.rocarpathian.topcasafrosa.rocautdentistbun.rocazarearad.rocazareoradea.ro	cazino.rocdin.roceasuridemana.rocentralclinic.rocentrokinetic.rocertsign.roces.rochrisbalo.comcinematrivale.rocirokaprod.ro
-cistour.ro	cjalba.roclaumarpescar.roclickbrokenltd.netcloser2kruk.rocndd.rocofetariaarmand.rocoffeeandme.rocolegiulionsocolescu.rocolegiultehnicag.ro
+buymore.robvl.rocaiaadvertise.comcalculators.rocameliastavarache.rocameredigitale.rocampinatv.ro	carcfr.rocarpathian.topcasafrosa.rocautdentistbun.rocazarearad.rocazareoradea.ro	cazino.rocdin.roceasuridemana.rocentralclinic.rocentrokinetic.rocertsign.roces.rochrisbalo.comcinematrivale.rocirokaprod.ro
+cistour.ro	cjalba.roclaumarpescar.roclaus.roclickbrokenltd.netcloser2kruk.rocndd.rocofetariaarmand.rocoffeeandme.rocolegiulionsocolescu.rocolegiultehnicag.ro
 comenzi.rocommatech.ro
-compara.ro	comser.roconcept-advertising.roconectica.roconectoo.roconso.roconstatator-urgent.ro
+compara.ro	comser.roconcept-advertising.roconectica.roconectix.roconectoo.roconso.roconstatator-urgent.ro
 copacei.rocoroanefunerare.com
 corylus.rocosmopharm.eucrameromania.rocrazydesign.bizcreathieves.ro
 credius.rocristalsoft.rocristienciu.rocristinne.rocriteriul.rocronicahd.ro
 cursbnm.mdcursulvalutarbnr.rocustomfit.rod-hub.ro	dab-it.rodaciiliberi.com	damila.rodanubius.onlinedarcvigilante.sitedarel.rodatapark.ro	decide.ro
-decolab.rodentallibs.comdentinia.rodepozituldns.rodesteptarea.rodestinatiaanului.ro	dexign.rodezmembrarigagu.rodezvaluirea.rodiastudio.rodigi.it	digi24.rodigionline.ro	digiro.rodigisport.rodigitalmonkeyab.se
+decolab.rodentallibs.comdentinia.rodepozituldns.rodesteptarea.rodestinatiaanului.ro	dexign.rodexonline.rodezmembrarigagu.rodezvaluirea.rodiastudio.rodigi.it	digi24.rodigionline.ro	digiro.rodigisport.rodigitalmonkeyab.se
 dingtel.rodirecthosting.ro
 dnsgate.ro
-docbook.rodpepscs1.ro	drcalm.rodrinuniforma.ro	duobox.roe-bm.eu
-eastcom.roeasycart.roeasyengineering.roeautomat.roebin.ro	edanco.roedgeconsultingltd.euedituraedu.roedj.roefereastra.roeficloud.eu	ejolie.roelectricaserv.roelim.roelion-icecream.roelitemariaj.roellalife.euelos.roem360group.roemagicienii.ro
+docbook.rodotrotelecom.rodpepscs1.ro	drcalm.rodrinuniforma.ro	duobox.roe-bm.eu	e-roti.ro
+eastcom.roeasycart.roeasyengineering.roeautomat.roebin.ro	edanco.roedgeconsultingltd.euedituraedu.roedj.roefereastra.roeficloud.eu
+eherbal.ro	ejolie.roelectricaserv.roelim.roelion-icecream.roelitemariaj.roellalife.euelos.roem360group.roemagicienii.ro
 emaruki.ro
 emeszon.roemilburzo.com
 endsoft.roenovics.comensys.com.roequivalenza.roeroticclub.ro
@@ -1696,48 +1728,54 @@ estbike.ro
 estnews.roeurolines.roeuromusicro.eueuropixel.roeva.roevadeaza.roevalight.infoevalight.roevelintextile.ro	evshop.euexcavator.expertexcesiv.comexclusivauto.roexclusiveweb.infoexcursiipestetot.roexnor.roexpertbursa.roexperttravel.roexplicativ.roextendedns2.roextendedns4.roextendedns7.roextensiilux.comexternalizareit.rofabio.rofarmaciahelena.comfarmaclass.rofashionsense.rofederatiadeciclism.ro	feeder.rofereastra.roffb.rofii.digitalfilehost.ro
 fineeng.euflo.rofloresticluj.rofoliideprotectie.roformular230.rofotografie-eveniment.rofototunes.com
 freshit.rofreshmonday.rofrnpm.rofrosthost.rofrsah.ro
-fulfill.rofundatiascheherazade.rofunkymag.rogammatour.rogarantibbvaleasing.rogencrip.worldgeorgeleca.com	ghidul.rogif-erasmus.com
+fulfill.rofundatiascheherazade.rofunkymag.rogammatour.rogarantibbvaleasing.rogencrip.worldgeneralmagic.comgeorgeleca.com	ghidul.rogif-erasmus.com
 giftday.cz
 giftday.gr
-giftday.roglobalguard.cyouglobusnet.roglsa.rogoldenmemories.rogoodplace.rogorillasafety.rogorjeanul.rogralmedical.rograndshop.rogreenstal.rogreenvillage.rogustaredetop.rohainedelucru.bizhaisasocializam.rohakuyofishing.rohamm.rohamradio.roharmonydecor.rohausa.rohead-sport.rohelponline.rohils.rohomegenius.ro
+giftday.roglobalguard.cyouglobalis.roglobusnet.roglsa.rogoldenmemories.rogoodplace.rogorillasafety.rogorjeanul.rogralmedical.rograndshop.rogreenstal.rogreenvillage.rogustaredetop.rohainedelucru.bizhaisasocializam.rohakuyofishing.rohamm.rohamradio.roharmonydecor.rohausa.rohead-sport.rohelponline.rohils.rohomegenius.ro
 homelux.rohoreca-bucuresti.rohoroscop-urania.comhostcity.ro
-hosthub.rohostify24.rohostingmadd.comhotelsinnaplesitaly.comhyundai-motor.rohyundaitgv.roi-mag.ro
-icechim.roicomm.roicstm.roidealbebe.roigienaphs.roiiromanesti.comilovero.comimagesource.siteimmofluxcrm.roimmothekerfinotheker.beimobiliareaici.roimprimescu.euimprimescu.roindexanunturi.roinfinitytelecom.roinfoaction.eu	inidan.roinmigracioncanadiense.cominrur.isinteq.ro
+hosthub.rohostify24.rohostingmadd.comhotelsinnaplesitaly.comhyundai-motor.rohyundaitgv.roi-mag.roibithosting.com	ibooks.to
+icechim.roicomm.roicstm.roidealbebe.roido.roigienaphs.roiiromanesti.comilovero.comimagesource.siteimmofluxcrm.roimmothekerfinotheker.beimobiliareaici.roimprimescu.euimprimescu.roindexanunturi.ro
+indweb.netinfinitytelecom.roinfoaction.eu	inidan.roinmigracioncanadiense.cominrur.isinteq.ro
 interra.ro
 intimis.roinvestenergy.ro
 involva.ro	inwebs.ro
-ionut.infoiqos-open.roisjsalaj.roispconfig.roitecoserv.roitonsite.ro
+ionut.infoiqos-open.roiritravel.roisjsalaj.roispconfig.roitecoserv.roitonsite.ro
 itpower.ro
 itscluj.roitsystems.roiuliustown.roivptrofee.roix.rojanoszsigmond.rojournal-of-agroalimentary.rojucariesimagie.rojustitie-ag.rokarorak-pro.hukevinsites.netkingauto.rokino-go.devkinosvinka.comkitoffgrid.rokrali.rokreisdesign.rokuantero.comla-doi-pasi.ro
 ladylux.ro
 lanovia.rolantdental.ro
-laterre.rolemanoir.rolenjerie-anita.ro	lerato.eulibrabank.ro
-liderit.rolifedentalspa.rolifetour.ro	ligaac.rolineabodycare.eulingv.rolinserver.rolio-metal.rolivehosting.infolivezone.rolllll.rolucomtravel.roluk-travel.roluminipentruacasa.romacosolar.romadiston.commagazin-horticol.romagazinferestredemansarda.romagazinservcom.romagazinuldemartisoare.romagichub.romaiabijou.romakitajobs.romanereauto.romansarda-online.romarkmedianet.commathilde.romatteoferari.romawaddah.org.samaxjonel.romccannpr.romediadesignro.romediaflux.romedical-devices.romelissimo.romercury360.romerino-shop.ro	merkur.rometatools.rometropolitan-adv.romihaelatravel.rominimali.stmirageholiday.romirko.ro	misatv.romitropolia-banatului.romny.ro
-mnz.com.romobilaabc.romobiladenver.romobilakloos.romobilemedical.romonitorfg.romonitoro.romoonlightvenue.romotorcyclehire-tenerife.commotorstarter.romovirion.com	mscart.romuzeul-etnografic.romxenduro.romyedenred.romygarage.romyservermedia.comnadapestilor.ronarin.roneedforthis.com	net-it.ronetveillance.netnlclearningcentre.com
+laterre.rolemanoir.rolenjerie-anita.ro	lerato.eulibrabank.rolibrariaonline.ro
+liderit.rolifedentalspa.rolifetour.ro	ligaac.rolineabodycare.eulingv.rolinserver.rolio-metal.rolivehosting.infolivezone.rolllll.rolucomtravel.roluk-travel.roluminipentruacasa.rom.digi24.romacosolar.romadiston.commagazin-horticol.romagazinferestredemansarda.romagazinservcom.romagazinuldemartisoare.romagichub.romaiabijou.ro
+mailbox.romakitajobs.romanereauto.romansarda-online.romarkmedianet.commathilde.romatteoferari.romawaddah.org.samaxjonel.romccannpr.romediadesignro.romediaflux.romedical-devices.romelissimo.romercury360.romerino-shop.ro	merkur.rometatools.rometropolitan-adv.romihaelatravel.rominimali.stmirageholiday.romirko.ro	misatv.romitropolia-banatului.romny.ro
+mnz.com.romobilaabc.romobiladenver.romobilakloos.romobilemedical.romobilissimo.romoka-gsm.romonitorfg.romonitoro.romoonlightvenue.romotorcyclehire-tenerife.commotorstarter.romovirion.com	mscart.romuzeul-etnografic.romxenduro.romyedenred.romygarage.romyservermedia.comnadapestilor.ronarin.roneedforthis.com	net-it.ronetveillance.netnlclearningcentre.com
 notari.pro
-novapet.ronrg.rontl-slither.comnudistclub.ro
+novapet.ronrg.rontl-slither.comnudistclub.ronumere-prime.ro
 nxthost.iooctalsoft.roofsystems.ro	ogmios.roogoarelevlasieidambovita.ro
+oltenia.ro
 on-host.roon.rooneworld.roonlan.roonlinedepozit.ro
 organik.rooria.rooutlet-jucarii.rop-air.ropacomarket.ropactfiscal.ropaginata.netpandadesign.ropandytoys.roparalela45br.roparfumeflowers.ropasiuneforever.ropastel.com.ropensiunioradea.ropescuitshop.ropetmagazin.bgpiatadecarte.netpidginhost.com
-piesata.ropitagora.com.ropixelforge.asiaplymouthscouts.org.ukportalroman.compowerforum.ropowerlaptop.ropp2.ropremiotravel.roprimariagalati.roprintarecopiere.roprintingmall.ropriscomtravel.ropro-bike.ropro-detailing.roproascis.comprocesio.appprofinox.roprofitshare.bgprogtech-store.compromehedinti.ropromuzicshow.ro
+piesata.ropieseauto.ropitagora.com.ropixelforge.asiaplymouthscouts.org.ukpoeditor.comportalroman.compowerforum.ropowerlaptop.ropp2.ropremiotravel.roprimariagalati.ro
+primatv.roprintarecopiere.roprintingmall.ropriscomtravel.ropro-bike.ropro-detailing.roproascis.comprocesio.appprofinox.roprofitshare.bgprofitshare.roprogtech-store.compromehedinti.ropromuzicshow.ro
 propump.rops.ropsalmiicantati.ropublicitate-online.netqcomputing.ukqrios.roqualityhosting.roquartohqmarketing.comquickbible.ro	r4nd0m.usrabla.ro	rabten.roracsoftware.comradiotop.roraisissoftware.roralucasoare.roramadavalcea.ro
 rankine.rorcdesign.ro
 rd-plus.roreadytowear.rorealshopit.rorecreation.roredspike.roreduceri-romania.comreginamaria.roregistar.ro	rejust.rorenew.roreplicahd.rorexogold.rorezistentemag.rorfq.rorickimorty.netrivieraworks.rorlk.roro-factura.rorobertdeutschcalifornia.comrocadia.comromania-webhosting.comromaniamama.ro
 romarg.comropharma.rorottanatura.comrottanatura.eurovision.roroxy-world.roroyalsoft.ro
-royalty.rorpi.rosaintvia.rosalinaturda.eusalutweb.rosamsonite.rosanatateapress.rosard.ro
+royalty.rorpi.ro
+rte.net.rusaintvia.rosalinaturda.eusalutweb.rosamsonite.rosanatateapress.rosard.ro
 savolly.ro	scharf.roscience-response.comscoala365.ro
-scoptop.roscut-motor.ro
+scoptop.rosculesiechipamente.roscut-motor.ro
 sealine.roseaviewinvestment.com	sebcar.roseccocenter.ro
 secpral.rosecurityinstal.rosecurmenow.com	sedako.rosehrschon.roselfevents.ro	sencro.rosendesign.rosenzofit.roserkino.comserverhost.roserviciifunerare.netservidorssd.com	sevich.roshophoteldeals.com	shopia.rosibiu.rosierraquadrant.ro
 sigma.teamsigurantaonline.ro
 silkweb.ro
-sindgaz.rosiweb.roskyhost.topskynetcomputer.eusmartcash.storesmartcontrol.rosmartmate.rosmartradio.rosnackfest.rosoareindustries.ro
+sindgaz.rosiweb.roskw.roskyhost.topskynetcomputer.eusmartcash.storesmartcontrol.rosmartmate.rosmartradio.rosnackfest.rosoareindustries.ro
 soferii.rosoftexco.netsoldec-shop.ro
 solidar.rosolturism.rosolutiicloud.rosoundstudio.rospalatorie-vulcanizare-auto.ro
 spartan.rospitalcfwiting.rospitaljudetean-oradea.rosportpictures.eusquid-solutions.rosscr.rostateart.rostealthseosolutions.comstef.rosto.rostonemania.rostudentie.rosudrezidential.rosumashop.rosuporter-tuc.rosurubpro.rosuruburionline.ro
-swdsoft.rosynep.rotablet-news.comtechnodepo.rotehnicbazar.roteleplus.rotemad.roterramotors.rothailand-asienforum.comthc.rothcprojects.rotigriscont.rotimisweb.rotimoshop.rotisfarmaceutic.rotlsserver2.co.uktocmania.rotokeletestorta.hutomaxweb.rotoner-expert.rotopsolar.rotorterie.rotrackup.website	trafic.rotrainersport.rotransair.rotransportsitransfer.rotrimite-ieftin.ro
-tropeum.rotruetravel.ro	trutzi.rotsukicos.comttg-agro-moto.rotuscoss.comtvfoltenia.rotwintech.ro
-twoside.ro	txtads.rouad.roultramarintm.roumft.ro
+swdsoft.rosynep.rotablet-news.comtechnodepo.rotehnicbazar.roteleplus.rotelesystem.rotemad.roterramotors.rothailand-asienforum.comthc.rothcprojects.rotigriscont.rotimisweb.rotimoshop.rotisfarmaceutic.rotlsserver2.co.uktocmania.rotokeletestorta.hutomaxweb.rotoner-expert.rotopsolar.rotorterie.rotrackup.website	trafic.rotrainersport.rotransair.rotransportsitransfer.rotrimite-ieftin.ro
+tropeum.rotruetravel.ro	trutzi.rotsukicos.comttg-agro-moto.rotuscoss.comtvfoltenia.ro
+tvsatrm.rotwintech.ro
+twoside.ro	txtads.rouad.rouefiscdi-direct.roultra-byte.roultramarintm.roumft.ro
 unarte.orguniversalis.rounmb.ro	uphill.ro	urbica.ro
 util123.rovacantelastminute.rovandlaptop.ro
 vaslui.netvazut.rovbank.rovenphex.comverificaip.ro
@@ -1745,4 +1783,5 @@ verobid.myvideochatforum.ro
 vinde24.rovintagebazar.rovirtueservers.com
 viscero.ro	visele.rovisolishop.rovitaminagroup.rovoceashop.rovollo.rovopsescu.rovrancea24.rovreaulanova.rovreisatemint.roweb-host.rowebearit.rowebfence.euwebimmoflux.rowebintel.ro
 weblama.rowebmanagement.rowebsynergy.ro	weburl.rowelcometoromania.euwelcometoromania.ro	winlab.bg	wolbar.rowpcoupontheme.com
-wserver.ro	wtfcs.comxmed.roxmeta.roxpertsoft.royonan.rozeedoshop.rozf.roziaristul.ro
+wserver.ro	wtfcs.com
+www.arr.rowww.bursa.rowww.desteptarea.rowww.didactic.rowww.mobilissimo.rowww.reginamaria.rowww.roviniete.roxconnector.appxmed.roxmeta.roxpertsoft.royonan.rozeedoshop.rozf.roziaristul.ro

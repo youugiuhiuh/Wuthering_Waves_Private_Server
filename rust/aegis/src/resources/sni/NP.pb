@@ -37,8 +37,9 @@ flt.com.np
 surma.shop
 techalias.com
 tsumvalleyhomestay.com
+tucl.edu.np
 ugrataratechnical.com
-zyotisguru.comadsmandu.combajrasecurity.com.npbazarpage.combroadbandnepal.com.npchaitanyahealth.comdolphin.com.npdryicesolutions.netdzinefolio.comecare.com.npeveresthimalayan.comhedambanews.comhimstar.com.npi5infotech.cominfomericsnepal.com
+zyotisguru.comadsmandu.comartifythemes.combajrasecurity.com.npbazarpage.combroadbandnepal.com.npchaitanyahealth.comdolphin.com.npdryicesolutions.netdzinefolio.comecare.com.npenrollment.donidcr.gov.npeveresthimalayan.comhedambanews.comhimstar.com.npi5infotech.cominfomericsnepal.comjanaki.net.np
 mahuwa.commegamotors.com.npmerosoftnepal.commpact360.comnanosoftnepal.comneemaacademy.comnepalicooking.comnepalnaturetravels.comnnsw.gov.npnren.net.np
 ntc.net.npoppamstechnologies.compointxtechnology.comrealhrsoft.comsajilonet.comsparkletheme.com
-spybix.comsyncsolutions.com.nptechcareinfo.comwebtobiznepal.com
+spybix.comsyncsolutions.com.nptechcareinfo.comtms38.nepsetms.com.nptms41.nepsetms.com.nptms45.nepsetms.com.npwebtobiznepal.com

@@ -191,4 +191,4 @@ vbet85.com
 windbet323.com
 	winzir.ph
 yas.bet
-zinabet.comdbpoweramp.comgrombet77.comiomguide.com
+zinabet.comcontinent8.comdbpoweramp.comgrombet77.comiomguide.com

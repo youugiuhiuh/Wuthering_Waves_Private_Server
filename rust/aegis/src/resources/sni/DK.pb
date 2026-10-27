@@ -26,6 +26,7 @@ a-behnk.dk
 alexei.dev.br
 aliasarborist.se
 allergica.dk
+alphadiving.dk
 alsresearch.dk
 amaster-web.dk
 amero.dk
@@ -40,6 +41,7 @@ amplify.dk
 astonsweden.com
 astoriakliniken.se
 atea.lv
+	atznet.dk
 auc.dk
 audio-circuit.dk
 auktionssalg.com
@@ -164,6 +166,7 @@ danhost.dk
 dantax.legal
 danucare.dk
 darma.dk
+	data.coop
 dbdk.dk
 dc-supply.dk
 dekaeredyr.dk
@@ -207,6 +210,7 @@ elvium.com
 emofabrik.dk
 	endate.dk
 englishcenter.dk
+ens.dk
 epilepsiforeningen.dk
 	estuff.eu
 etiskhandel.dk
@@ -264,6 +268,7 @@ frusoed.dk
 fysiodanmarkolstykke.dk
 fysiofeminin.dk
 fysiolab.dk
+g1i.one
 
 gantech.dk
 garbogaard.com
@@ -366,6 +371,8 @@ jpklima.dk
 kattens-vaern.dk
 keepers.one
 kidsprint.com
+kiz.dk
+kleinweb.dk
 klubfodbold.dk
 klueber-elektro.de
 kognitivterapikbh.dk
@@ -430,6 +437,7 @@ megafon.dk
 monetosbetting.dk
 mono.net
 	mono.site
+monosolutions.com
 motorpower.dk
 mouseandpen.dk
 myapartment.dk
@@ -443,6 +451,7 @@ megafon.dk
 naturmaelk.dk
 	negvuc.dk
 neomesteren.dk
+netgiganten.dk
 netmuseum.dk
 netvaerketgroenfremtid.dk
 nicciwelsh.com
@@ -566,6 +575,7 @@ skraaen.dk
 smartvan.dk
 sneakerground.dk
 sommarrock.nu
+sonar-cph2-1.xx.fbcdn.net
 sozialdienst.dk
 spelberoende.se
 sportogfitness.dk
@@ -617,6 +627,8 @@ stryhns.dk
 thewrt.com
 	thurah.dk
 tiendegaarden.dk
+
+tiffany.se
 tikrydderier.dk
 tingbjerghusene.dk
 	tipkbh.dk
@@ -669,6 +681,7 @@ webcare.dk
 wikisilkeborg.dk
 wochenspiegel-web.de
 wwf.dk
+www.sundhed.dk
 xn--pizzanrd-b5a.dk
 #xn--rengringsservice-danmark-3pc.dk
  xn--sernesprivathospital-bcc.com
@@ -685,7 +698,8 @@ yacss.site
 
 zoecare.dk0000502.xyz123patiens.se
 24high.com	24high.de	24high.es	24high.fr365design.dk	3dgame.dk417.dk70210026.dk777.dka2ztraveltechnology.dkaabcshop.dkaakb.dkaalborgskakforening.dkaarhuskommune.dkabc-lavpris.dkaddanmark.dk
-adform.netafrikanskdans.dkagco.dkagknordic.dkairaffairs.dkais-sprog.dkakademikerne.dkaktivwinter.dealexandra.dkalgeteknik.dkallianskyrkan.sealuxperten.dk	alyans.beambod.foamladcykler.dkanis.afankerbjerre.dk	ankiro.dkanneauchocolat.dkarecoach.searticle-realm.comarto.dkask-hedeland.dk
+adform.netadx.adform.netafrikanskdans.dkagco.dk
+agillic.euagknordic.dkairaffairs.dkais-sprog.dkakademikerne.dkaktivwinter.dealexandra.dkalgeteknik.dkallianskyrkan.sealuxperten.dk	alyans.beambod.foamladcykler.dkanis.afankerbjerre.dk	ankiro.dkanneauchocolat.dkarecoach.searticle-realm.comarto.dkask-hedeland.dk
 asverb.comatlantis.family
 aufini.comautismeforeningen.dkautoophuggeren.dkautoplus.dkauxo.dkaveo.dkayahouse.dkbabytrold.dk
 badstil.sebaeredygtigtrafik.dkbalkanmission.dkballonunion.dkbatterilageret.dkbattlefieldsww2.combattlemageserotica.combazuinlaan.nlbbaby.dkbbleague.netbehandlingscenter-stien.dkbeltrep.org	berner.nubetsmart.sebiliauto.dkbilligcamping.dkbillige-koder.dkbilligshelter.dkbilligskabe.dkbilligthus.dkbilsport.nobioservices.sebirgitbernhard.dkbisgaard-vin.dk
@@ -705,24 +719,25 @@ dancake.dkdanchurchaid.orgdanishtogo.dk	danlon.dkdansk-atletik.dkdanske
 dealhub.dkdecofarver.dkdeepfunk.dkdeepseapharma.dkdeic.dkdekra.dk
 delegro.nldeluxecatalog.comden6sans-vejle.dk
 denfrie.dkdengamlegaardfaaborg.dkdentalklinikken.dkdenvelklaedtemand.dk	depons.eu	descom.dkdesigncykler.dkdevcetraining.comdifa.dkdigiflow.dkdigitalgroup.dkdigitalguest.comdigitalweb.dkdinnerbooking.comdinsolbrille.dkdjoefbladet.dkdkdm.dkdlf.orgdmas.dkdmf.dkdmi.dkdocuments.dkdodsregister.dk
-doesme.comdokument24.dkdoodlemor.dk
+doesme.comdokument24.dkdoodlemor.dkdotserv.net
 dsa-net.dk
 dsbtalk.dkduelundsplanter.dkdynamicweb.comdynamicweb.dkdyrecenter.dkdyrecentret.dk
 e-budo.comeasy-net.dkeasyname.ateasyname.com
 echat1.comecitsolutions.dkedudrive.nleistrupweb.dkeiva.comek.dkelaursen.dkelbielectric.roelbilviden.dkeldiablo.dkeligoalliance.comelmaterial.dkelogbelysning.dkelvstromsails.comemm.comemscloud.co.ukenergyplan.eu
 enoksen.glepicpanda.dkerling-christensen.dkeromaxxx.dkeroti.dkerotikprylar.seestatemedia.dkeuphonia-audioforum.seeurodan-huse.dkevasolo.comevatrio.comfaadvokater.dkfabrikant.dkfadlforlag.dkfaks.dkfakta.eufam-jensen.infofantastik.dkfashiongirl.dkfashiongirls.se
-fcmshop.dkfebo.nl	feebee.eufence-line.dk	fetish.dkfinurligefif.dkfitnessgruppen.dkfitnessshoppen.dkfji.dkflexofold.comflexonet.dkfloristshop.dkfodboldfoto.comfodslawnyborg.dkfoelgebil.dkfolkeferie.dkfooddiagnostics.dkfoodhaus.comfootybets.iofrederikssund.dkfrk-lisberg.comfrontliners.aifuglemarkedet.dkfugleognatur.dkfunfoods.dk	furnyt.dkfurubackskyrkan.sefyrvaerkerinytaar.dkgachashoppen.dkgaffashop.dkgalleri-guldborg.dkgalletimes.com	gambia.dkganlosekro.dkgastrooplevelser.dk	genbib.dkgeneapedia.orggenvagar.nugernerthomsen.dkggot.dkgigahost.dk	gilje.org	givlys.dkglsfoder.comgodotshaders.comgodskolemad.dk
+fcmshop.dkfebo.nl	feebee.eufence-line.dk	fetish.dkfinurligefif.dkfitnessgruppen.dkfitnessshoppen.dkfji.dkflexofold.comflexonet.dkfloristshop.dkfodboldfoto.comfodslawnyborg.dkfoelgebil.dkfolkeferie.dkfooddiagnostics.dkfoodhaus.comfootybets.iofrederikssund.dkfrk-lisberg.comfrontliners.aifuglemarkedet.dkfugleognatur.dkfunfoods.dk	furnyt.dkfurubackskyrkan.sefyrvaerkerinytaar.dkgachashoppen.dkgaffashop.dkgalleri-guldborg.dkgalletimes.com	gambia.dkganlosekro.dkgapph.nlgastrooplevelser.dk	genbib.dkgeneapedia.orggenvagar.nugernerthomsen.dkggot.dkgigahost.dk	gilje.org	givlys.dkglsfoder.comgodotshaders.comgodskolemad.dk
 goearl.comgolfshopkorsoer.dkgorrissenfederspiel.comgrafsnasslottspark.segrandts.comgravelshop.comgreentel.dkgreenupdate.dkgribskovtagrens.dkgs-aligse.de
 gts-net.dkgudmann-sejlmager.dkgugplanteskole.dkgymnasiejob.dkhabitushuset.dkhaengerteori.dkhalleviksstrand.sehalstedklostergolfklub.dkharrysminde.dkhaubroif.dkhaveselskabet.dkhavkajak-rejser.dkheavenofhorror.comhedestoker.dkhelle.dkhelm.nuhennestrandresort.dkhenningharms.comherningbib.dkherpless.comheyoverlay.comhistorie-online.dkhistorielab.dkhiv-danmark.orghjemmeriet.comhjortehaven.dkhm-holzshop.dehobbykaeden.dkhodjasblog.oneholmrisb8.comhome-tex.dkhome-tex.nohooked4pets.dkhostcenter.dkhoukjaerbegravelse.dkhuntinglife.dkhvidevareshoppen.dki2.dkifms.dkifree.dkigepagroup.dkiki.dkinfolink.dk
-ingpop.cominnovationliving.comint-yachtsale.cominterglas.dkinterglas.seinuit.gl	inuit.orginvest84.comipmaskiner.dkipsolutions.dkirchighway.netislamiskaforbundet.seislandspezialisten.deit-automation.dkizb.sejaegersite.dkjaplast.com	jarnes.dkjellingmusikfestival.dkjennawilliscoaching.comjensens.comjenslindberg.dkjetski-in-sweden.sejhvandenheuvel.nljmarcussen.dkjobmanager.dkjohnfrandsen.dkk-erc.euk2komposit.dkkaastrupandersen.dkkaelder-vin.dkkak-pishetsya.comkapowcasino.dk
-kapslen.dkkarlslunde-esport.dkkastelskirken.dkkathrineberg.comkd.dk
+ingpop.cominnovationliving.comint-yachtsale.cominterglas.dkinterglas.seinuit.gl	inuit.orginvest84.comipmaskiner.dkipsolutions.dkirchighway.netislamiskaforbundet.seislandspezialisten.deist.comit-automation.dkizb.sejaegersite.dkjaplast.com	jarnes.dkjellingmusikfestival.dkjennawilliscoaching.comjensens.comjenslindberg.dkjetski-in-sweden.sejhvandenheuvel.nljmarcussen.dkjobmanager.dkjohnfrandsen.dkk-erc.euk2komposit.dkkaastrupandersen.dkkaelder-vin.dkkak-pishetsya.comkapowcasino.dk
+kapslen.dkkarlslunde-esport.dkkastelskirken.dkkathrineberg.comkb.dkkd.dk
 keepit.comkennelwhitelife.dkkfums-soldatermission.dkkidsnord.sekiesdirekt.dekims.dkkingdomlegacygame.comkingofmountains.dkkirpalsingh-mission.orgkjellesvig.netklattring.netklaverundervisning.dkklavsbirkholm.dkkleinweb.dkklimaplanter.dk
-kloegt.comklub-modul.dkklubbsjtrafik.seklubmodul.dkknalleborg.seknowbarter.comkoks.comkoldmosegaard.dkkongstedbryg.dkkonsten.net	koskov.dkkpnet.dkkrydsordexperten.dk
+kloegt.comklub-modul.dkklubbsjtrafik.seklubmodul.dkknalleborg.seknowbarter.comkoks.comkoldmosegaard.dkkongstedbryg.dkkonsten.net	koskov.dkkpnet.dkkrydsord.netkrydsordexperten.dk
 ksi-int.dkkulturgrunden.dkkulturhistorier.dkkunstnershoppen.dkkvali.dkkvikstart.dk	kyroe.com
-labtech.dkladepris.dklaederiet.dklaeremiddel.dk	lamper.dklastbilteori.dk
+labtech.dklace.deladepris.dklaederiet.dklaeremiddel.dk	lamper.dklastbilteori.dk
 laverda.dklavpris-laase.dklawschool.dkleander.com	leaves.dkledon.dkledreborg.dklegalne-kasyna.com	leholt.dk
-leknit.comlendager.comlifeoath.selindebjerg.dkliverpoolfc.dklivinginvest.dklivja.dklk5.dklobpa.dklohseskoreskole.dklokecykler.dklollandbib.dklollands.netlsdm.seltl.dklumierejew.comlunahobby.dklundagerplants.com
-lustigs.se	lynge.commaca.semacartney.commagasinmuseum.dk
+leknit.comlendager.comlifeoath.selindebjerg.dk
+linduu.comliverpoolfc.dklivinginvest.dklivja.dklk5.dklobpa.dklogiqit.netlohseskoreskole.dklokecykler.dklollandbib.dklollands.netlsdm.seltl.dklumierejew.comlunahobby.dklundagerplants.com
+lustigs.se	lynge.commaca.semacartney.commagasinmuseum.dkmail.one.com
 mailify.dk
 manatee.io
 marsweb.dkmartinus.dkmaster-care.dk	maxdue.dkmazegroup.se
@@ -733,8 +748,8 @@ mjolner.dkmkkitservice.dkmmwatches.dkmodemworks.com
 modyes.com
 molholm.dkmollersfisk.dkmorso-sko.dkmost.bamountainguide.dkmountainguide.semoviezoo.dk
 msqtest.dkmtsl.dkmunchhansen.dkmusikkenshus.dkmvgm.com	myalfa.dkmycokey.commylovetoys.dkmynoise.netnardocar.nonardocar.senativeadvertisinginstitute.comnattelyst.dknatureeyes.dknaturoghelse.dknbcd.comnespresso-professional.dknetspecialisten.dknettoparts.denettoparts.dknettoparts.finettoparts.ienettoparts.netnettoparts.nonettoparts.senettoperforering.dknettotrailer.dknettotrailer.senexuscompendium.comnfs.asngdigital.nonice-hosting.dknicolaiwallner.comniels-petersen.dknikse.dknmd.dknorbyhus.dknordiccomputer.dknordicfoodliving.comnordiskguld.dk
-nordura.dknormcph.comnorrahalland.senovaram.netnovi-wholesale.comnovicomcloud.comns.dknudie.dknutrinic.dknuttyvegan.dknyholmstrandsko.dknyit.dkodensebib.dkoenskeinspiration.dkoerestadgym.dkok-skaermen.dkokuelectronics.comol2go.dkomsorgstandpleje.org	on2web.dkone.comonemoneyway.comonlinebooq.dkonlinefilmhome.netonsk.dkopenhost.dkorbek-marked.dkorebroslott.seoster-hornum.dkosterhornumslagtehus.dk
-ostrand.dkoutdoornu.dkpackm.dkparabellum.dkparkeringsinfo.dk	partay.dkpchristensenbrugtebiler.dkpedersborgvin.dkperfectdakkapellen.nlperleshoppen.dkperpalmkvist.dkpeterkaer.dkph.depharmanord.co.ukpharmanord.ptphd-courses.dkpikkorissaasut.gl	pivpiv.dkplanetariskkogebog.dkpokertrainer.sepoolworld.dkportofhirtshals.dkpose.bar
+nordura.dknormcph.comnorrahalland.senovaram.netnovi-wholesale.comnovicomcloud.comns.dknudie.dknutrinic.dknuttyvegan.dknyholmstrandsko.dknyit.dkodensebib.dkoenskeinspiration.dkoerestadgym.dkok-skaermen.dkokuelectronics.comol2go.dkomsorgstandpleje.org	on2web.dkone.comone.oneonemoneyway.comonguard.comonlinebooq.dkonlinefilmhome.netonsk.dkopenhost.dkorbek-marked.dkorebroslott.seoster-hornum.dkosterhornumslagtehus.dk
+ostrand.dkoutdoornu.dkpackm.dkparabellum.dkparkeringsinfo.dk	partay.dkpchristensenbrugtebiler.dkpeczwolle.nlpedersborgvin.dkperfectdakkapellen.nlperleshoppen.dkperpalmkvist.dkpeterkaer.dkph.depharmanord.co.ukpharmanord.ptphd-courses.dkpikkorissaasut.gl	pivpiv.dkplanetariskkogebog.dkpokertrainer.sepoolworld.dkportofhirtshals.dkpose.bar
 poweron.dkpremiere-produkter.no
 princh.comprintingukbased.co.ukprishammeren.dk	privab.seprivateplay.dkprivatsamler.dkprof-shoppen.dkprofihost.compropa.dkpsykodynamiskt.nupsykologeridanmark.dkpunditokraterne.dkpuzzleshop.dkpvc.orgqpqp.dkraastoff.dk
 railapp.nlrais.com
@@ -742,18 +757,19 @@ ramsvik.nurandersbib.dkrandrup-sportsgear.com	raunea.dk
 raypas.comrefugeeswelcome.dkren-velvaere.dk
 renoweb.dkreservedelssalg.dkrestaurantlimone.dk	retap.comretrofabrikken.dkrettspraksis.norgpd.comrideforbund.dkrksk.dk	robaek.dkrockkanalen.dkrommanmag.comrosborgshop.dkrosenmetoden-anjahuss.dk
 rotboll.dkroyalacademy.dkroyalcasino.dkroyaldanishacademy.comrudestrand.dkruitenheer.nlrundtombilen.dks606k.sesaabklubdanmark.dk	sac-it.dksailorsmate.comsal-tech.comsaltcenter.dksandvad-kro.dksandyaabypedersen.dksao.dk
-saveeye.dksbforge.orgscr.nusctelstar.nlsde.dksechersecurity.dksengeland.dksensor-online.sesensusaccess.comsims4ever.dksjaeldnediagnoser.dksjovhalloween.dkskadedyrbutikken.noskatepro.atskatepro.beskatepro.chskatepro.co.nzskatepro.comskatepro.com.auskatepro.com.plskatepro.czskatepro.frskatepro.grskatepro.hrskatepro.huskatepro.noskatepro.ptskatepro.roskatepro.seskatepro.uk
-skiltex.deskive.dkskjern-net.dkskogakyrkan.seskrivekunst.dkskrivsikkert.dkskrotmafia.dk
+saveeye.dksbforge.orgscr.nusctelstar.nlsde.dksechersecurity.dksengeland.dksensor-online.sesensusaccess.com	shore.com
+simply.comsims4ever.dksjaeldnediagnoser.dksjovhalloween.dkskadedyrbutikken.noskatepro.atskatepro.beskatepro.chskatepro.co.nzskatepro.comskatepro.com.auskatepro.com.plskatepro.czskatepro.frskatepro.grskatepro.hrskatepro.huskatepro.noskatepro.ptskatepro.roskatepro.seskatepro.uk
+skiltex.deskisport.dkskive.dkskjern-net.dkskogakyrkan.seskrivekunst.dkskrivsikkert.dkskrotmafia.dk
 skybib.comslagterbob.comslagterlampe.dkslotenmakersunie.nlsmartbird.dksmartweb.iosmiling-campingpladser.dksnabbgrus.sesnm.dksoccer-preview.comsoftcontrol.dk
 softpay.iosohu-shop.dksommerfuglen.dksommertoj.dksosbornebyerne.dksoundstation.dksovedyret.dksoveland.dk
 soysin.comspakompagniet.sesparknetnode.comspecialbutikken.dkspilskabet.dkspiltjek.dksportinghealthclub.dkstadsrevisionen.dkstatens-digitale-indkoeb.dksteamgreen.dkstichtingart.nlstottestrompen.dkstov.dkstraarupnet.dkstrandvejr.dkstrikkeglad.dkstubfraesfyn.dkstuc-concurrent.nlstutteriaskbluehors.dkstutzstrumpfshop.de
 subaio.comsulfilogger.comsulle.dksumba.fosundhedsjobs.dksundhedspolitisktidsskrift.dksundhedstinget.dksundpaabudget.dksupplychainmagazine.nlsupplychainmovement.comsurfcenter.dksvenskserber.sesweden-fl.seswedigarch.sesynonymet.dksynsnerven.dkt4g.dktaastrupbymidte.dktagarno.comtakecharge.dktanneryprojects.comtantegroencph.dkteamplay.nuteeprint.eutefcold.com	teknom.se
-telanco.dktemponizer.dkteoriklar.euterapeutmatch.dktesthuset.dktg-instrument.setheaternadedam.nltheburger.dktholstrup-ing.dkthorstensson.sethrysoee.dkthy-clean.dktidogtendenser.dktilbudogfordele.dktimberly.dktimenterprise.nltjoloholm.setornbystrandcamping.dktotalrent.dk
+telanco.dktemponizer.dkteoriklar.euterapeutmatch.dkterk.nltesthuset.dktg-instrument.setheaternadedam.nltheburger.dktholstrup-ing.dkthorstensson.sethrysoee.dkthy-clean.dktidogtendenser.dktilbudogfordele.dktimberly.dktimenterprise.nltjoloholm.setornbystrandcamping.dktotalrent.dk
 totiel.com
 toursys.dktpep.nltradepilot.dktrafiktestet.setrailhub.iotransportintra.dktransportnyhederne.dktrapholt.dk
-travix.comtrirexio.comtrollmap.comtruckland.nltryasample.detufra.dkudengaard.euudtaleordbog.dkumagsolutions.comumami-restaurant.comumamicosmetics.comunderkapslen.dkunisport.comuniverse.dkuniversitypress.dkuniweb.emailurbanhald.dkusercontent.oneutamaduni.dkuxapp.iovaderoarna.comvaegtloeftning.dkvaldemarsro.dkvalsemollen.dkvardemuseerne.dkvartovbh.dkvasternarke.sevegetarisk.dk	vegger.dkvejlebib.dk
+travix.comtrirexio.comtrollmap.comtruckland.nltryasample.detufra.dkudengaard.euudtaleordbog.dkumagsolutions.comumami-restaurant.comumamicosmetics.comunderkapslen.dkunisport.comuniverse.dkuniversitypress.dkuniweb.emailunoeuro.comurbanhald.dkusercontent.oneutamaduni.dkuxapp.iovaderoarna.comvaegtloeftning.dkvaldemarsro.dkvalsemollen.dkvardemuseerne.dkvartovbh.dkvasternarke.sevegetarisk.dk	vegger.dkvejlebib.dk
 vejrsyd.dk	velo94.dkventonordic.comverdensmaalene.dkvesclabs.comvesterhedeby.dkvf-auktion.dkviaretro.comvictorhegelund.dk	vikan.comvilholdt.dkvilkenart.sevintagekeeping.dkvinuddannelse.dkvinyltrolden.dkvisusoogkliniek.nlvivonline.nl
 vizuall.dk	vkdata.dkvm-elektro.dkvm-guide.dkvolleyball.dkvolvo1800pictures.comvoresbiler.dkvoresfranskebutik.dk
 voxhall.dkvrijelekpoort.nlwatchmedier.comweb-solutions.dk
 webform.dkwebmailhome.comwebpartner.dkwebserver8.dkwebserver9.dkwebsitterservice-kurser.dkwebx.dk wedding-photographer-denmark.comwekoagro.comwelldanatools.dkwestridge.lawetttipps-heute.comwewatches.dkwiggo.dkwildmountain.dkwinfinans.netwk-intern.dk
-wktools.dkwolfland.livewordsrated.comworkingreenland.glwulffmorgenthaler.comxn--lnneanlg-p0a7o.dkxn--skelhje-u1a.dkxn--strnga-dua.sexn--teoriprver-6cb.dkyachting.dkyogaunlimited.dkyourgeni.comyourticket.dkyouwe.dkzelectedfoods.dkzenbi.dk
+wktools.dkwolfland.livewordsrated.comworkingreenland.glwulffmorgenthaler.comwww.daftporn.comwww.krydsord.netwww.terk.nlwww.valdemarsro.dkxn--lnneanlg-p0a7o.dkxn--skelhje-u1a.dkxn--strnga-dua.sexn--teoriprver-6cb.dkyachting.dkyogaunlimited.dkyourgeni.comyourticket.dkyouwe.dkzelectedfoods.dkzenbi.dk

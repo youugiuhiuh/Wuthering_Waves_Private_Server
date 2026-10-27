@@ -3,6 +3,7 @@
 175eyewear.com
 1996decor.com
 1boss.vn
+1thegioi.vn
 2000mail.net
 
 247mart.ph
@@ -22,6 +23,11 @@
 511store.vn
 68creative.vn
 	79ceo.com
+a-photo-stal-20.zdn.vn
+a-photo-stal-23.zdn.vn
+a-photo-stal-27.zdn.vn
+a-photo-stal-29.zdn.vn
+a-photo-stal-31.zdn.vn
 a1vietnam.vn
 aaclogistics.vn
 abtravel.au
@@ -388,6 +394,7 @@ cge.edu.vn
 cgomarketing.vn
 chailolita.com
 chanchanvn.com
+ channel-zinstant.api.zaloapp.com
 chanvitmaymay.com
 chaodinhduongpapadashi.vn
 chatluonghomes.com
@@ -509,6 +516,7 @@ coe.com.vn
 dacy.vn
 dahaiduong.com
 dahuavn.net
+daibieunhandan.vn
 daihocnguyentrai.edu.vn
 dailucxanh.com
 dailynationtoday.com
@@ -537,6 +545,7 @@ coe.com.vn
 
 dansang.vn
 danthethao.com
+dantri.com.vn
 dantrisoft.com.vn
 daotaohan.edu.vn
 daotaotrade.com
@@ -598,6 +607,7 @@ dhlend.com
 didulichthailan.com
 dienanphat.com
 diencongnghiephanoi.com
+diendandoanhnghiep.vn
 diendanmevabe.com
 dienlanhdonga.vn
 dienlanhlimosa.com
@@ -631,6 +641,7 @@ dhlend.com
 dinhthaihai.com.vn
 dinokinder.edu.vn
 dipngelnails.com
+discovery.api.zaloapp.com
 dituvannghe.com
 divanailsandsparockfalls.com
 dji-vietnam.vn
@@ -729,6 +740,7 @@ edtika.com
 emecc-medical.com
 	emflow.tw
 emmi.vn
+emoji-status.chat.zalo.me
 enfitness.vn
 englishguide.vn
 entec.com.vn
@@ -806,6 +818,7 @@ ghmedia.vn
 giangiaophuhung.com
 giaonick.com
 giaophanbacninh.org
+giaotrinh.edu.vn
 giaphucthinh.vn
 giasutrithuc.net
 giathinhree.com
@@ -941,6 +954,7 @@ hle.com.vn
 hoplong.com
 hoplucmed.com.vn
 hoptacvaphattrien.com
+	hostss.vn
 hpanlac.com.vn
 htat.vn
 htcwoodvn.com
@@ -974,7 +988,10 @@ hvc-vn.com
 icar.vn
 ichidemolition.com
 ichigroup.net
+
+id.zalo.me
 ilota.vn
+imexpharm.com
 imperia-sensaparks.net
 imperiaoceancity.com.vn
 in-visible.space
@@ -1195,6 +1212,7 @@ limoseo.vn
 loca.vn
 localhome.vn
 locthinh.vn
+logico.com.vn
 longclone.site
 longnailsandspa.com
 longphatcnc.com
@@ -1330,6 +1348,7 @@ medibut.vn
 meganote.vip
 megarich.vn
 megocviet.com
+meguiars.com.vn
 megwealthhomes.com
 meili.vn
 mekongwood.com
@@ -1662,6 +1681,7 @@ okkovn.com
 
 onebol.com
 onebrush.vn
+	onecms.vn
 onefinething.click
 	oneman.vn
 onfashop.com
@@ -1712,6 +1732,10 @@ pactech.vn
 panoramahotelsapa.com
 parisdeli.vn
 pasimall.com
+pca-photo-stal-14.zdn.vn
+pca-photo-stal-18.zdn.vn
+pca-photo-stal-22.zdn.vn
+pca-photo-stal-26.zdn.vn
 pcccgiaphu.com
 pccchanoi.net
 pcccthangchuong.com
@@ -1904,6 +1928,7 @@ qni.edu.vn
 redfingervietnam.com
 reeyee.com.vn
 reform.com.vn
+register.zaloapp.com
 regreengroup.vn
 regsieure.com
 remcuatudong.vn
@@ -2123,6 +2148,7 @@ staspi.com
 stekvietnam.com
 stepmath.net
 stepofcrypto.com
+stickers.zaloapp.com
 stomakid.vn
 storebaohiem.com
 stpvietnam.vn
@@ -2181,6 +2207,7 @@ synotex.vn
 tainguyenvm.com
 taiphanmempc.net
 taivideo.vn
+talk-m.zaloapp.com
 
 tamadv.com
 
@@ -2548,6 +2575,7 @@ tranhin.vn
 trisybds.com
 
 tritien.vn
+trk-pcweb.api.zaloapp.com
 trongnhantelecom.vn
 tropitofruits.com
 trucvufarm.com.vn
@@ -2572,6 +2600,10 @@ tritien.vn
 truyenhinhthanhhoa.vn
 truyenmh.club
 tst-imexco.com
+tt-convers-wpa.chat.zalo.me
+tt-group-wpa.chat.zalo.me
+tt-profile-wpa.chat.zalo.me
+tt-sticker-wpa.chat.zalo.me
 ttracing.net
 tuanapple.vn
 tuandailoan.com
@@ -2618,6 +2650,7 @@ twimgs.xyz
 uhsvnu.edu.vn
 uhytihen.info
 	unigem.vn
+"universal-zinstant.api.zaloapp.com
 upkynang.com
 upxu.net
 urbans-green.com
@@ -2767,6 +2800,7 @@ vingal.com
 vitinhkh.com
 vivolo-hydraulics.com
 vjol.info.vn
+vjst.vn
 
 vlm.com.vn
 vlxdhiepha.com
@@ -2833,8 +2867,11 @@ win-win.vn
 woexpress.net
 wooken.co.kr
 workflowfree.com
+wpa.chat.zalo.me
+wpa.zalo.me
 	wphost.vn
 wsp.vn
+www.qdnd.vn
 xachtaynhat.net
 xavanhouse.vn
 xaydunganbinh.com
@@ -2902,10 +2939,12 @@ yoshine.vn
 yoursoulcompass.space
 yukstore.com
 yurishop.info
+zalo.me
 zaloplatforms.com
 zayonstudio.com
 
 zbs.edu.vn
+zconf.me
 zenospaces.com
 zentokey.com
 zika.vn
@@ -2917,6 +2956,7 @@ zbs.edu.vn
 zoki.vn
 zonecloud.vn
 zoomtrading.io
+zss2.api.zaloapp.com
 zzbed.vn
 1office.vn
 24h.com.vn24hsport.tv2game.vn360duanju.com361-sport.com.vn3682sms.com3dpaperlightbox.com3dsblack.com4menshop.com5205168.com52hzmisfit.com789win2.design9life.com.vnabbeautyworld.comabbottvietnam.com.vn
@@ -2928,29 +2968,29 @@ ahay.io.vn
 aiolog.netaiservice.vnaiti.edu.vnalgae.vnalowebs.comamandatravel.comamcdn.vnamericanstudy.edu.vnamericantourister.vnamiz.vnamobilab.comanarabinhtienvn.comanhcoder.vnanhduongstore.vnanhhoabakery.vn
 anhnbt.comanta.com.vnantalvert.comantamvina.comanvietmedical.com.vnaothunxuxu.com
 appota.comaptiskey.comarthurfigurereal.vnascvn.com.vnasiacargoexpress.com.vn	atasia.vnatnplastic.comatschool.vnaut.vnautopro.com.vnautotimelapse.com
-avolock.vnayatorishop.com	aznose.vnazvietnam.vnbacdan.infobachlongmobile.combacnghean.edu.vnbacsicayxanh.vnbadhabitsstore.vnbanaco.com.vnbaobacninhtv.vnbaochinhphu.vnbaogiaothong.vnbaohoanviet.vn
+avolock.vnayatorishop.com	aznose.vnazvietnam.vnbacdan.infobachlongmobile.combacnghean.edu.vnbacsicayxanh.vnbadhabitsstore.vnbanaco.com.vnbaobacninhtv.vnbaochinhphu.vnbaodaklak.vnbaogiaothong.vnbaohoanviet.vnbaokhanhhoa.vn
 baomoi.combaomoi.net.vnbaophapluat.vnbaoquangtri.vnbaosonla.vnbaotangchungtichchientranh.vnbaotuyenquang.com.vnbaovenamphu.combaovenhanphu.vnbaoxaydung.com.vnbarriermaster.com	baseus.vnbatdongsan24h.edu.vn
 batshop.vnbazan.vnbcec.vn
 bdu.edu.vnbeatchat.aibeautygarden.vnbeautyon.vnbecamexijc.combenhviennhitrunguong.gov.vnbenhvienthammysiamthailand.vnbenhvienthuduc.vnbenhvienworldwide.vnbennghe.com.vnbfcgroup.netbhasia.com.vnbhttourist.combidecons.com.vnbidv.vnbilliardsomega.combiluxury.vnbinhminhphuongnamtravel.combirthdaylovecake.combitexshop.combitis.com.vn
 bizmac.netbkdns.vnbkns.vnblackhorsemodel.com.vnbluemarq.com
-bmsnvp.netbmxmdn.com.vnbombus.studiobongda.com.vnbookingvn.vnboothsampling.vnbostonpharma.vnbpstone.com.vnbrandinfo.bizbsgdtphcm.vn	btdca.combubblyzucchini.combuddhismtoday.combulldogteam.netbulongnaman.vnbum97racing.vncafefcdn.comcakhohoangtho.vncamera-smarthome.comcamtulau.io.vncanavibag.comcand.vn
+bmsnvp.netbmxmdn.com.vnbombus.studiobongda.com.vnbookingvn.vnboothsampling.vnbostonpharma.vnbpstone.com.vnbramasacscadi.combrandinfo.bizbsgdtphcm.vn	btdca.combubblyzucchini.combuddhismtoday.combulldogteam.netbulongnaman.vnbum97racing.vncafefcdn.comcakhohoangtho.vncamera-smarthome.comcamtulau.io.vncanavibag.comcand.vn
 canhcam.vncanvietmy.comcanzonidelcuore.comcaodangsaigon.edu.vncaodangytb.edu.vncaophatpaper.com.vncaovietcuong.comcapnuoclongan.comcares.vncartools.com.vncasio-vn.comcava.com.vncaygionglamnghiep.comcaygiongsaigon.comcdnstoremedia.comcentrocomercialaquarium.comcgvdt.vnchiasefilethietke.comchich.boats
 chich.buzzchicland.vnchienhoa.comchingluh.comchocamtay.vnchocaphe.vnchongiosinh.vncialisbuyhaq.comclinicaareias.comcliphotbokep.xyzcloudzone.vncmbvn.com.vncnnd.vncodekitten.vncodienhaiau.comcodienthaison.comcokhihongha.vncokhithuduc.comcokhitientien.comcokhitientien.vncolehaanvietnam.vncongdoan.vncongnghiepsinhhocvietnam.com.vncongtudongthainguyen.vncontineljs.comcooponline.vncoupletx.comctuet.edu.vncuddlybasis.comcuongcomputer.comd2architects.vndahoacuongminhvo.comdailyx3gor.comdalathasfarm.comdamynghenonnuocdanang.vndananggolfclub.comdanchau.comdanhphamgroup.comdaohaisan.vndaophatngaynay.comdathanh.com.vn
 dathop.com
 dau.edu.vndcine.vndcs.vndealtoday.vndefzone.netdeltaforce.skin	demve.com	deqik.comdergo.vndetracnghiem.edu.vndeva.vndft.vndhpland.comdichvudiaphuong.comdichvusohoa.vndidong3tot.comdidongviettel.com.vndienhoahaiphong.vndienlanhgiaphu.comdienmaybestprice.vndienmaycholon.comdienmaycholon.vndienmayhoanglien.vndienmaytinphat.comdientuduchuy.comdientutuyetnga.comdily.vndjivietnam.com.vn
-dkv.biz.vndoanhnghiepgiaothuong.vn
+dkv.biz.vndnse.com.vndoanhnghiepgiaothuong.vn
 doc256.comdoctornetwork.usdodungvanphong.com.vndogiadinh.vndoithecao.comdonga.edu.vndonglucsport.vndongnamfla.edu.vndongphongthuy.vndongphuctienbao.comdongtanglong.vndony.vndownload.com.vndr4gonsrobloxshop.com
 dsu.edu.vndthu.edu.vnduchuymobile.comduckimtinh.com
 duclien.vnduhocvietnhat.edu.vndulichculaocham.netdulichkhatvongviet.comdulichphap.com.vndulichquangbinh.netdulichsec.comdulichslovenia.comdulichsrilanka.vndulichtuantrangmat.netdulichvietmy.comdulichvietnam.com.vndulichxemay.comdulichy.comdulichy.com.vndungculambanh.com.vndungcuytecantho.comduongbatien.com
 dut.edu.vnduy5.name.vnduy7.name.vnduyen.com.vndvbk.vn	dx.gov.vneasybooks.vn
 easyhrm.vneasyinvoice.vneccovietnam.vnecvn.com
 edravn.comedulife.com.vn	edunet.vneemc.com.vnelly.vn
-elo.edu.vnemdep.vn	enbac.comenbaccdn.comenetviet.comentrade.com.vnepi.vneva.vnevasport.neteyesme.co.krf168mobi.comf168viet.comf247.comf5c.vnfanda.com.vnfarawayinstallation.comfbo.vnfikrinordin.comfinhay.com.vnfiveseasonsilk.vnflic500.edu.vnflowerstory.vnfly88okvip.cxfnbvietnam.vnfor-navi.com
+elo.edu.vnemdep.vn	enbac.comenbaccdn.comenetviet.comentrade.com.vnepi.vneva.vnevasport.neteyesme.co.kr	eztech.vnf168mobi.comf168viet.comf247.comf5c.vnfanda.com.vnfarawayinstallation.comfbo.vnfikrinordin.comfinhay.com.vnfiveseasonsilk.vnflic500.edu.vnflowerstory.vnfly88okvip.cxfnbvietnam.vnfor-navi.com
 fptplay.vn
 fractal.vnfreshgarden.vnfsel.edu.vnftech.aiftmsglobal.edu.vn
 fungift.vnfuntap.games	funtap.vnfunzy.vnfvhospital.com
 ga179.citygachthe1s.com
-gachtot.vngamek.vngantzvn.comgaran.vngds.vngenmonet.comgenviet.comgermanysnt.comgestionymas.comghn.vngiaitoan.comgiaophanlongxuyen.orggiaretaikho.vngiatin.com.vngixjewel.comglynliu.comgnfoods.com.vn
+gachtot.vngamek.vngantzvn.comgaran.vngds.vngenmonet.comgenviet.comgermanysnt.comgestionymas.comghn.vngiaitoan.comgiaophanlongxuyen.orggiaretaikho.vngiatin.com.vngiftcode.lienquan.garena.vngixjewel.comglynliu.comgnfoods.com.vn
 goalvn.comgocsandeal.comgoldcoastholding.vngolf-booking.vngomyduc.com.vngosol.com.vn	gosumo.vngrasus.storegreennode.aigreenskylines.com.vngsvvietnam.com
 gtvseo.comgymaster.vn
 haianh.comhainganscientist.io.vnhainhan.comhaitrieuauto.com	halink.vnhanggiadungnhuavietnhat.com.vnhangmy2u.vnhangxingiatot.comhanhphucgiadinh.vnhanmyviet.vnhanoiapartment.comhanoinew.vnhaophong.comhapas.vnhappyliving.vnharavan.comhatinh.gov.vnhayengroup.vnhccaa.vnhcmc-museum.edu.vnhdgmvietnam.comhdiu.edu.vn
@@ -2969,31 +3009,32 @@ hvu.edu.vnhylammon.com.vnhyundaidongnam.com.vni-ca.vnibst.vnicivi.vn
 igiasu.com	ihkco.comimta.edu.vninoxklins.com	intech.vnintergarmentcorp.comipm.vniri.vniroyal.com.vn
 isvr.or.jp
 itc.edu.vnivie.vnjitechdoor.comjogarbola.com.vn	jtshop.vn	kamito.vnkanapaint.com
-kangdh.comkdata.vnkeeng.vnkernh41.comkgcvietnam.vnkhaitam.comkhanhvyhome.comkhoahocphothong.vnkhoahocsinhvien.comkhobiensodep.vnkhoistore.vnkhothe365.vnkhuyennongvn.gov.vnkia-hochiminh.com.vnkiemhieptinh2.vnkimhungimex.comkimngan-industrial.comkimphat.com.vnkinhdoanhvabienmau.vnkinhtedothi.vn	kirins.vnkobesi.net.vnktdb.mekthcm.edu.vnku3933net.inkkuboroblox.comkylanluxury.comkynghidongduong.vnlacoste.com.vnlaichau.gov.vnlamdongtv.vnlamerfashion.comlamthaocosmetics.vnlaptopno1.vnlatinareki.comlavender.edu.vnledviplight.comlencontay.comlienminhgroup.vnlinhcosmetics.vnlinhkienlamphat.comlining.com.vnliningbadminton.vnlinktot.net	lms360.vnlotgiaythethao.vnlotus.vnlotuslms.comlqdtu.edu.vn	ltacv.comluatduonggia.vnluckylotter.vnluu.vn
-luxbath.vnluyenthi123.comlyhoclacviet.vnmaforum.com.vnmaihienchehatinh.commailongmachinery.commailvn.sitemaixephunglinh.commakita.net.vnmarina-logistics.commarketingai.vn	matbao.in
+kangdh.comkdata.vnkeeng.vn	kenh14.vnkernh41.comkesgroup.vnkgcvietnam.vnkhaitam.comkhanhvyhome.comkhoahocphothong.vnkhoahocsinhvien.comkhobiensodep.vnkhoistore.vnkhothe365.vnkhuyennongvn.gov.vnkia-hochiminh.com.vnkiemhieptinh2.vnkimhungimex.comkimngan-industrial.comkimphat.com.vnkinhdoanhvabienmau.vnkinhtedothi.vn	kirins.vnkobesi.net.vnktdb.mekthcm.edu.vnku3933net.inkkuboroblox.comkylanluxury.comkynghidongduong.vnlacoste.com.vnlaichau.gov.vnlamdongtv.vnlamerfashion.comlamthaocosmetics.vnlaptopno1.vnlatinareki.comlavender.edu.vnledviplight.comlencontay.comlienminhgroup.vnlinhcosmetics.vnlinhkienlamphat.comlining.com.vnliningbadminton.vnlinktot.net	lms360.vn
+longvan.vnlotgiaythethao.vnlotus.vnlotuslms.comlqdtu.edu.vn	ltacv.comluatduonggia.vnluckylotter.vnluu.vn
+luxbath.vnluyenthi123.comlyhoclacviet.vn	m-mbf.commaforum.com.vnmaihienchehatinh.commailongmachinery.commailvn.sitemaixephunglinh.commakita.net.vnmarina-logistics.commarketingai.vn	matbao.in
 mathda.commay10.vnmayanhhoangto.commaycatday.netmaycokhixaydung.commaydokhinhatban.commaylocnuocaquapure.vnmaylocnuoctphcm.commaymayhoangkhang.commaynenkhicongnghiep.netmayvanphonganphat.commbee.com.vn	mbiker.vnmccvietnam.vnmedlatec.vnmefaco.com.vnmepsmart.commeu-solutions.commevacon.com.vnmezon.aimgl.vnmhrental.vnmidnightaroids.commientay2.promigrin.com.vnmimigame.vnminhcaumart.vnminhhieufb.netminhngoc.groupminhphucvietnam.comminhtuanmobile.comminismart.netmisvn.edu.vnmnhoatien1-hoavang.edu.vnmobifone.online	mobion.vn
 mod.gov.vnmoiplus.appmomo.vn
 mona.mediamoussenhuavina.commplis.gov.vnmrsimplesteakhouse.commschool.edu.vnmthcorp.com.vn	mtivn.commuare.vnmucintrungtin.commxp2.commydio.vnnapas.com.vnnature-hike.vnnavy.vnnavybigsize.vnnbtxd.vnnc-ca.com.vnnchmf.gov.vnnendidau.comnentanggiaoduc.edu.vn
 netpost.vnnewstargroup.com	newtec.vnnextcore.vn
 nextpay.vnnextzenos.comneymarsport.comnganhangs.comngaygiolong.io.vnnghiemthuxaydung.comngocthinh-jewelry.vnngontinhtruyen.com.vnnguoiduado.vnnhakhoahongphong.com.vnnhakhoanhantam.com
-nhandan.vnnhanvanaudio.comnhasachphuongnam.comnhathuoc84.comnhathuocbachmai.vnnhathuocphucankhang.comnhathuocviet.comnhathuocvietnhat.vnnhavietdental.vnnhen.vnnhidong.org.vnnhuatiengiang.comnhuthihi.com
+nhandan.vnnhanhoa.com.vnnhanvanaudio.comnhasachphuongnam.comnhathuoc84.comnhathuocbachmai.vnnhathuocphucankhang.comnhathuocviet.comnhathuocvietnhat.vnnhavietdental.vnnhen.vnnhidong.org.vnnhuatiengiang.comnhuthihi.com
 nibot2.comnidoapple.comninhbinh.edu.vn
 nld.com.vnnmbooking.com.vnnoibaiairport.vnnoithathoaphat.com.vnnoithatlp.comnoithatneo.vnnongnghieppho.vn	noxaov.vnnss.vn	nstech.vnntthnue.edu.vn
 ntu.edu.vnnuocnongthonlamdong.vnnvstudio.siteoddgate.comods.vn
 ofurni.comogvn.netokmen.edu.vnolympicenglish.vn
 onemall.vnonetouch.edu.vnoneuni.com.vnonthiielts.com.vnontr.com.vnopengame.vnotescorp.comotoansuong.vnotovuongphat.comoyungel.com	pantio.vnpay2s.vnpayme.vnpcs.vn
-pdaviet.vnpenci.vnphadincoffee.comphanmemdaotao.edu.vnpharma360.vnphimsexjav.ccphimsexnunglon.comphimsexvp.comphimsexz.orgphoamthanhxua.comphongwatch.vnphotuesoftware.vnphulieumayminhduc.compierre-cardin.vnpilotco3.vnpilotcosouth.vnpinhanoi.compke.ggplayzone.vnplo.vnpmpenglish.edu.vnpolitek.com.vnpoongsankorea.vnpops.vnportlydrum.com
-proship.vnproxyno1.comptit.edu.vnptnktdtt-hanoi.edu.vnptsc.com.vnpublicland.com.vnqllt.khanhhoa.vnqlms.vnqualuuniemvn.comquanlyoto.vnquantrimang.comquatest2.gov.vn
-quatgio.vn	quayso.vnquyhoachvietnam.com.vnquynhonport.vnquytdau.blog	rabity.vnradarkriminal.comraovat24h.vnraovat3s.comrblx-gg.comreatimes.vnred33archi.comredcross.org.vnrgb.vnrobloxscriptbest.comrongbay.comrungrinh.vn
+pdaviet.vnpenci.vnphadincoffee.comphanmemdaotao.edu.vnpharma360.vnphimsexjav.ccphimsexnunglon.comphimsexvp.comphimsexz.orgphoamthanhxua.comphongwatch.vnphoto-stal-11.zadn.vnphoto-stal-28.zadn.vnphotuesoftware.vnphulieumayminhduc.compierre-cardin.vnpilotco3.vnpilotcosouth.vnpinhanoi.compke.ggplayzone.vnplo.vnpmpenglish.edu.vnpolitek.com.vnpoongsankorea.vnpops.vnportlydrum.compos.pancake.vn
+proship.vnproxyno1.comptit.edu.vnptithcm.edu.vnptnktdtt-hanoi.edu.vnptsc.com.vnpublicland.com.vnqllt.khanhhoa.vnqlms.vnqualuuniemvn.comquanlyoto.vnquantrimang.comquatest2.gov.vn
+quatgio.vn	quayso.vnquyhoachvietnam.com.vnquynhonport.vnquytdau.blog	rabity.vnradarkriminal.comraovat24h.vnraovat3s.comrblx-gg.comreatimes.vnred33archi.comredcross.org.vnrgb.vnrobloxscriptbest.comrongbay.comrungrinh.vns160-ava-talk.zadn.vn
 sachiko.vnsacombank-sbj.com
 sacomex.vnsaigonbagel.vnsaigondoor.vnsaigonsmilespa.com.vnsalekit.comsamnec.com.vnsannhaminh.comsanvemaybay.vnsaobacdautelecom.vnsaokim.com.vn
 saostar.vnsatmontblanc.comsc88game.comscapbot.comschellostore.com
-seedcom.vnsees.vnselavia.com.vnseoulspa.vnsexdeptv.comsexmovies.worldsextop69.com
+seedcom.vnsees.vnselavia.com.vnsense.mservice.ioseoulspa.vnsexdeptv.comsexmovies.worldsextop69.com
 sexul.lovesexybeam.mesexzz.ccsggpnews.org.vn
 sgt.com.vnshac.vnshopaccmt.comshopdochoitinhyeu.comshopnguoilon.com.vn
-shoptft.vnshopthanthoai.comshost.vnsimphongthuy.vnsinhnhatdep.comskynetgaming.vnsmartcom.vnsmember.com.vnsmmc.edu.vnsnappify.netsnapsave.vn	socdo.comsoftdreams.vnsoftech.cloudsolvillas.vn
+shoptft.vnshopthanthoai.comshost.vnsimphongthuy.vnsinhnhatdep.comskynetgaming.vnsmartcom.vnsmarttravelvietnam.comsmember.com.vnsmmc.edu.vnsnappify.netsnapsave.vn	socdo.comsoftdreams.vnsoftech.cloudsolvillas.vn
 somehow.vnsomogroup.vnsonbetongconpa.netsonghung.vnsongsieuamjy.comsonthienhongan.comspnttw.edu.vn
-srp.edu.vnstarlight.vnstcexpress.com	studio.vnsuamayintannoi.netsuzukitrongtin.comtailieunhanh.comtainguyenmd.comtainhacchuong.org
+srp.edu.vnstarlight.vnstcexpress.comstdportal.tdtu.edu.vn	studio.vnsuamayintannoi.netsunshine-equipment.comsuzukitrongtin.comtailieunhanh.comtainguyenmd.comtainhacchuong.org
 tambinh.vntanadaithanh.vntanphat.com.vntantienphattai.com.vntanvinhmy.comtarot.vntaxitorremolinos.comtechcenter.vntechworldmobile.vnteko.vntempi.vntesttramcam.vn
 tgc.edu.vnthaiankhangland.vnthammyngomonghung.vnthanhgiang.com.vnthanhlyhangcu.net.vnthanhngocfood.comthanhnien.com.vnthanhnienviet.vnthanhtra.com.vnthanhuyhue.vn	thatim.vnthcscaugiay.edu.vntheappnow.nettheboysvietsub.comtheemeraldsgardenview.comthegioi-thoitrang.comthegioibut.comthegioigiado.comthegioikhanuot.comthegioinoingoaithat.vnthegioiskinfood.comthethaovanhoa.vn
 thghose.vnthiamlau.comthienauto.comthietbicongnghiephcm.vnthietbidiennuoc.com.vnthietbimaytudonghoa.comthietbinamduong.vnthietbiytedongnai.comthietkehaidang.comthietkewebsitechuyennghiep.comthietthach.vnthoitrangkhatoco.vnthptbuihuunghia.edu.vnthucphamdongnama.comthuecron.comthuevinatax.comthukhoadaihoc.vnthuocgiaphuc.vnthuonghieudangcap.netthuonghieusanpham.vnthuonghieutot.comthuongmaivanloi.comthuthuymosaic.vnthuvienquangninh.org.vnthuvientarot.comtiin.vntikicdn.comtimnhaphanphoi.vn
@@ -3010,9 +3051,11 @@ vaytot.comvbci.com.vn	vbdlis.vn
 vbu.edu.vn	vccorp.vnvcloudcam.vn	vcpmc.orgvedepphuongdong.comverybarriecolts.com
 vff.org.vnvicogroup.com.vn
 vieclam.tvvieclam123.vnvieclamcantho.com.vnviendonghotel.com.vnvienthongact.vnviet-tv.onlinevietagold.com.vnvietcdn.netvietceramics.com
-vietid.netvietmachine.comvietmoz.netvietnam-vrf.netvietnamhoinhap.vnvietnamhub.vnvietnamtouristvn.comvietnamworks.comvietnhatplastic.comvietofficexpo.com.vnvietsol.netvietstock247.comviettelcybersecurity.comviettelidc.com.vnviettelpay.vnvietteltelecom.vnviettimes.vnviettourist.comvifon.vn	vimigo.vnvinaquick.comvinfasthungson.comvinhomesland.vnvishipel.com.vnvisioncopddns.netvitinhtranphu.comvjc.vnvjpm.vnvlute.edu.vnvmrcc.gov.vn
-vmterp.comvnba.org.vnvnex.com.vnvnhgroup.vnvnindustry.netvnio.org.vnvnkgu.edu.vnvnluxury.vnvnmac.gov.vn	vntrip.vnvoca.vnvongxepsaigon.vnvov.vnvoxephucthao.vn
+vietid.netvietmachine.comvietmoz.netvietnam-vrf.netvietnambooking.comvietnamhoinhap.vnvietnamhub.vnvietnamtouristvn.comvietnamworks.comvietnhatplastic.comvietofficexpo.com.vnvietsol.netvietstock247.comviettelcybersecurity.comviettelidc.com.vnviettelpay.vnvietteltelecom.vnviettimes.vnviettourist.comvifon.vn	vimigo.vnvinaquick.comvinfasthungson.comvinhomesland.vnvishipel.com.vnvisioncopddns.netvitinhtranphu.comvjc.vnvjpm.vnvlute.edu.vnvmrcc.gov.vn
+vmterp.comvnba.org.vnvnex.com.vn
+vng.com.vnvnhgroup.vnvnindustry.netvnio.org.vnvnkgu.edu.vnvnluxury.vnvnmac.gov.vn	vntrip.vnvoca.vnvongxepsaigon.vnvov.vnvoxephucthao.vn
 vpa.org.vnvpmilkcare.vnvpphongha.vnvpsgame.netvrg.vnvsd.vn	vstyle.vn
-vtgpost.vnvtgs.vnvthcmfamily.vnvttu.edu.vnvtv.vnvtvprime.vnwearperfume.vn	web2m.comweb3a.vn	webmau.vnwebsosanh.vnweeestoreog.vnwhenever.vnwikilanguages.netwilsonsports.com.vnwinbasketball.vnwipro.com.vnwoori.com.vnwpay.vn
+vtgpost.vnvtgs.vnvthcmfamily.vnvttu.edu.vnvtv.vnvtvprime.vnwearperfume.vn	web2m.comweb3a.vn	webmau.vnwebsosanh.vnweeestoreog.vnwhenever.vnwikilanguages.netwilsonsports.com.vnwinbasketball.vnwipro.com.vnwoori.com.vnwpay.vnwww.24h.com.vnwww.duchuymobile.com
 www.gov.vnxe5s.vnxedap24h.vnxedienxanhsaigon.comxenanghangchagiatot.vnxiaomilangson.comxoso3mien.netxosoquangbinh.vnxosotructiep.vnxrainroblox.comxskt.com.vnxtep.vnxuhangclothingdanang.vn
-yhn.edu.vnzalo.aizdn.vnznews.vnzzz.vn
+yhn.edu.vnzalo.aizdn.vn
+zework.comznews.vnzpsocial2-f9-org.zadn.vnzzz.vn

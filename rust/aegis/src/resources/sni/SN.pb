@@ -1,1 +1,1 @@
-	eismv.org
+dakarmidi.net	eismv.orgunchk.sn

@@ -112,6 +112,7 @@ beanox.com
 
 blender.fi
 blinkcyberhero.com
+	blogit.fi
 bluebirdinternational.net
 bluehosting.pk
 bluemart.pk
@@ -245,6 +246,8 @@ eco-gis.ru
 	eskola.uk
 etohost.com
 eurobilltracker.com
+
+euronic.fi
 eurost.academy
 evac.com
 	evjaj.com
@@ -263,6 +266,7 @@ felinas.fi
 ferramentaceciliano.it
 fhuan.ao
 fillventures.com
+fimea.fi
 findhost.co.in
 flyghistoria.org
 flyturizam.com
@@ -330,6 +334,7 @@ hermit.bar
 hhost.host
 hidoctor.ir
 himilouniversity.edu.so
+hinta.fi
 hitcloud.pl
 hithosting.pl
 hjarnfonden.se
@@ -358,12 +363,14 @@ hhost.host
 icedream.tech
 ictnepal.com
 ident.me
+idp.aalto.fi
 ieais.com.pk
 iev.ee
 ilmailuliitto.fi
 ilmainensanakirja.fi
 ilmavoimat.fi
 ilontassut.fi
+iltapulu.fi
 	ilves.com
 
 imagmbh.de
@@ -375,6 +382,7 @@ imagmbh.de
 infinitedfiber.com
 
 info-bw.de
+infofinland.fi
 ingcomart.com.pk
 ingresso-minsa.ao
 inoxdesign.com.gr
@@ -421,6 +429,7 @@ k-mods.com
 
 kalopa.com
 kamalhosting.com
+kansallisarkisto.fi
 karkelokauppa.fi
 kartogiraffe.de
 kat.directory
@@ -446,6 +455,7 @@ kalopa.com
 latechsoft.com
 laurahospido.com
 laurellodgeparish.ie
+lausuntopalvelu.fi
 	lcwfa.com
 leaddesk.com
 leaddesk.eu
@@ -458,6 +468,7 @@ kalopa.com
 lffb.lv
 libreoffice.org
 librespeed.fi
+libreswan.org
 lifecareindia.in
 ligbox.com.br
 limereads.com
@@ -650,6 +661,7 @@ oumkua.com
 plantseller.pk
 platform.coop
 playeuromillions.mobi
+playgenerals.online
 pocketbase.io
 pocketbooth.nl
 	polamk.fi
@@ -727,6 +739,7 @@ sadpar.com
 sajadtorkamani.com
 salamattebb.ir
 	salli.com
+sandbox.love
 santapark.fi
 santashotels.fi
 sate.gr
@@ -749,6 +762,8 @@ semshop.it
 servicing.email
 servitor-hosting.de
 ses.fi
+
+setera.com
 seulaset.fi
 sfp.fi
 shab-pareh.ir
@@ -780,6 +795,7 @@ skinoz.net
 socialofferz.com
 sociolance.com
 sofecta.com
+sonar-hel3-1.xx.fbcdn.net
 sonaraamat.com
 sooloiluja.com
 	spacva.mk
@@ -795,6 +811,7 @@ skinoz.net
 staedte-fotos.de
 startbilder.de
 statebcn.com
+stm.fi
 storminternational.com
 stranica.mk
 streetfoodsiesta.fi
@@ -938,6 +955,9 @@ wimhost.in
 
 wp2all.com
 wukl.net
+www.autostadium.fi
+www.iltapulu.fi
+www.telsu.fi
 xn--bersetzung-8db.cc
 
 xoreos.org
@@ -991,7 +1011,7 @@ digi77.comdigicampus.fidigichampion.indigipaper.fidigitaledgekenya.com
 dordoi.netdostyp.com.uadothousedigitalclients.comdoublematic.comdp7.rodpromtex.comdr-ghavami.comdr-mohamedomar.comdr-valipour.comdrkarami.comdrmarashizadeh.comdropitto.me
 drouvas.gr	dsa.co.ke
 dspolo.comdtekhost01.grduchovny.ruduckvpn.techduenkel-partner.de
-dutchcg.nldvinconnect.storee-resellers.gre-zeppelin.ro	eadmin.greaglenet.orgearsc-portal.eueasyparking.pt
+dutchcg.nldvinconnect.storedvn.fie-resellers.gre-zeppelin.ro	eadmin.greaglenet.orgearsc-portal.eueasyparking.pt
 ebas.co.keebikestore.shop	ebuss.netecitapps.comecloud.globalecoforest.uaedina.esedocs.ie	efima.com	efinf.orgeissa-express.comeksponent.comekyhdistykset.fi
 ekyklos.grelattal.comelbonaerense.newseldiariodetandil.comeldico-b2b.grelecont.netelectrobike.fielektrokosmos.gr	elenia.fielmirlorojo.comelokuvauutiset.fiemmasys.comendress-group.roeneca.org.rsenergiapura.info
 eneroc.netenervent.comengaznyexpress.comengiz-shipping.comentresurcosycorralesya.comentryscape.netenvs.netepfdigital.fiepressi.comequiparafarmacie.iterakontio.fierikshjalpen.seerillisverkot.fierkaflex.deerkajans.net
@@ -1023,16 +1043,16 @@ huvila.nethyku.fihyresbostader.se
 hyundai.fi	i3tex.comi7lm.comian-whannel.com	ibis.wikiibounddns.comibvha1zyuc.comican-auction.comicare-world.comicertias.comidealinspect.fi	idrott.fi
 iglele.com	ihnat.netijmdr.inimageform.seimageofcompany.itimageworld.fi	imaker.noimatranajo.fiimatrankylpyla.fiimkerschule-sh.de
 imsamou.grin2thebeach.esindexbraille.comindustry-electronics.cominet.bainfluent.solutionsinfo.tm
-infoera.rsinfozagreb.hr
+infoera.rsinfozagreb.hrinnoflame.fi
 inpoll.orginsigniesfutur.catinstantlinks.co	instly.im
 instory.fiintegral.fiinterkit.appinteroutes.gr
 iocave.netios4host.com	ipol.techiprofiles.ruiqsolutions.griranikavosh.comiranistika.orgirisinfo.net
 iskala.com
 iskelma.fiislaminusko.fiislamonweb.netistikbalgreece.gristoknet.comistoservices.comitclogic.comitlinkonline.comitr-finland.com
-iwhost.orgjaansarkija.fijaegerplatoon.netjahrhunderthalle-bochum.dejanakkala.fijanikaasalainen.fijaskamerakauppa.fijauernick.netjdmmediagroup.com
+iwhost.orgiwn.fijaansarkija.fijaegerplatoon.netjahrhunderthalle-bochum.dejanakkala.fijanikaasalainen.fijaskamerakauppa.fijauernick.netjdmmediagroup.com
 jea.org.jojeans24h.pljessicareiman.comjigiparatiisi.fijkmm.fijkorpela.fi
 jo1sat.net	jobzee.pkjoel-uzcategui.comjohndeeretimberskills.comjousimetsastys.fijoybits.gamesjsemgamer.cz
-jt-line.fijunalauta.netjustjob.emailjustjob.livejylkkari.fi	k-lad.comk24.netkabi.tkkalastajankanava.fikamuniak.comkandaulismus.czkapountalis.comkaristelefon.fikarppi.ninjakasteeldehaar.nlkaterini.grkatsalis.comkauhajoenlukio.fikauniainen.fikayapremium1.netkbfmeble.plkcci.inkccindia.comkeepinhosting.comkellopuoti.fikennelliitto.fikeops-solutions.comketoapps.comkeymimestate.comkhanabadosh.pkkhelkhel.inkicksecure.comkidonakis.comkiel.socialkilu.dekinkycats.orgkinopiispanristi.fi
+jt-line.fijunalauta.netjustjob.emailjustjob.livejylkkari.fijyu.fi	k-lad.comk24.netkabi.tkkalastajankanava.fikamuniak.comkandaulismus.czkapountalis.comkaristelefon.fikarppi.ninjakasteeldehaar.nlkaterini.grkatsalis.comkauhajoenlukio.fikauniainen.fikayapremium1.netkbfmeble.plkcci.inkccindia.comkeepinhosting.comkellopuoti.fikempower.comkennelliitto.fikeops-solutions.comketoapps.comkeymimestate.comkhanabadosh.pkkhelkhel.inkicksecure.comkidonakis.comkiel.socialkilu.dekinkycats.orgkinopiispanristi.fi
 kippis.orgkiridae.comkirkkorekry.fikirubacrackers.comkiuruvedenlukio.fikivennapa.comkivra.fi
 klangas.lt
 klarabo.sekliocreations.comklockorochsmycken.sekloster-benediktbeuern.deknihaantik.skknxlive.comkodintavaratalo.fikoeajolle.com
@@ -1040,10 +1060,10 @@ kohina.comkoljonvirtateatteri.fi	komars.skkomplex.com.uakomunalac-kc.hr
 konouz.comkorektgold.comkorpikangassiemen.fikortteliliiga.netkorupaja.fikorutarvikkeet.eukosinushosting.eukoskimies.fikoulukino.fi
 kouvola.fikowalla.agencykpembenmtc.edu.ghkrbed.dkkriittinengalleria.fi	krydra.nokt.fiktracing.fikulkukoira.comkultamuna.fikultaseppahanhiniemi.fikulttuuritoimitus.fikuntarahoitus.fikuntarekry.fikuopiodancefestival.fikuulatori.fikuuskaista.comkvd.se
 kwiknet.nlkymppimedia.cloudlaakarilehti.filaakerinetti.comlabteamet.no
-lak-sa.comlaminat-kiev.com.ualankakissa.net
+lak-sa.comlaminat-kiev.com.ualampopumput.infolankakissa.net
 lankava.filappasbros.grlatticesystems.comlatvala.comlatvijasbuvnieki.lvlautapeliseura.filauttakyla.filaxmiskill.comlcvalkeala.file-store.fi
 leadhub.co
-leadhub.czlelupartanen.filempaala.fileon014.betleon15sg.comleon16sg1.comleon17sg.comleonhsts.comlepszypoznan.pllfsdg82hd.com	lgs36.comlibranet.deliebevoll.jetzt	lieksa.filife-guide.comlifemeddental.comlightningmaps.orgliikehairio.fi	linder.selindholmen.selinkerind.comlionshosting.netlipid-liga.deliveskills.inlivraria-amadora.pt	llearn.grloewenforum.delogigroup.uz
+leadhub.czlearn.xamk.filelupartanen.filempaala.fileon014.betleon15sg.comleon16sg1.comleon17sg.comleonhsts.comlepszypoznan.pllfsdg82hd.com	lgs36.comlibranet.deliebevoll.jetzt	lieksa.filife-guide.comlifemeddental.comlightningmaps.orgliikehairio.fi	linder.selindholmen.selinkerind.comlionshosting.netlipid-liga.deliveskills.inlivraria-amadora.pt	llearn.grloewenforum.delogigroup.uz
 logoss.net
 lolvvv.comlottomat.comlotusproshop.seloudevpn.comlovematch.com.trloyaltykey.comloytotavara.netlp-varaosaksi.filpintomonteiro.comls37.filuckybear777.ruluckybearcasino.best	luksia.filumiverse.gr	luotio.filupaollamina.filupotreff.deluxury-materials.comlynx2000.itlyyti.fi
 maagbd.commaalaava.fimadcapperweb.commadeinbern.com	mafell.demagnumlive.fimahatmahome.grmainstreamgh.commajorcapital.com	makart.rsmalagactualidad.esmaleticarms.commalinadesign.studiomalmocity.semandmfoods.co.uk
@@ -1062,7 +1082,8 @@ munu.cloud	murena.iomurialdosicilia.orgmusiclife.uamuslimshop.frmustafa
 mvision.ai	mwerr.net
 myads.infomycityad.inmyhost.websitemynewsua.commywebsolutions.itnabytokpoprad.sknajsport.sknakamotoparts.grnakat.com.ua
 nakdns.comnamikalappeenranta.fi	nammo.comnanu.mdnat.ggnationpearl.comnations-conflict.comnationsgardarna.senazdorovie.com	nefco.int neiltoolsandmachineryexports.comnenna.finetin.finetserwer.plnetspeed37.comnettisanomat.comnettivaraus.com	neubsi.at	neviso.finewlife-gr.comnewmitshop.comnewpanel.denewrotatormarch23.bidnewscenter.aznewsinenglish.nonextgames.comnextgenpathfinder.info
-nextory.denexus-express.netngss.edu.pknhfastore.netnimettomatpelurit.finimipaivat.finitiweb.net	nixski.cznoblewine.lvnodelspiel.chnokinstyle.comnomadsland.travelnopeawebhotelli.finordhost.nonordicgreen.finordiclabourjournal.org	norkko.finostalgiamarket.finotarobot.appnotationit.comnotebook-hemer.denoteboox.denotsofool.comnovelcomm.grnrj.finsbetbey.com
+nextory.denexus-express.netngss.edu.pknhfastore.netnimettomatpelurit.finimipaivat.finitiweb.net	nixski.cznoblewine.lvnodelspiel.chnokinstyle.comnomadsland.travelnopeawebhotelli.finordhost.nonordicgreen.finordiclabourjournal.org
+nordweb.fi	norkko.finostalgiamarket.finotarobot.appnotationit.comnotebook-hemer.denoteboox.denotsofool.comnovelcomm.grnrj.finsbetbey.com
 nservw.netnssosyete.comntgt.dentitransolutions.com
 nurion.comnyatunnelbanan.senyrolatalo.fioaza.rsobjection.loloblik.fioccuphealth.fiocshostingnepal.comoctaviantweaking.comoemailrecovery.comofa.aooffsideplus.azoh3ac.fiohnaturist.comoisk.netoktolearn.co.zaoldskool.fiom-medical.pt	omegle.fiomenterprisesinfo.comomex-express.comomnesmag.comon-mailbox.comonbin.huonlinedirectory.onlineonlinehokm.netonlinepartner.seonmeb.inonska.seonthebeachbrighton.comopenhost247.comopenpeople.universityopistopalvelut.fiopitietosuojaa.fioptimus.com.uaoptmag.com.uaoranssihuone.fi
 orbix.buzzorlpedia.grortacarehberi.com.trosm3tech.comosp.fiospro.fiosrsbotdetector.comotter-marketing.comoukirilimetodij.edu.mkoulujoenreitti.fioulunkoru.fiourwebcreation.comout.tvoye-records.compainotaloshop.fipaivanlehti.fipakhostingzone.compakistanfumigation.compakmcqs.com	pamark.fipancernik.infopandunia.infopanoptikum.socialpaolellioutdoor.itpapeleriaplacidogomez.compaperwriter.co.uk	papido.itparaxweb.netparconfreiwald.roparkingpro.nlpastorius.lv
@@ -1083,7 +1104,7 @@ sailman.fisaiwholesale.comsalgmaster.dksalumificiorossi.itsamicomputers.
 seclan.com	seclan.fisecondflor.comsecurewhost.com
 sedaris.fiseinajoki.fisekureco.euselecta-vision.comseligson.fisellbuy.zoneselvapyy.fisemdinlihabergazetesi.comseo-maker.comseobegroup.online
 seoclub.roseomarket.uaseorank.bydgoszcz.plseredonline.skserta.lvserveren.dkserverind.co.inserviomatic.com	servw.bidseta.fisexshoplaki.basfos.skshadows-it.comsherifshalaby.tech	shhj.infoshippingtelegraph.comshivaazfarms.comshop.tmshopazaire.comshopsailor.comshredzone.orgshrijagannathmandirdelhi.insiasolutions.itsiddhitechnepal.comside.com.pl
-sieline.gr	sievi.comsilverline.com.gr	simeri.fisindiatv.insisailmayhdistys.fisisarengas.fisistemasama.comsisucloud.topsitehosting.fi	siteup.sesiunsote.fisivu.fiskillinspire.orgskkm.fiskolatk.edu.baskolekorpset.noskyview.socialslicearrow.comslot1000.de
+sieline.gr	sievi.comsiilinjarvi.fisilverline.com.gr	simeri.fisindiatv.insisailmayhdistys.fisisarengas.fisistemasama.comsisucloud.topsitehosting.fi	siteup.sesiunsote.fisivu.fiskillinspire.orgskkm.fiskolatk.edu.baskolekorpset.noskyview.socialslicearrow.comslot1000.de
 slovart.sksmartcargo-vm.pksmartcargo-vmx.pksmartcargo-vtr.pksmartcargo.pksmartenergy.net.uasmartfenix.essmartmonitoring.be	snuhy.comsnusfabriken.comsocial-vape.comsoctrade.uasofigate.comsofokus.comsoft-load.eu
 solhatt.nosollertis.fisologrey.fisolounatienda.comsolutionmedical.gr
 sonion.comsoporteforesta.cloudsoportegt.comsostecincgroup.comsourcefactory.atspacedock.infospacesaver.chspacetraders.iospadok.org.ua	spania.nosparsando.despeciaali.comspoken-tutorial.insport-forum.netsportstats.grspraktidningen.sesptprotection.com
@@ -1100,16 +1121,16 @@ tactic.nettageskarte.io	taiqa.com
 takilta.fitakipcitime.comtalkyard.iotaloustieteellinenyhdistys.fitango.getanssiin.fitastes-of-danube.eutavaraliiteri.fitcgshop-moers.comteahouse.ua
 teamail.geteamgaki.comteamitforce.roteamtip.netteatrolesalette.itteatrotarentum.itteaviisari.fitech4idea.nettechblog.grtechnicguy.comtechnolex.nltechresolve.cotechslideits.comtechverseit.co.uktecnoghana.comtehnopolis.com.uateigundzeug.de
 teknos.comtelecom-club.rutelemarksforsking.notengames.fiteploradost.com.uaterranova.universityterratravel.rstestpress.intgoo.eutgoo.ptthebicycleshop.grtheexpertsol.comthegoddy.comthehighlander.co.zathekiddicompany.comthenewgeneration.se	thesho.psthesuccesskul.inthethings.io
-thriftd.fitierkollektion.chtietgenskolen.dk	tikcdn.iotilitantti.fi
+thriftd.fitierkollektion.chtietgenskolen.dk	tikcdn.iotilitantti.fitime.nepton.com
 timeapp.setimesofindia.tvtimoheinonen.fitinfo.fi
 tmdigi.comtodo-deporte.comtoiservice.kg
 toldot.comtoolsforlife.grtoolsmart.getopspeed.grtorambo.com	tornio.fitostampadiko.grtotalvene.fitourkiev.comtownspot.cotranasenergi.setransauto.hrtransitio.setrekking.grtrelson.com
-trimore.grtrinityit.worktrueconf.comts.fitsbhost.com	tscat.cattsig.grtsoumpas.grtsr-elsite.fittc.iotts.fi
+trimore.grtrinityit.worktrueconf.comtrueconf.netts.fitsbhost.com	tscat.cattsig.grtsoumpas.grtsr-elsite.fittc.iotts.fi
 ttsetti.fitube.uztuhostingonline.comtukikone.fitulohaces.comtunerscapital.siturancar.skturbomaster.infoturkeyalaan.netturkuamk.fiturkubusinessregion.comturtolankyla.fiturunilmatorjuntakilta.fituskun.cloudtyovaateaitta.fiubudpoint.comuinp.gov.uauk-konvers.ruukrainians.fiukrlock.com.ua
 ukumbi.orgumcpro12.com
-umw.edu.pkunibytes.xyz	unipid.fiuniversalmatt.comunsignedonly.comurbanflowers.com.uaurbanweb.grurbnways.comurheiluhallit.fiurheilutanssijat.netuteka.ua	utixo.netuutismediat.fivaalerengaskolesmusikkorps.novaapputarvike.fivaasansahko.fivaderacapital.comvaisala.comvalenciahotels.orgvalonnopea.fi	varala.fi
+umw.edu.pkunibytes.xyz	unipid.fiuniversalmatt.comunsignedonly.comupcloudobjects.comurbanflowers.com.uaurbanweb.grurbnways.comurheiluhallit.fiurheilutanssijat.netuteka.ua	utixo.netutu.fiuutismediat.fivaalerengaskolesmusikkorps.novaapputarvike.fivaasansahko.fivaderacapital.comvaisala.comvalenciahotels.orgvalonnopea.fi	varala.fi
 vartsi.netvasa.mgvasemmistojkl.fivassiliaorfanou.comvat-calculator.netvau.fivauhtikiihtyyfestival.fivaynerspeakers.comvectorasit.com
-velobiz.develosprint.com.mkvenera.socialventalena.comvepsalainen.comvepsu.fiverkkomaine.fiverkkotalli.fi
+velobiz.develosprint.com.mkvenera.socialventalena.comvepsalainen.comvepsu.fiverkkoasiointi.elisa.fiverkkomaine.fiverkkotalli.fi
 vermont.cz
 vermont.huversustravel.euveryhosting.it
 vest.in.uaviestikyyhky.fi

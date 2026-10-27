@@ -825,4 +825,6 @@ vulkans.co
 wulkanmoney.dev
 wulkanmoney.net
 wylk-cl.com
-wylkan-club777.netdeluxe-vulcan.infotonyclaude.ruvulkanstars-club.infovulkanstars-club.net
+wylkan-club777.netbaddiehub.comdeluxe-vulcan.info
+fapnut.netleakgallery.comliverussia.onlineone-way.workpomogalka.mepulsevisuals.prorule34video.com
+sci-hub.ruserienstream.toteamroids.nettonyclaude.ruvulkanstars-club.infovulkanstars-club.net

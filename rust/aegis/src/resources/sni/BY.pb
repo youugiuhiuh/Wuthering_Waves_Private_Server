@@ -50,6 +50,7 @@ atk-gps.by
 autoset.by
 avtoradio.by
 avtozona.by
+ay.by
 bdpo.by
 	bel-am.by
 bel-shop.com
@@ -103,11 +104,13 @@ cosmico.by
 da.by
 
 datacar.by
+datahata.by
 design-service.by
 difa.by
 digimedia.ru
 dizel.by
 dobronom.by
+dolinasad.by
 domix.by
 dorado-shop.by
 dostavka24.by
@@ -123,6 +126,7 @@ datacar.by
 electro-car.by
 elemprofi.by
 elko.by
+emall.by
 ems.by
 enlitera.ru
 eso.by
@@ -164,6 +168,7 @@ icecity.by
 igermann.by
 
 implast.by
+incoffeein.by
 inelt.by
 infectology.by
 inkit-teplo.by
@@ -249,6 +254,7 @@ megazoo.by
 
 mpz.com.by
 mrt.by
+msso.by
 mti.by
 mtst.by
 multimart.by
@@ -275,6 +281,7 @@ newagro.by
 optika-fielinn.by
 	orient.by
 otbel.by
+oz.by
 oztm.by
 pc360.ru
 pcmarket.by
@@ -296,6 +303,8 @@ polymer.by
 postuplenie.by
 premiumdecor.by
 pridneprovskij.by
+
+produkt.by
 professionals.beauty
 progreem.by
 promtransinvest.by
@@ -411,9 +420,9 @@ xistore.by
 zepterbank.by
 zid.by
 zoobazar.by
-zuker.by1ak-group.com1akb.by1br.by1by.by1host.by	1mebel.by1net.by20gp.by321.by3kota.by555.by
+zuker.by1ak-group.com1akb.by1br.by1by.by1host.by	1mebel.by1net.by20gp.by21vek.by321.by3kota.by555.by
 a-brest.bya-leasing.byabw.byac-dc.byactivelen.byadpachinak.by	adrive.byadsl.byafisha-by.onlineair-shop.by	aircom.byaivp.io
-akshome.byallparfume.byalpineoil.by	alumet.byamatar.infoamdev.byamigo.byamiko.by	amkbel.byamoto.byanimal-park.byapet.byapp-minsk.byaprelteam.by
+akshome.byakvabreg.byallparfume.byalpineoil.by	alumet.byamatar.infoamdev.byamigo.byamiko.by	amkbel.byamoto.byanimal-park.byapet.byapp-minsk.byaprelteam.by
 apte4ka.byaquareef.byatek-mogilev.byathletics.by	atirra.byatlant-td.by	atlant.byatlantictravel.byatlasbus.ruautocapital.by
 autofix.byautogrodno.byautoostrov.byav3.byavest.byavs-auto.byavtoportal.by
 avtoray.byavtorost.byavtostar.byavtosteklo.byavtotuning.bybania.bybarcp.bybarsu.by
@@ -422,18 +431,18 @@ belkorm.bybellaktshop.bybelmassiv.bybelmedpreparaty.combelmeta.combelp
 besmart.bybestbelarus.bybesthost.by
 betnews.bybfla.eubgam.bybgmuz.by
 bidmart.bybigshrot.by
-bigtrip.bybild-shop.bybinaclinic.bybiorezonans.bybmsu4.bybobr.bybodro.by	bp2019.bybrs.bybsatu.bybsmu.bybstu.bybsu.biobsu.bybsut.bybuhuchet-info.rubuymebel.bybypaints.by
-camokat.bycaves.byccode.bycenterfm.by	centre.bych-tehnik.ruchaikamarket.bychistosila.bychizhovka-arena.bychost.bycls-lms.comcoltechdis.bycosmetologonline.comcosmotorg.bycsmouse.comcustoms.gov.by	cyber5.bydatamark.bydatastream.bydclub.bydeal.bydecorator-pg.bydekuver-stroy.bydental-clinic.byderevograd.bydetstvogrodno.bydezinfo.netdfz.bydigitech7.com	dimoha.bydivan.by
+bigtrip.bybild-shop.bybinaclinic.bybiorezonans.bybmsu4.bybobr.bybodro.by	bp2019.bybrka.bybrs.bybsatu.bybsmu.bybstu.bybsu.biobsu.bybsut.bybuhuchet-info.rubuymebel.bybypaints.by
+camokat.bycatalog.onliner.bycaves.byccode.bycenterfm.by	centre.bych-tehnik.ruchaikamarket.bychistosila.bychizhovka-arena.bychost.bycls-lms.comcoltechdis.byconteshop.bycosmetologonline.comcosmotorg.bycsmouse.comcustoms.gov.by	cyber5.bydatamark.bydatastream.bydclub.bydeal.bydecorator-pg.bydekuver-stroy.bydental-clinic.byderevograd.bydetstvogrodno.bydezinfo.netdfz.bydigitech7.com	dimoha.bydivan.by
 divitec.by
-djem-tv.bydobrabel.bydoctorlazuta.bydolinaroz.bydomex.byds3.bydvb.bydvordekor.bydzyannica.bye-auction.bye-koleso.bye-med.by
+djem-tv.bydobrabel.bydoctorlazuta.bydolinaroz.bydomex.bydomovita.byds3.bydvb.bydvordekor.bydzyannica.bye-auction.bye-koleso.bye-med.by
 e-power.byeconomtechno.byelectricauto.byelectromotor.byelitexpress.byelmax.by
 elporta.byendurobaza.byequatorial.byereg.byetalonline.by	etprom.byetsp.byevakyator.byexpert-sport.by	f-park.byfabrikasna.byfabrikasuvenirov.byfame.casino
 faraont.by	fastek.by
 fcgsen.com	fcgsen.rufcvolna-pinsk.byfermernew.byfinrocket.byfishfood.by
-fizcult.by	flatby.by	fotera.byfotochki.comfrandesa.byfundayshop.bygadgetblog.rugalileomall.bygalleria-minsk.bygamecity.bygarfield.by	gbsoft.bygeely-vitebsk.bygeely.by	gelion.bygeneralleasing.byggau.bygghtk.by
+fizcult.by	flatby.byforexby.com	fotera.byfotochki.comfrandesa.byfundayshop.bygadgetblog.rugalileomall.bygalleria-minsk.bygamecity.bygarfield.by	gbsoft.bygeely-vitebsk.bygeely.by	gelion.bygeneralleasing.byggau.bygghtk.by
 giftlab.bygippo-market.by	glazki.byglinka-college.byglobalomsk.ru	glonas.bygmar.bygms.bygomel.gov.bygomelcsms.bygoodzone.bygravitech.bygreenworks.bygrif-sport.bygrodno-giprozem.bygrodnoplustv.bygsbelarus.com	gstore.bygstu.byhcdinamo.byhdd.byhellocomputer.byherz.byhi-fi.by	hidden.byhobbylife.byhobbyshop.byhoroshie-okna.byhottelecom.byhramy.ru
-hyundai.byi-on.byidealmed.byidiag.byigromaster.by	ingman.by	inokna.by
-iparfum.byipmtorgi.byiptel.byirontrade.byirr.byiscra.byit-center.byiws.byjazzclub.by	jungle.bykakvapteke.bykalezeya.bykancoffice.bykapitanlogistics.comkarkasservice.bykartremont.rukatek.bykayuk.ru
+hyundai.byi-on.byidealmed.byidiag.byigromaster.byilex-private.ilex.by	ingman.by	inokna.by
+iparfum.byipmtorgi.byiptel.byirontrade.byirr.byiscra.byit-center.byiws.byjazzclub.by	jungle.bykakvapteke.bykalezeya.bykancoffice.bykapitanlogistics.comkarkasservice.bykartoteka.bykartremont.rukatek.bykayuk.ru
 keahome.bykelme.by	khatyn.bykhoiniki-crb.by	kidsby.bykitesurfing.bykmlab.byknauf.byknews.bykobrincity.bykolorika.bykompensator.by
 kopirka.bykorealab.by
 kovroff.bykrasnopolie.gov.bykrov.bykrynitsa.bykugoo-minsk.by
@@ -461,20 +470,20 @@ promsdt.by
 promsfo.bypronalogi.byproskating.by
 protrud.bypsweb.bypuppet-brest.bypvb.byqolio.ru	r-avto.byradikal.traderadio-market.byradiolot.byradzima.netradzima.orgrao-ees.com
 rao-ees.ru
-ravelin.byrcrm.byrdv.byrdw.by	recipe.byrelax-market.by
-relouis.byremon.byrempc.byrgsu.by	rimbat.byringoleasing.byrobimrazam.by	rontek.byrowingbrest.byrtlalliance.com	rudolf.byruki.byrybolov-shop.byrybomania.bys-k.bysaec.bysalarium.by	samaya.bysanta.by
-saronit.rusavlukov.byscooterok.byscrap.bysdalna5.com	seimtc.byselhoztehno.bysendflowers.by
+ravelin.byrcrm.byrdv.byrdw.by	recipe.byrelax-market.byrelax.by
+relouis.byremon.byrempc.byrgsu.by	rimbat.byringoleasing.byrobimrazam.by	rontek.byrowingbrest.byrtlalliance.com	rudolf.byruki.byrybolov-shop.byrybomania.bys-k.bysaec.bysalarium.by	samaya.bysanta.bysantehlux.by
+saronit.rusavlukov.bysbriz.ruscooterok.byscrap.bysdalna5.com	seimtc.byselhoztehno.bysendflowers.by
 seobest.by
-septem.prosertalit.byshagovita.byshate-mag.by	sheets.byshklovinfo.byshoc.byshoesterra.byshogi.bysibirskie.by	sipsim.by
+septem.prosertalit.byshagovita.byshate-mag.by	sheets.byshklovinfo.byshoc.byshoesterra.byshogi.byshopmanager.bysibirskie.by	sipsim.by
 sitepro.byskillbox.byskinfood.by	slivki.byslonimsmc.by
 slonves.bysm-gr.bysmart.bysmorgonleshoz.by	snabmk.by	snabmk.kzsneakerbar.rusob.bysocioline.rusokolov-belarus.bysorso.by	sosedi.byspariviera.bysportpari.bystart-site.by	stbank.bysteelpoint.by	steklo.bystelsvelo.bystihiya-shop.bystn.bystroi-ka.by
-stuffed.rusunnyfish.bysuperklubnika.bysuperresheba.bysupersad.bysupreme2.rusvetilkin.byswissenergy-vitamins.byswisstime.byt-v.bytb.by	tcbank.bytce.bytea-mail.bytechinterkorn.by	techno.bytechnolog-m.bytentagrostroy.by
+stuffed.rusunnyfish.bysuperklubnika.bysuperresheba.bysupersad.bysupreme2.rusvetilkin.byswissenergy-vitamins.byswisstime.byt-s.byt-v.bytb.by	tcbank.bytce.bytea-mail.bytechinterkorn.by	techno.bytechnolog-m.bytentagrostroy.by
 teztour.bytherm.bytigur.bytilda.bytomas.bytopscooter.bytouchstamps.comtravelagency.byturmarket.bytva.bytyreg.by	ucrabs.byulc.byunglobalcompact.byunidveri.by
 uniflex.byuocollege.byuommk.byupservice.io
 utensil.byuzdaleshoz.by	v-okne.byvarb.mil.byvash-otdyh.byvb.byvec-tech.byvedushie.byveles-prom.byveles-torg.byvelesmoda.ru
 veloset.byvelostore.by
 verally.byverba.by	veresk.byvetapteki.by	vfbsac.byvika-service.by	vimens.byvion.byvitex.byvito-shoes.by	vmetre.byvodomotorika.byvoengrad.byvoka.byvolrb.by
 vozovoz.byvse-diski.byvstu.byvt.bywakepark.bywarmuseum.bywdl.bywebcom-group.cnwebcom-pay.bywebcom.groupwebcomgroup.by
-webguru.byworldoftrucks.ru	wuerth.by#xn----7sbb3acajbee5aggvnq.xn--90aisxn----9sbejbn0aey1l.xn--90aisxn----itbkoffchdgt2a.xn--90aisxn--1-jtbjeinlw3c1b.xn--90aisxn--80aaf2cqdjo.xn--90aisxn--80ab1a9aza2a.xn--90aisxn--80ad6ae.xn--90aisxn--80asgby.xn--90aisxn--d1abeigy2aa.xn--90aisxn--k1afbfdk5b1ae.xn--90aisyankeemotors.byydachnik.byyogaplacecamp.byyoki.byzamanula.ru
-zaslavl.ruzbt.byzeronode.byzhlobinedu.byziex.byzooby.byzoolavka.by	zoomos.by
+webguru.byworldoftrucks.ru	wuerth.bywww.ibank.priorbank.by#xn----7sbb3acajbee5aggvnq.xn--90aisxn----9sbejbn0aey1l.xn--90aisxn----itbkoffchdgt2a.xn--90aisxn--1-jtbjeinlw3c1b.xn--90aisxn--80aaf2cqdjo.xn--90aisxn--80ab1a9aza2a.xn--90aisxn--80ad6ae.xn--90aisxn--80asgby.xn--90aisxn--d1abeigy2aa.xn--90aisxn--k1afbfdk5b1ae.xn--90aisyankeemotors.byydachnik.byyogaplacecamp.byyoki.byzamanula.ru
+zaslavl.ruzbt.byzeronode.byzhlobinedu.byziex.byziko.byzooby.byzoolavka.by	zoomos.by
 zov.com.byzovofficial.comzubronok.byzumus.ruzvuk-b2b.by

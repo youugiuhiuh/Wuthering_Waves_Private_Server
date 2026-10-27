@@ -28,6 +28,7 @@
 africanminds.co.za
 africanrocktheatre.com
 africaportal.org
+africasafarilandtours.com
 afrimat.co.za
 agora.co.za
 agrifocusafrica.com
@@ -255,6 +256,7 @@ coop.co.za
 crosswayschurch.co.za
 cryptofest.co.za
 crystalvaluers.com
+cstsupport.co.za
 csvr.org.za
 cticc.co.za
 cttrains.co.za
@@ -271,6 +273,7 @@ coop.co.za
 datagr8.com
 davidbeautycosmetics.co.za
 dbs-hosting.co.za
+dcdata.co.za
 debicar.co.za
 debonairspizza.co.za
 dejagersonline.co.za
@@ -291,6 +294,9 @@ coop.co.za
 diyfs.co.za
 djmixclub.co.za
 dlweb.co.za
+dns.business
+
+dns.net.za
 	dorp.info
 doubleanetwork.com
 	drd.co.za
@@ -309,6 +315,7 @@ east.ac.ke
 eastafrica-safaris.com
 easyroster.net
 easyweb.co.za
+easywebdns.co.za
 ebasa.co.za
 ecentric.co.za
 ecofurnituredesign.co.za
@@ -339,6 +346,7 @@ enpf.co.sz
 entertainment-online.co.za
 enyuka.co.za
 epetstore.co.za
+eprop.co.za
 erikadavisacademy.co.za
 esilaw.co.za
 espcloud.co
@@ -352,6 +360,7 @@ eswazi.org
 evogroup.co.za
 
 ewt.org.za
+execafrica.com
 exploresideways.com
 expresspros.co.za
 fairtradetourism.org
@@ -588,6 +597,7 @@ koer.co.za
 launchweb.co.za
 lavafires.co.za
 layeronetech.co.za
+ldserver.co.za
 leadinglocks.com
 leadsmachine.co.za
 leadtrekker.com
@@ -621,7 +631,9 @@ lsrczx.com
 luxurlocks.com
 luxury-cruising.com
 lynnwoodproperties.co.za
+m-scents.co.za
 madisonswear.co.za
+magsolit.co.za
 mahikeng.gov.za
 maizey.co.za
 majuba.edu.za
@@ -704,9 +716,11 @@ mrpp.co.za
 multilec.co.za
 muthersa.co.za
 mx-it.co.za
+my.oldmutual.co.za
 myads.africa
 myaie.ac
 myaphrodite.co.za
+mycourses.co.za
 myklaskamer.co.za
 mymex.cards
 mysera.social
@@ -744,6 +758,7 @@ nic.africa
 ninjasforhire.co.za
 njrtrading.co.za
 	nmg.co.za
+nonainternational.co.za
 nooitgedachtvillage.co.za
 norco.co.mz
 north-island.com
@@ -924,6 +939,7 @@ sbm.gov.za
 sccollege.co.za
 scentsationz.co.za
 schick.co.za
+scontent.fjnb1-1.fna.fbcdn.net
 screamer.co.za
 sealwatertech.co.za
 securemail.co.za
@@ -938,6 +954,7 @@ sbm.gov.za
 shapeshift.co.za
 shinelandscape.com.cn
 shop-n-scrap.co.za
+shoprite.jobs
 silverspectrumsolutions.co.za
 silvertonpinetown.co.za
 silvertoyshop.co.za
@@ -965,6 +982,7 @@ sbm.gov.za
 solarpanelenergy.co.za
 solidpine.co.za
 sollymsports.com
+sonar-jnb2-1.xx.fbcdn.net
 sonoffafrica.co.za
 sonopsolar.co.za
 southafrica.to
@@ -977,6 +995,7 @@ sbm.gov.za
 speedtrainer.co.za
 speedy-dns.com
 spiderwire.co.za
+spotbot.co.za
 	spu.ac.za
 squashsa.co.za
 srsclientsdev.co.za
@@ -1075,6 +1094,7 @@ tnc.edu.za
 toptipz.com.ng
 toros.co.za
 torrentinvites.net
+!traffic-nts-ip-assoc.xz.fbcdn.net
 trainingforce.co.za
 transponder.co.za
 transrep.co.za
@@ -1116,6 +1136,7 @@ ukzn.ac.za
 
 urba.co.za
 urbanrealestate.co.za
+v1.dstv.com
 valleysmountainskids.co.za
 vansauctioneers.co.za
 
@@ -1130,6 +1151,8 @@ vape.co.za
 viaperhost.co.za
 victoriahcl.com
 vidaecaffe.com
+video.fcpt5-1.fna.fbcdn.net
+video.fpry1-1.fna.fbcdn.net
 
 viel.co.ke
 villagemedia.co.za
@@ -1187,6 +1210,11 @@ xdms.co.za
 yourrecipeblog.com
 yourstylebathrooms.co.za
 ypdigital.co.za
+ z-m-scontent-jnb2-1.xx.fbcdn.net
+!z-p3-scontent-jnb2-1.xx.fbcdn.net
+z-p3-video-cpt1-1.xx.fbcdn.net
+ z-p3-video.fcpt1-1.fna.fbcdn.net
+ z-p3-video.fdur7-1.fna.fbcdn.net
 zaakirahghanchi.co.za
  zainmobiletelecommunications.com
 zbmglobal.com
@@ -1197,29 +1225,30 @@ xdms.co.za
 zimbi.co.za
 zulu.org.za
 
-zutari.com22bet.org.ng3at1franchise.co.za4x4megaworldonline.comaapbx.co.zaaboutict.comactivityhub.co.za
+zutari.com1-grid.co.za22bet.org.ng3at1franchise.co.za4x4megaworldonline.comaapbx.co.zaaboutict.comactivityhub.co.za
 adcock.com
 aeciph.com
-africa.comafricacdc.orgafricadatacentres.comafricanbettingclan.comafricanscholarpub.comaguademali.co.mzaikidoryu.orgalibassa.co.zaaltechplumbers.comantarestrade.liveapi-tcg.co.za
+africa.comafricacdc.orgafricadatacentres.comafricanbettingclan.comafricanscholarpub.comafrinic.netaguademali.co.mzaikidoryu.orgalibassa.co.zaaltechplumbers.comantarestrade.liveapi-tcg.co.za
 aps.com.naaslicklook.co.ukatstech.co.zaautopdf.netautotrader.co.zaav2systems.com
-aya.africabarconamibia.combarryrichtergyn.combathroomboutique.combaytv-app.combetobserv.com!bidvestfacilitiesmanagement.co.zabikeshoprivonia.co.zabilanfragrancestore.co.zabintoday.orgbiquxiaoshuo.combirdlife.org.za	bizcom.tobizcommunity.africabizcommunity.co.zabizcommunity.co.zwbizcommunity.combizcommunity.com.ghblackatmosphere.co.zabloodsa.org.za
-bmgh.co.zabonitas.co.zabonsai-boyz.co.zabossagoodtimes.combuccleuchmasjid.co.zabuffalocity.gov.zacambeauties.comcapeagulhastourism.co.zacapestfrancis.co.zacassavatechnologies.comceleb-stalker.comcellular.co.zachateaugateaux.co.zacidb.org.zaclaremart.comclhg.comcloudpropertysolutions.comcloudtools.co.zacollivery.netcolumbus.co.zacommerce-bridge.techcomputerstore.ugcopacopa.co.zacrutrading.co.zacss3.comcybersite.bizcybertracker.orgdarululoomnewcastle.co.zadatafree.codevil-torrents.pldhconsultores.servicesdigitalearthafrica.orgdigitalmagneticsystem.comdirco.gov.zadischemlife.co.zadrcoffees.co.zadrisa.co.zadshost.co.zadvdandgifts.co.zaeafrica.co.zaeasyhost4u.neteduvpn.ac.zaekurhuleni.gov.zaemetministries.co.zaenergia.co.zaeprofitinvestment.comerikthiart.comesayiditvet.co.zaestimable-capitals.comeuroautoparts.co.zaeversolar.co.zaextremefishing.co.zaextremesportsaction.co.zafanfootball.appfaqcloud.co.zafirmproperties.netfirstaider.co.zafiscalpro.tech
-flysaa.comflytalk.co.zaforgood.co.zafossette.co.zafuelperformance.co.ukfundza.mobifunjet24.shopfunjet365.shopgardeninginsouthafrica.co.zagcis.gov.zagetitmagazine.co.zaglenvistahigh.co.zaglobalresiliencepartnership.orgglobalsense.co.zagoconnect.co.zagomaxx.co.zagoudinispa.co.zagrimworx.co.zagrootbos.com
-gsed.co.zagtahardware.co.zahadithanswers.comhalaala.co.zahallmarkinternational.co.zahealthbyherbs.co.zaheridamworldwide.com.nghermanus.co.zahiltoncollege.comhl-host.netholidayoptions.co.zahostafrica.comhostfaddy.comhostmywebcloud.comhotelintunisia.comhotelsaccra360.comhuaweixiaoshuo.comhumbaafrica.comhuntandgun.co.zahydroponic.co.zahyphenafrica.comiclixhosting.co.za	idc.co.zaikhala.edu.za
-ikhokha.ioikhokha.redimpiwire.co.zainext.co.zainfinityconnect.co.zainpaktsamachines.co.zainpaktworld.cominsidemetros.co.zainsidepolitic.co.zainsikalodge.cominterstat.co.zaintrepid.co.zainvoicesonline.co.za	isasa.orgispoint.orgitbuy.co.zaitnewsafrica.com
+aya.africabarconamibia.combarryrichtergyn.combathroomboutique.combaytv-app.combetobserv.com!bidvestfacilitiesmanagement.co.zabikeshoprivonia.co.zabilanfragrancestore.co.zabintoday.orgbiquxiaoshuo.combirdlife.org.zabisnet-dns.com	bizcom.tobizcommunity.africabizcommunity.co.zabizcommunity.co.zwbizcommunity.combizcommunity.com.ghblackatmosphere.co.zabloodsa.org.za
+bmgh.co.zabonitas.co.zabonsai-boyz.co.zabossagoodtimes.combuccleuchmasjid.co.zabuffalocity.gov.zacambeauties.comcapeagulhastourism.co.zacapestfrancis.co.zacassavatechnologies.comceleb-stalker.comcellular.co.zachateaugateaux.co.zacidb.org.zaclaremart.comclhg.comcloudpropertysolutions.comcloudtools.co.zacollivery.netcolumbus.co.zacommerce-bridge.techcomputerstore.ugcopacopa.co.zacrutrading.co.zacss3.comcybersite.bizcybertracker.orgdarululoomnewcastle.co.zadatafree.co
+dc-srv.comdevil-torrents.pldhconsultores.servicesdigitalearthafrica.orgdigitalmagneticsystem.comdirco.gov.zadischemlife.co.zadrcoffees.co.zadrisa.co.zadshost.co.zadvdandgifts.co.zaeafrica.co.zaeasyhost4u.neteduvpn.ac.zaekurhuleni.gov.zaemetministries.co.zaenergia.co.zaeprofitinvestment.comerikthiart.comesayiditvet.co.zaestimable-capitals.comeuroautoparts.co.zaeversolar.co.zaextremefishing.co.zaextremesportsaction.co.zafanfootball.appfaqcloud.co.zafirmproperties.netfirstaider.co.zafiscalpro.tech
+flysaa.comflytalk.co.zaforgood.co.zafossette.co.zafuelperformance.co.ukfundza.mobifunjet24.shopfunjet365.shopgamemeattrader.co.zagardeninginsouthafrica.co.zagcis.gov.zagetitmagazine.co.zaglenvistahigh.co.zaglobalresiliencepartnership.orgglobalsense.co.zagoconnect.co.zagomaxx.co.zagoudinispa.co.zagrimworx.co.zagrootbos.com
+gsed.co.zagtahardware.co.zahadithanswers.comhalaala.co.zahallmarkinternational.co.zahealthbyherbs.co.zaheridamworldwide.com.nghermanus.co.zahiltoncollege.comhl-host.netholidayoptions.co.zahostafrica.comhostfaddy.comhostmywebcloud.comhotelintunisia.comhotelsaccra360.comhuaweixiaoshuo.comhumbaafrica.comhuntandgun.co.zahydroponic.co.zahyphenafrica.comiclixhosting.co.za	idc.co.zaidiskitimes.co.zaikhala.edu.za
+ikhokha.ioikhokha.redimg.autotrader.co.zaimpiwire.co.zainext.co.zainfinityconnect.co.zainpaktsamachines.co.zainpaktworld.cominsidemetros.co.zainsidepolitic.co.zainsikalodge.cominterstat.co.zaintrepid.co.zainvoicesonline.co.za	isasa.orgispoint.orgitbuy.co.zaitnewsafrica.com
 itnt.co.zaitntnetworks.co.zaitsup.co.zaitworkup.co.zajimnettes.comjobmail.co.zajosharesearch.comjumptrak.co.zakimberley.co.zakisumu.go.kekloofhigh.co.zakreducationsa.comkrmotors.co.zalanlink.co.za
-lapa.co.zalaptopmechanic.co.zaledge.co.zalesakatech.comletterkunde.africaliquidtelecom.comliquidtelecom.netlittlefalls.co.zalivesurf.netloveworldsat.orgluckyfox.online	lwtxt1.ccmalanvorster.co.zambestates.co.zamedicalsociety.co.zamenlynpark.co.zametaphore.co.zaminitprint.co.za
+lapa.co.zalaptopmechanic.co.zaledge.co.zalesakatech.comletterkunde.africaliquidtelecom.comliquidtelecom.netlittlefalls.co.zalivesurf.netloveworldsat.orgluckyfox.online	lwtxt1.ccmalanvorster.co.zamaths.gsed.co.zamaths2.gsed.co.zambestates.co.zamedicalsociety.co.zamenlynpark.co.zametaphore.co.zaminitprint.co.za
 miro.co.zamisssa.co.zamnbca.co.za
 mnsa.co.zamobanja.commondeorhomebake.co.za
-mongwd.commooinooibymarinda.co.zampact.co.zampumalanga.commshosting.co.zamulisagroup.co.zamultotec.commusebeauty.co.zamusicnowsa.co.zamy247dns.commyfootball.sbsmynoda.co.zamysedcol.co.zananshanxs.comnarclms.org.ng
-nbi.org.zanesa.org.zanewgen.co.zanexahost.co.zanichemarket.co.zaniwa.net.ngnortham.co.zanovasys.co.za
+mongwd.commooinooibymarinda.co.zamozserver.commpact.co.zampumalanga.commshosting.co.zamulisagroup.co.zamultotec.commusebeauty.co.zamusicnowsa.co.zamy247dns.commyfootball.sbsmynoda.co.zamysedcol.co.zananshanxs.comnarclms.org.ng
+nbi.org.zanesa.org.zanewgen.co.zanexahost.co.zanichemarket.co.zaniwa.net.ngnortham.co.zanovasys.co.zanphost.co.za
 nren.ac.za
 nssf.or.ke
-oami.co.zaocam.org.mzomeedglobal.comomnico.co.zaonlinepetroleum.co.zaopaycheckout.comopticsonline.co.zaoptimapaybridge.co.keouteniquait.co.zapainselect.compalabora.co.zapascalipumps.co.zapaycity.co.zapenit.co.zaperitumagri.compersevcon.co.zapharmacynet.co.zapharmadynamics.co.zapharmcouncil.co.zaphatgalz.co.zapilot-gps.africaplaymoregolf.co.zapotentiaauto.co.zapowerpartners.co.zaprimetyne.toppropel-finans.com
+oami.co.zaocam.org.mzomeedglobal.comomnico.co.zaonlinepetroleum.co.zaopaycheckout.comopticsonline.co.zaoptimapaybridge.co.keouteniquait.co.zapainselect.compalabora.co.zapascalipumps.co.zapaycity.co.zapenit.co.zaperitumagri.compersevcon.co.zapharmacynet.co.zapharmadynamics.co.zapharmcouncil.co.zaphatgalz.co.zapilot-gps.africaplaymoregolf.co.zapolokwane.adsafrica.co.zapotentiaauto.co.zapowerpartners.co.zaprimetyne.toppropel-finans.com
 pudo.co.za
 qiqidu.orgquantispro.comrammount.co.za	rau.ac.zareal-business.co.zarefraime.co.zarefurbnexus.co.zarichesandbeyond.comridemotorsport.co.zariley.africa
 rmi.org.za
-rovuto.comrsabets.co.zasace.org.zasafire.ac.zasahra.org.zasaip.org.zasamedical.orgsamint.co.zasanews.gov.zasasolbursaries.comscielo.org.zasecretfantasy.co.zasedcol.co.zasempya.cloudseniorservice.co.zasharkninja.co.zasheshisafin.co.zashopacer.co.zashoprite.jobsshtorny.comsinaidba.comsix.digitalsmartcalltech.co.zasnapon.co.za sonpra-upholsterysuppliers.co.za	sorm.citysoulpuzzles.comsouthernstaying.co.za	spoor.comsquirrelmedia.co.za	src.go.kestadiumfastfoods.comstatesman.co.za
-stbb.co.zastfrancishealthcentre.co.zasublimationsupplies.co.zasvdeals.comsvmag.co.zaswoosh0018.comsymphonypc.comsynertec.co.zatagenergy-limited.nettamber-properties.comtechnolutions.co.zaterotechnica.comthecharles.co.zathehouseofmachines.comthepromogroup.co.zatixsa.co.zatonisoft.co.ketopcovervaluer.co.ketraditionalboatcharters.comtrophyempire.co.zatruckandtrailer.co.za
-ttaf.co.zatwkcom.co.zaumvuzohealth.co.zausaidafyayangu.orgusedcarsforsale.co.zavectorlog.comvetroweb.co.zavidsports.mevoguebritish.comvogueink.storevoidrift.globalvsoftsystems.co.zawafflealong.comwalletdoc.comwavesofscents.co.zawebpromotion.co.zawebpussi.comwebreefhosting.co.zawhois.co.mzwilms.co.zawindeed.co.zawintel.co.za	wjdiy.comwolfatek.com	xds.co.za	xpfwx.comxpoint.co.za
+rovuto.comrsabets.co.zasace.org.zasafire.ac.zasahra.org.zasaip.org.zasamedical.orgsamint.co.zasanews.gov.zasasolbursaries.comscielo.org.zasecretfantasy.co.zasedcol.co.zasempya.cloudseniorservice.co.zasharedata.co.zasharkninja.co.zasheshisafin.co.zashopacer.co.zashoprite.jobsshtorny.comsinaidba.comsix.digitalsmartcalltech.co.zasnapon.co.za sonpra-upholsterysuppliers.co.za	sorm.citysoshanguve.adsafrica.co.zasoulpuzzles.comsouthernstaying.co.za	spoor.comsquirrelmedia.co.za	src.go.kestadiumfastfoods.comstatesman.co.za
+stbb.co.zastfrancishealthcentre.co.zastudies.nwu.ac.zasublimationsupplies.co.zasvdeals.comsvmag.co.zaswoosh0018.comsymphonypc.comsynertec.co.zatagenergy-limited.nettamber-properties.comtechnolutions.co.zatembisa.adsafrica.co.zaterotechnica.com	tfg.co.za	tfyre.comthecharles.co.zathehouseofmachines.comthepromogroup.co.zatiavision.co.zatixsa.co.zatonisoft.co.ketopcovervaluer.co.ketraditionalboatcharters.comtrophyempire.co.zatruckandtrailer.co.za	trusc.net
+ttaf.co.zatwkcom.co.za	uct.ac.zaumvuzohealth.co.zausaidafyayangu.orgusedcarsforsale.co.zavectorlog.comvetroweb.co.zavidsports.mevoguebritish.comvogueink.storevoidrift.globalvsoftsystems.co.zawafflealong.comwalletdoc.comwavesofscents.co.zawebpromotion.co.zawebpussi.comwebreefhosting.co.zawhois.co.mzwilms.co.zawindeed.co.zawintel.co.za	wjdiy.comwolfatek.comwww.dpsa.gov.zawww.oami.co.zawww.siyavula.com	xds.co.za	xpfwx.comxpoint.co.za
 xsit.co.zayuppiepet.co.zazebulagolfestate.co.zazewenxs.com

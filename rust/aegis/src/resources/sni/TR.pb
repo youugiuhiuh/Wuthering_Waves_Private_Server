@@ -19,6 +19,7 @@
 3bkurs.com
 3dgrande.com
 3dpaint.com.tr
+3tmakine.com
 412bilisim.com.tr
 
 4boyut.com
@@ -55,6 +56,7 @@ ahs.net.tr
 ailegazetesi.net
 airporttransfer.me
 ajandahaber.com
+ajansay.com
 ajanstempo.com
 ajanswork.com
 akademikpansiyon.com
@@ -257,6 +259,7 @@ bbt007.com
 benektekstil.com
 beratenerji.com.tr
 bereketkimya.com
+berjermodelleri.com
 berkanet.com.tr
 berlingerhauscyprus.com
 bestshop24rc.biz
@@ -266,6 +269,7 @@ bbt007.com
 bezons.net
 bflex.com.tr
 bg24.biz
+biancocarraramermer.com
 biem.net
 bienart.com
 bildirici.com.tr
@@ -275,6 +279,7 @@ bezons.net
 bilimdisleksi.com.tr
 bilisim360.com
 bilisimde.com
+bilnex.com.tr
 bilteknet.com
 biopetactive.com
 bipodcast.com.tr
@@ -291,6 +296,7 @@ bezons.net
 bizdevariz.net
 bizhaberiz.com
 bizimevler.com.tr
+bizizmir.com
 bkwebtasarim.com
 black777.biz
 bldgonen.com
@@ -307,6 +313,7 @@ bezons.net
 bolununsesi.com
 boluyankihaber.com
 bommuhendislik.com
+bonitobagno.com
 bossbig.biz
 boyabatgazetesi.com
 boyatiyorum.com
@@ -485,6 +492,7 @@ diyojen.co
 dogansunakliyat.com
 dogaonline.com.tr
 dogostore.com
+dogruses.com
 dogrusozmetal.com.tr
 dogusbilisim.net
 doktortr.com.tr
@@ -501,6 +509,7 @@ diyojen.co
 dreambodyesthetique.com
 dreamklad.to
 dreminozbek.com
+dresuarmodelleri.com
 
 drgbar.com
 drgokhanaksan.com
@@ -511,6 +520,7 @@ drgbar.com
 drkadirkilimcioglu.com
 drkardeslerkuruyemis.com
 droguzcortuk.com
+drovgudogan.com
 drsabancelebi.com
 drsalihcavlak.com
 drsibelduysak.com
@@ -554,6 +564,8 @@ dtb.org.tr
 ehliyethane.net
 ehost.com.tr
 ekametal.com
+ekeo.org.tr
+ekipmanlazim.com
 ekonomikhost.net
 ekremakin.com.tr
 
@@ -562,6 +574,7 @@ ekursu.com
 elaysan.com.tr
 elipsmakine.com.tr
 elit-chocolate.com
+eliteworldhotels.com.tr
 ellibirajans.com
 elsezbilisim.com
 elsondaj.com.tr
@@ -651,6 +664,7 @@ fararc.biz
 fethiyehavuzmarket.com
 fetihdizayn.com
 feynemusavirlik.com
+fiberdns.net
 fibernettelekom.com.tr
 fikirdensanata.com
 fikirmedya.com
@@ -673,6 +687,7 @@ fararc.biz
 foodexfoodco.com
 forlanyazilim.com
 forlled.com.tr
+fortuneturkey.com
 forumadasi.com
 forumdayiz.net
 forumunuz.com
@@ -855,6 +870,9 @@ icrera.org
 ihalebul.com
 ihaleciler.com
 ihsdnsx1.com
+ihsdnsx27.com
+ihsdnsx28.com
+ihsdnsx29.com
 ihsdnsx30.com
 ihsdnsx31.com
 ihsdnsx9.com
@@ -871,9 +889,11 @@ $ikincielesyaalanyerlerbeylikduzu.com
 ilkeer.com
 ilkeprojemimarlik.com
 ilktercih.com
+ilkuzem.com
 ilucky24.biz
 imagrupbilisim.com
 imajbutik.com
+imajoptik.com.tr
 imgeart.net
 imgebilgisayar.com
 imparatorcelikkapi.com
@@ -892,6 +912,7 @@ ilkeer.com
 ircforumcu.net
 ireminsaat.net
 irfanmakina.com
+irinaproperty.com
 isgdigitech.com
 isienerji.com.tr
 isilparkhotel.com.tr
@@ -905,6 +926,7 @@ ilkeer.com
 istanbulamator.com
 istanbuldanhaber.com
 istanbulmedia.com.tr
+istanbulticaretgazetesi.com
 istealiaga.com
 istinyeganyan.com
 istka.org.tr
@@ -919,6 +941,7 @@ ilkeer.com
 ivemarastirma.com.tr
 iyibilgisayar.net
 iyigelir.net
+izibiz.com.tr
 izinformu.com
 izmiravukat.co
 izmircicek.com
@@ -956,6 +979,7 @@ ilkeer.com
 kamuihalekararlari.com
 kanalbadana.com
 kandemirsoft.com
+kanepemodelleri.com
 kapidahediye.com
 karakas.digital
 karalarpaslanmaz.com
@@ -973,6 +997,7 @@ ilkeer.com
 kaynarcalastik.com
 kayseri.net.tr
 kayseriengellilerdernegi.com
+kazanabilirsin.com
 kdzereglimezarbakimi.com
 keciorenkosemmobilya.com
 kehribarkolyecim.com
@@ -984,6 +1009,7 @@ ilkeer.com
 kibrisemlak.net
 kiffa.com.tr
 kikkararlari.com
+kilavuzdanismanlik.com
 kilimlihaber.com.tr
 kimkimdir.net.tr
 kimseduymasin.com
@@ -992,6 +1018,7 @@ ilkeer.com
 kisahghairah.com
 kisamasallar.com
 kitapoba.com
+kivigroupmedya.com
 kiziltannakliyat.com
 klasdns.com
 klasikyoga.com
@@ -1090,6 +1117,7 @@ luggat.com
 m19.to
 m19partisan.com
 m19partisan.to
+macroturk.com
 magltdsti.com
 magnesiadns.com
 magnethastanesi.com.tr
@@ -1100,6 +1128,8 @@ luggat.com
 malatyam.com
 malkarahaber.com.tr
 mansetizmir.com
+
+map.com.tr
 mardiniletisimgazetesi.com.tr
 markabilisim.com
 markaclick.net
@@ -1119,6 +1149,7 @@ luggat.com
 maviweb.com
 maviweb.com.tr
 maviyesilajans.net
+maxantalya.com
 maxicloud.online
 maxtoweb.com.tr
 mayadent.com.tr
@@ -1128,6 +1159,8 @@ luggat.com
 mcpcorp.com
 mdizayn.com.tr
 mdmhukuk.com
+mebehliyetsinavsorulari.com
+meckurumsal.xyz
 medgulets.com
 mediacloud.com.tr
 mediaplusdns.com
@@ -1224,6 +1257,7 @@ mom196.com
 msiftp.com.tr
 msiyazilim.com.tr
 mstapps.com
+msyajans.com
 
 mtopal.dev
 muallimun.com
@@ -1242,6 +1276,7 @@ mtopal.dev
 narcos24.to
 nardisjazz.com
 nartajans.net
+nationalturk.com
 nationelsigorta.com
 nays.tr
 nazholding.com
@@ -1336,6 +1371,7 @@ orjink.com
 	osbsa.com
 osmankeskin.com
 osmanmetinyavuz.com
+ostafarma.com
 ostimetiket.net
 otkunelektrik.com.tr
 
@@ -1377,6 +1413,7 @@ ovidax.net
 ozkayalarpaslanmaz.com
 ozmedya.com.tr
 ozon-rc.biz
+ozurfahaber.com
 page-space.com
 palamidas.com
 palm.com.tr
@@ -1448,6 +1485,7 @@ powres.com
 	ptknn.biz
 
 purtem.com
+pusula.pau.edu.tr
 qoutdoor.com.tr
 quaparts.com
 rabianinmutfagi.com.tr
@@ -1611,6 +1649,7 @@ smmoll.com
 smokemgn.com
 smsambalaj.com
 sndizayn.com
+snetdns.com
 softanova.com.tr
 softimec.com
 softixer.com
@@ -1621,6 +1660,8 @@ smmoll.com
 solana-miner.com
 solarinverter.com.tr
 somelpa.com.tr
+sonar-ist1-1.xx.fbcdn.net
+sonar-ist1-2.xx.fbcdn.net
 sonersadikoglu.com
 sonimak.com
 soraypvc.com
@@ -1659,6 +1700,7 @@ sur.net.tr
 susurluk.bel.tr
 	svbot.biz
 svsbilisim.com
+synchron.com.tr
 syncparts.com.tr
 
 tac.com.tr
@@ -1685,6 +1727,7 @@ tac.com.tr
 
 tbk.org.tr
 tbtcreative.com
+tdv.org
 tebosan.com
 tec-marine.com
 techleefbilisim.com
@@ -1708,6 +1751,7 @@ tbk.org.tr
 tekstilvemuhendis.org.tr
 telmagbilisim.com
 telsizfiyatlari.net
+temizmama.com
 tenyapi.com
 tesbihane.biz
 testlebi.com
@@ -1743,6 +1787,7 @@ tracksy.tr
 trangels.com
 travel-transfer.com
 travelandturizm.com
+	trdns.com
 treatmentchooser.com
 tredyazilim.com
 trenddekorantalya.com
@@ -1804,6 +1849,7 @@ twowise.co
 unalprotech.com
 uni-t.com.tr
 universalelt.com
+unlumakinasan.com.tr
 unlupaketleme.com.tr
 unluteknikservisi.com
 unyenethaber.com
@@ -1823,12 +1869,15 @@ twowise.co
 valvetek.com.tr
 varajans.com
 vatansoft.com.tr
+
+vea.com.tr
 	vebuo.com
 vectobaski.com
 vefa.org.tr
 vegahost.net
 	vekil.net
 venitron.com
+ventures.com.tr
 
 vepuan.com
 veragelinlik.com
@@ -1859,8 +1908,10 @@ vepuan.com
 wasdzone.com
 wazm.com
 webadam.com
+webadam.com.tr
 webagron.com
 webcozum.com
+webdehasi.com
 webelektrik.com
 
 webgec.com
@@ -1895,6 +1946,8 @@ webgec.com
 wshop24.biz
 
 wts.web.tr
+www.birissine.com
+www.tamsohbet.com
 xleb.biz
 $xn--kadkyantikaalanyerler-kec96k.com
 xn--pazartrk-c6a.com
@@ -1965,68 +2018,70 @@ zemlak.com
 zonguldaksurmanset.com.tr
 zoyaistanbul.com
 
-zverta.com	0tick.com10linehaber.com
+zverta.com	0tick.com1001oyun.io10linehaber.com
 19mode.com	1conn.com1lirahosting.com360egitim.com
 3mc.com.tr3syazilim.com.tr4465040.com4gd.biz4m1a.com.trabdiibrahim.com.trabdulkadirseker.com.trabproses.comacademyping.comacibadem.edu.tracibademtelekom.comacikalanisitmasistemleri.comaciltasarim.comacuguncelhaber.comadadonmezyapi.comadalanya.comadalarvapursaatleri.com.tradalcrea.com.tradaletsigorta.com.tradanadokum.com.tradanafirmalari.com.tradanatb.org.tradapazarinet.comaddbilisim.comadiyaman.edu.tradorabilisim.com.tradresgezgini.comadvanceyed.netadveyer.web.tr
 adviba.comaerobilet.comafyonlezzethanem.comagaoglu.com	agk88.com
 agt.com.tr	agugi.com
 agurel.comahlatciyatirim.com.trahlpay.com.trahmetmerkepci.comahmetsoycan.comaidatim.proaile.gov.trair-kam.comajans365.netajansmotto.comakademisok.comakbulutmuhendislik.comakbulutmuhendislik.netakcakocagazetesi.comakcayemlaksitesi.com.trakdenizmedya.comakdenizsiyaset.comakgbilisim.comakhisarelektronik.comakillikonsept.comakillirota.netakindil.comaksarayajans.com
 aksdns.comaksehir2noluasm.comaksesuarciniz.comaksuhaliyikama.comaksuiletisim.comaktifinternational.comaktuel-urunler.comaktuelbursa.comaktulkagit.com.trakyolsoft.com.tralacatiemlaksitesi.com.tralantransfer.comalanyabakkallarodasi.org.tralanyakingtransfer.comalanyarent.comalanyasondakika.comalanyatv.comalanyawebsite.comalbyatirim.com.tr
-aldiyo.comalemokey.comalestaweb.comalevihaber.comalfamekanik.comalgoritmatr.comaliaga.bel.traliagahosting.comaliilkerfiliz.comalikurun.comalintilar.comalone.net.tralorabilisim.comalphaber.com.tralpmedya.comalpvasiflicelik.comalseromice.comaltindag.bel.traltinsehirkoleji.comaltug.designaltunkaya.comalyanspulsator.comamasrav2.comamdyazilim.comanaari.gen.tranadoluavukatlikburosu.comanalfissur.comanatolhost.comanatolhosting.comanatolianinternational.comankamedya.comankaraanahtarteslim.comankaraemlaksitesi.com.trankaraet.netanketcepte.comanksoft.netanlikhost.comansolon.comansolon.net.trantalya.edu.trantalyaaquarium.comantalyaninsesi.comantalyaradyo.comantalyasm.gov.tr
+aldiyo.comalemokey.comalestaweb.comalevihaber.comalfamekanik.comalgoritmatr.comaliaga.bel.traliagahosting.comaliilkerfiliz.comalikurun.comalintilar.comalone.net.tralorabilisim.comalphaber.com.tralpmedya.comalpvasiflicelik.comalseromice.comaltayoto.comaltindag.bel.traltinsehirkoleji.comaltug.designaltunkaya.comalyanspulsator.comamasrav2.comamdyazilim.comanaari.gen.tranadoluavukatlikburosu.comanalfissur.comanatolhost.comanatolhosting.comanatolianinternational.comankamedya.comankaraanahtarteslim.comankarabilim.edu.trankaraemlaksitesi.com.trankaraet.netankarahosting.web.tranketcepte.comanksoft.netanlikhost.comansolon.comansolon.net.trantalya.edu.trantalyaaquarium.comantalyaninsesi.comantalyaradyo.comantalyasm.gov.tr
 antmuh.comantstoreturkey.com
-antyapi.suanywaresoft.comapollonmedya.netaquaemlak.comarabamtaksit.comaraklimedya.comarasbebe.comardayazilim.comarenaihale.comareswebtasarim.comargearts.comargedegerleme.com.trargeserver.com.traribilgi.comarise-suite.comarispirlanta.comarizabilisim.comarkasotomotiv2.comarkeofili.comarmahost.comarpegepatisserie.comarqovia.comarroyo.com.trarselbilisim.comarspark.netarsuzjumanahhotel.comartelegans.comartuklutelkari.comartytablo.comarvensan.comasbu.edu.tr
+antyapi.suanywaresoft.comapollonmedya.netaquaemlak.comarabamtaksit.comaraklimedya.comarasbebe.comardayazilim.comarenaihale.comareswebtasarim.comargearts.comargedegerleme.com.trargeserver.com.traribilgi.comarise-suite.comarispirlanta.comarizabilisim.comarkasotomotiv2.comarkeofili.comarmahost.comarpegepatisserie.comarqovia.comarroyo.com.trarselbilisim.comarspark.netarsuzgundem.com.trarsuzjumanahhotel.comartelegans.comartuklutelkari.comartytablo.comarvensan.comasbu.edu.tr
 asddns.comasdlaminat.comasfat.com.trasfer.com.trasikogluhukukburosu.comasilayplus.comasissoftware.comasistnetwork.comasisyon.comasiyeakar.comaskmasali.comasmwebsayfasi.comaspendosemlak.comaspendosestate.netassetoptimus.comastel.azastor.com.trastormakina.comasuslighting.comasyabayi.netasyaofis.comatakandindar.comatalaytasarim.comatamanchemicals.comatasar.com.tratax.com.tratesoglusogutma.comatiker.com.tratillaotomotiv.comatlantis.mkatlas.edu.tratlasist.comatlasparkavm.comatlasuniversitesihastanesi.comatomservis.comaurasgold.comautoking.com.travantajcelik.comavencamp.comaventyapi.com.travrasyaaricilik.com.travsarsinema.com.traw-cloud.netaxayetkinlikakademisi.comayakkabidunyasi.com.trayazini.com.tr
 ayazns.comaydemenerji.com.traydingoz.com.traydoganhosting.comayesoft.netaygoren.comaykilicgross.com
-aykon2.comaypiajans.comayserbilgisayar.comaytav.com.traytemiz.com.trb2bmeetingstr.combabillonhotel.combablisok.combahcesehirtente.combakimstore.combakirkoygazetesi.combalikesirtakip.combalikliaudit.combanabiweb.combarutali.combarutanda.combarutbsuites.combarutgoia.combasimhane.combasinsoft.combaskasinema.combaskenttasarim.com.trbaskimerkezi.com.trbatiotomotiv.com.trbayazitnews.combayikare.combayipin.combayirapor.combayramsen.combdvs.org.trbeework.com.trbellatech.com.trbenelliturkiye.combenimfavorim.combenomyazilim.comberas.com.trbercesteresidence.com.trbergamagundem.combergaman.comberkyazilim.comberlikaajans.comberrapazarlama.combersuinvest.combesaygold.combesiktastesisatci.combestepebloggers.combestimage.com.trbet10.com.trbetaderi.combetplaytek.onlinebeyazitparfum.combeyazsu-armatur.com beykentuniversitesihastanesi.combeykoz.bel.trbeywebsite.combifikir.combigchefs.com.trbilcagpc.combilensoft.combilgekitap.combilgili.com.trbilgiliblog.combilgimbilgisayar.combilginberge.netbilgiocakta.combilgipinari.combilimtekno.combilimteknomarket.combiliniyo.combilisim34.netbilisimart.combilisimdernegi.combilnexweb.combimagazin.combinyilyapidenetim.combirbilisim.combirdakikadageziyorum.combirebirhaber.netbirhaberoku.combirikimpilleri.netbirimfiyat.netbirincihost.combirnc.com.trbirriales.sitebirsozlesme.combisabeton.combiteknoloji.com.trbitkiselreyonum.com
+aykon2.comaypiajans.comayserbilgisayar.comaytav.com.traytemiz.com.trb2bmeetingstr.combabillonhotel.combablisok.combahcesehir.stoys.cobahcesehirtente.combakimstore.combakirkoygazetesi.combalikesirtakip.combalikliaudit.combanabiweb.combarutali.combarutanda.combarutbsuites.combarutgoia.combasimhane.combasinsoft.combaskasinema.combaskenttasarim.com.trbaskimerkezi.com.trbatiotomotiv.com.trbayazitnews.combayikare.combayipin.combayirapor.combayramsen.combdvs.org.trbeework.com.trbellatech.com.trbenelliturkiye.combenimfavorim.combenomyazilim.comberas.com.trbercesteresidence.com.trbergamagundem.combergaman.comberkyazilim.comberlikaajans.comberrapazarlama.combersuinvest.combesaygold.combesiktastesisatci.combestepebloggers.combestimage.com.trbet10.com.trbetaderi.combetplaytek.onlinebeyazitparfum.combeyazsu-armatur.com beykentuniversitesihastanesi.combeykoz.bel.trbeywebsite.combifikir.combigchefs.com.trbilcagpc.combilensoft.combilgekitap.combilgili.com.trbilgiliblog.combilgimbilgisayar.combilginberge.netbilgiocakta.combilgipinari.combilimtekno.combilimteknomarket.combiliniyo.combilisim34.netbilisimart.combilisimdernegi.combilnexweb.combimagazin.combinyilyapidenetim.combirbilisim.combirdakikadageziyorum.combirebirhaber.netbirhaberoku.combirikimpilleri.netbirimfiyat.netbirincihost.combirnc.com.trbirriales.sitebirsozlesme.combisabeton.combiteknoloji.com.trbitkiselreyonum.com
 bitwise.trbiyografiler.combizbulut.netbizdehesapli.com.trbizimtransfer.combkmsaglik.combksendustriyel.comblsp-at.hairblsp-at.lolblsp-at.motorcyclesblsp-at.skinbmserver.top
 boadns.com
 bofigo.combogaz.com.trbogazici.onlinebogazliyan1noluasm.comboluform.com.tr
-bomain.netboncukpasaji.combookrate.netbornovabizimgazete.comborsaon.com	bosman.trbotfabrika.com
+bomain.netboncukpasaji.combookrate.netboradagitim.combornovabizimgazete.comborsaon.com	bosman.trbotfabrika.com
 botsys.netboyutgroup.netboyutpromosyon.combozok.edu.tr
 bs-web.artbsec-organization.orgbtsodns.combubiteklif.combucakariyer.combufikir.combughaneacademy.combukalemunajans.netbukelemun.combuldanconcept.combulutalan.combulutmarket.com.trbulutvm.combuofis.com.trburakinan.netburcistan.combursaboyatadilat.combursadaguncel.combussplus.combustombilisim.netbutaweb.combutikcizgi.combuyukanadoluhastanesi.combuyukanadoluholding.combuyukcekmecefest.combuyukhaber.combuzpateni.org.tr
-bynooa.combypetvet.combyserver.netcadde.com.trcagdasnet.comcaliskanhost.comcamimarket.comcanakkaletravel.comcanta-dunyasi.comcaptaina.cocaputticaret.comcarioca.com.trcatipencereleri.com.trcayagzitesisleri.com
+bynooa.combypetvet.combyserver.netcadde.com.trcagdasnet.comcaliskanhost.comcamimarket.comcanakkaleolay.comcanakkaletravel.comcanta-dunyasi.comcaptaina.cocaputticaret.comcarioca.com.trcatipencereleri.com.trcayagzitesisleri.com
 cdn.com.trcecimfashion.com.tr
 ceesme.comcekirdekinanc.comcelik.com.trcelikisleri.comcemvenuray.com
 cenkpa.com
 ceodns.net
-cepevi.comcerrahi.com.trcesmeemlaksitesi.com.trcetek.net.trcevizbilisim.comceyhanyazilim.comceyhunyun.comchemorbis.comci10.comcicekdizel.comcinewam.comcityboss.com.tr	cla23.comclassbilisim.comclinicprimeistanbul.comclinixi.comcloud724.netcncxromania.comcocukakademi.comcocukludunya.comcodeplus.com.trcodisoft.com.trcodisoftapi.com.trcodit.com.trcodlook.comcodmade.comconceptgida.comconcordehotels.comconfienerji.com.trcooktatlihayat.comcorelux.netcorewishasset.com.trcorneliaresort.comcortizopencere.com	cozum.appcozumbilisim.com.trcpmgrup.comcrdbilisim.com	crmo2.comcruxsoft.az
+cepevi.comcerrahi.com.trcesmeemlaksitesi.com.trcetek.net.trcevizbilisim.comcevseritasarim.comceyhanyazilim.comceyhunyun.comchemorbis.comci10.comcicekdizel.comcinewam.comcityboss.com.tr	cla23.comclassbilisim.comclinicprimeistanbul.comclinixi.comcloud724.netcncxromania.comcocukakademi.comcocukludunya.comcodeplus.com.trcodisoft.com.trcodisoftapi.com.trcodit.com.trcodlook.comcodmade.comconceptgida.comconcordehotels.comconfienerji.com.trcooktatlihayat.comcorectivedijital.comcorelux.netcorewishasset.com.trcorneliaresort.comcortizopencere.com	cozum.appcozumbilisim.com.trcpmgrup.comcrdbilisim.com	crmo2.comcruxsoft.az
 cs3.com.trcubiccaravan.comcukurovatasarim.com.trcumamesaji.comcumbajans.comcumhurhaber.comcumleleri.comcybh.xyzcyprustay.com	daio.infodalyanilkayemlak.comdamalibayrak.netdaphnedns.comdarica.bel.trdaricafotografci.com
 darkod.netdatacloud.trdatakom.com.trdatarya.comdatasoft.com.trdatsan.com.trdatsu.com.trdbsbulut.comddgbilisim.net	dedica.trdegisimmerkezi.comdemanofis.com.trdemirfiyatlari.comdemirkayaoptik.comdemobul.netdemokur.comdenizlitabipodasi.org.trdentx.internationaldeploy.com.trdepodanpleksi.comdepodolu.comdermaflora.com.trdermenyazilim.comderspresso.com.trderssis.netdervirgul.comdestanpanel.comdestek34.com
 dev.web.trdeva.com.trdeveyazilim.comdevletmemuralimi.comdevulus.com
-dfikir.comdfsbilgisayar.comdidim.bel.trdiettime.com.trdigitalfikirler.comdijitalada.netdijitalhaberajansi.com.trdijitalka.comdijitalreklamevi.comdijitalsaglikajansi.comdijitalsihir.comdijithal.comdijitool.comdinamikkamera.comdinamohosting.comdinamomedya.comdincmekatronik.comdinegitimcileri.comdinosoft.com.trdipos.com.trdiriteks.comdiyarbakirguncelhaber.comdizaynline.comdline.com.trdluxprofessional.com.trdmyriatailor.comdnsadresi.comdnsaxima.com
-dnsblu.comdnsburada.comdnshyper.comdnygift.comdogac.com.trdoganotomotiv.com.trdogasigorta.comdogruprojem.com.trdoitajans.com	dolmen.trdomaintescil.comdorabase.comdorabilisim.comdortgendizayn.netdosemealti.bel.tr	dottr.netdr-ahmetkaya.comdrabdullayeva.com
-drawea.comdrclinic.com.trdrdilekculhaadar.comdrertugrulguler.comdrfatihadanacioglu.comdrklinik.netdruz.trdskozmetik.com.trdumanwebhizmetleri.comdunyareklam.comdurakpide.comdursunmadencilik.com
+dfikir.comdfsbilgisayar.comdidim.bel.trdiettime.com.trdigimekan.comdigitalfikirler.comdijitalada.netdijitalhaberajansi.com.trdijitalka.comdijitalreklamevi.comdijitalsaglikajansi.comdijitalsihir.comdijithal.comdijitool.comdinamikkamera.comdinamohosting.comdinamomedya.comdincmekatronik.comdinegitimcileri.comdinosoft.com.trdipos.com.trdiriteks.comdiyarbakirguncelhaber.comdizaynline.comdline.com.trdluxprofessional.com.trdmyriatailor.comdnsadresi.comdnsaxima.com
+dnsblu.comdnsburada.comdnshyper.comdnygift.comdogac.com.trdogalakustik.comdoganotomotiv.com.trdogasigorta.comdogruprojem.com.trdogukaradenizhaber.com.trdoitajans.com	dolmen.trdomaintescil.comdorabase.comdorabilisim.comdortgendizayn.netdosemealti.bel.tr	dottr.netdr-ahmetkaya.comdrabdullayeva.com
+drawea.comdrclinic.com.trdrdilekculhaadar.comdrertugrulguler.comdrfatihadanacioglu.comdrklinik.netdrozdogan.comdruz.trdskozmetik.com.trdumanwebhizmetleri.comdunyareklam.comdurakpide.comdursunmadencilik.com
 dusova.comduvar34.comduzcerota.come-ceo.com.tr
-e-meyve.aze-yasamrehberi.come-yazilim.netearth.com.treasyfishoil.comebahost.netebilisim.com.trebyu.edu.trecumunpro.com.treczanecantasi.comeczhanem.com
+e-meyve.aze-yasamrehberi.come-yazilim.netearth.com.treasyfishoil.comebahost.netebilisim.com.tr
+ebs.org.trebyu.edu.trecumunpro.com.treczanecantasi.comeczhanem.com
 edo.net.tredremit.bel.tredremithaberajansi.com.tr
-eduhol.comefebeyguvenlik.comefemet.com.treforajans.comefsanetatil.comeftermobilgi.comegedebirgun.netegedestek.com.tregeemlaksitesi.com.tr	egem.siteegemot.com.tregevitalis.comegitimikursu.comegitimisizmir1.org.treglenerekogrenelim.comegyhost.netehaber.tv.treimamhatip.comeklentimarket.comekmud.org.trekonomihaberleri.com.trekotime.netekpanel.ltdeksperium.comelazig.bel.trelazigaday.comelegantdns.comelegantmedya.comelektronikciler.netelfasirketleri.comelftourmarmaris.comelitelanguageinstitute.comelitgeziler.comellacarviptransfer.comelmangrup.comelsistech.comeltimmagazalari.comemlakcidan.com.tremlakdatca.comemlaksatiyorum.comemlakweb.com.trempero.com.tremtel.com.tr
-ena.net.trenagrupreklam.netenbmedya.comendustriyelmutfakaletleri.comenelsan.comeneskaradagoglu.comengoperprogrami.comenmistemizlik.comensantane.comentes.com.trepromnet.comerakoleji.k12.trerenlertech.comerginotomotiv.comerindigital.comerkomhost.comersantransport.comerzurumsporfkstore.orgesahavuz.com.tr
+eduhol.comefebeyguvenlik.comefemet.com.treforajans.comefsanetatil.comeftermobilgi.comegedebirgun.netegedestek.com.tregeemlaksitesi.com.tr	egem.siteegemot.com.tregevitalis.comegitimikursu.comegitimisizmir1.org.treglenerekogrenelim.comegyhost.netehaber.tv.treimamhatip.comeklentimarket.comekmud.org.trekonomihaberleri.com.trekotime.netekpanel.ltdeksperium.comelazig.bel.trelazigaday.comelegantdns.comelegantmedya.comelektronikciler.netelfasirketleri.comelftourmarmaris.comelitelanguageinstitute.comelitgeziler.comellacarviptransfer.comelmangrup.comelsistech.comeltimmagazalari.comemlakcidan.com.tremlakdatca.comemlaksatiyorum.comemlakvitrin.comemlakweb.com.trempero.com.tremtel.com.tr
+ena.net.trenagrupreklam.netenbmedya.comendustriyelmutfakaletleri.comenelsan.comeneskaradagoglu.comengoperprogrami.comenmistemizlik.comensantane.comentes.com.trenzahome.com.trepromnet.comerakoleji.k12.trerenlertech.comerginotomotiv.comerindigital.comerkomhost.comersantransport.comerzurumsporfkstore.orgesahavuz.com.tr
 esatal.comescantur.comesedsistem.com.tresenmuzik.comeserhaber.comesgold.com.tresingazetesi.comeskabilisim.com.treskisehir.net.treskisehirreklam.com.tresoptik.comesra.comesrestore.cometkinlikdenizi.comeuclidit.comeurococloud.comeuroturknews.com
 evagyd.comevibaby.comevinyol.comevpersoneli.netevrengokesme.com	exsen.netextrusionvacuumtanknozzle.com
 eyotek.comeyupsultan.bel.trf13teknoloji.comf3x.net
 f5plus.netfalconx.livefasiharapca.comfatihdoganmedya.com.trfatihtraktorkilifi.com
 fcs.com.trfebzenhosting.comfersanenerji.com.trfethiyebilgisayar.netfethiyegazetesi.com.tr
 fevren.comfhomebilisim.comfikrifabrik.comfikrimustesna.com
-fildns.netfilolastik.comfiloonline.comfinansed.comfinmaks.comfinnet2000.comfintegre.comfirmarehberi.comfirstadvice.com.trfixstar.com.trflasgazetesi.com.trfocaorganik.comfonbulucu.comfonetsan.com.trforbes.com.trfragmanlarim.comfreelancegrafiker.com.trfreelancer.istanbulfreetasarim.comfreightreport.netfugamoda.comfujifilmshop.com
-fuzyon.netfyazilim.com
+fildns.netfilolastik.comfiloonline.comfinansed.comfinmaks.comfinnet2000.comfintegre.comfirmarehberi.comfirstadvice.com.trfixstar.com.trflasgazetesi.com.trfocaorganik.comfonbulucu.comfonetsan.com.trforbes.com.trforsereklam.comfragmanlarim.comfreelancegrafiker.com.trfreelancer.istanbulfreetasarim.comfreightreport.netfugamoda.comfujifilmshop.comfuyaweb.com
+fuzyon.netfxrobotum.comfyazilim.com
 gala360.trgalata360.netgamehubserver.com.trgayrimenkulmevzuati.comgazete27.comgazeteekonomi.comgazetetek.com.trgebzeizolasyon.comgecekitapligi.comgelecekint.comgemedya.comgemlikinsesi.comgen9software.comgencdiyetisyenler.comgeneldns.com	gerfi.netgesf.org.trgeyikisler.onlinegezelim.comgezenbilir.comgezginciler.netgezilanya.comgezinomi.com
 gezweb.comgidiakids.comgiresun.edu.trgiyiminadresi.comglasshouse.com.trglobaltahsilat.comglobit.com.tr
 gmk.org.trgncbilgi.comgncbilisim.comgocukdunyasi.comgoktaswebtasarim.netgoktughost.comgomail.com.trgomobilelife.com.trgoreme.bel.trgrafiketetiket.comgrlbilisim.comgrtxkozmetik.com.tr
 gul.net.trguldogan.devgulermedya.netgundemadana.comgundemhaberajansi.comgundogumupuro.com.trgunebakishaber.comgunesgidatekstil.comguneswebyazilim.comguneydeemlak.comgungorentemizlik.comgureloto.com.tr
 gursel.appguvenliarsiv.com.trguvenlihost.comguvensan.com.trguvensanbulut.comguzelyurt.bel.tr
-guzida.comgysakademi.comhaberavaz.comhaberci06.comhaberg.com.trhabergezgini.comhaberinasli.comhaberkervani.comhabermore.comhaberveriyor.comhaberyunak.comhaciogullari.comhadronser.comhairpharma.com.trhakanbt.com.trhakanbuzoglu.com.trhakandoviz.comhakmarexpress.com.trhakverdi.nethalbaytech.com.trharputsogutma.comhasakvaryum.comhasanuzman.comhaseremarket.comhavaskitaplarim.nethayathaber.netheartmadefurniture.comhedefeticaret.comhedeftasarim.comheimtransport.comhepsibirbilisim.comhepsigorev.com
-her-is.comhesilac.comheynotebook.com	hhoms.comhiperkitap.comhiperonline.com.trhirdavatport.comhitit.edu.trhizlihaber.com.tr	hknkr.com
+guzida.comgysakademi.comhaberavaz.comhaberci06.comhaberg.com.trhabergezgini.comhaberinasli.comhaberkervani.comhabermore.comhaberveriyor.comhaberyunak.comhaciogullari.comhadronser.comhairpharma.com.trhakanbt.com.trhakanbuzoglu.com.trhakandoviz.comhakmarexpress.com.trhakverdi.nethalbaytech.com.trharputsogutma.comhasakvaryum.comhasanuzman.comhaseremarket.comhavaskitaplarim.nethayathaber.nethbzgrup.comheartmadefurniture.comhedefeticaret.comhedefhalk.comhedeftasarim.comheimtransport.comhemensunucu.comhepsibirbilisim.comhepsigorev.com
+her-is.comhesilac.comheynotebook.com	hhoms.comhiperkitap.comhiperonline.com.trhipotenus.comhirdavatport.comhitit.edu.trhizlihaber.com.tr	hknkr.com
 hmstok.comhobimarketim.com
 hodsms.net
-hosque.comhostcini.comhostfabrika.comhosthane.comhostidex.nethosting216.comhostingpanel.com.trhostingweb.com.trhostingwep.comhostmaden.comhostneva.comhostreet.comhostservisi.comhotel-tr.comhotelsqrmenu.comhotelterrace.comht-promosyon.comhubyarvakfi.org.trhunajans.comhunerisonline.comhurnethaber.comhyundaiotoyedekparca.comicamnetwork.netideaklinik.comideasanat.comideatip.net
+hosque.comhostcini.comhostdirekt.comhostfabrika.comhosthane.comhostidex.nethosting216.comhostingpanel.com.trhostingturkiye.com.trhostingweb.com.trhostingwep.comhostlab.net.trhostmaden.comhostneva.comhostreet.comhostservisi.comhotel-tr.comhotelsqrmenu.comhotelterrace.comhotic.com.trht-promosyon.comhubyarvakfi.org.trhunajans.comhunerisonline.comhurnethaber.comhyundaiotoyedekparca.comicamnetwork.netideaklinik.comideasanat.comideatip.net
 idebil.comidermobilya.comigartista.comihalesitesi.comihavideo.com.tr
-ihs.com.trijcesen.comikaajans.netikilerefe.comikincieltrabzon.comikiteker.orgikizleremlak.comikizleremlak11.com.tr
+ihs.com.trijcesen.comikaajans.netikasa.com.trikilerefe.comikincieltrabzon.comikiteker.orgikizleremlak.comikizleremlak11.com.tr
 ikodev.netikramedya.comilaclat.comilanmega.comilanvermakina.comilaydabilisim.com.tr
-ildena.comileri.com.trileriajans.comileriteknik.comilkaymuzik.comilkeakademi.comilkertabak.com.trilkokulburada.com	ilmio.comiltermedya.netilterwebtasarim.com.trimagaza.orgimajkaravan.comimajnetwork.comimecetasarruf.com	imisc.netimortaluz.comincirhosting.cominfotron.com.trinkilapdns.cominosoft.netinovahomeplastik.cominovatixsoft.com.trintedo.com.trintegro.net.trintegro.web.trinterkeyservertr.cominternetbilir.cominvivoweb.netipcel.com.tripeklirulman.comipekyoluhaber.netiphonehastaneniz.com
-irm.com.trironic.com.trisebilisim.comisimo.trisinyoulow.comiskadini.netislamansiklopedisi.infoismailelektronikanahtar.comisminiyaz.comisparta.dr.trispartadavrazasm.comispirkerestecilik.comistanbulakvaryum.comistanbulentcenter.netistanbulexpresskurye.orgistanbulotoelektriktamiri.comistanbultours.pageiste.edu.tristeizmir.netistetorbali.comistguven.istanbulisyerimaps.com
+ildena.comileri.com.trileriajans.comileriteknik.comilkaymuzik.comilkeakademi.comilkertabak.com.trilkokul1.comilkokulburada.com	ilmio.comiltermedya.netilterwebtasarim.com.trimagaza.orgimajkaravan.comimajnetwork.comimecetasarruf.com	imisc.netimortaluz.comincirhosting.cominfotron.com.trinkilapdns.cominosoft.netinovahomeplastik.cominovatixsoft.com.trintedo.com.trintegro.net.trintegro.web.trinterkeyservertr.cominternetbilir.cominvivoweb.netipcel.com.tripeklirulman.comipekyoluhaber.netiphonehastaneniz.com
+irm.com.trironic.com.trisebilisim.comisimkayit.comisimo.trisinyoulow.comiskadini.netislamansiklopedisi.infoismailelektronikanahtar.comisminiyaz.comisparta.dr.trispartadavrazasm.comispirkerestecilik.comistanbulakvaryum.comistanbulentcenter.netistanbulexpresskurye.orgistanbulotoelektriktamiri.comistanbultours.pageiste.edu.tristeizmir.netistetorbali.comistguven.istanbulisyerimaps.comitplus.com.tr
+itu.edu.tr
 ivesgo.netixirdns.comixirhost.comixirmenu.comixirpos.com.triyibulut.comiyirandevu.com	iyzee.comizle.lol	izmir.artizmirkaptanemlak.comizmirkonut.com.trizmirmekanrehberi.comizmirsundisklinigi.comizomarket.comizosanizolasyon.comizsu.gov.trjalemtur.comjantsa.com.trjeanslab.com
-jotags.netjssm.orgjudo.org.trjunocos.comjuventusacademymaltepe.com	jv.com.trkadinsozlugu.comkaerbilisim.comkafkasyahaber.comkaibutik.comkalipatolyesi.comkalitedisli.comkamudannethaber.comkamumemurlar.comkamusonhaber.com.trkaradenizhavadis.comkarahankitabevi.comkarakasoto.com	karar.comkarate.gov.trkaratguc.comkareelaletleri.com
-karmod.comkars36haber.comkarsiyaka.bel.trkarsmedyasi.comkartvizitsayfa.comkaskaotoshop.comkaspagida.comkatreagency.comkayserierciyes.com.trkayserikariyer.comkayserispor.orgkclogger.com.trkeban.com.trkedibilisim.comkemalpasakariyer.comkentinsesi.netkentpsikoteknik.comkerberostr.comkerimarafa.comkes-mak.comkeyftur.comkggcloud.comkiblebulma.comkibrisin-nabzi.comkilissultanradyo.comkimbakar.comkimintelefonu.comkindergartenlab.comkingemlak.comkiraca.com.tr
+jotags.netjssm.orgjudo.org.trjunocos.comjuventusacademymaltepe.com	jv.com.trkadinsozlugu.comkaerbilisim.comkafkasyahaber.comkaibutik.comkalipatolyesi.comkalitedisli.comkalitegaz.comkamudannethaber.comkamumemurlar.comkamusonhaber.com.trkaradenizhavadis.comkarahankitabevi.comkarakasoto.com	karar.comkarate.gov.trkaratguc.comkareelaletleri.com
+karmod.comkars36haber.comkarsiyaka.bel.trkarsmedyasi.comkartvizitsayfa.comkaskaotoshop.comkaspagida.comkatreagency.comkayserierciyes.com.trkayserikariyer.comkayserispor.orgkclogger.com.trkeban.com.trkedibilisim.comkemalpasakariyer.comkentinsesi.netkentpsikoteknik.comkerberostr.comkerimarafa.comkes-mak.comkeyftur.comkggcloud.comkiblebulma.comkibrisgazetesi.com.trkibrisin-nabzi.comkilissultanradyo.comkimbakar.comkimintelefonu.comkindergartenlab.comkingemlak.comkiraca.com.tr
 kiraci.appkirkagacmedya.comkirmizionline.comkirmizitavsan.comkirtasiyede.netkitapcadiri.comkitapkalbi.comkizilcik.netkizlaramoda.comkobijet.com.trkobimax.com.trkocaali.comkocaelisokak.comkocyigitelektronik.com.trkokoshmoda.comkolaywebsite.netkonsens.com.trkonsey.com.tr
 kontiki.ba
 kontiki.rskonvoylojistik.comkonya.bel.trkonyabuyuksehir.tvkonyaemlaksitesi.com.trkonyalpg.comkonyaozgunmobilya.comkonyastore.com.trkorkusuzkocaeli.comkorpdns.net	kosif.com
@@ -2036,26 +2091,27 @@ kralmc.comkreatifart.com
 kriweb.comkruger.com.tr
 ksu.edu.trktasarim.com
 kto.org.tr
-ktu.edu.trkubamotor.com.trkureselkitap.comkurumsalb2c.comkurumsalhosting.net	kutbu.comkuveytturkyatirim.com.trkznhukuk.comlamakivirma.comlaptoponarim.com.trlastingbeauty.netlevelbackup.comliderav.comlifesosyal.comlihkabuskudar.comlila.com.trlim10dns.comlimak.com.trlionreklamajans.comlistelist.comlivaelektrik.comlivasoftware.comloginsalon.comlojitekno.comlongpetrol.com.trlove2play.comlovrime.com
-lpf.com.trlucea.com.trlugatim.comluxesshali.comluxurydrivehire.com.trmadamteacher.commadmedya.netmahalleonline.commahallesimuhtarligi.commahmoodrice.commakarna.com.trmakroprefabrik.commakyapelektronik.commalatyaharita.com.trmanisaistihdamofisi.com.trmanisases.com.trmanset46.com.trmarasmemleket.commarasyenigun.commarkavinci.commarmaraemlaksitesi.com.trmarmaristheme.commarpany.commartdestek.com.trmasalguzellik.com.tr
+ktu.edu.trkubamotor.com.trkureselkitap.comkurspaneli.comkurumsalb2c.comkurumsalhosting.net	kutbu.comkuveytturkyatirim.com.trkznhukuk.comlamakivirma.comlaptoponarim.com.trlastingbeauty.netlevelbackup.comliderav.comlifesosyal.comlihkabuskudar.comlila.com.trlim10dns.comlimak.com.trlionreklamajans.comlistelist.comlivaelektrik.comlivasoftware.comloginsalon.comlojitekno.comlongpetrol.com.trlove2play.comlovrime.com
+lpf.com.trlucea.com.trlugatim.comluxesshali.comluxurydrivehire.com.trmadamteacher.commadmedya.netmahalleonline.commahallesimuhtarligi.commahmoodrice.commakarna.com.trmakroprefabrik.commakyapelektronik.commalatyaharita.com.trmanisafiberinternet.commanisaistihdamofisi.com.trmanisases.com.trmanset46.com.trmarasmemleket.commarasyenigun.commarkavinci.commarmaraemlaksitesi.com.trmarmaristheme.commarpany.commartdestek.com.trmasalguzellik.com.tr
 masron.commasskekurumsal.commatbaaloji.commavibayrak.org.trmavionluk.commaxigezi.commaxigida.com.trmbcreativeajans.commbeksport.commcsajans.commcyotoyedekparca.commeagrotarim.com
-medik.mobimedikosoft.commediserahealth.commedistate.com.trmedyaa.com.trmedyakeyf.com.trmedyawebtasarim.commefhost.commehmetbaskak.commehmetinan.netmehmetmetegerede.commehmetoguzhan.com.trmehmetsolakhan.commehmetyumak.commeisturizm.com.trmelanjcottoniplik.commelbet-app-turkey.commelbet-philippines-login.commenderesemlak.com.trmenemenemlaksitesi.com.trmentormedya.commerakname.commersinipekgayrimenkul.commertalbum.commestoto.com.trmetalteknikkaplama.com	metbi.netmethodda.commetrobus-duraklari.commetroshoop.commezitligazetesi.com.trmicrodestek.com.trmicrosisbilisim.commikaailco.commikro-makro.netmikroturk.commilicarddns.commillcafe.com.trmillenium.com.trminaajans.comminiaturk.com.trminibusyedekparca.commirathaber.com
+medik.mobimedikosoft.commediserahealth.commedistate.com.trmedyaa.com.trmedyakeyf.com.trmedyawebtasarim.commefhost.commehmetalakir.commehmetbaskak.commehmetinan.netmehmetmetegerede.commehmetoguzhan.com.trmehmetsolakhan.commehmetyumak.commeisturizm.com.trmelanjcottoniplik.commelbet-app-turkey.commelbet-philippines-login.commenderesemlak.com.trmenemenemlaksitesi.com.trmentormedya.commerakname.commersinipekgayrimenkul.commertalbum.commestoto.com.trmetalteknikkaplama.com	metbi.netmethodda.commetrobus-duraklari.commetroshoop.commezitligazetesi.com.trmicrodestek.com.trmicrosisbilisim.commikaailco.commikro-makro.netmikroturk.commilicarddns.commillcafe.com.trmillenium.com.trminaajans.comminiaturk.com.trminibusyedekparca.commirathaber.com
 mirbax.commirwater.com.tr
-mitues.com	mj.com.trml-arge.commmchost.netmmchost2.netmobilmoda.com.trmobilpanel.commodaceyda.commodalife.net	modoko.tvmolytech.com.trmonachushotels.commontasoft.commooddijital.commoodistakademi.commoonrivertr.commoscowinproperty.commostem.k12.trmotas.com.trmotekso.commotozeka.commryazilim.com.trmssoft.techmtkteknikkaplama.com.tr
-mto.org.trmudanya.edu.trmudu.com.trmuglanakliyat.com.trmuhasebetr.commukabele.commulk.netmumigayrimenkul.commuradiyemaratonposta.commuratkanbur.commuskenthaber.commutajans.commutfakyapim.commutfakyapim.com.tr
+mitues.com	mj.com.trml-arge.commmchost.netmmchost2.netmobilmoda.com.trmobilpanel.commodaceyda.commodalife.netmodoko.com.tr	modoko.tvmolytech.com.trmonachushotels.commontasoft.commooddijital.commoodistakademi.commoonrivertr.commoovian.commoscowinproperty.commostem.k12.trmotas.com.trmotekso.commotosiklet.netmotozeka.commryazilim.com.trmssoft.techmtkteknikkaplama.com.tr
+mto.org.trmudanya.edu.trmudu.com.trmuglanakliyat.com.trmuhasebetr.commuhendisbeyinler.netmukabele.commulk.netmumigayrimenkul.commuradiyemaratonposta.commuratkanbur.commuskenthaber.commutajans.commutfakyapim.commutfakyapim.com.tr
 mutsev.netmuttas.com.trmuzikreyonu.commyalosoft.com.trmysivas.commywebioo.comnalburtek.comnameserverpro.comnano.net.tr
 nardns.net
 narweb.netneocortex.com.trneodijital.comneredeoku.comneskonotomotiv.com.trnesliaydin.com
 nesnet.comneta-soft.comnetafix.comnetdunyasi.com
 netgez.comnetglobalturkey.comnetikonsoft.comnetizenturkey.netnetlen.com.tr
-netlik.netnetlojistik.comnetrakod.comnetroon.com	netuv.comnetworkmarketi.comnevasolar.comnevsehirmanset.comnewclick.netnexmep.com.trneyinieesirge.storenidaicmimarlik.com
+netlik.netnetlojistik.comnetrakod.comnetroon.com	netuv.comnetworkmarketi.comnevasolar.comnevsehirmanset.comnewclick.netnexmep.com.trneyinieesirge.storenic.tcnidaicmimarlik.com
 nidosa.comnisaweb.com
-nlc.com.trnlkhost.comnmdaltyapi.com.trnodar.com.trnokscraft.comnoktareklam.net.trnoktasexshop.comnomadtarim.comnoriyen.comnormenergy.comnormenerji.com.tr	nossi.netnotebookparcan.comnovasishost.com	nsnns.comnsturkiye.comntweb.com.trofismakine.comofismedya.comofluoglumuhendislik.comofxsistem.comogzbilisim.com
+nlc.com.trnlkhost.comnmdaltyapi.com.trnodar.com.trnokscraft.comnoktareklam.net.trnoktasexshop.comnomadtarim.comnoriyen.comnormenergy.comnormenerji.com.tr	nossi.netnotebookparcan.comnovasishost.com	nsnns.comnsturkiye.comntweb.com.trnumberone.com.trofismakine.comofismedya.comofluoglumuhendislik.comofxsistem.com
+ogu.edu.trogzbilisim.com
 ohu.edu.trokeykral.com
 okinar.com
 okisan.comokulsonuc.comokulumyanimda.comokutgen.com.trokyazilim.comolayhost.comolka.com.troltadukkani.tr	omsan.comondeajans.comonlineislemler.com.tronlinetelekom.com.tronnahair.comopencartglobal.comopencartkurulum.xyzopet.com.trorangecounty.com.trorden.com.trordu.net.trordugazetesi.com.trorgsozluk.com
 orgubu.comorka.com.trornekhaber.comortakbaski.com.troruculer.com.tr
-orvixa.comorwysoft.comoskon.com.trosmancelik.trosmaniyecozum.comotcdepom.com.trotomasyonsepeti.comotomasyonsepeti.netotomercanb2b.comotoparcagonder.comotostore.com.trototakip.netototasarruf.comoutextile.com
+orvixa.comorwysoft.comoskon.com.trosmancelik.trosmaniyecozum.comostim.org.trotcdepom.com.trotomasyonsepeti.comotomasyonsepeti.netotomercanb2b.comotoparcagonder.comotosor.com.trotostore.com.trototakip.netototasarruf.comoutextile.com
 ovadns.comoxit.com.troxitbilisim.comozanguner.comozardic.comozas.com.trozercenter.com.trozesbilisim.comozgurusta.com.trozkahobiahsap.comozoquiz.netozsanmedya.com.trpaketiva.compalmaname.compalsauna.companabayrakdiregi.companasis.com.trpapilon.com.trparagri.comparcadns.comparkerdem.compasarot.com.trpasifikdns.compelia.com.trperformance35.co.ukpetkatalog.competro-tech.com.trpetyasam.compikan.com.trpikanemlak.compikapagency.compikseltesti.compikupone.compinar.com.trpiramitdns.com	pispor.trpizzalazza.com.trplatogrup.netplsfiltre.compolenboya.com.trpolitikaakademisi.orgpolitikadergisi.compolvius.compolygon.com.trportrecreative.comportvmind.com.tr
 posula.compowerajans.com.trpowerapp.com.trpoyraz.web.trprajans.compratikhizmet.compremiumservis.comprestaturk.com
 prodak.xyz
@@ -2063,31 +2119,31 @@ profdr.proprofilsanayi.com.trprogela.comprogenius.com.trprojegenc.comp
 pronsa.compropertyindalyan.comprosunucu.comproteinli.comprottoguard.comproximahome.net
 prs.com.trpusula3d.com
 pwa.com.tr	qokut.comqolaybilisim.com
-qresel.comradyosahil.com.trrafinebrands.comralvehost.comrasyonelyayinlari.com.tr	re-os.comrealhomes.com.trredbullpanorama.comredfox.com.tr	reete.netregnumcarya.rurehatekstil.comrehaweb.netreklamcenter.comrekorsanat.com.trremusoft.net.trrendemedya.trrenklietkinliklerim.comrenklihost.comrenksizhaber.comrentacaristanbul.com.trrentyachtturkey.comresellerprovider.rureserbayi.com
-resmak.comrespanet.comresulozmen.com	retvo.comretvodns.comrezervasyonyap.com.trrfatolye.comrichmondnua.comritanus.comrize.bel.trrizedeyizbil.comrksmotor.eurobertscoffeeataturkparki.com
+qresel.com	r2dns.comradyosahil.com.trrafinebrands.comralvehost.comrasyonelyayinlari.com.tr	re-os.comrealhomes.com.trredbullpanorama.comredfox.com.tr	reete.netregnumcarya.rurehatekstil.comrehaweb.netreklamcenter.comrekorsanat.com.trremusoft.net.trrendemedya.trrenklietkinliklerim.comrenklihost.comrenksizhaber.comrentacaristanbul.com.trrentyachtturkey.comresellerprovider.rureserbayi.com
+resmak.comrespanet.comresulozmen.com	retvo.comretvodns.comrezervasyonyap.com.trrfatolye.comrgbcreative.netrichmondnua.comritanus.comrize.bel.trrizedeyizbil.comrksmotor.eurobertscoffeeataturkparki.com
 rokopi.comroniapp.comrotaborsa.comrotaplast.comrotbilisim.comrouxweb.comroxsoftware.netrsakapi.com.trrubiplatinum.com	ruxon.comruzgardijital.comruzgarhost.com
 rydevo.comsacekimisonuclari.comsafransoft.comsaganetwork.comsaglik.newssaglikeczadeposu.comsahmeddenizli.com
 salkim.com
-samkep.comsamsunsonhaber.comsanalkahve.comsanalkahve.netsanallastirma.comsanaltasarim.netsanatinoykusu.comsandalyedeposu.comsanliurfagzt.comsaray.bel.tr
+samkep.comsamsunsonhaber.comsanaait.netsanalkahve.comsanalkahve.netsanallastirma.comsanaltasarim.netsanatinoykusu.comsandalyedeposu.comsanliurfagzt.comsaray.bel.tr
 sarcld.comsarmancloud.comsarmancloud.com.trsarmanserver.comsaudifashiontexexpo.comsayacokuma.netsayetema.comsayfaboyama.com
-sbmdns.comscdteknoloji.com.trsckbilisim.comscope.com.trscorpionapps.comsdssogutma.comsecilstore.comsedatmobilya.comsedefyangin.com.trsefaatas.com.trsegafed.org.trsehersirin.comsehirisiklari.com.trsehrihatay.comsehrimantalya.comselcuklucivata.comselcuks.netselgazoto.comselismedya.comsemersahturizm.comsenato.com.trsenelyapimarket.comsenyhost.com	seocu.comseolandserver.com.trseoturk.com.tr
-sepetw.comsepolnet.com.trseremboutique.comserhatsine.comsertka.com.tr	server.tcservergezgini.comserversistemleri.comsesiniz.comseslichatmedia.comsetaplaster.com.trsevinclersaglik.comsevkiyatvar.comseyirhaber.comshentaweb.net
-shiwco.comshowdeko.comsidomaav.comsilverline.comsinavbul.com.trsinavkocu.trsinesen.org.trsinop.edu.trsinoz.com.trsiparismatik.netsiparistakibim.com
+sbmdns.comscdteknoloji.com.trsckbilisim.comscope.com.trscorpionapps.comsdkapi.netmera.comsdssogutma.comsecilstore.comsedatmobilya.comsedefyangin.com.trsefaatas.com.trsegafed.org.trsehersirin.comsehirisiklari.com.trsehrihatay.comsehrimantalya.comselcukecza.com.trselcuklucivata.comselcuks.netselgazoto.comselismedya.comsemersahturizm.comsenato.com.trsenelyapimarket.comsenyhost.com	seocu.comseolandserver.com.trseoturk.com.tr
+sepetw.comsepolnet.com.trseremboutique.comserhatsine.comsertka.com.tr	server.tcservergezgini.comserverscity.netserversistemleri.comsesiniz.comseslichatmedia.comsetaplaster.com.trsevinclersaglik.comsevkiyatvar.comseyirhaber.comshentaweb.net
+shiwco.comshowdeko.comsidomaav.comsilverline.comsinavbul.com.trsinavkocu.trsinesen.org.trsinop.edu.trsinoz.com.trsinpas.com.trsiparismatik.netsiparistakibim.com
 sis.com.trsisdagidorse.com
-sislan.netsistemyazilim.comsitemimari.comsitesiparis.netsitesiparis.orgsivasekspres.comsivasosb.org.trsmartlabs.com.trsmsfirsati.comsmsonaytr.comsobo.com.trsoftcom.com.tr
-softtr.comsoholine.comsondakikahatay.comsoninternethaber.comsonpanel.comsoralisitme.comsorangazete.comsostanzerecords.itsotrano.comsoworks.netsoyanetwork.com
-sozbil.comsozluksu.comspaceistanbul.comspeedmetal.com.trspreynozul.comsrdoner.com.trsrsteknoloji.com.trsta4.netstandartizolasyon.comstartkey.com.trstepsoft.com.trstilguvenlik.comstoragetr.comstreetartdigital.comsula.com.trsumerhosting.com.trsundentalclinic.comsunucu1.comsunucuhub.com
+sislan.netsistemyazilim.comsitemimari.comsitesiparis.netsitesiparis.orgsivasekspres.comsivasosb.org.trsiyahhosting.comsmartlabs.com.trsmsfirsati.comsmsonaytr.comsobo.com.trsoftcom.com.tr
+softtr.comsoholine.comsondakikahatay.comsoninternethaber.comsonpanel.comsoralisitme.comsorangazete.comsostanzerecords.itsotrano.comsoworks.netsoyanetwork.comsoykanholding.com
+sozbil.comsozluksu.comspaceistanbul.comspeedmetal.com.trspreynozul.comsrdoner.com.trsrsteknoloji.com.trsta4.netstandartizolasyon.comstartkey.com.trstepsoft.com.trstilguvenlik.comstoragetr.comstreetartdigital.comsuis.sabanciuniv.edusula.com.trsumerhosting.com.trsundentalclinic.comsunucu1.comsunucuhub.com
 surasms.tr	surnet.trsurvivorbilisim.comsuwen.com.trsvtasarim.com	syrix.netsyrwing.comt-plesk.comt3bilisim.comtabloshop.comtadilatfirmam.comtagg.tr
 tagmat.nettakipci.com.trtaksitsepetim.comtamdogal.nettamirrane.comtanbilisim.comtarakliajans.comtaraklihaber.comtasarimciniz.nettasarimlife.comtasarimpanel.comtasarimrehberi.comtaviloglu.comtavlahane.com
 tbt.org.trtechnicasoft.comtechnoone.nettedbhaber.comtedcorlu.k12.trteddenizli.k12.trtedeport.orgteiradns.comtekirdaggazetesi.com.trtekirdagsatiliktarla.comteklifhanem.comtekniktek.comteknodonanim.netteknoistan.comteknolojim.comteknolya.netteknostation.netteknovasya.nettellioglumetalyapi.com	telnet.hutemazon.comtemelbilisim.comtemelisg.comtemizoto.com.trtemporadyotv.com.trtepebasi.bel.trtepehost.comtercumesi.comtextileexposyria.comtezdayukla.uztffankara.org
 tga.gov.trtggf.org.tr
-tgv.org.trthesunucu.comtigem.gov.trtikokart.comtimnetbilisim.comtintmimarlik.comtipplus.com.trtiyatrolar.com.trtiyatrolar.orgtlspetmarket.com.tr	tonoz.nettonyukukajans.comtoptanceyiz.com.trtoretto.nettorosgazkutahya.com.trtoserof.comtotal-scan.toptrabzonotelleri.nettraco.com.trtrafiksozluk.comtrakim.com.trtrakya.edu.trtransfertoalanya.comtrdoktor.comtribunn.comtridicraft.comtrkangal.comtrmangaoku.comtrmarket.com.tr
-trroom.nettruedesk.com.trtruncgil.comtruvacloud.comtruvasoft.comttoticaret.comtugra.trtulpartravel.comtur1.comturaweb.netturbo.web.trturizmdays.comturk-soft.comturkburosen.org.trturkeykingemlak.comturkhosting.com.trturkishairforce.orgturkishalibazaar.comturkishclinker.comturkishtimedergi.comturkiyebulteni.comturkiyeemlaksitesi.comturkiyeopel.comturkiyetaekwondofed.gov.trturkiyeturizm.comturknethost.comturkpath.org.trturkuaznet.comturkundergisi.comturqoprint.com
+tgv.org.trthesunucu.comtigem.gov.trtikohost.comtikokart.comtimnetbilisim.comtintmimarlik.comtipplus.com.trtiyatrolar.com.trtiyatrolar.orgtlspetmarket.com.tr	tonoz.nettonyukukajans.comtoptalent.cotoptanceyiz.com.trtoretto.nettorosgazkutahya.com.trtoserof.comtotal-scan.toptrabzonotelleri.nettraco.com.trtrafiksozluk.comtrakim.com.trtrakya.edu.trtransfertoalanya.comtrdoktor.comtribunn.comtridicraft.comtrkangal.comtrmangaoku.comtrmarket.com.tr
+trroom.nettruedesk.com.trtruncgil.comtruvacloud.comtruvasoft.comttoticaret.comtubayazilim.com.trtugra.trtulpartravel.comtur1.comturaweb.netturbo.web.trturizmdays.comturk-soft.comturkburosen.org.trturkeykingemlak.comturkhosting.com.trturkishairforce.orgturkishalibazaar.comturkishclinker.comturkishtimedergi.comturkiyebulteni.comturkiyeemlaksitesi.comturkiyeopel.comturkiyetaekwondofed.gov.trturkiyeturizm.comturknethost.comturknokta.comturkpath.org.trturkuaznet.comturkundergisi.comturqoprint.com
 tusmer.comtuwanamenu.comtuzcubaba.com.trtuzla.bel.trtuzlahost.comtuzlaservis.comtwxpicker.comtyonetim.comu2medya.comucuza-aldim.com	uetds.net	ugarz.com	ulker.com
 ulucan.netuluhan.net.trulusgazetesi.comumitcakil.comumitozkanotomotiv.comumuthirdavat.comunimaster.com.truniqistanbul.comuniquelifestyle.com.truniverco.com.tr
 unluco.comunluhost.comunotektekstil.comupscalejourney.comuptrendsgroup.comuretimvetuketim.comurfakart.com
 urla77.comurlaemlaksitesi.com.trusakesnafhaber.comuslularoto.com
-uss.com.trutopiahotels.comuyanbilisim.comuzak-ara.comvakifinsaat.com.trvancore.com.trvanweb.com.trvaroltekstil.comvdssunucu.comvefamedya.comvegayazilim.com.trvekta.com.trvelomoto.com.trvenividigoz.com
+uss.com.trutopiahotels.comuyanbilisim.comuzak-ara.comvakifinsaat.com.trvancore.com.trvanweb.com.trvaroltekstil.comvayeshost.comvdssunucu.comvefamedya.comvegayazilim.com.trvekta.com.trvelomoto.com.trvenividigoz.com
 venois.netvenosa.com.trveohaber.comveqrmenu.comveriemlak.comverisayar.com.trveritastr.comveritek.netversusmedya.com	via.cards
 videoon.lyvikingturizm.com.trvillabi.comvilladatatilimiz.comvintagezegeni.comviragoflavours.com	virapp.trvistasunucu.comvitalteknoloji.com
 vitdns.comvizyondesign.netvizyonuniversitesi.com	voldi.netvosaudi.com
@@ -2097,9 +2153,9 @@ weysel.comwhmcslab.comwifiadana.com
 willbe.prowinbordro.comwinperax.prowiome.com.trwipublic.com.trwizardmedya.com
 wjango.com
 wnokta.comwobermann.comwodc.netwolinux.com.trworldcinezone.com.tr
-wpmumu.comwptemamarket.com.trwrus.net
-wsy.centerxlpromosyon.comyalcinaku.com.tryalcinoto.com.tryaliborekevi.comyalovapusula.comyargici.comyasamhastanesi.com.tryasarhafriyat.com.tryasemin.comyavrulabrador.comyayoglupromosyon.comyazarportal.comyazilimatolyesi.netyazilimfirmasi.com
-yazkod.comydsilikon.comydweb.com.trydweb.tryedirenklicinar.k12.tryektasoft.comyelkenci.comyemekfix.comyeneletiket.com.tryenidendogus.netyenidir.comyeniotoparca.comyeniproje.comyeniurfagazetesi.comyerelbasin.com.tryerelrehber.comyerelsepet.comyesbutcher.comyesilmarmarislines.com
+wpmumu.comwptemamarket.com.trwrus.netwsdkapi.netmera.com
+wsy.centerwww.hotic.com.trwww.ilkokulburada.comwww.kubamotor.com.trwww.motosiklet.netwww.opet.com.trwww.radyo7.comwww.sacekimisonuclari.comwww.yargici.comwww.yasemin.comxlpromosyon.comxn--uludahaber-epb.comyalcinaku.com.tryalcinoto.com.tryaliborekevi.comyalinhost.comyalovapusula.comyandex.com.tryargici.comyasamhastanesi.com.tryasarhafriyat.com.tryasemin.comyavrulabrador.comyayoglupromosyon.comyazarportal.comyazilimatolyesi.netyazilimfirmasi.com
+yazkod.comydsilikon.comydweb.com.trydweb.tryedirenklicinar.k12.tryeditepeinsaat.com.tryektasoft.comyelkenci.comyemekfix.comyeneletiket.com.tryenidendogus.netyenidir.comyeniotoparca.comyeniproje.comyeniurfagazetesi.comyerelbasin.com.tryerelrehber.comyerelsepet.comyesbutcher.comyesilmarmarislines.com
 yetsis.comyigitmetal.bizyildizhost.netyilmazlarkirtasiye.com.tryilmazmobilyamalkara.comykmztakip.comymyazilim.com.tryonetimcell.com
 yoyobi.net	ys.web.tryukimotor.com.tryuksel35group.comyukselisgayrimenkul.com.tryusufdurlu.comyusufyalnizligi.netzafersanat.comzegamak.comzehraana.trzehraogretmen.comzelglobal.com
 zenify.prozeonyazilim.com

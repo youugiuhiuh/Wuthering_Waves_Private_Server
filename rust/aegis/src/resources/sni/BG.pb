@@ -12,11 +12,14 @@ acadsol.eu
 acc-service.com
 accountingnews.bg
 acilakuservis.com
+
+adibet.com
 adventour.bg
 adventurestory.bg
 agroconsult-buinov.com
 agrodrip-zahara.com
 agrojournal.org
+agrovet-yambol.com
 agrozvezda.com
 akordite.com
 aladin1.com
@@ -26,6 +29,8 @@ almott.net
 ammunitioncart.com
 amokcasino.com
 androidforums.eu
+
+anowave.ai
 applet-bg.com
 archtennis.eu
 ardanews.info
@@ -109,6 +114,7 @@ biotica.bg
 
 bk2004.com
 bladeforum.bg
+blagosoft.com
 blife.bg
 blsbg.eu
 bogikrastev.in
@@ -137,6 +143,7 @@ bondart.eu
 calculator.bg
 camsplayer.com
 canmakeit.eu
+carmedia.bg
 carpaintcode.com
 casinos-nz.com
 casinovida.com
@@ -157,6 +164,7 @@ classbg.eu
 cocaineincanada.io
 	codkey.bg
 coinperia.com
+colibrierp.com
 comiccon.bg
 confident.bg
 cookwithasmile.com
@@ -179,6 +187,7 @@ degrets.hu
 deltacatv.com
 dentalradar.co.uk
 designzone.bg
+	dght8.com
 diecastcarsbg.com
 diesbus.com
 digitalnielement.com
@@ -190,6 +199,7 @@ degrets.hu
 dostaviam.com
 
 dracia.com
+dwaprices.com
 e-inatrading.com
 
 e-kak.info
@@ -279,6 +289,7 @@ foxkids.bg
 geohide.com
 george-georgiev.net
 gesto.bg
+ggn.bg
 glashatai.com
 global-iptv.eu
 gpscontrol.bg
@@ -306,6 +317,7 @@ foxkids.bg
 idi.bg
 idwebbg.com
 iec.bg
+ijpam.eu
 
 ikonite.bg
 	imibo.com
@@ -331,6 +343,7 @@ ivexto.com
 jelezaria.bg
 jumphosting02.com
 just-fashion.co.uk
+kamea-bg.com
 karatoys.eu
 kasinospell.com
 kensol-styler.com
@@ -370,6 +383,7 @@ kostovi.bg
 lowprice.bg
 lozenec-lan.net
 lozenets-blacksea.com
+ltu.bg
 lukanet.com
 lyricshub.eu
 madripromo.bg
@@ -398,11 +412,13 @@ maxiel.com
 mobimak.com.mk
 modamagazine.bg
 modazadoma.com
+modern-chess.com
 	modero.bg
 moetodete.com
 mostbetsaz.com
 mostbetuzbek.com
 motosapiens.org
+mteldns.com
 multicaremarket.com
 
 muzeiko.bg
@@ -410,6 +426,7 @@ muzeiko.bg
 	mymoto.bg
 mytoy.bg
 napenalki.com
+napravisam.bg
 nargilebulgaria.com
 natalyclima.com
 nationalgallery.bg
@@ -474,6 +491,7 @@ pentod.com
 premiotravel.bg
 preparati.info
 prodavalo.com
+	pronet.bg
 proteini-bg.com
 protonbg.bg
 proverka.eu
@@ -561,6 +579,7 @@ suprema.bg
 tashevtackle.com
 taxpulse.com
 tbc.bg
+telecablenet.com
 telecom-bg.com
 
 telstar.bg
@@ -589,6 +608,7 @@ tralala.bg
 transmetrics.ai
 traveland.bg
 tropic-fire.com
+tu-sofia.bg
 tukortrijk.be
 unihosp.com
 unitedoils.bg
@@ -639,6 +659,9 @@ webcams.bg
 
 winsly.com
 winspark.com
+www.adibet.com
+www.promooferti.com
+www.xn----8sbafg9clhjcp.bg
 xn----8sbafg9clhjcp.bg
 yamantievs.com
 
@@ -652,11 +675,11 @@ yanabg.com
 zentemplates.com
 zkdoverie.com
 zkodisei.com
-zonebetting.com121website.com1chas.bg4vendeta.com7cars.bg7dnifutbol.bga1dns.bgabisnews.comabisoft100.netabisoft102.netabrites.comacs.bgact-logistics.comactualnosvishtov.comadwelldiaries.comafrirentholdings.co.zaafya-pharmacy.bgagritatrade.bgagro-russia.comagrochasti.com	akslo.comaktifetiket.com.traladinfoods.bgalarmanews.comalbum.bgaligee-kz.kzaloha.bgalphior.comalresalaschools.netaltairfpv.comaluminstroy.kzanesthesiology.bgaoforums.comaolkz.kzapdirect.euapkpourandroid.comaptekabg.comaquapark.bgaquarium.bgarcoreal.bgardvegis.co.kearenatobacco.comarhcitystroy.com
-arizona.bgarjenlucassen.comarmymedia.bgarnurcredit.kzarsmedica.bgart-gift.net	asiria.isasparuhovo.netatalant.infoatspace.comautodata24.com
+zonebetting.com121website.com1chas.bg4cloud.mobi4vendeta.com7cars.bg7dnifutbol.bga1dns.bgabarauto.bgabisnews.comabisoft100.netabisoft102.netabrites.comacs.bgact-logistics.comactualnosvishtov.comadwelldiaries.comafrirentholdings.co.zaafya-pharmacy.bgagritatrade.bgagro-russia.comagrochasti.com	akslo.comaktifetiket.com.traladinfoods.bgalarmanews.comalbum.bgaligee-kz.kzaloha.bgalphior.comalresalaschools.netaltairfpv.comaluminstroy.kzanesthesiology.bgaoforums.comaolkz.kzapdirect.euapkpourandroid.comaptekabg.comaquapark.bgaquarium.bgarcoreal.bgardvegis.co.kearenatobacco.comarhcitystroy.com
+arizona.bgarjenlucassen.comarmymedia.bgarnurcredit.kzarphahub.comarsmedica.bgart-gift.net	asiria.isasparuhovo.netatalant.infoatspace.comautodata24.com
 autohop.bgautopartsfranz.comautostop.bgavangardgold.comavangardshop.bgavantx-technologies.com	avenew.bg
-avtocar.bgavtoobuchenie.bgb2bit.bybahraniapps.combaixarapkgratis.combalkanec.bgbalkanpanel.topbalkantech.topbaniaekstra.bg
-bardahl.bgbelani.hostbesedle.combetlabel.onlbetrush.combetwinnerpromo.combezplatno.netbg-sonic.com	bg100.com	bglan.netbgmusicshop.bgbgpharmadrugs.to
+avtocar.bgavtoobuchenie.bgb2bit.bybahraniapps.combaixarapkgratis.combalkanec.bgbalkanpanel.topbalkantech.top	balsam.bgbaniaekstra.bg
+bardahl.bgbasketball.bgbelani.hostbesedle.combetlabel.onlbetrush.combetwinnerpromo.combezplatno.netbfu.bgbg-sonic.com	bg100.com	bglan.netbgmusicshop.bgbgpharmadrugs.to
 bgsait.combgtherm.net	bgtop.netbi-lawfirm.combiclookup.combigeasygames.netbiggirlssmallkitchen.combikezone.bgbikonews.combiliminsesi.combilisimomega.com"binary-options-brokers-reviews.com	birsan.kz
 bishuk.combisys.kz	bittel.bgblowber.com	blsbg.comblue-growth.com
 bnrnews.bgbobamuz.online
@@ -666,58 +689,62 @@ bw-prm.com
 bwaabc.topbwredir.combyteopt.com
 cafemag.bg
 carauto.bgcarsector.bg
-casaart.bgcascadas.eucasinovostok4.com	ccbn.bluecellphone-bg.comcezar-gallery.kzchaos-project.comchessdom.comchochkobochko.com
-chrdri.netchromeye.comcim.bgcinelibri.comcitykulinar.bgclassicwatches.bgclima-calor.comcloxter.comcoffeehub.bgcollanol.comcompastelecom.kzconcept2erg.roconselhosdoconsultor.comcontrol-water.comcpachem.comcreditgroup.cccryptony.appcytahost.comdafi-fashion.net	damski.bgdapostore.netdarbicollege.comdariknews.bg
+casaart.bgcascadas.eucasinovostok4.com	ccbn.bluecellphone-bg.comcezar-gallery.kzchaos-project.comchessdom.comchochkobochko.comchr.bg
+chrdri.netchromeye.comcim.bgcinefish.bgcinelibri.comcitykulinar.bgclassicwatches.bgclima-calor.comcloxter.comcoffeehub.bgcollanol.comcompastelecom.kzconcept2erg.roconselhosdoconsultor.comcontrol-water.comcornersport.eucpachem.comcreditgroup.cccryptony.appcytahost.comdafi-fashion.net	damski.bgdapostore.netdarbicollege.comdariknews.bg
 darlean.kzdasmezdravi.comdatacenter.bgdealguide.org
 defakto.bgdek.bg
 dennews.bgdental-xlab.comdeviaje.comdevopedia.orgdimibike.comdiversant.bgdizi.bgdjhm.bg
-dkw-nz.netdogsandcats.bgdolceamaro.bg	domaza.bg	domaza.chdomaza.co.uk	domaza.es	domaza.gr	domaza.hr	domaza.hu	domaza.li	domaza.pt	domaza.ru	domaza.sidrmandjukova.bgdropspoil.comdzhelev-parts.come-booking.rse-shop-bg.eu
-easyads.bgeasyplatform.comeasytvnet.bg	edabg.comedg.bgekobg.euelato.mediaelexir-bg.comelitcar.comelp.gr
+dkw-nz.netdogsandcats.bgdolceamaro.bg	domaza.bg	domaza.chdomaza.co.uk	domaza.es	domaza.gr	domaza.hr	domaza.hu	domaza.li	domaza.pt	domaza.ru	domaza.sidrmandjukova.bgdropspoil.comdzhelev-parts.come-booking.rse-shop-bg.eue-uchebnici.com
+easyads.bgeasyplatform.comeasytvnet.bg	edabg.comedelivery.egov.bgedg.bgekobg.euelato.mediaelearn.uni-sofia.bgelexir-bg.comelitcar.comelp.gr
 ematrak.bg
-emk-33.comengineering-review.bgenn.ieepo.bg	esklad.bg	esteta.bg	etebg.netethiopia-insight.comeuchebnici.comeurogeologists.eueuropehotelcasino.bgexpert-apm.ruexpertneuromed.kz
+emk-33.comenergy-review.bgengineering-review.bgenn.ieepo.bg	esklad.bg	esteta.bg	etebg.netethiopia-insight.comeuchebnici.comeurogeologists.eueuropehotelcasino.bgexpert-apm.ruexpertneuromed.kz
 explosi.bgexpressone.bgfashionchoice.eufashionchoice.grfavorita.bgfbr.bgfedoraserver.comfenix-light.bgfestteam.bg
-fidweb.netfilternews.bgfinanceacademy.bgfirm.bgfirmite.bizfirmoffice.comfishingzone.bgfitholic.bgfixit.kzfixstay.comflagmanprimary.edu.kzfloriarts-bg.comfmonline.kzfootball24.bgfpmi.bgfpvscape.comfratelli.bgfreedompay.kzfreesofiatour.comfurniturecloud.co.ukfwme.eu	gabela.bggambler.ninjagaminggear.bggardenshop.progarnettoursandtravel.com	gdndw.top
-ged-bg.netgerak.bggillinghamfcscrapbook.co.ukgiraffecafe.bgglianec.comglobalaimcons.comglobaltech-services.comgo-link.netgo2holiday.bggoodpartners.kzgotravel.com.mkgotv.onegrandhotel.bggreencigar.bg	gteek.comhaistaturkey.com
+fidweb.netfilternews.bgfinanceacademy.bgfirm.bgfirmite.bizfirmoffice.comfishingzone.bgfitholic.bgfixit.kzfixstay.comflagmanprimary.edu.kzfloriarts-bg.comfmonline.kzfootball24.bgforbesbulgaria.comfpmi.bgfpvscape.comfratelli.bgfreedompay.kzfreesofiatour.comfurniturecloud.co.ukfwme.eu	gabela.bggambler.ninjagaminggear.bggardenshop.progarnettoursandtravel.comgbg.bg	gdndw.top
+ged-bg.netgerak.bggillinghamfcscrapbook.co.ukgiraffecafe.bgglianec.comglobal-net.com.mkglobalaimcons.comglobaltech-services.comgo-link.netgo2holiday.bggong.bggoodpartners.kz
+gotobg.netgotravel.com.mkgotv.onegrabo.bggrandhotel.bggreencigar.bg	gteek.comhaistaturkey.com
 hapvane.bghellobonuses.comhertha-see.deholisticnavigator.comhomebulgaria.bghomemart.bghost2.bghostingplaneta.com
 hulite.nethumansintheloop.orghydrostab.com	ialgo.comicel.ptictmusic.org
-id-soft.bgideaconsult.netideas-freeboss.comidiomamedico.netidocs.kziforcegroup.comikeaplay.bgikigai.deliveryimgrabo.comimpas56.comimperiabet.bgimux.netinfo-logia.kzinfodatacenter.cominfosysmicro.cominfoz.bgintegral.bginterceramicbg.cominteriority.bgintersnab.com.kzinvoicepro.bgioai-official.orgipndeportes.com
-irispay.bgirtish-honey.kziset-soft.ru
+id-soft.bgideaconsult.netideas-freeboss.comidiomamedico.netidocs.kziforcegroup.comikeaplay.bgikigai.deliveryimgrabo.comimpas56.comimperiabet.bgimux.netinfo-logia.kzinfodatacenter.cominfosysmicro.cominfoz.bgintegral.bginterceramicbg.cominteriority.bg$internationalphoneticassociation.orgintersnab.com.kzinvoicepro.bgioai-official.orgipndeportes.com
+irispay.bgiristech.coirtish-honey.kziset-soft.ru
 ishhub.proisoc.bgivanoviplus.comjanamenhealth.kzjannatul-rayan.kzjannatulrayan.kzjenatadnes.comjilishta.comjustasia.bgjustkidding.bgkai.bgkakvodaqm.bgkaraybe.comkarcher-cleanteh.comkassinovostok.com	kensol.eukeramo-bg.com
-kia-bg.com	kibrit.bgkingjohnnie-casino.comkinogo.qponkocos.bgkostinbrod.bgkraftworld.bgkrono-dc.comkrono-shop.com
+kia-bg.com	kibrit.bgkingjohnnie-casino.comkinogo.qponkinox.grkocos.bgkostinbrod.bgkraftworld.bgkrono-dc.comkrono-shop.com
 ksi-pgs.kzksp-electronics.comktinternational.eu
-ldg-bg.comleadingthecharge.comlefka-eidi.comlegalcollection.kzleks.bg	levski.bg	lexyy.comlibragroup.orglight.islightluxury.bgline-group.kzlinuxssdvps.comlionheart.bglkjh.me	lodkar.bg	logteh.kzma3x.netmadridmetropolitan.com
-magibg.commagimebel.bgmagnitni-buri.bg	makave.eumakecake.netmanfredcarolyn.commaq-attach.commaq-parts.bgmaq-parts.commaq-track.commaqtrack.commartenici-burgas.commarvi.bgmatiniki-kids.eumebelilazur.bgmebelino.bgmebelivaldom.bgmedina-med.commegadealsksa.commegavoice.bgmetal-attack.netmetalotarsachi.commetmeetings.orgmg-comm.commi2n.commia.kzmikrotik-bg.netmilairpix.commimibio-bg.com	mksbg.comml-racing.bgmlnk.net	moagh.commoni.bgmoon.bg
+ldg-bg.comleadingthecharge.comlefka-eidi.comlegalcollection.kzleks.bg	levski.bg	lexyy.comlibragroup.orglight.islightluxury.bgline-group.kzlinuxssdvps.comlionheart.bglkjh.me	lodkar.bg	logteh.kzm.abv.bgma3x.netmadridmetropolitan.com
+magibg.commagimebel.bgmagnitni-buri.bg	makave.eumakecake.net
+manager.bgmanfredcarolyn.commaq-attach.commaq-parts.bgmaq-parts.commaq-track.commaqtrack.commartenici-burgas.commarvi.bgmatiniki-kids.eumatrakhouse.bgmebelilazur.bgmebelino.bgmebelivaldom.bgmebidea.commedina-med.commegadealsksa.commegavoice.bgmetal-attack.netmetalotarsachi.commetmeetings.orgmg-comm.commi2n.commia.kzmikrotik-bg.netmilairpix.commimibio-bg.com	mksbg.comml-racing.bgmlnk.net	moagh.commoni.bgmoon.bg
 moreto.netmotohell.commotor-zet.commotoshop-bg.commovi-fishing.bg
 mqzegh.top	mreja.net
 mrejata.bgmrg-fou.commrtripic.commst-orta-azia.kzmtgdolphin.commu-sofia.bgmuse-europe.commuseumvarna.commyserver.bgnailyday.shop
 narujka.kz	natfiz.bgnaturpharma.comnaturpro.comnaval-acad.bgnegativeworld.orgnenovtechnic.comnenovtechnic.eunepos.be
-nesebar.bgneterra.netnew-dev.comnewcollegetextbook.comnewestate-bulgaria.comnewfresh.org
-nivabg.com	nmnhs.comnoblepartners.eunocorruption.netnomination.bgnovinarnik.bgntkc.nlnutridyn.euogapharm.bgomegabilisim.com.tr
-onchee.com
+nesebar.bgneterra.net
+netinfo.bgnew-dev.comnewcollegetextbook.comnewestate-bulgaria.comnewfresh.org
+nivabg.com	nmnhs.comnoblepartners.eunocorruption.net	nodexa.stnomination.bgnovinarnik.bgnovinata.bgnovsite.comntkc.nlnutridyn.euogapharm.bgomegabilisim.com.tr
+onchee.comonlineuniversalwork.com
 onlyyou.bg
 opoznai.bgopticoel.comorgachim.bgourfamilyforest.comozk.bgp1rmsbw.companda-bg.companthermartin-fishing.bgpari-ot-internet.comparkbobykelly.bg
-parnici.bgpaulageorge.online
+parnici.bgpatilanci.bgpaulageorge.online
 pearson.bgpelotalibre.net.pepelotalibrego.peperformeurope.eu	pernik.bgpesadollar.compharmalife.bgphones4u254.co.kephoto-parts.com.uapipilota.bgpirilampotv.toppirinpress.compirinskopromo.bgpizzaamici.complastic-sofia.com	plasy.com	playtv.bg
-pleper.completa.bgplmd.bgplovdiv-online.com	pmfun.compoc-doverie.bgpodarisliubov.compogled.info
+pleper.completa.bgplmd.bgploshtadslaveikov.complovdiv-online.com	pmfun.compoc-doverie.bgpodarisliubov.compogled.info
 pomorie.bgpoolsupplies.bg
-powerfm.bgpress-muv.comprintondemand.bgprivate-dns.cc	prmbw.com
-pro-bg.comprocessing.kzprodavash.bgprofesionalbg.comprovaton.bg
+powerfm.bgpress-muv.comprimepharmacy.bgprintondemand.bgprivate-dns.cc	prmbw.com
+pro-bg.comprocessing.kzprodavash.bgprofesionalbg.comprogramata.bgprovaton.bg
 publics.bg
 publika.bg	pv-bg.compvrblog.com
-q-parts.bgqalanedu.uzqazcode.comraccontimilu.comradiovitosha.comrazztech.net
+q-parts.bgqalanedu.uzqazcode.comqmax.bgraccontimilu.comradiovitosha.comrazztech.net
 rcparts.euremixbg.comrenasunnybeach.comrevolution-estate.bgreyma.bg	rezka.approbertwisbey.comrodetectors.comrotativka.comroto.bgroyal-petrol.kzrual-travel.com
 runners.bgruopleven.bgrusboard.netsamo.sex
 scatter.bgsdi.bgsemma.bgsendanonymoussms.comshockzone.bgshopcenter.bg
-shopiko.bgshoppiko.net sichherheitinvestmentfinance.comsilistra.tvsimonovi-bgshop.comsinor.bgsiteforge.bgsmartago.netsnobs.bgsofa-lab.comsofthouse.bgsokoinfo.comsolarman.insou-botev.comsoubeloslav.comspalnobelio.bgspeednet.bgsport-stage.netsport365.bg
-sportbg.bgsportfitbg.comsprintbikes.bgspydirect.rosquareshop.bgsquareshop.rostani-hristianin.comstart.bgstefanovikashti.netstels.bgstennipana.bgstigastorum.comstillo-bg.comstomaworldkenya.co.kestringmeteo.comsubsnet.appsupermail.bgsvitoshop.toptabletopanalytics.comtake.bgtamilcatholicdaily.comtastingroom.bgtatarnikah.comtbibank.support	tbicp.comtechno-link.com	techno.bgtelegraph.bgtemasport.comteniskinaedro.comteqworthsystems.comterrashop.bgtesy.comtezynaturals.com	tfsbg.comtheimmediateforce.comthelighthouse.academythermavillage.comthetopbookies11.com
+shopiko.bgshoppiko.net sichherheitinvestmentfinance.comsilistra.tvsimonovi-bgshop.comsinor.bgsiteforge.bgsmartago.netsnobs.bgsofa-lab.comsofthouse.bgsokoinfo.comsolarman.insou-botev.comsoubeloslav.comspalnobelio.bgspeedflowcomm.comspeednet.bgsport-stage.netsport365.bg
+sportbg.bgsportfitbg.comsportrespect.comsprintbikes.bgspydirect.rosquareshop.bgsquareshop.rossi.bgstani-hristianin.comstart.bgstefanovikashti.netstels.bgstennipana.bgstigastorum.comstillo-bg.comstomaworldkenya.co.kestringmeteo.comsubsnet.appsupermail.bgsvitoshop.toptabletopanalytics.comtake.bgtamilcatholicdaily.comtastingroom.bgtatarnikah.comtbibank.support	tbicp.comtechno-link.com	techno.bgtelegraph.bgtemasport.comteniskinaedro.comteqworthsystems.comterrashop.bgtesy.comtezynaturals.com	tfsbg.comthe3-dns.comtheimmediateforce.comthelighthouse.academythermavillage.comthetopbookies11.com
 tih.org.pktilda.kztitanquestfans.net	titov.net	tmsoc.org	tomika.bgtoolsonline.bgtrack-bulgaria.comtravelluxe.kztrea.bg	tremol.bgtria.bgtrichogramma.bgtripsjournal.comtruenorth.bgtsbg.eutuborgfun.bg
 tvoreca.bgu4avplovdiv.com
 udg.org.uk
 udigest.euuft-plovdiv.bguni-svishtov.bguniqcloud.netunrealsoft.netupdateser.com	ustaz.prouytno.bgvarchev.comvarna.bg	vbox7.com	velo-m.bg	ventex.bgvera-borse.itvera-italy.grvera-italy.rovereiapromo.bg
 viahost.euvictoria.bgvidrax-fishing.comvimax.grvipsystems.net
-viscomp.bgvitoshaart.bgvjeepgo.comvma.bgvnmarketresearch.euvocs.orgvvmstore.com
+viscomp.bg
+vitamag.bgvitoshaart.bgvjeepgo.comvma.bgvnmarketresearch.euvocs.orgvvmstore.com
 watch24.bgweather-webcam.euwebground.bg
 webhit.netweblunatix.netwebnstech.netweglobal.kz
-wen.org.ukwhatsoninglasgow.comwhatsoninkerry.comwhatsoninperthau.comwinbet-rs.comwines-bg.comworkpace.kzwossew.com.trwowphoto.kzwshells.net	wuerth.bgxnews.bg	xtreme.bgyanaksoft.netyektravel.comzadkulisite.com
+wen.org.ukwhatsoninglasgow.comwhatsoninkerry.comwhatsoninperthau.comwinbet-rs.comwines-bg.comworkpace.kzwossew.com.trwowphoto.kzwshells.net	wuerth.bgwww.bloombergtv.bgwww.moreto.netwww.vesti.bgxnews.bg	xtreme.bgyanaksoft.netyektravel.comzadkulisite.com
 zajavka.bgzashgroup.co
-zeazoo.comzebra-online.comzmeeborets.comzoki.comzoovet-pharma.com	zoovet.bg
+zeazoo.comzebra-online.comzmeeborets.comzoki.comzon-dns.comzoovet-pharma.com	zoovet.bg

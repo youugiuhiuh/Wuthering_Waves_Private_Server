@@ -13,6 +13,7 @@
 crazywinners.com
 davincisgold.com
 domzdravljastanari.com
+edgezone-ba.bunnyinfra.net
 fatbetcasinos.com
 gdobrinja.edu.ba
 newvegas.com
@@ -48,10 +49,12 @@ to-tda.com
 vegasdays.com
 vipbetobet.com
 3dprint.baacke.website	adazal.baadmiralclub.baalfatherm.combajtbox.combh-hosting.com
-bihnet.netbingobih.bablberza.comcaportal.netdacia.badetas.badidacoshop.com
-ejn.gov.baeu-globaldns.baeu-globaldns.com
+bihnet.netbingobih.bablberza.comcaportal.netcn-globaldns.comdacia.badetas.badidacoshop.com
+ejn.gov.baeu-globaldns.baeu-globaldns.comfbihvlada.gov.ba
 fmf.gov.bafmon.gov.bafmroi.gov.baforrest-e-solutions.comfsks.bafsrs.orggalopdigital.com	global.bagrandauto.bahalid.bahteronet.bainfocentar.bajajce-online.comkomorars.bakrajinaklas.com
-lanaco.comleone1947.bamedzlis-jablanica.bamfbanka.commobitelara.commontenegrina.netmozks-ksb.bamtto.gov.banarodnaskupstinars.netnasesjeme.comnkp.baofisistemas.comomnihost.devparfimerijasergio.compedijatrijabambi.comprijedorgrad.orgradiobet.euradiokameleon.barevizija.gov.barobot.ba	sasped.baserverwebstudio.comsnv.batnt.batravnicki.infounvi.edu.baunze.bavakuf-gazi.bavenetica.ba
-web387.comwurth.ba
+lanaco.comleone1947.bamedzlis-jablanica.bamfbanka.commobitelara.commontenegrina.netmozks-ksb.bamtto.gov.banarodnaskupstinars.netnasesjeme.comnkp.baofisistemas.comomnihost.devparfimerijasergio.compedijatrijabambi.comprijedorgrad.orgradiobet.euradiokameleon.barevizija.gov.barobot.ba	sasped.baserverwebstudio.comsnv.batnt.batravnicki.infounvi.edu.baunze.bautic.net.bavakuf-gazi.bavenetica.ba
+vikici.com
+web387.com
+webpage.bawurth.bawww.ljportal.com
 zmajevi.ba
 zrinja.com

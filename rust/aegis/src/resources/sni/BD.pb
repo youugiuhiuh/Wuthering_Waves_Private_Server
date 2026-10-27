@@ -10,6 +10,7 @@ aarown.com
 akotasocial.com
 akplatform.org
 aliyahmart.com
+allads26.com
 alladsbd.com
 allwebbd.com
 alphagadget.com.bd
@@ -24,6 +25,8 @@ aarown.com
 
 astzbd.com
 avafashionbd.com
+
+aviasm.com
 babyproductbd.com
 bacbaas.com
 bangla-love-sms.com
@@ -187,6 +190,7 @@ ettabd.com
 foretex.net
 friendsbazarbd.com
 froggymart.com
+fusionbd.net
 fuwangceramic.com
 gadgetghorbd.com
 galaxyit.net
@@ -229,6 +233,7 @@ ichs.ac.bd
 icombd.com
 igranpanificio.com
 	iisbd.com
+incomcloud.com
 infinite-market.com
 infinityskincaresolutions.com
 inngobd.com
@@ -243,6 +248,7 @@ iq-tel.net
 itsoldierbd.com
 iu.ac.bd
 	iubat.edu
+iubatapp.net
 
 jeepno.com
 jitben.com.bd
@@ -346,6 +352,7 @@ paibye.com
 perfectobd.com
 phonesell.com.bd
 photoscissor.com
+pibelearning.gov.bd
 pimathclub.com
 	piobd.com
 plus.net.bd
@@ -362,10 +369,12 @@ paibye.com
 pressstudio.com.bd
 primedigitalearnings.top
 priodokan.com
+product.nittonoton.com
 proggabd.com
 progressbangladesh.com
 
 pstu.ac.bd
+pustiglory.ahmedul.com
 qfix.com.bd
 quanticdynamics.cloud
 quanticdynamics.com
@@ -476,24 +485,26 @@ webzez.com
 zarasoft.xyz
 zeenfar.com
 zhostbd.com
-zisworld.com16bazar.com5lsi5breadhot.com7xsurzo.comaccordhrm.comaffixcloud.comajkerhaatbazar.comakaarserver.xyzaladinshop.com.bdalbarakagarden.comalim.com.bdalleverything.com.bdamaderastha.comamarshebahost.topamartopupbd.com	amybd.comasgaralihospital.comashshifa.shopasmishop.comasonlinebd.netautomas.com.bdazoncloud.comazonhost.netbalanceserver.combanglabid.com.bdbdcrictime.combdgiftopia.com
-bdp.gov.bdbdswebhosting.combdwaterpurifier.combetar.gov.bdbikeshopbd.com.bdbiomed.com.bdbizmation.xyzbizsoftit.combsoftbd.combsvcfica.orgbteb.gov.bd	btmbd.comburaqbd.com.bdbybsakori.comcampersgearbd.comcbnfm.edu.bdcevta.gov.bdchittagongghs.edu.bdchoicekroy.com
+zisworld.com16bazar.com5lsi5breadhot.com7xsurzo.comaccordhrm.comaddresacademy.comaffixcloud.comajkerhaatbazar.comakaarserver.xyzaladinshop.com.bdalbarakagarden.comalim.com.bdalleverything.com.bdamaderastha.comamarshebahost.topamartopupbd.com	amybd.comasgaralihospital.comashshifa.shopasmishop.comasonlinebd.netautomas.com.bdazoncloud.comazonhost.netbalanceserver.combanglabid.com.bd
+bcc.gov.bdbdcrictime.combdgiftopia.com
+bdp.gov.bdbdswebhosting.combdwaterpurifier.combetar.gov.bdbikeshopbd.com.bdbiomed.com.bdbizmation.xyzbizsoftit.combmeb.gov.bdbsoftbd.combsvcfica.orgbteb.gov.bd	btmbd.comburaqbd.com.bdbybsakori.comcampersgearbd.comcbnfm.edu.bdcevta.gov.bdchittagongghs.edu.bdchoicekroy.com
 cibato.comcityhatsbd.comclick-bank-bd.comcnet.net.bdcnfemployeesunion.comcoderlifeit.comcoineliteoptions.comcolocone.comcoverworldbd.comcryptopipsflow.comcumillaboard.comcvoice24.comdailysamadhan.comdainikittehad.comdaweblab.com
-dcrowd.netdeeptonews.comdghs.gov.bddhakagroup.comdhrupadi.comdigicashbd.comdigicontechnologies.comdizicashier.com
+dcrowd.netdeencommerce.comdeeptonews.comdevcloudserver.netdghs.gov.bddhakagroup.comdhrupadi.comdigicashbd.comdigicontechnologies.comdizicashier.com
 dme.gov.bddnbc.gov.bddoctorsdoor24.comdoharit.comdoict.gov.bddonlogsxchange.comdpdt.gov.bddrselim74.comdukpion.com.bde-hostbd.comeasytradesolutionintt.comebangladeshshomachar.comedusysbd.netelearning.org.bdelegance.com.bdelegantemart.comelevohost.comelitecommunity.netelitevapeuae.com
 emct.tradeeprottoyon.comequitel.com.bdevertechit.comfamousgadgetbd.comfashionproductsbd.comfastnestbd.clickfastnestbd.comfitnlead.comflyexdigital.comfmpafrica.com.ngfollowfashion.com.bdfreshtodaybd.comfuturenet-bd.comfxbonusoffer.comfxdailyinfo.comfxincome.profxnewinfo.comgobeefly.comgreen-docs.netgreentiger.com.bdhcsb.org.bdhearingpointbd.comhost4speed.comhostimatic.comhostiqs.comhostmidi.comhostorner.comhostpapara.comhostunified.comhsbbazar.comhypebroo.com
-ieltsbd.coimesh-host.com	irlbd.comispmslt.comiubatautomation.topjgsgameshop.comjonotaronlinepresscloub.comjuihost.comkazioffice-bd.comkidneyhealthfoundationbd.comkingnaturals.shopkinwaswellofhope.orgklickapital.comknowledgeproducts.com.bd
+ieltsbd.coimesh-host.comipemis.dpe.gov.bd	irlbd.comispmslt.comiubatautomation.topjgsgameshop.comjonotaronlinepresscloub.comjuihost.comkazioffice-bd.comkidneyhealthfoundationbd.comkingnaturals.shopkinwaswellofhope.orgklickapital.comknowledgeproducts.com.bd
 kothay.appksonlinebd.com
 ktcnbd.comlawjusticediv.gov.bd
 lgd.gov.bdlinkeei.comlinktech.net.bdlivegadgetbd.com
 lplmis.commaca-coffee.commadrasamanagement.commangroveesp.commaroonedbd.commarshalhost.commayabibd.commazedanetworks.netmd360.onlinemedistorebd.commeghnacloud.commentorsoffice.commetro.net.bdmiahhost.com
-mimebd.comminevesta.comminorhost.commirhost.netmobiledokan.commoha.gov.bdmohfw.gov.bdmomagic.com.bdmuktodharahost.comnahidsworld.comnaturalmixedhoney.shopncielc.com.ngnetonlinebd.comnewmaxeasy.comnobinep.comnobocart.shopnthreecommunication.netnutrivitaa.comocta-networks.comonlineurgentservice.topopulentint.comorbititbd.netorganikaon.comorizo.storeoshnisoft.comosmaniakamilmadrasah.edu.bdotglnews.comoxiohost.com
+mimebd.comminevesta.comminorhost.commirhost.netmobiledokan.commoha.gov.bdmohfw.gov.bdmomagic.com.bdmuktodharahost.comnahidsworld.comnaturalmixedhoney.shopncielc.com.ngnctb.gov.bdnetonlinebd.comnewmaxeasy.comnextgenonlinebd.comnobinep.comnobocart.shopnthreecommunication.netnutrivitaa.comocta-networks.comonlineurgentservice.topopulentint.comorbititbd.netorganikaon.comorizo.storeoshnisoft.comosmaniakamilmadrasah.edu.bdotglnews.comoxiohost.compallisanchaybank.gov.bd
 pch.gov.bdperfectlinecorp.comperfumiabd.com
-piasha.compinkyscollection.compioneer.com.bdpixworld27.compmt.ng
+piasha.compinkyscollection.compioneer.com.bdpixworld27.compmt.ngportal.ewubd.edu
 potoja.compowernet.com.bdpredictfootballmatch.comprimacyinfotechltd.comprojobsbd.comprojonmobarta.com
 proyas.orgqbitnode.comqsale24.comrailway.gov.bdrajshahieducationboard.gov.bd
 rcnsms.xyzrcproductbd.comrctopup.comrealmartbd.comreddata.com.bdrevoltnext.comrichsignature.comripon150.comrmstu.ac.bd
-rnjbd.shoprthd.gov.bdsabahollowblock.comsamiasupershop.comsangbad.netsangbad.net.bdsangramhospital.comsarkarhost.comsatkhiramc.gov.bdsearchitbd.comsecurehostingpanel.comserveranywhere.netservermart.netshobkicu.comsilvaflux.comskybdonline.comskylarkeducation.comsmslord.comsnowtexinfo.comsocialbarta.com
+rnjbd.shoprthd.gov.bdsabahollowblock.comsamiasupershop.comsangbad.netsangbad.net.bdsangramhospital.comsarkarhost.comsatkhiramc.gov.bdsearchitbd.comsecurehostingpanel.comserveranywhere.netservermart.netshebahost.comshobkicu.comsilvaflux.comskybdonline.comskylarkeducation.comsmslord.comsnowtexinfo.comsocialbarta.com
 softeb.comsoftsms.com.ngsohagonline.comsojibtricks.topsonalilife.comsonibar.comsorolhisab.comspacewalkerbd.comspeedplusisp.net	spzbd.comsstntechnology.comtamannashop.comteamsbapp.comtechnologyparkbd.comtechvision24.comtenvelop.comthenewsaxis.comtmed.gov.bdtodaysomoysangbad.comtomattos.comtopupbdt.comtoshibaphotocopierbd.comtrustsecuritiesbd.comtuitionterminal.com.bd	uipms.comujalapoint.comuniquefootwearbd.comuttarahost.comuttarainfotech.comvalosangbad.comvelocitynetworksbd.comvoyagernetworkbd.xyz
 waliul.comwalkerguru.comwealthach.comwebsitedesignbd.comwholesaledistributorbd.comwholesalepricebd.comworldweblist.com
-wub.edu.bdzero7.com.bdzrtopup.com
+wub.edu.bd
+xpress.ltdzero7.com.bdzrtopup.com

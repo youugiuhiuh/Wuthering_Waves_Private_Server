@@ -1,1 +1,1 @@
-crystal-martin.lkfisheriesdept.gov.lk
+crystal-martin.lkfisheriesdept.gov.lknic.lk

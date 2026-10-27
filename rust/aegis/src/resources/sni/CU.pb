@@ -1,2 +1,2 @@
 
-mercados.cufidelcastro.cupcc.cu
+mercados.cu	ecured.cufidelcastro.cupcc.cu

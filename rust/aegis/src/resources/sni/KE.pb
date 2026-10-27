@@ -20,6 +20,7 @@ aphfii.com
 getavoro.com
 glamupsquad.co.ke
 glefoundation.org
+instagram.fmba5-2.fna.fbcdn.net
 kalderacapital.com
 kcempress.com.ng
 kessha.or.ke
@@ -41,9 +42,10 @@ aphfii.com
 royalboosthub.com.ng
 scaptedesigns.com
 simkash.com
+sonar-mba2-1.xx.fbcdn.net
 tinycio.com
 triumphoptions.com
 tzenxglobal.com
 vertex.com.ng
 wayofpeaceboutique.com
-yeldnexo.com	amcoa.orgbreakingkenyanews.combrookside.co.ke	dkl.co.keexpressflorists.co.kefoodarenang.comgointern.co.zagptforexcelsheet.comgutabittech.co.kehellobooks.co.zahotstepsholdings.co.kejtgroup.co.keknowclickmedia.co.kelaikipia.ac.kelasalleschoolhomabay.sc.kemachakos.go.kemakueni.go.kemmust.ac.kenexavestment.comnyamira.go.kepaleankenya.co.kescott.ac.kesmsverify.com.ngstoresome.kete-lemaxdt.com.ngtech-vestment.comtvetcdacc.go.kewiseassestcapitals.networldfxbureau.com
+yeldnexo.com	amcoa.orgbreakingkenyanews.combrookside.co.ke	dkl.co.keexpressflorists.co.kefoodarenang.comgointern.co.zagptforexcelsheet.comgutabittech.co.kehellobooks.co.zahotstepsholdings.co.kejtgroup.co.keknowclickmedia.co.kelaikipia.ac.kelasalleschoolhomabay.sc.kemachakos.go.kemakueni.go.kemicromartafrica.co.kemmust.ac.kenexavestment.comnyamira.go.kepaleankenya.co.keprestigedistributors.co.kescott.ac.ke	sha.go.kesmsverify.com.ngstoresome.kete-lemaxdt.com.ngtech-vestment.comtvetcdacc.go.kewiseassestcapitals.networldfxbureau.com

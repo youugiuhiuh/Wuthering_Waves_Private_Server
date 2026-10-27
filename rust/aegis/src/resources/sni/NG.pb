@@ -1,7 +1,7 @@
 
 carding.icu
 oauife.edu.ng
-sabinet.worksclubkash.comdiaspora-bridge.ng
+sabinet.worksclubkash.comdiaspora-bridge.nggalaxybackbone.com
 mxcltd.com
 sitehub.ngspesse.edu.ngteras.ng
 yy4747.com

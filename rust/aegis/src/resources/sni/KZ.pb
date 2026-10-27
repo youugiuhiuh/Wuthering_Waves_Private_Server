@@ -97,6 +97,7 @@ inlight.kz
 itel.kz
 itest.kz
 itsmycity.net
+itsmycity.ru
 jasilalem.kz
 joo.kz
 justshop.kz
@@ -151,6 +152,8 @@ nuralem.kz
 olimpbet.kz
 omnicomm-expert.kz
 onebroker.kz
+
+oqu.edu.kz
 otis.kz
 partner.com.kz
 paruskaz.kz
@@ -158,6 +161,8 @@ nuralem.kz
 pay2day.kz
 petroretail.kz
 petstore.kz
+
+phaeton.kz
 plastic-okna.kz
 
 pmgroup.kz
@@ -228,6 +233,8 @@ wonk.study
 yans.kz
 
 yujanka.kz
+	zaimer.kz
+zaka-zaka.com
 zhasylzher.kz
 zhiloyfond.kz
 
@@ -235,38 +242,41 @@ zhuldyz.kz
 zkk.kz
 zmz-tuning.kz
 zoomarket.kz103.kz	1promo.kz1xbet.kz
-2ymedia.kza37.kzab-service.kzabc4.kzabctv.kz
+2ymedia.kza37.kzaastudio.orgab-service.kzabc4.kzabctv.kz
 abihome.kzabiznews.netabylaigs.comabylaigs.kz
 academy.kz	acepas.kz	acfund.kzacgarant.kzadamants.kz
 adkulan.kzadz.kzagrourra.comagsr.kzai-ar.kzaikyn.kzakmo.kzaks-shop.kz
 aksycom.kz
 akvilon.kzakzhol-group.kzalataunews.kzalatrade.com.kzalatrade.kzalfaprint.kzalikhanprep.kzalko-teka24.ru	all-tv.kzallproftelecom.kzalma-city.kz
-almacom.kz	almaly.kzalmau.edu.kzalto-logistics.comalyansvrachey.ruaman-time.kzamanvibe.kzamm.kzampermarket.kzamwayservices.kz
-anekdot.kzanvar.kzanwalte-de.com	aoooir.kz
+almacom.kz	almaly.kzalmau.edu.kzalto-logistics.comalyansvrachey.ruaman-time.kzamanvibe.kzamm.kzampermarket.kz
+amu.edu.kzamu.kzamwayservices.kz
+anekdot.kzanvar.kzanwalte-de.com	aoooir.kzap.kz
 apihost.ruapk-news.kzapplecity.kzappsprings.pro
 appteka.kzaquarida-tour.kz	arasha.kzardes.kzarenda-samoleta.com.ua
-artelac.kzasiatrans.kzasistent.kzasppm.kz	assist.kzastana-akshamy.kzatlas100.ruautokotly.comautoline.kzautosell.kzautotrade.kzavtoelon.uzavtomarket.net
+artelac.kzasiatrans.kzasistent.kzasppm.kz	assist.kzastana-akshamy.kzastana-motors.kzatlas100.ruautokotly.comautoline.kzautosell.kzautotrade.kzaviasales.kzavtoelon.uzavtomarket.net
 ayu.edu.kzazattyq-ruhy.kz	azerti.kz
 azscore.rubankpozitiv.kzbas-dent.kz
 basdent.kzbaumarkt.kzbazis.kzbcc.kzbccqr.kzbd-company.kz
-beaprof.rubestart-light.rubilimdiler.kzbilimdinews.kzbilimshyragy.kzbistriedengi.kzbistriedengi247.kzbitig.kzbladeweb.kzblue-creature.com	bnect.probohnenkamp.kzbrokerage24.kzbtop.kz	bureau.kzbyd-auto.kzc3.kz	caepco.kzcapitalbank.kzcaravanofknowledge.comcasinobellagio.kzcertificat.kzcheckinn.kzchery.kzcifracomp.kzcitypass.kzcodo.kzcompass.expressconco.kzcourstore.comcplus.kzct.kz
+beaprof.rubestart-light.ru	bildme.rubilimdiler.kzbilimdinews.kzbilimshyragy.kzbistriedengi.kzbistriedengi247.kzbitig.kzbladeweb.kzblue-creature.com	bnect.probohnenkamp.kzbrokerage24.kzbtop.kz	bureau.kzbyd-auto.kzc3.kz	caepco.kzcapitalbank.kzcaravanofknowledge.comcasinobellagio.kzcentercredit.kzcertificat.kzcheckinn.kzchery.kzcifracomp.kzcitypass.kzcloupard.kzcodo.kzcompass.expressconco.kzcourstore.comcplus.kzct.kz
 ctagro.comcts.kzdake.devdelonghiultra.uzdenti.kz	depend.kzdiapazon.kz	digift.kzdina-cargo.kzdionashop.kzditi.kzdku.kzdne.kzdobraya-apteka.kz	doctor.kzdostavka-bystro.rudtp.kz	dtskpl.ru
 duorest.kzdus.kzdustland.us
 eatyrau.kzebrd.kzedinstveniyreper.neteducationcenter.cz
-edumark.kzeduonline.kzemhana-akmol.kzemoney.tools
+edumark.kzeduonline.kzemex-global.kzemhana-akmol.kzemoney.tools
 emtihan.kzencyclopedia.kz
 enkiapp.kz
-equhost.kz	erudit.kzescaparate.kzets.kzeurope-china.kz
+equhost.kz	erudit.kzescaparate.kzets-tender.kzets.kzeurope-china.kz
 europol.kz	evbika.kzevitamin.uz
 evrenzo.kzfamilydoc.kzfinscredit.kz	fizmat.kzflorists.kzflute.kzforte.kzforum-auto.kzforum-azi.rufrog1812.comfunomic.progadgetstore.kzgdz.kzgfxsport.com
-gimport.kz	glonin.kz
+gimport.kzgkamega.com	glonin.kz
 gmg.edu.kzgnatocentr.com	go-web.kzgood.kzgoodgame.kz
-gostest.kzhalykmarket.comhalykmarket.kzhappy-travel.kzharnal.com.kz	hdfilm.kzhh.kzhilal.kzhistory-akmola.kzhoffmann.kzhorizont-cargo.kzhpt.kzht.kzhtel.kzhuntflow.kzhyundai-shymkent.kzicore.kz	idhost.kzimbc.kzimperiyaturizma24.cominfopark.kzinspireapp.kzinsports.kz
+gostest.kzhalykmarket.comhalykmarket.kzhappy-travel.kzharnal.com.kz	hdfilm.kzhh.kzhilal.kzhistory-akmola.kzhoffmann.kzhorizont-cargo.kz	hoster.kz
+hosting.kzhpt.kzht.kzhtel.kzhuntflow.kzhyundai-shymkent.kzicore.kz	idhost.kzimbc.kzimperiyaturizma24.cominbusiness.kzinfopark.kzinspireapp.kzinsports.kz
 inswiki.ruintel-soft.kz
 intmen.net
 inttour.kzinvestudy-academy.kzinvision.kz	iqanat.kziris.kzitaxi.kzitba.kziteca.eventsiteca.kz
 itgroup.kz
-itsheff.kzitsx.kzivlk.ioizumrudniygorod.kzjac-motors.kzjasdarynpvl.edu.kz	joblab.kzk-o.kzkanm.kz	kaspex.kzkazakhmys.kzkazan-watch.rukazguidedtours.comkazkabel.kzkazniisa.kzkazniizhik.kzkazprice.kzkelet.kzkfb.kzkff.kzkfp.kzkfrr.kz
+itsheff.kzitsx.kzivlk.ioizumrudniygorod.kzjac-motors.kzjanamenhealth.kzjasdarynpvl.edu.kz	joblab.kzk-o.kz
+kabinka.kzkanm.kz	kaspex.kzkazakhmys.kzkazan-watch.rukazguidedtours.comkazkabel.kzkazniisa.kzkazniizhik.kzkazprice.kzkelet.kzkenbolllike.kzkfb.kzkff.kzkfp.kzkfrr.kz
 kgd.gov.kzkgm.kzkhanshatyr.com
 kingex.orgkkat.edu.kzkmf.kzkmg-s.kz	kolesa.kz
 komekai.kz	kompra.kz	kordik.kz
@@ -275,8 +285,8 @@ kstnews.kz
 kstounb.kzkt.kzkuam.kzkvaligate.com	kz24.newslada.kz
 landjer.kzlecheniealkogolizma.asia	leonet.kz	life09.kz
 lincore.kz	linked.kzlions-credit.kzllfalmaty.kzlmu.kz
-locadex.kzlombard-cabinet.kzlombardcini.azlsm.kzluckytrack.kzlyceum-arystan.kzm-365.kzm-b.kz
-macdent.kzmagnerot.kzmagyarok.top	marvel.kzmasterfresok.kzmatadorliga.kzmatritca.kzmebel.kzmebelschik.kzmedelement.commedicalshop.asiamedicoway.rumedsystem.onlinemegagroup.kz	meibes.kzmek.kzmelissimo.kz
+locadex.kzlombard-cabinet.kzlombardcini.azlsm.kzluckytrack.kzlyceum-arystan.kzm-365.kzm-b.kzm.krisha.kz
+macdent.kzmagnerot.kzmagyarok.top	marvel.kz	marwin.kzmasterfresok.kzmatadorliga.kzmatritca.kzmebel.kzmebelschik.kzmedelement.commedicalshop.asiamedicoway.rumedsystem.onlinemegagroup.kz	meibes.kzmek.kzmelissimo.kz
 meloman.kzmf.kz	mg-eng.kzmiddlecorridor.commigcredit.kzmildronat.kzmindsales.kz	mintax.kzmionline.uzmir-vostoka.kzmoneyplus.kzmsl.kzmstt.kzmusa.kz	my-doc.kzmyagentonline.kz
 myforti.kzn8ndcpchina.runarkologiya.asianavimba.comnazim.kzncste.kzneochemical.kz
 newauto.kznewreporter.orgng.kznit.kznls.kznm.kzno-frames.kznomadoil.kznordinext.kznotpalata-nursultan.kz	nu.edu.kznur.kznxs.kz
@@ -291,16 +301,16 @@ pvp-snk.kzqalam.globalqalaqyzmet.kz	qaz365.kzqazaqadebieti.kzqazaqstroy
 s-cica.orgs-tel.kzs3.kzs89fitness.kzsabai.kzsamga-education.kzsammasatisamarth.kzsanto.kzsas-telecom.kzseifmebel.kzseomaestro.kzsevkazenergo.kzsewing-home.kzshanyraqinfo.kzshs-shop.ru
 sibvent.kz	sillan.kzsilver925.kzsimpledio.comsiteonline.kzsk.kzskma.edu.kzsmartsoft.kzsms-consult.kzso-svoim.rusocialwallet.kz
 sof-rus.cosol-qaragai.kz
-sooncar.kzsoros.kzsotreport.kzspav.kzsport-lab.kzsportstore.kzsrvstatic.kzstandard.kzstepline.kzsterenstein.rustrahov.pro	subaru.kz	sugnpp.kzsuncitytravel.kzsundayairlines.kz	talkit.kztank.com.kztbnservice.kztdec.kztechnodom.kz
-tengeda.kzteplopol.kz	testim.kz	tezdoc.kzthe-tech.kzthevillagespecials.kztimetracker.kztks.kz
+sooncar.kzsoros.kzsotreport.kzspav.kzsport-lab.kzsportstore.kzsrvstatic.kzstandard.kzstepline.kzsterenstein.rustrahov.pro	subaru.kz	sugnpp.kzsuncitytravel.kzsundayairlines.kz	talkit.kztank.com.kztappydriver.comtbnservice.kztdec.kztechnodom.kztele2.kztelemetry.jivosite.com
+tengeda.kzteplopol.kz	testim.kz	tezdoc.kzthe-tech.kzthevillagespecials.kztilda.kztimetracker.kztks.kz
 tnsplus.kz
-tnved.infotomas.kztoppress.kztraktor-zd.kztransavia.kz
+tnved.infotomas.kztoppress.kztraktor-zd.kztransavia.kztravelluxe.kz
 tribune.kztsmerkury.kzturkistaantugyryqory.kzturkystan.kztxt-trading.comubet.kzuchebakaz.kzuchet.kzugyvedek-hu.com
 ultra-s.kzuog.kzurikhtau.kzust.kzususoft.comvariedapps.comvechastana.kzvektorelektro.kzventpremium.kzvestnik19.kzvg.kzvietjetqazaqstan.kz
-viewhub.kzvikistyle.kzvipusknik.kz	vision.kzvita-avto.kzvkoem.kz
+viewhub.kzvikistyle.kzvipusknik.kz	vision.kzvita-avto.kzvkoem.kzvlife.kz
 volokno.kzvortexlabsapps.comvsebanki.kzvyshkavpn.com
 waeris.com
 welcome.kzwfin.kzwifi.kzworkspace.kz
-wse.com.kzxnet.kz
-yk-news.kzzamanbank.kz
+wse.com.kzwww.ets-tender.kzwww.technodom.kzxnet.kz	yandex.kz
+yk-news.kzzamanbank.kzzan.kz
 zdesign.kzzeekr-shymkent.kz	zepter.kzzesta.kzzhambylnews.kzzhana-rosa.kz	zhedel.kzznachenie-imen.ruzoomlion.kz

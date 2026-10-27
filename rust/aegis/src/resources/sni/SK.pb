@@ -100,6 +100,7 @@ bhc-int.eu
 bis.cz
 bizam.sk
 	bladox.cz
+blog.cz
 blues-shop.cz
 bmhd.cz
 
@@ -189,6 +190,8 @@ czechia.eu
 datamolino.com
 
 daysin.com
+
+deegee.dev
 deixe-tip.com
 dekleinestroet.nl
 deliashop.sk
@@ -213,6 +216,8 @@ digihry.sk
 dmc.sk
 dobrepocitace.cz
 dobresny.sk
+
+dognet.com
 dokufilmy.cz
 dolomitybike.sk
 dominikani.sk
@@ -238,6 +243,7 @@ drevaky.sk
 dum-jogy.cz
 dvorakmusic.cz
 dynasport.sk
+e-max.sk
 	e-obce.sk
 e-present.eu
 	ecnea.com
@@ -1044,29 +1050,29 @@ zsssvba.sk
 zverokruh.sk
 zvlloziska.sk
 
-zwpcoop.pl
-365sms.com44xgeorgia.me45xgeorgia.meabyss.skacademypoker.ruactive24.czalkam.skalmishop.skammu.com.uaanton.marketassetara.ai
-astro7.comazhosting.skballu-global.comballu-industrial.comballu-world.combasicstero.ws	bbxnet.skbeado.hubirdz.skbvsas.sk
-cardwin.skcarovnapolicka.skchillguyvpn.com
+zwpcoop.pl24xgeorgia.me
+365sms.com44xgeorgia.me45xgeorgia.meabyss.skacademypoker.ruactive24.czaioncodex.comalkam.skalmishop.skammu.com.uaanton.marketassetara.ai
+astro7.comazhosting.skballu-global.comballu-industrial.comballu-world.combasicstero.ws	bbxnet.skbeado.hubirdz.skbisquit.hostbvsas.sk
+cardwin.skcarovnapolicka.skchati.gechillguyvpn.com
 chransa.skciernenabielom.skclipart-shop.ru
-csrdp.hostdigitalvibe.skdmpanel.comdnsserver.eudomalenka.czdomalenka.skdoramy.clubdownload-cs.netdtnet.sk	dublez.cz	dublez.hu	dublez.roecommercebridge.comecommercebridge.sk	efmail.sk
-ekostol.sk	elis.tech	emamut.euepicprague.comericssonair.comeset.comeset.com.breset.deeset.nleset.pleuromince.sk	ezwow.orgfirstmail.ltd	forbes.rufotbollsfanstore.com	fotoma.skfut.rufuturama.skgamehosting.pro
+csrdp.hostdataprotection.gov.skdigitalvibe.skdmpanel.comdnsserver.eudomalenka.czdomalenka.skdoramy.clubdownload-cs.netdtnet.sk	dublez.cz	dublez.hu	dublez.roecommercebridge.comecommercebridge.sk	efmail.sk
+ekostol.sk	elis.tech	emamut.euepicprague.comericssonair.comeset.comeset.com.breset.deeset.nleset.pleuromince.skexohosting.sk	ezwow.orgfirstmail.ltd	flyvpn.us	forbes.rufotbollsfanstore.com	fotoma.skfut.rufuturama.skfxccc.ccgamehosting.pro
 gamely.pro	garmin.sk	gbely.netgeocloud.sk
 go6.onlinegoshcosmetics.skgramofon.ua	gs1sk.orggyumolcstarhely.huhassle.onlinehlohovec.sk	host2u.skhosting-minecraft.ruhotarusub.co.uk
 incanto.euinterlude-online.cominver.skiremovalpro.comishosting.io
-istraka.czjucariiteddies.rokancelarskestroje.czkma.biz	kokava.skkoma.skkopernica.skkryptex.comkukaj.skkupispredas.skkysuckenovemesto.sk
+istraka.czjucariiteddies.rojustice.gov.skkancelarskestroje.czkma.biz	kokava.skkoma.skkopernica.skkryptex.comkukaj.skkupispredas.skkysuckenovemesto.sk
 l2oops.comladislavbaca.eu
 lamitec.sklava.top	levice.sklucky-duck.betlucky-duck.biolucky-duck.cityluckyduck.bestluckyduck.betluckyduck.bondluckyduck.cityluckyduck.cloudluckyduck.fitluckyduck.giftluckyduck.plusluckyduck.proluckyduck.showluckyduck.toplumen.sklumo.llcmackojatek.humagnusbet.skmaze-host.rumedvidkovehracky.czmelonity.ggmetaskins.ggmi-store.skmidnight.immileonair.comminecraft-hosting.netmineguard.prominerent.netmmska.uamobilego.skmorskeakvarium.skmtecplus.sknavody-manualy.skneed.tgnekto.menetiq.sk	newton.cznitrianskepravno.sk	noezon.sk
 novavps.my
 novesta.sknscc.sknssud.skobeclubina.skohost.bgone-steel.cluboplatisanaladitsa.skorava.skpartsformed.compcslovakia.skpermonresort.sk
-pezinok.skpharmacommercial.comphpbb.skpilkarskiefanshop.compixelcorporation.eupodhorie.skpomocnik.skpositive.skpracticecrm.orgpribalt.infopriklady.euprolaika.sk
-pyroweb.skqip-journal.eu	qrpark.mer2online.twradiohjalpen.seraidmine.comrainside.skregisterchranenychdielni.sk	revuca.skrimavskasobota.skroscasinos.comscbr.skselyeuni.skserverspace.rusetup.skshmu.sksmsbest.bizsmsfast.guru
-smsfast.iosobrance.sksofia.cz	sofia.netsoi.skspducan.comsprav.itssv.sksteroidify.ltdsvps.sk	szofia.hutastystrike.viptatrycloud.top
+pezinok.skpharmacommercial.comphpbb.skpilkarskiefanshop.compixelcorporation.eupodhorie.skpomocnik.skpool.kryptex.compositive.skpracticecrm.orgpribalt.infopriklady.euprolaika.sk
+pyroweb.skqip-journal.eu	qrpark.mer2online.twradiohjalpen.seraidmine.comrainside.skregisterchranenychdielni.sk	revuca.skrimavskasobota.skroscasinos.comsav.skscbr.skselyeuni.skserverspace.rusetup.skshmu.sksishka.networkskgeodesy.skskhosting.czsmsbest.bizsmsfast.guru
+smsfast.iosobrance.sksofia.cz	sofia.netsoi.skspducan.comsprav.itspravy.stvr.skssv.sksteroidify.ltdstreamskill.prosvps.sk	szofia.hutastydrop.istastystrike.viptatrycloud.top
 tedaria.bg
 tedaria.de
 tedaria.frtempotime.cztempotime.hu	therme.sktopiacube.orgtopolcany.sktranslateis.rutravelmart.rutravelvirtual.eutrebisov.sktrendmobil.cz
-triango.sktsub-novavps.ruturcianskeklacany.skubytujsa.skup-game.provaskonaradie.skvcelieule-bozik.sk	veesp.comvegas.hrvelkysaris.skvelosvet.skverimzejsi.czverimzesi.skvimeworld.comvirtualne.sk	voipex.iovsetopcasino.bizvstupenkysfz.skvto.pevysoketatry.euvysoketatry.sk
+triango.sktsub-novavps.ruturcianskeklacany.skubytujsa.skup-game.prouz.kursiv.mediavaskonaradie.skvcelieule-bozik.sk	veesp.comvegas.hrvelkysaris.skvelosvet.skverimzejsi.czverimzesi.skvflex.ruvimeworld.comvirtualne.sk	voipex.iovsetopcasino.bizvstupenkysfz.skvto.pevysoketatry.euvysoketatry.skwanttopay.cloud
 webonic.huwebsupport.atwebsupport.czwebsupport.huwebsupport.sewebsupport.sk
-webzone.sk
-william.sk	yllix.comzambulay.comzarub.iozemberovce.sk
+webzone.skwelivesecurity.com
+william.skwww.kryptex.com	yllix.comzambulay.comzarub.iozemberovce.sk
 zenno.clubzenyvmeste.skzmos.sk

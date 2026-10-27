@@ -66,6 +66,7 @@ ad2000.biz
 
 adgblog.it
 adibrunico.org
+admin.octorate.com
 admiralclub.it
 adriasea.com
 adrirobot.it
@@ -474,6 +475,7 @@ blender.it
 bodyweb.it
 boglasses.com
 bohoostel.eu
+bollettinoadapt.it
 bollicinemodellismo.it
 bolognatoday.it
 bombonieraperfetta.com
@@ -722,6 +724,7 @@ celtics.it
 changesrl.it
 charliecreativelab.com
 chartaland.it
+charts.ecmwf.int
 che-fare.com
 cheminees-seguin.com
 chi-siamo.com
@@ -883,6 +886,7 @@ comix21.it
 cromosomimedia.com
 cronacaossona.com
 cronachecittadine.it
+cronachemaceratesi.it
 crossfitparma.com
 cruzdelsurmusic.com
 crvenetorugby.it
@@ -1128,6 +1132,7 @@ endzone.it
 	enesi3.it
 engenome.com
 enic-naric.net
+enit.it
 ennalive.it
 enolapi.net
 enopera.com
@@ -1179,6 +1184,7 @@ enotica.it
 eurodrinks.it
 euroelectronicsgroup.it
 eurohealthproject.co.uk
+europeanreview.org
 europromos.it
 eventifvg.it
 eventiinsardegna.it
@@ -1250,6 +1256,7 @@ farecom.it
 ferrarinpianoforti.it
 ferriauto.it
 ferrincolor.com
+ferroviedelgargano.com
 festadelcross2025.it
 festivaldellavalleditria.it
 feudodisisa.com
@@ -1348,6 +1355,7 @@ fornid.com
 freniefrizioni.com
 fretebras.com.br
 from-italia.com
+frosinonetoday.it
 fulldassi.it
 fullhires.com
 fumettolandia.it
@@ -1391,6 +1399,8 @@ gelisio.it
 geniuscamping.com
 genovatoday.it
 gentiliborse.com
+
+genycar.eu
 	geobox.eu
 georgiosbakaloudis.it
 geosciences-ir.it
@@ -1447,6 +1457,7 @@ gelisio.it
 globelife.it
 globestyles.com
 globochannel.com
+globomoda.com
 globuselectrotherapy.com
 
 glpress.it
@@ -1548,6 +1559,7 @@ hode79.com
 hotelcoronaroma.com
 hoteldelparco.it
 hotelhappy.eu
+hotelsclick.com
 hoteltaorminabardolino.it
 hotelthalas.it
 hpmototours.com
@@ -1976,6 +1988,7 @@ licllab.it
 lindiependente.it
 lindustriadellecostruzioni.it
 lineacortesia.it
+lineameteo.it
 lineaverdeonline.com
 lingeriealexa.it
 	link24.it
@@ -2201,6 +2214,7 @@ mim.gov.it
 minformo.com
 minigolfsportitalia.it
 minilacci.it
+minoxsrl.it
 minuticontati.com
 miolegale.it
 miopcgaming.it
@@ -2209,6 +2223,7 @@ mim.gov.it
 misericordia.prato.it
 	misna.org
 missionebellezza.it
+missiotoscana.it
 mister-wolf-dog.it
 misurainternet.it
 mitecsnc.it
@@ -2246,6 +2261,8 @@ modula.com
 monicazeppegno.it
 
 monodex.eu
+monopolitimes.com
+montiebarabino.it
 montmartreitalia.it
 monuxshop.com
 monzaspeed.it
@@ -2350,6 +2367,7 @@ needius.it
 neetshala.com
 negoziovicino.it
 negozishop.it
+nekretnine.rs
 neldeliriononeromaisola.it
 nellanotizia.net
 nellaparola.it
@@ -2361,6 +2379,7 @@ neo-web.it
 nerdiana.com
 
 netoip.com
+netsons.net
 nettunopa.it
 netwireless.eu
 newarab.com
@@ -2438,6 +2457,7 @@ nptsrl.com
 occasionibici.it
 ocean4future.org
 	ocist.org
+octorate.com
 octotable.com
 oeofirenze.com
 offerteitaliane.com
@@ -2473,6 +2493,7 @@ oksiena.it
 	oluce.com
 olympiacicli.it
 omamontaggi.it
+	omlog.com
 omuamoon.com
 onedesign.bike
 onepiecemania.it
@@ -2523,6 +2544,7 @@ orolive.it
 osservatoriomalattierare.it
 osteopatiasalerno.it
 otofarmago.it
+otticadragoni.com
 otticalaporta.it
 otticalongo.it
 otticaruggiero.shop
@@ -2602,6 +2624,7 @@ paintup.it
 perleimprese.com
 persemprenews.it
 perugiaonline.net
+perusiawatches.it
 pescaesub.biz
 pescamaniashop.net
 pescarapost.it
@@ -2722,6 +2745,7 @@ pragmos.it
 privacy.it
 privacykit.it
 proandpro.it
+	procne.it
 prodigioimmobiliare.it
 professioneacqua.it
 professionemilitare.it
@@ -2733,6 +2757,7 @@ privacy.it
 profumixluxurybrands.it
 progetto-radici.it
 progettoadeia.com
+progettoautoimpiego.it
 progettocucinagroup.com
 progettoitalianews.net
 progettosnaps.net
@@ -2751,6 +2776,8 @@ privacy.it
 prostreet.it
 proteptaweb.com
 protezionecivile.it
+
+protom.com
 proveinvalsi.net
 prowebcam.it
 ps-solutions.it
@@ -2800,6 +2827,8 @@ quinlan.it
 raccordietubi.it
 raccordietubi.shop
 racingworld.it
+
+rackone.ch
 
 rackone.it
 radarkapildui.com
@@ -3042,6 +3071,7 @@ saepsrl.it
 seangolare.com
 seashepherd.it
 securcrea.com
+	seeweb.it
 segninapoletani.it
 seicogen.it
 seitorri.it
@@ -3084,6 +3114,7 @@ sergian.it
 shani.it
 shanscalzature.it
 shemotori.it
+sherpa-gate.com
 shingekinoshoujo.it
 shoesbooking.it
 shopclean.it
@@ -3171,6 +3202,7 @@ sodcvs.org
 solstiziomilano.com
 soluzionelegno.net
 sonar-cities.eu
+sonar-fco2-1.xx.fbcdn.net
 soprintendenzaspecialeroma.it
 sorbatti.it
 soricalspa.com
@@ -3228,6 +3260,7 @@ sodcvs.org
 statoquotidiano.it
 statusymbol.it
 steamdeck.com
+stefanoboeriarchitetti.net
 stellajean.it
 stereonovanta.it
 
@@ -3295,6 +3328,7 @@ stilose.it
 tarantinitime.it
 tarantogat.it
 tarantotoday.it
+targetadserver.com
 targetmotivation.it
 targhenere.net
 tarocchiperscettici.it
@@ -3368,6 +3402,7 @@ tele8tv.it
 theclubanimazione.it
 theetisane.it
 thefashioncorner.it
+theholyrosary.org
 thehypeplace.com
 
 thekill.it
@@ -3423,6 +3458,7 @@ tosigel.it
 tramin.com
 trapaninostra.it
 trattorialangolino.it
+	trauer.bz
 treagavi.it
 
 trebino.it
@@ -3644,6 +3680,7 @@ voegol.com
 vogmoda.com
 volantinofranzys.it
 volkspage.net
+volleynews.it
 volpatoindustrie.it
 vph-institute.org
 vroc.it
@@ -3688,7 +3725,19 @@ winwin.com
 worldsoccermanager.it
 wow-webmagazine.com
 wradio.com.mx
+wrdns.it
 wunderbook.it
+www.bolognatoday.it
+www.genovatoday.it
+www.juzaphoto.com
+www.nekretnine.rs
+www.palermotoday.it
+www.perugiatoday.it
+www.qdpnews.it
+www.romatoday.it
+www.torinotoday.it
+www.trevisotoday.it
+www.veronasera.it
 
 xcalcs.com
 xefracert.com
@@ -3721,14 +3770,14 @@ zkhuber.eu
 2d2web.com2fcommunication.com2pautoparts.com3bit-lab.com	3csrl.com3dfxzone.it3dmodelunity.com
 3r-dxt.com45amigos.com
 4enduro.it	4order.it4settori.net5stelleshop.it8incompany.com8volante.it
-911auto.it	aache.comabana.itabbinamentivino.itabchoy.com.arabcsalute.itablaweb.comabnet.itabrilboutique.comabrircuentaen.comabruzzoinmostra.itabruzzoparchi.itabruzzospeciale.itacademiatrabajovirtual.comacademyinvictus.itaccademiatelematicafitness.itaccessibilitacentristorici.itaccingenieria.comaccommodationsmart.cloud	acdlab.itacerpiacenza.itacitoinox.comacpianificazionecontrollo.itacquariocrm.itacquasplash.itacreditaformacion.com	acwild.euadci.itadmaioramedia.itadn24.itadriaticowindclub.comadvancevi.comadvtraining.it	aebox.orgaecaosta.it	aecat.net	aecim.orgaecr.orgaeffecamping.itaenverde.esaep-italia.it
+911auto.ita2a.eu	aache.comabana.itabbinamentivino.itabchoy.com.arabcsalute.itablaweb.comabnet.itabrilboutique.comabrircuentaen.comabruzzoinmostra.itabruzzoparchi.itabruzzospeciale.itacademiatrabajovirtual.comacademyinvictus.itaccademiatelematicafitness.itaccessibilitacentristorici.itaccingenieria.comaccommodationsmart.cloud	acdlab.itacerpiacenza.itacitoinox.comacpianificazionecontrollo.itacquariocrm.itacquasplash.itacreditaformacion.com	acwild.euadci.itadmaioramedia.itadn24.itadriaticowindclub.comadvancevi.comadvtraining.it	aebox.orgaecaosta.it	aecat.net	aecim.orgaecr.orgaeffecamping.itaenverde.esaep-italia.it
 aepnaa.orgaera-pneumatic.frafdigitale.it
 affidea.ltagapedesign.itagb.itagendaconcerts.catagenziafunebredemichele.comagestanet.itagevaping.it	agimeg.it	agnos.com	agocd.comagorapos.comagrelliebasta.itagrigardenitalia.comagriturismobianconiglio.comagriturismovistaparco.comaiafood.comaibots.cloud	aimnet.it	aineva.it
 airbeam.itairfluidservice.it	airmet.ptairportprovider.comais-int.comaitec.itaixia.itajbinissalem.netajedrezpueblonuevo.comalbergovalbella.comalbertirent.italbopretoriocbcalabria.italboreaconchi.esalcantara.com
 alcati.comaldoimages.comalego.italessandrovalieri.italessandrovitti.comalextektienda.comalfonsurpiscinas.comalgameko.com	alguer.italidicarta.itallavecchiafattoriashop.italongidistribuzione.italpactecnologica.esalpagel.comalpascia.comalpelusia.italpitour.it
-altabas.esaltadensidad.comaltamirahrm.comaltamuralife.italternateurs-et-demarreurs.fraltitud.cloudaltitudoroma.itamacstanghellini.itamamanta.esambrogio.comambrosiana.itamedeofuga.it
-amesci.orgamexeuro.comamicidelmincio.orgamministrazioneaperta.it
-amnesty.itamparocalandinpsicologos.esamsi-formations.comamsupplyasia.com	amt.ct.itanagnia.comanaomegna.itanarcho.capitalanceleccosondrio.itandreacastrignano.itandromedacinema.itanet.esangeletti-viacondotti.comanimotogarage.comannuncicartomanzia.comannuncivintage.comanpeq.itantaresvisiongroup.comantasonlus.organteastudio.comanteo.toanticopozzodellabuonanotte.itantoniano.organtonicelli.itantonini-foto.itantoninolagana.itantoniomunarin.itantrodiulisse.euanuariocatolicoportugal.netaohc.itaostasera.itapartidounico.comapefacile.itaperipratiche.it
+altabas.esaltadensidad.comaltamirahrm.comaltamuralife.italternateurs-et-demarreurs.fraltitud.cloudaltitudoroma.itamacstanghellini.itamada.euamamanta.esambrogio.comambrosiana.itamedeofuga.it
+amesci.orgamexeuro.comamica.itamicidelmincio.orgamministrazioneaperta.it
+amnesty.itamparocalandinpsicologos.esampersand.itamsi-formations.comamsupplyasia.com	amt.ct.itanagnia.comanaomegna.itanarcho.capitalanceleccosondrio.itandreacastrignano.itandromedacinema.itanet.esangeletti-viacondotti.comanimotogarage.comannuncicartomanzia.comannuncivintage.comanpeq.itantaresvisiongroup.comantasonlus.organteastudio.comanteo.toanticopozzodellabuonanotte.itantoniano.organtonicelli.itantonini-foto.itantoninolagana.itantoniomunarin.itantrodiulisse.euanuariocatolicoportugal.netaohc.itaostasera.itapartidounico.comapefacile.itaperipratiche.it
 api-ra.comapiaweb.orgapicolturalagirlanda.comaprendomusica.comapriliaontheroad.comaptpweb.com.araquafarm.itaquafortevicenza.itaquamore.itaquibergueda.cat	aquilo.itarabicparfums.esarallibres.catarblueclean.itarcadiamodellismo.comarcaitaly.itarcangeligino.comarcheotrekking.netarchimedianet.itarchinautica.itarchitectsadvisor.comarchivioclienti.itarchiviokubrick.itarcolink.itarcowiki.comareaclientidimtronic.com
 areajob.itareajuridicaglobal.comareanapoli.itareasispac.it
 arexons.itargentinglesi.comargotone012.comargotractors.comariahome.itariel-energia.comarielcar.itarielenergia.netarmeriamalentacchi.comarmoniegioielli.itarpae.itarpat.toscana.itarrigoni4x4.itarrostiland.it	arsent.esart-alive.euartbonus.gov.itarteascuola.comartecha.spaceartespray.esartfromitaly.itartilibere.info	ascaps.it
@@ -3740,28 +3789,28 @@ athleko.pt
 atizone.itatlasminorityrights.euatleticapegaso.itatomonetworks.comatpoiano.itats-insubria.itattikaimmobiliare.itatuttarte.itaudioglobe.it	augebo.itaugustanews.itaugustofrascatani.com
 aulacm.comaulamedica.esauryaperfumes.comautodemolizionealponte.comautoleonelancar.itautolinknews.comautolook.ptautoocupacio.orgautoxuga.comavant-garde.itavverafinanziamenti.itavvisopubblico.itavvocatoandreani.itavvocatoticozzi.itawitalia.it
 axa.com.araxemalab.comayllonartesano.comaziendeonline.info
-b-graph.itb2b-kontatto.comb2bfastdev.combabylongs.combachproject.netbacirosa.combagnoidea.combaiadomizia.itbaldore.com	baleno.itballiamoliscio.itbanchedatidei.itbarbanapoli.shopbarbieworld.itbarcanete.combarcelonadigital24horas.combarmartinez-almaguer.combartorelli1882.combasicweb.itbasketacademy.it	batist.itbattitoridigrano.itbauli.itbc-machines.combcmmallorca.combcnsoft.com.arbeachreserve.itbeainsa.combedzzle-hk.itbellaterramusica.combelltravel.itbellunopress.it	benail.itbenasciutticasa.itbeneficy.combenettonrugby.itbenisequestraticonfiscati.itbeps.frbergbaumuseum.itbertinigroup.itbertonitende.itbertrand-russell.combestagnoshop.combestforbritts.combetinos.combeverfood.combevingrosso.itbhosting.itbi-esse.combiancagiftmaison.com
+b-graph.itb2b-kontatto.comb2bfastdev.combabylongs.combachproject.netbacirosa.combagnoidea.combaiadomizia.itbaldore.com	baleno.itballiamoliscio.itbanchedatidei.itbarbanapoli.shopbarbieworld.itbarcanete.combarcelonadigital24horas.combarmartinez-almaguer.combartorelli1882.combasicweb.itbasketacademy.it	batist.itbattitoridigrano.itbauli.itbc-machines.combcmmallorca.combcnsoft.com.arbeachreserve.itbeainsa.combedzzle-hk.itbellaterramusica.combelltravel.itbellunopress.it	benail.itbenasciutticasa.itbeneficy.combenettonrugby.itbenisequestraticonfiscati.itbeps.frbergbaumuseum.itbertinigroup.itbertonitende.itbertrand-russell.combestagnoshop.combestforbritts.combesttobuy.netbetinos.combeverfood.combevingrosso.itbhosting.itbi-esse.combiancagiftmaison.com
 bibenda.itbibliotecapleyades.netbierrestore.itbigairshop.combijouxdemode.fr	bikbov.rubikehotels.itbikeinside.orgbilbaobluesfestival.com	billoo.itbilocale.itbiodiversite-martinique.frbiopoint.it
 bioser.combirimport.combisceglieviva.itbistrotdevenise.com
 bitfumo.itbitit.itbitrabi.com
 bitubo.combizjournal.itbleka.itblink182forever.combluebreeze.itbluehealthcare.esbluermes.itblumatica.itbmcrecycling.com
 bmwbank.itbmwmomentummotor.combodegalajara.comboffettigroup.combofh.itbol.itbolognatourguide.combolsenayachting.com
 bolton.combonariamanca.itbonsaipavia.es
-bontal.combookingone.itbordergame.itborghipiubelliditalia.itborghitalia.itborgodeltemporitrovato.itbosettiegatti.eubosisiomotori.itboutiquedescorsets.combrainfusion.itbrainhosting.itbrainplatform.itbrc.itbresciatourism.itbricofer.it
+bontal.combookingone.itbordergame.itborghipiubelliditalia.itborghitalia.itborgodeltemporitrovato.itbosettiegatti.eubosisiomotori.itboutiquedescorsets.combrainfusion.itbrainhosting.itbrainplatform.itbrc.itbresciaoggi.itbresciatourism.itbricofer.it
 bricosi.itbritishinstitute.itbrn.itbru-zane.combrucleshop.combrundisium.netbruschi.combsmt.itbttpelayo.combuenpastormadrid.combugnaonoranzefunebri.itbuild.itbuonconsiglio.itbuoneforchette.combuonvicino.net
 bytecno.itca-autobank.comca-autobank.itcabopinogolfmarbella.comcacciaepescabonannini.itcaclassauto.itcadiprof.itcaffegilli.comcagliaripad.itcaibergamo.itcaicremona.itcakecraftschool.netcal.cat
-calcio.comcalciobenevento.itcalciocasteddu.itcalciocatanzaro.itcalciocomo.itcalciolecce.itcalcionapoli24.itcalcionapolinews.comcalciopisa.itcalciorosanero.itcalciosalernitana.itcalciovicenza.itcaliciweb.itcaliforniadreaming.eucalliduspro.comcalzadadecalatrava.escalzaturedeanna.itcamar.itcamminatametabolica.itcampanialive.itcampedel.eucamperflash.itcamperis.comcamping-life.itcamping-olympia.comcampingcolfosco.orgcampingeuropa.orgcampingmarepineta.itcampingpinomare.itcampofelice.itcamygandco.comcanalcamping.comcanalmidi.comcanapamontana.itcaniegattiinpensione.itcanitalia.itcantoeprego.itcanyonadv.com	caorle.eucapellopoint.itcapilclinic.escapittalrooms.comcapraecavoli.eucapsulamundi.itcapsuleandcoffee.comcarclinic.itcaritasambrosiana.itcarltongrandcanal.comcarnesargentinas.escarpfishing.ptcarpinox.eucarte-postale.comcarthusia.it	cartol.itcartomantegioia.comcartomanziaitalia.comcasa-balcones.comcasablancamulticine.comcasadaprivato.itcasadelfumetto.itcasadelrasoioshop.itcasadicarita.orgcasadidanteinroma.itcasaledellamandria.itcasamasini.itcassalombarda.itcastellammaredelgolfoweb.comcastellodichignolopo.itcastellogrinzane.comcastellucciodinorcia.eucastignoli.comcastillalamancha24horas.comcastrovillari.bizcatshostels.comcavalliere.itcazadividendos.com
+calcio.comcalciobenevento.itcalciocasteddu.itcalciocatanzaro.itcalciocomo.itcalciolecce.itcalcionapoli24.itcalcionapolinews.comcalciopisa.itcalciorosanero.itcalciosalernitana.itcalciovicenza.itcaliciweb.itcaliforniadreaming.eucalliduspro.comcalzadadecalatrava.escalzaturedeanna.itcamar.itcamcom.gov.itcamminatametabolica.itcampanialive.itcampedel.eucamperflash.itcamperis.comcamping-life.itcamping-olympia.comcampingcolfosco.orgcampingeuropa.orgcampingmarepineta.itcampingpinomare.itcampofelice.itcamygandco.comcanalcamping.comcanalmidi.comcanapamontana.itcaniegattiinpensione.itcanitalia.itcantoeprego.itcanyonadv.com	caorle.eucapellopoint.itcapilclinic.escapittalrooms.comcapraecavoli.eucapsulamundi.itcapsuleandcoffee.comcarclinic.itcardanocecilia.itcaritasambrosiana.itcarltongrandcanal.comcarnesargentinas.escarpfishing.ptcarpinox.eucarte-postale.comcarthusia.it	cartol.itcartomantegioia.comcartomanziaitalia.comcasa-balcones.comcasablancamulticine.comcasadaprivato.itcasadelfumetto.itcasadelrasoioshop.itcasadicarita.orgcasadidanteinroma.itcasaledellamandria.itcasamasini.itcassalombarda.itcastellammaredelgolfoweb.comcastellodichignolopo.itcastellogrinzane.comcastellucciodinorcia.eucastignoli.comcastillalamancha24horas.comcastrovillari.bizcatshostels.comcavalliere.itcazadividendos.com
 cbsolt.netccmagazine.es
-cdcraee.itcdllibrisito.itcduo.itcefalusport.comcei.intcelebrarlo.comcellicomsoft.comcelsius232.escemeteryrome.itcemsverona.itcenterglassline.comcentoxcentovod.comcentralmotors.itcentredilspa.comcentri-di-assistenza.comcentritalianews.itcentrivendita.comcentrocampersebino.itcentroceramichesassuolo.itcentroculturalealdorossi.itcentrodeldeporte.comcentroesteticoaphrodite.netcentrojuliafarre.escentromama.itcentromedicobeb.itcentrootticorizzo.itcentropescameli.comcentroram.itcentroservizilerose.itcepcuyo.comcerambycoidea.comceramichesassuoloshop.itceramitaly.itcerbahealthcare.itcercolavoro.comcerignolaviva.itcertificatiederivati.itcertifico.com	cesfav.it	cesie.org	chdlv.comchebuoni.itchengaluminum.comchenglanghardware.com	cheret.frchiarelettere.itchiaroquotidiano.itchidge-gse.com	chiesi.fr	chiesi.itchiomenti.netchioscodiponente.itchiquipedia.comchronobike.comciabini.comciclamino.itcicognaniguarnizioni.itcidiverte.itciiva.itcim.eucine-cittafiera.comcineferonia.itcinegatti.itcineland.itcinemazoo.itcineplexmoderno.itcinestarph.comcinetecadibologna.itcinetecamilano.itcioffoletti.itcioimmobiliare.itcir.itcittadelvino.comcittadelvino.it
+cdcraee.itcdllibrisito.itcduo.itcefalusport.comcei.intcelebrarlo.comcellicomsoft.comcelsius232.escemeteryrome.itcemsverona.itcenterglassline.comcentoxcentovod.comcentralmotors.itcentredilspa.comcentri-di-assistenza.comcentritalianews.itcentrivendita.comcentrocampersebino.itcentroceramichesassuolo.itcentroculturalealdorossi.itcentrodeldeporte.comcentroesteticoaphrodite.netcentrojuliafarre.escentrolibri.itcentromama.itcentromedicobeb.itcentrootticorizzo.itcentropescameli.comcentroram.itcentroservizilerose.itcepcuyo.comcerambycoidea.comceramichesassuoloshop.itceramitaly.itcerbahealthcare.itcercolavoro.comcerignolaviva.itcertificatiederivati.itcertifico.com	cesfav.it	cesie.org	chdlv.comchebuoni.itchengaluminum.comchenglanghardware.com	cheret.frchiarelettere.itchiaroquotidiano.itchidge-gse.com	chiesi.fr	chiesi.itchiomenti.netchioscodiponente.itchiquipedia.comchronobike.comciabini.comciclamino.itcicognaniguarnizioni.itcidiverte.itciiva.itcim.eucine-cittafiera.comcineferonia.itcinegatti.itcineland.itcinemazoo.itcineplexmoderno.itcinestarph.comcinetecadibologna.itcinetecamilano.itcioffoletti.itcioimmobiliare.itcir.itcittadelvino.comcittadelvino.it
 cittadi.itcittadinanzattiva.itcittametropolitana.me.it
-civicam.itclairebridge.comclanpesca.comclapsassuolo.comclasseditori.itclaustrofobias.comclematissepattern.comclexidra.netclikkami.itclinicaveterinariatudogtora.esclouddataworld.orgcloudility.netclub-italiano-del-video.itclubmedici.comcmaxsocks.comcmmrizzi.com	cmsone.itcmviaggi.itcnbusbars.comcnse.escnshybio.com	cocama.itcocoricoshop.itcodemotion.comcodemotionworld.comcodiceedizioni.itcodicefiscale.tipscoem.it
+civicam.itclairebridge.comclanpesca.comclapsassuolo.comclasseditori.itclaustrofobias.comclematissepattern.comclexidra.netclick4soccer.comclikkami.itclinicaveterinariatudogtora.esclouddataworld.orgcloudility.netclub-italiano-del-video.itclubmedici.comcmaxsocks.comcmmrizzi.com	cmsone.itcmviaggi.itcnbusbars.comcnse.escnshybio.com	cocama.itcocoricoshop.itcodemotion.comcodemotionworld.comcodiceedizioni.itcodicefiscale.tipscoem.it
 coesia.com
 coff-e.comcoildoor.itcoimgroup.comcolavoro.comcoleccionesdanale.comcolegiodanieldelavega.cl	colf.infocolilenibs.itcollaltimmobiliare.itcollirioalfa.itcolombiweb.comcolpharma.comcolpito.orgcoltelleriasaladini.itcoltelleriepaolucci.itcomanducci.itcombivox.itcomeinunafavola.itcomercialfranmari.comcomercialrogelio.com	comics.itcomitatodisabilitam10.itcompagniadelvinoshop.it
 complit.itcompralosubito24.itcomputereuffici.comcomtelitalia.itcomune.chieti.itcomune.grosseto.itcomune.laspezia.itcomune.nuoro.itcomune.trapani.itcomuneduecarrare.itcomunicativamente.comcomunitazione.it	conapo.itconcorsomusicalescandicci.itconfapi.orgconfcommerciomilano.it
 coninet.itconnectingproject.itconservatoriliceu.es	consip.it	consno.itconsorziovalpolicella.itconsultaconexpertos.comcontat.cloudconteorologi.it
 contigo.itcookieman.netcooperate.itcooptrentinoaltoadige.itcopma.it	coppo.netcopyrightflexibilities.eucorr.itcorrere.orgcorrieredellasardegna.itcorsifad.infocorsinrete.comcortijosalinas.comcosenzachannel.itcosmobile.net	cospel.itcottodeste.itcoursesdestrasbourg.eucowboysandkisses.itcpn.itcram.org
 crea3d.comcreditosportivo.itcrehathor.comcrescendoweb.it	crial.netcristianocoins.itcriticalcase.comcrivellishopping.itcrivellishopping.rucrocettadilongiano.netcronacaeugubina.itcronocarservice.comcronocarservice.it	cronos.eucronotorino.itcrvolterra.itcrystalstock.itcsen.itcsi.milano.itcsm.itcsmontesdetoledo.org
-cubyca.comcucineroma.infocucuruchoparty.com	cueim.orgcuneoannunci.itcuneotrekking.comcupsubito.itcvjm-ofterdingen.dedaddarioyachtshoponline.it	dadif.comdaffaraegrasso.comdailymood.itdalessandroegalli.comdalpozzoshop.comdaltherbeauty.com	damico.itdamicoeditore.comdao.itdaraintimoecorredi.itdariodomenici.itdasautohaus.itdascos.infodasoukyantichita.comdatadope.iodatalogic.comdataone.onlinedatapunch.itdataworks.itdavidezambelli.comdbshaper.comdbstudioitretail.itdccworld.itdealgroup.itdeborahmilano.comdecoral-system.comdedemapp.comdeeplearningitalia.comdehdns2.comdehesadeloscanonigos.comdeifiori.itdeiitaliashop.it	deisa.comdekounas.comdelaurentisglass.comdelcambio.itdeliriocomics.itdellaroccagioielli.frdellaroccagioielli.itdeltacall.appdenadaionoranzefunebri.comdentalimagelibrary.comdentalpro.itdentistatop.itdentistry33.comdeproywebserver.comdermovitamina.itdertochip.comdescobreixmenorca.comdesignery02.comdeswater.comdeustechnology.itdevproject.itdgblend.net
+cubyca.comcucineroma.infocucuruchoparty.com	cueim.org	culti.comcuneoannunci.itcuneotrekking.comcupsubito.itcvjm-ofterdingen.dedaddarioyachtshoponline.it	dadif.comdaffaraegrasso.comdailymood.itdalessandroegalli.comdalpozzoshop.comdaltherbeauty.com	damico.itdamicoeditore.comdao.itdaraintimoecorredi.itdariodomenici.itdasautohaus.itdascos.infodasoukyantichita.comdatadope.iodatalogic.comdataone.onlinedatapunch.itdataworks.itdavidemaggio.itdavidezambelli.comday.itdbshaper.comdbstudioitretail.itdccworld.itdealgroup.itdeborahmilano.comdecoral-system.comdedemapp.comdeeplearningitalia.comdeghi.itdehdns2.comdehesadeloscanonigos.comdeifiori.itdeiitaliashop.it	deisa.comdekounas.comdelaurentisglass.comdelcambio.itdeliriocomics.itdellaroccagioielli.frdellaroccagioielli.itdeltacall.appdenadaionoranzefunebri.comdentalimagelibrary.comdentalpro.itdentistatop.itdentistry33.comdeproywebserver.comdermovitamina.itdertochip.comdescobreixmenorca.comdesignery02.comdeswater.comdeustechnology.itdevproject.itdgblend.net
 diabasi.itdiabete.netdiariodegastronomia.comdiariofvg.itdibi-online.comdibigroup.comdicokpopstore.cldidatticacreativa.it
 digeon.netdigichat.it
 digimat.it
@@ -3771,62 +3820,62 @@ e-mind.come2net.iteaap.orgeanetwork.eu	eapice.iteasycomm.iteasytms.cl
 ecomil.comecoprice.itecoseed.orgecuador.traveled0.it	edelli.chedendesign.iteditions.itedizionicantagalli.comedizionilswr.it
 edptech.it	edrcsr.iteducacionesencial.orgeducarenigualdad.orgeffettovenezia.itegeaeditore.itegeaonline.it
 egstada.it	ehiweb.iteicma.iteief.iteigroup.bizelalmacendeatrezzo.eselbaworld.itelcorreodepozuelo.comelcrepitardelosfogones.comeldoplay.buzzeldoradozeldooeldoss.topelectrocasion.comelencofarmaci.itelettrix.itelettrodom.itelias-ai.euelicesmotoracing.comelite-it.comelobrero.es
-elp.org.eselscopevision.comelsecretodecarol.comeltambor.es
-elyoya.com	emaily.it
+elp.org.eselperrorabioso.comelscopevision.comelsecretodecarol.comeltambor.es
+elyoya.comemailpnl.com	emaily.it
 emaroma.itemergency.itemiciclonews.itemmegiricambi.itemmetre.infoemocromatosi.it
 emotest.itemporium.itempresaactual.comempresas-enventa.comemu.itenalquiler.comendesia.infoenduranceonline.itenduropuro.it	enegan.itenergialternativa.infoenet.itengheben.itengineparts.itenotecasquillari.itenotecastoppello.itenotecavinowine.com	envi.infoeoportal.orgeposmanager.softwareerbanotizie.comerboristeriadottorcassani.iterciteam.iterraniteam.comes-andreabianchini.it	es2000.itesameantincendio.itesamiagrotecnici.itescacsolot.catescashopmirano.comesloganmagazine.com
 esmach.comesmeralda-sl.comesosphera.comesportsmirallunes.comesquelasdecantabria.comesquelasdelaribera.net
-estrema.itetfacademy.iteticodns10.cometicodns4.cometicodns6.cometicodns7.cometnaportal.iteucentre.it
+estrema.itetfacademy.iteticodns10.cometicodns4.cometicodns6.cometicodns7.cometnaportal.iteu.spacefree.spaceeucentre.it
 euchia.neteuclorina.comeuconsamo.com
 eufarma.eueugin.it
 eurada.orgeurocontrolli.comeurocredit.iteurohome.eseurosalusitalia.iteurosupgroup.comeventi.bergamo.iteventixgroup.iteventplannerspain.comevergreenweb.it
 evo-net.itevolutionbike.itevolutionitaly.comevyrescrap.comewent-eminent.comexcelvba.itexcelyfinanzas.comexolabitalia.netexotic-shrimp.es
 expanet.esexpertsintranslation.comextradigital.esextraprezzo.it	exvitt.it	f-lm.aerof-medicalgroup.itfabriziomontoro.comfaccioliracing.comfadcertificamanagement.itfadcertificata.it
-fadplus.itfaifeliciituoiocchi.itfamiliamus.comfamilygo.eufanmuebles.comfantasiefloreali.comfanti.itfaoadriamed.orgfaradworld.comfarcinterattivo.itfaresingiardinaggio.itfarma-center.comfarmaciacapella.esfarmaciadegliarvali.comfarmaciaestacionsur.esfarmaciapinzerato.itfarmaciapoint.itfarmaciarossettisas.itfarmaciasantana.esfarmaciaveterinariaonline.itfarmaprima.itfarmaservicecentroitalia.itfarmina.comfarneed.comfas.itfassappartamenti.itfassshoppingcentre.itfaustoricambi.itfavastorci.comfavicomatic.comfcaf.catfccrt.it	fcsur.comfedeltachepremia.itfederbocce.itfederciclismo.itfederfarmanews.itfederhandball.itfedernuoto.toscana.itfedrigoni.comfedrizzimoda.itfeelsenigallia.itfelixfatture.itfelsinea.it
-fercam.comferdicoshop.itferrajoliauto.itferrarasummerfestival.itferrarigroup.itferroelettra.itferrosport.itferroviedellacalabria.itfestemedievali.itfestidreuz.frfestivaldeipopoli.org$festivalinternazionaledellamagia.comffjd.frfguma.esfiabitalia.it
+fadplus.itfaifeliciituoiocchi.itfamiliamus.comfamilygo.eufanmuebles.comfantasiefloreali.comfanti.itfaoadriamed.orgfaradworld.comfarcinterattivo.itfaresingiardinaggio.itfarma-center.comfarmaciacapella.esfarmaciadegliarvali.comfarmaciaestacionsur.esfarmaciapinzerato.itfarmaciapoint.itfarmaciarossettisas.itfarmaciasantana.esfarmaciaveterinariaonline.itfarmaprima.itfarmaservicecentroitalia.itfarmina.comfarneed.comfas.itfassappartamenti.itfassshoppingcentre.itfaustoricambi.itfavastorci.comfavicomatic.comfcaf.catfccrt.it	fcsur.comfedeltachepremia.itfederbocce.itfederciclismo.itfederconsumatori.itfederfarmanews.itfederhandball.itfedernuoto.toscana.itfedrigoni.comfedrizzimoda.itfeelsenigallia.itfelixfatture.itfelsinea.it
+fercam.comferdicoshop.itferrajoliauto.itferramenta2000.netferrarasummerfestival.itferrarigroup.itferroelettra.itferrosport.itferroviedellacalabria.itfestemedievali.itfestidreuz.frfestivaldeipopoli.org$festivalinternazionaledellamagia.comffjd.frfguma.esfiabitalia.it
 fiat130.itfibercop-re.itfiberland.itfibersix.itfidalbergamo.itfiemmefassa.comfiestasdetorrejon.esfigcvenetocalcio.it
 fijlkam.itfilatidive.itfilmtheatreacademy.comfilmusica.it
-filnova.itfilosofico.netfilosofilungologlio.itfiltecsrl.eufilthyamateur.netfima-arredo.itfincalabra.itfioranese.itfioridicampo.netfipav.tn.itfipavbarifoggia.itfipavcampania.itfipavnapoli.itfipavpiacenza.itfipavpuglia.itfipavveneto.netfipavvicenza.itfipitaly.it
-firebot.ggfirenzelibri.netfirenzemusei.itfirenzeufficio.itfirstonetuning.comfisevalledaosta.itfisg.itfitonasal.itfitzcarraldo.itflai.itflamenetworks.comflexstore.esfloretica.itflorianabulbose.comfloridapc.cofmboschetto.itfms2.comfncinfad.itfomir.itfondazionecariparo.itfondazionecattolica.itfondazionecsc.itfondazioneitalianadelrene.orgfondazionelevi.itfondazionenicolatrussardi.comfondazionetoscanini.itfondofsba.itfontanelle.orgfoodluxe.it
+filnova.itfilosofico.netfilosofilungologlio.itfiltecsrl.eufilthyamateur.netfima-arredo.itfincalabra.itfioranese.itfioridicampo.netfip.itfipav.tn.itfipavbarifoggia.itfipavcampania.itfipavnapoli.itfipavpiacenza.itfipavpuglia.itfipavveneto.netfipavvicenza.itfipitaly.it
+firebot.ggfirenzelibri.netfirenzemusei.itfirenzeufficio.itfirstonetuning.comfisevalledaosta.itfisg.itfitonasal.itfitzcarraldo.itflai.itflamenetworks.comflexlink.comflexstore.esfloretica.itflorianabulbose.comfloridapc.cofmboschetto.itfms2.comfncinfad.itfomir.itfondazionecariparo.itfondazionecattolica.itfondazionecsc.itfondazioneitalianadelrene.orgfondazionelevi.itfondazionenicolatrussardi.comfondazioneragghianti.itfondazionetoscanini.itfondofsba.itfontanelle.orgfoodluxe.it
 foolab.appfootstats.itforioischia.itformatemp.itformazioneanicia.itformula1.itfornella.itfornitureidrauliche.euforodeltenis.comfortisitalia.comforumlibri.comforumolimpia.comforzanovara.netfoscarini.comfotodeangelis.itfotodiploma.comfotoesse.itfotoghinassi.comfoxo-net.eufoxvalley.netfpi.itfranceguide.infofrancescodisilvestre.itfrancescomassarelli.itfrancescoseveri.comfrancofiorillo.netfranzini.itfrasinieuroffice.itfratellivisconti.itfreefoot.itfreepussyriot.orgfriliver.itfrugolo.com	fulcri.it
 fulgar.comfullcryo-obdc.comfumagazzi.itfumettologica.itfundacioncnse.orgfundacionfedna.orgfundacionosopardo.orgfundadeps.org	fundal.esfunerariadejesus.esfunerarialendoiro.comfuoristradisti.itfusionspa.eufutboldesdemallorca.comfuturashop.itgabriellimoto.comgaglianogioielli.comgaia-onlus.orggaiainterni.comgaiaitalia.comgalassiastore.itgalatina.itgaliciadigital24horas.comgallerieaccademia.itgalliera.itgalvagnistore.itgamesark.it	gandon.itganlion.comgaranteinfanzia.orggarciacortesortodoncia.comgardahaus.comgardasee.webcamgardenia.itgarnilagonembia.comgas-store.it	gasnam.esgastrocentrale.itgastroenterologo.eugastronomiaymoda.comgastroscopiatransnasale.itgaviras.comgavri.esgazzettadellevalli.itgazzettadimantova.itgazzettarossoblu.it
 gbetech.itgdecarli.it
 gdstore.eugecodance.itgedinfo.comgelq.itgemicanet.itgemmaandpartners.comgenerationsport.itgenerazioniconnesse.itgenuinesoundware.com
 geoplan.itgeoserves.comgernikainfo.eusgerosadesign.com
-gerotto.itgestimserver.itgestramvia.it
+gerotto.itgestimserver.itgestionale.immobiliare.itgestramvia.it
 gesvalt.esgfxsport.cloudggt-tokobo.comghibaudi.itgiacomellipiante.itgiacomomilano.comgiacomopappalardo.comgiakisfarma.itgiemmeargenta.itgiglionews.itgildaoristano.itgiochigratisonline.itgiochiuniti.itgioiella.comgioielleriamalgieri.itgioiellirigenerati.comgioiellis.comgiordanomusicstore.itgiornaledellalibreria.itgiovaniemissione.itgiovanni23.itgiovediprimacassa.itgiroe.itgirolibero.itgironanoticies.comgironextgen.itgiubilatosport.it
 giulini.it	giumer.itgiustacchini.it
 givi.co.ukgivi.degivi.esgivi.it
 glamora.itglistatigenerali.comglobalphone.smglobalservicespedizioni.itglobernance.orgglobestarsrl.com
-glsmart.itgmmorando.itgmtechnology.net	goagoa.it	gocity.it	goglio.itgoldfish.itgoldyloot.topgolfcostaadeje.comgondalviaggi.itgoodymusic.itgooristano.comgorinigroup.comgraad.eugradara.orggramscicafe.comgrancaffe.infograndecovian.esgrandeoriente.itgrandtouritalia.it	granfo.itgranterre.itgreatplacetowork.esgrecosabadell.comgrecoshop.itgreenagricoltura.it
+glsmart.itgmmorando.itgmtechnology.net	goagoa.it	gocity.it	goglio.itgoldfish.itgoldyloot.topgolfcostaadeje.comgondalviaggi.itgoodymusic.itgooristano.comgorinigroup.comgraad.eugradara.orggraffiti.itgramscicafe.comgrancaffe.infograndecovian.esgrandeoriente.itgrandtouritalia.it	granfo.itgranterre.itgreatplacetowork.esgrecosabadell.comgrecoshop.itgreenagricoltura.it
 greenme.itgremountint.comgrottadelsaraceno.itgroupauto.itgroupintown.itgrupomobilhome.comgruposafetycar.comgruposmedia.comgruposoledad.comgrupotordesillas.netgruppoconet.it gruppodellamoredellasstrinita.itgruppoferrando.itgruppolm.comgruppomonviso.itgruppopiccirillo.itgruppostat.comgsmworld.it	guanda.itguerredirete.it
 guezzt.comguggenheim-venice.itguidaartistica.com	gullp.neth50tactical.eshabitante.ithabitbcn.comhachette.ithakudeals.comhallofthelights.comhanna.ithappygomme.itharley-davidson-bergamo.com
 hcavour.it
-hdnails.itheadsup-poker.comhealthtriage.aihellaslive.ithellinis.grhelsinn.comhempmoncbd.comhexagora.com	hi-net.ithidinosaurs.comhiespanol.comhipersuministros.eshippo-thecontest.orghispanatolia.comhistosoft.ithoescape.comhojaderutadigital.mxhokutonoken.ithomsrentals.comhorizontelecom.ithormigasxelmundo.com	horror.ithostessweb.ithostingrsw.comhostwave.ithoszigeteloaruhaz.huhotel-sun.comhotel-sunnybeach.comhotelarcadia.nethotelastoriabibione.ithotelcastaldi.comhotelcinquestelle.cloudhotelcoronaroma.ithoteldellago.comhotelgale.ithotellidoblu.ithotelnaftilos.grhotels-riccione.comhotelscampania.comhotelsinflorenceitaly.nethotelslombardy.comhotelsonline.ithouseoner.comhsconceptstore.ithtgears.comhuazhengtestequipment.comhulerojo.comhumandevelopment.vahwonline.ithwservice.com
+hdnails.itheadsup-poker.comhealthtriage.aihellaslive.ithellinis.grhelsinn.comhempmoncbd.comhexagora.com	hi-net.ithidinosaurs.comhiespanol.comhipersuministros.eshippo-thecontest.orghispanatolia.comhistosoft.ithoescape.comhojaderutadigital.mxhokutonoken.ithomsrentals.comhorizontelecom.ithormigasxelmundo.com	horror.ithostessweb.ithostingperte.ithostingrsw.comhostingvirtuale.comhostwave.ithoszigeteloaruhaz.huhotel-sun.comhotel-sunnybeach.comhotelarcadia.nethotelastoriabibione.ithotelcastaldi.comhotelcinquestelle.cloudhotelcoronaroma.ithoteldellago.comhotelgale.ithotellidoblu.ithotelnaftilos.grhotels-riccione.comhotelscampania.comhotelsinflorenceitaly.nethotelslombardy.comhotelsonline.ithouseoner.comhsconceptstore.ithtgears.comhuazhengtestequipment.comhulerojo.comhumandevelopment.vahwonline.ithwservice.com
 hwsetup.it
 hyapty.comhynet.ithypergrid.iti-domini.iti-tea.itiaad.itiberdecohumedades.esiberianpets.comibisgioielli.itibreviary.comibtagricoltura.iticam.esiccapuanapardo.edu.iticlimaroma.iticmab.esicoloridelcaribe.iticonicafest.comicsmaugeri.itid4irrigation.com
 idcolor.it
-idea71.comidrogrow.comigbtmodel.orgigersitalia.itiglesiasfloristeria.esiideassociation.comiiscastelli.edu.itiisvoltapescara.edu.itiiwelding.org	ijpdtm.itikalpsicoterapia.comilcorrieredelgiorno.itilcorrieredellacitta.comilcorrieredibologna.itildermatologorisponde.itilfantedidenari.itilgazzettinometropolitano.itilgiardinodellemeraviglie.itilgiornaledellarchitettura.comilgiornaleditorino.itilgranchio.itillibraio.itilmangiamappe.com
-ilmare.comilmiotempolibero.itilombardia.itilpalio.orgilpanificiodicamillo.itilpiccolo.orgilportico.itilprimatonazionale.itilpuntobio.comilriformista.itilsuperuovo.itiltricolore.itilvescovado.itilvibonese.itilvideogioco.comimagredi.comimbriano.itimjglobal.itimmobiliare-asti.itimmobiliare-casa-vetralla.itimmobiliareasioli.itimocovolley.itimpresapiazza.itimprese.linkimtlucca.it
+idea71.comidrogrow.comigbtmodel.orgigersitalia.itiglesiasfloristeria.esiideassociation.comiiscastelli.edu.itiisvoltapescara.edu.itiiwelding.org	ijpdtm.itikalpsicoterapia.comilcorrieredelgiorno.itilcorrieredellacitta.comilcorrieredibologna.itildermatologorisponde.itilfantedidenari.itilgazzettinometropolitano.itilgiardinodellemeraviglie.itilgiornaledellarchitettura.comilgiornaleditorino.itilgiornaledivicenza.itilgranchio.itillibraio.itilmangiamappe.com
+ilmare.comilmiotempolibero.itilombardia.itilpalio.orgilpanificiodicamillo.itilpiccolo.orgilportico.itilprimatonazionale.itilpuntobio.comilriformista.itilsuperuovo.itiltorinese.itiltricolore.itilvescovado.itilvibonese.itilvideogioco.comimagredi.comimbriano.itimjglobal.itimmobiliare-asti.itimmobiliare-casa-vetralla.itimmobiliareasioli.itimocovolley.itimpresapiazza.itimprese.linkimtlucca.it
 inat.co.keincartareshop.itindie.itindiexpo.net
-indomio.esinetfarm.orginferriate.itinfinitoedizioni.itinfluenceritalia.itinfo-cooperazione.itinfobarrancos.esinfochucao.cominfoimmobile.cominfoischia.cominfoplant.itinformaticando.netinformaver.cominfosastre.com.arinfotechsrl.itingegnerianetworking.com	initpc.itinliberta.itinnov-maroc.com	innova.itinnovaesoftware.itinozner.com
+indomio.esinetfarm.orginferriate.itinfinitoedizioni.itinfluenceritalia.itinfo-cooperazione.itinfobarrancos.esinfochucao.cominfoimmobile.cominfoischia.cominfoplant.itinformaticando.netinformaver.cominfosastre.com.arinfotechsrl.itingegnerianetworking.comingegnoli.it	initpc.itinliberta.itinnov-maroc.com	innova.itinnovaesoftware.itinozner.com
 insella.itinsertcoinrecords.cominspeguera.catinstitutoautor.orginsufflaggiocellulosa.it
 intelco.it
-intendo.itintered.orginternet-modena.itinventario.proinventivadna.cominvestimentinews.itioniocrotonese.it
+intendo.itintered.orginternet-modena.itintesigroup.cominventario.proinventivadna.cominvestimentinews.itioniocrotonese.it
 ionoale.itionoleggioauto.comioscrittore.itiovendogomme.com
-ipanema.itipergrow.comiplacefrance.com	ipsnet.itirbarcelona.comiriparo.comiris-bulbeuses.orgiriscosmetici.itirpinianews.itischiaeventi.comiscrizioneconcorsi.itisfes.esisidata.netisoftware.itisoladiburano.it
-isolino.itisp-audio.com$istitutocomprensivochignolopo.edu.itistitutodanone.itistruzioneatprc.itistruzioneliguria.itistruzioneveneto.gov.itisuonidelledolomiti.itit-ricambi.com	itaca.orgitalia-mia.ititalia.hockeyitaliafruit.netitaliainnumeri.ititalianwinebrands.comitaliaoggi.ititaliaturrita.orgitalycarrent.comitecsur.edu.ec	itlug.orgitsep.edu.ecitv.itiubilaeum2025.vaiugs.orgiusve.itivgvicenza.it	iyaly.comizar.esizquierdas.clizsvenezie.itjack-sewing.comjadminer.comjanasguesthouse.comjardin-ecole.comjasonwithers.comjdiezarnal.comjeanleon.comjergasdehablahispana.orgjerrillo.comjesolointernational.itjesolowebcam.itjetskiforum.itjimenezjoyeros.net	jizzy.netjkcapri.com
+ipanema.itipergrow.comiplacefrance.com	ipnext.it	ipsnet.itirbarcelona.comiriparo.comiris-bulbeuses.orgiriscosmetici.itirpinianews.itischiaeventi.comiscrizioneconcorsi.itisfes.esisidata.netisoftware.itisoladiburano.it
+isolino.itisp-audio.com$istitutocomprensivochignolopo.edu.itistitutodanone.itistruzioneatprc.itistruzioneliguria.itistruzioneveneto.gov.itisuonidelledolomiti.itit-lombardy.comit-ricambi.com	itaca.orgitalia-mia.ititalia.hockeyitaliafruit.netitaliainnumeri.ititalianwinebrands.comitaliaoggi.ititaliaturrita.orgitalycarrent.comitecsur.edu.ec	itlug.orgitsep.edu.ecitv.itiubilaeum2025.vaiugs.orgiusve.itivgvicenza.it	iyaly.comizar.esizquierdas.clizsvenezie.itjack-sewing.comjadminer.comjanasguesthouse.comjardin-ecole.comjasonwithers.comjdiezarnal.comjeanleon.comjergasdehablahispana.orgjerrillo.comjesolointernational.itjesolowebcam.itjetskiforum.itjimenezjoyeros.net	jizzy.netjkcapri.com
 jkroma.com
 jmcprl.net
 jmgroup.itjmvinylfloor.comjnetwork24.comjobspecialist.itjointag.comjokerpreziosi.comjrseurope.org
 jrsusa.orgjuliusdesign.netkaburtamotorsport.comkampaoh.comkangsongpower.com	kapace.itkartezumnamen.eu	kartha.mxkask.comkaxhelmet.comkeliweb.orgkey-healthy.comkey5.comkeycalt.comkeyos.it
 khatod.com	kitech.itkkv-norden.deklubniksouts.rukomestore.itkonsungmedical.comkontedesign.comkultloesungen.del-8.it la-certificazione-energetica.net
-la-cura.itlabbster.comlabeljoy.comlabelspa.comlabiennale.orglaboticadelosperfumes.comlabycar.cloudlacampionessa.comlacantinaprivata.itlacasadelzapato.eslacasamoderna.comlacascinagastronomia.itlacittadelcinema.itlaclessidra1945.itlacolonscopia.itladecroissance.netladespensadealicante.comladritta.comladyradio.itlaflecha.netlakecomoschool.orglallabet.itlamalvaflor.eslameziamultiservizi.itlamuccacompany.eslantenna-mg.comlanuovaecologia.itlanzarotedeportiva.comlapaseata.netlaradiodetotoral.com.arlarapedia.comlarc.itlarecherche.itlasallemontblanc.comlasiritide.itlaspillatura.eulastminuteclick.itlatavoladinonnonanni.itlatelanera.comlatelierdelricamo.itlatestatamagazine.itlati.comlatteseditori.itlaurapausini.comlavaldichiana.itlavalsusa.itlavenetachimica.itlaverdaddeceuta.comlavocedelmarinaio.comlavocedeltrentino.itlavoroannunci.eulavozdemazarron.comlaziodisco.itlazzaronipenne.net
+la-cura.itlabbster.comlabeljoy.comlabelspa.comlabiennale.orglaboticadelosperfumes.comlabycar.cloudlacampionessa.comlacantinaprivata.itlacasadelzapato.eslacasamoderna.comlacascinagastronomia.itlacittadelcinema.itlaclessidra1945.itlacolonscopia.itladecroissance.netladespensadealicante.comladritta.comladyradio.itlaflecha.netlakecomoschool.orglallabet.itlamalvaflor.eslameziamultiservizi.itlamialiguria.itlamuccacompany.eslantenna-mg.comlanuovaecologia.itlanzarotedeportiva.comlapaseata.netlaradiodetotoral.com.arlarapedia.comlarc.itlarecherche.itlasallemontblanc.comlasiritide.itlaspillatura.eulastminuteclick.itlatavoladinonnonanni.itlatelanera.comlatelierdelricamo.itlatestatamagazine.itlati.comlatteseditori.itlaurapausini.comlavaldichiana.itlavalsusa.itlavenetachimica.itlaverdaddeceuta.comlavocedelmarinaio.comlavocedeltrentino.itlavoroannunci.eulavozdemazarron.comlaziodisco.itlazzaronipenne.net
 lcdshop.itlcrformazione.com
 leauto.netlecartomantidegliangeli.comleccecronaca.itlecconotizie.comlededizioni.comledgo.itledonnedelvino.comlegadelcane.orglegalsending.com
-legami.orglegnonline.itleitv.itlelibellulecontrovento.it	lemayr.itlemgalvanica.comlenodiar.itlesplaisirsdantan.comletapparelle.comlfootball.it
-lgmgim.netlh-surgeprotector.comliberdomus.itliberoshopping.eulibraionet.itlibreriaofisierra.comlibreriazaratan.comlichtena.itlideachetimanca.comlifeintheuktestweb.co.uklilitech.comlineaverdepompei.itlines.itlionsolution.itliquiplast.comliturgiapapal.orglmmlogistics.comlnfscore.comlocalidautore.itlogan4x4.comlogicielsmoto.comlombardialifesciences.itlonganesi.itloquesomos.orglorenzorago.itlorsobaba.itlosartistasdelbarrio.comlospaziobianco.itloudandproud.itlouisbigshoes.comlovephoto.eulucaniaglutenfree.comluceplan.com
-lugman.orgluini.itlumsa.itlyricstube.net	ma-ag.com	maanta.itmacbalife.commacchine-legno.commacchineagricoleabbatangelo.itmacrotelitalia.itmacrovoip.itmadisonmk.commadrid-traveller.commadridnorte24h.commaganetti.com
+legami.orglegnonline.itleitv.itlelibellulecontrovento.it	lemayr.itlemgalvanica.comlenodiar.itlesplaisirsdantan.comletapparelle.comleteledimargi.itlfootball.it
+lgmgim.netlh-surgeprotector.comliberdomus.itliberoshopping.eulibraccio.itlibraionet.itlibreriaofisierra.comlibreriazaratan.comlichtena.itlideachetimanca.comlifeintheuktestweb.co.uklilitech.comlineaverdepompei.itlines.itlionsolution.itliquiplast.comliturgiapapal.orglmmlogistics.comlnfscore.comlocalidautore.itlogan4x4.comlogicielsmoto.comlogin.regione.puglia.itlogos.itlombardialifesciences.itlonganesi.itloquesomos.orglorenzorago.itlorsobaba.itlosartistasdelbarrio.comlospaziobianco.itlospicchiodaglio.itloudandproud.itlouisbigshoes.comlovephoto.eulucaniaglutenfree.comluceplan.com
+lugman.orgluini.itlumsa.itlunet.itlyricstube.net	ma-ag.com	maanta.itmacbalife.commacchine-legno.commacchineagricoleabbatangelo.itmacrotelitalia.itmacrovoip.itmadisonmk.commadrid-traveller.commadridnorte24h.commaganetti.com
 maggio3.itmaggioli.itmagicoveneto.itmaidertomasena.commaier-italia.com
 mail-it.it	mailbo.itmakwheels.itmalagutiargentina.com.armalu-shoes.commanagement-technologies.itmanelservice.commanfredoniatv.itmangacomicsmarket.itmanganime.itmangano.artmanjaro-it.orgmantegnalibri.commapadesobrenomes.commappecatasto.itmaracarol.it
 marazzi.de
@@ -3835,46 +3884,48 @@ marbaro.itmarchenotizie.infomarchettiwines.itmarco-pumps.shopmarcoarcher
 markas.commarketingguerrilla.esmarlintower.itmaroc-performance.com
 martico.esmartin-ferrero.commartinelliluce.itmartinomidali.commasbaratotenerife.esmaschiogaspardo.commascotasysemillas.commasquepalabras.orgmassimogherardini.itmasteritaliausa.orgmatefilia.itmathcurve.commatracexpress.humatracom.humattelli.itmaurilloshop.com	maver.netmavex.swissmaxcalisthenics.commaxfabrizi.commaxguida.itmaxisoft.itmaxmovil.com	maxxi.artmazdashowroom.commccormick.itmeat-doria.esmedea.toolsmediaevolution.itmedical-net.itmedicalsud.itmedicinadelapiel.commedicisenzafrontiere.itmegaprezzo.commegasoftcm.commegavideomerlino.commeginet.com	meiweb.it
 melilax.itmelius.clubmenatwork.coopmenhirabbigliamento.itmentormaterassi.itmepicalaetiqueta.com
-mercede.itmessaggerie.itmessinsaldo.memetalscreen.itmetarecod.itmeteocantu.itmeteofunghi.itmeteoservice.netmexicocityhotels.infomezzolombardoantica.itmgpg.itmiapensioneapp.commicioplus.commicrolabscientific.commicropsicoanalisi.itmicrosmeta.commidaticket.itmigrantesdelbalon.commikaelollivier.commikrolivado.grmilan-museum.commilanimarisa.itmilanodistribuzionemedia.itmilanofashionlibrary.itmilanomarathon.itmilanosanremo.it	milice.itmilkaudiostore.commillion-day.itmilomanara.itmimuebleonline.esminimaetmoralia.itmioaffitto.itmiotenscontrattureedolore.itmirabell.itmiracolieucaristici.orgmisericordiabenevento.it
+mercede.itmessaggerie.itmessinsaldo.memetalscreen.itmetarecod.itmeteocantu.itmeteofunghi.itmeteoservice.netmexicocityhotels.infomezzolombardoantica.itmgpg.itmiapensioneapp.commicioplus.commicrolabscientific.commicropsicoanalisi.itmicrosmeta.commidaticket.itmigrantesdelbalon.commikaelollivier.commikrolivado.grmilan-museum.commilanimarisa.itmilanodistribuzionemedia.itmilanofashionlibrary.itmilanomarathon.itmilanosanremo.it	milice.itmilkaudiostore.commillion-day.itmilomanara.itmimuebleonline.esminimaetmoralia.itmininterno.netmioaffitto.itmiotenscontrattureedolore.itmirabell.itmiracolieucaristici.orgmisericordiabenevento.it
 missoc.orgmisterferry.commisterferry.esmisterferry.frmisterfranz.commisutonida.commiten.itmiti3000.itmittelfest.orgmitti.itmiwcomics.com
 miworld.eumk-service.itmnt.itmobilidesignoccasioni.commocambos.netmodaincuoio.itmodapureza.commodellismostatico.itmodenacalcio.commodernews.onlinemodernizaconsultores.commodischenschmuck.demodobyroncato.commodulblok.commomit.eumomo.commonasteriopiedra.commondeovalves.commondialpol.itmondimedievali.net
-mondo3.commondocopia.itmondocriceto.itmoneyonplay.commonitora.to.itmonkeywand.commonolitenotizie.itmonstergarage.itmonteargentario.itmoreline.it	moreno.itmotoclub-tingavert.itmotocluberba.itmotoequipacion.commotoexport.itmotojovem.ptmotomel.com.armotoraduni.itmotorini-alternatori.itmotorsud.commotortime.esmotostore.commotusanimifad.commou-online.commovidafm.netmovieplex.it
+mondo3.commondocopia.itmondocriceto.itmoneyonplay.commonitora.to.itmonkeywand.commonolitenotizie.itmonstergarage.itmonteargentario.itmoreline.it	moreno.itmoto.itmotoclub-tingavert.itmotocluberba.itmotoequipacion.commotoexport.itmotojovem.ptmotomel.com.armotoraduni.itmotorini-alternatori.itmotorsud.commotortime.esmotostore.commotusanimifad.commou-online.commovidafm.netmovieplex.it
 mowmag.com	mptour.itmsppistoia.itmtbi.itmueblesarria.commueblesbaena.commueblestocafusta.commufocosearch.orgmugellonet.itmulticinemaranieri.itmultiplexmercogliano.itmultisalagreenwichroma.commurafestival.itmuratorealimentari.commusanails.commuseoartecontemporanea.itmuseocanova.itmuseocasanataldecervantes.orgmuseodeicastelli.itmuseogalileo.itmuseosetacomo.commushotoku.itmusicalcampos.esmusicistireggiani.itmusicomrecords.commusicontherocks.itmusihacks.commy-ticket.itmyastreet.commybeautyfarm.com	mycity.itmycommerce.commycongaplace.commyfiesta.itmygulliver.it
 mylearn.it
-mypcert.itmysmartwatch.grmystylefirenze.it
+mypcert.itmysmartwatch.grmysolution.itmystylefirenze.it
 mytrina.it
 mywhere.itnadir.it
 nalini.com	nanotv.itnapikvizek.hunapolicalcionews.it
-nardini.itnataliaygabriel.comnational12.orgnaturamediterraneo.comnauta.itnauticapalomba.itnauticapiushop.itnauticassistance.comnauticastoreitalia.itneca.itnecrologivicenza.comnegozidiarredamento.itnegoziomondoanimale.comnegroni.comnehovistecose.comneobianacid.frneobianacid.itneobianacid.plneolaiacampus.eunet-parade.itnet-prime.itnetmaking.itneuropediatra.orgneurosurgery-blog.comneveitalia.itnewfashionjewels.comnewposstore.comnewsletter-xylexpo.comnewyorkwelcome.netnextgenmagazine.itngpro.es	nicsol.esnigrizia.it
+nardini.itnataliaygabriel.comnational12.orgnaturamediterraneo.comnauta.itnauticapalomba.itnauticapiushop.itnauticassistance.comnauticastoreitalia.itneca.itnecrologi-italia.itnecrologivicenza.comnegozidiarredamento.itnegoziomondoanimale.comnegroni.comnehovistecose.comneobianacid.frneobianacid.itneobianacid.plneolaiacampus.euneosair.comnet-parade.itnet-prime.itnetmaking.itnetsons.orgneuropediatra.orgneurosurgery-blog.comneveitalia.itnewfashionjewels.comnewposstore.comnewsletter-xylexpo.comnewyorkwelcome.netnextgenmagazine.itngpro.es	nicsol.esnigrizia.it
 nim-net.itnjoysurfshop.comnobileonline.comnobordersmusicfestival.comnoha.itnoleggioimpianti.itnonsolocomo.infonordaffari.com
-northek.itnorthropgrumman.itnorz.itnos-helmets.comnosolocodigo.comnoticiasdecantabria.comnotizienazionali.itnotiziepiemonte.itnotoria.comnottedaleoni.itnovaconn.itnovalibandiere.itnovamont.comnovilladassin.comns6.itnumismaticavaresina.itnuovacentercart.itnuovaelica.itnuovaretecasa.infonuovavimaplast.itnuovocircondarioimolese.itnutri4sport.esnutrizionesana.itoasizegna.comoasy.comobturadores.netocacloud.itocchiali48.comodeca.cloud
-odstore.itofertasespana.comofertasirrepetibles.comofficina23.comofficinefabbri.itoficiodeescritor.comofsale.infooggiacomo.itoggisposa.itogs.itokiinfiammazioneedolore.itokpescasport.itoldmilanohouse.itoleificiobartolomei.it	oleobi.itolimpiasplendid.esolimpiasplendid.frolimpiasplendid.itolimpicorugby.com	olores.pl
+northek.itnorthropgrumman.itnorz.itnos-helmets.comnosolocodigo.comnoticiasdecantabria.comnotizienazionali.itnotiziepiemonte.itnotoria.comnottedaleoni.itnovaconn.itnovalibandiere.itnovamont.comnovilladassin.comns6.itnumismaticavaresina.itnuovacentercart.itnuovaelica.itnuovaretecasa.infonuovavimaplast.itnuovocircondarioimolese.it
+nurse24.itnutri4sport.esnutrizionesana.itoasizegna.com
+oasport.itoasy.comobturadores.netocacloud.itocchiali48.comodeca.cloud
+odstore.itofertasespana.comofertasirrepetibles.comofficina23.comofficinefabbri.itoficiodeescritor.comofsale.infooggi.itoggiacomo.itoggisposa.itogs.itokiinfiammazioneedolore.itokpescasport.itoldmilanohouse.itoleificiobartolomei.it	oleobi.itolimpiasplendid.esolimpiasplendid.frolimpiasplendid.itolimpicorugby.com	olores.pl
 olpneus.itomeca.itomniachannel.itomniasoft.infoomnicontext.netomnistlc.comomodajaecooitalia.comomviajesyrelatos.comoneclick-wellness.comonoranzefeller.itonoranzefunebricarollo.itonoranzefunebriceliberti.comonoranzefunebridalmas.comonoranzefunebridardanello.itonoranzefunebrimeluzzo.comonoranzefunebripagotto.itonoranzefunebrizago.comonoranzefunebrizavagli.it
 opapisa.itopen-street.euopendeel.comoperacarlofelicegenova.itoperaroma.itorangenergy.comorangeviaggi.comordineavvocati.perugia.itordineavvocatimilano.itordineavvocatitrani.itordinemedicifc.itordinepsicologilazio.itordinioptologic.itoreb.comoriginalintimo.comorlandointdrive.com	ornews.itorobicastore.itoroineuro.itorologiko.itortobotanicoitalia.itortodossia.itortolano.itortospecialized.esosservatoriocopernico.orgotakusushi.com.arother-news.infoottica-lux.comourensenarede.comoversizetagliegrandi.itovunquerunning.itowss.eupack-machinery.compaea.itpaginemediche.itpagodahomegarden.compaitadesign.compalabrasclaras.mxpalau.itpalazzoesposizioni.itpalazzoesposizioniroma.itpalazzomediciriccardi.itpalermo-hotels.netpallaoro.itpamaflock.com
 panini.companorama-festival.itpanoramica.itpans-cnc.compaolozorzanstore.itpaoluccigioielli.com
 papaki.compapmoon.comparadisopescatore.itparafarmaciavittori.itparagonshop.frparamashop.itparchilazio.itparchiletterari.comparcoarcheologicoappiaantica.itparcodolomitifriulane.itparcogallipolicognato.itparconazionaledelvesuvio.itparcosila.itparcovalledeitempli.itpardusbicycle.comparisimode.itparix.esparmacalcio1913.comparrocchiaditorreboldone.itpartnersfestivalplay.comparts4eu.compasarelasdealquezar.compascualserrano.netpasionilicitana.compassioneauto.itpassionecarpfishing.compastadefteri.compastoregaudenzio.compavanellogiorgio.itpavigym.compavimentieparquet.com	pbxpro.itpdani.itpedrinolla.com
-pefsrl.compegasoserver.net	penale.itpennaematita.itpensionati.itpepinoshop.comperelafouine.comperfetto.bizperfumeriasclapes.es
+pefsrl.compegasohosting.netpegasoserver.net	penale.itpennaematita.itpensionati.itpepinoshop.comperelafouine.comperfetto.bizperfumeriasclapes.es
 pericon.esperiodicosdigitales.infoperlafire.comperlepietre.compermaflex.itperonisnc.itpescaffare.compescaranews.netpescaraspotters.itpescasportsanpolo.itpetdarling.competitamis.itpetprice.netpharmaforyou.it
 philinq.itphoenix-smt.comphoneclick.itphoto-ai-bot.ruphotographers.itphotoshopeando.comphotovat.compianetahobby.itpianetamountainbike.itpianetaoutlet.itpianidiclodia.itpianurainformatica.itpiemontigiocattoli.compiensomascota.compierobersanini.compietredellamemoria.itpietrocarlopellegrini.it
-piksel.compinkoclub.compinkotgirls.compinti.itpinturasmacy.compisanews.netpisonistore.compistoiaflor.itpiuculture.it	pksoft.itplacestpierre.frplanbnoticias.com.arplastifiestas.com.mxplaystereo.complink.itpluscar-tenerife.compluscarcanarias.compneucarwheels.itpo.apppoketown.netpolfirms.itpolicarbonato.onlinepoliclinicodimonza.it
+piksel.compinkoclub.compinkotgirls.compinti.itpinturasmacy.compisanews.netpisonistore.compistoiaflor.itpittarello.compiuculture.it	pksoft.itplacestpierre.frplanbnoticias.com.arplastifiestas.com.mxplaystereo.complink.itpluscar-tenerife.compluscarcanarias.compneucarwheels.itpo.apppoketown.netpolfirms.itpolicarbonato.onlinepoliclinicodimonza.it
 polirol.itpolobibliotecariopotenza.itpolyestertime.compominirollingmills.itpompefunebribruseghini.componer-anuncios-gratis.espontedilegnotonale.com	popup.lol
 porelli.euportadriano.comportalbilhar.ptportalefipav.netportobellocatanzaro.itportoercole.orgpositanonotizie.itpostulazionecausesanti.itpowersoft-audio.compowersport.itpreahorro.compremiumguns.comprestigeoggettistica.com
 primato.itprimo-prezzo.itprimoconsumo.itprimolivello.it
 proexca.esprofessioneautotrasporto.itprofessionecasa.itprofessionistidelsuono.netprofumino.atprogettiesoluzioni.itprogetto81.itprogettoscuolattiva.itprogettovidio.itprogresscloud.itprojectinvictus.itprolocosinalunga.compromedgalileo.orgprometeo.compromitspa.itpromoearte.itpromoedit.it
-pronoto.itpropan.com.arprosciuttodiparma.comprotesidicapelli.com	proton.itprotos-spa.itprovincia.fr.itprovveditoratostudiviterbo.itproxima-online.itproyecfilmcines.comproyectoarraigo.es
+pronoto.itpropan.com.arprosciuttodiparma.comprotesidicapelli.com	proton.itprotos-spa.itprovincia.fr.itprovveditoratostudiviterbo.itproxima-online.itproyecfilmcines.comproyectoarraigo.esprysmian.com
 psaudio.grpsicologatriestedecolle.itpsicologos-malaga.compsiconline.itpsmadeintuscany.compubblicitaaudiovisive.itpublic-demo.compublicidadybanderas.compublipega.compugliapress.orgpuliamoilmondo.itpuntateaste.itpunteggilive.itq1tapes.comqboxmail.com
-qsvsrl.comqualigeo.euqualivita.itquattrolinee.comquestoecheto.itquicosenza.itquiinzona.itquiklok.comquimega.comquotidianovenaria.itqweb.euqz-petshop.comraccamarco.com	racmyp.esradiocaroline.co.ukradiocittafujiko.itradiocoop.itradiomamma.itradiomugello.itradioribelle.itradiosquallor.comradiostereo5.itragnousa.comrajayoganewsletter.com
-raleri.comravellozetapass.itravennateatro.comrawtraining.eurcs.itrcsmediagroup.itrdap-nominalia.infordap-register.inforeartuassisi.itrebelosantos.ptrec-connectors.comrecambiosmollet.esrecetasfaciles.com.esrecetasurbanas.netredimec.comreggianacalcio.itregistroelettronico.cloud	remail.itremigiopreschern.comremtechexpo.comrepacar.orgreportergourmet.comresetdoc.orgresidenciasuniversitarias.esresistenze.itreteoncologica.itretro-computing.itrevistabusinessportugal.ptrevistaganamas.com.perevistamision.com
-rhyker.comribo.itricam.itricambiautostore.itricambidalgrossista.itricambieldom.itricambiparenti.itriccardomuti.comricetteincloud.comricicloni.itricocina.comricordidivita.itrifugiocastiglioni.itrifugiochabod.comrifugiocontrin.itrigeneriamoterritorio.itrilegato.comrinnovopatenti.itrisomelotti.comritualimagici.itrivaverde.itrivieraskateproject.comrivieratrasporti.itroboreporter.itrobyandroby.euroccofortehotels.comromaguida.comromalabs.topromasegreta.itromaweb.comrome-museum.comroncatousa.comrondasomontano.comrondodellamoda.itrosamas.comrossabbigliamento.itrossisport.comroulette-on-line.itroyaldevice.comroyalhysteria.esrrhhpress.comrunner-home.comrussia-italia.comrutadelvinodenavarra.comrztools.coms33.itsabaf.itsacrocuoreboli.itsailingexperiencebcn.comsailingphoto.itsailormall.net	salani.itsalentodautoreviaggiguidati.comsalernofuoristrada.itsalesianimestre.itsalinagennamarsala.itsalonedelrestauro.comsalottomagico.com
-salou19.itsaltaconmigo.comsamiprimors.comsamsports.eu
+qsvsrl.comqualigeo.euqualivita.itquattrolinee.comquestoecheto.itquicosenza.itquiinzona.itquiklok.comquimega.comquotidianovenaria.itqweb.euqz-petshop.comraccamarco.com	racmyp.esradiobruno.itradiocaroline.co.ukradiocittafujiko.itradiocoop.itradiomamma.itradiomugello.itradioribelle.itradiosquallor.comradiostereo5.itragnousa.comrajayoganewsletter.com
+raleri.comravellozetapass.itravennateatro.comrawtraining.eurcs.itrcsmediagroup.itrcspubblicita.itrdap-nominalia.infordap-register.inforeartuassisi.itrebelosantos.ptrec-connectors.comrecambiosmollet.esrecetasfaciles.com.esrecetasurbanas.netredimec.comreggianacalcio.itregistroelettronico.cloud	remail.itremigiopreschern.comremtechexpo.comrepacar.orgreportergourmet.comresetdoc.orgresidenciasuniversitarias.esresistenze.itreteoncologica.itretro-computing.itrevi.rcs.itrevistabusinessportugal.ptrevistaganamas.com.perevistamision.com
+rhyker.comribo.itricam.itricambiautostore.itricambidalgrossista.itricambieldom.itricambiparenti.itriccardomuti.comricetteincloud.comricicloni.itricocina.comricordidivita.itrifugiocastiglioni.itrifugiochabod.comrifugiocontrin.itrigeneriamoterritorio.itrilegato.comrimoscare.comrinnovopatenti.itrisomelotti.comritualimagici.itrivaverde.itrivieraskateproject.comrivieratrasporti.itroboreporter.itrobyandroby.euroccofortehotels.comromaguida.comromalabs.topromasegreta.itromaweb.comrome-museum.comroncatousa.comrondasomontano.comrondodellamoda.itrosamas.comrossabbigliamento.itrossisport.comroulette-on-line.itroyaldevice.comroyalhysteria.esrrhhpress.comrubinetteriashop.comrunner-home.comrussia-italia.comrutadelvinodenavarra.comrztools.coms33.itsabaf.itsacrocuoreboli.itsailingexperiencebcn.comsailingphoto.itsailormall.net	salani.itsalentodautoreviaggiguidati.comsalernofuoristrada.itsalesianimestre.itsalinagennamarsala.itsalonedelrestauro.comsalottomagico.com
+salou19.itsaltaconmigo.comsamiprimors.comsampdoria.itsamsports.eusan-marco.com
 sanarti.itsanelli.comsanifonds.tn.itsanjingchemglass.comsanmarcoargentano.itsanmichelearipa.comsanremomachines.comsantacroceonline.comsantacroceshop.comsantaeulariadesriu.comsantodelgiorno.itsanvitoweb.comsaptecnica.comsardiniavacanze.it
-sarfati.itsaronnoservizi.itsassuoloonline.it	sat.tn.itsaxxabbigliamento.itsayarillaqta.comsborgia.com
+sarfati.itsaronnoservizi.itsassuoloonline.it	sat.tn.itsavethechildren.itsaxxabbigliamento.itsayarillaqta.comsborgia.com
 scalatt.itscanny3d.comscantastic.clscariohotelcavaliere.itschaefer-innichen.itschusterboilers.comsciaremag.itsciclubsenigallia.itscientificast.itsciopero.netsciroccoh.itscontiebuoni.itscorpiogroup.netscorpiotankers.comscrutatio.itscs-europe.netscubaportal.itscudettomondiale.euscuolacomics.comscuoladriftingbologna.itscuolago.itscuolaguida.itscuolamaternabattilana.itscuolaonline.itscuolascivalfiorentina.itsdctrade.itseafuture.itsecure-reservation.cloudsedacalenta.comsefo.pt
 sefobi.comseiseralm.it
 seisnet.itseitron.comself.itsellarondabikeday.comsellitto.comsempretutto.itsendblaster.comsentieridiarmonia.comsercankantarci.com.trserielizados.comset-services.com
-setadv.comsevilla24horas.comsexyshopbologna.itsferisterio.itsharework.itsherrysport.esshoei.itshop-automation.comshop-point.itshopischia.itshopmakeup.itshoppingflash.itshopsicurezza.shop	si-tek.it
+setadv.comsevilla24horas.comsexyshopbologna.itsferisterio.itsharework.itsherrysport.esshoei.itshop-automation.comshop-point.itshop.mercatopoli.itshopischia.itshopmakeup.itshoppingflash.itshopsicurezza.shop	si-tek.it
 siap.cloudsiculianaturistica.itsicurauto.com	sidel.comsidereasrl2002.com	siervo.itsiglacredit.eusigo.itsilingardioutlet.comsillanumsoft.org	silmax.it
-silmoh.comsilvercollection.itsilvias-trips.comsimai.eusimbapaperdesign.com	simest.itsimpaticotech.itsimpletek.netsinahotels.comsinergylucegas.comsiniscalcoceciemmaus.itsirge.it
+silmoh.comsilvercollection.itsilvias-trips.comsimai.eusimbapaperdesign.com	simest.itsimpaticotech.itsimpletek.netsinahotels.comsincretech.itsinergylucegas.comsiniscalcoceciemmaus.itsirge.it
 siropa.com
 sirotti.itsistemapenale.itsistemaratio.it
 sistnet.itsiteland.itsitestudio.itsixindefoamer.comskiforum.itskimarket.esskio.netslotcaritalia.euslotgratis.bet
@@ -3883,32 +3934,34 @@ so-fare.itsociedadgeologica.essocks-studio.com
 sodapop.itsofiaoggi.comsoftecspa.it	softex.itsofttech.it
 sogesid.itsogiscuola.comsolbi-mural.comsolidsteel.itsolobike.itsolodilettanti.itsolomusicaonline.itsoluzionipereventi.itsoluzionipertutti.itsolvendiabogados.comsomosdecine.comsonoramaribera.comsorelleramonda.com
 sorint.comsoroptimist.itsorrentohotelsnow.netsorrentopress.itsorumatix.comsound-cave.com	sovet.comsp1.itspainsif.esspaziani.comspazioapertosalento.itspaziodi.itspaziomotori.comspaziorock.itspaziotempo.itspazioufficionapoli.itspeckstube-eggerhof.itspendomeno.netspillycactus.itspiritiliberi.infosplittypay.com
-sport2u.tvsportefinanza.itsprintware.netspsitalia.itsquashplayer.co.ukssociologos.comstabiachannel.itstabiledistribuzione.itstagniweb.itstaminamarketing.comstampareggiana.itstarbenerelax.comstarlightdelta.comstarplex.itstartromagna.itstartspa.itstaseraalcinema.itstefanocolombo.com
-steflor.itstewartcopeland.net	stnnet.itstoreden.comstoreelettrico.comstoriadimilano.itstrade-bianche.itstucaweb.comstudiocasa.itstudiolegaleoronzo.itstudiopragelato.itstudiosalzano.comstudiosigaudo.comstudiosignaroldi.itstwi-net.itsubastalotes.comsubsonica.it	suche6.chsuedtirolfueralle.it
+sport2u.tvsportefinanza.itspringitalia.itsprintware.netspsitalia.itsquashplayer.co.ukssociologos.comstabiachannel.itstabiledistribuzione.itstagniweb.itstaminamarketing.comstampareggiana.itstarbenerelax.comstarlightdelta.comstarplex.itstartromagna.itstartspa.itstaseraalcinema.itstaseraintv.comstefanocolombo.com
+steflor.itstewartcopeland.net	stnnet.itstoreden.comstoreden.netstoreelettrico.comstoriadimilano.itstrade-bianche.itstucaweb.comstudiocasa.itstudiolegaleoronzo.itstudiopragelato.itstudiosalzano.comstudiosigaudo.comstudiosignaroldi.itstwi-net.itsubastalotes.comsubsonica.it	suche6.chsuedtirolfueralle.it
 suitehr.itsummer-festival.comsummergest.appsummersky.itsunriseomeocosmesi.com	suomy.comsuper7moto.comsupermarketdellascarpa.comsupermedia.it
 susimiu.es	suzuki.itsuzuserver.dkswcinformatica.it
-swimapp.it	swite.comsystemceramics.comt2d.ittabbles.nettalentispa.comtartanmaker.comtaskupper.nettaxidrivers.ittbloggers.clubtdic.ittealibri.itteamblau.comteatreapolo.comteatrocartierecarrara.itteatrodellatoscana.itteatrodonizetti.itteatroimpulso.ittec-eurolab.comtechflash.ittechsystem.ittechwall.ittecnalsrl.ittecnimont.ittecnoclimaspa.comtecnocultivo.estecnopaper.ittecnopatafisica.comtecnoseal.comtecnosky.euteknozone.ittekworld.ittelecogroup.comtelefonoamico.ittelepace.itteleradiostereo.it
+swimapp.it	swite.comsystemceramics.comt2d.ittabbles.nettalentispa.comtartanmaker.comtaskupper.nettaxidrivers.ittbloggers.clubtdic.ittealibri.itteamblau.comteamsystem.comteatreapolo.comteatrocartierecarrara.itteatrodellatoscana.itteatrodonizetti.itteatroimpulso.ittec-eurolab.comtechflash.ittechsystem.ittechwall.ittecnalsrl.ittecnimont.ittecnoclimaspa.comtecnocultivo.estecnopaper.ittecnopatafisica.comtecnoseal.comtecnosky.euteknozone.ittekworld.ittelecogroup.comtelefonoamico.ittelepace.itteleradiostereo.it
 televid.tvtempoliberoshop.ittendanse.ittennis-belge.be	tenpen.it
 teo-app.ittermesangiovanni.itterniauto.itterraditoscana.comterraditoscana.itterreditoscana.comterritoriodeco.comtessierbiancheria.ittestdelopositor.estestedisabitate.ittestori.aero	tezuk.com	tg24.infothaispamassage.es
 theabei.euthegabbershop.comthegravitywave.comthereportzone.ittheromanaffair.comthesmarthomedeal.comthetimewatches.com	thetop.itthinkwasabi.comtianyupro.comticonzero.ittiendadanmei.comtiendadelaire.comtiendafulldip.comtierraenlasmanos.comtifobrescia.ittifogranata.ittifojuventus.ittifoshop.comtifviaggi.ittime4mind.comtincomil.pt
 tinelli.ittinnvision.cloudtirrenoadriatico.ittittarellishop.it	tlcweb.ittnxe.nettocadostocchic.comtodis.ittodomusicaycine.com	tohost.ittomko.cloud
-tomware.it	tootop.eutop10calidadprecio.comtopimprese.comtopmanzana.comtoptissage.comtoromedia.comtorredeilamberti.ittoscanapiu.comtoscanatv.it	toysin.ittrabajarporelmundo.orgtractor-ricambi.comtraghetti.comtraghettilines.ittranskom.ittrapanigranata.ittrattoriadacesare.ittravelboxcontorno.ittrekking.ittrenscat.comtrentinosci.it	tresrl.ittrevisomtb.ittricovelanticaduta.it	trikon.ittrn-news.ittrofeodelleregioni.ittroiolobus.comtrombo.infotrovaelettrodomestici.comtrucksrl.ittsnet.ittuanatura.ittuaregmodas.comtufano.storetuladeliaeco.estulipatch.comturismocalabria.netturismofrigiliana.esturismonovara.itturismovenezia.itturituri.comtusciaup.comtussl.it
-tustyle.ittuttocamere.ittuttosi.infotuttoslot.ittuttosuitalia.comtv33.ittypicalsicily.ituberros.comubertibevande.itubitennis.comuccronline.it	udgfit.it	ueppy.netuesantandreu.cat
+tomware.it	tootop.eutop10calidadprecio.comtopimprese.comtopmanzana.comtoptissage.comtoromedia.comtorredeilamberti.ittoscanapiu.comtoscanatv.it	tosnet.ittotalshareware.com	toysin.ittp24.ittrabajarporelmundo.orgtractor-ricambi.comtraghetti.comtraghettilines.ittranskom.ittrapanigranata.ittrattoriadacesare.ittravelboxcontorno.ittrekking.ittrenscat.comtrentinosci.it	tresrl.ittrevisomtb.ittricovelanticaduta.it	trikon.ittrn-news.ittrofeodelleregioni.ittroiolobus.comtrombo.infotrovaelettrodomestici.comtrucksrl.ittsnet.ittuanatura.ittuaregmodas.comtufano.storetuladeliaeco.estulipatch.comturismocalabria.netturismofrigiliana.esturismonovara.itturismovenezia.itturituri.comtusciaup.comtussl.it
+tustyle.ittuttocamere.ittuttosi.infotuttoslot.ittuttosuitalia.comtv33.ittypicalsicily.ituberros.comubertibevande.itubitennis.comuccronline.it	udgfit.ituenimail.com	ueppy.netuesantandreu.cat
 ugr.edu.aruido.it	uiplan.euulandpower.com	ulixe.comultimoviaggio.itumanaforma.itumbriajazz.ituni.com	unical.it
 unifarm.itunige.it
-unigra.com	unigra.itunimercatorum.itunincca.edu.counioneaddamartesana.itunipolforum.itunisinu.edu.couniversalcloud.eu	unonet.itunraeservizi.comunvenetoinviaggio.iturbancountrydance.comurbanfile.orgurbistat.com
+unigra.com	unigra.itunilibro.itunimercatorum.itunincca.edu.counioneaddamartesana.itunipolforum.itunisinu.edu.co	univda.ituniversalcloud.eu	unonet.itunraeservizi.comunvenetoinviaggio.itupprovider.iturbancountrydance.comurbanfile.orgurbistat.com
 urkesh.orgurologoenvigo.comusatogomme.ituschandball.frusnb.it
-usound.comusr.sicilia.itutemacsud.comutorpheus.comv4one.co.ukvacanzeconbimbi.itvacanzeinpuglia.netvacanzeitalia.orgvag-net.comvaielettrico.it	valeas.itvalenciabonita.esvalgardena-web.comvalixnutrition.itvalledaostaheritage.comvalledebaztan.comvalleumbrasport.itvalpaint.itvalsusaoggi.itvaltline.itvaltortamaria.comvamospokertour.comvaporizzare.comvaticanoweb.comvdgimport.comvedetta.orgvejacrica.comvendiauto.comvenditoreadistanza.itvenexon.com
-venissa.itvenuscrm.it	veosat.esverbasoft.netverdecchiastore.comverdeesvida.esverniciruopolo.itvero4travel.comverovolley.comvesubian.comveterinariadigital.comvetrocristallo.it	veyse.comvg7.itviadurini.deviadurini.itviaggiati.itviagginrete-it.itviajandonuestravida.comviajes24horas.comviajesdumonde.comvicartechz.comvideopacini.comviessmannitalia.it
-vietti.comvillacarlotta.itvilladeicedri.itvillaggiolidodabruzzo.itvillaggionirvana.itvillasanpietro.comvillavigoni.euvimarentacar.comvinciteallotto.it	vinero.itvinosphere.topvinyleapartments.itvipsystemdns.com	vipweb.itvirgodesignweb.comviritpro.org	virtus.itvisagemusic.itvisit-assisi.itvisit-greece.infovisitbrescia.itvisitcesenatico.itvisitmuve.itvisitvalsugana.itvisualtaf.itvitadiocesanapinerolese.itvitalyze.itvitoloparts.it
+usound.comusr.sicilia.itutemacsud.comutorpheus.comv4one.co.ukvacanzeconbimbi.itvacanzeinpuglia.netvacanzeitalia.orgvag-net.comvaielettrico.it	valeas.itvalenciabonita.esvalgardena-web.comvalixnutrition.itvalledaostaheritage.comvalledebaztan.comvalleumbrasport.itvalpaint.it
+valsana.itvalsusaoggi.itvaltline.itvaltortamaria.comvamospokertour.comvaporizzare.comvaticanoweb.comvdgimport.comvedetta.orgvejacrica.comvendiauto.comvenditoreadistanza.itvenexon.com
+venissa.itvenuscrm.it	veosat.esverbasoft.netverdecchiastore.comverdeesvida.esverniciruopolo.itvero4travel.comverovolley.comvesubian.comveterinariadigital.comvetrocristallo.it	veyse.comvg7.itviadurini.deviadurini.itviaggiareinpuglia.itviaggiati.itviagginrete-it.itviajandonuestravida.comviajes24horas.comviajesdumonde.comvicartechz.comvideopacini.comviessmannitalia.it
+vietti.comvillacarlotta.itvilladeicedri.itvillaggiolidodabruzzo.itvillaggionirvana.itvillasanpietro.comvillavigoni.euvimarentacar.comvinciteallotto.it	vinero.itvinosphere.topvinyleapartments.itvipsystemdns.com	vipweb.itvirgodesignweb.comviritpro.org	virtus.itvisagemusic.itvisit-assisi.itvisit-greece.infovisitbrescia.itvisitcesenatico.itvisitmuve.itvisitvalsugana.itvisualtaf.itvit-consulting.itvitadiocesanapinerolese.itvitalyze.itvitoloparts.it
 vivavox.itviversano.netvivipress.comvivogubbio.com
 vlahoi.netvocedeiberici.itvocedinapoli.itvoihotels.comvolandia.itvolantinopiu.comvolgarmente.comvolksbank.itvordencover.comvoyaverte.esvps-itsystemonline.itwamgroup.comwamgroup.com.br
+warian.net
 wds2026.itweb-engine.itweb-pre.com
 webbami.itwebbyslot.comwebcamcaorle.itwebgradeit.comwebhorizons.itwebhotelpro.netwebinteractive.itweborigo.euwebprincipal.com
 webserv.itweddingsintuscany.comweirdmarket.esweitlaner.itwelcomemrbaby.comweldracingparts.comwenat.itwheelsworld.it	wifire.itwikialgarve.ptwikisport.euwinelivery.comwipitalia.itwirnext.comwishlist.itwmepoint.com	wmnet.biz	wolnet.itwondercompany.itworlddaypass.com
 wroboto.es
 wskate.net
-wt-tech.itwwf.itx10d.netxenos.itxiconeditor.comxinfenggarden.com
+wt-tech.it	wuerth.itwwf.itwww.areanapoli.itwww.automoto.itwww.avvocatoandreani.itwww.bresciaoggi.itwww.galbani.itwww.gazzettadimantova.itwww.larena.itwww.mininterno.netwww.moto.itwww.nurse24.itwww.paramashop.itwww.staseraintv.comwww.traghettilines.itwww.trovacasa.itx10d.netxenos.itxiconeditor.comxinfenggarden.com
 xinwom.comxinyonglong.com
 xtranet.itxtrared.comxtreme-mountedgames.comyamaha-motogp.com
 yelodie.itymascoop.com	ynvia.com	yojiu.comyoseomarketing.comyoumeteo.comyourshoppingmap.comyurongchemical.comyxdcamera.comzafirotours.mxzanoni-man.itzanzariereshop.it	zavers.eszeat.euzenmarket.bizzerobyte.itzetaluiss.itzeus.itzhuoyilight.comzonadetailers.clzonahobby.comzsqeelin.comzsshpackaging.comzucchettiwellness.itzumboloferramenta.it

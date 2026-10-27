@@ -1,1 +1,1 @@
-bankgaborone.co.bwiway.najud.nanamwater.com.naombudsman.org.natw.navisitnamibia.com.na
+bankgaborone.co.bwiway.najud.nanamibiatourism.com.nanamwater.com.nanust.naombudsman.org.natw.navisitnamibia.com.na

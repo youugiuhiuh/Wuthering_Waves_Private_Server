@@ -18,4 +18,6 @@ telecu.net
 ueb.edu.ec
 
 ueffpt.com
-webenlinea.netambato.gob.ecbancomachala.comcesantiapn.com.eccudi.edu.mxgerardoortiz.comhotelubud.neticapval.comlatacunga.gob.ecmegahierro.commyhostingdomain.netportoviejo.gob.ecpresup.com.ecrecargasamerica.comtce.aerotejar.com.ecturisa.com.ecuebes.edu.ecupse.edu.ecwissen.edu.ec
+
+utn.edu.ec
+webenlinea.netambato.gob.ecbancomachala.comcesantiapn.com.eccudi.edu.mxgerardoortiz.comhotelubud.neticapval.comlatacunga.gob.ecmegahierro.commyhostingdomain.netpanel.recargasamerica.comportoviejo.gob.ecpresup.com.ecrecargasamerica.comtce.aerotejar.com.ecturisa.com.ecuebes.edu.ecupse.edu.ecwissen.edu.ec

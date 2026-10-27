@@ -1,1 +1,1 @@
-paluniv.edu.ps
+alistiqlal.edu.pspaluniv.edu.ps

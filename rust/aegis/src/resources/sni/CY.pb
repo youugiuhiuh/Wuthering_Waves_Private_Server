@@ -7,6 +7,10 @@
 163clubvulkan.com
 174clubvulkan.com
 18eldoradocasino24.com
+1w.run
+1win.com
+1win.ng
+1wtoken.com
 1xbet-casinosite.com
 1xbet-games.club
 1xbet-kasino.vip
@@ -103,6 +107,7 @@ basari.bet
 betsdota2.fun
 betsdota2.in
 boriscooper.com
+bundlecda.com
 casino-armada.pro
 casino-eldorado24.xyz
 casino-gmsdeluxe.pro
@@ -361,6 +366,8 @@ cs2.market
 kingvulkanoffical.com
 koulandhost.com
 leonsbets.com
+libs.smartikowheel.com
+lucky-star.com
 maaxbetslot.com
 maaxbetslots.com
 magic-drop.win
@@ -442,6 +449,9 @@ mycsgo.run
 newhorizonsventure.com
 odbhootstore.com
 official-playfortune.com
+one-vv1798.com
+one-vv3942.com
+one-vv7109.com
 online-7slots.net
 online-riobet.com
 online-slotozal.com
@@ -453,6 +463,7 @@ mycsgo.run
 original-vulkan.online
 original-vulkan.pro
 originalvulkan.net
+	panel.bet
 pharaon-777.top
 pharaon-casino-zerkalo.com
 pharaon-casino.online
@@ -506,6 +517,7 @@ mycsgo.run
 r-vull24.com
 
 r-wk1b.com
+r1wttde.life
 re-vull24.com
 redirect291.com
 redirect325.com
@@ -539,6 +551,7 @@ r-wk1b.com
 rubincasino.club
 rust.tm
 rusvulkan.co
+scontent.flca1-4.fna.fbcdn.net
 seastar584.casino
 selectorcasino-online.com
 selectorkasino-online.com
@@ -549,6 +562,7 @@ r-wk1b.com
 slotozal.com
 slotv-online.ltd
 sloty-vulkana.com
+smartigaming.app
 smpn1karawangtimur.sch.id
 solcasino.art
 stars-vulcan.info
@@ -557,6 +571,8 @@ r-wk1b.com
 startup.ngo
 teamspirit.gg
 tf2.tm
+tma.top
+top-parser.com
 
 topskin.co
 topskin.pro
@@ -583,6 +599,7 @@ topskin.co
 vk-stars.xyz
 vlkanclub.email
 vplatinumonline.net
+vpyewihe.com
 vstars103.com
 vstars146.com
 vstars153.com
@@ -720,7 +737,7 @@ wulkan.uno
 wulkankazino.com
 wulkanplatinum-casino.xyz
 wulkanstars.club2fakey.siteakel.org.cyaziaresort.comblockbllast.combroker-iqoption.com
-cgc.org.cychristian-louboutinoutlet.usclinicaderecuperacaobr.comcreagames.ruddlitalia.bizdorkofikis.grgoldendoorsmanagements.com	hekaye.ruhkar.ruib-trade.globalintermediaweb.lkiq-broker.coiqbroker.promoiqoption.appiqoption.co.idiqoption.co.thiqoption.orgiqoptions.coiqtrade.siteiqtrading.asiaiqtrading.meiqtrading.todayitrade.expert
+cgc.org.cychristian-louboutinoutlet.usclinicaderecuperacaobr.comcreagames.ruddlitalia.bizdorkofikis.grgoldendoorsmanagements.com	hekaye.ruhkar.ruib-trade.globalintermediaweb.lkiq-broker.coiqbroker.promoiqoption.appiqoption.co.idiqoption.co.thiqoption.netiqoption.orgiqoptions.coiqtrade.siteiqtrading.asiaiqtrading.meiqtrading.todayitrade.expert
 kgm.com.grkoek.org.cylaloo.cyletsgotours.commaisfex.commymbloo.com
 novazx.com
 oeb.org.cypacoartcenter.grprimetel.com.cyprostage.grprouductrev.onlineproworldtrade.comroyalrubberskerala.comsez.loltheiqoption.com

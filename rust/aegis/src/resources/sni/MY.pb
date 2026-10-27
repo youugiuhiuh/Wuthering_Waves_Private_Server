@@ -42,6 +42,7 @@ carzey.com
 chubb.com.my
 clarainternational.com
 clickwphosting.com
+cloud-zero.net
 cmhardwareshop.com
 computermalaysia.com.my
 createsify.com
@@ -74,10 +75,13 @@ ex-mag.com
 fasttrackacademy.my
 fathersguesthouse.net
 fireplus.com.my
+fiseiki.com
 fmos.org.my
 forexmalaysia.my
+formulamasa.com
 fotia.com.my
 freejapanesefont.com
+futbollibrepro.pe
 gasmalaysia.com
 gempakbox.net
 germanbeautyonline.com
@@ -107,11 +111,16 @@ heyjom.com
 
 ikn.edu.my
 imaxfinancial.com.my
+ instagram.fkul22-4.fna.fbcdn.net
+instagram.fkul6-4.fna.fbcdn.net
+instaspace.my
 investknowledgehub.com
 ipohecho.com.my
 
 istapp.net
 ithack.com.my
+
+jdn.gov.my
 	jesoc.com
 jlpw.com.my
 johnids.com
@@ -133,6 +142,7 @@ istapp.net
 kyspeaks.com
 laimayleng.com
 lensmart.com.sg
+lillian-too.com
 littlebabyshop.com.my
 lkim.gov.my
 louiewong.biz
@@ -146,6 +156,7 @@ istapp.net
 markantoffice.com
 matrimony-indian.my
 matrixschools.edu.my
+maxxmint.com
 mayfairwellness.com.my
 mc-florist.com
 mega888on.com
@@ -157,6 +168,7 @@ istapp.net
 motomalaysia.com
 motorcycle.my
 mpam.gov.my
+mpsepang.gov.my
 msgold.com.my
 muftiselangor.gov.my
 muser-my.com
@@ -215,6 +227,10 @@ qjmotor.my
 royalewin.co
 ruralcapital.com.my
 safwagv.net
+scontent.fkul22-1.fna.fbcdn.net
+scontent.fkul22-4.fna.fbcdn.net
+seemete.com
+selangor2026.com
 shanlux.com
 sheercollection.my
 sheltonmart.com.my
@@ -227,7 +243,9 @@ qjmotor.my
 skscitymalljbcc.com
 smpinhwa.edu.my
 sneakpeek.my
+sonar-kul2-1.xx.fbcdn.net
 songketboutique.com
+sono-ultrasound.com
 
 sql.com.my
 sqwebdev.com
@@ -283,29 +301,31 @@ zon2u.shop
 aikinz.comakdeepknowledge.comallianz-emerchandise.com.myallointernet.com.myalphazen.com.myalva.com.myame-engi.com.myamedev.com.my
 amz.com.myancgroup.bizandamanferry.com.myangsokahotel.comapps.myarahenvi.idardoranatural.comared.myarihantgifts.inascents.com.my
 asi.com.phaspmedic.comauctionguru.com.myauctionmart.myautocari.myaverteconline.com.myb2bfurnituresupply.comb2ucloud.combcpriok.net	bebond.my
-bestweb.mybfpehire-vismin.techbicyclebuysell.combigideas.com.mybigwise.com.mybionifera.combitboxhosting.com.mybmwclubmalaysia.comboostjuicebars.co.idbuccheri.idbugzstudio.combusinessappointment.combwealth.com.mybwengtat.com.my
+bestweb.mybfpehire-vismin.techbicyclebuysell.combigideas.com.mybigwise.com.mybionifera.combitboxhosting.com.mybmwclubmalaysia.comboostjuicebars.co.idbuccheri.idbugzstudio.combusinessappointment.combwealth.com.mybwengtat.com.mycaam.gov.my
 catcha.comcaterpillarcatoficial.com.brcbd.mycconlinenameserver.comcconlineserver.comcendanasolutions.comchakrasuria.com.mychakrasuria.netchhsban.edu.myclassicchair.com.myclinexmy.comcloudspace.com.mycompumed.com.myconsumer.org.mycsnathan.com
-ctaini.comctc-g.com.mycuticutilangkawi.comcuxtomlab.comcworks.com.mydaaiplus.comdan777aula.com
+ctaini.comctc-g.com.mycustomerportal.iwk.com.mycuticutilangkawi.comcuxtomlab.comcworks.com.mydaaiplus.comdan777aula.comdanawa.com.my
 dbp.gov.mydbs.comdcap.mydendentown.onlinederhu.com.mydesaplus.comdftracker.comdhumall.comdiecut.com.my
-digi28.comdigital-civilization.comdims.com.mydiskspace.livedosbods.comdotventures.com.mydpwpkbsumut.iddutaland.com.my
-e-print.myeasramaharian.myeasyhosting2u.comeatplayfun.comecoworld.myedwardkoo.comeheyns.com.my
-ehleet.comeighties.com.myekocherasmall.comelearning.edu.myeltete.com.myembassyalliance.comembassyislamabad.comenrichrealtors.myentrepreneurgrowthhub.com.myeunique.com.my
+digi28.comdigital-civilization.comdims.com.mydiskspace.livedosbods.comdotventures.com.mydpwpkbsumut.iddutaland.com.my	e-maik.my
+e-print.my
+e-print.sgeasramaharian.myeasyhosting2u.comeatplayfun.comecoworld.myecr.uitm.edu.myedaftar.usm.myedwardkoo.comeheyns.com.my
+ehleet.comeighties.com.myekocherasmall.comekonomi.gov.myelearning.edu.myeltete.com.myembassyalliance.comembassyislamabad.comenrichrealtors.myentrepreneurgrowthhub.com.myeqms.doe.gov.myeunique.com.my
 eweb2u.comexaw.comexpatgo.comezbizservices.com.myfaizfahmi.comfederalpack.com.myfirewall.com.myfirstclasse.com.myfkipunsri.comflashdigital.my
-fmm.org.myforetblanc.comfotileglobal.comfozgroup.comfraganciahouse.comfreestreams-live.myfreestreams-live1d.pkfreestreams-live1e.pkfreestreams-live1f.pkfrim.gov.myfullcontact.myfzhtechnology.com.my	gabino.idganoexcel2u.comgeekelectronick.comgeluktech.comgemainsani.co.idgene-advance.com.mygeorgetownfestival.comgetranked.com.myglobalsafe.com.mygloftad.comglomac.com.mygogreenonline.netgourmandines-egrocer.com.mygp1internet1bd.comgpqsb.com.my
+fmm.org.myforetblanc.comfotileglobal.comfozgroup.comfraganciahouse.comfreestreams-live.myfreestreams-live1d.pkfreestreams-live1e.pkfreestreams-live1f.pkfreestreams-live1h.pkfrim.gov.myfullcontact.myfzhtechnology.com.my	gabino.idganoexcel2u.comgeekelectronick.comgeluktech.comgemainsani.co.idgene-advance.com.mygeorgetownfestival.comgetranked.com.myglobalsafe.com.mygloftad.comglomac.com.mygogreenonline.netgourmandines-egrocer.com.mygp1internet1bd.comgpqsb.com.my
 gse.com.myhealthsity.comhelanglotto.asia
 hinlim.comhissolutions.nethoyo.globali-neighbour.com
-i-sweep.myicashosting.neticherrytech.comicore.com.myidgs.myinfofish.orginixlsgloves.cominsage.com.myintechscientific.com.myintellspeed.comintiderasmotors.blogintimes.com.myinvestors-centre.com	iscent.myisecurehosts.comitmark.com.myizamigadget.comjaykayenn.netjestineyong.comjetour.com.myjodohdaruliman.comjohorport.com.myjplubricant.comjuiceapac.com.myjunipersjournal.comkabulschool.orgkayzasia.comkenangacity.com.myklgadgetguy.com
-klk.com.my	kooxt.comkoperasisriseremban.netkq8svip.netkrsmusleh.com
+i-sweep.myicashosting.neticherrytech.comicore.com.myidgs.myinfofish.orginixlsgloves.cominsage.com.myintechscientific.com.myintellspeed.comintiderasmotors.blogintimes.com.myinvestors-centre.com	iscent.myisecurehosts.comitmark.com.my
+iwk.com.myizamigadget.comjaykayenn.netjestineyong.comjetour.com.myjodohdaruliman.comjohorport.com.myjplubricant.comjuiceapac.com.myjunipersjournal.comkabulschool.orgkayzasia.comkenangacity.com.myklgadgetguy.com
+klk.com.mykmlink.com.my	kooxt.comkoperasisriseremban.netkq8svip.netkrsmusleh.com
 kunkwan.id
 kunkwan.mylagenzgroup.comlangkawiferryline.comlasoftsync.comlatbangbkkbnjatim.com
 lfs.com.mylienteh.netlineclearexpress.comluckyplates.comm-plan2u.com
 macoob.com	magnum.mymalacca-hotel.netmalaysia2host.com malaysianbuddhistassociation.orgmasjidsaidinaali.com.mymccc.mymcwmalaysia.commeam.org.mymedimart.com.mymelodiamusik.commeritgas.com.my
 mip.org.mymiraity.commizuexpert.com.mymobibossmarket.netmobilefokus.com
-mod.gov.mympmhq.org.mymresort-hotel.com.mymsbaconsultancyservices.commust.edu.mymxclinic.com.mymy-serve.commyauto.com.my
-mycloud.mymyduniahost.commyedusoft.commyglorybiz.commyiem.org.mymyipserver.netmyix.mymykoptnb.commyland.gov.mymyranner.commz356allu.comnblmt.com.myneasa-hosting.comnesistaff.comnetiquette.asianmrr.gov.mynoscomsolution.comodm-emerchandise.comoenumber.comonestydigital.comorchid-dynasty.comoskfilter.com.my	otpam.comoverhaulmotor.compaboritongonlinecasino.compacificpaint.compahangmedia.mypandariders.mypangkorferry.com	pdd52.compenangpropertysale.compersagi.orgpfsb.com.myphhp.com.mypilates.com.myplenitudeit.com.mypodesigns.netpolibanting.edu.mypolyon.com.myportaltrading.com.myprintcious.comprobcentre.comprojectsunlimited.com.phptcservice.net	pxxjyj.cnqbistro.com	qjssh.comqragoracloud.comquestra.com.myredone.com.myregs.netreihe13.netremarkableborneotours.comrestoration.asiarevotech.com.my
+mod.gov.mymohon.tvet.gov.mympmhq.org.mymresort-hotel.com.mymsbaconsultancyservices.commschosting.commuip.gov.mymust.edu.mymxclinic.com.mymy-serve.commyauto.com.my
+mycloud.mymyduniahost.commyedusoft.commyglorybiz.commyiem.org.mymyipserver.netmyix.mymykoptnb.commyland.gov.mymyranner.commz356allu.comnblmt.com.myneasa-hosting.comnesistaff.comnetiquette.asianmrr.gov.mynoscomsolution.comodm-emerchandise.comoenumber.comonemrsm.comonestydigital.comorchid-dynasty.comoskfilter.com.my	otpam.comoverhaulmotor.compaboritongonlinecasino.compacificpaint.compahangmedia.mypandariders.mypangkorferry.com	pdd52.compenangpropertysale.compersagi.orgpfsb.com.myphhp.com.mypilates.com.myplenitudeit.com.mypntsystems.mypodesigns.netpolibanting.edu.mypolyon.com.myportaltrading.com.myprintcious.comprobcentre.comprojectsunlimited.com.phptcservice.net	pxxjyj.cnqbistro.com	qjssh.comqragoracloud.comquestra.com.myredone.com.myregs.netreihe13.netremarkableborneotours.comrestoration.asiarevotech.com.my
 rg2026.topridocolor.com	rjhb8.com
-rjpdd3.comrspremierbintaro.comrspremierjatinegara.comrspremiersurabaya.coms1-mktg.coms2-mktg.comsabah-fc.comsarawakforestry.comsarmanprinting.comsavevalue2u.com.mysecurifi.com.mysengkongfishery.comsevenvirtual.netshareserver.netshchooi.comsheeness.comsign-ific-ance.co.uksilverskytravelskt.comsjoba.org.myskypagehosting.comsnapwill.com.mysnesports.cosolutions4u-asia.comsophiaeducation.sgspkworks.mysrias.co.insummerie.mysupersavetradings.com	t20npl.intafeseremban.edu.mytalentbookstore.comtealive.com.myteg-digital.comtezgateway.comthechickenriceshop.comthewonderpillars.com
+rjpdd3.comrspremierbintaro.comrspremierjatinegara.comrspremiersurabaya.coms1-mktg.coms2-mktg.comsabah-fc.comsarawakadvocates.com.mysarawakforestry.comsarmanprinting.comsavevalue2u.com.mysecurifi.com.mysengkongfishery.comsevenvirtual.netshareserver.netshchooi.comsheeness.comsign-ific-ance.co.uksilverskytravelskt.comsjoba.org.myskypagehosting.comsnapwill.com.mysnesports.cosolutions4u-asia.comsophiaeducation.sgspkworks.mysrias.co.insso.digital-id.mysummerie.mysupersavetradings.com	t20npl.intafeseremban.edu.mytalentbookstore.comtealive.com.myteg-digital.comtezgateway.comthechickenriceshop.comthewonderpillars.comtips.tvet.gov.my
 tis.edu.mytlink.com.mytngdigital.com.mytonggardenintranetlive.comtradexpoindonesia.comtrianon.com.phtruckmart.com.my
-tt4747.comtzuchi.or.idummulqura.bizunicart4u.counidentalbbst.myunirazak.edu.my
-uoahub.comurdumaza.comvcompro.comveotronics.comvoiceofasean.comvpowermotor.com.myvs-i.comvswatchjewellery.com	vtpdd.comwaszaedukids.comwawasanservices.comwebmaxerp.comwelly.com.mywenesthosting.comwinnson.comwwtea.com.my
+tt4747.comtzuchi.or.idummulqura.bizunicart4u.counidentalbbst.myunirazak.edu.myunistudent.upsi.edu.my
+uoahub.comurdumaza.comuthm.edu.myvcompro.comveotronics.comvoiceofasean.comvpowermotor.com.myvs-i.comvswatchjewellery.com	vtpdd.comwaszaedukids.comwawasanservices.comwebmaxerp.comwelly.com.mywenesthosting.comwinnson.comwwtea.com.mywww.condo-master.com
 y89aula.ccyawatim.comytlesolutions.com
