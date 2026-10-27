@@ -107,8 +107,9 @@ enum Command {
         /// 阶段间状态文件（替代三段 CSV 传参，支持断点续跑）
         #[arg(long = "state", default_value = "sni_probe_state.bin")]
         state_file: PathBuf,
-        #[arg(long = "out-dir", default_value = "rust/aegis/src/resources/sni")]
-        out_dir: PathBuf,
+        /// 输出目录（缺省自动定位仓库内的 resources/sni）
+        #[arg(long = "out-dir")]
+        out_dir: Option<PathBuf>,
         #[arg(long = "geo", default_value = "ipinfo_lite.mmdb")]
         geo: PathBuf,
         #[arg(short = 'w', long, default_value_t = 100)]
@@ -173,8 +174,9 @@ enum Command {
     BuildPools {
         #[arg(short = 'f', long = "file", default_value = "survived_candidates.csv")]
         input: PathBuf,
-        #[arg(long = "out-dir", default_value = "rust/aegis/src/resources/sni")]
-        out_dir: PathBuf,
+        /// 输出目录（缺省自动定位仓库内的 resources/sni）
+        #[arg(long = "out-dir")]
+        out_dir: Option<PathBuf>,
         #[arg(long = "geo", default_value = "ipinfo_lite.mmdb")]
         geo: PathBuf,
         #[arg(short = 'w', long, default_value_t = 100)]
@@ -310,6 +312,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 timeout,
                 max_lines,
             } => {
+                let out_dir = out_dir.unwrap_or_else(resource::default_sni_dir);
                 if !run::state_outside_output(&state_file, &out_dir) {
                     return Err(format!(
                         "状态文件 {} 不能放在输出目录 {} 内",
@@ -429,6 +432,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 timeout,
                 max_lines,
             } => {
+                let out_dir = out_dir.unwrap_or_else(resource::default_sni_dir);
                 geodl::ensure_mmdb(&geo, None, |msg| println!("{msg}"))
                     .await
                     .map_err(|e| format!("GeoDB 不可用：{e}"))?;

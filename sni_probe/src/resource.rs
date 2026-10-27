@@ -115,6 +115,29 @@ pub fn cpu_cores() -> u64 {
         .unwrap_or(1)
 }
 
+/// `.pb` 资源目录在仓库内的相对位置。
+const SNI_DIR_REL: &str = "rust/aegis/src/resources/sni";
+
+/// 定位 `.pb` 输出目录，不依赖当前工作目录。
+///
+/// 默认值是相对路径，在 `sni_probe/` 子目录里执行时会静默落到
+/// `sni_probe/rust/aegis/...`，老资源不会被读到也就不会被合并。
+/// 这里从 cwd 逐级向上找仓库根（同时有 `.git` 和 `rust/aegis`），
+/// 强制要求这个组合才能避开上述误建目录；找不到则退回旧行为。
+pub fn default_sni_dir() -> std::path::PathBuf {
+    let rel = std::path::Path::new(SNI_DIR_REL);
+    if let Ok(cwd) = std::env::current_dir() {
+        for dir in cwd.ancestors() {
+            // 仓库根必须同时具备版本目录和 aegis 工程，
+            // 只查 rel.is_dir() 会被 sni_probe/rust/... 这种误建目录骗到。
+            if dir.join(".git").exists() && dir.join("rust/aegis").is_dir() {
+                return dir.join(rel);
+            }
+        }
+    }
+    rel.to_path_buf()
+}
+
 /// 根据实测资源推算安全并发。
 pub fn budget() -> ConcurrencyBudget {
     budget_from(fd_soft_limit(), cpu_cores())
@@ -306,5 +329,20 @@ mod tests {
         assert!(cores >= 1);
         let b = budget();
         assert!(b.recommended() >= 1);
+    }
+
+    /// 不得把 `sni_probe/rust/...` 这种误建目录当成仓库根。
+    #[test]
+    fn default_sni_dir_is_absolute_and_anchored_at_repo_root() {
+        let dir = default_sni_dir();
+        // 在仓库内跑时必须解析成绝对路径，且不再自带 sni_probe 前缀
+        if dir.is_absolute() {
+            assert!(
+                !dir.to_string_lossy().contains("/sni_probe/rust/"),
+                "误把子目录里的 rust/ 当成仓库根: {}",
+                dir.display()
+            );
+            assert!(dir.ends_with("rust/aegis/src/resources/sni"));
+        }
     }
 }
