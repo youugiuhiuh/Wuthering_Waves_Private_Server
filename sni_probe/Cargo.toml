@@ -15,7 +15,7 @@ anyhow = "1"
 boring = { version = "5.3", features = ["pq-experimental"] }
 hickory-resolver = "0.26.3"
 maxminddb = "0.32"
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 prost = "0.14.4"
 tokio-socks = "0.5.3"
 ipnet = "2.12.2"
