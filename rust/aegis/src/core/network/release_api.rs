@@ -105,6 +105,22 @@ pub async fn fetch_prerelease(
         .ok_or_else(|| anyhow!("No prerelease found"))
 }
 
+/// 取 GitHub 返回列表中的**最新版**（列表已按发布时间倒序）。
+///
+/// 供 Xray-core 使用，**语义与 `fetch_prerelease` 不同且不可互相替代**：
+/// 上游 XTLS/Xray-core 平时发布 `prerelease: true`，偶尔把某个版本标为正式版。
+/// 若像 sing-box 那样「只要 prerelease」，就会跳过更新的正式版
+/// （实测：v26.10.21 是正式版、v26.9.30 仍是 prerelease，按 prerelease
+/// 过滤会装到旧的 v26.9.30）。Xray 侧要的是「最新」，与是否预发行无关。
+///
+/// sing-box 仍走 `fetch_prerelease`，两条发行通道必须保持独立。
+pub fn pick_latest_release(releases: Vec<ReleaseResponse>) -> Result<ReleaseResponse> {
+    releases
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("No release found"))
+}
+
 pub fn parse_digest(input: &str) -> Option<String> {
     let lower = input.to_lowercase();
     lower
@@ -211,6 +227,33 @@ mod tests {
             digest: None,
         };
         assert_eq!(asset.download_url(), "");
+    }
+
+    fn release(tag: &str, prerelease: bool) -> ReleaseResponse {
+        ReleaseResponse {
+            tag_name: tag.to_string(),
+            body: None,
+            assets: vec![],
+            prerelease,
+        }
+    }
+
+    // 回归：Xray 上游把最新版标为正式版、旧版仍标 prerelease 时，
+    // 必须拿到最新那条，而不是第一个 prerelease。
+    #[test]
+    fn test_pick_latest_release_prefers_newest_not_prerelease() {
+        let picked = pick_latest_release(vec![
+            release("v26.10.21", false),
+            release("v26.9.30", true),
+            release("v26.9.9", true),
+        ])
+        .expect("should pick");
+        assert_eq!(picked.tag_name, "v26.10.21");
+    }
+
+    #[test]
+    fn test_pick_latest_release_errors_on_empty() {
+        assert!(pick_latest_release(vec![]).is_err());
     }
 
     #[test]

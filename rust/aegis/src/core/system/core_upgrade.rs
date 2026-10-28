@@ -3,7 +3,7 @@ use crate::core::cmd_async::run_cmd_status;
 use crate::core::crypto::minisign::{self, MINISIGN_ACTIVE_KEYS, MINISIGN_HISTORICAL_KEYS};
 use crate::core::network::release_api::{
     ReleaseAsset, ReleaseResponse, extract_sha256_from_body, fetch_json_from_mirrors,
-    fetch_prerelease, find_minisig_asset, parse_digest, parse_sha256_manifest,
+    find_minisig_asset, parse_digest, parse_sha256_manifest, pick_latest_release,
 };
 use crate::core::paths::xray;
 use crate::core::system::core_health::{
@@ -279,8 +279,13 @@ impl WwpsCoreUpgradeManager {
             fetch_json_from_mirrors(&self.client, &bases, &path, self.github_token.as_deref())
                 .await?
         } else {
+            // Xray 侧要「最新」，不看 prerelease 标记——详见 `pick_latest_release`
+            // 的文档。sing-box 继续走 `fetch_prerelease`，两条通道互不影响。
             let path = format!("{}/{}/releases?per_page=20", config.owner, config.repo);
-            fetch_prerelease(&self.client, &bases, &path, self.github_token.as_deref()).await?
+            let releases: Vec<ReleaseResponse> =
+                fetch_json_from_mirrors(&self.client, &bases, &path, self.github_token.as_deref())
+                    .await?;
+            pick_latest_release(releases)?
         };
 
         let asset_name = format!("{}.zip", config.arch.asset_basename());
