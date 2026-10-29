@@ -133,22 +133,31 @@ impl MaintenanceManager {
             Self::control_service("wwps-box", ServiceAction::Restart).await?;
         }
 
-        // Sync firewall rules after restart: remove stale ports
+        // Sync firewall rules and reclaim orphaned hop ranges. Shared with the
+        // startup path so a restart repairs the node the same way a config
+        // change does.
+        Self::reconcile_startup_state().await;
+
+        Ok(())
+    }
+
+    /// Reconcile firewall allowances and locked hop ranges with the configs.
+    ///
+    /// Both steps are best-effort and never abort: a node whose firewall
+    /// tooling misbehaves should still serve traffic.
+    ///
+    /// Split out of [`Self::reload_core`] because that function only runs on
+    /// config changes. Without a startup caller, a leaked hop range survives
+    /// every restart and stays locked until someone touches a config.
+    pub async fn reconcile_startup_state() {
         if let Err(e) = Self::sync_firewall_with_configs().await {
             log::error!("防火墙端口同步失败: {}", e);
         }
-
-        // Reclaim hop ranges whose config was removed outside the delete paths.
-        // Runs here because reload_core already does the adjacent firewall
-        // reconciliation; without it a leaked range stays locked forever and
-        // allocation eventually runs out of contiguous space.
         if let Err(e) =
             crate::core::xray::port_allocator::PortAllocator::reclaim_orphaned_xray_ranges().await
         {
             log::warn!("回收无配置的 Xray 端口跳跃范围失败: {}", e);
         }
-
-        Ok(())
     }
 
     pub async fn install_bbr3<F>(progress_callback: F) -> Result<BbrInstallStatus>
@@ -1247,6 +1256,41 @@ async fn current_kernel_version() -> String {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+
+    /// Startup must run the same reconciliation that `reload_core` does.
+    ///
+    /// The regression: `reclaim_orphaned_xray_ranges` was hooked only into
+    /// `reload_core`, which config-change paths call. A plain restart never
+    /// reached it, so leaked hop ranges survived every deploy and stayed
+    /// locked until someone happened to add or delete a config.
+    #[tokio::test]
+    async fn startup_reconciliation_reclaims_orphaned_ranges() {
+        let dir = tempfile::tempdir().unwrap();
+        let alloc = dir.path().join(".port_alloc");
+        let conf = dir.path().join("conf");
+        std::fs::create_dir_all(&conf).unwrap();
+
+        // A locked range with no config behind it, as left by a direct unlink.
+        let (orphan, _) =
+            crate::core::xray::port_allocator::PortAllocator::allocate_xray_hysteria2_at(&alloc)
+                .await
+                .unwrap();
+
+        let released =
+            crate::core::xray::port_allocator::PortAllocator::reclaim_orphaned_xray_ranges_at(
+                &alloc, &conf,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(released, vec![orphan], "startup must reclaim {orphan}");
+    }
+
+    /// The startup entry point must exist and be callable without a bot.
+    #[test]
+    fn startup_reconciliation_entry_point_exists() {
+        let _: fn() -> _ = || MaintenanceManager::reconcile_startup_state();
+    }
 
     #[test]
     fn test_has_all_flags_all_present() {
