@@ -43,6 +43,12 @@ async fn main() -> Result<()> {
     // 正常启动：校验完整性后再加载配置
     verify_integrity().await?;
 
+    // Repair firewall allowances and locked hop ranges before the bot starts.
+    // `reload_core` does this too, but only config changes reach it: without a
+    // startup call a leaked range survives every restart and stays locked.
+    // Best-effort by design — it must never block startup.
+    MaintenanceManager::reconcile_startup_state().await;
+
     let (app_config, security) = main::config::load_and_validate()?;
 
     let has_matrix = main::matrix::has_matrix_config(&app_config.decrypted.encrypted_config, &args);

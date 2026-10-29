@@ -99,22 +99,71 @@ impl ConfigManager {
         let mut ports = std::collections::HashSet::new();
         for file in &files {
             if let Ok(content) = fs::read_to_string(file).await {
-                if let Ok(json) = serde_json::from_str::<Value>(&content)
-                    && let Some(inbounds) = json.get("inbounds").and_then(|v| v.as_array())
-                {
-                    for inbound in inbounds {
-                        if let Some(port) = inbound.get("port").and_then(|v| v.as_u64())
-                            && port <= u16::MAX as u64
-                        {
-                            ports.insert(port as u16);
-                        }
-                    }
+                if let Ok(json) = serde_json::from_str::<Value>(&content) {
+                    Self::collect_ports_from_config(&json, &mut ports);
                 }
             } else {
                 log::warn!("无法读取配置文件: {}", file);
             }
         }
         Ok(ports)
+    }
+
+    /// Add every port a config actually needs open, hop ranges included.
+    ///
+    /// Hysteria2 hopping listens on the whole `udpHop` range even though the
+    /// inbound declares only `port`, so a main port alone is not enough.
+    /// `sync_firewall_with_configs` treats anything missing from this set as
+    /// stale and removes it, so omitting the range made every sync delete the
+    /// allowances of a live hopping config. sing-box's counterpart
+    /// (`extract_ports_recursive`) already includes its hop range for exactly
+    /// this reason.
+    ///
+    /// The range is read from `udpHop.ports` (`"10301-10399"`) rather than
+    /// assumed as `port+1..port+99`, so cleanup follows whatever was written.
+    pub fn collect_ports_from_config(json: &Value, ports: &mut std::collections::HashSet<u16>) {
+        let Some(inbounds) = json.get("inbounds").and_then(|v| v.as_array()) else {
+            return;
+        };
+        for inbound in inbounds {
+            let Some(port) = inbound
+                .get("port")
+                .and_then(|v| v.as_u64())
+                .and_then(|p| u16::try_from(p).ok())
+            else {
+                continue;
+            };
+            ports.insert(port);
+
+            let hop = inbound
+                .get("streamSettings")
+                .and_then(|s| s.get("finalmask"))
+                .and_then(|f| f.get("quicParams"))
+                .and_then(|q| q.get("udpHop"))
+                .and_then(|h| h.get("ports"))
+                .and_then(|p| p.as_str());
+            if let Some(spec) = hop {
+                Self::collect_hop_range(spec, ports);
+            }
+        }
+    }
+
+    /// Expand a `"START-END"` hop spec into individual ports.
+    ///
+    /// Malformed or reversed specs are ignored rather than guessed: the caller
+    /// already inserted the main port, and inventing a range would whitelist
+    /// ports nothing listens on.
+    fn collect_hop_range(spec: &str, ports: &mut std::collections::HashSet<u16>) {
+        let Some((start, end)) = spec.split_once('-') else {
+            return;
+        };
+        let (Ok(start), Ok(end)) = (start.trim().parse::<u16>(), end.trim().parse::<u16>()) else {
+            return;
+        };
+        if start > end {
+            return;
+        }
+        ports.extend(start..=end);
     }
 
     /// Filename prefix identifying the batch file family for a protocol.
