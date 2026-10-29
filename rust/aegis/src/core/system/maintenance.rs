@@ -138,6 +138,16 @@ impl MaintenanceManager {
             log::error!("防火墙端口同步失败: {}", e);
         }
 
+        // Reclaim hop ranges whose config was removed outside the delete paths.
+        // Runs here because reload_core already does the adjacent firewall
+        // reconciliation; without it a leaked range stays locked forever and
+        // allocation eventually runs out of contiguous space.
+        if let Err(e) =
+            crate::core::xray::port_allocator::PortAllocator::reclaim_orphaned_xray_ranges().await
+        {
+            log::warn!("回收无配置的 Xray 端口跳跃范围失败: {}", e);
+        }
+
         Ok(())
     }
 

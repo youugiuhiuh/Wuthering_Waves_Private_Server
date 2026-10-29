@@ -15,7 +15,7 @@ use crate::shared::handlers::message::provider_credential_guidance;
 use crate::shared::types::{CallbackEvent, HandlerAction, HandlerResult};
 use crate::utils;
 use rust_i18n::t;
-use std::fs;
+use std::path::PathBuf;
 
 // ── Standalone TLS xhttp ──────────────────────────────────────────────
 
@@ -1089,14 +1089,10 @@ async fn handle_cfg_del_all_exec(event: &CallbackEvent) -> HandlerResult {
         let files = ConfigManager::list_inbound_files_by_proto(proto)
             .await
             .unwrap_or_default();
-        let count = files.len();
-        for f in &files {
-            let _ = fs::remove_file(f);
-        }
-        if count > 0 {
-            let _ = MaintenanceManager::reload_core().await;
-        }
-        count
+        // Goes through the core delete path so hop ranges are released. A bare
+        // `fs::remove_file` loop left them locked in `.port_alloc` forever.
+        let paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
+        ConfigManager::delete_files_at(&paths, None).await
     };
     event
         .adapter
@@ -1197,16 +1193,14 @@ async fn handle_cfg_del_exec_count(event: &CallbackEvent) -> HandlerResult {
     }
     file_with_time.sort_by_key(|a| a.1);
 
-    let to_delete = file_with_time.iter().take(n);
-    let mut deleted_count = 0;
-    for (f, _) in to_delete {
-        if fs::remove_file(f).is_ok() {
-            deleted_count += 1;
-        }
-    }
-    if deleted_count > 0 {
-        let _ = MaintenanceManager::reload_core().await;
-    }
+    let to_delete: Vec<PathBuf> = file_with_time
+        .iter()
+        .take(n)
+        .map(|(f, _)| PathBuf::from(f))
+        .collect();
+    // Shared core path so hop ranges are released; a bare `fs::remove_file`
+    // loop leaked them into `.port_alloc` permanently.
+    let deleted_count = ConfigManager::delete_files_at(&to_delete, None).await;
     event
         .adapter
         .answer_callback(

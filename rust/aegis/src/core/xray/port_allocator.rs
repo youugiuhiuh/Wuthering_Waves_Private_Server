@@ -335,6 +335,78 @@ impl PortAllocator {
             .map(|r| (r.start, (r.start + 1, r.end)))
             .collect()
     }
+
+    /// Release Xray Hysteria2 ranges that no live config backs any more.
+    ///
+    /// The delete paths release a range only when they can still read the
+    /// config's main port. A config removed by any other means (a handler that
+    /// unlinks directly, a crash between unlink and release) leaves its range
+    /// locked forever: allocation skips those ports permanently.
+    ///
+    /// Returns the main ports actually released.
+    pub async fn reclaim_orphaned_xray_ranges() -> Result<Vec<u16>> {
+        Self::reclaim_orphaned_xray_ranges_at(
+            &PathBuf::from(PORT_ALLOC_FILE),
+            Path::new(xray::CONF_DIR),
+        )
+        .await
+    }
+
+    /// Same as [`reclaim_orphaned_xray_ranges`], with explicit paths for tests.
+    ///
+    /// A range is orphaned when no config in `conf_dir` reports that main port
+    /// as a hopping inbound. Detection reuses [`ConfigManager::extract_xray_hy2_hop_ports`]
+    /// so the content rule (protocol `hysteria` + `udpHop`) cannot drift from
+    /// the delete path's.
+    pub async fn reclaim_orphaned_xray_ranges_at(
+        alloc_path: &Path,
+        conf_dir: &Path,
+    ) -> Result<Vec<u16>> {
+        let data = load_port_alloc_at(alloc_path).await.unwrap_or_default();
+        let locked: Vec<u16> = data
+            .locked_ranges
+            .iter()
+            .filter(|r| r.protocol == XRAY_HY2_PROTOCOL)
+            .map(|r| r.start)
+            .collect();
+        if locked.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Everything a live config claims, across every file in the dir.
+        let mut live = HashSet::new();
+        if let Ok(mut entries) = fs::read_dir(conf_dir).await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                let path = entry.path();
+                if path.extension().is_some_and(|ext| ext == "json")
+                    && let Some(p) = path.to_str()
+                    && let Ok(ports) =
+                        crate::core::xray::config::ConfigManager::extract_xray_hy2_hop_ports(p)
+                            .await
+                {
+                    live.extend(ports);
+                }
+            }
+        }
+
+        let mut released = Vec::new();
+        for main_port in locked {
+            if live.contains(&main_port) {
+                continue;
+            }
+            Self::release_xray_hysteria2_range_at(alloc_path, main_port).await?;
+            released.push(main_port);
+        }
+
+        if !released.is_empty() {
+            log::warn!(
+                "已回收 {} 个无配置的 Xray Hysteria2 端口跳跃范围: {:?}",
+                released.len(),
+                released
+            );
+        }
+        Ok(released)
+    }
 }
 
 #[cfg(test)]

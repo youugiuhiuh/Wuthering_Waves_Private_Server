@@ -27,9 +27,18 @@ trait FirewallD1 {
 )]
 trait FirewallD1Zone {
     #[zbus(name = "addPort")]
-    fn add_port(&self, zone: &str, port: &str, protocol: &str, timeout: i32) -> zbus::Result<()>;
+    // firewalld replies with the zone name (`s`), not nothing. Declaring `()`
+    // here made every runtime call fail with `Signature mismatch`, silently
+    // disabling all runtime port allowances.
+    fn add_port(
+        &self,
+        zone: &str,
+        port: &str,
+        protocol: &str,
+        timeout: i32,
+    ) -> zbus::Result<String>;
     #[zbus(name = "removePort")]
-    fn remove_port(&self, zone: &str, port: &str, protocol: &str) -> zbus::Result<()>;
+    fn remove_port(&self, zone: &str, port: &str, protocol: &str) -> zbus::Result<String>;
     #[zbus(name = "queryPort")]
     fn query_port(&self, zone: &str, port: &str, protocol: &str) -> zbus::Result<bool>;
     #[zbus(name = "setTarget")]
@@ -480,5 +489,27 @@ mod tests {
         let ports = parse_firewalld_ports(output);
         assert!(ports.contains(&22));
         assert_eq!(ports.len(), 1);
+    }
+
+    /// The runtime `zone` interface returns the zone name as a string.
+    ///
+    /// firewalld 2.3.1 declares (verified with `busctl introspect`):
+    /// `addPort(sssi) -> s`, `removePort(sss) -> s`, `queryPort(sss) -> b`.
+    ///
+    /// Declaring `-> ()` for a method that returns `s` makes every call fail
+    /// at deserialisation with `Signature mismatch: got \`s\`, expected \`\``,
+    /// which silently disabled every runtime port allowance in production.
+    /// Forcing the awaited reply into a `String` binding makes a regression a
+    /// compile error here instead of a silent prod warning.
+    #[test]
+    fn test_runtime_zone_proxy_reply_types_match_firewalld() {
+        // Only type-checked, never executed: no D-Bus connection is made.
+        #[allow(dead_code)]
+        async fn reply_types(p: &FirewallD1ZoneProxy<'_>) {
+            let added: String = p.add_port("public", "80", "tcp", 0).await.unwrap();
+            let removed: String = p.remove_port("public", "80", "tcp").await.unwrap();
+            let queried: bool = p.query_port("public", "80", "tcp").await.unwrap();
+            let _ = (added, removed, queried);
+        }
     }
 }
