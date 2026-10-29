@@ -708,6 +708,26 @@ impl ConfigManager {
         }
     }
 
+    /// Delete an explicit list of config paths, releasing each hop range.
+    ///
+    /// The proto-filtered bulk handlers used to `fs::remove_file` directly, so
+    /// no range was ever released: the config vanished but `.port_alloc` kept
+    /// the range locked forever. They now go through this function.
+    ///
+    /// Returns how many files were actually removed.
+    pub async fn delete_files_at(paths: &[PathBuf], alloc_file: Option<&Path>) -> usize {
+        let mut deleted = 0;
+        for path in paths {
+            if Self::delete_file_then_release_hop(&path.to_string_lossy(), alloc_file).await {
+                deleted += 1;
+            }
+        }
+        if deleted > 0 {
+            let _ = crate::core::system::maintenance::MaintenanceManager::reload_core().await;
+        }
+        deleted
+    }
+
     pub async fn delete_all_configurations() -> Result<usize> {
         let files = Self::list_all_inbound_files().await?;
         let count = files.len();
