@@ -343,3 +343,129 @@ async fn failed_delete_must_not_release_the_range() {
          free the ports of a live config"
     );
 }
+
+// ── orphan reconciliation ────────────────────────────────────────────
+//
+// The delete paths release a range only when they can read the config's main
+// port. Anything that removes a config WITHOUT going through those paths (a
+// manual `fs::remove_file`, a handler that bypasses `ConfigManager`, a crash
+// between unlink and release) leaves the range locked forever. Allocation then
+// skips those ports permanently and eventually `find_consecutive_range` runs
+// out of space.
+//
+// Production hit exactly this: three `xray-hysteria2` ranges were locked with
+// no config and no iptables rule behind them.
+
+#[tokio::test]
+async fn orphaned_range_without_a_config_is_reclaimed() {
+    let dir = tempfile::tempdir().unwrap();
+    let alloc = dir.path().join(".port_alloc");
+    let conf_dir = dir.path().join("conf");
+    std::fs::create_dir_all(&conf_dir).unwrap();
+
+    // Arrange: a locked range whose config was already removed.
+    let (orphan, _) = PortAllocator::allocate_xray_hysteria2_at(&alloc)
+        .await
+        .unwrap();
+    assert_eq!(xray_main_ports(&alloc), vec![orphan]);
+
+    // Act: reconcile against a config dir holding no hysteria2 config at all.
+    let released = PortAllocator::reclaim_orphaned_xray_ranges_at(&alloc, &conf_dir)
+        .await
+        .unwrap();
+
+    // Assert: the ghost range is gone.
+    assert_eq!(released, vec![orphan], "orphan {orphan} was not reclaimed");
+    assert!(
+        xray_main_ports(&alloc).is_empty(),
+        "orphaned range {orphan} is still locked; it will never be allocatable"
+    );
+}
+
+#[tokio::test]
+async fn reclaim_keeps_ranges_that_still_have_a_live_config() {
+    let dir = tempfile::tempdir().unwrap();
+    let alloc = dir.path().join(".port_alloc");
+    let conf_dir = dir.path().join("conf");
+    std::fs::create_dir_all(&conf_dir).unwrap();
+
+    let (live, _) = PortAllocator::allocate_xray_hysteria2_at(&alloc)
+        .await
+        .unwrap();
+
+    // A real hopping config still present on disk.
+    std::fs::write(
+        conf_dir.join("batch_xray_hysteria2_live_inbounds.json"),
+        json!({
+            "inbounds": [{
+                "protocol": "hysteria",
+                "port": live,
+                "streamSettings": {
+                    "finalmask": { "quicParams": { "udpHop": { "ports": format!("{}-{}", live + 1, live + 99) } } }
+                }
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let released = PortAllocator::reclaim_orphaned_xray_ranges_at(&alloc, &conf_dir)
+        .await
+        .unwrap();
+
+    assert!(released.is_empty(), "reclaimed a live range: {released:?}");
+    assert_eq!(
+        xray_main_ports(&alloc),
+        vec![live],
+        "a range with a live config must stay locked"
+    );
+}
+
+// ── bulk delete by explicit file list ────────────────────────────────
+//
+// The proto-filtered "delete all" and "delete N" handlers used to unlink the
+// files themselves, so no hop range was ever released. This exercises the
+// shared core function those handlers must use instead.
+
+#[tokio::test]
+async fn bulk_delete_of_explicit_files_releases_their_ranges() {
+    let dir = tempfile::tempdir().unwrap();
+    let alloc = dir.path().join(".port_alloc");
+
+    let mut mains = Vec::new();
+    let mut paths = Vec::new();
+    for i in 0..2u16 {
+        let (main, _) = PortAllocator::allocate_xray_hysteria2_at(&alloc)
+            .await
+            .unwrap();
+        let cfg_path = dir
+            .path()
+            .join(format!("batch_xray_hysteria2_b{i}_inbounds.json"));
+        std::fs::write(
+            &cfg_path,
+            json!({
+                "inbounds": [{
+                    "protocol": "hysteria",
+                    "port": main,
+                    "streamSettings": {
+                        "finalmask": { "quicParams": { "udpHop": { "ports": format!("{}-{}", main + 1, main + 99) } } }
+                    }
+                }]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        mains.push(main);
+        paths.push(cfg_path);
+    }
+    assert_eq!(xray_main_ports(&alloc).len(), 2);
+
+    let deleted = ConfigManager::delete_files_at(&paths, Some(&alloc)).await;
+    assert_eq!(deleted, 2);
+    assert!(
+        xray_main_ports(&alloc).is_empty(),
+        "ranges {:?} leaked; bulk delete must release them",
+        mains
+    );
+    assert!(paths.iter().all(|p| !p.exists()));
+}
