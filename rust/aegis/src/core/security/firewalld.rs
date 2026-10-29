@@ -430,15 +430,9 @@ impl FirewalldClient {
 }
 
 fn parse_firewalld_ports(output: &str) -> HashSet<u16> {
-    let mut ports = HashSet::new();
-    for entry in output.split_whitespace() {
-        if let Some(port_str) = entry.split('/').next()
-            && let Ok(port) = port_str.parse::<u16>()
-        {
-            ports.insert(port);
-        }
-    }
-    ports
+    // Shared with ufw's parser: both cores emit ranges, and the two backends
+    // only disagree on the separator.
+    super::firewall::parse_port_entries(output)
 }
 
 #[cfg(test)]

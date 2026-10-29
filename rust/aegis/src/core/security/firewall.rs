@@ -11,6 +11,51 @@ pub enum FirewallBackend {
 
 pub struct FirewallManager;
 
+/// Expand one `portspec/proto` token into every port it covers.
+///
+/// Both backends describe ranges with a separator between the bounds, but they
+/// disagree on which one: firewalld writes `"10001-10099/udp"` while ufw writes
+/// `"20001:20100/udp"`. Parsing only a bare number made `parse::<u16>()` fail on
+/// a range, so the entry silently vanished from `list_allowed_ports`.
+///
+/// That matters beyond bookkeeping: `sync_firewall_with_configs` computes
+/// `stale = current - required`, and a range missing from `current` can never be
+/// stale. Every hop range ever created therefore accumulated forever.
+///
+/// Malformed or reversed bounds contribute nothing: the caller is reconciling
+/// against live firewall state, and inventing ports would whitelist entries
+/// that do not exist.
+pub(crate) fn expand_port_entry(entry: &str, ports: &mut HashSet<u16>) {
+    // Strip the protocol suffix: `"10300/tcp"` -> `"10300"`.
+    let spec = entry.split('/').next().unwrap_or(entry);
+
+    if let Ok(port) = spec.parse::<u16>() {
+        ports.insert(port);
+        return;
+    }
+
+    let Some((start, end)) = spec.split_once(['-', ':']) else {
+        return;
+    };
+    let (Ok(start), Ok(end)) = (start.trim().parse::<u16>(), end.trim().parse::<u16>()) else {
+        return;
+    };
+    if start > end {
+        return;
+    }
+    ports.extend(start..=end);
+}
+
+/// Parse a whitespace-separated list of `port` / `start-end` / `start:end`
+/// tokens, each optionally suffixed with `/tcp` or `/udp`.
+pub fn parse_port_entries(output: &str) -> HashSet<u16> {
+    let mut ports = HashSet::new();
+    for entry in output.split_whitespace() {
+        expand_port_entry(entry, &mut ports);
+    }
+    ports
+}
+
 impl FirewallManager {
     pub async fn detect_backend() -> Option<FirewallBackend> {
         // 1. 状态优先：检查活跃的服务

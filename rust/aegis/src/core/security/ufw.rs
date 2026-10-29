@@ -169,13 +169,11 @@ fn parse_ufw_allowed_ports(stdout: &str) -> HashSet<u16> {
         if !line.contains("ALLOW") {
             continue;
         }
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        for part in parts {
-            if let Some(port_str) = part.split('/').next()
-                && let Ok(port) = port_str.parse::<u16>()
-            {
-                ports.insert(port);
-            }
+        // Ranges (`20001:20100/udp`) must be expanded, not dropped: a missing
+        // range can never be stale, so it would never be cleaned up.
+        // `expand_port_entry` ignores the non-port columns of a ufw row.
+        for part in line.split_whitespace() {
+            super::firewall::expand_port_entry(part, &mut ports);
         }
     }
     ports
@@ -265,7 +263,12 @@ Default: deny (incoming), allow (outgoing)
         let ports = parse_ufw_allowed_ports(output);
         assert!(ports.contains(&22));
         assert!(ports.contains(&51820));
-        assert!(!ports.contains(&20001)); // range, not single port
-        assert_eq!(ports.len(), 2);
+        // The range must expand. This assertion used to claim the opposite
+        // (`!contains(&20001)`) and thereby locked in the bug: a range missing
+        // from this set can never be stale, so sync could never remove it and
+        // every hop range accumulated forever.
+        assert!(ports.contains(&20001), "range start dropped");
+        assert!(ports.contains(&20100), "range end dropped");
+        assert_eq!(ports.len(), 2 + 100);
     }
 }
