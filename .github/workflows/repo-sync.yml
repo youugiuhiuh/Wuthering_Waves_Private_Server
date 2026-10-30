@@ -67,6 +67,8 @@ jobs:
             repo: wuthering_waves_private_server
             # access token 必须配静态用户名，不能用个人帐号名
             username: x-token-auth
+            # Bitbucket access token 强制设过期（最长约 1 年，无法设为永不过期），
+            # 到期后本镜像会 401。届时到仓库 Settings → Access tokens 重建并更新本 secret。
             secret: BITBUCKET_ACCESS_TOKEN
             # 仓库已在网页建好，不尝试创建
             create: ""
