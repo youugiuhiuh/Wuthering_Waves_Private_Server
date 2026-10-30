@@ -61,6 +61,15 @@ jobs:
             username: irysdev
             secret: CODEFLOR_TOKEN
             create: "true"
+          - target: bitbucket
+            host: https://bitbucket.org
+            owner: iaatakeda
+            repo: wuthering_waves_private_server
+            # access token 必须配静态用户名，不能用个人帐号名
+            username: x-token-auth
+            secret: BITBUCKET_ACCESS_TOKEN
+            # 仓库已在网页建好，不尝试创建
+            create: ""
           - target: disroot
             host: https://git.disroot.org
             owner: MakoUtsuyamaIT
