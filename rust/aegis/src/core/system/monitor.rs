@@ -13,7 +13,7 @@ impl SystemMonitor {
         let interval = sysinfo::MINIMUM_CPU_UPDATE_INTERVAL;
 
         let (sys_data, _cpu_usage) = tokio::task::spawn_blocking(move || {
-            let mut sys = System::new_all();
+            let mut sys = System::new_all().unwrap_or_else(|_| System::new().unwrap());
             sys.refresh_all();
             sys.refresh_all();
 
@@ -28,10 +28,10 @@ impl SystemMonitor {
             let total_swap = sys.total_swap() as f64 / 1024.0 / 1024.0 / 1024.0;
             let used_swap = sys.used_swap() as f64 / 1024.0 / 1024.0 / 1024.0;
 
-            let disks = Disks::new_with_refreshed_list();
-            let total_disk: u64 = disks.list().iter().map(|d| d.total_space()).sum();
+            // shortcut: 磁盘/网卡枚举失败时统计为 0, 需要区分错误时改为返回 Result
+            let disks = Disks::new_with_refreshed_list().unwrap_or_else(|_| Disks::new().unwrap());
+            let total_disk: u64 = disks.iter().map(|d| d.total_space()).sum();
             let used_disk: u64 = disks
-                .list()
                 .iter()
                 .map(|d| d.total_space() - d.available_space())
                 .sum();
@@ -43,12 +43,12 @@ impl SystemMonitor {
                 0.0
             };
 
-            let networks = Networks::new_with_refreshed_list();
+            let networks = sysinfo_networks();
             let (rx_total, tx_total) = aggregate_network_traffic(&networks);
             let rx_gb = rx_total as f64 / 1024.0 / 1024.0 / 1024.0;
             let tx_gb = tx_total as f64 / 1024.0 / 1024.0 / 1024.0;
 
-            let uptime = System::uptime();
+            let uptime = System::uptime().unwrap_or(0);
             let days = uptime / 86400;
             let hours = (uptime % 86400) / 3600;
             let minutes = (uptime % 3600) / 60;
@@ -77,7 +77,7 @@ impl SystemMonitor {
         tokio::time::sleep(interval).await;
 
         let cpu_usage = tokio::task::spawn_blocking(move || {
-            let mut sys = System::new();
+            let mut sys = System::new().unwrap_or_else(|_| System::new().unwrap());
             sys.refresh_cpu_all();
             sys.refresh_cpu_all();
             sys.global_cpu_usage()
@@ -130,7 +130,7 @@ impl SystemMonitor {
         let interval = sysinfo::MINIMUM_CPU_UPDATE_INTERVAL;
 
         tokio::task::spawn_blocking(|| {
-            let mut sys = System::new();
+            let mut sys = System::new().unwrap_or_else(|_| System::new().unwrap());
             sys.refresh_cpu_all();
         })
         .await?;
@@ -138,7 +138,7 @@ impl SystemMonitor {
         tokio::time::sleep(interval).await;
 
         let cpu_usage = tokio::task::spawn_blocking(|| {
-            let mut sys = System::new();
+            let mut sys = System::new().unwrap_or_else(|_| System::new().unwrap());
             sys.refresh_cpu_all();
             sys.refresh_cpu_all();
             sys.global_cpu_usage()
@@ -151,7 +151,7 @@ impl SystemMonitor {
     /// 兼容旧 API: 获取内存使用率字符串
     pub async fn get_memory_usage() -> Result<String> {
         tokio::task::spawn_blocking(|| {
-            let mut sys = System::new();
+            let mut sys = System::new().unwrap_or_else(|_| System::new().unwrap());
             sys.refresh_memory();
             let total = sys.total_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
             let used = sys.used_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
@@ -168,7 +168,7 @@ impl SystemMonitor {
     /// 兼容旧 API: 获取网络流量字符串
     pub async fn get_network_traffic() -> Result<String> {
         tokio::task::spawn_blocking(|| {
-            let networks = Networks::new_with_refreshed_list();
+            let networks = sysinfo_networks();
             let (rx_total, tx_total) = aggregate_network_traffic(&networks);
             Ok(format!(
                 "⬇️ {:.2} GB | ⬆️ {:.2} GB",
@@ -182,7 +182,7 @@ impl SystemMonitor {
     /// 兼容旧 API: 获取负载
     pub async fn get_load_avg() -> Result<String> {
         tokio::task::spawn_blocking(|| {
-            let load = System::load_average();
+            let load = System::load_average().unwrap_or_default();
             Ok(format!(
                 "{:.2} {:.2} {:.2}",
                 load.one, load.five, load.fifteen
@@ -194,7 +194,7 @@ impl SystemMonitor {
     /// 获取核心进程状态
     pub async fn get_core_status() -> (bool, bool) {
         tokio::task::spawn_blocking(|| {
-            let sys = System::new_all();
+            let sys = System::new_all().unwrap_or_else(|_| System::new().unwrap());
             let wwps_core = sys.processes_by_name("wwps-core".as_ref()).next().is_some();
             let wwps_box = sys.processes_by_name("wwps-box".as_ref()).next().is_some();
             (wwps_core, wwps_box)
@@ -309,12 +309,14 @@ impl SystemMonitor {
 }
 
 fn aggregate_network_traffic(networks: &Networks) -> (u64, u64) {
-    networks
-        .list()
-        .values()
-        .fold((0u64, 0u64), |(rx, tx), data| {
-            (rx + data.total_received(), tx + data.total_transmitted())
-        })
+    networks.values().fold((0u64, 0u64), |(rx, tx), data| {
+        (rx + data.total_received(), tx + data.total_transmitted())
+    })
+}
+
+fn sysinfo_networks() -> Networks {
+    // shortcut: 网卡枚举失败按空列表处理, 需要区分错误时改为返回 Result
+    Networks::new_with_refreshed_list().unwrap_or_else(|_| Networks::new().unwrap())
 }
 
 #[cfg(test)]
@@ -324,13 +326,13 @@ mod tests {
 
     #[test]
     fn test_aggregate_network_traffic_empty() {
-        let networks = Networks::new_with_refreshed_list();
+        let networks = Networks::new_with_refreshed_list().expect("networks list");
         let (_rx, _tx) = aggregate_network_traffic(&networks);
     }
 
     #[test]
     fn test_aggregate_network_traffic_with_data() {
-        let mut networks = Networks::new_with_refreshed_list();
+        let mut networks = Networks::new_with_refreshed_list().expect("networks list");
         networks.refresh(true);
         let (_rx, _tx) = aggregate_network_traffic(&networks);
     }
