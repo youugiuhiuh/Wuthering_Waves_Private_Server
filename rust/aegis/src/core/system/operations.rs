@@ -147,9 +147,7 @@ APT::Periodic::AutocleanInterval "7";
 
     pub(crate) fn needrestart_config() -> String {
         r#"$nrconf{restart} = 'a';
-$nrconf{override_rc} = {
-  qr(^unattended-upgrades\.service$) => 0,
-};
+$nrconf{override_rc}->{qr(^unattended-upgrades\.service$)} = 0;
 "#
         .to_string()
     }
@@ -601,6 +599,25 @@ mod tests {
         assert!(
             config.contains(r"qr(^unattended-upgrades\.service$)"),
             "unattended-upgrades.service 必须列入不重启名单，实际配置:\n{config}"
+        );
+    }
+
+    #[test]
+    fn test_needrestart_config_appends_instead_of_overriding_override_rc() {
+        // 回归：`$nrconf{override_rc} = {...}` 是整体赋值，会抹掉发行版自带的
+        // 50 条默认排除名单（dbus / apt-daily / apt-daily-upgrade / cron-daily /
+        // NetworkManager 等）。判定逻辑见 /usr/sbin/needrestart:1105-1129，
+        // 被抹掉的键不再产生保护，导致这些 oneshot 服务在升级中被重启、
+        // 收到 SIGTERM 后中断升级链路。
+        // 必须用 `->{...} = 0` 单键追加，保留发行版默认名单。
+        let config = AutoUpdateConfigurator::needrestart_config();
+        assert!(
+            config.contains("$nrconf{override_rc}->{"),
+            "必须使用 ->{{...}} 追加语法，实际配置:\n{config}"
+        );
+        assert!(
+            !config.contains("$nrconf{override_rc} = {"),
+            "禁止整体赋值覆盖发行版默认名单，实际配置:\n{config}"
         );
     }
 
