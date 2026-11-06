@@ -119,3 +119,14 @@ fn multiple_inbounds_accumulate() {
         HashSet::from([443, 10300, 10301, 10302, 10400, 10401, 10402])
     );
 }
+
+#[test]
+fn localhost_inbounds_are_exempt_from_firewall_ports() {
+    let cfg = json!({"inbounds": [
+        {"protocol": "vless", "listen": "127.0.0.1", "port": 10086},
+        {"protocol": "vless", "listen": "localhost", "port": 10087},
+        {"protocol": "vless", "port": 443}
+    ]});
+    let ports = collect(cfg);
+    assert_eq!(ports, HashSet::from([443]));
+}

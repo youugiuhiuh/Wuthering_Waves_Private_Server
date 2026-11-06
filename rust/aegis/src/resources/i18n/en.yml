@@ -404,6 +404,7 @@ xray:
   xdrive_cancelled: "XDRIVE wizard cancelled."
   xdrive_invalid_input: "❌ Invalid input, please try again:"
   xdrive_success_msg: "🎉 <b>XDRIVE Node Created Successfully!</b>\n\nConfig written and core reloaded.\n• Protocol: VLESS over XDRIVE\n• Tag: <code>%{0}</code>\n\n📋 <b>Client Subscription Link:</b>\n<code>%{1}</code>"
+  xdrive_success_summary: "🎉 <b>XDRIVE Node Created Successfully!</b>\n\nConfig written and core reloaded.\n• Protocol: VLESS over XDRIVE\n• Tag: <code>%{0}</code>\n\n👆 <b>The standalone message above contains the raw client link for easy one-tap copying or importing.</b>"
 
   xdrive_r2_auto_detected: "🎉 <b>Cloudflare R2 Credentials Auto-Detected!</b>\n• Account ID: <code>%{0}</code>\n• Access Key ID: <code>%{1}</code>\n• Secret Access Key: <code>%{2}</code>\n\n👉 <b>Final Step:</b> Please enter your R2 <b>Bucket Name</b> (e.g. <code>my-proxy</code>):"
   xdrive_cfat_warning: "⚠️ <b>Warning:</b> You entered a Cloudflare API Token value (cfat_...), which cannot be used with S3 clients.\n\nPlease scroll down on the Cloudflare page to <b>'Use the following credentials for S3 clients'</b> and copy the 32-character <b>'Access Key ID'</b>:"

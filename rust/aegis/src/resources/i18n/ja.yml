@@ -404,6 +404,7 @@ xray:
   xdrive_cancelled: "XDRIVE ウィザードを中止しました。"
   xdrive_invalid_input: "❌ 入力内容が正しくありません。再入力してください："
   xdrive_success_msg: "🎉 <b>XDRIVE ノードが正常に作成されました！</b>\n\n設定ファイルを書き込み、コアを再起動しました。\n• プロトコル: VLESS over XDRIVE\n• タグ: <code>%{0}</code>\n\n📋 <b>クライアント購読リンク：</b>\n<code>%{1}</code>"
+  xdrive_success_summary: "🎉 <b>XDRIVE ノードが正常に作成されました！</b>\n\n設定ファイルを書き込み、コアを再起動しました。\n• プロトコル: VLESS over XDRIVE\n• タグ: <code>%{0}</code>\n\n👆 <b>上のメッセージに購読リンクが単独で送信されています。長押し/タップでコピーしてクライアントに直接インポートできます。</b>"
 
   xdrive_r2_auto_detected: "🎉 <b>Cloudflare R2 認証情報を自動検出しました！</b>\n• アカウント ID：<code>%{0}</code>\n• Access Key ID：<code>%{1}</code>\n• Secret Access Key：<code>%{2}</code>\n\n👉 <b>最終ステップ：</b>Cloudflare で作成した <b>バケット名 (Bucket)</b> を入力してください（例 <code>my-proxy</code>）："
   xdrive_cfat_warning: "⚠️ <b>ご注意：</b>入力された値は Cloudflare API の「トークン値 (cfat_...)」です。S3 クライアントには使用できません。\n\nページ下部の<b>「S3 クライアント用の資格情報」</b>にある 32 文字の<b>「アクセスキー ID」</b>をコピーしてください："
