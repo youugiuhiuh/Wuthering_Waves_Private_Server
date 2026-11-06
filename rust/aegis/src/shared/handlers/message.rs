@@ -954,7 +954,20 @@ async fn handle_xdrive_wizard_input(
             match ConfigManager::create_xdrive_node(&xdrive_config, &tag).await {
                 Ok(res) => {
                     let link = res.links.first().cloned().unwrap_or_default();
-                    let msg = t!("xray.xdrive_success_msg", "0" => tag, "1" => link);
+                    if !link.is_empty() {
+                        // 1. 发送单独纯链接消息，客户端/手机点击即可一键复制或导入
+                        adapter
+                            .send_message(
+                                target,
+                                MessageContent {
+                                    text: link,
+                                    markup: None,
+                                },
+                            )
+                            .await?;
+                    }
+                    // 2. 发送创建成功摘要说明
+                    let msg = t!("xray.xdrive_success_summary", "0" => tag);
                     adapter
                         .send_message(
                             target,

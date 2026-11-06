@@ -378,6 +378,7 @@ xray:
   xdrive_cancelled: "已取消 XDRIVE 向导配置。"
   xdrive_invalid_input: "❌ 输入内容不符合要求，请重新输入："
   xdrive_success_msg: "🎉 <b>XDRIVE 节点创建成功！</b>\n\n已成功写入配置文件并重载内核。\n• 协议：VLESS over XDRIVE\n• 节点标签：<code>%{0}</code>\n\n📋 <b>客户端订阅链接：</b>\n<code>%{1}</code>"
+  xdrive_success_summary: "🎉 <b>XDRIVE 节点创建成功！</b>\n\n已成功写入配置文件并重载内核。\n• 协议：VLESS over XDRIVE\n• 节点标签：<code>%{0}</code>\n\n👆 <b>上方已单独发送纯节点链接，可直接长按/点击复制直接导入客户端。</b>"
 
   xdrive_r2_auto_detected: "🎉 <b>已成功自动识别 Cloudflare R2 凭据！</b>\n• 账户 ID：<code>%{0}</code>\n• 访问密钥 ID：<code>%{1}</code>\n• 机密访问密钥：<code>%{2}</code>\n\n👉 <b>最后一步：</b>请输入您在 Cloudflare 创建的 <b>存储桶名称 (Bucket)</b>（例如 <code>my-proxy</code>）："
   xdrive_cfat_warning: "⚠️ <b>请注意：</b>您输入的是 Cloudflare API 的「令牌值 (cfat_...)」，该令牌无法用于 S3 客户端。\n\n请向下滚动 Cloudflare 网页，找到<b>「为 S3 客户端使用以下凭据」</b>一栏，复制那里的<b>「访问密钥 ID」</b>（32 位字符）："
