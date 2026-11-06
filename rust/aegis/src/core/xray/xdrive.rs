@@ -101,6 +101,137 @@ impl XdriveConfig {
             XdriveService::Template => Ok(()),
         }
     }
+
+    /// 解析向导卡片文本输入（地区向导 Option A）
+    pub fn parse_region_wizard_input(region: &str, input: &str) -> Result<Self> {
+        let lines: Vec<&str> = input
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
+
+        match region.to_ascii_lowercase().as_str() {
+            "ru" => {
+                if lines.len() < 3 {
+                    bail!(
+                        "俄罗斯地区向导至少需要 3 行参数：Bucket名称、AccessKeyID、SecretAccessKey"
+                    );
+                }
+                let bucket = lines[0];
+                let ak = lines[1];
+                let sk = lines[2];
+                let folder = if lines.len() > 3 {
+                    lines[3]
+                } else {
+                    "aegis-xdrive"
+                };
+
+                let config = Self {
+                    service: XdriveService::S3,
+                    remote_folder: folder.to_string(),
+                    secrets: vec![ak.to_string(), sk.to_string()],
+                    s3: Some(S3Config {
+                        endpoint: "https://storage.yandexcloud.net".to_string(),
+                        region: "ru-central1".to_string(),
+                        bucket: bucket.to_string(),
+                        path_style: true,
+                    }),
+                    segment_bytes: Some(1024 * 1024),
+                    poll_interval_ms: Some(25),
+                    max_poll_interval_ms: Some(800),
+                };
+                config.validate()?;
+                Ok(config)
+            }
+            "ir" => {
+                if lines.len() < 3 {
+                    bail!(
+                        "伊朗地区向导至少需要 3 行参数：Bucket名称、AccessKeyID、SecretAccessKey"
+                    );
+                }
+                let bucket = lines[0];
+                let ak = lines[1];
+                let sk = lines[2];
+                let folder = if lines.len() > 3 {
+                    lines[3]
+                } else {
+                    "aegis-xdrive"
+                };
+
+                let config = Self {
+                    service: XdriveService::S3,
+                    remote_folder: folder.to_string(),
+                    secrets: vec![ak.to_string(), sk.to_string()],
+                    s3: Some(S3Config {
+                        endpoint: "https://s3.ir-thr-at1.arvanstorage.ir".to_string(),
+                        region: "ir-thr-at1".to_string(),
+                        bucket: bucket.to_string(),
+                        path_style: true,
+                    }),
+                    segment_bytes: Some(1024 * 1024),
+                    poll_interval_ms: Some(25),
+                    max_poll_interval_ms: Some(800),
+                };
+                config.validate()?;
+                Ok(config)
+            }
+            "cn" => {
+                if lines.len() < 4 {
+                    bail!(
+                        "中国大陆地区向导至少需要 4 行参数：Cloudflare AccountID、Bucket名称、AccessKeyID、SecretAccessKey"
+                    );
+                }
+                let account_id = lines[0];
+                let bucket = lines[1];
+                let ak = lines[2];
+                let sk = lines[3];
+                let folder = if lines.len() > 4 {
+                    lines[4]
+                } else {
+                    "aegis-xdrive"
+                };
+
+                let config = Self::new_cloudflare_r2(account_id, bucket, ak, sk, folder);
+                config.validate()?;
+                Ok(config)
+            }
+            "custom" => {
+                if lines.len() < 5 {
+                    bail!(
+                        "自定义 S3 向导至少需要 5 行参数：Endpoint、Region、Bucket名称、AccessKeyID、SecretAccessKey"
+                    );
+                }
+                let endpoint = lines[0];
+                let s3_region = lines[1];
+                let bucket = lines[2];
+                let ak = lines[3];
+                let sk = lines[4];
+                let folder = if lines.len() > 5 {
+                    lines[5]
+                } else {
+                    "aegis-xdrive"
+                };
+
+                let config = Self {
+                    service: XdriveService::S3,
+                    remote_folder: folder.to_string(),
+                    secrets: vec![ak.to_string(), sk.to_string()],
+                    s3: Some(S3Config {
+                        endpoint: endpoint.to_string(),
+                        region: s3_region.to_string(),
+                        bucket: bucket.to_string(),
+                        path_style: true,
+                    }),
+                    segment_bytes: Some(1024 * 1024),
+                    poll_interval_ms: Some(25),
+                    max_poll_interval_ms: Some(800),
+                };
+                config.validate()?;
+                Ok(config)
+            }
+            other => bail!("未知地区类型: {other}"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -165,5 +296,55 @@ mod tests {
         let mut config = XdriveConfig::new_cloudflare_r2("acc", "b", "ak", "sk", "folder");
         config.secrets = vec!["only-one".to_string()];
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_parse_ru_wizard_input() {
+        let input = "my-yandex-bucket\nYCAJEm4xxx\nYCPm89yyy\n";
+        let config = XdriveConfig::parse_region_wizard_input("ru", input).unwrap();
+        assert_eq!(config.service, XdriveService::S3);
+        assert_eq!(config.remote_folder, "aegis-xdrive");
+        assert_eq!(config.secrets, vec!["YCAJEm4xxx", "YCPm89yyy"]);
+        let s3 = config.s3.unwrap();
+        assert_eq!(s3.endpoint, "https://storage.yandexcloud.net");
+        assert_eq!(s3.region, "ru-central1");
+        assert_eq!(s3.bucket, "my-yandex-bucket");
+        assert!(s3.path_style);
+    }
+
+    #[test]
+    fn test_parse_ir_wizard_input() {
+        let input = "arvan-bucket\nARVANAK\nARVANSK\ncustom-folder";
+        let config = XdriveConfig::parse_region_wizard_input("ir", input).unwrap();
+        assert_eq!(config.remote_folder, "custom-folder");
+        let s3 = config.s3.unwrap();
+        assert_eq!(s3.endpoint, "https://s3.ir-thr-at1.arvanstorage.ir");
+        assert_eq!(s3.region, "ir-thr-at1");
+    }
+
+    #[test]
+    fn test_parse_cn_wizard_input() {
+        let input = "a1b2c3d4e5f6\nr2-bucket\nR2AK\nR2SK\n";
+        let config = XdriveConfig::parse_region_wizard_input("cn", input).unwrap();
+        let s3 = config.s3.unwrap();
+        assert_eq!(s3.endpoint, "https://a1b2c3d4e5f6.r2.cloudflarestorage.com");
+        assert_eq!(s3.region, "auto");
+        assert_eq!(s3.bucket, "r2-bucket");
+    }
+
+    #[test]
+    fn test_parse_custom_wizard_input() {
+        let input = "https://my-s3.example.com\nus-west-1\nmy-b\nMYAK\nMYSK\n";
+        let config = XdriveConfig::parse_region_wizard_input("custom", input).unwrap();
+        let s3 = config.s3.unwrap();
+        assert_eq!(s3.endpoint, "https://my-s3.example.com");
+        assert_eq!(s3.region, "us-west-1");
+        assert_eq!(s3.bucket, "my-b");
+    }
+
+    #[test]
+    fn test_parse_wizard_input_rejects_insufficient_lines() {
+        assert!(XdriveConfig::parse_region_wizard_input("ru", "only-bucket").is_err());
+        assert!(XdriveConfig::parse_region_wizard_input("cn", "acc\nbucket\nak").is_err());
     }
 }
