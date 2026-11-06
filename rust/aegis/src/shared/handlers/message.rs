@@ -676,6 +676,71 @@ async fn take_custom_input<'a>(
     Ok(Some(input))
 }
 
+async fn complete_xdrive_node(
+    adapter: &dyn BotAdapter,
+    target: &TargetId,
+    state: &dyn MessageState,
+    session: &XdriveWizardSession,
+    xdrive_config: &XdriveConfig,
+    cancel_markup: Option<Markup>,
+) -> anyhow::Result<MessageAction> {
+    if let Err(e) = xdrive_config.validate() {
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: format!("❌ 配置校验失败: {}\n\n请点击下方按钮重新配置。", e),
+                    markup: cancel_markup,
+                },
+            )
+            .await?;
+        return Ok(MessageAction::Handled);
+    }
+
+    state.clear_xdrive_wizard(&target.0).await;
+    let tag = format!("XDRIVE-{}", session.region.to_ascii_uppercase());
+    match ConfigManager::create_xdrive_node(xdrive_config, &tag).await {
+        Ok(res) => {
+            let link = res.links.first().cloned().unwrap_or_default();
+            if !link.is_empty() {
+                // 1. 发送单独纯链接消息，客户端/手机点击即可一键复制或导入
+                adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: link,
+                            markup: None,
+                        },
+                    )
+                    .await?;
+            }
+            // 2. 发送创建成功摘要说明
+            let msg = t!("xray.xdrive_success_summary", "0" => tag);
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: msg.to_string(),
+                        markup: None,
+                    },
+                )
+                .await?;
+        }
+        Err(e) => {
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: format!("❌ 节点生成失败: {}", e),
+                        markup: None,
+                    },
+                )
+                .await?;
+        }
+    }
+    Ok(MessageAction::Handled)
+}
+
 async fn handle_xdrive_wizard_input(
     adapter: &dyn BotAdapter,
     target: &TargetId,
@@ -713,8 +778,8 @@ async fn handle_xdrive_wizard_input(
         }]],
     });
 
-    // 如果是 CN 模式，且输入内容包含 r2.cloudflarestorage.com，尝试一键提取全文凭据
-    if session.region == "cn"
+    // 如果是 CN / R2 模式，且输入内容包含 r2.cloudflarestorage.com，尝试一键提取全文凭据
+    if (session.region == "cn" || session.region == "r2")
         && raw_input.contains("r2.cloudflarestorage.com")
         && let Some((acc, ak, sk)) = XdriveConfig::extract_cloudflare_r2_page_tokens(raw_input)
     {
@@ -737,6 +802,53 @@ async fn handle_xdrive_wizard_input(
                         "0" => acc,
                         "1" => ak,
                         "2" => masked_sk
+                    )
+                    .to_string(),
+                    markup: cancel_markup,
+                },
+            )
+            .await?;
+        return Ok(MessageAction::Handled);
+    }
+
+    // Google Drive 全文凭据智能提取（支持 playground URL、JSON 或 client_id + refresh_token 文本）
+    let raw_lower = raw_input.to_ascii_lowercase();
+    let is_gdrive_tokens = raw_lower.contains("developers.google.com/oauthplayground")
+        || (raw_lower.contains("client_id") && raw_lower.contains("refresh_token"));
+
+    if is_gdrive_tokens
+        && let Some((cid, sec, ref_tok, opt_folder)) =
+            XdriveConfig::extract_google_drive_tokens(raw_input)
+    {
+        session.region = "gdrive".to_string();
+        session.client_id = Some(cid.clone());
+        session.client_secret = Some(sec.clone());
+        session.refresh_token = Some(ref_tok.clone());
+        if let Some(folder) = opt_folder {
+            session.folder_id = Some(folder);
+        }
+        session.step = XdriveWizardStep::FolderId;
+        state.update_xdrive_wizard(&target.0, session).await;
+
+        let masked_sk = if sec.len() > 8 {
+            format!("{}...", &sec[..8])
+        } else {
+            "***".to_string()
+        };
+        let masked_rf = if ref_tok.len() > 12 {
+            format!("{}...", &ref_tok[..12])
+        } else {
+            "***".to_string()
+        };
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: t!(
+                        "xray.xdrive_gdrive_auto_detected",
+                        "0" => cid,
+                        "1" => masked_sk,
+                        "2" => masked_rf
                     )
                     .to_string(),
                     markup: cancel_markup,
@@ -822,9 +934,9 @@ async fn handle_xdrive_wizard_input(
             session.bucket = Some(raw_input.to_string());
             session.step = XdriveWizardStep::AccessKey;
             let prompt = match session.region.as_str() {
-                "cn" => t!("xray.xdrive_guide_cn_step3"),
-                "ru" => t!("xray.xdrive_guide_ru_step2"),
-                "ir" => t!("xray.xdrive_guide_ir_step2"),
+                "cn" | "r2" => t!("xray.xdrive_guide_cn_step3"),
+                "ru" | "yandex" => t!("xray.xdrive_guide_ru_step2"),
+                "ir" | "arvan" => t!("xray.xdrive_guide_ir_step2"),
                 _ => t!("xray.xdrive_guide_custom_step4"),
             };
             state.update_xdrive_wizard(&target.0, session).await;
@@ -839,7 +951,8 @@ async fn handle_xdrive_wizard_input(
                 .await?;
         }
         XdriveWizardStep::AccessKey => {
-            if session.region == "cn" && raw_input.starts_with("cfat_") {
+            if (session.region == "cn" || session.region == "r2") && raw_input.starts_with("cfat_")
+            {
                 adapter
                     .send_message(
                         target,
@@ -855,9 +968,9 @@ async fn handle_xdrive_wizard_input(
             session.access_key = Some(raw_input.to_string());
             session.step = XdriveWizardStep::SecretKey;
             let prompt = match session.region.as_str() {
-                "cn" => t!("xray.xdrive_guide_cn_step4"),
-                "ru" => t!("xray.xdrive_guide_ru_step3"),
-                "ir" => t!("xray.xdrive_guide_ir_step3"),
+                "cn" | "r2" => t!("xray.xdrive_guide_cn_step4"),
+                "ru" | "yandex" => t!("xray.xdrive_guide_ru_step3"),
+                "ir" | "arvan" => t!("xray.xdrive_guide_ir_step3"),
                 _ => t!("xray.xdrive_guide_custom_step5"),
             };
             state.update_xdrive_wizard(&target.0, session).await;
@@ -874,21 +987,19 @@ async fn handle_xdrive_wizard_input(
         XdriveWizardStep::SecretKey => {
             session.secret_key = Some(raw_input.to_string());
 
-            let config_res = match session.region.as_str() {
-                "cn" => {
+            let cfg = match session.region.as_str() {
+                "cn" | "r2" => {
                     let account_id = session.account_id.as_deref().unwrap_or_default();
                     let bucket = session.bucket.as_deref().unwrap_or_default();
                     let ak = session.access_key.as_deref().unwrap_or_default();
                     let sk = session.secret_key.as_deref().unwrap_or_default();
-                    let cfg =
-                        XdriveConfig::new_cloudflare_r2(account_id, bucket, ak, sk, "aegis-xdrive");
-                    cfg.validate().map(|_| cfg)
+                    XdriveConfig::new_cloudflare_r2(account_id, bucket, ak, sk, "aegis-xdrive")
                 }
-                "ru" => {
+                "ru" | "yandex" => {
                     let bucket = session.bucket.as_deref().unwrap_or_default();
                     let ak = session.access_key.as_deref().unwrap_or_default();
                     let sk = session.secret_key.as_deref().unwrap_or_default();
-                    let cfg = XdriveConfig::new_s3(
+                    XdriveConfig::new_s3(
                         "https://storage.yandexcloud.net",
                         "ru-central1",
                         bucket,
@@ -896,14 +1007,13 @@ async fn handle_xdrive_wizard_input(
                         sk,
                         true,
                         "aegis-xdrive",
-                    );
-                    cfg.validate().map(|_| cfg)
+                    )
                 }
-                "ir" => {
+                "ir" | "arvan" => {
                     let bucket = session.bucket.as_deref().unwrap_or_default();
                     let ak = session.access_key.as_deref().unwrap_or_default();
                     let sk = session.secret_key.as_deref().unwrap_or_default();
-                    let cfg = XdriveConfig::new_s3(
+                    XdriveConfig::new_s3(
                         "https://s3.ir-thr-at1.arvanstorage.ir",
                         "ir-thr-at1",
                         bucket,
@@ -911,8 +1021,7 @@ async fn handle_xdrive_wizard_input(
                         sk,
                         true,
                         "aegis-xdrive",
-                    );
-                    cfg.validate().map(|_| cfg)
+                    )
                 }
                 _ => {
                     let endpoint = session.endpoint.as_deref().unwrap_or_default();
@@ -920,76 +1029,91 @@ async fn handle_xdrive_wizard_input(
                     let bucket = session.bucket.as_deref().unwrap_or_default();
                     let ak = session.access_key.as_deref().unwrap_or_default();
                     let sk = session.secret_key.as_deref().unwrap_or_default();
-                    let cfg = XdriveConfig::new_s3(
-                        endpoint,
-                        region,
-                        bucket,
-                        ak,
-                        sk,
-                        true,
-                        "aegis-xdrive",
-                    );
-                    cfg.validate().map(|_| cfg)
+                    XdriveConfig::new_s3(endpoint, region, bucket, ak, sk, true, "aegis-xdrive")
                 }
             };
 
-            let xdrive_config = match config_res {
-                Ok(c) => c,
-                Err(e) => {
-                    adapter
-                        .send_message(
-                            target,
-                            MessageContent {
-                                text: format!("❌ 配置校验失败: {}\n\n请点击下方按钮重新配置。", e),
-                                markup: cancel_markup,
-                            },
-                        )
-                        .await?;
-                    return Ok(MessageAction::Handled);
-                }
+            return complete_xdrive_node(adapter, target, state, &session, &cfg, cancel_markup)
+                .await;
+        }
+        XdriveWizardStep::FolderId => {
+            let clean_folder = if let Some(pos) = raw_input.find("/folders/") {
+                let after = &raw_input[pos + 9..];
+                let end = after
+                    .find(|c: char| {
+                        c == '?' || c == '/' || c == '"' || c == '\'' || c.is_whitespace()
+                    })
+                    .unwrap_or(after.len());
+                after[..end].trim().to_string()
+            } else {
+                raw_input.trim().to_string()
             };
 
-            state.clear_xdrive_wizard(&target.0).await;
-            let tag = format!("XDRIVE-{}", session.region.to_ascii_uppercase());
-            match ConfigManager::create_xdrive_node(&xdrive_config, &tag).await {
-                Ok(res) => {
-                    let link = res.links.first().cloned().unwrap_or_default();
-                    if !link.is_empty() {
-                        // 1. 发送单独纯链接消息，客户端/手机点击即可一键复制或导入
-                        adapter
-                            .send_message(
-                                target,
-                                MessageContent {
-                                    text: link,
-                                    markup: None,
-                                },
-                            )
-                            .await?;
-                    }
-                    // 2. 发送创建成功摘要说明
-                    let msg = t!("xray.xdrive_success_summary", "0" => tag);
-                    adapter
-                        .send_message(
-                            target,
-                            MessageContent {
-                                text: msg.to_string(),
-                                markup: None,
-                            },
-                        )
-                        .await?;
-                }
-                Err(e) => {
-                    adapter
-                        .send_message(
-                            target,
-                            MessageContent {
-                                text: format!("❌ 节点生成失败: {}", e),
-                                markup: None,
-                            },
-                        )
-                        .await?;
-                }
+            session.folder_id = Some(clean_folder);
+
+            // 如果此前已成功自动提取了 Client ID 与凭据
+            if let (Some(cid), Some(sec), Some(ref_tok), Some(folder)) = (
+                session.client_id.as_deref(),
+                session.client_secret.as_deref(),
+                session.refresh_token.as_deref(),
+                session.folder_id.as_deref(),
+            ) {
+                let cfg = XdriveConfig::new_google_drive(cid, sec, ref_tok, folder);
+                return complete_xdrive_node(adapter, target, state, &session, &cfg, cancel_markup)
+                    .await;
             }
+
+            session.step = XdriveWizardStep::ClientId;
+            state.update_xdrive_wizard(&target.0, session).await;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!("xray.xdrive_guide_gdrive_step2").to_string(),
+                        markup: cancel_markup,
+                    },
+                )
+                .await?;
+        }
+        XdriveWizardStep::ClientId => {
+            session.client_id = Some(raw_input.to_string());
+            session.step = XdriveWizardStep::ClientSecret;
+            state.update_xdrive_wizard(&target.0, session).await;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!("xray.xdrive_guide_gdrive_step3").to_string(),
+                        markup: cancel_markup,
+                    },
+                )
+                .await?;
+        }
+        XdriveWizardStep::ClientSecret => {
+            session.client_secret = Some(raw_input.to_string());
+            session.step = XdriveWizardStep::RefreshToken;
+            state.update_xdrive_wizard(&target.0, session).await;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!("xray.xdrive_guide_gdrive_step4").to_string(),
+                        markup: cancel_markup,
+                    },
+                )
+                .await?;
+        }
+        XdriveWizardStep::RefreshToken => {
+            session.refresh_token = Some(raw_input.to_string());
+
+            let cid = session.client_id.as_deref().unwrap_or_default();
+            let sec = session.client_secret.as_deref().unwrap_or_default();
+            let ref_tok = session.refresh_token.as_deref().unwrap_or_default();
+            let folder = session.folder_id.as_deref().unwrap_or_default();
+
+            let cfg = XdriveConfig::new_google_drive(cid, sec, ref_tok, folder);
+            return complete_xdrive_node(adapter, target, state, &session, &cfg, cancel_markup)
+                .await;
         }
     }
 
@@ -2024,6 +2148,10 @@ mod tests {
             bucket: None,
             access_key: None,
             secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
             started_at: std::time::Instant::now(),
         };
         state.update_xdrive_wizard("test_chat", session).await;
@@ -2071,6 +2199,10 @@ mod tests {
             bucket: None,
             access_key: None,
             secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
             started_at: std::time::Instant::now(),
         };
         state.update_xdrive_wizard("test_chat", session).await;
@@ -2106,6 +2238,199 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
         assert_eq!(
             session.secret_key.as_deref(),
             Some("4b07c8ef6340317e0b51fae296837bfdbddbfcf92e071727c955da3597dff758")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_google_drive_conversational_flow() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        // Initialize Google Drive wizard session
+        let session = XdriveWizardSession {
+            region: "gdrive".to_string(),
+            step: XdriveWizardStep::FolderId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        // Step 1: User sends Folder URL
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("https://drive.google.com/drive/folders/1ABC_folder_XYZ?usp=sharing"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::ClientId);
+        assert_eq!(session.folder_id.as_deref(), Some("1ABC_folder_XYZ"));
+
+        // Step 2: User sends Client ID
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("123456.apps.googleusercontent.com"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::ClientSecret);
+        assert_eq!(
+            session.client_id.as_deref(),
+            Some("123456.apps.googleusercontent.com")
+        );
+
+        // Step 3: User sends Client Secret
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("GOCSPX-secret_abc_123"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::RefreshToken);
+        assert_eq!(
+            session.client_secret.as_deref(),
+            Some("GOCSPX-secret_abc_123")
+        );
+
+        // Step 4: User cancels via /cancel
+        let action = handle_message(&adapter, &target, Some("/cancel"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+        assert!(state.get_xdrive_wizard("test_chat").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_google_drive_auto_extract() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "gdrive".to_string(),
+            step: XdriveWizardStep::FolderId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        let sample = r#"
+https://developers.google.com/oauthplayground
+Client ID: 123456789.apps.googleusercontent.com
+Client Secret: {{SECRET_h6u8z0r0}}
+Refresh Token: 1//0gSampleRefreshToken
+"#;
+
+        let action = handle_message(&adapter, &target, Some(sample), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::FolderId);
+        assert_eq!(
+            session.client_id.as_deref(),
+            Some("123456789.apps.googleusercontent.com")
+        );
+        assert_eq!(
+            session.client_secret.as_deref(),
+            Some("{{SECRET_h6u8z0r0}}")
+        );
+        assert_eq!(
+            session.refresh_token.as_deref(),
+            Some("1//0gSampleRefreshToken")
+        );
+
+        let last_msg = adapter.last_text();
+        assert!(
+            last_msg.contains("Google Drive")
+                && last_msg.contains("123456789.apps.googleusercontent.com")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_google_drive_auto_extract_json() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "gdrive".to_string(),
+            step: XdriveWizardStep::FolderId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        let json_sample = r#"{
+            "client_id": "json-test.apps.googleusercontent.com",
+            "client_secret": "{{SECRET_e2g949l1}}",
+            "refresh_token": "1//json-refresh-sample"
+        }"#;
+
+        let action = handle_message(&adapter, &target, Some(json_sample), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::FolderId);
+        assert_eq!(
+            session.client_id.as_deref(),
+            Some("json-test.apps.googleusercontent.com")
+        );
+        assert_eq!(
+            session.client_secret.as_deref(),
+            Some("{{SECRET_e2g949l1}}")
+        );
+        assert_eq!(
+            session.refresh_token.as_deref(),
+            Some("1//json-refresh-sample")
         );
     }
 }

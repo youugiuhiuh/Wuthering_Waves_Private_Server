@@ -742,27 +742,38 @@ impl ConfigManager {
 
         let encoded_folder = utf8_percent_encode(&xdrive.remote_folder, URI_UNRESERVED).to_string();
         let encoded_encryption = utf8_percent_encode(encryption_key, URI_UNRESERVED).to_string();
-        let service_str = match xdrive.service {
-            crate::core::xray::xdrive::XdriveService::S3 => "s3",
-            crate::core::xray::xdrive::XdriveService::Local => "local",
-            crate::core::xray::xdrive::XdriveService::GoogleDrive => "google-drive",
-            crate::core::xray::xdrive::XdriveService::Template => "template",
+
+        let link = if xdrive.service == crate::core::xray::xdrive::XdriveService::GoogleDrive {
+            format!(
+                "vless://{}@google.com:443?type=xdrive&service=google-drive&remoteFolder={}&encryption={}&security=tls&sni=google.com&alpn=h2&mux=true",
+                uuid, encoded_folder, encoded_encryption
+            )
+        } else {
+            let service_str = match xdrive.service {
+                crate::core::xray::xdrive::XdriveService::S3 => "s3",
+                crate::core::xray::xdrive::XdriveService::Local => "local",
+                crate::core::xray::xdrive::XdriveService::GoogleDrive => "google-drive",
+                crate::core::xray::xdrive::XdriveService::Template => "template",
+            };
+
+            let mut link = format!(
+                "vless://{}@127.0.0.1:{}?type=xdrive&service={}&remoteFolder={}&encryption={}&mux=true",
+                uuid, port, service_str, encoded_folder, encoded_encryption
+            );
+
+            if let Some(ref s3) = xdrive.s3 {
+                let encoded_endpoint =
+                    utf8_percent_encode(&s3.endpoint, URI_UNRESERVED).to_string();
+                let encoded_bucket = utf8_percent_encode(&s3.bucket, URI_UNRESERVED).to_string();
+                let encoded_region = utf8_percent_encode(&s3.region, URI_UNRESERVED).to_string();
+                link.push_str(&format!(
+                    "&endpoint={}&bucket={}&region={}&pathStyle={}",
+                    encoded_endpoint, encoded_bucket, encoded_region, s3.path_style
+                ));
+            }
+
+            link
         };
-
-        let mut link = format!(
-            "vless://{}@127.0.0.1:{}?type=xdrive&service={}&remoteFolder={}&encryption={}&mux=true",
-            uuid, port, service_str, encoded_folder, encoded_encryption
-        );
-
-        if let Some(ref s3) = xdrive.s3 {
-            let encoded_endpoint = utf8_percent_encode(&s3.endpoint, URI_UNRESERVED).to_string();
-            let encoded_bucket = utf8_percent_encode(&s3.bucket, URI_UNRESERVED).to_string();
-            let encoded_region = utf8_percent_encode(&s3.region, URI_UNRESERVED).to_string();
-            link.push_str(&format!(
-                "&endpoint={}&bucket={}&region={}&pathStyle={}",
-                encoded_endpoint, encoded_bucket, encoded_region, s3.path_style
-            ));
-        }
 
         let encoded_email = utf8_percent_encode(email, URI_UNRESERVED).to_string();
         format!("{}#{}", link, encoded_email)
@@ -1233,6 +1244,40 @@ mod tests {
         assert!(link.contains("mux=true"));
         assert!(link.contains("bucket=test-bucket"));
         assert!(link.contains("pathStyle=true"));
+        assert!(link.ends_with("#admin%40aegis"));
+    }
+
+    #[test]
+    fn test_generate_client_link_xdrive_google_drive() {
+        use crate::core::xray::xdrive::XdriveConfig;
+
+        let uuid = "test-uuid-gdrive";
+        let email = "admin@aegis";
+        let encryption = "x25519-secret-key";
+        let port = 10086;
+        let xdrive = XdriveConfig::new_google_drive(
+            "test-client-id",
+            "test-client-secret",
+            "test-refresh-token",
+            "aegis-gdrive-folder",
+        );
+
+        let link =
+            ConfigManager::generate_xdrive_client_link(uuid, email, port, &xdrive, encryption);
+
+        assert_eq!(
+            link,
+            "vless://test-uuid-gdrive@google.com:443?type=xdrive&service=google-drive&remoteFolder=aegis-gdrive-folder&encryption=x25519-secret-key&security=tls&sni=google.com&alpn=h2&mux=true#admin%40aegis"
+        );
+        assert!(link.contains("google.com:443"));
+        assert!(link.contains("type=xdrive"));
+        assert!(link.contains("service=google-drive"));
+        assert!(link.contains("remoteFolder=aegis-gdrive-folder"));
+        assert!(link.contains("encryption=x25519-secret-key"));
+        assert!(link.contains("security=tls"));
+        assert!(link.contains("sni=google.com"));
+        assert!(link.contains("alpn=h2"));
+        assert!(link.contains("mux=true"));
         assert!(link.ends_with("#admin%40aegis"));
     }
 

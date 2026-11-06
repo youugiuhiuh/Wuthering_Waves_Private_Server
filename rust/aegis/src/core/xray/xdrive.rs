@@ -36,6 +36,12 @@ pub struct XdriveConfig {
     pub poll_interval_ms: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_poll_interval_ms: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flush_interval_ms: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eager_window_ms: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub concurrency: Option<u32>,
 }
 
 impl XdriveConfig {
@@ -60,6 +66,9 @@ impl XdriveConfig {
             segment_bytes: Some(1024 * 1024), // 默认 1MB
             poll_interval_ms: Some(25),       // 低延迟轮询
             max_poll_interval_ms: Some(800),
+            flush_interval_ms: None,
+            eager_window_ms: None,
+            concurrency: None,
         }
     }
 
@@ -86,6 +95,34 @@ impl XdriveConfig {
             segment_bytes: Some(1024 * 1024),
             poll_interval_ms: Some(25),
             max_poll_interval_ms: Some(800),
+            flush_interval_ms: None,
+            eager_window_ms: None,
+            concurrency: None,
+        }
+    }
+
+    /// 预设构建器：Google Drive 网盘中转（遵循官方指南调优参数）
+    pub fn new_google_drive(
+        client_id: &str,
+        client_secret: &str,
+        refresh_token: &str,
+        folder_id: &str,
+    ) -> Self {
+        Self {
+            service: XdriveService::GoogleDrive,
+            remote_folder: folder_id.to_string(),
+            secrets: vec![
+                client_id.to_string(),
+                client_secret.to_string(),
+                refresh_token.to_string(),
+            ],
+            s3: None,
+            segment_bytes: Some(524288), // 512KB
+            flush_interval_ms: Some(10), // 10ms
+            poll_interval_ms: Some(50),  // 50ms
+            max_poll_interval_ms: Some(200),
+            eager_window_ms: Some(10000), // 10s
+            concurrency: Some(64),
         }
     }
 
@@ -121,7 +158,14 @@ impl XdriveConfig {
             }
             XdriveService::Local => Ok(()),
             XdriveService::GoogleDrive => {
-                // 预留枚举，当前未接通
+                if self.secrets.len() < 3 {
+                    bail!(
+                        "Google Drive 密钥参数 secrets 数量必须至少为 3（Client ID, Client Secret, Refresh Token）"
+                    );
+                }
+                if self.secrets.iter().any(|s| s.trim().is_empty()) {
+                    bail!("Google Drive Client ID, Client Secret 与 Refresh Token 均不能为空");
+                }
                 Ok(())
             }
             XdriveService::Template => Ok(()),
@@ -165,6 +209,9 @@ impl XdriveConfig {
                     segment_bytes: Some(1024 * 1024),
                     poll_interval_ms: Some(25),
                     max_poll_interval_ms: Some(800),
+                    flush_interval_ms: None,
+                    eager_window_ms: None,
+                    concurrency: None,
                 };
                 config.validate()?;
                 Ok(config)
@@ -197,6 +244,9 @@ impl XdriveConfig {
                     segment_bytes: Some(1024 * 1024),
                     poll_interval_ms: Some(25),
                     max_poll_interval_ms: Some(800),
+                    flush_interval_ms: None,
+                    eager_window_ms: None,
+                    concurrency: None,
                 };
                 config.validate()?;
                 Ok(config)
@@ -251,6 +301,9 @@ impl XdriveConfig {
                     segment_bytes: Some(1024 * 1024),
                     poll_interval_ms: Some(25),
                     max_poll_interval_ms: Some(800),
+                    flush_interval_ms: None,
+                    eager_window_ms: None,
+                    concurrency: None,
                 };
                 config.validate()?;
                 Ok(config)
@@ -322,6 +375,206 @@ impl XdriveConfig {
             _ => None,
         }
     }
+
+    /// 智能解析 Google Drive 凭据全文（支持 key-value、JSON、分步文本与直接粘贴）
+    /// 返回 (client_id, client_secret, refresh_token, folder_id)
+    pub fn extract_google_drive_tokens(
+        text: &str,
+    ) -> Option<(String, String, String, Option<String>)> {
+        let mut client_id = None;
+        let mut client_secret = None;
+        let mut refresh_token = None;
+        let mut folder_id = None;
+
+        let clean_val = |raw: &str| -> String {
+            raw.trim()
+                .trim_matches(|c| c == '"' || c == '\'' || c == ',' || c == ';')
+                .trim()
+                .to_string()
+        };
+
+        let extract_folder_from_url = |val: &str| -> String {
+            if let Some(pos) = val.find("/folders/") {
+                let after = &val[pos + 9..];
+                let end = after
+                    .find(|c: char| {
+                        c == '?' || c == '/' || c == '"' || c == '\'' || c.is_whitespace()
+                    })
+                    .unwrap_or(after.len());
+                after[..end].trim().to_string()
+            } else {
+                clean_val(val)
+            }
+        };
+
+        // 1. 尝试解析 JSON 格式
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+            let search_obj = if let Some(installed) = v.get("installed") {
+                installed
+            } else if let Some(web) = v.get("web") {
+                web
+            } else {
+                &v
+            };
+
+            if let Some(cid) = search_obj.get("client_id").and_then(|s| s.as_str()) {
+                client_id = Some(cid.to_string());
+            }
+            if let Some(cs) = search_obj.get("client_secret").and_then(|s| s.as_str()) {
+                client_secret = Some(cs.to_string());
+            }
+            if let Some(rt) = search_obj
+                .get("refresh_token")
+                .or_else(|| v.get("refresh_token"))
+                .and_then(|s| s.as_str())
+            {
+                refresh_token = Some(rt.to_string());
+            }
+            if let Some(fid) = search_obj
+                .get("folder_id")
+                .or_else(|| v.get("folder_id"))
+                .and_then(|s| s.as_str())
+            {
+                folder_id = Some(extract_folder_from_url(fid));
+            }
+        }
+
+        // 2. 逐行分析（Key-Value、标签下一行值以及特征值嗅探）
+        let lines: Vec<&str> = text
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
+
+        for (i, line) in lines.iter().enumerate() {
+            let lower = line.to_ascii_lowercase();
+
+            let (key_part, val_part) = if let Some(pos) = line.find(['=', ':']) {
+                let k = line[..pos].trim().to_ascii_lowercase();
+                let v = line[pos + 1..].trim();
+                (Some(k), Some(v))
+            } else {
+                (None, None)
+            };
+
+            // Client ID 提取
+            if client_id.is_none() {
+                if let (Some(k), Some(v)) = (&key_part, val_part)
+                    && (k.contains("client_id")
+                        || k.contains("client id")
+                        || k.contains("客户端 id")
+                        || k.contains("客户端id"))
+                    && !v.is_empty()
+                {
+                    client_id = Some(clean_val(v));
+                }
+                if client_id.is_none()
+                    && (lower == "client id"
+                        || lower == "client_id"
+                        || lower == "客户端 id"
+                        || lower == "客户端id")
+                    && let Some(next) = lines.get(i + 1)
+                {
+                    client_id = Some(clean_val(next));
+                }
+            }
+
+            // Client Secret 提取
+            if client_secret.is_none() {
+                if let (Some(k), Some(v)) = (&key_part, val_part)
+                    && (k.contains("client_secret")
+                        || k.contains("client secret")
+                        || k.contains("客户端密钥")
+                        || k.contains("客户端机密")
+                        || k == "secret")
+                    && !v.is_empty()
+                {
+                    client_secret = Some(clean_val(v));
+                }
+                if client_secret.is_none()
+                    && (lower == "client secret"
+                        || lower == "client_secret"
+                        || lower == "客户端密钥"
+                        || lower == "secret")
+                    && let Some(next) = lines.get(i + 1)
+                {
+                    client_secret = Some(clean_val(next));
+                }
+            }
+
+            // Refresh Token 提取
+            if refresh_token.is_none() {
+                if let (Some(k), Some(v)) = (&key_part, val_part)
+                    && (k.contains("refresh_token")
+                        || k.contains("refresh token")
+                        || k.contains("刷新令牌"))
+                    && !v.is_empty()
+                {
+                    refresh_token = Some(clean_val(v));
+                }
+                if refresh_token.is_none()
+                    && (lower == "refresh token" || lower == "refresh_token" || lower == "刷新令牌")
+                    && let Some(next) = lines.get(i + 1)
+                {
+                    refresh_token = Some(clean_val(next));
+                }
+            }
+
+            // Folder ID 提取
+            if folder_id.is_none() {
+                if let (Some(k), Some(v)) = (&key_part, val_part)
+                    && (k.contains("folder_id")
+                        || k.contains("folder id")
+                        || k.contains("文件夹 id")
+                        || k.contains("文件夹id")
+                        || k == "folder")
+                    && !v.is_empty()
+                {
+                    folder_id = Some(extract_folder_from_url(v));
+                }
+                if folder_id.is_none()
+                    && (lower == "folder id"
+                        || lower == "folder_id"
+                        || lower == "文件夹 id"
+                        || lower == "folder")
+                    && let Some(next) = lines.get(i + 1)
+                {
+                    folder_id = Some(extract_folder_from_url(next));
+                }
+            }
+
+            // 凭据特征嗅探（按单词）
+            for word in line.split_whitespace() {
+                let cleaned_word = clean_val(word);
+                if client_id.is_none() && cleaned_word.contains(".apps.googleusercontent.com") {
+                    client_id = Some(cleaned_word.clone());
+                }
+                if client_secret.is_none() && cleaned_word.starts_with("GOCSPX-") {
+                    client_secret = Some(cleaned_word.clone());
+                }
+                if refresh_token.is_none()
+                    && (cleaned_word.starts_with("1//") || cleaned_word.starts_with("1/"))
+                    && cleaned_word.len() > 15
+                {
+                    refresh_token = Some(cleaned_word.clone());
+                }
+                if folder_id.is_none() && cleaned_word.contains("/folders/") {
+                    folder_id = Some(extract_folder_from_url(&cleaned_word));
+                }
+            }
+        }
+
+        match (client_id, client_secret, refresh_token) {
+            (Some(cid), Some(cs), Some(rt)) => {
+                if !cid.is_empty() && !cs.is_empty() && !rt.is_empty() {
+                    Some((cid, cs, rt, folder_id.filter(|f| !f.is_empty())))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -359,6 +612,9 @@ mod tests {
             segment_bytes: None,
             poll_interval_ms: None,
             max_poll_interval_ms: None,
+            flush_interval_ms: None,
+            eager_window_ms: None,
+            concurrency: None,
         };
         assert!(config.validate().is_err());
     }
@@ -489,5 +745,95 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
             sk,
             "4b07c8ef6340317e0b51fae296837bfdbddbfcf92e071727c955da3597dff758"
         );
+    }
+
+    #[test]
+    fn test_valid_google_drive_preset() {
+        let config = XdriveConfig::new_google_drive(
+            "test-client-id.apps.googleusercontent.com",
+            "GOCSPX-testclientsecret",
+            "1//04testrefreshtoken",
+            "1AbCdEfGhIjKlMnOpQrStUvWxYz",
+        );
+
+        assert_eq!(config.service, XdriveService::GoogleDrive);
+        assert_eq!(config.remote_folder, "1AbCdEfGhIjKlMnOpQrStUvWxYz");
+        assert_eq!(
+            config.secrets,
+            vec![
+                "test-client-id.apps.googleusercontent.com",
+                "GOCSPX-testclientsecret",
+                "1//04testrefreshtoken"
+            ]
+        );
+        assert!(config.s3.is_none());
+        assert_eq!(config.segment_bytes, Some(524288));
+        assert_eq!(config.flush_interval_ms, Some(10));
+        assert_eq!(config.poll_interval_ms, Some(50));
+        assert_eq!(config.max_poll_interval_ms, Some(200));
+        assert_eq!(config.eager_window_ms, Some(10000));
+        assert_eq!(config.concurrency, Some(64));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_google_drive_validation_rejects_missing_secrets() {
+        // 少于 3 个凭据参数
+        let mut config = XdriveConfig::new_google_drive("cid", "secret", "refresh", "folder");
+        config.secrets = vec!["cid".to_string(), "secret".to_string()];
+        assert!(config.validate().is_err());
+
+        // 包含空字符串凭据
+        let mut config2 = XdriveConfig::new_google_drive("cid", "   ", "refresh", "folder");
+        config2.secrets[1] = "".to_string();
+        assert!(config2.validate().is_err());
+
+        // remote_folder 为空
+        let config3 = XdriveConfig::new_google_drive("cid", "secret", "refresh", "   ");
+        assert!(config3.validate().is_err());
+    }
+
+    #[test]
+    fn test_extract_google_drive_tokens() {
+        // 1. Key-Value 格式
+        let text_kv = r#"
+CLIENT_ID = 123456789.apps.googleusercontent.com
+CLIENT_SECRET = GOCSPX-secret123
+REFRESH_TOKEN = 1//04abcdefghij
+FOLDER_ID = folder_abc_123
+"#;
+        let (cid, secret, refresh, folder) =
+            XdriveConfig::extract_google_drive_tokens(text_kv).expect("KV 凭据解析失败");
+        assert_eq!(cid, "123456789.apps.googleusercontent.com");
+        assert_eq!(secret, "GOCSPX-secret123");
+        assert_eq!(refresh, "1//04abcdefghij");
+        assert_eq!(folder, Some("folder_abc_123".to_string()));
+
+        // 2. JSON 格式与 URL 解析
+        let text_json = r#"{
+            "client_id": "json-cid.apps.googleusercontent.com",
+            "client_secret": "GOCSPX-jsonsecret",
+            "refresh_token": "1//04jsonrefresh",
+            "folder_id": "https://drive.google.com/drive/folders/1XYZFolder987?usp=sharing"
+        }"#;
+        let (cid, secret, refresh, folder) =
+            XdriveConfig::extract_google_drive_tokens(text_json).expect("JSON 凭据解析失败");
+        assert_eq!(cid, "json-cid.apps.googleusercontent.com");
+        assert_eq!(secret, "GOCSPX-jsonsecret");
+        assert_eq!(refresh, "1//04jsonrefresh");
+        assert_eq!(folder, Some("1XYZFolder987".to_string()));
+
+        // 3. 无 folder_id 的有效提取
+        let text_no_folder = "Client ID: cid\nClient Secret: sec\nRefresh Token: ref\n";
+        let (cid, secret, refresh, folder) =
+            XdriveConfig::extract_google_drive_tokens(text_no_folder).expect("无 folder 解析失败");
+        assert_eq!(cid, "cid");
+        assert_eq!(secret, "sec");
+        assert_eq!(refresh, "ref");
+        assert_eq!(folder, None);
+
+        // 4. 缺少必要字段应返回 None
+        let text_missing = "CLIENT_ID: cid\nFOLDER_ID: fld\n";
+        assert!(XdriveConfig::extract_google_drive_tokens(text_missing).is_none());
     }
 }

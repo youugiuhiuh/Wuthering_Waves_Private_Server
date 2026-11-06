@@ -78,6 +78,10 @@ pub enum XdriveWizardStep {
     Bucket,
     AccessKey,
     SecretKey,
+    FolderId,
+    ClientId,
+    ClientSecret,
+    RefreshToken,
 }
 
 #[derive(Debug, Clone)]
@@ -90,6 +94,10 @@ pub struct XdriveWizardSession {
     pub bucket: Option<String>,
     pub access_key: Option<String>,
     pub secret_key: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    pub refresh_token: Option<String>,
+    pub folder_id: Option<String>,
     pub started_at: Instant,
 }
 
@@ -713,8 +721,9 @@ impl AppState {
 
     pub async fn start_xdrive_wizard(&self, target: String, region: &str) -> XdriveWizardStep {
         let step = match region.to_ascii_lowercase().as_str() {
-            "cn" => XdriveWizardStep::AccountId,
-            "custom" => XdriveWizardStep::Endpoint,
+            "gdrive" | "google-drive" => XdriveWizardStep::FolderId,
+            "cn" | "r2" => XdriveWizardStep::AccountId,
+            "custom" | "s3" => XdriveWizardStep::Endpoint,
             _ => XdriveWizardStep::Bucket,
         };
         let session = XdriveWizardSession {
@@ -726,6 +735,10 @@ impl AppState {
             bucket: None,
             access_key: None,
             secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
             started_at: Instant::now(),
         };
         self.pending_xdrive_wizards
@@ -1431,5 +1444,19 @@ mod tests {
         // Custom starts at Endpoint
         let custom_step = state.start_xdrive_wizard("user3".into(), "custom").await;
         assert_eq!(custom_step, XdriveWizardStep::Endpoint);
+
+        // Google Drive starts at FolderId
+        let gdrive_step = state.start_xdrive_wizard("user4".into(), "gdrive").await;
+        assert_eq!(gdrive_step, XdriveWizardStep::FolderId);
+        let gdrive_session = state.get_xdrive_wizard("user4").await.unwrap();
+        assert_eq!(gdrive_session.step, XdriveWizardStep::FolderId);
+
+        // R2 starts at AccountId
+        let r2_step = state.start_xdrive_wizard("user5".into(), "r2").await;
+        assert_eq!(r2_step, XdriveWizardStep::AccountId);
+
+        // S3 starts at Endpoint
+        let s3_step = state.start_xdrive_wizard("user6".into(), "s3").await;
+        assert_eq!(s3_step, XdriveWizardStep::Endpoint);
     }
 }
