@@ -379,10 +379,14 @@ xray:
   xdrive_invalid_input: "❌ 输入内容不符合要求，请重新输入："
   xdrive_success_msg: "🎉 <b>XDRIVE 节点创建成功！</b>\n\n已成功写入配置文件并重载内核。\n• 协议：VLESS over XDRIVE\n• 节点标签：<code>%{0}</code>\n\n📋 <b>客户端订阅链接：</b>\n<code>%{1}</code>"
 
-  xdrive_guide_cn_step1: "🇨🇳 <b>XDRIVE 中国大陆向导 (Cloudflare R2)</b>\n• 免备案 / 零出网流量费 / 每月 10GB 免费 / 免信用卡\n\n📖 <b>30秒极速开通指引：</b>\n1. 登录控制台：https://dash.cloudflare.com/\n2. 首页右侧直接复制 <b>账户 ID (Account ID)</b>\n3. 左侧选「R2 对象存储」->「创建存储桶」（如 <code>my-proxy</code>）\n4. 右侧点「管理 R2 API 令牌」->「创建 API 令牌」获取 AK / SK\n\n👉 <b>第 1 步 / 共 4 步：</b>请输入您的 <b>Cloudflare 账户 ID (Account ID)</b>："
-  xdrive_guide_cn_step2: "🇨🇳 <b>第 2 步 / 共 4 步 (Cloudflare R2)</b>\n✅ 账户 ID 已记录！\n\n👉 请输入您创建的 <b>存储桶名称 (Bucket)</b>："
-  xdrive_guide_cn_step3: "🇨🇳 <b>第 3 步 / 共 4 步 (Cloudflare R2)</b>\n✅ 存储桶已记录！\n\n👉 请输入您的 <b>Access Key ID</b>："
-  xdrive_guide_cn_step4: "🇨🇳 <b>第 4 步 / 共 4 步 (Cloudflare R2)</b>\n✅ Access Key 已记录！\n\n👉 请输入您的 <b>Secret Access Key</b>："
+  xdrive_r2_auto_detected: "🎉 <b>已成功自动识别 Cloudflare R2 凭据！</b>\n• 账户 ID：<code>%{0}</code>\n• 访问密钥 ID：<code>%{1}</code>\n• 机密访问密钥：<code>%{2}</code>\n\n👉 <b>最后一步：</b>请输入您在 Cloudflare 创建的 <b>存储桶名称 (Bucket)</b>（例如 <code>my-proxy</code>）："
+  xdrive_cfat_warning: "⚠️ <b>请注意：</b>您输入的是 Cloudflare API 的「令牌值 (cfat_...)」，该令牌无法用于 S3 客户端。\n\n请向下滚动 Cloudflare 网页，找到<b>「为 S3 客户端使用以下凭据」</b>一栏，复制那里的<b>「访问密钥 ID」</b>（32 位字符）："
+  xdrive_invalid_account_id: "❌ 无法识别有效的账户 ID 或终结点。\n\n请直接复制 Cloudflare 页面底部的<b>「终结点」</b>链接（例如 <code>https://xxx.r2.cloudflarestorage.com</code>）发送，程序将自动提取 32 位 ID："
+
+  xdrive_guide_cn_step1: "🇨🇳 <b>XDRIVE 中国大陆向导 (Cloudflare R2)</b>\n• 免备案 / 零出网流量费 / 每月 10GB 免费 / 免信用卡\n\n📖 <b>Cloudflare R2 极速开通指引：</b>\n1. 登录：https://dash.cloudflare.com/\n2. 点击左侧「R2 对象存储」->「创建存储桶」（名称随意，如 <code>my-proxy</code>）\n3. 右侧点击「管理 R2 API 令牌」->「创建 API 令牌」\n   • 权限选择：<b>对象读和写</b>，点击创建\n4. 复制页面显示的内容（💡 <i>也可以直接将<b>整个网页文字全选复制发给 Bot</b>，程序会自动识别提取！</i>）：\n\n👉 <b>第 1 步 / 共 4 步：</b>请输入您的 <b>终结点 (Endpoint)</b> 或 <b>账户 ID</b>\n（💡 <i>可以直接复制底部的「终结点」整条链接，程序会自动提取 32 位 ID！</i>）："
+  xdrive_guide_cn_step2: "🇨🇳 <b>第 2 步 / 共 4 步 (Cloudflare R2)</b>\n✅ 终结点 / 账户 ID 已识别！\n\n👉 请输入您创建的 <b>存储桶名称 (Bucket)</b>\n（💡 <i>即您在 R2 列表里创建的存储桶名字，如 <code>my-proxy</code></i>）："
+  xdrive_guide_cn_step3: "🇨🇳 <b>第 3 步 / 共 4 步 (Cloudflare R2)</b>\n✅ 存储桶已记录！\n\n👉 请输入 <b>访问密钥 ID</b>\n（⚠️ <i>请向下滚动页面，复制「为 S3 客户端使用以下凭据」一栏下的「访问密钥 ID」，切勿复制顶部的「令牌值」！</i>）："
+  xdrive_guide_cn_step4: "🇨🇳 <b>第 4 步 / 共 4 步 (Cloudflare R2)</b>\n✅ 访问密钥 ID 已记录！\n\n👉 请输入 <b>机密访问密钥</b>\n（💡 <i>在「访问密钥 ID」正下方的「机密访问密钥」，只显示一次的 64 位字符</i>）："
 
   xdrive_guide_ru_step1: "🇷🇺 <b>XDRIVE 俄罗斯地区向导 (Yandex Cloud S3)</b>\n• 接入点：https://storage.yandexcloud.net\n• 区域：ru-central1 | Path-Style: 开启\n\n📖 <b>开通指引：</b>\n1. 打开控制台：https://console.yandex.cloud/\n2. 进入 Object Storage，创建存储桶 (Bucket)\n3. 进入 Service Accounts，创建账号并生成 Static Access Key\n\n👉 <b>第 1 步 / 共 3 步：</b>请输入 <b>存储桶名称 (Bucket)</b>："
   xdrive_guide_ru_step2: "🇷🇺 <b>第 2 步 / 共 3 步 (Yandex S3)</b>\n✅ 存储桶已记录！\n\n👉 请输入 <b>Access Key ID</b>："
