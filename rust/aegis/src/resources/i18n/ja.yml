@@ -405,7 +405,11 @@ xray:
   xdrive_invalid_input: "❌ 入力内容が正しくありません。再入力してください："
   xdrive_success_msg: "🎉 <b>XDRIVE ノードが正常に作成されました！</b>\n\n設定ファイルを書き込み、コアを再起動しました。\n• プロトコル: VLESS over XDRIVE\n• タグ: <code>%{0}</code>\n\n📋 <b>クライアント購読リンク：</b>\n<code>%{1}</code>"
 
-  xdrive_guide_cn_step1: "🇨🇳 <b>XDRIVE 中国地域ウィザード (Cloudflare R2)</b>\n• ICP不要 / 出力料金ゼロ / 月10GB無料 / クレジットカード不要\n\n📖 <b>30秒スピードガイド：</b>\n1. ログイン：https://dash.cloudflare.com/\n2. ホーム右側の <b>アカウント ID (Account ID)</b> をコピー\n3. 左側メニュー「R2」->「バケットの作成」（例 <code>my-proxy</code>）\n4. 右側「R2 API トークンの管理」-> トークン作成（オブジェクトの読み取りと書き込み）で AK / SK を取得\n\n👉 <b>ステップ 1 / 4：</b><b>Cloudflare アカウント ID</b> を入力してください："
+  xdrive_r2_auto_detected: "🎉 <b>Cloudflare R2 認証情報を自動検出しました！</b>\n• アカウント ID：<code>%{0}</code>\n• Access Key ID：<code>%{1}</code>\n• Secret Access Key：<code>%{2}</code>\n\n👉 <b>最終ステップ：</b>Cloudflare で作成した <b>バケット名 (Bucket)</b> を入力してください（例 <code>my-proxy</code>）："
+  xdrive_cfat_warning: "⚠️ <b>ご注意：</b>入力された値は Cloudflare API の「トークン値 (cfat_...)」です。S3 クライアントには使用できません。\n\nページ下部の<b>「S3 クライアント用の資格情報」</b>にある 32 文字の<b>「アクセスキー ID」</b>をコピーしてください："
+  xdrive_invalid_account_id: "❌ 有効なアカウント ID またはエンドポイント URL を識別できませんでした。\n\nページ下部の<b>「エンドポイント」</b>URL（例 <code>https://xxx.r2.cloudflarestorage.com</code>）をコピーして送信してください："
+
+  xdrive_guide_cn_step1: "🇨🇳 <b>XDRIVE 中国地域ウィザード (Cloudflare R2)</b>\n• ICP不要 / 出力料金ゼロ / 月10GB無料 / クレジットカード不要\n\n📖 <b>Cloudflare R2 開通ガイド：</b>\n1. ログイン：https://dash.cloudflare.com/\n2. 左側「R2」->「バケットの作成」（例 <code>my-proxy</code>）\n3. 右側「R2 API トークンの管理」->「API トークンの作成」\n   • 権限：<b>オブジェクトの読み取りと書き込み</b>\n4. ページの内容をコピー（💡 <i>または<b>ウェブページ全体のテキストをそのままコピーして送信</b>すると自動解析されます！</i>）：\n\n👉 <b>ステップ 1 / 4：</b><b>エンドポイント URL</b> または <b>アカウント ID</b> を入力してください\n（💡 <i>https://xxx.r2.cloudflarestorage.com の全体リンクでも構いません</i>）："
   xdrive_guide_cn_step2: "🇨🇳 <b>ステップ 2 / 4 (Cloudflare R2)</b>\n✅ アカウント ID を保存しました！\n\n👉 作成した <b>バケット名 (Bucket)</b> を入力してください："
   xdrive_guide_cn_step3: "🇨🇳 <b>ステップ 3 / 4 (Cloudflare R2)</b>\n✅ バケット名を保存しました！\n\n👉 <b>Access Key ID</b> を入力してください："
   xdrive_guide_cn_step4: "🇨🇳 <b>ステップ 4 / 4 (Cloudflare R2)</b>\n✅ Access Key を保存しました！\n\n👉 <b>Secret Access Key</b> を入力してください："

@@ -713,9 +713,71 @@ async fn handle_xdrive_wizard_input(
         }]],
     });
 
+    // 如果是 CN 模式，且输入内容包含 r2.cloudflarestorage.com，尝试一键提取全文凭据
+    if session.region == "cn"
+        && raw_input.contains("r2.cloudflarestorage.com")
+        && let Some((acc, ak, sk)) = XdriveConfig::extract_cloudflare_r2_page_tokens(raw_input)
+    {
+        session.account_id = Some(acc.clone());
+        session.access_key = Some(ak.clone());
+        session.secret_key = Some(sk.clone());
+        session.step = XdriveWizardStep::Bucket;
+        state.update_xdrive_wizard(&target.0, session).await;
+        let masked_sk = if sk.len() > 16 {
+            format!("{}...", &sk[..16])
+        } else {
+            "***".to_string()
+        };
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: t!(
+                        "xray.xdrive_r2_auto_detected",
+                        "0" => acc,
+                        "1" => ak,
+                        "2" => masked_sk
+                    )
+                    .to_string(),
+                    markup: cancel_markup,
+                },
+            )
+            .await?;
+        return Ok(MessageAction::Handled);
+    }
+
     match session.step {
         XdriveWizardStep::AccountId => {
-            session.account_id = Some(raw_input.to_string());
+            if raw_input.starts_with("cfat_") {
+                adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: t!("xray.xdrive_cfat_warning").to_string(),
+                            markup: cancel_markup,
+                        },
+                    )
+                    .await?;
+                return Ok(MessageAction::Handled);
+            }
+
+            let account_id = match XdriveConfig::extract_cloudflare_account_id(raw_input) {
+                Some(id) => id,
+                None => {
+                    adapter
+                        .send_message(
+                            target,
+                            MessageContent {
+                                text: t!("xray.xdrive_invalid_account_id").to_string(),
+                                markup: cancel_markup,
+                            },
+                        )
+                        .await?;
+                    return Ok(MessageAction::Handled);
+                }
+            };
+
+            session.account_id = Some(account_id);
             session.step = XdriveWizardStep::Bucket;
             state.update_xdrive_wizard(&target.0, session).await;
             adapter
@@ -777,6 +839,19 @@ async fn handle_xdrive_wizard_input(
                 .await?;
         }
         XdriveWizardStep::AccessKey => {
+            if session.region == "cn" && raw_input.starts_with("cfat_") {
+                adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: t!("xray.xdrive_cfat_warning").to_string(),
+                            markup: cancel_markup,
+                        },
+                    )
+                    .await?;
+                return Ok(MessageAction::Handled);
+            }
+
             session.access_key = Some(raw_input.to_string());
             session.step = XdriveWizardStep::SecretKey;
             let prompt = match session.region.as_str() {
@@ -1966,5 +2041,58 @@ mod tests {
             .unwrap();
         assert!(matches!(action, MessageAction::Handled));
         assert!(state.get_xdrive_wizard("test_chat").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_cloudflare_auto_extract() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "cn".to_string(),
+            step: XdriveWizardStep::AccountId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        let sample = r#"
+R2 Account Token 已成功创建
+令牌值
+cfat_mocktoken1234567890abcdef1234567890
+为 S3 客户端使用以下凭据：
+访问密钥 ID
+b65ef1b0f6dcc85d9c2e42a92610fe14
+机密访问密钥
+4b07c8ef6340317e0b51fae296837bfdbddbfcf92e071727c955da3597dff758
+为 S3 客户端使用管辖权地特定的终结点：
+https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
+"#;
+
+        let action = handle_message(&adapter, &target, Some(sample), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::Bucket);
+        assert_eq!(
+            session.account_id.as_deref(),
+            Some("a5be0a9d14aa44e51692d81782d83fe6")
+        );
+        assert_eq!(
+            session.access_key.as_deref(),
+            Some("b65ef1b0f6dcc85d9c2e42a92610fe14")
+        );
+        assert_eq!(
+            session.secret_key.as_deref(),
+            Some("4b07c8ef6340317e0b51fae296837bfdbddbfcf92e071727c955da3597dff758")
+        );
     }
 }
