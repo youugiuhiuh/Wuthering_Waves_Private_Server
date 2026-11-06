@@ -1,0 +1,23 @@
+# Todo List: XDRIVE 按服务商/存储平台重构与 Google Drive 深度集成
+
+- [x] Task 1: Google Drive 数据模型与调优预设 (XdriveConfig Google Drive Integration)
+  - [x] 编写失败测试用例 (TDD RED)
+  - [x] 实现 `new_google_drive` 与 `validate` 校验 (TDD GREEN)
+  - [x] 确认测试通过并提交代码
+- [ ] Task 2: Google Drive 客户端链接生成与域前置 (Google Drive Client Link with Domain Fronting)
+  - [ ] 编写失败测试用例 (TDD RED)
+  - [ ] 实现 Google Drive 域前置客户端链接生成 (TDD GREEN)
+  - [ ] 确认测试通过并提交代码
+- [ ] Task 3: 服务商主菜单与文案重构 (i18n & Menu Restructuring)
+  - [ ] 更新 `zh.yml`, `en.yml`, `ja.yml` 多语言文案
+  - [ ] 更新 `handle_xdrive_menu` 布局为服务商 5 选项
+  - [ ] 确认测试通过并提交代码
+- [ ] Task 4: 消息监听器集成 Google Drive 问答向导 (Message Handler Integration)
+  - [ ] 扩展 `XdriveWizardStep` 与 `AppState` 状态机
+  - [ ] 在 `message.rs` 中接通 Google Drive 分步问答
+  - [ ] 确认测试通过并提交代码
+- [ ] Task 5: 全流程门禁与回归验证 (Quality Gates)
+  - [ ] `cargo fmt --check`
+  - [ ] `cargo clippy --all-targets --all-features -- -D warnings`
+  - [ ] `cargo nextest run --cargo-profile fast-test`
+  - [ ] `cargo test --doc`
