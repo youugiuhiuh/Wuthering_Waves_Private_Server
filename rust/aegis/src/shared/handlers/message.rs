@@ -3,6 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rust_i18n::t;
 
+use crate::app::state::{XdriveWizardSession, XdriveWizardStep};
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent, TargetId};
 use crate::core::security::acme::{
     AcmeCertificateOperation, AcmeCommandError, AcmeFailureKind, AcmeManager, XhttpDeployMode,
@@ -12,6 +13,7 @@ use crate::core::xray::config::ConfigManager;
 use crate::core::xray::routing::{
     CustomAddOutcome, RoutingManager, match_custom_direct, matches_builtin_direct,
 };
+use crate::core::xray::xdrive::XdriveConfig;
 use crate::shared::types::TimeoutStatus;
 
 const MAX_INPUT_LENGTH: usize = 4096;
@@ -46,6 +48,9 @@ pub trait MessageState: Send + Sync {
     ) -> bool;
     async fn take_domain_input(&self, chat_id: &str) -> Option<DomainInputState>;
     async fn domain_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus;
+    async fn get_xdrive_wizard(&self, target: &str) -> Option<XdriveWizardSession>;
+    async fn update_xdrive_wizard(&self, target: &str, session: XdriveWizardSession);
+    async fn clear_xdrive_wizard(&self, target: &str);
 }
 
 pub async fn handle_message(
@@ -73,6 +78,10 @@ pub async fn handle_message(
     }
 
     let target_str = &target.0;
+
+    if let Some(session) = state.get_xdrive_wizard(target_str).await {
+        return handle_xdrive_wizard_input(adapter, target, text, state, session).await;
+    }
 
     if let Some(domain_state) = state.domain_input_snapshot(target_str).await {
         // 自定义放行（添加 / 自检）与 ACME 共用 AwaitDomain 这一步输入，但语义完全不同：
@@ -667,6 +676,238 @@ async fn take_custom_input<'a>(
     Ok(Some(input))
 }
 
+async fn handle_xdrive_wizard_input(
+    adapter: &dyn BotAdapter,
+    target: &TargetId,
+    text: Option<&str>,
+    state: &dyn MessageState,
+    mut session: XdriveWizardSession,
+) -> anyhow::Result<MessageAction> {
+    let raw_input = match text {
+        Some(t) => t.trim(),
+        None => return Ok(MessageAction::Handled),
+    };
+
+    if raw_input == "/cancel" {
+        state.clear_xdrive_wizard(&target.0).await;
+        adapter
+            .send_message(
+                target,
+                MessageContent {
+                    text: t!("xray.xdrive_cancelled").to_string(),
+                    markup: None,
+                },
+            )
+            .await?;
+        return Ok(MessageAction::Handled);
+    }
+
+    if raw_input.is_empty() {
+        return Ok(MessageAction::Handled);
+    }
+
+    let cancel_markup = Some(Markup {
+        buttons: vec![vec![InlineButton {
+            text: t!("xray.xdrive_cancel_btn").into(),
+            data: "u_xdrive_cancel".into(),
+        }]],
+    });
+
+    match session.step {
+        XdriveWizardStep::AccountId => {
+            session.account_id = Some(raw_input.to_string());
+            session.step = XdriveWizardStep::Bucket;
+            state.update_xdrive_wizard(&target.0, session).await;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!("xray.xdrive_guide_cn_step2").to_string(),
+                        markup: cancel_markup,
+                    },
+                )
+                .await?;
+        }
+        XdriveWizardStep::Endpoint => {
+            session.endpoint = Some(raw_input.to_string());
+            session.step = XdriveWizardStep::Region;
+            state.update_xdrive_wizard(&target.0, session).await;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!("xray.xdrive_guide_custom_step2").to_string(),
+                        markup: cancel_markup,
+                    },
+                )
+                .await?;
+        }
+        XdriveWizardStep::Region => {
+            session.s3_region = Some(raw_input.to_string());
+            session.step = XdriveWizardStep::Bucket;
+            state.update_xdrive_wizard(&target.0, session).await;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!("xray.xdrive_guide_custom_step3").to_string(),
+                        markup: cancel_markup,
+                    },
+                )
+                .await?;
+        }
+        XdriveWizardStep::Bucket => {
+            session.bucket = Some(raw_input.to_string());
+            session.step = XdriveWizardStep::AccessKey;
+            let prompt = match session.region.as_str() {
+                "cn" => t!("xray.xdrive_guide_cn_step3"),
+                "ru" => t!("xray.xdrive_guide_ru_step2"),
+                "ir" => t!("xray.xdrive_guide_ir_step2"),
+                _ => t!("xray.xdrive_guide_custom_step4"),
+            };
+            state.update_xdrive_wizard(&target.0, session).await;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: prompt.to_string(),
+                        markup: cancel_markup,
+                    },
+                )
+                .await?;
+        }
+        XdriveWizardStep::AccessKey => {
+            session.access_key = Some(raw_input.to_string());
+            session.step = XdriveWizardStep::SecretKey;
+            let prompt = match session.region.as_str() {
+                "cn" => t!("xray.xdrive_guide_cn_step4"),
+                "ru" => t!("xray.xdrive_guide_ru_step3"),
+                "ir" => t!("xray.xdrive_guide_ir_step3"),
+                _ => t!("xray.xdrive_guide_custom_step5"),
+            };
+            state.update_xdrive_wizard(&target.0, session).await;
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: prompt.to_string(),
+                        markup: cancel_markup,
+                    },
+                )
+                .await?;
+        }
+        XdriveWizardStep::SecretKey => {
+            session.secret_key = Some(raw_input.to_string());
+
+            let config_res = match session.region.as_str() {
+                "cn" => {
+                    let account_id = session.account_id.as_deref().unwrap_or_default();
+                    let bucket = session.bucket.as_deref().unwrap_or_default();
+                    let ak = session.access_key.as_deref().unwrap_or_default();
+                    let sk = session.secret_key.as_deref().unwrap_or_default();
+                    let cfg =
+                        XdriveConfig::new_cloudflare_r2(account_id, bucket, ak, sk, "aegis-xdrive");
+                    cfg.validate().map(|_| cfg)
+                }
+                "ru" => {
+                    let bucket = session.bucket.as_deref().unwrap_or_default();
+                    let ak = session.access_key.as_deref().unwrap_or_default();
+                    let sk = session.secret_key.as_deref().unwrap_or_default();
+                    let cfg = XdriveConfig::new_s3(
+                        "https://storage.yandexcloud.net",
+                        "ru-central1",
+                        bucket,
+                        ak,
+                        sk,
+                        true,
+                        "aegis-xdrive",
+                    );
+                    cfg.validate().map(|_| cfg)
+                }
+                "ir" => {
+                    let bucket = session.bucket.as_deref().unwrap_or_default();
+                    let ak = session.access_key.as_deref().unwrap_or_default();
+                    let sk = session.secret_key.as_deref().unwrap_or_default();
+                    let cfg = XdriveConfig::new_s3(
+                        "https://s3.ir-thr-at1.arvanstorage.ir",
+                        "ir-thr-at1",
+                        bucket,
+                        ak,
+                        sk,
+                        true,
+                        "aegis-xdrive",
+                    );
+                    cfg.validate().map(|_| cfg)
+                }
+                _ => {
+                    let endpoint = session.endpoint.as_deref().unwrap_or_default();
+                    let region = session.s3_region.as_deref().unwrap_or("us-east-1");
+                    let bucket = session.bucket.as_deref().unwrap_or_default();
+                    let ak = session.access_key.as_deref().unwrap_or_default();
+                    let sk = session.secret_key.as_deref().unwrap_or_default();
+                    let cfg = XdriveConfig::new_s3(
+                        endpoint,
+                        region,
+                        bucket,
+                        ak,
+                        sk,
+                        true,
+                        "aegis-xdrive",
+                    );
+                    cfg.validate().map(|_| cfg)
+                }
+            };
+
+            let xdrive_config = match config_res {
+                Ok(c) => c,
+                Err(e) => {
+                    adapter
+                        .send_message(
+                            target,
+                            MessageContent {
+                                text: format!("❌ 配置校验失败: {}\n\n请点击下方按钮重新配置。", e),
+                                markup: cancel_markup,
+                            },
+                        )
+                        .await?;
+                    return Ok(MessageAction::Handled);
+                }
+            };
+
+            state.clear_xdrive_wizard(&target.0).await;
+            let tag = format!("XDRIVE-{}", session.region.to_ascii_uppercase());
+            match ConfigManager::create_xdrive_node(&xdrive_config, &tag).await {
+                Ok(res) => {
+                    let link = res.links.first().cloned().unwrap_or_default();
+                    let msg = t!("xray.xdrive_success_msg", "0" => tag, "1" => link);
+                    adapter
+                        .send_message(
+                            target,
+                            MessageContent {
+                                text: msg.to_string(),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                }
+                Err(e) => {
+                    adapter
+                        .send_message(
+                            target,
+                            MessageContent {
+                                text: format!("❌ 节点生成失败: {}", e),
+                                markup: None,
+                            },
+                        )
+                        .await?;
+                }
+            }
+        }
+    }
+
+    Ok(MessageAction::Handled)
+}
+
 /// 自定义放行输入分支（添加）。
 ///
 /// 单独成函数而不是塞进 ACME 的 match：该分支从校验到落盘都与 ACME 无关，
@@ -874,6 +1115,7 @@ mod tests {
         source: DomainFlowSource,
         chat_id: String,
         inner: Arc<Mutex<FakeStateInner>>,
+        xdrive: Arc<Mutex<std::collections::HashMap<String, XdriveWizardSession>>>,
     }
 
     struct FakeStateInner {
@@ -890,6 +1132,7 @@ mod tests {
                     step,
                     domain: Some("example.com".to_string()),
                 })),
+                xdrive: Arc::new(Mutex::new(std::collections::HashMap::new())),
             }
         }
 
@@ -901,6 +1144,7 @@ mod tests {
                     step: DomainInputStep::AwaitCredentials(provider),
                     domain: Some(domain.to_string()),
                 })),
+                xdrive: Arc::new(Mutex::new(std::collections::HashMap::new())),
             }
         }
 
@@ -910,6 +1154,7 @@ mod tests {
                 source: DomainFlowSource::CustomAllowlistCheck,
                 chat_id: "test_chat".to_string(),
                 inner: Arc::new(Mutex::new(FakeStateInner { step, domain: None })),
+                xdrive: Arc::new(Mutex::new(std::collections::HashMap::new())),
             }
         }
 
@@ -980,6 +1225,21 @@ mod tests {
         }
         async fn domain_timeout_status(&self, _chat_id: &str, _timeout: Duration) -> TimeoutStatus {
             TimeoutStatus::Active
+        }
+
+        async fn get_xdrive_wizard(&self, target: &str) -> Option<XdriveWizardSession> {
+            self.xdrive.lock().unwrap().get(target).cloned()
+        }
+
+        async fn update_xdrive_wizard(&self, target: &str, session: XdriveWizardSession) {
+            self.xdrive
+                .lock()
+                .unwrap()
+                .insert(target.to_string(), session);
+        }
+
+        async fn clear_xdrive_wizard(&self, target: &str) {
+            self.xdrive.lock().unwrap().remove(target);
         }
     }
 
@@ -1658,5 +1918,53 @@ mod tests {
                 .await
         );
         assert!(matches!(state.snapshot(), DomainInputStep::AwaitProvider));
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_conversational_flow() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        // Initialize RU wizard session
+        let session = XdriveWizardSession {
+            region: "ru".to_string(),
+            step: XdriveWizardStep::Bucket,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        // Step 1: User sends Bucket name
+        let action = handle_message(&adapter, &target, Some("my-bucket"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::AccessKey);
+        assert_eq!(session.bucket.as_deref(), Some("my-bucket"));
+
+        // Step 2: User sends Access Key
+        let action = handle_message(&adapter, &target, Some("my-ak-12345"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::SecretKey);
+        assert_eq!(session.access_key.as_deref(), Some("my-ak-12345"));
+
+        // Step 3: Test cancel via /cancel
+        let action = handle_message(&adapter, &target, Some("/cancel"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+        assert!(state.get_xdrive_wizard("test_chat").await.is_none());
     }
 }

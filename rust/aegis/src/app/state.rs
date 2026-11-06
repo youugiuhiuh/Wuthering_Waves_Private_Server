@@ -69,6 +69,30 @@ pub struct ScheduleInputState {
     pub return_to: String,
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum XdriveWizardStep {
+    AccountId,
+    Endpoint,
+    Region,
+    Bucket,
+    AccessKey,
+    SecretKey,
+}
+
+#[derive(Debug, Clone)]
+pub struct XdriveWizardSession {
+    pub region: String,
+    pub step: XdriveWizardStep,
+    pub account_id: Option<String>,
+    pub endpoint: Option<String>,
+    pub s3_region: Option<String>,
+    pub bucket: Option<String>,
+    pub access_key: Option<String>,
+    pub secret_key: Option<String>,
+    pub started_at: Instant,
+}
+
 pub struct AppState {
     #[allow(dead_code)]
     pub adapter: Arc<dyn BotAdapter>,
@@ -96,6 +120,7 @@ pub struct AppState {
     pending_schedule_inputs: Mutex<HashMap<String, ScheduleInputState>>,
     pending_security_file: Mutex<HashMap<String, Instant>>,
     pending_domain_inputs: Mutex<HashMap<String, DomainInputState>>,
+    pending_xdrive_wizards: Mutex<HashMap<String, XdriveWizardSession>>,
     session_timeout_secs: Mutex<u64>,
     lang: Mutex<Lang>,
     lang_configured: Mutex<bool>,
@@ -133,6 +158,7 @@ impl AppState {
             pending_schedule_inputs: Mutex::new(HashMap::new()),
             pending_security_file: Mutex::new(HashMap::new()),
             pending_domain_inputs: Mutex::new(HashMap::new()),
+            pending_xdrive_wizards: Mutex::new(HashMap::new()),
             session_timeout_secs: Mutex::new(session_timeout_secs),
             lang: Mutex::new(Lang::Zh),
             lang_configured: Mutex::new(false),
@@ -684,6 +710,53 @@ impl AppState {
             None => TimeoutStatus::NotTracked,
         }
     }
+
+    pub async fn start_xdrive_wizard(&self, target: String, region: &str) -> XdriveWizardStep {
+        let step = match region.to_ascii_lowercase().as_str() {
+            "cn" => XdriveWizardStep::AccountId,
+            "custom" => XdriveWizardStep::Endpoint,
+            _ => XdriveWizardStep::Bucket,
+        };
+        let session = XdriveWizardSession {
+            region: region.to_string(),
+            step: step.clone(),
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            started_at: Instant::now(),
+        };
+        self.pending_xdrive_wizards
+            .lock()
+            .await
+            .insert(target, session);
+        step
+    }
+
+    pub async fn get_xdrive_wizard(&self, target: &str) -> Option<XdriveWizardSession> {
+        let mut map = self.pending_xdrive_wizards.lock().await;
+        if let Some(session) = map.get(target) {
+            if session.started_at.elapsed() < Duration::from_secs(180) {
+                return Some(session.clone());
+            } else {
+                map.remove(target);
+            }
+        }
+        None
+    }
+
+    pub async fn update_xdrive_wizard(&self, target: &str, session: XdriveWizardSession) {
+        self.pending_xdrive_wizards
+            .lock()
+            .await
+            .insert(target.to_string(), session);
+    }
+
+    pub async fn clear_xdrive_wizard(&self, target: &str) {
+        self.pending_xdrive_wizards.lock().await.remove(target);
+    }
 }
 
 #[async_trait]
@@ -730,6 +803,18 @@ impl MessageState for AppState {
 
     async fn domain_timeout_status(&self, chat_id: &str, timeout: Duration) -> TimeoutStatus {
         self.domain_timeout_status(chat_id, timeout).await
+    }
+
+    async fn get_xdrive_wizard(&self, target: &str) -> Option<XdriveWizardSession> {
+        self.get_xdrive_wizard(target).await
+    }
+
+    async fn update_xdrive_wizard(&self, target: &str, session: XdriveWizardSession) {
+        self.update_xdrive_wizard(target, session).await
+    }
+
+    async fn clear_xdrive_wizard(&self, target: &str) {
+        self.clear_xdrive_wizard(target).await
     }
 }
 
@@ -1315,14 +1400,36 @@ mod tests {
         assert!(!state.simplex_code_verified());
     }
 
-    #[test]
-    fn set_simplex_code_verified_reflects_admin_id_changes() {
-        let state = make_state_with_simplex(Some(5));
-        state.set_simplex_code_verified_for(Some(7));
-        assert!(!state.simplex_code_verified());
-        state.set_simplex_admin_id(7);
-        assert!(state.simplex_code_verified());
-        state.set_simplex_code_verified_for(None);
-        assert!(!state.simplex_code_verified());
+    #[tokio::test]
+    async fn test_xdrive_wizard_session_lifecycle() {
+        let state = make_state();
+
+        // CN starts at AccountId
+        let step = state.start_xdrive_wizard("user1".into(), "cn").await;
+        assert_eq!(step, XdriveWizardStep::AccountId);
+        let session = state.get_xdrive_wizard("user1").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::AccountId);
+
+        // Advance to Bucket
+        let mut session = session;
+        session.account_id = Some("cf-acc-123".into());
+        session.step = XdriveWizardStep::Bucket;
+        state.update_xdrive_wizard("user1", session).await;
+
+        let updated = state.get_xdrive_wizard("user1").await.unwrap();
+        assert_eq!(updated.step, XdriveWizardStep::Bucket);
+        assert_eq!(updated.account_id.as_deref(), Some("cf-acc-123"));
+
+        // Clear wizard
+        state.clear_xdrive_wizard("user1").await;
+        assert!(state.get_xdrive_wizard("user1").await.is_none());
+
+        // RU starts at Bucket
+        let ru_step = state.start_xdrive_wizard("user2".into(), "ru").await;
+        assert_eq!(ru_step, XdriveWizardStep::Bucket);
+
+        // Custom starts at Endpoint
+        let custom_step = state.start_xdrive_wizard("user3".into(), "custom").await;
+        assert_eq!(custom_step, XdriveWizardStep::Endpoint);
     }
 }

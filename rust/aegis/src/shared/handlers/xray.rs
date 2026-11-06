@@ -573,17 +573,25 @@ async fn handle_xdrive_menu(event: &CallbackEvent) -> HandlerResult {
     Ok(HandlerAction::Done)
 }
 
-async fn handle_xdrive_region_prompt(event: &CallbackEvent, region: &str) -> HandlerResult {
+async fn handle_xdrive_region_prompt(
+    event: &CallbackEvent,
+    state: &AppState,
+    region: &str,
+) -> HandlerResult {
+    let _step = state
+        .start_xdrive_wizard(event.target.0.clone(), region)
+        .await;
+
     let prompt_text = match region {
-        "ru" => t!("xray.xdrive_wizard_ru"),
-        "ir" => t!("xray.xdrive_wizard_ir"),
-        "cn" => t!("xray.xdrive_wizard_cn"),
-        _ => t!("xray.xdrive_wizard_custom"),
+        "cn" => t!("xray.xdrive_guide_cn_step1"),
+        "ru" => t!("xray.xdrive_guide_ru_step1"),
+        "ir" => t!("xray.xdrive_guide_ir_step1"),
+        _ => t!("xray.xdrive_guide_custom_step1"),
     };
 
     let rows = vec![vec![InlineButton {
-        text: t!("menu.back").into(),
-        data: "u_xdrive_menu".into(),
+        text: t!("xray.xdrive_cancel_btn").into(),
+        data: "u_xdrive_cancel".into(),
     }]];
 
     event
@@ -604,6 +612,21 @@ async fn handle_xdrive_region_prompt(event: &CallbackEvent, region: &str) -> Han
         .await?;
 
     Ok(HandlerAction::Done)
+}
+
+async fn handle_xdrive_cancel(event: &CallbackEvent, state: &AppState) -> HandlerResult {
+    state.clear_xdrive_wizard(&event.target.0).await;
+
+    event
+        .adapter
+        .answer_callback(
+            &event.target,
+            &event.callback_id,
+            Some(t!("xray.xdrive_cancelled").into_owned()),
+        )
+        .await?;
+
+    handle_xdrive_menu(event).await
 }
 
 async fn handle_pq_mgmt(event: &CallbackEvent) -> HandlerResult {
@@ -3330,9 +3353,10 @@ pub async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerResult {
             Ok(HandlerAction::Done)
         }
         "u_xdrive_menu" => handle_xdrive_menu(event).await,
+        "u_xdrive_cancel" => handle_xdrive_cancel(event, state).await,
         d if d.starts_with("u_xdrive_r:") => {
             let region = d.strip_prefix("u_xdrive_r:").unwrap_or("ru");
-            handle_xdrive_region_prompt(event, region).await
+            handle_xdrive_region_prompt(event, state, region).await
         }
         "m_pq_mgmt" => handle_pq_mgmt(event).await,
         "m_pq_del" => handle_pq_del(event).await,
