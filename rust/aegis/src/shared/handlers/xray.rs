@@ -168,6 +168,7 @@ async fn show_reality_batch_prompt(
         Proto::XHTTP => ("u_xhttp_batch_ip_init:", "Reality (XHTTP)"),
         Proto::Kcp => unreachable!("KCP uses separate UI flow"),
         Proto::Hysteria2 => ("u_hy2_batch_ip_init:", "Hysteria2 (Xray)"),
+        Proto::XDrive => unreachable!("XDrive does not use public IP selection"),
     };
 
     let has_ipv6 = SystemMonitor::get_public_ipv6().await.is_ok();
@@ -307,6 +308,7 @@ async fn show_reality_qty_prompt(
         // Hysteria2 routes the quantity step through the obfs/hop choice steps
         // before dispatch; the exec prefix is `u_hy2_batch_obfs:` here.
         Proto::Hysteria2 => ("u_hy2_batch_obfs:", "Hysteria2"),
+        Proto::XDrive => unreachable!("XDrive does not use quantity UI flow"),
     };
 
     let buttons = vec![
@@ -1523,6 +1525,7 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
         Proto::XHTTP => "XHTTP",
         Proto::Kcp => "KCP",
         Proto::Hysteria2 => "Hysteria2",
+        Proto::XDrive => "XDRIVE",
     };
 
     event
@@ -1544,6 +1547,7 @@ async fn handle_batch_exec(event: &CallbackEvent) -> HandlerResult {
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
         Proto::Hysteria2 => unreachable!("Hysteria2 uses its own handler"),
+        Proto::XDrive => unreachable!("XDrive uses separate handler"),
     };
 
     let adapter = event.adapter.clone();
@@ -1706,6 +1710,7 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
         Proto::XHTTP => "XHTTP",
         Proto::Kcp => "KCP",
         Proto::Hysteria2 => "Hysteria2",
+        Proto::XDrive => "XDRIVE",
     };
 
     event
@@ -1727,6 +1732,7 @@ async fn handle_xhttp_batch_exec(event: &CallbackEvent) -> HandlerResult {
         }
         Proto::Kcp => unreachable!("KCP uses separate batch handler"),
         Proto::Hysteria2 => unreachable!("Hysteria2 uses its own handler"),
+        Proto::XDrive => unreachable!("XDrive uses separate handler"),
     };
 
     let adapter = event.adapter.clone();
@@ -2145,6 +2151,7 @@ async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
         Proto::XHTTP => "XHTTP",
         Proto::Kcp => "KCP",
         Proto::Hysteria2 => "Hysteria2",
+        Proto::XDrive => "XDRIVE",
     };
 
     event
@@ -2176,6 +2183,7 @@ async fn handle_hy2_batch_exec(event: &CallbackEvent) -> HandlerResult {
             )
             .await
         }
+        Proto::XDrive => unreachable!("XDrive uses separate handler"),
     };
 
     let adapter = event.adapter.clone();
