@@ -518,7 +518,7 @@ pub async fn run(
         ) -> Result<(), teloxide::RequestError> {
             let chat_id = q.message.as_ref().map(|m| m.chat().id).unwrap_or(ChatId(0));
             let msg_id = q.message.as_ref().map(|m| m.id()).unwrap_or_default();
-            let _ = dispatch_event(
+            if let Err(e) = dispatch_event(
                 BotEvent::Callback(CallbackEvent {
                     adapter: state.adapter.clone(),
                     target: TargetId(chat_id.0.to_string()),
@@ -530,7 +530,10 @@ pub async fn run(
                 }),
                 &state,
             )
-            .await;
+            .await
+            {
+                log::error!("Callback dispatch error: {}", e);
+            }
             Ok(())
         }
 

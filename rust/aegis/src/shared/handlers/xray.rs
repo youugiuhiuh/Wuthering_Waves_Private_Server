@@ -588,6 +588,11 @@ async fn handle_xdrive_region_prompt(event: &CallbackEvent, region: &str) -> Han
 
     event
         .adapter
+        .answer_callback(&event.target, &event.callback_id, None)
+        .await?;
+
+    event
+        .adapter
         .edit_message(
             &event.target,
             &event.msg_id,
