@@ -135,8 +135,14 @@ impl ConfigManager {
             else {
                 continue;
             };
+            if let Some(listen) = inbound.get("listen").and_then(|v| v.as_str())
+                && (listen == "127.0.0.1" || listen == "localhost")
+            {
+                // 本地回环入站（如 XDRIVE 内部端口）无需向外部防火墙申请开放公网端口
+                continue;
+            }
             if port == 0 {
-                // 虚拟/本地零端口入站（如 XDRIVE）无需向外部防火墙申请开放公网端口
+                // 虚拟/本地零端口入站无需向外部防火墙申请开放公网端口
                 continue;
             }
             ports.insert(port);
@@ -226,6 +232,31 @@ impl ConfigManager {
             .ok_or_else(|| anyhow!("❌ 未找到 PublicKey"))?;
 
         Ok((priv_key, pub_key))
+    }
+
+    /// 生成 VLESS 加密/解密密钥对（通过 `xray vlessenc`）
+    pub(crate) async fn generate_vless_encryption_keys() -> Result<(String, String)> {
+        let stdout = run_wwps_core_cmd(&["vlessenc"]).await?;
+        let mut decryption = None;
+        let mut encryption = None;
+        for line in stdout.lines() {
+            if line.contains("\"decryption\":")
+                && let Some(val) = line.split('"').nth(3)
+            {
+                decryption = Some(val.to_string());
+            } else if line.contains("\"encryption\":")
+                && let Some(val) = line.split('"').nth(3)
+            {
+                encryption = Some(val.to_string());
+            }
+            if decryption.is_some() && encryption.is_some() {
+                break;
+            }
+        }
+        match (decryption, encryption) {
+            (Some(d), Some(e)) => Ok((d, e)),
+            _ => anyhow::bail!("Failed to parse vlessenc keys from xray output"),
+        }
     }
 
     pub(crate) fn generate_random_short_id() -> String {
@@ -467,22 +498,22 @@ impl ConfigManager {
         tag: &str,
         uuid: &str,
         email: &str,
+        port: u16,
         xdrive: &crate::core::xray::xdrive::XdriveConfig,
-        encryption_key: &str,
+        decryption_key: &str,
     ) -> Value {
         json!({
             "tag": tag,
             "listen": "127.0.0.1",
-            "port": 0,
+            "port": port,
             "protocol": "vless",
             "settings": {
                 "clients": [{
                     "id": uuid,
                     "email": email,
-                    "encryption": encryption_key,
                     "level": 0
                 }],
-                "decryption": "none"
+                "decryption": decryption_key
             },
             "streamSettings": {
                 "network": "xdrive",
@@ -699,6 +730,7 @@ impl ConfigManager {
     pub fn generate_xdrive_client_link(
         uuid: &str,
         email: &str,
+        port: u16,
         xdrive: &crate::core::xray::xdrive::XdriveConfig,
         encryption_key: &str,
     ) -> String {
@@ -718,8 +750,8 @@ impl ConfigManager {
         };
 
         let mut link = format!(
-            "vless://{}@127.0.0.1:0?type=xdrive&service={}&remoteFolder={}&encryption={}",
-            uuid, service_str, encoded_folder, encoded_encryption
+            "vless://{}@127.0.0.1:{}?type=xdrive&service={}&remoteFolder={}&encryption={}&mux=true",
+            uuid, port, service_str, encoded_folder, encoded_encryption
         );
 
         if let Some(ref s3) = xdrive.s3 {
@@ -774,10 +806,21 @@ impl ConfigManager {
         email: &str,
     ) -> Result<BatchCreationResult> {
         let uuid = Self::generate_wwps_uuid().await?;
-        let encryption = Self::generate_wwps_uuid().await?;
+        let (decryption, encryption) = Self::generate_vless_encryption_keys().await?;
+        let mut rng = rand::make_rng::<StdRng>();
+        let port: u16 = loop {
+            let p: u16 = rng.random_range(10000..60000);
+            if crate::core::xray::port_allocator::PortAllocator::is_port_in_locked_range(p).await {
+                continue;
+            }
+            if crate::core::system::maintenance::MaintenanceManager::is_port_available(p).await {
+                break p;
+            }
+        };
         let tag = format!("XDRIVE-{}", Self::uuid_short_prefix(&uuid));
-        let inbound = Self::build_xdrive_vless_inbound(&tag, &uuid, email, xdrive, &encryption);
-        let link = Self::generate_xdrive_client_link(&uuid, email, xdrive, &encryption);
+        let inbound =
+            Self::build_xdrive_vless_inbound(&tag, &uuid, email, port, xdrive, &decryption);
+        let link = Self::generate_xdrive_client_link(&uuid, email, port, xdrive, &encryption);
         Self::create_standalone_config(vec![inbound], vec![link], Proto::XDrive).await
     }
 
@@ -1127,25 +1170,28 @@ mod tests {
         let tag = "inbound-vless-xdrive";
         let uuid = "test-uuid-1234";
         let email = "admin@aegis";
-        let encryption = "test-encryption-key";
+        let decryption = "test-decryption-key";
+        let port = 10086;
         let xdrive =
             XdriveConfig::new_cloudflare_r2("test-acc", "test-bucket", "ak", "sk", "aegis-xdrive");
 
         let inbound =
-            ConfigManager::build_xdrive_vless_inbound(tag, uuid, email, &xdrive, encryption);
+            ConfigManager::build_xdrive_vless_inbound(tag, uuid, email, port, &xdrive, decryption);
 
         // 验证架构合规性（遵循 Xray-core PR #7182 规范）
         assert_eq!(
             inbound["listen"], "127.0.0.1",
             "必须使用本地监听 127.0.0.1 避免公网暴露"
         );
-        assert_eq!(inbound["port"], 0, "必须使用零端口 0");
+        assert_eq!(inbound["port"], 10086, "必须指定非零独立监听端口");
         assert_eq!(inbound["protocol"], "vless");
-        assert_eq!(inbound["settings"]["decryption"], "none");
+        assert_eq!(inbound["settings"]["decryption"], "test-decryption-key");
         assert_eq!(inbound["settings"]["clients"][0]["id"], "test-uuid-1234");
-        assert_eq!(
-            inbound["settings"]["clients"][0]["encryption"],
-            "test-encryption-key"
+        assert!(
+            inbound["settings"]["clients"][0]
+                .get("encryption")
+                .is_none(),
+            "VLESS 入站客户端配置不得包含 encryption"
         );
         assert!(
             inbound["settings"]["clients"][0].get("flow").is_none(),
@@ -1167,6 +1213,7 @@ mod tests {
         let uuid = "test-uuid-xdrive";
         let email = "admin@aegis";
         let encryption = "x25519-secret-key";
+        let port = 10086;
         let xdrive = XdriveConfig::new_cloudflare_r2(
             "test-acc-id",
             "test-bucket",
@@ -1175,13 +1222,15 @@ mod tests {
             "aegis-xdrive",
         );
 
-        let link = ConfigManager::generate_xdrive_client_link(uuid, email, &xdrive, encryption);
+        let link =
+            ConfigManager::generate_xdrive_client_link(uuid, email, port, &xdrive, encryption);
 
-        assert!(link.starts_with("vless://test-uuid-xdrive@127.0.0.1:0?"));
+        assert!(link.starts_with("vless://test-uuid-xdrive@127.0.0.1:10086?"));
         assert!(link.contains("type=xdrive"));
         assert!(link.contains("service=s3"));
         assert!(link.contains("remoteFolder=aegis-xdrive"));
         assert!(link.contains("encryption=x25519-secret-key"));
+        assert!(link.contains("mux=true"));
         assert!(link.contains("bucket=test-bucket"));
         assert!(link.contains("pathStyle=true"));
         assert!(link.ends_with("#admin%40aegis"));
