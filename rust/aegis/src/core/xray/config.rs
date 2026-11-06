@@ -767,6 +767,20 @@ impl ConfigManager {
         })
     }
 
+    /// 创建并持久化单个 XDRIVE 节点配置
+    #[allow(dead_code)]
+    pub async fn create_xdrive_node(
+        xdrive: &crate::core::xray::xdrive::XdriveConfig,
+        email: &str,
+    ) -> Result<BatchCreationResult> {
+        let uuid = Self::generate_wwps_uuid().await?;
+        let encryption = Self::generate_wwps_uuid().await?;
+        let tag = format!("XDRIVE-{}", Self::uuid_short_prefix(&uuid));
+        let inbound = Self::build_xdrive_vless_inbound(&tag, &uuid, email, xdrive, &encryption);
+        let link = Self::generate_xdrive_client_link(&uuid, email, xdrive, &encryption);
+        Self::create_standalone_config(vec![inbound], vec![link], Proto::XDrive).await
+    }
+
     #[allow(dead_code)]
     pub(crate) async fn backup_config_file(path: &str) -> Result<String> {
         let timestamp = chrono::Utc::now().timestamp();

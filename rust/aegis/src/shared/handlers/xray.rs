@@ -408,23 +408,23 @@ async fn handle_mgmt(event: &CallbackEvent) -> HandlerResult {
     let mut rows = Vec::new();
 
     if inbounds.is_empty() {
+        rows.push(vec![InlineButton {
+            text: t!("xray.batch_menu_btn").into(),
+            data: "m_batch_menu".into(),
+        }]);
         rows.push(vec![
             InlineButton {
-                text: t!("xray.batch_reality").into(),
-                data: "u_batch_init".into(),
+                text: t!("xray.pq_mgmt").into(),
+                data: "m_pq_mgmt".into(),
             },
             InlineButton {
-                text: t!("xray.batch_xhttp").into(),
-                data: "u_xhttp_batch_init".into(),
+                text: t!("xray.routing_mgmt_btn").into(),
+                data: "m_routing".into(),
             },
         ]);
         rows.push(vec![InlineButton {
-            text: t!("xray.pq_mgmt").into(),
-            data: "m_pq_mgmt".into(),
-        }]);
-        rows.push(vec![InlineButton {
-            text: t!("xray.routing_mgmt_btn").into(),
-            data: "m_routing".into(),
+            text: t!("menu.back_user").into(),
+            data: "m_usr".into(),
         }]);
         event
             .adapter
@@ -449,25 +449,11 @@ async fn handle_mgmt(event: &CallbackEvent) -> HandlerResult {
             text: t!("xray.del_mgmt_btn").into(),
             data: "m_del_cfg".into(),
         }]);
+        rows.push(vec![InlineButton {
+            text: t!("xray.batch_menu_btn").into(),
+            data: "m_batch_menu".into(),
+        }]);
         rows.push(vec![
-            InlineButton {
-                text: t!("xray.batch_reality").into(),
-                data: "u_batch_init".into(),
-            },
-            InlineButton {
-                text: t!("xray.batch_xhttp").into(),
-                data: "u_xhttp_batch_init".into(),
-            },
-        ]);
-        rows.push(vec![
-            InlineButton {
-                text: t!("xray.batch_kcp").into(),
-                data: "u_kcp_init".into(),
-            },
-            InlineButton {
-                text: t!("xray.batch_hysteria2").into(),
-                data: "u_hy2_batch_init".into(),
-            },
             InlineButton {
                 text: t!("xray.pq_mgmt").into(),
                 data: "m_pq_mgmt".into(),
@@ -493,6 +479,124 @@ async fn handle_mgmt(event: &CallbackEvent) -> HandlerResult {
             )
             .await?;
     }
+
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_batch_menu(event: &CallbackEvent) -> HandlerResult {
+    let rows = vec![
+        vec![
+            InlineButton {
+                text: t!("xray.batch_reality").into(),
+                data: "u_batch_init".into(),
+            },
+            InlineButton {
+                text: t!("xray.batch_xhttp").into(),
+                data: "u_xhttp_batch_init".into(),
+            },
+        ],
+        vec![
+            InlineButton {
+                text: t!("xray.batch_kcp").into(),
+                data: "u_kcp_init".into(),
+            },
+            InlineButton {
+                text: t!("xray.batch_hysteria2").into(),
+                data: "u_hy2_batch_init".into(),
+            },
+        ],
+        vec![InlineButton {
+            text: t!("xray.xdrive_menu_btn").into(),
+            data: "u_xdrive_menu".into(),
+        }],
+        vec![InlineButton {
+            text: t!("menu.back").into(),
+            data: "m_xray_mgmt".into(),
+        }],
+    ];
+
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text: t!("xray.batch_menu_title").into_owned(),
+                markup: Some(Markup { buttons: rows }),
+            },
+        )
+        .await?;
+
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_xdrive_menu(event: &CallbackEvent) -> HandlerResult {
+    let rows = vec![
+        vec![
+            InlineButton {
+                text: t!("xray.xdrive_ru_btn").into(),
+                data: "u_xdrive_r:ru".into(),
+            },
+            InlineButton {
+                text: t!("xray.xdrive_ir_btn").into(),
+                data: "u_xdrive_r:ir".into(),
+            },
+        ],
+        vec![
+            InlineButton {
+                text: t!("xray.xdrive_cn_btn").into(),
+                data: "u_xdrive_r:cn".into(),
+            },
+            InlineButton {
+                text: t!("xray.xdrive_custom_btn").into(),
+                data: "u_xdrive_r:custom".into(),
+            },
+        ],
+        vec![InlineButton {
+            text: t!("menu.back").into(),
+            data: "m_batch_menu".into(),
+        }],
+    ];
+
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text: t!("xray.xdrive_menu_title").into_owned(),
+                markup: Some(Markup { buttons: rows }),
+            },
+        )
+        .await?;
+
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_xdrive_region_prompt(event: &CallbackEvent, region: &str) -> HandlerResult {
+    let prompt_text = match region {
+        "ru" => t!("xray.xdrive_wizard_ru"),
+        "ir" => t!("xray.xdrive_wizard_ir"),
+        "cn" => t!("xray.xdrive_wizard_cn"),
+        _ => t!("xray.xdrive_wizard_custom"),
+    };
+
+    let rows = vec![vec![InlineButton {
+        text: t!("menu.back").into(),
+        data: "u_xdrive_menu".into(),
+    }]];
+
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text: prompt_text.into_owned(),
+                markup: Some(Markup { buttons: rows }),
+            },
+        )
+        .await?;
 
     Ok(HandlerAction::Done)
 }
@@ -3212,6 +3316,12 @@ pub async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerResult {
     let data = event.data.as_str();
     match data {
         "m_xray_mgmt" => handle_mgmt(event).await,
+        "m_batch_menu" => handle_batch_menu(event).await,
+        "u_xdrive_menu" => handle_xdrive_menu(event).await,
+        d if d.starts_with("u_xdrive_r:") => {
+            let region = d.strip_prefix("u_xdrive_r:").unwrap_or("ru");
+            handle_xdrive_region_prompt(event, region).await
+        }
         "m_pq_mgmt" => handle_pq_mgmt(event).await,
         "m_pq_del" => handle_pq_del(event).await,
         "m_pq_init" => handle_pq_init(event).await,
