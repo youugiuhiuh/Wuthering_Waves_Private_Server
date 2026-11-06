@@ -63,6 +63,32 @@ impl XdriveConfig {
         }
     }
 
+    /// 预设构建器：标准 S3 兼容对象存储
+    pub fn new_s3(
+        endpoint: &str,
+        region: &str,
+        bucket: &str,
+        access_key_id: &str,
+        secret_access_key: &str,
+        path_style: bool,
+        folder: &str,
+    ) -> Self {
+        Self {
+            service: XdriveService::S3,
+            remote_folder: folder.to_string(),
+            secrets: vec![access_key_id.to_string(), secret_access_key.to_string()],
+            s3: Some(S3Config {
+                endpoint: endpoint.to_string(),
+                region: region.to_string(),
+                bucket: bucket.to_string(),
+                path_style,
+            }),
+            segment_bytes: Some(1024 * 1024),
+            poll_interval_ms: Some(25),
+            max_poll_interval_ms: Some(800),
+        }
+    }
+
     /// 校验配置合法性（对齐 Xray-core transport/internet/xdrive/s3.go 规范）
     pub fn validate(&self) -> Result<()> {
         if self.remote_folder.trim().is_empty() {
