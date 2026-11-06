@@ -62,7 +62,10 @@ fn zero_port_xdrive_inbound_does_not_contribute_to_firewall() {
         }]
     });
     let ports = collect(cfg);
-    assert!(ports.is_empty(), "port 0 must be exempted from firewall collection");
+    assert!(
+        ports.is_empty(),
+        "port 0 must be exempted from firewall collection"
+    );
 }
 
 #[test]

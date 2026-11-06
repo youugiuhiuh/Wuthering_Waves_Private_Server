@@ -1,22 +1,22 @@
 # Todo List: Aegis XDRIVE 隐蔽传输总框架
 
-- [ ] Task 1: XDRIVE 数据模型与 S3 校验器 (xdrive_model)
-  - [ ] 编写失败测试用例 (TDD RED)
-  - [ ] 实现 `XdriveService`, `S3Config`, `XdriveConfig` 及参数校验 (TDD GREEN)
-  - [ ] 运行测试确认通过并提交代码
-- [ ] Task 2: XDRIVE VLESS 入站生成器与 Proto 扩展 (config_builder)
-  - [ ] 编写失败测试用例 (TDD RED)
-  - [ ] 扩展 `Proto::XDrive` 并实现 `build_xdrive_vless_inbound` (TDD GREEN)
-  - [ ] 运行测试确认通过并提交代码
-- [ ] Task 3: 客户端订阅链接格式化 (client_link)
-  - [ ] 编写失败测试用例 (TDD RED)
-  - [ ] 实现 `generate_client_link` 中的 XDRIVE 分支 (TDD GREEN)
-  - [ ] 运行测试确认通过并提交代码
-- [ ] Task 4: 端口分配与防火墙安全豁免 (lifecycle_adapt)
-  - [ ] 编写失败测试用例 (TDD RED)
-  - [ ] 适配 `PortAllocator` 零端口与豁免跳跃逻辑 (TDD GREEN)
-  - [ ] 运行测试确认通过并提交代码
-- [ ] Task 5: 质量把关与规范检查 (quality_gate)
-  - [ ] `cargo fmt --check`
-  - [ ] `cargo clippy -- -D warnings`
-  - [ ] 运行全量 Xray 核心单测
+- [x] Task 1: XDRIVE 数据模型与 S3 校验器 (xdrive_model)
+  - [x] 编写失败测试用例 (TDD RED)
+  - [x] 实现 `XdriveService`, `S3Config`, `XdriveConfig` 及参数校验 (TDD GREEN)
+  - [x] 运行测试确认通过并提交代码
+- [x] Task 2: XDRIVE VLESS 入站生成器与 Proto 扩展 (config_builder)
+  - [x] 编写失败测试用例 (TDD RED)
+  - [x] 扩展 `Proto::XDrive` 并实现 `build_xdrive_vless_inbound` (TDD GREEN)
+  - [x] 运行测试确认通过并提交代码
+- [x] Task 3: 客户端订阅链接格式化 (client_link)
+  - [x] 编写失败测试用例 (TDD RED)
+  - [x] 实现 `generate_xdrive_client_link` (RFC 3986 Unreserved 兼容) (TDD GREEN)
+  - [x] 运行测试确认通过并提交代码
+- [x] Task 4: 端口分配与防火墙安全豁免 (lifecycle_adapt)
+  - [x] 编写失败测试用例 (TDD RED)
+  - [x] 适配 `collect_ports_from_config` 零端口与豁免跳跃逻辑 (TDD GREEN)
+  - [x] 运行测试确认通过并提交代码
+- [x] Task 5: 质量把关与规范检查 (quality_gate)
+  - [x] `cargo fmt --check`
+  - [x] `cargo clippy -- -D warnings`
+  - [x] 运行全量 Xray 核心单测 (256 passed)

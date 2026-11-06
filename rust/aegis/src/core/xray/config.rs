@@ -695,7 +695,8 @@ impl ConfigManager {
     }
 
     /// 格式化 XDRIVE 客户端订阅链接
-    pub(crate) fn generate_xdrive_client_link(
+    #[allow(dead_code)]
+    pub fn generate_xdrive_client_link(
         uuid: &str,
         email: &str,
         xdrive: &crate::core::xray::xdrive::XdriveConfig,
@@ -707,10 +708,8 @@ impl ConfigManager {
             .remove(b'.')
             .remove(b'~');
 
-        let encoded_folder =
-            utf8_percent_encode(&xdrive.remote_folder, URI_UNRESERVED).to_string();
-        let encoded_encryption =
-            utf8_percent_encode(encryption_key, URI_UNRESERVED).to_string();
+        let encoded_folder = utf8_percent_encode(&xdrive.remote_folder, URI_UNRESERVED).to_string();
+        let encoded_encryption = utf8_percent_encode(encryption_key, URI_UNRESERVED).to_string();
         let service_str = match xdrive.service {
             crate::core::xray::xdrive::XdriveService::S3 => "s3",
             crate::core::xray::xdrive::XdriveService::Local => "local",
@@ -724,12 +723,9 @@ impl ConfigManager {
         );
 
         if let Some(ref s3) = xdrive.s3 {
-            let encoded_endpoint =
-                utf8_percent_encode(&s3.endpoint, URI_UNRESERVED).to_string();
-            let encoded_bucket =
-                utf8_percent_encode(&s3.bucket, URI_UNRESERVED).to_string();
-            let encoded_region =
-                utf8_percent_encode(&s3.region, URI_UNRESERVED).to_string();
+            let encoded_endpoint = utf8_percent_encode(&s3.endpoint, URI_UNRESERVED).to_string();
+            let encoded_bucket = utf8_percent_encode(&s3.bucket, URI_UNRESERVED).to_string();
+            let encoded_region = utf8_percent_encode(&s3.region, URI_UNRESERVED).to_string();
             link.push_str(&format!(
                 "&endpoint={}&bucket={}&region={}&pathStyle={}",
                 encoded_endpoint, encoded_bucket, encoded_region, s3.path_style
@@ -1118,30 +1114,29 @@ mod tests {
         let uuid = "test-uuid-1234";
         let email = "admin@aegis";
         let encryption = "test-encryption-key";
-        let xdrive = XdriveConfig::new_cloudflare_r2(
-            "test-acc",
-            "test-bucket",
-            "ak",
-            "sk",
-            "aegis-xdrive",
-        );
+        let xdrive =
+            XdriveConfig::new_cloudflare_r2("test-acc", "test-bucket", "ak", "sk", "aegis-xdrive");
 
-        let inbound = ConfigManager::build_xdrive_vless_inbound(
-            tag,
-            uuid,
-            email,
-            &xdrive,
-            encryption,
-        );
+        let inbound =
+            ConfigManager::build_xdrive_vless_inbound(tag, uuid, email, &xdrive, encryption);
 
         // 验证架构合规性（遵循 Xray-core PR #7182 规范）
-        assert_eq!(inbound["listen"], "127.0.0.1", "必须使用本地监听 127.0.0.1 避免公网暴露");
+        assert_eq!(
+            inbound["listen"], "127.0.0.1",
+            "必须使用本地监听 127.0.0.1 避免公网暴露"
+        );
         assert_eq!(inbound["port"], 0, "必须使用零端口 0");
         assert_eq!(inbound["protocol"], "vless");
         assert_eq!(inbound["settings"]["decryption"], "none");
         assert_eq!(inbound["settings"]["clients"][0]["id"], "test-uuid-1234");
-        assert_eq!(inbound["settings"]["clients"][0]["encryption"], "test-encryption-key");
-        assert!(inbound["settings"]["clients"][0].get("flow").is_none(), "XDRIVE 必须禁止 flow");
+        assert_eq!(
+            inbound["settings"]["clients"][0]["encryption"],
+            "test-encryption-key"
+        );
+        assert!(
+            inbound["settings"]["clients"][0].get("flow").is_none(),
+            "XDRIVE 必须禁止 flow"
+        );
 
         // 验证 streamSettings
         assert_eq!(inbound["streamSettings"]["network"], "xdrive");
