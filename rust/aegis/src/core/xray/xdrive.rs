@@ -258,6 +258,70 @@ impl XdriveConfig {
             other => bail!("未知地区类型: {other}"),
         }
     }
+
+    /// 提取 Cloudflare 账户 ID（支持纯 32 位十六进制 ID 或完整终结点 URL）
+    pub fn extract_cloudflare_account_id(input: &str) -> Option<String> {
+        let trimmed = input.trim();
+        // 尝试从 https://<id>.r2.cloudflarestorage.com 或类似 URL 中提取
+        if let Some(pos) = trimmed.find(".r2.cloudflarestorage.com") {
+            let prefix = &trimmed[..pos];
+            let id = prefix.rsplit('/').next().unwrap_or(prefix);
+            let id = id.rsplit(':').next().unwrap_or(id);
+            if id.len() == 32 && id.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Some(id.to_ascii_lowercase());
+            }
+        }
+        // 纯 32 位十六进制 ID
+        if trimmed.len() == 32 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(trimmed.to_ascii_lowercase());
+        }
+        None
+    }
+
+    /// 智能解析用户直接复制的 Cloudflare R2 令牌创建完成页全文
+    /// 返回 (account_id, access_key_id, secret_access_key)
+    pub fn extract_cloudflare_r2_page_tokens(text: &str) -> Option<(String, String, String)> {
+        // 优先从终结点 URL 中提取 account_id
+        let mut account_id = None;
+        for line in text.lines() {
+            if line.contains(".r2.cloudflarestorage.com")
+                && let Some(id) = Self::extract_cloudflare_account_id(line)
+            {
+                account_id = Some(id);
+                break;
+            }
+        }
+
+        // 提取 access_key_id 和 secret_access_key
+        let mut ak = None;
+        let mut sk = None;
+        let lines: Vec<&str> = text
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
+        for (i, line) in lines.iter().enumerate() {
+            if (line.contains("访问密钥 ID") || line.contains("Access Key ID"))
+                && let Some(next) = lines.get(i + 1)
+                && next.len() == 32
+                && next.chars().all(|c| c.is_ascii_hexdigit())
+            {
+                ak = Some(next.to_string());
+            }
+            if (line.contains("机密访问密钥") || line.contains("Secret Access Key"))
+                && let Some(next) = lines.get(i + 1)
+                && next.len() == 64
+                && next.chars().all(|c| c.is_ascii_hexdigit())
+            {
+                sk = Some(next.to_string());
+            }
+        }
+
+        match (account_id, ak, sk) {
+            (Some(acc), Some(a), Some(s)) => Some((acc, a, s)),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -372,5 +436,58 @@ mod tests {
     fn test_parse_wizard_input_rejects_insufficient_lines() {
         assert!(XdriveConfig::parse_region_wizard_input("ru", "only-bucket").is_err());
         assert!(XdriveConfig::parse_region_wizard_input("cn", "acc\nbucket\nak").is_err());
+    }
+
+    #[test]
+    fn test_extract_cloudflare_account_id() {
+        let url = "https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com";
+        assert_eq!(
+            XdriveConfig::extract_cloudflare_account_id(url),
+            Some("a5be0a9d14aa44e51692d81782d83fe6".to_string())
+        );
+
+        let raw = "a5be0a9d14aa44e51692d81782d83fe6";
+        assert_eq!(
+            XdriveConfig::extract_cloudflare_account_id(raw),
+            Some("a5be0a9d14aa44e51692d81782d83fe6".to_string())
+        );
+
+        assert_eq!(XdriveConfig::extract_cloudflare_account_id("invalid"), None);
+    }
+
+    #[test]
+    fn test_extract_cloudflare_r2_page_tokens() {
+        let sample = r#"
+R2 Account Token 已成功创建
+摘要：
+权限：
+允许创建、列出和删除存储桶，编辑存储桶配置，读取、写入和列出对象，以及对数据目录表和相关元数据进行读取和写入访问。
+
+存储桶：
+此帐户上的所有 R2 存储桶
+TTL
+可用时间 Nov 6, 2026 - Nov 6, 2027
+使用此令牌对 Cloudflare API 进行身份验证：
+令牌值
+cfat_mocktoken1234567890abcdef1234567890
+
+为 S3 客户端使用以下凭据：
+访问密钥 ID
+b65ef1b0f6dcc85d9c2e42a92610fe14
+
+机密访问密钥
+4b07c8ef6340317e0b51fae296837bfdbddbfcf92e071727c955da3597dff758
+
+为 S3 客户端使用管辖权地特定的终结点：
+默认欧盟 (EU)美国 (US)
+https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
+"#;
+        let (acc, ak, sk) = XdriveConfig::extract_cloudflare_r2_page_tokens(sample).unwrap();
+        assert_eq!(acc, "a5be0a9d14aa44e51692d81782d83fe6");
+        assert_eq!(ak, "b65ef1b0f6dcc85d9c2e42a92610fe14");
+        assert_eq!(
+            sk,
+            "4b07c8ef6340317e0b51fae296837bfdbddbfcf92e071727c955da3597dff758"
+        );
     }
 }
