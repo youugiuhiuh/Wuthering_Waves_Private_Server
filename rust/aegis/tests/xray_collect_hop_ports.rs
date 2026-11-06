@@ -51,6 +51,24 @@ fn plain_config_contributes_only_its_port() {
 }
 
 #[test]
+fn zero_port_xdrive_inbound_does_not_contribute_to_firewall() {
+    let cfg = json!({
+        "inbounds": [{
+            "protocol": "vless",
+            "port": 0,
+            "streamSettings": {
+                "network": "xdrive"
+            }
+        }]
+    });
+    let ports = collect(cfg);
+    assert!(
+        ports.is_empty(),
+        "port 0 must be exempted from firewall collection"
+    );
+}
+
+#[test]
 fn hop_range_uses_the_declared_bounds_not_main_plus_99() {
     // A narrower range must not be widened: whitelisting ports nothing listens
     // on would open holes for no reason.

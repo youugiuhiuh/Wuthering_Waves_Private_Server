@@ -8,6 +8,7 @@ pub mod port_allocator;
 pub mod reality;
 pub mod routing;
 pub mod warp;
+pub mod xdrive;
 pub mod xhttp;
 
 pub use config::{ConfigManager, Proto};
