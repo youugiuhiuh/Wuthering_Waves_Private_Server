@@ -3317,6 +3317,13 @@ pub async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerResult {
     match data {
         "m_xray_mgmt" => handle_mgmt(event).await,
         "m_batch_menu" => handle_batch_menu(event).await,
+        "noop" => {
+            event
+                .adapter
+                .answer_callback(&event.target, &event.callback_id, None)
+                .await?;
+            Ok(HandlerAction::Done)
+        }
         "u_xdrive_menu" => handle_xdrive_menu(event).await,
         d if d.starts_with("u_xdrive_r:") => {
             let region = d.strip_prefix("u_xdrive_r:").unwrap_or("ru");
