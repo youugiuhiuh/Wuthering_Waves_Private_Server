@@ -222,6 +222,20 @@ mod tests {
         assert_eq!(route_callback("m_batch_menu"), Some(CallbackRoute::Xray));
         assert_eq!(route_callback("u_xdrive_menu"), Some(CallbackRoute::Xray));
         assert_eq!(route_callback("u_xdrive_r:ru"), Some(CallbackRoute::Xray));
+        assert_eq!(route_callback("u_xdrive_p:r2"), Some(CallbackRoute::Xray));
+        assert_eq!(
+            route_callback("u_xdrive_p:gdrive"),
+            Some(CallbackRoute::Xray)
+        );
+        assert_eq!(
+            route_callback("u_xdrive_p:yandex"),
+            Some(CallbackRoute::Xray)
+        );
+        assert_eq!(
+            route_callback("u_xdrive_p:arvan"),
+            Some(CallbackRoute::Xray)
+        );
+        assert_eq!(route_callback("u_xdrive_p:s3"), Some(CallbackRoute::Xray));
     }
 
     /// Every inline-button id rendered by menu.rs must be routable: either by

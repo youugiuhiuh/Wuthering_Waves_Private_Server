@@ -532,26 +532,26 @@ async fn handle_batch_menu(event: &CallbackEvent) -> HandlerResult {
 
 async fn handle_xdrive_menu(event: &CallbackEvent) -> HandlerResult {
     let rows = vec![
-        vec![
-            InlineButton {
-                text: t!("xray.xdrive_ru_btn").into(),
-                data: "u_xdrive_r:ru".into(),
-            },
-            InlineButton {
-                text: t!("xray.xdrive_ir_btn").into(),
-                data: "u_xdrive_r:ir".into(),
-            },
-        ],
-        vec![
-            InlineButton {
-                text: t!("xray.xdrive_cn_btn").into(),
-                data: "u_xdrive_r:cn".into(),
-            },
-            InlineButton {
-                text: t!("xray.xdrive_custom_btn").into(),
-                data: "u_xdrive_r:custom".into(),
-            },
-        ],
+        vec![InlineButton {
+            text: t!("xray.xdrive_btn_r2").into(),
+            data: "u_xdrive_p:r2".into(),
+        }],
+        vec![InlineButton {
+            text: t!("xray.xdrive_btn_gdrive").into(),
+            data: "u_xdrive_p:gdrive".into(),
+        }],
+        vec![InlineButton {
+            text: t!("xray.xdrive_btn_yandex").into(),
+            data: "u_xdrive_p:yandex".into(),
+        }],
+        vec![InlineButton {
+            text: t!("xray.xdrive_btn_arvan").into(),
+            data: "u_xdrive_p:arvan".into(),
+        }],
+        vec![InlineButton {
+            text: t!("xray.xdrive_btn_custom_s3").into(),
+            data: "u_xdrive_p:s3".into(),
+        }],
         vec![InlineButton {
             text: t!("menu.back").into(),
             data: "m_batch_menu".into(),
@@ -573,19 +573,20 @@ async fn handle_xdrive_menu(event: &CallbackEvent) -> HandlerResult {
     Ok(HandlerAction::Done)
 }
 
-async fn handle_xdrive_region_prompt(
+async fn handle_xdrive_provider_prompt(
     event: &CallbackEvent,
     state: &AppState,
-    region: &str,
+    provider: &str,
 ) -> HandlerResult {
     let _step = state
-        .start_xdrive_wizard(event.target.0.clone(), region)
+        .start_xdrive_wizard(event.target.0.clone(), provider)
         .await;
 
-    let prompt_text = match region {
-        "cn" => t!("xray.xdrive_guide_cn_step1"),
-        "ru" => t!("xray.xdrive_guide_ru_step1"),
-        "ir" => t!("xray.xdrive_guide_ir_step1"),
+    let prompt_text = match provider {
+        "r2" | "cn" => t!("xray.xdrive_guide_cn_step1"),
+        "gdrive" | "google-drive" => t!("xray.xdrive_guide_gdrive_step1"),
+        "ru" | "yandex" => t!("xray.xdrive_guide_ru_step1"),
+        "ir" | "arvan" => t!("xray.xdrive_guide_ir_step1"),
         _ => t!("xray.xdrive_guide_custom_step1"),
     };
 
@@ -3354,9 +3355,20 @@ pub async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerResult {
         }
         "u_xdrive_menu" => handle_xdrive_menu(event).await,
         "u_xdrive_cancel" => handle_xdrive_cancel(event, state).await,
+        d if d.starts_with("u_xdrive_p:") => {
+            let provider = d.strip_prefix("u_xdrive_p:").unwrap_or("r2");
+            handle_xdrive_provider_prompt(event, state, provider).await
+        }
         d if d.starts_with("u_xdrive_r:") => {
             let region = d.strip_prefix("u_xdrive_r:").unwrap_or("ru");
-            handle_xdrive_region_prompt(event, state, region).await
+            let provider = match region {
+                "cn" => "r2",
+                "ru" => "yandex",
+                "ir" => "arvan",
+                "custom" => "s3",
+                other => other,
+            };
+            handle_xdrive_provider_prompt(event, state, provider).await
         }
         "m_pq_mgmt" => handle_pq_mgmt(event).await,
         "m_pq_del" => handle_pq_del(event).await,
@@ -3852,5 +3864,168 @@ mod tests {
             assert_eq!(parsed.4, style, "style lost for {label}");
             assert_eq!(parsed.3, hop, "hop flag lost for {label}");
         }
+    }
+
+    use crate::common::{Platform, PlatformCapabilities};
+    use crate::core::security::SelfDestructExecutor;
+
+    #[derive(Default)]
+    struct XdriveMockAdapter {
+        pub sent: std::sync::Mutex<Vec<String>>,
+        pub button_data: std::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait::async_trait]
+    impl BotAdapter for XdriveMockAdapter {
+        fn platform(&self) -> Platform {
+            Platform::Telegram
+        }
+        fn capabilities(&self) -> PlatformCapabilities {
+            PlatformCapabilities::TELEGRAM
+        }
+        async fn send_message(
+            &self,
+            _target: &TargetId,
+            content: MessageContent,
+        ) -> anyhow::Result<MessageId> {
+            self.sent.lock().unwrap().push(content.text);
+            Ok(MessageId("0".to_string()))
+        }
+        async fn edit_message(
+            &self,
+            _target: &TargetId,
+            _msg_id: &MessageId,
+            content: MessageContent,
+        ) -> anyhow::Result<()> {
+            self.sent.lock().unwrap().push(content.text);
+            if let Some(markup) = &content.markup {
+                for row in &markup.buttons {
+                    for btn in row {
+                        self.button_data.lock().unwrap().push(btn.data.clone());
+                    }
+                }
+            }
+            Ok(())
+        }
+        async fn delete_message(
+            &self,
+            _target: &TargetId,
+            _msg_id: &MessageId,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn answer_callback(
+            &self,
+            _target: &TargetId,
+            _callback_id: &str,
+            _text: Option<String>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct NoopDestruct;
+    impl SelfDestructExecutor for NoopDestruct {
+        fn execute(
+            &self,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>>
+        {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_menu_renders_five_providers() {
+        let adapter = Arc::new(XdriveMockAdapter::default());
+        let event = CallbackEvent {
+            adapter: adapter.clone(),
+            target: TargetId("42".into()),
+            user_id: "42".into(),
+            msg_id: MessageId("100".into()),
+            data: "u_xdrive_menu".into(),
+            callback_id: "cb_1".into(),
+            session_timeout_secs: 60,
+        };
+
+        let res = handle_xdrive_menu(&event).await.unwrap();
+        assert_eq!(res, HandlerAction::Done);
+
+        let buttons = adapter.button_data.lock().unwrap().clone();
+        assert_eq!(
+            buttons,
+            vec![
+                "u_xdrive_p:r2",
+                "u_xdrive_p:gdrive",
+                "u_xdrive_p:yandex",
+                "u_xdrive_p:arvan",
+                "u_xdrive_p:s3",
+                "m_batch_menu",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_provider_routing_and_legacy_compatibility() {
+        let adapter = Arc::new(XdriveMockAdapter::default());
+        let state = AppState::new(
+            Some(42),
+            None,
+            None,
+            Arc::new(NoopDestruct),
+            None,
+            60,
+            adapter.clone(),
+        );
+
+        // 1. New provider callback: gdrive
+        let event_gdrive = CallbackEvent {
+            adapter: adapter.clone(),
+            target: TargetId("user_gd".into()),
+            user_id: "42".into(),
+            msg_id: MessageId("101".into()),
+            data: "u_xdrive_p:gdrive".into(),
+            callback_id: "cb_gd".into(),
+            session_timeout_secs: 60,
+        };
+        let res = handle(&event_gdrive, &state).await.unwrap();
+        assert_eq!(res, HandlerAction::Done);
+
+        let session = state.get_xdrive_wizard("user_gd").await.unwrap();
+        assert_eq!(session.region, "gdrive");
+        assert_eq!(session.step, crate::app::state::XdriveWizardStep::FolderId);
+
+        // 2. Legacy callback: u_xdrive_r:cn -> maps to r2
+        let event_cn = CallbackEvent {
+            adapter: adapter.clone(),
+            target: TargetId("user_cn".into()),
+            user_id: "42".into(),
+            msg_id: MessageId("102".into()),
+            data: "u_xdrive_r:cn".into(),
+            callback_id: "cb_cn".into(),
+            session_timeout_secs: 60,
+        };
+        let res = handle(&event_cn, &state).await.unwrap();
+        assert_eq!(res, HandlerAction::Done);
+
+        let session = state.get_xdrive_wizard("user_cn").await.unwrap();
+        assert_eq!(session.region, "r2");
+        assert_eq!(session.step, crate::app::state::XdriveWizardStep::AccountId);
+
+        // 3. Legacy callback: u_xdrive_r:ru -> maps to yandex
+        let event_ru = CallbackEvent {
+            adapter: adapter.clone(),
+            target: TargetId("user_ru".into()),
+            user_id: "42".into(),
+            msg_id: MessageId("103".into()),
+            data: "u_xdrive_r:ru".into(),
+            callback_id: "cb_ru".into(),
+            session_timeout_secs: 60,
+        };
+        let res = handle(&event_ru, &state).await.unwrap();
+        assert_eq!(res, HandlerAction::Done);
+
+        let session = state.get_xdrive_wizard("user_ru").await.unwrap();
+        assert_eq!(session.region, "yandex");
+        assert_eq!(session.step, crate::app::state::XdriveWizardStep::Bucket);
     }
 }
