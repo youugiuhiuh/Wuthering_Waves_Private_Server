@@ -135,6 +135,10 @@ impl ConfigManager {
             else {
                 continue;
             };
+            if port == 0 {
+                // 虚拟/本地零端口入站（如 XDRIVE）无需向外部防火墙申请开放公网端口
+                continue;
+            }
             ports.insert(port);
 
             let hop = inbound
