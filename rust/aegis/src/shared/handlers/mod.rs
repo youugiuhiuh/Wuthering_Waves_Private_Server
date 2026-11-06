@@ -90,6 +90,7 @@ pub(crate) fn route_callback(data: &str) -> Option<CallbackRoute> {
         return Some(CallbackRoute::Ops);
     }
     if data == "m_xray_mgmt"
+        || data == "m_batch_menu"
         || data == "m_routing"
         // 自定义放行子菜单：入口 + 列表 + 删除共用 `routing_custom_` 前缀，
         // 后续新增项（add/check）不必再逐个登记。
@@ -99,6 +100,7 @@ pub(crate) fn route_callback(data: &str) -> Option<CallbackRoute> {
         || data == "m_del_cfg"
         || data == "m_pq_mgmt"
         || data == "a_inst_base"
+        || data == "noop"
         || data.starts_with("u_")
         || data.starts_with("cfg_")
         || data.starts_with("m_pq_")
@@ -213,6 +215,15 @@ mod tests {
         );
     }
 
+    /// 回归（批量创建管理与 XDRIVE 菜单）：入口按钮必须路由到 Xray。
+    /// 漏注册会导致点击「🚀 批量创建管理」被静默丢弃。
+    #[test]
+    fn test_batch_menu_callbacks_route_to_xray() {
+        assert_eq!(route_callback("m_batch_menu"), Some(CallbackRoute::Xray));
+        assert_eq!(route_callback("u_xdrive_menu"), Some(CallbackRoute::Xray));
+        assert_eq!(route_callback("u_xdrive_r:ru"), Some(CallbackRoute::Xray));
+    }
+
     /// Every inline-button id rendered by menu.rs must be routable: either by
     /// `route_callback` or by an earlier interceptor. Prevents the
     /// “button added but callback never registered” class of bug.
@@ -226,6 +237,25 @@ mod tests {
         assert!(
             unregistered.is_empty(),
             "menu.rs 中以下按钮回调 ID 未注册路由（请在 route_callback 或前置拦截层处理）: {:?}",
+            unregistered
+        );
+    }
+
+    /// Every inline-button id rendered by xray.rs must be routable.
+    #[test]
+    fn test_every_xray_button_data_is_routed() {
+        let source = include_str!("xray.rs");
+        let unregistered: Vec<&str> = extract_data_literals(source)
+            .into_iter()
+            .filter(|id| {
+                *id != "a_one_click_reality"
+                    && route_callback(id).is_none()
+                    && !handled_before_dispatch(id)
+            })
+            .collect();
+        assert!(
+            unregistered.is_empty(),
+            "xray.rs 中以下按钮回调 ID 未注册路由（请在 route_callback 或前置拦截层处理）: {:?}",
             unregistered
         );
     }
