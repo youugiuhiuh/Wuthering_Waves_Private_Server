@@ -745,7 +745,7 @@ impl ConfigManager {
 
         let mut link = if xdrive.service == crate::core::xray::xdrive::XdriveService::GoogleDrive {
             format!(
-                "vless://{}@google.com:443?type=xdrive&service=google-drive&remoteFolder={}&encryption={}&security=tls&sni=google.com&alpn=h2&mux=true",
+                "vless://{}@www.google.com:443?type=xdrive&service=google-drive&remoteFolder={}&encryption={}&security=tls&sni=www.google.com&alpn=h2&mux=true",
                 uuid, encoded_folder, encoded_encryption
             )
         } else {
@@ -1277,13 +1277,13 @@ mod tests {
             ConfigManager::generate_xdrive_client_link(uuid, email, port, &xdrive, encryption);
 
         assert!(link.contains("secrets=test-client-id,test-client-secret,test-refresh-token"));
-        assert!(link.contains("google.com:443"));
+        assert!(link.contains("www.google.com:443"));
         assert!(link.contains("type=xdrive"));
         assert!(link.contains("service=google-drive"));
         assert!(link.contains("remoteFolder=aegis-gdrive-folder"));
         assert!(link.contains("encryption=x25519-secret-key"));
         assert!(link.contains("security=tls"));
-        assert!(link.contains("sni=google.com"));
+        assert!(link.contains("sni=www.google.com"));
         assert!(link.contains("alpn=h2"));
         assert!(link.contains("mux=true"));
         assert!(link.ends_with("#admin%40aegis"));
