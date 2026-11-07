@@ -743,7 +743,7 @@ impl ConfigManager {
         let encoded_folder = utf8_percent_encode(&xdrive.remote_folder, URI_UNRESERVED).to_string();
         let encoded_encryption = utf8_percent_encode(encryption_key, URI_UNRESERVED).to_string();
 
-        let link = if xdrive.service == crate::core::xray::xdrive::XdriveService::GoogleDrive {
+        let mut link = if xdrive.service == crate::core::xray::xdrive::XdriveService::GoogleDrive {
             format!(
                 "vless://{}@google.com:443?type=xdrive&service=google-drive&remoteFolder={}&encryption={}&security=tls&sni=google.com&alpn=h2&mux=true",
                 uuid, encoded_folder, encoded_encryption
@@ -774,6 +774,16 @@ impl ConfigManager {
 
             link
         };
+
+        if !xdrive.secrets.is_empty() {
+            let encoded_secrets = xdrive
+                .secrets
+                .iter()
+                .map(|s| utf8_percent_encode(s, URI_UNRESERVED).to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            link.push_str(&format!("&secrets={}", encoded_secrets));
+        }
 
         let encoded_email = utf8_percent_encode(email, URI_UNRESERVED).to_string();
         format!("{}#{}", link, encoded_email)
@@ -1244,6 +1254,7 @@ mod tests {
         assert!(link.contains("mux=true"));
         assert!(link.contains("bucket=test-bucket"));
         assert!(link.contains("pathStyle=true"));
+        assert!(link.contains("secrets=ak%2Csk") || link.contains("secrets=ak,sk"));
         assert!(link.ends_with("#admin%40aegis"));
     }
 
@@ -1265,10 +1276,7 @@ mod tests {
         let link =
             ConfigManager::generate_xdrive_client_link(uuid, email, port, &xdrive, encryption);
 
-        assert_eq!(
-            link,
-            "vless://test-uuid-gdrive@google.com:443?type=xdrive&service=google-drive&remoteFolder=aegis-gdrive-folder&encryption=x25519-secret-key&security=tls&sni=google.com&alpn=h2&mux=true#admin%40aegis"
-        );
+        assert!(link.contains("secrets=test-client-id,test-client-secret,test-refresh-token"));
         assert!(link.contains("google.com:443"));
         assert!(link.contains("type=xdrive"));
         assert!(link.contains("service=google-drive"));
