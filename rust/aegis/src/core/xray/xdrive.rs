@@ -72,6 +72,33 @@ impl XdriveConfig {
         }
     }
 
+    /// 预设构建器：AWS S3（国际版对象存储）
+    pub fn new_aws_s3(
+        region: &str,
+        bucket: &str,
+        access_key_id: &str,
+        secret_access_key: &str,
+        folder: &str,
+    ) -> Self {
+        Self {
+            service: XdriveService::S3,
+            remote_folder: folder.to_string(),
+            secrets: vec![access_key_id.to_string(), secret_access_key.to_string()],
+            s3: Some(S3Config {
+                endpoint: format!("https://s3.{region}.amazonaws.com"),
+                region: region.to_string(),
+                bucket: bucket.to_string(),
+                path_style: false,
+            }),
+            segment_bytes: Some(1024 * 1024),
+            poll_interval_ms: Some(25),
+            max_poll_interval_ms: Some(800),
+            flush_interval_ms: None,
+            eager_window_ms: None,
+            concurrency: None,
+        }
+    }
+
     /// 预设构建器：标准 S3 兼容对象存储
     pub fn new_s3(
         endpoint: &str,
@@ -575,6 +602,335 @@ impl XdriveConfig {
             _ => None,
         }
     }
+
+    /// 智能解析 AWS S3 凭据全文（支持 credentials.ini、CSV、JSON、URL 与分步文本）
+    /// 返回 (region, access_key_id, secret_access_key, bucket)
+    pub fn extract_aws_s3_tokens(text: &str) -> Option<(String, String, String, Option<String>)> {
+        let mut ak = None;
+        let mut sk = None;
+        let mut region = None;
+        let mut bucket = None;
+
+        let clean_val = |raw: &str| -> String {
+            raw.trim()
+                .trim_matches(|c| {
+                    c == '"'
+                        || c == '\''
+                        || c == ','
+                        || c == ';'
+                        || c == '['
+                        || c == ']'
+                        || c == '{'
+                        || c == '}'
+                })
+                .trim()
+                .to_string()
+        };
+
+        let parse_s3_url = |url_str: &str| -> (Option<String>, Option<String>) {
+            let mut found_bucket = None;
+            let mut found_region = None;
+
+            let without_proto = if let Some(pos) = url_str.find("://") {
+                &url_str[pos + 3..]
+            } else {
+                url_str
+            };
+
+            let (host, path) = match without_proto.find('/') {
+                Some(idx) => (&without_proto[..idx], &without_proto[idx + 1..]),
+                None => (without_proto, ""),
+            };
+
+            let host_parts: Vec<&str> = host.split('.').collect();
+            if host.contains("amazonaws.com") {
+                if host_parts.len() >= 5
+                    && (host_parts[1] == "s3" || host_parts[1].starts_with("s3-"))
+                {
+                    // my-bucket.s3.region.amazonaws.com
+                    found_bucket = Some(host_parts[0].to_string());
+                    found_region = Some(host_parts[2].to_string());
+                } else if host_parts.len() >= 4 && host_parts[0] == "s3" {
+                    // s3.region.amazonaws.com
+                    found_region = Some(host_parts[1].to_string());
+                } else if host_parts.len() >= 4 && host_parts[1] == "s3" {
+                    // my-bucket.s3.amazonaws.com
+                    found_bucket = Some(host_parts[0].to_string());
+                } else if host_parts.len() >= 3 && host_parts[0].starts_with("s3-") {
+                    // s3-region.amazonaws.com
+                    found_region = Some(host_parts[0]["s3-".len()..].to_string());
+                }
+            }
+
+            if found_bucket.is_none() && !path.is_empty() {
+                let first_path = path.split(['/', '?', '#']).next().unwrap_or("").trim();
+                if !first_path.is_empty() {
+                    found_bucket = Some(first_path.to_string());
+                }
+            }
+
+            (found_region, found_bucket)
+        };
+
+        let is_aws_region = |val: &str| -> bool {
+            let parts: Vec<&str> = val.split('-').collect();
+            parts.len() == 3
+                && !parts[0].is_empty()
+                && parts[0].chars().all(|c| c.is_ascii_lowercase())
+                && !parts[1].is_empty()
+                && parts[1].chars().all(|c| c.is_ascii_lowercase())
+                && !parts[2].is_empty()
+                && parts[2].chars().all(|c| c.is_ascii_digit())
+        };
+
+        // 1. 尝试解析 JSON 格式
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+            let search_obj = if let Some(credentials) = v.get("credentials") {
+                credentials
+            } else {
+                &v
+            };
+
+            if let Some(ak_val) = search_obj
+                .get("access_key_id")
+                .or_else(|| search_obj.get("AccessKeyId"))
+                .or_else(|| search_obj.get("aws_access_key_id"))
+                .or_else(|| search_obj.get("accessKeyId"))
+                .and_then(|s| s.as_str())
+            {
+                ak = Some(clean_val(ak_val));
+            }
+            if let Some(sk_val) = search_obj
+                .get("secret_access_key")
+                .or_else(|| search_obj.get("SecretAccessKey"))
+                .or_else(|| search_obj.get("aws_secret_access_key"))
+                .or_else(|| search_obj.get("secretAccessKey"))
+                .and_then(|s| s.as_str())
+            {
+                sk = Some(clean_val(sk_val));
+            }
+            if let Some(reg_val) = search_obj
+                .get("region")
+                .or_else(|| search_obj.get("Region"))
+                .or_else(|| search_obj.get("aws_region"))
+                .and_then(|s| s.as_str())
+            {
+                region = Some(clean_val(reg_val));
+            }
+            if let Some(bkt_val) = search_obj
+                .get("bucket")
+                .or_else(|| search_obj.get("Bucket"))
+                .or_else(|| search_obj.get("bucket_name"))
+                .or_else(|| search_obj.get("s3_bucket"))
+                .and_then(|s| s.as_str())
+            {
+                bucket = Some(clean_val(bkt_val));
+            }
+        }
+
+        // 2. 逐行分析（Key-Value、标签下一行值以及特征嗅探）
+        let lines: Vec<&str> = text
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
+
+        for (i, line) in lines.iter().enumerate() {
+            let lower = line.to_ascii_lowercase();
+
+            let (key_part, val_part) = if let Some(pos) = line.find(['=', ':']) {
+                let k = line[..pos].trim().to_ascii_lowercase();
+                let v = line[pos + 1..].trim();
+                (Some(k), Some(v))
+            } else {
+                (None, None)
+            };
+
+            // Access Key ID
+            if ak.is_none() {
+                if let (Some(k), Some(v)) = (&key_part, val_part) {
+                    let cleaned = clean_val(v);
+                    if (k.contains("access_key_id")
+                        || k.contains("access key id")
+                        || k.contains("accesskeyid")
+                        || k.contains("aws_access_key")
+                        || k.contains("access_key")
+                        || k.contains("访问密钥")
+                        || k == "ak")
+                        && !cleaned.is_empty()
+                    {
+                        ak = Some(cleaned);
+                    }
+                }
+                if ak.is_none()
+                    && (lower == "access key id"
+                        || lower == "access_key_id"
+                        || lower == "aws_access_key_id"
+                        || lower == "accesskeyid"
+                        || lower == "访问密钥 id"
+                        || lower == "访问密钥")
+                    && let Some(next) = lines.get(i + 1)
+                {
+                    let cleaned = clean_val(next);
+                    if !cleaned.is_empty() {
+                        ak = Some(cleaned);
+                    }
+                }
+            }
+
+            // Secret Access Key
+            if sk.is_none() {
+                if let (Some(k), Some(v)) = (&key_part, val_part) {
+                    let cleaned = clean_val(v);
+                    if (k.contains("secret_access_key")
+                        || k.contains("secret access key")
+                        || k.contains("secretaccesskey")
+                        || k.contains("aws_secret")
+                        || k.contains("secret_key")
+                        || k.contains("机密访问密钥")
+                        || k.contains("私有访问密钥")
+                        || k == "sk")
+                        && !cleaned.is_empty()
+                    {
+                        sk = Some(cleaned);
+                    }
+                }
+                if sk.is_none()
+                    && (lower == "secret access key"
+                        || lower == "secret_access_key"
+                        || lower == "aws_secret_access_key"
+                        || lower == "secretaccesskey"
+                        || lower == "机密访问密钥"
+                        || lower == "私有访问密钥")
+                    && let Some(next) = lines.get(i + 1)
+                {
+                    let cleaned = clean_val(next);
+                    if !cleaned.is_empty() {
+                        sk = Some(cleaned);
+                    }
+                }
+            }
+
+            // Region
+            if region.is_none() {
+                if let (Some(k), Some(v)) = (&key_part, val_part) {
+                    let cleaned = clean_val(v);
+                    if (k.contains("region") || k.contains("区域")) && !cleaned.is_empty() {
+                        region = Some(cleaned);
+                    }
+                }
+                if region.is_none()
+                    && (lower == "region" || lower == "区域" || lower == "aws_region")
+                    && let Some(next) = lines.get(i + 1)
+                {
+                    let cleaned = clean_val(next);
+                    if !cleaned.is_empty() {
+                        region = Some(cleaned);
+                    }
+                }
+            }
+
+            // Bucket
+            if bucket.is_none() {
+                if let (Some(k), Some(v)) = (&key_part, val_part) {
+                    let cleaned = clean_val(v);
+                    if (k.contains("bucket") || k.contains("存储桶")) && !cleaned.is_empty() {
+                        bucket = Some(cleaned);
+                    }
+                }
+                if bucket.is_none()
+                    && (lower == "bucket" || lower == "存储桶" || lower == "bucket_name")
+                    && let Some(next) = lines.get(i + 1)
+                {
+                    let cleaned = clean_val(next);
+                    if !cleaned.is_empty() {
+                        bucket = Some(cleaned);
+                    }
+                }
+            }
+
+            // CSV 单元格嗅探
+            if line.contains(',') {
+                let parts: Vec<&str> = line.split(',').collect();
+                for part in parts {
+                    let cleaned = clean_val(part);
+                    if ak.is_none()
+                        && (cleaned.starts_with("AKIA") || cleaned.starts_with("ASIA"))
+                        && cleaned.len() == 20
+                        && cleaned.chars().all(|c| c.is_ascii_alphanumeric())
+                    {
+                        ak = Some(cleaned.clone());
+                    }
+                    if sk.is_none()
+                        && cleaned.len() == 40
+                        && cleaned
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '+' || c == '=')
+                    {
+                        sk = Some(cleaned.clone());
+                    }
+                    if region.is_none() && is_aws_region(&cleaned) {
+                        region = Some(cleaned.clone());
+                    }
+                }
+            }
+
+            // 单词与 URL 嗅探
+            for word in line.split_whitespace() {
+                let cleaned = clean_val(word);
+                if ak.is_none()
+                    && (cleaned.starts_with("AKIA") || cleaned.starts_with("ASIA"))
+                    && cleaned.len() == 20
+                    && cleaned.chars().all(|c| c.is_ascii_alphanumeric())
+                {
+                    ak = Some(cleaned.clone());
+                }
+                if sk.is_none()
+                    && cleaned.len() == 40
+                    && cleaned
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '+' || c == '=')
+                    && !cleaned.chars().all(|c| c.is_ascii_digit())
+                {
+                    sk = Some(cleaned.clone());
+                }
+                if region.is_none() && is_aws_region(&cleaned) {
+                    region = Some(cleaned.clone());
+                }
+                if cleaned.contains("amazonaws.com") {
+                    let (r, b) = parse_s3_url(&cleaned);
+                    if region.is_none()
+                        && let Some(r_val) = r
+                    {
+                        region = Some(r_val);
+                    }
+                    if bucket.is_none()
+                        && let Some(b_val) = b
+                    {
+                        bucket = Some(b_val);
+                    }
+                }
+            }
+        }
+
+        match (ak, sk) {
+            (Some(a), Some(s)) => {
+                let a = clean_val(&a);
+                let s = clean_val(&s);
+                if !a.is_empty() && !s.is_empty() {
+                    let r = region
+                        .map(|r| clean_val(&r))
+                        .filter(|r| !r.is_empty())
+                        .unwrap_or_else(|| "ap-northeast-1".to_string());
+                    let b = bucket.map(|b| clean_val(&b)).filter(|b| !b.is_empty());
+                    Some((r, a, s, b))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -835,5 +1191,88 @@ FOLDER_ID = folder_abc_123
         // 4. 缺少必要字段应返回 None
         let text_missing = "CLIENT_ID: cid\nFOLDER_ID: fld\n";
         assert!(XdriveConfig::extract_google_drive_tokens(text_missing).is_none());
+    }
+
+    #[test]
+    fn test_valid_aws_s3_preset() {
+        let config = XdriveConfig::new_aws_s3(
+            "ap-northeast-1",
+            "my-aws-bucket",
+            "AKIAIOSFODNN7EXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "aegis-xdrive",
+        );
+        assert_eq!(config.service, XdriveService::S3);
+        assert_eq!(config.remote_folder, "aegis-xdrive");
+        assert_eq!(
+            config.secrets,
+            vec![
+                "AKIAIOSFODNN7EXAMPLE".to_string(),
+                "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string()
+            ]
+        );
+        let s3 = config.s3.as_ref().expect("s3 config must be present");
+        assert_eq!(s3.endpoint, "https://s3.ap-northeast-1.amazonaws.com");
+        assert_eq!(s3.region, "ap-northeast-1");
+        assert_eq!(s3.bucket, "my-aws-bucket");
+        assert!(!s3.path_style);
+        assert_eq!(config.segment_bytes, Some(1024 * 1024));
+        assert_eq!(config.poll_interval_ms, Some(25));
+        assert_eq!(config.max_poll_interval_ms, Some(800));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_extract_aws_s3_tokens() {
+        // 1. AWS credentials ini 格式
+        let text_ini = r#"
+[default]
+aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+region = us-east-1
+"#;
+        let (region, ak, sk, bucket) =
+            XdriveConfig::extract_aws_s3_tokens(text_ini).expect("INI 凭据解析失败");
+        assert_eq!(region, "us-east-1");
+        assert_eq!(ak, "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(sk, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        assert_eq!(bucket, None);
+
+        // 2. CSV 格式（带默认区域 ap-northeast-1）
+        let text_csv = r#"User Name,Access key ID,Secret access key
+admin,AKIAI44QH8DHBEXAMPLE,je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY"#;
+        let (region, ak, sk, bucket) =
+            XdriveConfig::extract_aws_s3_tokens(text_csv).expect("CSV 凭据解析失败");
+        assert_eq!(region, "ap-northeast-1");
+        assert_eq!(ak, "AKIAI44QH8DHBEXAMPLE");
+        assert_eq!(sk, "je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY");
+        assert_eq!(bucket, None);
+
+        // 3. JSON 格式（带 bucket）
+        let text_json = r#"{
+            "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+            "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "region": "ap-southeast-1",
+            "bucket": "test-s3-bucket"
+        }"#;
+        let (region, ak, sk, bucket) =
+            XdriveConfig::extract_aws_s3_tokens(text_json).expect("JSON 凭据解析失败");
+        assert_eq!(region, "ap-southeast-1");
+        assert_eq!(ak, "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(sk, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        assert_eq!(bucket, Some("test-s3-bucket".to_string()));
+
+        // 4. URL 与 endpoint 文本嗅探
+        let text_url = "endpoint: https://my-s3-bucket.s3.eu-central-1.amazonaws.com\nAKIAIOSFODNN7EXAMPLE\nwJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+        let (region, ak, sk, bucket) =
+            XdriveConfig::extract_aws_s3_tokens(text_url).expect("URL 凭据解析失败");
+        assert_eq!(region, "eu-central-1");
+        assert_eq!(ak, "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(sk, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        assert_eq!(bucket, Some("my-s3-bucket".to_string()));
+
+        // 5. 缺失必需凭据应返回 None
+        let text_missing = "region = us-west-2\naws_access_key_id = AKIAIOSFODNN7EXAMPLE\n";
+        assert!(XdriveConfig::extract_aws_s3_tokens(text_missing).is_none());
     }
 }
