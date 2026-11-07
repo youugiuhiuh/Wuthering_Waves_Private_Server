@@ -858,6 +858,45 @@ async fn handle_xdrive_wizard_input(
         return Ok(MessageAction::Handled);
     }
 
+    // AWS S3 全文凭据智能提取（支持 INI credentials、CSV、JSON、URL 等）
+    if session.region == "aws"
+        && let Some((reg, ak, sk, opt_bucket)) = XdriveConfig::extract_aws_s3_tokens(raw_input)
+    {
+        session.s3_region = Some(reg.clone());
+        session.access_key = Some(ak.clone());
+        session.secret_key = Some(sk.clone());
+        if let Some(bucket) = opt_bucket {
+            session.bucket = Some(bucket.clone());
+            let cfg = XdriveConfig::new_aws_s3(&reg, &bucket, &ak, &sk, "aegis-xdrive");
+            return complete_xdrive_node(adapter, target, state, &session, &cfg, cancel_markup)
+                .await;
+        } else {
+            session.step = XdriveWizardStep::Bucket;
+            state.update_xdrive_wizard(&target.0, session).await;
+            let masked_sk = if sk.len() > 16 {
+                format!("{}...", &sk[..16])
+            } else {
+                "***".to_string()
+            };
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!(
+                            "xray.xdrive_aws_auto_detected",
+                            "0" => reg,
+                            "1" => ak,
+                            "2" => masked_sk
+                        )
+                        .to_string(),
+                        markup: cancel_markup,
+                    },
+                )
+                .await?;
+            return Ok(MessageAction::Handled);
+        }
+    }
+
     match session.step {
         XdriveWizardStep::AccountId => {
             if raw_input.starts_with("cfat_") {
@@ -919,12 +958,17 @@ async fn handle_xdrive_wizard_input(
         XdriveWizardStep::Region => {
             session.s3_region = Some(raw_input.to_string());
             session.step = XdriveWizardStep::Bucket;
+            let prompt = if session.region == "aws" {
+                t!("xray.xdrive_guide_aws_step2")
+            } else {
+                t!("xray.xdrive_guide_custom_step3")
+            };
             state.update_xdrive_wizard(&target.0, session).await;
             adapter
                 .send_message(
                     target,
                     MessageContent {
-                        text: t!("xray.xdrive_guide_custom_step3").to_string(),
+                        text: prompt.to_string(),
                         markup: cancel_markup,
                     },
                 )
@@ -932,8 +976,23 @@ async fn handle_xdrive_wizard_input(
         }
         XdriveWizardStep::Bucket => {
             session.bucket = Some(raw_input.to_string());
+
+            // 如果此前已成功自动提取了凭据（AWS 模式下等待输入 Bucket）
+            if session.region == "aws"
+                && let (Some(reg), Some(ak), Some(sk)) = (
+                    session.s3_region.as_deref(),
+                    session.access_key.as_deref(),
+                    session.secret_key.as_deref(),
+                )
+            {
+                let cfg = XdriveConfig::new_aws_s3(reg, raw_input, ak, sk, "aegis-xdrive");
+                return complete_xdrive_node(adapter, target, state, &session, &cfg, cancel_markup)
+                    .await;
+            }
+
             session.step = XdriveWizardStep::AccessKey;
             let prompt = match session.region.as_str() {
+                "aws" => t!("xray.xdrive_guide_aws_step3"),
                 "cn" | "r2" => t!("xray.xdrive_guide_cn_step3"),
                 "ru" | "yandex" => t!("xray.xdrive_guide_ru_step2"),
                 "ir" | "arvan" => t!("xray.xdrive_guide_ir_step2"),
@@ -968,6 +1027,7 @@ async fn handle_xdrive_wizard_input(
             session.access_key = Some(raw_input.to_string());
             session.step = XdriveWizardStep::SecretKey;
             let prompt = match session.region.as_str() {
+                "aws" => t!("xray.xdrive_guide_aws_step4"),
                 "cn" | "r2" => t!("xray.xdrive_guide_cn_step4"),
                 "ru" | "yandex" => t!("xray.xdrive_guide_ru_step3"),
                 "ir" | "arvan" => t!("xray.xdrive_guide_ir_step3"),
@@ -988,6 +1048,13 @@ async fn handle_xdrive_wizard_input(
             session.secret_key = Some(raw_input.to_string());
 
             let cfg = match session.region.as_str() {
+                "aws" => {
+                    let region = session.s3_region.as_deref().unwrap_or("us-east-1");
+                    let bucket = session.bucket.as_deref().unwrap_or_default();
+                    let ak = session.access_key.as_deref().unwrap_or_default();
+                    let sk = session.secret_key.as_deref().unwrap_or_default();
+                    XdriveConfig::new_aws_s3(region, bucket, ak, sk, "aegis-xdrive")
+                }
                 "cn" | "r2" => {
                     let account_id = session.account_id.as_deref().unwrap_or_default();
                     let bucket = session.bucket.as_deref().unwrap_or_default();
@@ -2432,5 +2499,179 @@ Refresh Token: 1//0gSampleRefreshToken
             session.refresh_token.as_deref(),
             Some("1//json-refresh-sample")
         );
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_aws_s3_conversational_flow() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "aws".to_string(),
+            step: XdriveWizardStep::Region,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        // Step 1: User sends Region
+        let action = handle_message(&adapter, &target, Some("ap-northeast-1"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::Bucket);
+        assert_eq!(session.s3_region.as_deref(), Some("ap-northeast-1"));
+        let msg = adapter.last_text();
+        assert!(msg.contains("AWS S3") || msg.contains("存储桶") || msg.contains("Bucket"));
+
+        // Step 2: User sends Bucket
+        let action = handle_message(&adapter, &target, Some("my-aws-bucket"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::AccessKey);
+        assert_eq!(session.bucket.as_deref(), Some("my-aws-bucket"));
+
+        // Step 3: User sends Access Key
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("AKIAIOSFODNN7EXAMPLE"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::SecretKey);
+        assert_eq!(session.access_key.as_deref(), Some("AKIAIOSFODNN7EXAMPLE"));
+
+        // Step 4: User completes by sending Secret Key
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+        // Wizard session is cleared upon completion
+        assert!(state.get_xdrive_wizard("test_chat").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_aws_s3_auto_extract_without_bucket() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "aws".to_string(),
+            step: XdriveWizardStep::Region,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        let ini_credentials = r#"
+[default]
+aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+region = us-east-1
+"#;
+
+        let action = handle_message(&adapter, &target, Some(ini_credentials), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::Bucket);
+        assert_eq!(session.s3_region.as_deref(), Some("us-east-1"));
+        assert_eq!(session.access_key.as_deref(), Some("AKIAIOSFODNN7EXAMPLE"));
+        assert_eq!(
+            session.secret_key.as_deref(),
+            Some("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+        );
+
+        let last_msg = adapter.last_text();
+        assert!(
+            last_msg.contains("AWS S3")
+                && last_msg.contains("us-east-1")
+                && last_msg.contains("AKIAIOSFODNN7EXAMPLE")
+        );
+
+        // Advance: User inputs bucket name to finalize
+        let action = handle_message(&adapter, &target, Some("my-final-bucket"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+        assert!(state.get_xdrive_wizard("test_chat").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_aws_s3_auto_extract_with_bucket() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "aws".to_string(),
+            step: XdriveWizardStep::Region,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        let json_credentials = r#"{
+            "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+            "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "region": "ap-southeast-1",
+            "bucket": "auto-extracted-bucket"
+        }"#;
+
+        let action = handle_message(&adapter, &target, Some(json_credentials), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        // Since bucket was included in the JSON, it completes immediately and clears wizard
+        assert!(state.get_xdrive_wizard("test_chat").await.is_none());
     }
 }

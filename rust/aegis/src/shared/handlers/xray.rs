@@ -587,6 +587,7 @@ async fn handle_xdrive_provider_prompt(
         .await;
 
     let prompt_text = match provider {
+        "aws" => t!("xray.xdrive_guide_aws_step1"),
         "r2" | "cn" => t!("xray.xdrive_guide_cn_step1"),
         "gdrive" | "google-drive" => t!("xray.xdrive_guide_gdrive_step1"),
         "ru" | "yandex" => t!("xray.xdrive_guide_ru_step1"),
@@ -4058,5 +4059,30 @@ mod tests {
         let session = state.get_xdrive_wizard("user_ru").await.unwrap();
         assert_eq!(session.region, "yandex");
         assert_eq!(session.step, crate::app::state::XdriveWizardStep::Bucket);
+
+        // 4. Provider callback: aws
+        let event_aws = CallbackEvent {
+            adapter: adapter.clone(),
+            target: TargetId("user_aws".into()),
+            user_id: "42".into(),
+            msg_id: MessageId("104".into()),
+            data: "u_xdrive_p:aws".into(),
+            callback_id: "cb_aws".into(),
+            session_timeout_secs: 60,
+        };
+        let res = handle(&event_aws, &state).await.unwrap();
+        assert_eq!(res, HandlerAction::Done);
+
+        let session = state.get_xdrive_wizard("user_aws").await.unwrap();
+        assert_eq!(session.region, "aws");
+        assert_eq!(session.step, crate::app::state::XdriveWizardStep::Region);
+        let last_text = adapter
+            .sent
+            .lock()
+            .unwrap()
+            .last()
+            .cloned()
+            .unwrap_or_default();
+        assert!(last_text.contains("AWS S3"));
     }
 }
