@@ -541,6 +541,10 @@ async fn handle_xdrive_menu(event: &CallbackEvent) -> HandlerResult {
             data: "u_xdrive_p:gdrive".into(),
         }],
         vec![InlineButton {
+            text: t!("xray.xdrive_btn_aws").into(),
+            data: "u_xdrive_p:aws".into(),
+        }],
+        vec![InlineButton {
             text: t!("xray.xdrive_btn_yandex").into(),
             data: "u_xdrive_p:yandex".into(),
         }],
@@ -583,6 +587,7 @@ async fn handle_xdrive_provider_prompt(
         .await;
 
     let prompt_text = match provider {
+        "aws" => t!("xray.xdrive_guide_aws_step1"),
         "r2" | "cn" => t!("xray.xdrive_guide_cn_step1"),
         "gdrive" | "google-drive" => t!("xray.xdrive_guide_gdrive_step1"),
         "ru" | "yandex" => t!("xray.xdrive_guide_ru_step1"),
@@ -3935,7 +3940,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_xdrive_menu_renders_five_providers() {
+    async fn test_xdrive_menu_renders_six_providers() {
         let adapter = Arc::new(XdriveMockAdapter::default());
         let event = CallbackEvent {
             adapter: adapter.clone(),
@@ -3956,12 +3961,39 @@ mod tests {
             vec![
                 "u_xdrive_p:r2",
                 "u_xdrive_p:gdrive",
+                "u_xdrive_p:aws",
                 "u_xdrive_p:yandex",
                 "u_xdrive_p:arvan",
                 "u_xdrive_p:s3",
                 "m_batch_menu",
             ]
         );
+    }
+
+    #[test]
+    fn test_xdrive_aws_i18n_keys_and_menu() {
+        assert!(!t!("xray.xdrive_btn_aws", locale = "zh").is_empty());
+        assert!(!t!("xray.xdrive_btn_aws", locale = "en").is_empty());
+        assert!(!t!("xray.xdrive_btn_aws", locale = "ja").is_empty());
+
+        assert!(!t!("xray.xdrive_aws_auto_detected", locale = "zh").is_empty());
+        assert!(!t!("xray.xdrive_aws_auto_detected", locale = "en").is_empty());
+        assert!(!t!("xray.xdrive_aws_auto_detected", locale = "ja").is_empty());
+
+        assert!(!t!("xray.xdrive_guide_aws_step1", locale = "zh").is_empty());
+        assert!(!t!("xray.xdrive_guide_aws_step2", locale = "zh").is_empty());
+        assert!(!t!("xray.xdrive_guide_aws_step3", locale = "zh").is_empty());
+        assert!(!t!("xray.xdrive_guide_aws_step4", locale = "zh").is_empty());
+
+        assert!(!t!("xray.xdrive_guide_aws_step1", locale = "en").is_empty());
+        assert!(!t!("xray.xdrive_guide_aws_step2", locale = "en").is_empty());
+        assert!(!t!("xray.xdrive_guide_aws_step3", locale = "en").is_empty());
+        assert!(!t!("xray.xdrive_guide_aws_step4", locale = "en").is_empty());
+
+        assert!(!t!("xray.xdrive_guide_aws_step1", locale = "ja").is_empty());
+        assert!(!t!("xray.xdrive_guide_aws_step2", locale = "ja").is_empty());
+        assert!(!t!("xray.xdrive_guide_aws_step3", locale = "ja").is_empty());
+        assert!(!t!("xray.xdrive_guide_aws_step4", locale = "ja").is_empty());
     }
 
     #[tokio::test]
@@ -4027,5 +4059,30 @@ mod tests {
         let session = state.get_xdrive_wizard("user_ru").await.unwrap();
         assert_eq!(session.region, "yandex");
         assert_eq!(session.step, crate::app::state::XdriveWizardStep::Bucket);
+
+        // 4. Provider callback: aws
+        let event_aws = CallbackEvent {
+            adapter: adapter.clone(),
+            target: TargetId("user_aws".into()),
+            user_id: "42".into(),
+            msg_id: MessageId("104".into()),
+            data: "u_xdrive_p:aws".into(),
+            callback_id: "cb_aws".into(),
+            session_timeout_secs: 60,
+        };
+        let res = handle(&event_aws, &state).await.unwrap();
+        assert_eq!(res, HandlerAction::Done);
+
+        let session = state.get_xdrive_wizard("user_aws").await.unwrap();
+        assert_eq!(session.region, "aws");
+        assert_eq!(session.step, crate::app::state::XdriveWizardStep::Region);
+        let last_text = adapter
+            .sent
+            .lock()
+            .unwrap()
+            .last()
+            .cloned()
+            .unwrap_or_default();
+        assert!(last_text.contains("AWS S3"));
     }
 }

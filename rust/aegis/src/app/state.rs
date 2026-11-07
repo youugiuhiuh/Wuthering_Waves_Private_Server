@@ -722,6 +722,7 @@ impl AppState {
     pub async fn start_xdrive_wizard(&self, target: String, region: &str) -> XdriveWizardStep {
         let step = match region.to_ascii_lowercase().as_str() {
             "gdrive" | "google-drive" => XdriveWizardStep::FolderId,
+            "aws" => XdriveWizardStep::Region,
             "cn" | "r2" => XdriveWizardStep::AccountId,
             "custom" | "s3" => XdriveWizardStep::Endpoint,
             _ => XdriveWizardStep::Bucket,
@@ -1458,5 +1459,11 @@ mod tests {
         // S3 starts at Endpoint
         let s3_step = state.start_xdrive_wizard("user6".into(), "s3").await;
         assert_eq!(s3_step, XdriveWizardStep::Endpoint);
+
+        // AWS starts at Region
+        let aws_step = state.start_xdrive_wizard("user7".into(), "aws").await;
+        assert_eq!(aws_step, XdriveWizardStep::Region);
+        let aws_session = state.get_xdrive_wizard("user7").await.unwrap();
+        assert_eq!(aws_session.step, XdriveWizardStep::Region);
     }
 }
