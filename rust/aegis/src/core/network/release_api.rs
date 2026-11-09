@@ -4,6 +4,8 @@ use regex::Regex;
 use reqwest::header::{ACCEPT, HeaderValue, USER_AGENT};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use std::future::Future;
+use std::time::Duration;
 
 pub static SHA256_LINE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)sha256[:\s]+([0-9a-f]{64})").expect("valid sha256 regex"));
@@ -127,6 +129,93 @@ pub fn parse_digest(input: &str) -> Option<String> {
         .strip_prefix("sha256:")
         .map(|s| s.trim().to_string())
         .filter(|s| s.len() == 64)
+}
+
+pub const DEFAULT_DOWNLOAD_MAX_RETRIES: usize = 4;
+pub const DEFAULT_DOWNLOAD_INITIAL_DELAY: Duration = Duration::from_secs(2);
+
+/// 判断 HTTP 状态码是否属于可瞬态重试错误（5xx, 408, 429）。
+pub fn is_retryable_status(status: reqwest::StatusCode) -> bool {
+    status.is_server_error()
+        || status == reqwest::StatusCode::REQUEST_TIMEOUT
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+}
+
+/// 判断 reqwest::Error 是否属于可重试的临时网络错误。
+pub fn is_retryable_reqwest_error(err: &reqwest::Error) -> bool {
+    if err.is_timeout() || err.is_connect() {
+        return true;
+    }
+    if let Some(status) = err.status() {
+        return is_retryable_status(status);
+    }
+    err.is_request()
+}
+
+/// 判断 anyhow::Error 是否可瞬态重试（检查下转的 reqwest::Error 或特定错误文案）。
+pub fn is_retryable_anyhow_error(err: &anyhow::Error) -> bool {
+    if let Some(req_err) = err.downcast_ref::<reqwest::Error>() {
+        return is_retryable_reqwest_error(req_err);
+    }
+    // 递归检查 source chain 是否包含 reqwest::Error
+    for cause in err.chain() {
+        if let Some(req_err) = cause.downcast_ref::<reqwest::Error>() {
+            return is_retryable_reqwest_error(req_err);
+        }
+    }
+    let msg = err.to_string().to_ascii_lowercase();
+
+    // 状态码文本必须具备明确的 HTTP 边界，避免端口号（如 35048）或 commit 哈希包含 504 时被误伤
+    let has_retryable_status = msg.contains("(504")
+        || msg.contains("(502")
+        || msg.contains("(503")
+        || msg.contains("(408")
+        || msg.contains("(429")
+        || msg.contains(" 504 ")
+        || msg.contains(" 502 ")
+        || msg.contains(" 503 ")
+        || msg.contains("status code: 504")
+        || msg.contains("status code: 502")
+        || msg.contains("status code: 503");
+
+    has_retryable_status
+        || msg.contains("gateway timeout")
+        || msg.contains("bad gateway")
+        || msg.contains("service unavailable")
+        || msg.contains("connection reset")
+        || msg.contains("connection closed")
+        || msg.contains("timed out")
+        || msg.contains("timeout")
+}
+
+/// 针对异步操作执行指数退避重试。
+pub async fn retry_with_backoff<T, F, Fut>(
+    operation_name: &str,
+    max_retries: usize,
+    initial_delay: Duration,
+    mut op: F,
+) -> Result<T>
+where
+    F: FnMut(usize) -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    let mut delay = initial_delay;
+    for attempt in 1..=max_retries {
+        match op(attempt).await {
+            Ok(val) => return Ok(val),
+            Err(err) => {
+                if attempt == max_retries || !is_retryable_anyhow_error(&err) {
+                    return Err(err);
+                }
+                log::warn!(
+                    "{operation_name} (第 {attempt}/{max_retries} 次) 遇到瞬态错误: {err:#}，将在 {delay:?} 后重试..."
+                );
+                tokio::time::sleep(delay).await;
+                delay = delay.saturating_mul(2);
+            }
+        }
+    }
+    anyhow::bail!("{operation_name} 重试次数耗尽")
 }
 
 pub fn parse_sha256_manifest(manifest: &str, target_asset: &str) -> Option<String> {
@@ -277,6 +366,94 @@ mod tests {
         let result = find_minisig_asset(&assets, "aegis");
         assert!(result.is_some());
         assert_eq!(result.unwrap().name, "aegis.minisig");
+    }
+
+    #[test]
+    fn test_is_retryable_status() {
+        assert!(is_retryable_status(reqwest::StatusCode::GATEWAY_TIMEOUT)); // 504
+        assert!(is_retryable_status(reqwest::StatusCode::BAD_GATEWAY)); // 502
+        assert!(is_retryable_status(
+            reqwest::StatusCode::SERVICE_UNAVAILABLE
+        )); // 503
+        assert!(is_retryable_status(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR
+        )); // 500
+        assert!(is_retryable_status(reqwest::StatusCode::REQUEST_TIMEOUT)); // 408
+        assert!(is_retryable_status(reqwest::StatusCode::TOO_MANY_REQUESTS)); // 429
+
+        assert!(!is_retryable_status(reqwest::StatusCode::OK));
+        assert!(!is_retryable_status(reqwest::StatusCode::NOT_FOUND));
+        assert!(!is_retryable_status(reqwest::StatusCode::FORBIDDEN));
+        assert!(!is_retryable_status(reqwest::StatusCode::BAD_REQUEST));
+    }
+
+    #[test]
+    fn test_is_retryable_anyhow_error_with_status_message() {
+        let err504 = anyhow!("HTTP status server error (504 Gateway Timeout) for url");
+        assert!(is_retryable_anyhow_error(&err504));
+
+        let err502 = anyhow!("HTTP status server error (502 Bad Gateway) for url");
+        assert!(is_retryable_anyhow_error(&err502));
+
+        let err_timeout = anyhow!("Connection timed out");
+        assert!(is_retryable_anyhow_error(&err_timeout));
+
+        let err_reset = anyhow!("Connection reset by peer");
+        assert!(is_retryable_anyhow_error(&err_reset));
+
+        // 端口号和哈希不应被误判为 504/502/503
+        let err_port = anyhow!("Failed to add port 35048 to firewalld");
+        assert!(!is_retryable_anyhow_error(&err_port));
+
+        let err_commit = anyhow!("Commit sha a504b12c failed verification");
+        assert!(!is_retryable_anyhow_error(&err_commit));
+
+        let err_404 = anyhow!("HTTP status client error (404 Not Found) for url");
+        assert!(!is_retryable_anyhow_error(&err_404));
+
+        let err_validation = anyhow!("SHA256 校验失败");
+        assert!(!is_retryable_anyhow_error(&err_validation));
+    }
+
+    #[tokio::test]
+    async fn test_retry_with_backoff_succeeds_on_first_try() {
+        let mut calls = 0;
+        let res = retry_with_backoff("test_op", 3, Duration::from_millis(1), |_| {
+            calls += 1;
+            async { Ok::<_, anyhow::Error>(42) }
+        })
+        .await;
+        assert_eq!(res.unwrap(), 42);
+        assert_eq!(calls, 1);
+    }
+
+    #[tokio::test]
+    async fn test_retry_with_backoff_retries_transient_error_and_succeeds() {
+        let mut calls = 0;
+        let res = retry_with_backoff("test_op", 3, Duration::from_millis(1), |attempt| {
+            calls += 1;
+            async move {
+                if attempt < 3 {
+                    anyhow::bail!("504 Gateway Timeout");
+                }
+                Ok::<_, anyhow::Error>("success")
+            }
+        })
+        .await;
+        assert_eq!(res.unwrap(), "success");
+        assert_eq!(calls, 3);
+    }
+
+    #[tokio::test]
+    async fn test_retry_with_backoff_fails_immediately_on_non_retryable_error() {
+        let mut calls = 0;
+        let res: Result<()> = retry_with_backoff("test_op", 3, Duration::from_millis(1), |_| {
+            calls += 1;
+            async { anyhow::bail!("404 Not Found") }
+        })
+        .await;
+        assert!(res.is_err());
+        assert_eq!(calls, 1);
     }
 
     #[test]

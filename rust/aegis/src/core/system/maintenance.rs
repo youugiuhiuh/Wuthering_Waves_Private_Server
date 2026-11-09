@@ -358,22 +358,14 @@ impl MaintenanceManager {
     }
 
     async fn download_file_atomic(client: &reqwest::Client, url: &str, path: &str) -> Result<()> {
-        let temp_path = format!("{}.tmp", path);
-
-        let result = Self::download_file(client, url, &temp_path, |_, _| {}).await;
+        let result = Self::download_file(client, url, path, |_, _| {}).await;
 
         match result {
             Ok(()) => {
-                tokio::fs::rename(&temp_path, path)
-                    .await
-                    .context("重命名临时文件失败")?;
                 log::info!("geodata 下载完成: {}", path);
                 Ok(())
             }
-            Err(e) => {
-                let _ = tokio::fs::remove_file(&temp_path).await;
-                Err(e)
-            }
+            Err(e) => Err(e),
         }
     }
 
@@ -609,39 +601,72 @@ impl MaintenanceManager {
         client: &reqwest::Client,
         url: &str,
         path: &str,
-        mut on_progress: F,
+        on_progress: F,
     ) -> Result<()>
     where
         F: FnMut(u64, u64),
     {
-        let response = client.get(url).send().await?.error_for_status()?;
-        let total_size = response
-            .content_length()
-            .ok_or_else(|| anyhow::anyhow!("无法获取文件大小"))?;
-        let mut stream = response.bytes_stream();
+        use crate::core::network::release_api::{
+            DEFAULT_DOWNLOAD_INITIAL_DELAY, DEFAULT_DOWNLOAD_MAX_RETRIES, retry_with_backoff,
+        };
 
-        // Download to a temporary file first
         let temp_path = format!("{}.tmp", path);
-        let mut file = fs::File::create(&temp_path).await?;
-        let mut writer = tokio::io::BufWriter::new(&mut file);
+        let progress_cell = std::sync::Arc::new(tokio::sync::Mutex::new(on_progress));
 
-        let mut downloaded: u64 = 0;
+        let res = retry_with_backoff(
+            &format!("下载文件 {url}"),
+            DEFAULT_DOWNLOAD_MAX_RETRIES,
+            DEFAULT_DOWNLOAD_INITIAL_DELAY,
+            |_attempt| {
+                let temp_path = temp_path.clone();
+                let progress_cell = progress_cell.clone();
+                async move {
+                    let _ = tokio::fs::remove_file(&temp_path).await;
+                    let response = client
+                        .get(url)
+                        .send()
+                        .await
+                        .context("发送下载请求失败")?
+                        .error_for_status()
+                        .context("下载响应返回错误状态")?;
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            writer.write_all(&chunk).await?;
-            downloaded += chunk.len() as u64;
+                    let total_size = response
+                        .content_length()
+                        .ok_or_else(|| anyhow::anyhow!("无法获取文件大小"))?;
+                    let mut stream = response.bytes_stream();
 
-            on_progress(downloaded, total_size);
+                    let mut file = fs::File::create(&temp_path)
+                        .await
+                        .context("创建临时文件失败")?;
+                    let mut writer = tokio::io::BufWriter::new(&mut file);
+                    let mut downloaded: u64 = 0;
+
+                    while let Some(chunk) = stream.next().await {
+                        let chunk = chunk.context("读取下载数据流失败")?;
+                        writer.write_all(&chunk).await.context("写入临时文件失败")?;
+                        downloaded += chunk.len() as u64;
+
+                        let mut cb = progress_cell.lock().await;
+                        cb(downloaded, total_size);
+                    }
+
+                    writer.flush().await.context("刷新临时文件失败")?;
+                    drop(writer);
+                    file.sync_all().await.context("同步临时文件失败")?;
+
+                    fs::rename(&temp_path, path)
+                        .await
+                        .context("重命名下载临时文件失败")?;
+                    Ok::<(), anyhow::Error>(())
+                }
+            },
+        )
+        .await;
+
+        if res.is_err() {
+            let _ = tokio::fs::remove_file(&temp_path).await;
         }
-
-        writer.flush().await?;
-        drop(writer);
-        file.sync_all().await?;
-
-        // Rename temp file to target file
-        fs::rename(&temp_path, path).await?;
-        Ok(())
+        res
     }
 
     pub async fn is_port_available(port: u16) -> bool {

@@ -343,74 +343,96 @@ impl WwpsCoreUpgradeManager {
             .await
             .context("创建临时目录失败")?;
 
-        let response = self
-            .build_request(&release.download_url)
-            .send()
-            .await
-            .context("下载 Xray-core Release 失败")?
-            .error_for_status()
-            .context("Xray-core Release 下载返回错误状态")?;
+        use crate::core::network::release_api::{
+            DEFAULT_DOWNLOAD_INITIAL_DELAY, DEFAULT_DOWNLOAD_MAX_RETRIES, retry_with_backoff,
+        };
 
-        let total_size = response.content_length();
-        let mut stream = response.bytes_stream();
-        let mut file = fs::File::create(&temp_file)
-            .await
-            .context("创建 Xray-core 临时包失败")?;
-        let mut writer = tokio::io::BufWriter::new(&mut file);
-        let mut hasher = Sha256::new();
+        let temp_file_clone = temp_file.clone();
+        retry_with_backoff(
+            "下载 Xray-core Release",
+            DEFAULT_DOWNLOAD_MAX_RETRIES,
+            DEFAULT_DOWNLOAD_INITIAL_DELAY,
+            |_attempt| {
+                let temp_file = temp_file_clone.clone();
+                async move {
+                    let _ = tokio::fs::remove_file(&temp_file).await;
 
-        let mut downloaded: u64 = 0;
-        let mut last_pct = 0.0;
-        let mut last_size = 0;
-        let mut last_instant = Instant::now();
-        let start = Instant::now();
+                    let response = self
+                        .build_request(&release.download_url)
+                        .send()
+                        .await
+                        .context("下载 Xray-core Release 失败")?
+                        .error_for_status()
+                        .context("Xray-core Release 下载返回错误状态")?;
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.context("下载数据块失败")?;
-            hasher.update(&chunk);
-            writer
-                .write_all(&chunk)
-                .await
-                .context("写入 Xray-core 临时包失败")?;
-            downloaded += chunk.len() as u64;
+                    let total_size = response.content_length();
+                    let mut stream = response.bytes_stream();
+                    let mut file = fs::File::create(&temp_file)
+                        .await
+                        .context("创建 Xray-core 临时包失败")?;
+                    let mut writer = tokio::io::BufWriter::new(&mut file);
+                    let mut hasher = Sha256::new();
 
-            if let (Some(adapter), Some(target), Some(msg_id)) = (adapter, target, msg_id)
-                && should_report(
-                    downloaded,
-                    total_size,
-                    &mut last_pct,
-                    &mut last_size,
-                    last_instant,
-                )
-            {
-                last_instant = Instant::now();
-                let progress_text = format_download_progress(downloaded, total_size, start);
-                let _ = adapter
-                    .edit_message(
-                        target,
-                        msg_id,
-                        MessageContent {
-                            text: progress_text,
-                            markup: None,
-                        },
-                    )
-                    .await;
-            }
-        }
+                    let mut downloaded: u64 = 0;
+                    let mut last_pct = 0.0;
+                    let mut last_size = 0;
+                    let mut last_instant = Instant::now();
+                    let start = Instant::now();
 
-        writer.flush().await.context("刷新 Xray-core 临时包失败")?;
-        drop(writer);
-        file.sync_all().await.context("同步 Xray-core 包失败")?;
+                    while let Some(chunk) = stream.next().await {
+                        let chunk = chunk.context("下载数据块失败")?;
+                        hasher.update(&chunk);
+                        writer
+                            .write_all(&chunk)
+                            .await
+                            .context("写入 Xray-core 临时包失败")?;
+                        downloaded += chunk.len() as u64;
 
-        let actual_hash = hex::encode(hasher.finalize());
-        if actual_hash != release.sha256 {
-            fs::remove_file(&temp_file).await.ok();
-            anyhow::bail!(
-                "Xray-core 包 SHA256 校验失败，期望: {} 实际: {}",
-                release.sha256,
-                actual_hash
-            );
-        }
+                        if let (Some(adapter), Some(target), Some(msg_id)) =
+                            (adapter, target, msg_id)
+                            && should_report(
+                                downloaded,
+                                total_size,
+                                &mut last_pct,
+                                &mut last_size,
+                                last_instant,
+                            )
+                        {
+                            last_instant = Instant::now();
+                            let progress_text =
+                                format_download_progress(downloaded, total_size, start);
+                            let _ = adapter
+                                .edit_message(
+                                    target,
+                                    msg_id,
+                                    MessageContent {
+                                        text: progress_text,
+                                        markup: None,
+                                    },
+                                )
+                                .await;
+                        }
+                    }
+
+                    writer.flush().await.context("刷新 Xray-core 临时包失败")?;
+                    drop(writer);
+                    file.sync_all().await.context("同步 Xray-core 包失败")?;
+
+                    let actual_hash = hex::encode(hasher.finalize());
+                    if actual_hash != release.sha256 {
+                        fs::remove_file(&temp_file).await.ok();
+                        anyhow::bail!(
+                            "Xray-core 包 SHA256 校验失败，期望: {} 实际: {}",
+                            release.sha256,
+                            actual_hash
+                        );
+                    }
+
+                    Ok::<(), anyhow::Error>(())
+                }
+            },
+        )
+        .await?;
 
         // Minisign verification（条件启用：**存在签名则必须验证通过**）。
         //
@@ -433,16 +455,23 @@ impl WwpsCoreUpgradeManager {
             return Ok(temp_file);
         };
         {
-            let sig_bytes = self
-                .build_request(sig_url)
-                .send()
-                .await
-                .context("下载 Minisign 签名文件失败")?
-                .error_for_status()
-                .context("Minisign 签名文件下载失败")?
-                .bytes()
-                .await
-                .context("读取 Minisign 签名文件失败")?;
+            let sig_bytes = retry_with_backoff(
+                "下载 Minisign 签名文件",
+                DEFAULT_DOWNLOAD_MAX_RETRIES,
+                DEFAULT_DOWNLOAD_INITIAL_DELAY,
+                |_| async {
+                    self.build_request(sig_url)
+                        .send()
+                        .await
+                        .context("下载 Minisign 签名文件失败")?
+                        .error_for_status()
+                        .context("Minisign 签名文件下载失败")?
+                        .bytes()
+                        .await
+                        .context("读取 Minisign 签名文件失败")
+                },
+            )
+            .await?;
 
             let sig_str =
                 std::str::from_utf8(&sig_bytes).context("Minisign 签名不是有效的 UTF-8")?;
@@ -1086,16 +1115,27 @@ impl WwpsCoreUpgradeManager {
             return Ok(None);
         };
 
-        let text = self
-            .build_request(manifest_asset.download_url())
-            .send()
-            .await
-            .context("下载 SHA256 清单失败")?
-            .error_for_status()
-            .context("SHA256 清单返回错误状态")?
-            .text()
-            .await
-            .context("读取 SHA256 清单失败")?;
+        use crate::core::network::release_api::{
+            DEFAULT_DOWNLOAD_INITIAL_DELAY, DEFAULT_DOWNLOAD_MAX_RETRIES, retry_with_backoff,
+        };
+
+        let text = retry_with_backoff(
+            "下载 SHA256 清单",
+            DEFAULT_DOWNLOAD_MAX_RETRIES,
+            DEFAULT_DOWNLOAD_INITIAL_DELAY,
+            |_| async {
+                self.build_request(manifest_asset.download_url())
+                    .send()
+                    .await
+                    .context("下载 SHA256 清单失败")?
+                    .error_for_status()
+                    .context("SHA256 清单返回错误状态")?
+                    .text()
+                    .await
+                    .context("读取 SHA256 清单失败")
+            },
+        )
+        .await?;
 
         Ok(parse_sha256_manifest(&text, target_asset))
     }
