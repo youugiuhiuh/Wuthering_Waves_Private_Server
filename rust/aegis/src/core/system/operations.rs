@@ -120,6 +120,7 @@ emit_via = motd
 
     pub fn apt_daily_timer_override() -> String {
         r#"[Timer]
+OnCalendar=
 OnCalendar=daily
 RandomizedDelaySec=4h
 "#
@@ -128,6 +129,7 @@ RandomizedDelaySec=4h
 
     pub fn apt_daily_upgrade_timer_override() -> String {
         r#"[Timer]
+OnCalendar=
 OnCalendar=daily
 RandomizedDelaySec=4h
 
@@ -301,7 +303,7 @@ impl Operations {
     }
 
     pub async fn perform_maintenance() -> Result<String> {
-        Self::perform_maintenance_with_reboot_time("03:00").await
+        Self::perform_maintenance_with_reboot_time(Self::DEFAULT_REBOOT_TIME).await
     }
 
     pub async fn perform_maintenance_with_reboot_time(reboot_time: &str) -> Result<String> {
@@ -395,7 +397,7 @@ impl Operations {
         Ok(log)
     }
 
-    pub const DEFAULT_REBOOT_TIME: &str = "05:00";
+    pub const DEFAULT_REBOOT_TIME: &str = "now";
 
     pub async fn set_apt_daily_timer() -> Result<()> {
         let upgrade_override_dir = "/etc/systemd/system/apt-daily-upgrade.timer.d";
@@ -663,8 +665,8 @@ mod tests {
     }
 
     #[test]
-    fn test_default_reboot_time_is_0500() {
-        assert_eq!(Operations::DEFAULT_REBOOT_TIME, "05:00");
+    fn test_default_reboot_time_is_now() {
+        assert_eq!(Operations::DEFAULT_REBOOT_TIME, "now");
     }
 
     #[test]
