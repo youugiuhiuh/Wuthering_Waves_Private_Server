@@ -148,10 +148,10 @@ jobs:
             esac
 
             echo "::group::Signing $asset"
-            curl -fsSL -H "Authorization: token $RELEASE_AUTH_TOKEN" -o "$asset" "$url"
+            curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors -H "Authorization: token $RELEASE_AUTH_TOKEN" -o "$asset" "$url"
             minisign -S -s "$MINISIGN_KEY_PATH" -m "$asset" -t "${TAG}:${asset}" -W
             # 用 release 响应里的 upload_url（含正确主机），不用 RELEASE_API_BASE。
-            curl -fsS -X POST \
+            curl -fsS --retry 5 --retry-delay 5 --retry-all-errors -X POST \
               -H "Authorization: token $RELEASE_AUTH_TOKEN" \
               -H "Content-Type: application/octet-stream" \
               --data-binary "@${asset}.minisig" \

@@ -362,16 +362,30 @@ impl UpgradeManager {
             return Ok(None);
         }
 
-        let text = self
-            .build_request(manifest_url)
-            .send()
-            .await
-            .context("下载 SHA256 校验文件失败")?
-            .error_for_status()
-            .context("SHA256 校验文件返回错误状态")?
-            .text()
-            .await
-            .context("读取 SHA256 校验文件失败")?;
+        use crate::core::network::release_api::{
+            DEFAULT_DOWNLOAD_INITIAL_DELAY, DEFAULT_DOWNLOAD_MAX_RETRIES, retry_with_backoff,
+        };
+
+        let text = retry_with_backoff(
+            &format!("下载 SHA256 校验文件 ({target_asset})"),
+            DEFAULT_DOWNLOAD_MAX_RETRIES,
+            DEFAULT_DOWNLOAD_INITIAL_DELAY,
+            |_| async {
+                let response = self
+                    .build_request(manifest_url)
+                    .send()
+                    .await
+                    .context("下载 SHA256 校验文件失败")?;
+                let status = response.status();
+                response
+                    .error_for_status()
+                    .with_context(|| format!("SHA256 校验文件返回错误状态 ({status})"))?
+                    .text()
+                    .await
+                    .context("读取 SHA256 校验文件失败")
+            },
+        )
+        .await?;
 
         Ok(parse_sha256_manifest(&text, target_asset))
     }
@@ -383,23 +397,38 @@ impl UpgradeManager {
     ) -> Result<Vec<u8>> {
         // 硬校验：签名缺失即失败。若此处返回 Ok(None)，攻击者只需删掉
         // .minisig 资产即可绕过签名验证。
+        use crate::core::network::release_api::{
+            DEFAULT_DOWNLOAD_INITIAL_DELAY, DEFAULT_DOWNLOAD_MAX_RETRIES, retry_with_backoff,
+        };
+
         let sig_asset = find_minisig_asset(assets, target_asset)
             .ok_or_else(|| anyhow!("Release 缺少 Minisign 签名（{}）", target_asset))?;
         let sig_url = sig_asset.download_url();
         if sig_url.is_empty() {
             anyhow::bail!("Minisign 签名地址为空（{}）", target_asset);
         }
-        let bytes = self
-            .build_request(sig_url)
-            .send()
-            .await
-            .context("下载 Minisign 签名文件失败")?
-            .error_for_status()
-            .context("Minisign 签名文件返回错误状态")?
-            .bytes()
-            .await
-            .context("读取 Minisign 签名文件失败")?;
-        Ok(bytes.to_vec())
+
+        retry_with_backoff(
+            &format!("下载 Minisign 签名文件 ({target_asset})"),
+            DEFAULT_DOWNLOAD_MAX_RETRIES,
+            DEFAULT_DOWNLOAD_INITIAL_DELAY,
+            |_| async {
+                let response = self
+                    .build_request(sig_url)
+                    .send()
+                    .await
+                    .context("下载 Minisign 签名文件失败")?;
+                let status = response.status();
+                let bytes = response
+                    .error_for_status()
+                    .with_context(|| format!("Minisign 签名文件返回错误状态 ({status})"))?
+                    .bytes()
+                    .await
+                    .context("读取 Minisign 签名文件失败")?;
+                Ok(bytes.to_vec())
+            },
+        )
+        .await
     }
 
     async fn verify_downloaded_minisign(
@@ -441,16 +470,9 @@ impl UpgradeManager {
         target: &TargetId,
         progress_msg_id: &AegisMsgId,
     ) -> Result<PathBuf> {
-        let response = self
-            .build_request(&artifact.download_url)
-            .send()
-            .await
-            .context("下载 Release 文件失败")?
-            .error_for_status()
-            .context("下载请求返回错误状态")?;
-
-        let total_size = response.content_length();
-        let mut stream = response.bytes_stream();
+        use crate::core::network::release_api::{
+            DEFAULT_DOWNLOAD_INITIAL_DELAY, DEFAULT_DOWNLOAD_MAX_RETRIES, retry_with_backoff,
+        };
 
         let current_exe = std::env::current_exe().context("无法获取当前可执行文件路径")?;
         let exe_dir = current_exe
@@ -458,65 +480,104 @@ impl UpgradeManager {
             .context("无法获取可执行文件目录")?
             .to_path_buf();
         let update_path = unique_update_path(&exe_dir);
-        let mut file = File::create(&update_path)
-            .await
-            .context("创建临时更新文件失败")?;
-        let mut writer = tokio::io::BufWriter::new(&mut file);
-        let mut hasher = Sha256::new();
 
-        let mut downloaded: u64 = 0;
-        let mut last_reported_pct = 0.0;
-        let mut last_reported_size: u64 = 0;
-        let mut last_report = Instant::now();
-        let start = Instant::now();
+        let update_path_clone = update_path.clone();
+        let res = retry_with_backoff(
+            &format!("下载 Release 文件 ({})", artifact.asset_name),
+            DEFAULT_DOWNLOAD_MAX_RETRIES,
+            DEFAULT_DOWNLOAD_INITIAL_DELAY,
+            |_attempt| {
+                let update_path = update_path_clone.clone();
+                async move {
+                    let _ = tokio::fs::remove_file(&update_path).await;
+                    let response = self
+                        .build_request(&artifact.download_url)
+                        .send()
+                        .await
+                        .context("下载 Release 文件失败")?;
+                    let status = response.status();
+                    let response = response
+                        .error_for_status()
+                        .with_context(|| format!("下载请求返回错误状态 ({status})"))?;
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.context("读取下载数据失败")?;
-            writer.write_all(&chunk).await.context("写入更新文件失败")?;
-            hasher.update(&chunk);
-            downloaded += chunk.len() as u64;
+                    let total_size = response.content_length();
+                    let mut stream = response.bytes_stream();
 
-            if should_report(
-                downloaded,
-                total_size,
-                &mut last_reported_pct,
-                &mut last_reported_size,
-                last_report,
-            ) {
-                last_report = Instant::now();
-                let progress_text = format_download_progress(downloaded, total_size, start);
-                let _ = adapter
-                    .edit_message(
-                        target,
-                        progress_msg_id,
-                        MessageContent {
-                            text: progress_text,
-                            markup: None,
-                        },
-                    )
-                    .await;
-            }
-        }
+                    let mut file = File::create(&update_path)
+                        .await
+                        .context("创建临时更新文件失败")?;
+                    let mut writer = tokio::io::BufWriter::new(&mut file);
+                    let mut hasher = Sha256::new();
 
-        writer.flush().await.context("刷新更新文件失败")?;
-        drop(writer);
-        file.sync_all().await.context("同步更新文件到磁盘失败")?;
+                    let mut downloaded: u64 = 0;
+                    let mut last_reported_pct = 0.0;
+                    let mut last_reported_size: u64 = 0;
+                    let mut last_report = Instant::now();
+                    let start = Instant::now();
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = file.metadata().await?.permissions();
-            perms.set_mode(0o755);
-            file.set_permissions(perms).await?;
-        }
+                    while let Some(chunk) = stream.next().await {
+                        let chunk = chunk.context("读取下载数据失败")?;
+                        writer.write_all(&chunk).await.context("写入更新文件失败")?;
+                        hasher.update(&chunk);
+                        downloaded += chunk.len() as u64;
 
-        let actual_sha256 = hex::encode(hasher.finalize());
-        if actual_sha256 != artifact.sha256 {
-            fs::remove_file(&update_path).await.ok();
-            anyhow::bail!(
-                "{}",
-                t!("upgrade.bot_sha256_mismatch", "0" => artifact.sha256.as_str(), "1" => actual_sha256.as_str())
-            );
+                        if should_report(
+                            downloaded,
+                            total_size,
+                            &mut last_reported_pct,
+                            &mut last_reported_size,
+                            last_report,
+                        ) {
+                            last_report = Instant::now();
+                            let progress_text =
+                                format_download_progress(downloaded, total_size, start);
+                            let _ = adapter
+                                .edit_message(
+                                    target,
+                                    progress_msg_id,
+                                    MessageContent {
+                                        text: progress_text,
+                                        markup: None,
+                                    },
+                                )
+                                .await;
+                        }
+                    }
+
+                    writer.flush().await.context("刷新更新文件失败")?;
+                    drop(writer);
+                    file.sync_all().await.context("同步更新文件到磁盘失败")?;
+
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let mut perms = file.metadata().await?.permissions();
+                        perms.set_mode(0o755);
+                        file.set_permissions(perms).await?;
+                    }
+
+                    let actual_sha256 = hex::encode(hasher.finalize());
+                    if actual_sha256 != artifact.sha256 {
+                        fs::remove_file(&update_path).await.ok();
+                        anyhow::bail!(
+                            "{}",
+                            t!(
+                                "upgrade.bot_sha256_mismatch",
+                                "0" => artifact.sha256.as_str(),
+                                "1" => actual_sha256.as_str()
+                            )
+                        );
+                    }
+
+                    Ok::<(), anyhow::Error>(())
+                }
+            },
+        )
+        .await;
+
+        if let Err(e) = res {
+            let _ = fs::remove_file(&update_path).await;
+            return Err(e);
         }
 
         // Minisign verification（必需：缺签名不继续，否则删 .minisig 即可绕过）
