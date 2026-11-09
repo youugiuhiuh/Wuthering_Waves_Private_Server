@@ -652,6 +652,7 @@ mod tests {
     #[test]
     fn test_apt_daily_timer_override_content() {
         let content = AutoUpdateConfigurator::apt_daily_timer_override();
+        assert!(content.contains("OnCalendar=\n"));
         assert!(content.contains("OnCalendar=daily"));
         assert!(content.contains("RandomizedDelaySec=4h"));
     }
@@ -659,6 +660,7 @@ mod tests {
     #[test]
     fn test_apt_daily_upgrade_timer_override_content() {
         let content = AutoUpdateConfigurator::apt_daily_upgrade_timer_override();
+        assert!(content.contains("OnCalendar=\n"));
         assert!(content.contains("OnCalendar=daily"));
         assert!(content.contains("RandomizedDelaySec=4h"));
         assert!(content.contains("After=apt-daily.service"));
