@@ -53,22 +53,44 @@ impl XdriveConfig {
         secret_access_key: &str,
         folder: &str,
     ) -> Self {
+        Self::new_cloudflare_r2_with_endpoint(
+            &format!("https://{account_id}.r2.cloudflarestorage.com"),
+            bucket,
+            access_key_id,
+            secret_access_key,
+            folder,
+        )
+    }
+
+    /// 支持自定义域名或预设 Endpoint 的 R2 构造器
+    pub fn new_cloudflare_r2_with_endpoint(
+        endpoint: &str,
+        bucket: &str,
+        access_key_id: &str,
+        secret_access_key: &str,
+        folder: &str,
+    ) -> Self {
+        let endpoint_url = if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+            endpoint.trim_end_matches('/').to_string()
+        } else {
+            format!("https://{}", endpoint.trim_end_matches('/'))
+        };
         Self {
             service: XdriveService::S3,
             remote_folder: folder.to_string(),
             secrets: vec![access_key_id.to_string(), secret_access_key.to_string()],
             s3: Some(S3Config {
-                endpoint: format!("https://{account_id}.r2.cloudflarestorage.com"),
+                endpoint: endpoint_url,
                 region: "auto".to_string(),
                 bucket: bucket.to_string(),
                 path_style: true,
             }),
-            segment_bytes: Some(1024 * 1024), // 默认 1MB
-            poll_interval_ms: Some(25),       // 低延迟轮询
-            max_poll_interval_ms: Some(800),
-            flush_interval_ms: None,
-            eager_window_ms: None,
-            concurrency: None,
+            segment_bytes: Some(256 * 1024), // 256KB 激进极速首包
+            poll_interval_ms: Some(10),      // 10ms 极低轮询
+            max_poll_interval_ms: Some(120), // 120ms 最大轮询上限
+            flush_interval_ms: Some(10),     // 10ms 快速刷出
+            eager_window_ms: Some(1000),     // 1s 积极轮询窗口
+            concurrency: Some(64),           // 64 满血边缘并发
         }
     }
 
@@ -396,10 +418,15 @@ impl XdriveConfig {
         }
     }
 
-    /// 提取 Cloudflare 账户 ID（支持纯 32 位十六进制 ID 或完整终结点 URL）
+    /// 提取 Cloudflare 账户 ID 或自定义终结点/域名
+    /// 支持纯 32 位十六进制 ID、完整终结点 URL 或自定义域名/Endpoint
     pub fn extract_cloudflare_account_id(input: &str) -> Option<String> {
         let trimmed = input.trim();
-        // 尝试从 https://<id>.r2.cloudflarestorage.com 或类似 URL 中提取
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        // 1. 尝试从 https://<id>.r2.cloudflarestorage.com 或类似 URL 中提取 32 位 ID
         if let Some(pos) = trimmed.find(".r2.cloudflarestorage.com") {
             let prefix = &trimmed[..pos];
             let id = prefix.rsplit('/').next().unwrap_or(prefix);
@@ -408,10 +435,50 @@ impl XdriveConfig {
                 return Some(id.to_ascii_lowercase());
             }
         }
-        // 纯 32 位十六进制 ID
+
+        // 2. 纯 32 位十六进制 ID
         if trimmed.len() == 32 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
             return Some(trimmed.to_ascii_lowercase());
         }
+
+        // 3. 自定义 Endpoint (http:// 或 https://)
+        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+            if !trimmed.contains(char::is_whitespace) {
+                let rest = trimmed
+                    .trim_start_matches("https://")
+                    .trim_start_matches("http://");
+                let host = rest.split('/').next().unwrap_or("");
+                let host = host.split(':').next().unwrap_or("");
+                if !host.is_empty() && host.contains('.') {
+                    return Some(trimmed.trim_end_matches('/').to_string());
+                }
+            }
+            return None;
+        }
+
+        // 4. 自定义域名（如 r2.mycompany.com 或 my-bucket.example.org）
+        if !trimmed.contains(char::is_whitespace)
+            && !trimmed.contains('/')
+            && trimmed.contains('.')
+            && !trimmed.starts_with('.')
+            && !trimmed.ends_with('.')
+        {
+            let (host, port) = trimmed.split_once(':').unwrap_or((trimmed, ""));
+            let valid_port = port.is_empty() || port.chars().all(|c| c.is_ascii_digit());
+            if valid_port {
+                let parts: Vec<&str> = host.split('.').collect();
+                let all_valid = parts.iter().all(|p| {
+                    !p.is_empty()
+                        && !p.starts_with('-')
+                        && !p.ends_with('-')
+                        && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                });
+                if all_valid && parts.len() >= 2 {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+
         None
     }
 
@@ -1291,8 +1358,69 @@ mod tests {
         assert_eq!(s3.bucket, "my-bucket");
         assert_eq!(s3.region, "auto");
         assert!(s3.path_style);
-        assert_eq!(config.poll_interval_ms, Some(25));
+        assert_eq!(config.poll_interval_ms, Some(10));
+        assert_eq!(config.segment_bytes, Some(256 * 1024));
+        assert_eq!(config.max_poll_interval_ms, Some(120));
+        assert_eq!(config.flush_interval_ms, Some(10));
+        assert_eq!(config.eager_window_ms, Some(1000));
+        assert_eq!(config.concurrency, Some(64));
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_cloudflare_r2_optimized_parameters() {
+        let config = XdriveConfig::new_cloudflare_r2(
+            "testaccount123456789012345678901",
+            "my-bucket",
+            "my-ak",
+            "my-sk",
+            "aegis-xdrive",
+        );
+        assert_eq!(config.segment_bytes, Some(262144));
+        assert_eq!(config.concurrency, Some(64));
+        assert_eq!(config.poll_interval_ms, Some(10));
+        assert_eq!(config.max_poll_interval_ms, Some(120));
+        assert_eq!(config.flush_interval_ms, Some(10));
+        assert_eq!(config.eager_window_ms, Some(1000));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_cloudflare_r2_with_custom_endpoint() {
+        let config_url = XdriveConfig::new_cloudflare_r2_with_endpoint(
+            "https://r2.mycompany.com/",
+            "my-bucket",
+            "my-ak",
+            "my-sk",
+            "aegis-xdrive",
+        );
+        assert_eq!(config_url.service, XdriveService::S3);
+        let s3 = config_url.s3.as_ref().expect("s3 config must be present");
+        assert_eq!(s3.endpoint, "https://r2.mycompany.com");
+        assert_eq!(s3.bucket, "my-bucket");
+        assert_eq!(s3.region, "auto");
+        assert!(s3.path_style);
+        assert_eq!(config_url.segment_bytes, Some(262144));
+        assert_eq!(config_url.concurrency, Some(64));
+        assert_eq!(config_url.poll_interval_ms, Some(10));
+        assert_eq!(config_url.max_poll_interval_ms, Some(120));
+        assert_eq!(config_url.flush_interval_ms, Some(10));
+        assert_eq!(config_url.eager_window_ms, Some(1000));
+        assert!(config_url.validate().is_ok());
+
+        // Test with raw domain (without https://)
+        let config_domain = XdriveConfig::new_cloudflare_r2_with_endpoint(
+            "r2.mycompany.com",
+            "my-bucket",
+            "my-ak",
+            "my-sk",
+            "aegis-xdrive",
+        );
+        assert_eq!(
+            config_domain.s3.as_ref().unwrap().endpoint,
+            "https://r2.mycompany.com"
+        );
+        assert!(config_domain.validate().is_ok());
     }
 
     #[test]
@@ -1401,7 +1529,33 @@ mod tests {
             Some("a5be0a9d14aa44e51692d81782d83fe6".to_string())
         );
 
+        // Custom endpoints & domains
+        assert_eq!(
+            XdriveConfig::extract_cloudflare_account_id("https://r2.mycompany.com"),
+            Some("https://r2.mycompany.com".to_string())
+        );
+        assert_eq!(
+            XdriveConfig::extract_cloudflare_account_id("https://r2.mycompany.com/"),
+            Some("https://r2.mycompany.com".to_string())
+        );
+        assert_eq!(
+            XdriveConfig::extract_cloudflare_account_id("r2.mycompany.com"),
+            Some("r2.mycompany.com".to_string())
+        );
+        assert_eq!(
+            XdriveConfig::extract_cloudflare_account_id("custom-r2.storage.cloudflare.net:8443"),
+            Some("custom-r2.storage.cloudflare.net:8443".to_string())
+        );
+
         assert_eq!(XdriveConfig::extract_cloudflare_account_id("invalid"), None);
+        assert_eq!(
+            XdriveConfig::extract_cloudflare_account_id("ftp://invalid.com"),
+            None
+        );
+        assert_eq!(
+            XdriveConfig::extract_cloudflare_account_id("not a domain"),
+            None
+        );
     }
 
     #[test]

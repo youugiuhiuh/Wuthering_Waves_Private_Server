@@ -784,6 +784,7 @@ async fn handle_xdrive_wizard_input(
         && let Some((acc, ak, sk)) = XdriveConfig::extract_cloudflare_r2_page_tokens(raw_input)
     {
         session.account_id = Some(acc.clone());
+        session.endpoint = None;
         session.access_key = Some(ak.clone());
         session.secret_key = Some(sk.clone());
         session.step = XdriveWizardStep::Bucket;
@@ -928,7 +929,7 @@ async fn handle_xdrive_wizard_input(
                 return Ok(MessageAction::Handled);
             }
 
-            let account_id = match XdriveConfig::extract_cloudflare_account_id(raw_input) {
+            let extracted = match XdriveConfig::extract_cloudflare_account_id(raw_input) {
                 Some(id) => id,
                 None => {
                     adapter
@@ -944,7 +945,13 @@ async fn handle_xdrive_wizard_input(
                 }
             };
 
-            session.account_id = Some(account_id);
+            if extracted.len() == 32 && extracted.chars().all(|c| c.is_ascii_hexdigit()) {
+                session.account_id = Some(extracted);
+                session.endpoint = None;
+            } else {
+                session.endpoint = Some(extracted);
+                session.account_id = None;
+            }
             session.step = XdriveWizardStep::Bucket;
             state.update_xdrive_wizard(&target.0, session).await;
             adapter
@@ -1121,11 +1128,21 @@ async fn handle_xdrive_wizard_input(
                     XdriveConfig::new_backblaze_b2(region, bucket, ak, sk, "aegis-xdrive")
                 }
                 "cn" | "r2" => {
-                    let account_id = session.account_id.as_deref().unwrap_or_default();
                     let bucket = session.bucket.as_deref().unwrap_or_default();
                     let ak = session.access_key.as_deref().unwrap_or_default();
                     let sk = session.secret_key.as_deref().unwrap_or_default();
-                    XdriveConfig::new_cloudflare_r2(account_id, bucket, ak, sk, "aegis-xdrive")
+                    if let Some(endpoint) = session.endpoint.as_deref() {
+                        XdriveConfig::new_cloudflare_r2_with_endpoint(
+                            endpoint,
+                            bucket,
+                            ak,
+                            sk,
+                            "aegis-xdrive",
+                        )
+                    } else {
+                        let account_id = session.account_id.as_deref().unwrap_or_default();
+                        XdriveConfig::new_cloudflare_r2(account_id, bucket, ak, sk, "aegis-xdrive")
+                    }
                 }
                 "ru" | "yandex" => {
                     let bucket = session.bucket.as_deref().unwrap_or_default();
@@ -2371,6 +2388,115 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
             session.secret_key.as_deref(),
             Some("4b07c8ef6340317e0b51fae296837bfdbddbfcf92e071727c955da3597dff758")
         );
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_cloudflare_custom_domain() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        // Test custom domain string (e.g. r2.mycompany.com)
+        let session = XdriveWizardSession {
+            region: "cn".to_string(),
+            step: XdriveWizardStep::AccountId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        let action = handle_message(&adapter, &target, Some("r2.mycompany.com"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::Bucket);
+        assert_eq!(session.endpoint.as_deref(), Some("r2.mycompany.com"));
+        assert_eq!(session.account_id, None);
+
+        // Test custom endpoint URL with https
+        let session = XdriveWizardSession {
+            region: "r2".to_string(),
+            step: XdriveWizardStep::AccountId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("https://custom-r2.example.com/"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::Bucket);
+        assert_eq!(
+            session.endpoint.as_deref(),
+            Some("https://custom-r2.example.com")
+        );
+        assert_eq!(session.account_id, None);
+
+        // Test standard 32-hex Account ID
+        let session = XdriveWizardSession {
+            region: "cn".to_string(),
+            step: XdriveWizardStep::AccountId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("a5be0a9d14aa44e51692d81782d83fe6"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::Bucket);
+        assert_eq!(
+            session.account_id.as_deref(),
+            Some("a5be0a9d14aa44e51692d81782d83fe6")
+        );
+        assert_eq!(session.endpoint, None);
     }
 
     #[tokio::test]
