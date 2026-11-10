@@ -13,7 +13,9 @@ use crate::core::xray::config::ConfigManager;
 use crate::core::xray::routing::{
     CustomAddOutcome, RoutingManager, match_custom_direct, matches_builtin_direct,
 };
-use crate::core::xray::xdrive::XdriveConfig;
+use crate::core::xray::xdrive::{
+    ONEDRIVE_DEFAULT_CLIENT_ID, ONEDRIVE_DEFAULT_CLIENT_SECRET, XdriveConfig,
+};
 use crate::shared::types::TimeoutStatus;
 
 const MAX_INPUT_LENGTH: usize = 4096;
@@ -741,9 +743,9 @@ async fn complete_xdrive_node(
     Ok(MessageAction::Handled)
 }
 
-/// 智能提取 Microsoft OneDrive 凭据（支持 JSON 或 Key-Value / 多行文本）
+/// 智能提取 Microsoft OneDrive 凭据（支持 rclone authorize "onedrive" JSON、URL 或 Key-Value 多行文本）
 /// 返回 (client_id, client_secret, refresh_token, folder_id)
-fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option<String>)> {
+pub fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option<String>)> {
     let mut client_id = None;
     let mut client_secret = None;
     let mut refresh_token = None;
@@ -756,8 +758,21 @@ fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option
             .to_string()
     };
 
-    // 1. JSON 格式支持
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+    let parse_json = |raw: &str| -> Option<serde_json::Value> {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
+            return Some(v);
+        }
+        if let (Some(start), Some(end)) = (raw.find('{'), raw.rfind('}'))
+            && start < end
+            && let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw[start..=end])
+        {
+            return Some(v);
+        }
+        None
+    };
+
+    // 1. JSON 格式支持（支持原生 JSON 或包含在 rclone 命令输出中的 JSON 块）
+    if let Some(v) = parse_json(text) {
         if let Some(cid) = v
             .get("client_id")
             .or_else(|| v.get("clientId"))
@@ -765,7 +780,10 @@ fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option
             .or_else(|| v.get("app_id"))
             .and_then(|s| s.as_str())
         {
-            client_id = Some(clean_val(cid));
+            let s = clean_val(cid);
+            if !s.is_empty() && s != "-" && !s.eq_ignore_ascii_case("none") {
+                client_id = Some(s);
+            }
         }
         if let Some(cs) = v
             .get("client_secret")
@@ -774,19 +792,41 @@ fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option
             .and_then(|s| s.as_str())
         {
             let s = clean_val(cs);
-            if s == "-" || s.eq_ignore_ascii_case("none") {
-                client_secret = Some("".to_string());
-            } else {
+            if !s.is_empty() && s != "-" && !s.eq_ignore_ascii_case("none") {
                 client_secret = Some(s);
             }
         }
         if let Some(rt) = v
             .get("refresh_token")
             .or_else(|| v.get("refreshToken"))
-            .or_else(|| v.get("token").and_then(|t| t.get("refresh_token")))
             .and_then(|s| s.as_str())
         {
-            refresh_token = Some(clean_val(rt));
+            let s = clean_val(rt);
+            if !s.is_empty() {
+                refresh_token = Some(s);
+            }
+        } else if let Some(token_val) = v.get("token") {
+            if let Some(rt) = token_val
+                .get("refresh_token")
+                .or_else(|| token_val.get("refreshToken"))
+                .and_then(|s| s.as_str())
+            {
+                let s = clean_val(rt);
+                if !s.is_empty() {
+                    refresh_token = Some(s);
+                }
+            } else if let Some(token_str) = token_val.as_str()
+                && let Some(tv) = parse_json(token_str)
+                && let Some(rt) = tv
+                    .get("refresh_token")
+                    .or_else(|| tv.get("refreshToken"))
+                    .and_then(|s| s.as_str())
+            {
+                let s = clean_val(rt);
+                if !s.is_empty() {
+                    refresh_token = Some(s);
+                }
+            }
         }
         if let Some(fid) = v
             .get("folder")
@@ -794,7 +834,10 @@ fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option
             .or_else(|| v.get("remote_folder"))
             .and_then(|s| s.as_str())
         {
-            folder_id = Some(clean_val(fid));
+            let s = clean_val(fid);
+            if !s.is_empty() {
+                folder_id = Some(s);
+            }
         }
     }
 
@@ -830,7 +873,10 @@ fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option
                     || k.contains("应用程序id"))
                 && !v.is_empty()
             {
-                client_id = Some(clean_val(v));
+                let s = clean_val(v);
+                if !s.is_empty() && s != "-" && !s.eq_ignore_ascii_case("none") {
+                    client_id = Some(s);
+                }
             }
             if client_id.is_none()
                 && (lower == "client id"
@@ -841,7 +887,10 @@ fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option
                     || lower == "应用程序 id")
                 && let Some(next) = lines.get(i + 1)
             {
-                client_id = Some(clean_val(next));
+                let s = clean_val(next);
+                if !s.is_empty() && s != "-" && !s.eq_ignore_ascii_case("none") {
+                    client_id = Some(s);
+                }
             }
         }
 
@@ -858,9 +907,7 @@ fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option
                 && !v.is_empty()
             {
                 let s = clean_val(v);
-                if s == "-" || s.eq_ignore_ascii_case("none") {
-                    client_secret = Some("".to_string());
-                } else {
+                if !s.is_empty() && s != "-" && !s.eq_ignore_ascii_case("none") {
                     client_secret = Some(s);
                 }
             }
@@ -873,9 +920,7 @@ fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option
                 && let Some(next) = lines.get(i + 1)
             {
                 let s = clean_val(next);
-                if s == "-" || s.eq_ignore_ascii_case("none") {
-                    client_secret = Some("".to_string());
-                } else {
+                if !s.is_empty() && s != "-" && !s.eq_ignore_ascii_case("none") {
                     client_secret = Some(s);
                 }
             }
@@ -890,13 +935,19 @@ fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option
                     || k.contains("刷新令牌"))
                 && !v.is_empty()
             {
-                refresh_token = Some(clean_val(v));
+                let s = clean_val(v);
+                if !s.is_empty() {
+                    refresh_token = Some(s);
+                }
             }
             if refresh_token.is_none()
                 && (lower == "refresh token" || lower == "refresh_token" || lower == "刷新令牌")
                 && let Some(next) = lines.get(i + 1)
             {
-                refresh_token = Some(clean_val(next));
+                let s = clean_val(next);
+                if !s.is_empty() {
+                    refresh_token = Some(s);
+                }
             }
         }
 
@@ -909,18 +960,40 @@ fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option
                 || k.contains("文件夹"))
             && !v.is_empty()
         {
-            folder_id = Some(clean_val(v));
+            let s = clean_val(v);
+            if !s.is_empty() {
+                folder_id = Some(s);
+            }
         }
     }
 
-    match (client_id, refresh_token) {
-        (Some(cid), Some(rt)) if !cid.is_empty() && !rt.is_empty() => Some((
-            cid,
-            client_secret.unwrap_or_default(),
+    if let Some(rt) = refresh_token
+        && !rt.trim().is_empty()
+    {
+        let final_cid = match client_id {
+            Some(cid)
+                if !cid.trim().is_empty() && cid != "-" && !cid.eq_ignore_ascii_case("none") =>
+            {
+                cid
+            }
+            _ => ONEDRIVE_DEFAULT_CLIENT_ID.to_string(),
+        };
+        let final_sec = match client_secret {
+            Some(sec)
+                if !sec.trim().is_empty() && sec != "-" && !sec.eq_ignore_ascii_case("none") =>
+            {
+                sec
+            }
+            _ => ONEDRIVE_DEFAULT_CLIENT_SECRET.to_string(),
+        };
+        Some((
+            final_cid,
+            final_sec,
             rt,
-            folder_id.filter(|f| !f.is_empty()),
-        )),
-        _ => None,
+            folder_id.filter(|f| !f.trim().is_empty()),
+        ))
+    } else {
+        None
     }
 }
 
@@ -995,21 +1068,22 @@ async fn handle_xdrive_wizard_input(
         return Ok(MessageAction::Handled);
     }
 
-    // Microsoft OneDrive 全文凭据智能提取（支持 JSON 或 client_id + refresh_token 文本）
+    // Microsoft OneDrive 全文凭据智能提取（支持 rclone authorize "onedrive" JSON、URL 或多行文本）
     let raw_lower = raw_input.to_ascii_lowercase();
     let is_onedrive_explicit = raw_lower.contains("login.microsoftonline.com")
         || raw_lower.contains("graph.microsoft.com")
         || raw_lower.contains("onedrive")
+        || (raw_lower.contains("rclone") && raw_lower.contains("authorize"))
         || ((raw_lower.contains("microsoft")
             || raw_lower.contains("azure")
             || raw_lower.contains("entra"))
-            && (raw_lower.contains("client_id") || raw_lower.contains("appid"))
             && raw_lower.contains("refresh_token"));
     let is_onedrive_session = session.region == "onedrive"
-        && (raw_lower.contains("client_id")
-            || raw_lower.contains("appid")
-            || raw_lower.contains("clientid"))
-        && (raw_lower.contains("refresh_token") || raw_lower.contains("refreshtoken"));
+        && (raw_lower.contains("refresh_token")
+            || raw_lower.contains("refreshtoken")
+            || raw_lower.contains("access_token")
+            || raw_lower.contains("刷新令牌")
+            || raw_lower.starts_with('{'));
     let is_onedrive_tokens = is_onedrive_explicit || is_onedrive_session;
 
     if is_onedrive_tokens
@@ -1019,9 +1093,14 @@ async fn handle_xdrive_wizard_input(
         session.client_id = Some(cid.clone());
         session.client_secret = Some(sec.clone());
         session.refresh_token = Some(ref_tok.clone());
-        if let Some(folder) = opt_folder {
+        if let Some(folder) = opt_folder.or_else(|| session.folder_id.clone()) {
             session.folder_id = Some(folder.clone());
-            let cfg = XdriveConfig::new_onedrive(&cid, &sec, &ref_tok, &folder);
+            let cfg = if cid == ONEDRIVE_DEFAULT_CLIENT_ID && sec == ONEDRIVE_DEFAULT_CLIENT_SECRET
+            {
+                XdriveConfig::new_onedrive(&ref_tok, &folder)
+            } else {
+                XdriveConfig::new_onedrive_custom(&cid, &sec, &ref_tok, &folder)
+            };
             return complete_xdrive_node(adapter, target, state, &session, &cfg, cancel_markup)
                 .await;
         } else {
@@ -1462,8 +1541,33 @@ async fn handle_xdrive_wizard_input(
                     session.client_id.as_deref(),
                     session.refresh_token.as_deref(),
                 ) {
-                    let sec = session.client_secret.as_deref().unwrap_or_default();
-                    let cfg = XdriveConfig::new_onedrive(cid, sec, ref_tok, &folder_val);
+                    let sec = session
+                        .client_secret
+                        .as_deref()
+                        .unwrap_or(ONEDRIVE_DEFAULT_CLIENT_SECRET);
+                    let sec_val = if sec.trim().is_empty()
+                        || sec == "-"
+                        || sec.eq_ignore_ascii_case("none")
+                    {
+                        ONEDRIVE_DEFAULT_CLIENT_SECRET
+                    } else {
+                        sec
+                    };
+                    let cid_val = if cid.trim().is_empty()
+                        || cid == "-"
+                        || cid.eq_ignore_ascii_case("none")
+                    {
+                        ONEDRIVE_DEFAULT_CLIENT_ID
+                    } else {
+                        cid
+                    };
+                    let cfg = if cid_val == ONEDRIVE_DEFAULT_CLIENT_ID
+                        && sec_val == ONEDRIVE_DEFAULT_CLIENT_SECRET
+                    {
+                        XdriveConfig::new_onedrive(ref_tok, &folder_val)
+                    } else {
+                        XdriveConfig::new_onedrive_custom(cid_val, sec_val, ref_tok, &folder_val)
+                    };
                     return complete_xdrive_node(
                         adapter,
                         target,
@@ -1477,11 +1581,12 @@ async fn handle_xdrive_wizard_input(
 
                 session.step = XdriveWizardStep::ClientId;
                 state.update_xdrive_wizard(&target.0, session).await;
+                let prompt = "🟦 <b>Microsoft OneDrive 快速授权</b>\n✅ 中转文件夹已记录！\n\n👉 <b>推荐 30 秒极简授权：</b>\n在有浏览器的电脑终端运行：\n<code>rclone authorize \"onedrive\"</code>\n在弹出的浏览器完成微软账号登录，将生成的 <b>完整授权 JSON 代码</b> 直接贴回此处即可自动创建！\n\n（💡 <i>亦可输入自定义 Client ID 进入逐项配置模式</i>）";
                 adapter
                     .send_message(
                         target,
                         MessageContent {
-                            text: t!("xray.xdrive_guide_onedrive_step2").to_string(),
+                            text: prompt.to_string(),
                             markup: cancel_markup,
                         },
                     )
@@ -1569,17 +1674,30 @@ async fn handle_xdrive_wizard_input(
             let folder = session.folder_id.as_deref().unwrap_or_default();
 
             let cfg = if session.region == "onedrive" {
-                let sec_val = if sec == "-" || sec.eq_ignore_ascii_case("none") {
-                    ""
-                } else {
-                    sec
-                };
+                let sec_val =
+                    if sec.trim().is_empty() || sec == "-" || sec.eq_ignore_ascii_case("none") {
+                        ONEDRIVE_DEFAULT_CLIENT_SECRET
+                    } else {
+                        sec
+                    };
+                let cid_val =
+                    if cid.trim().is_empty() || cid == "-" || cid.eq_ignore_ascii_case("none") {
+                        ONEDRIVE_DEFAULT_CLIENT_ID
+                    } else {
+                        cid
+                    };
                 let folder_val = if folder.is_empty() || folder == "-" || folder == "default" {
                     "/xray_tunnel"
                 } else {
                     folder
                 };
-                XdriveConfig::new_onedrive(cid, sec_val, ref_tok, folder_val)
+                if cid_val == ONEDRIVE_DEFAULT_CLIENT_ID
+                    && sec_val == ONEDRIVE_DEFAULT_CLIENT_SECRET
+                {
+                    XdriveConfig::new_onedrive(ref_tok, folder_val)
+                } else {
+                    XdriveConfig::new_onedrive_custom(cid_val, sec_val, ref_tok, folder_val)
+                }
             } else {
                 XdriveConfig::new_google_drive(cid, sec, ref_tok, folder)
             };
@@ -3457,7 +3575,10 @@ region = us-east-1
         let session = state.get_xdrive_wizard("test_chat").await.unwrap();
         assert_eq!(session.step, XdriveWizardStep::FolderId);
         assert_eq!(session.client_id.as_deref(), Some("auto-od-client-id"));
-        assert_eq!(session.client_secret.as_deref(), Some(""));
+        assert_eq!(
+            session.client_secret.as_deref(),
+            Some(ONEDRIVE_DEFAULT_CLIENT_SECRET)
+        );
         assert_eq!(
             session.refresh_token.as_deref(),
             Some("auto-od-refresh-token")
@@ -3471,6 +3592,150 @@ region = us-east-1
             .await
             .unwrap();
         assert!(matches!(action, MessageAction::Handled));
+        assert!(state.get_xdrive_wizard("test_chat").await.is_none());
+    }
+
+    #[test]
+    fn test_extract_onedrive_tokens_rclone_json_defaults() {
+        // 1. Raw JSON containing only refresh_token and access_token (typical rclone output)
+        let rclone_json = r#"{
+            "access_token": "EwBAA8l6BAAU...",
+            "token_type": "Bearer",
+            "refresh_token": "0.ARwA111_sample_refresh_token_xyz",
+            "expiry": "2026-11-10T12:00:00Z"
+        }"#;
+
+        let (cid, sec, ref_tok, folder) = extract_onedrive_tokens(rclone_json)
+            .expect("should successfully extract tokens from rclone authorize JSON");
+        assert_eq!(cid, ONEDRIVE_DEFAULT_CLIENT_ID);
+        assert_eq!(sec, ONEDRIVE_DEFAULT_CLIENT_SECRET);
+        assert_eq!(ref_tok, "0.ARwA111_sample_refresh_token_xyz");
+        assert_eq!(folder, None);
+
+        // 2. rclone CLI output with surrounding banner lines
+        let rclone_banner_cli = r#"
+Paste the following into your remote machine --->
+{"access_token":"eyJ...","token_type":"Bearer","refresh_token":"0.ARwA222_banner_refresh_token","expiry":"2026-11-10T15:00:00.0000000+08:00"}
+<---End paste
+"#;
+        let (cid, sec, ref_tok, _) = extract_onedrive_tokens(rclone_banner_cli)
+            .expect("should extract from rclone CLI output with banners");
+        assert_eq!(cid, ONEDRIVE_DEFAULT_CLIENT_ID);
+        assert_eq!(sec, ONEDRIVE_DEFAULT_CLIENT_SECRET);
+        assert_eq!(ref_tok, "0.ARwA222_banner_refresh_token");
+
+        // 3. Nested token JSON (e.g. from rclone config dump)
+        let nested_json = r#"{
+            "token": "{\"access_token\":\"at\",\"refresh_token\":\"0.ARwA333_nested\"}"
+        }"#;
+        let (cid, sec, ref_tok, _) =
+            extract_onedrive_tokens(nested_json).expect("should extract from nested token string");
+        assert_eq!(cid, ONEDRIVE_DEFAULT_CLIENT_ID);
+        assert_eq!(sec, ONEDRIVE_DEFAULT_CLIENT_SECRET);
+        assert_eq!(ref_tok, "0.ARwA333_nested");
+    }
+
+    #[test]
+    fn test_extract_onedrive_tokens_custom_credentials() {
+        // 1. JSON with custom client_id and client_secret
+        let custom_json = r#"{
+            "client_id": "custom-app-id-123",
+            "client_secret": "custom-secret-456",
+            "refresh_token": "custom-ref-tok-789",
+            "folder": "/custom_tunnel"
+        }"#;
+        let (cid, sec, ref_tok, folder) = extract_onedrive_tokens(custom_json)
+            .expect("should extract custom credentials from JSON");
+        assert_eq!(cid, "custom-app-id-123");
+        assert_eq!(sec, "custom-secret-456");
+        assert_eq!(ref_tok, "custom-ref-tok-789");
+        assert_eq!(folder.as_deref(), Some("/custom_tunnel"));
+
+        // 2. Multi-line key-value text with custom credentials
+        let text_input = r#"
+client_id = my-text-client-id
+client_secret = my-text-client-secret
+refresh_token = my-text-refresh-token
+folder = /text_tunnel
+"#;
+        let (cid, sec, ref_tok, folder) = extract_onedrive_tokens(text_input)
+            .expect("should extract custom credentials from key-value text");
+        assert_eq!(cid, "my-text-client-id");
+        assert_eq!(sec, "my-text-client-secret");
+        assert_eq!(ref_tok, "my-text-refresh-token");
+        assert_eq!(folder.as_deref(), Some("/text_tunnel"));
+
+        // 3. Multi-line text with custom client_id but omitted secret (fallback to default)
+        let text_omit_sec = r#"
+client_id = my-custom-id
+client_secret = -
+refresh_token = my-custom-token
+"#;
+        let (cid, sec, ref_tok, _) = extract_onedrive_tokens(text_omit_sec)
+            .expect("should fallback secret to default when omitted");
+        assert_eq!(cid, "my-custom-id");
+        assert_eq!(sec, ONEDRIVE_DEFAULT_CLIENT_SECRET);
+        assert_eq!(ref_tok, "my-custom-token");
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_onedrive_rclone_authorize_flow() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "onedrive".to_string(),
+            step: XdriveWizardStep::FolderId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        // User pastes rclone authorize JSON directly into wizard
+        let rclone_output = r#"{
+            "access_token": "sample_access_token_at",
+            "token_type": "Bearer",
+            "refresh_token": "0.ARwA_rclone_refresh_token_abc",
+            "expiry": "2026-11-10T12:00:00Z"
+        }"#;
+
+        let action = handle_message(&adapter, &target, Some(rclone_output), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::FolderId);
+        assert_eq!(
+            session.client_id.as_deref(),
+            Some(ONEDRIVE_DEFAULT_CLIENT_ID)
+        );
+        assert_eq!(
+            session.client_secret.as_deref(),
+            Some(ONEDRIVE_DEFAULT_CLIENT_SECRET)
+        );
+        assert_eq!(
+            session.refresh_token.as_deref(),
+            Some("0.ARwA_rclone_refresh_token_abc")
+        );
+
+        // User responds with folder name
+        let action = handle_message(&adapter, &target, Some("/my_od_tunnel"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        // Wizard session is cleared upon successful node creation
         assert!(state.get_xdrive_wizard("test_chat").await.is_none());
     }
 }

@@ -11,7 +11,7 @@ pub mod warp;
 pub mod xdrive;
 pub mod xhttp;
 
-pub use config::{ConfigManager, Proto};
+pub use config::{ConfigManager, Proto, XrayInbound};
 pub use installer::{RealityInstallOutcome, RealityInstaller, WarpInstaller};
 pub use kcp_mask::KcpMask;
 pub use port_allocator::PortAllocator;
