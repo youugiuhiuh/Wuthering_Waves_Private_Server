@@ -95,11 +95,11 @@ impl XdriveConfig {
                 path_style: true,
             }),
             segment_bytes: Some(512 * 1024), // 512KB 黄金平衡分片 (避免小分片导致的 API 往返与签名开销膨胀)
-            poll_interval_ms: Some(30),      // 30ms 稳健轮询 (匹配边缘网络常规延迟，避免空轮询风暴)
-            max_poll_interval_ms: Some(400), // 400ms 最大轮询上限 (空闲合理退避，保护配额)
-            flush_interval_ms: Some(30),     // 30ms 快速刷出 (避免高频生成几字节碎片对象)
-            eager_window_ms: Some(1500),     // 1.5s 积极轮询窗口 (稳定持续传输)
-            concurrency: Some(16),           // 16 适度并发 (避免触发 R2 429 限流与 TCP 队头阻塞)
+            poll_interval_ms: Some(50),      // 50ms 稳健轮询 (匹配边缘网络常规延迟，避免空轮询风暴)
+            max_poll_interval_ms: Some(3000), // 3秒深度退避，全月在 100 万次免费额度内，彻底杜绝扣费账单
+            flush_interval_ms: Some(30),      // 30ms 快速刷出 (避免高频生成几字节碎片对象)
+            eager_window_ms: Some(3000),      // 3秒积极突发窗口，一旦唤醒即刻满血极速传输
+            concurrency: Some(16),            // 16 适度并发 (避免触发 R2 429 限流与 TCP 队头阻塞)
         }
     }
 
@@ -156,11 +156,11 @@ impl XdriveConfig {
                 path_style,
             }),
             segment_bytes: Some(1024 * 1024),
-            poll_interval_ms: Some(25),
-            max_poll_interval_ms: Some(800),
-            flush_interval_ms: None,
-            eager_window_ms: None,
-            concurrency: None,
+            poll_interval_ms: Some(50),
+            max_poll_interval_ms: Some(2000),
+            flush_interval_ms: Some(50),
+            eager_window_ms: Some(2000),
+            concurrency: Some(16),
         }
     }
 
@@ -186,11 +186,11 @@ impl XdriveConfig {
                 path_style: true,
             }),
             segment_bytes: Some(1024 * 1024),
-            poll_interval_ms: Some(25),
-            max_poll_interval_ms: Some(800),
-            flush_interval_ms: None,
-            eager_window_ms: None,
-            concurrency: None,
+            poll_interval_ms: Some(50),
+            max_poll_interval_ms: Some(2000),
+            flush_interval_ms: Some(50),
+            eager_window_ms: Some(2000),
+            concurrency: Some(8),
         }
     }
 
@@ -247,11 +247,11 @@ impl XdriveConfig {
                 path_style: effective_path_style,
             }),
             segment_bytes: Some(1024 * 1024),
-            poll_interval_ms: Some(25),
-            max_poll_interval_ms: Some(800),
-            flush_interval_ms: None,
-            eager_window_ms: None,
-            concurrency: None,
+            poll_interval_ms: Some(50),
+            max_poll_interval_ms: Some(2000),
+            flush_interval_ms: Some(50),
+            eager_window_ms: Some(2000),
+            concurrency: Some(8),
         }
     }
 
@@ -457,11 +457,11 @@ impl XdriveConfig {
                         path_style: true,
                     }),
                     segment_bytes: Some(1024 * 1024),
-                    poll_interval_ms: Some(25),
-                    max_poll_interval_ms: Some(800),
-                    flush_interval_ms: None,
-                    eager_window_ms: None,
-                    concurrency: None,
+                    poll_interval_ms: Some(50),
+                    max_poll_interval_ms: Some(2000),
+                    flush_interval_ms: Some(50),
+                    eager_window_ms: Some(2000),
+                    concurrency: Some(8),
                 };
                 config.validate()?;
                 Ok(config)
@@ -492,11 +492,11 @@ impl XdriveConfig {
                         path_style: true,
                     }),
                     segment_bytes: Some(1024 * 1024),
-                    poll_interval_ms: Some(25),
-                    max_poll_interval_ms: Some(800),
-                    flush_interval_ms: None,
-                    eager_window_ms: None,
-                    concurrency: None,
+                    poll_interval_ms: Some(50),
+                    max_poll_interval_ms: Some(2000),
+                    flush_interval_ms: Some(50),
+                    eager_window_ms: Some(2000),
+                    concurrency: Some(8),
                 };
                 config.validate()?;
                 Ok(config)
@@ -549,11 +549,11 @@ impl XdriveConfig {
                         path_style: true,
                     }),
                     segment_bytes: Some(1024 * 1024),
-                    poll_interval_ms: Some(25),
-                    max_poll_interval_ms: Some(800),
-                    flush_interval_ms: None,
-                    eager_window_ms: None,
-                    concurrency: None,
+                    poll_interval_ms: Some(50),
+                    max_poll_interval_ms: Some(2000),
+                    flush_interval_ms: Some(50),
+                    eager_window_ms: Some(2000),
+                    concurrency: Some(8),
                 };
                 config.validate()?;
                 Ok(config)
@@ -1502,11 +1502,11 @@ mod tests {
         assert_eq!(s3.bucket, "my-bucket");
         assert_eq!(s3.region, "auto");
         assert!(s3.path_style);
-        assert_eq!(config.poll_interval_ms, Some(30));
+        assert_eq!(config.poll_interval_ms, Some(50));
         assert_eq!(config.segment_bytes, Some(512 * 1024));
-        assert_eq!(config.max_poll_interval_ms, Some(400));
+        assert_eq!(config.max_poll_interval_ms, Some(3000));
         assert_eq!(config.flush_interval_ms, Some(30));
-        assert_eq!(config.eager_window_ms, Some(1500));
+        assert_eq!(config.eager_window_ms, Some(3000));
         assert_eq!(config.concurrency, Some(16));
         assert!(config.validate().is_ok());
     }
@@ -1522,10 +1522,10 @@ mod tests {
         );
         assert_eq!(config.segment_bytes, Some(524288));
         assert_eq!(config.concurrency, Some(16));
-        assert_eq!(config.poll_interval_ms, Some(30));
-        assert_eq!(config.max_poll_interval_ms, Some(400));
+        assert_eq!(config.poll_interval_ms, Some(50));
+        assert_eq!(config.max_poll_interval_ms, Some(3000));
         assert_eq!(config.flush_interval_ms, Some(30));
-        assert_eq!(config.eager_window_ms, Some(1500));
+        assert_eq!(config.eager_window_ms, Some(3000));
         assert!(config.validate().is_ok());
     }
 
@@ -1546,10 +1546,10 @@ mod tests {
         assert!(s3.path_style);
         assert_eq!(config_url.segment_bytes, Some(524288));
         assert_eq!(config_url.concurrency, Some(16));
-        assert_eq!(config_url.poll_interval_ms, Some(30));
-        assert_eq!(config_url.max_poll_interval_ms, Some(400));
+        assert_eq!(config_url.poll_interval_ms, Some(50));
+        assert_eq!(config_url.max_poll_interval_ms, Some(3000));
         assert_eq!(config_url.flush_interval_ms, Some(30));
-        assert_eq!(config_url.eager_window_ms, Some(1500));
+        assert_eq!(config_url.eager_window_ms, Some(3000));
         assert!(config_url.validate().is_ok());
 
         // Test with raw domain (without https://)
@@ -1621,6 +1621,11 @@ mod tests {
         assert_eq!(s3.region, "ru-central1");
         assert_eq!(s3.bucket, "my-yandex-bucket");
         assert!(s3.path_style);
+        assert_eq!(config.poll_interval_ms, Some(50));
+        assert_eq!(config.max_poll_interval_ms, Some(2000));
+        assert_eq!(config.flush_interval_ms, Some(50));
+        assert_eq!(config.eager_window_ms, Some(2000));
+        assert_eq!(config.concurrency, Some(8));
     }
 
     #[test]
@@ -1631,6 +1636,11 @@ mod tests {
         let s3 = config.s3.unwrap();
         assert_eq!(s3.endpoint, "https://s3.ir-thr-at1.arvanstorage.ir");
         assert_eq!(s3.region, "ir-thr-at1");
+        assert_eq!(config.poll_interval_ms, Some(50));
+        assert_eq!(config.max_poll_interval_ms, Some(2000));
+        assert_eq!(config.flush_interval_ms, Some(50));
+        assert_eq!(config.eager_window_ms, Some(2000));
+        assert_eq!(config.concurrency, Some(8));
     }
 
     #[test]
@@ -1641,6 +1651,11 @@ mod tests {
         assert_eq!(s3.endpoint, "https://a1b2c3d4e5f6.r2.cloudflarestorage.com");
         assert_eq!(s3.region, "auto");
         assert_eq!(s3.bucket, "r2-bucket");
+        assert_eq!(config.poll_interval_ms, Some(50));
+        assert_eq!(config.max_poll_interval_ms, Some(3000));
+        assert_eq!(config.flush_interval_ms, Some(30));
+        assert_eq!(config.eager_window_ms, Some(3000));
+        assert_eq!(config.concurrency, Some(16));
     }
 
     #[test]
@@ -1651,6 +1666,11 @@ mod tests {
         assert_eq!(s3.endpoint, "https://my-s3.example.com");
         assert_eq!(s3.region, "us-west-1");
         assert_eq!(s3.bucket, "my-b");
+        assert_eq!(config.poll_interval_ms, Some(50));
+        assert_eq!(config.max_poll_interval_ms, Some(2000));
+        assert_eq!(config.flush_interval_ms, Some(50));
+        assert_eq!(config.eager_window_ms, Some(2000));
+        assert_eq!(config.concurrency, Some(8));
     }
 
     #[test]
@@ -2013,8 +2033,11 @@ FOLDER_ID = folder_abc_123
         assert_eq!(s3.bucket, "my-aws-bucket");
         assert!(!s3.path_style);
         assert_eq!(config.segment_bytes, Some(1024 * 1024));
-        assert_eq!(config.poll_interval_ms, Some(25));
-        assert_eq!(config.max_poll_interval_ms, Some(800));
+        assert_eq!(config.poll_interval_ms, Some(50));
+        assert_eq!(config.max_poll_interval_ms, Some(2000));
+        assert_eq!(config.flush_interval_ms, Some(50));
+        assert_eq!(config.eager_window_ms, Some(2000));
+        assert_eq!(config.concurrency, Some(16));
         assert!(config.validate().is_ok());
     }
 
@@ -2085,7 +2108,7 @@ admin,AKIAI44QH8DHBEXAMPLE,je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY"#;
         assert_eq!(config.service, XdriveService::S3);
         assert_eq!(config.remote_folder, "xray-folder");
         assert_eq!(config.secrets, vec!["my_access_key", "my_secret_key"]);
-        let s3 = config.s3.expect("s3 config must be set");
+        let s3 = config.s3.as_ref().expect("s3 config must be set");
         assert_eq!(
             s3.endpoint,
             "https://ax1234567890.compat.objectstorage.ap-chuncheon-1.oraclecloud.com"
@@ -2093,6 +2116,35 @@ admin,AKIAI44QH8DHBEXAMPLE,je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY"#;
         assert_eq!(s3.region, "ap-chuncheon-1");
         assert_eq!(s3.bucket, "my-oracle-bucket");
         assert!(s3.path_style);
+        assert_eq!(config.segment_bytes, Some(1024 * 1024));
+        assert_eq!(config.poll_interval_ms, Some(50));
+        assert_eq!(config.max_poll_interval_ms, Some(2000));
+        assert_eq!(config.flush_interval_ms, Some(50));
+        assert_eq!(config.eager_window_ms, Some(2000));
+        assert_eq!(config.concurrency, Some(8));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_new_s3() {
+        let config = XdriveConfig::new_s3(
+            "https://custom-s3.example.com",
+            "us-east-1",
+            "test-bucket",
+            "ak",
+            "sk",
+            true,
+            "custom-folder",
+        );
+        assert_eq!(config.service, XdriveService::S3);
+        assert_eq!(config.remote_folder, "custom-folder");
+        assert_eq!(config.segment_bytes, Some(1024 * 1024));
+        assert_eq!(config.poll_interval_ms, Some(50));
+        assert_eq!(config.max_poll_interval_ms, Some(2000));
+        assert_eq!(config.flush_interval_ms, Some(50));
+        assert_eq!(config.eager_window_ms, Some(2000));
+        assert_eq!(config.concurrency, Some(8));
+        assert!(config.validate().is_ok());
     }
 
     #[test]
