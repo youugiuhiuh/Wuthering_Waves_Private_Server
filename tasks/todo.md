@@ -23,7 +23,7 @@
   - [x] Global 子菜单包含 AWS S3 / Oracle Cloud / 返回
   - [x] 返回上一级逻辑与取消向导逻辑顺畅
 
-- [ ] Task 4: Full Quality Gates & Clean Baseline Verification
+- [x] Task 4: Full Quality Gates & Clean Baseline Verification
   - Acceptance: `cargo fmt --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo nextest run` 100% 绿灯通过。
   - Verify: `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo nextest run`
   - Files: All workspace files
