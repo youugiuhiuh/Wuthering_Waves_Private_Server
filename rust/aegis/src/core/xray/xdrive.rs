@@ -96,7 +96,40 @@ impl XdriveConfig {
         }
     }
 
-    /// 预设构建器：AWS S3（国际版对象存储）
+    /// 检查 S3 存储桶名是否适用于虚拟主机寻址 (Virtual-Hosted Style: `https://{bucket}.s3.{region}...`).
+    ///
+    /// 根据 S3 与 DNS 规范，虚拟主机寻址要求桶名必须是完全兼容 DNS 的：
+    /// 1. 长度在 3 到 63 个字符之间；
+    /// 2. 只能包含小写字母 (`a-z`)、数字 (`0-9`) 和连字符 (`-`)；
+    /// 3. 必须以小写字母或数字开头和结尾；
+    /// 4. 不含大写字母（包含大写字母时必须使用 Path-Style 路径寻址）；
+    /// 5. 不含点 `.`（在 HTTPS 下通配符证书无法匹配包含点的多级子域名，AWS/B2 均要求此时使用 Path-Style）；
+    /// 6. 不能是类似 IP 地址的格式。
+    ///
+    /// 若返回 `false`，则必须使用路径寻址 (`path_style = true`)，避免 Xray/S3 抛出：
+    /// `transport/internet/xdrive: S3 virtual-hosted addressing requires a DNS-compatible bucket name`
+    pub fn is_s3_virtual_hosted_compatible_bucket(bucket: &str) -> bool {
+        let len = bucket.len();
+        if !(3..=63).contains(&len) {
+            return false;
+        }
+        let bytes = bucket.as_bytes();
+        let is_alphanumeric_lower = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit();
+
+        // 必须以小写字母或数字开头和结尾
+        if !is_alphanumeric_lower(bytes[0]) || !is_alphanumeric_lower(bytes[len - 1]) {
+            return false;
+        }
+
+        // 字符必须全部为小写字母、数字或连字符（不包含大写字母、下划线、点号等）
+        if !bytes.iter().all(|&b| is_alphanumeric_lower(b) || b == b'-') {
+            return false;
+        }
+
+        true
+    }
+
+    /// 预设构建器：AWS S3 (Amazon Web Services)
     pub fn new_aws_s3(
         region: &str,
         bucket: &str,
@@ -104,6 +137,7 @@ impl XdriveConfig {
         secret_access_key: &str,
         folder: &str,
     ) -> Self {
+        let path_style = !Self::is_s3_virtual_hosted_compatible_bucket(bucket);
         Self {
             service: XdriveService::S3,
             remote_folder: folder.to_string(),
@@ -112,7 +146,7 @@ impl XdriveConfig {
                 endpoint: format!("https://s3.{region}.amazonaws.com"),
                 region: region.to_string(),
                 bucket: bucket.to_string(),
-                path_style: false,
+                path_style,
             }),
             segment_bytes: Some(1024 * 1024),
             poll_interval_ms: Some(25),
@@ -161,6 +195,9 @@ impl XdriveConfig {
         application_key: &str,
         folder: &str,
     ) -> Self {
+        // Backblaze B2 允许大写字母桶名，但 S3 虚拟主机寻址 (virtual-hosted style)
+        // 强制要求桶名符合 DNS 规范。若包含大写字母等非 DNS 字符，自适应切换为路径寻址 (path_style = true)。
+        let path_style = !Self::is_s3_virtual_hosted_compatible_bucket(bucket);
         Self {
             service: XdriveService::S3,
             remote_folder: folder.to_string(),
@@ -169,7 +206,7 @@ impl XdriveConfig {
                 endpoint: format!("https://s3.{region}.backblazeb2.com"),
                 region: region.to_string(),
                 bucket: bucket.to_string(),
-                path_style: false,
+                path_style,
             }),
             segment_bytes: Some(1024 * 1024),
             poll_interval_ms: Some(25),
@@ -190,6 +227,8 @@ impl XdriveConfig {
         path_style: bool,
         folder: &str,
     ) -> Self {
+        let effective_path_style =
+            path_style || !Self::is_s3_virtual_hosted_compatible_bucket(bucket);
         Self {
             service: XdriveService::S3,
             remote_folder: folder.to_string(),
@@ -198,7 +237,7 @@ impl XdriveConfig {
                 endpoint: endpoint.to_string(),
                 region: region.to_string(),
                 bucket: bucket.to_string(),
-                path_style,
+                path_style: effective_path_style,
             }),
             segment_bytes: Some(1024 * 1024),
             poll_interval_ms: Some(25),
@@ -1929,6 +1968,73 @@ admin,AKIAI44QH8DHBEXAMPLE,je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY"#;
         assert_eq!(s3.region, "us-west-004");
         assert_eq!(s3.bucket, "my-b2-bucket");
         assert!(!s3.path_style);
+    }
+
+    #[test]
+    fn test_new_backblaze_b2_uppercase_bucket() {
+        let config = XdriveConfig::new_backblaze_b2(
+            "ca-east-006",
+            "mytest1vIvHY",
+            "004a1b2c3d4e5f60000000001",
+            "K004abcdef1234567890abcdef12345",
+            "b2-folder",
+        );
+        let s3 = config.s3.expect("s3 config must be set");
+        assert_eq!(s3.endpoint, "https://s3.ca-east-006.backblazeb2.com");
+        assert_eq!(s3.region, "ca-east-006");
+        assert_eq!(s3.bucket, "mytest1vIvHY");
+        assert!(
+            s3.path_style,
+            "Bucket with uppercase letters must automatically fallback to path_style = true"
+        );
+    }
+
+    #[test]
+    fn test_is_s3_virtual_hosted_compatible_bucket() {
+        assert!(XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            "my-b2-bucket"
+        ));
+        assert!(XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            "bucket123"
+        ));
+        assert!(XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            "123bucket"
+        ));
+
+        // 包含大写字母
+        assert!(!XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            "mytest1vIvHY"
+        ));
+        assert!(!XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            "Bucket"
+        ));
+
+        // 下划线
+        assert!(!XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            "my_bucket"
+        ));
+
+        // 点（多级子域名在 HTTPS 通配符证书下无法匹配）
+        assert!(!XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            "my.bucket"
+        ));
+
+        // 连字符在两端
+        assert!(!XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            "-bucket"
+        ));
+        assert!(!XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            "bucket-"
+        ));
+
+        // 长度边界
+        assert!(!XdriveConfig::is_s3_virtual_hosted_compatible_bucket("ab"));
+        assert!(!XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            &"a".repeat(64)
+        ));
+        assert!(XdriveConfig::is_s3_virtual_hosted_compatible_bucket(
+            &"a".repeat(63)
+        ));
     }
 
     #[test]
