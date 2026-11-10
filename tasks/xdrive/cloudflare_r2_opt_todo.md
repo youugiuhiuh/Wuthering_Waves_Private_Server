@@ -13,8 +13,8 @@
   - [ ] 3.1: 在 `AddServerViewModel.cs` 中为 `Cloudflare R2` 预设注入优化参数
   - [ ] 3.2: 编写 `AddServerViewModelTests.cs` 单测并运行 `dotnet test`
   - [ ] 3.3: 提交并推送至 `youugiuhiuh/aegis_v2rayN:master`
-- [ ] Task 4: 质量审查与发布
-  - [ ] 4.1: `cargo fmt --check`
-  - [ ] 4.2: `cargo clippy --all-targets -- -D warnings`
-  - [ ] 4.3: `cargo nextest run` 全量回归
+- [x] Task 4: 质量审查与发布
+  - [x] 4.1: `cargo fmt --check`
+  - [x] 4.2: `cargo clippy --all-targets -- -D warnings`
+  - [x] 4.3: `cargo nextest run` 全量回归
   - [ ] 4.4: 提交 PR，合入 main，清理 worktree
