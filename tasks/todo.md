@@ -10,18 +10,18 @@
   - Verify: `cargo test --package aegis --lib shared::handlers::xray::tests::test_xdrive_region` (期望 FAIL)
   - Files: `rust/aegis/src/shared/handlers/xray.rs`
 
-- [ ] Task 3: Green & Refactor Phase — Implement Region Menu & Submenu Navigation in `xray.rs`
+- [x] Task 3: Green & Refactor Phase — Implement Region Menu & Submenu Navigation in `xray.rs`
   - Acceptance: 重构 `handle_xdrive_menu` 渲染五大地区入口；新增 `handle_xdrive_region_submenu` 渲染对应地区存储提供商；在 `handle()` 中分发 `u_xdrive_r:` 路由；测试用例全部转绿（GREEN）。
   - Verify: `cargo test --package aegis --lib shared::handlers::xray::tests`
   - Files: `rust/aegis/src/shared/handlers/xray.rs`
 
-- [ ] Checkpoint: Tasks 1-3 Functional Verification
-  - [ ] 地区选择一级菜单渲染正确，包含 CN / RU / IR / Global / 自定义 S3 / 返回
-  - [ ] CN 子菜单包含 R2 / B2 / OneDrive / 返回
-  - [ ] RU 子菜单包含 Yandex / Google Drive / 返回
-  - [ ] IR 子菜单包含 Arvan / Google Drive / 返回
-  - [ ] Global 子菜单包含 AWS S3 / Oracle Cloud / 返回
-  - [ ] 返回上一级逻辑与取消向导逻辑顺畅
+- [x] Checkpoint: Tasks 1-3 Functional Verification
+  - [x] 地区选择一级菜单渲染正确，包含 CN / RU / IR / Global / 自定义 S3 / 返回
+  - [x] CN 子菜单包含 R2 / B2 / OneDrive / 返回
+  - [x] RU 子菜单包含 Yandex / Google Drive / 返回
+  - [x] IR 子菜单包含 Arvan / Google Drive / 返回
+  - [x] Global 子菜单包含 AWS S3 / Oracle Cloud / 返回
+  - [x] 返回上一级逻辑与取消向导逻辑顺畅
 
 - [ ] Task 4: Full Quality Gates & Clean Baseline Verification
   - Acceptance: `cargo fmt --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo nextest run` 100% 绿灯通过。
