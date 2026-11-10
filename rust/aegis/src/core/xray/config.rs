@@ -1393,9 +1393,9 @@ mod tests {
             json!(["test-client-id", "test-client-secret", "test-refresh-token"])
         );
         assert_eq!(xdrive_settings["segmentBytes"], 65536);
-        assert_eq!(xdrive_settings["flushIntervalMs"], 80);
-        assert_eq!(xdrive_settings["pollIntervalMs"], 200);
-        assert_eq!(xdrive_settings["maxPollIntervalMs"], 1200);
+        assert_eq!(xdrive_settings["flushIntervalMs"], 30);
+        assert_eq!(xdrive_settings["pollIntervalMs"], 100);
+        assert_eq!(xdrive_settings["maxPollIntervalMs"], 1000);
         assert_eq!(xdrive_settings["concurrency"], 4);
 
         // 验证 template 字段及其核心结构

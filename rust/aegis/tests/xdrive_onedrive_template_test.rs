@@ -61,18 +61,18 @@ fn test_onedrive_config_default_initialization() {
     );
     assert_eq!(
         config.flush_interval_ms,
-        Some(80),
-        "flush_interval_ms 必须为 80ms"
+        Some(30),
+        "flush_interval_ms 必须为 30ms"
     );
     assert_eq!(
         config.poll_interval_ms,
-        Some(200),
-        "poll_interval_ms 必须为 200ms"
+        Some(100),
+        "poll_interval_ms 必须为 100ms"
     );
     assert_eq!(
         config.max_poll_interval_ms,
-        Some(1200),
-        "max_poll_interval_ms 必须为 1200ms"
+        Some(1000),
+        "max_poll_interval_ms 必须为 1000ms"
     );
     assert_eq!(config.concurrency, Some(4), "concurrency 并发槽数必须为 4");
     assert_eq!(

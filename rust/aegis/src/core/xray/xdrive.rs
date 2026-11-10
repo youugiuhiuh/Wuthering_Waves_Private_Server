@@ -216,11 +216,11 @@ impl XdriveConfig {
                 path_style,
             }),
             segment_bytes: Some(1024 * 1024),
-            poll_interval_ms: Some(25),
-            max_poll_interval_ms: Some(800),
-            flush_interval_ms: None,
-            eager_window_ms: None,
-            concurrency: None,
+            poll_interval_ms: Some(1000), // 1000ms 保守防刷爆轮询（保护 B2 免费每日 2500 次限额）
+            max_poll_interval_ms: Some(8000), // 8000ms 空闲深度退避
+            flush_interval_ms: Some(200), // 200ms 批量写入
+            eager_window_ms: Some(1000),  // 1s 积极轮询窗口
+            concurrency: Some(2),         // 2 适度并发
         }
     }
 
@@ -307,11 +307,11 @@ impl XdriveConfig {
             ],
             s3: None,
             segment_bytes: Some(65536),       // 64KB 分片
-            flush_interval_ms: Some(80),      // 80ms 缓冲刷出
-            poll_interval_ms: Some(200),      // 200ms 轮询间隔（与公网 RTT 匹配）
-            max_poll_interval_ms: Some(1200), // 1200ms 空闲退避上限
-            eager_window_ms: Some(2000),      // 2s 积极轮询窗口
-            concurrency: Some(4),             // 4 并发读写槽（防 429 限流保护）
+            flush_interval_ms: Some(30),      // 30ms 快速刷出（降低往返缓冲等待时延）
+            poll_interval_ms: Some(100), // 100ms 灵敏轮询（实测可提升响应速度约 1 秒且安全不触碰 429）
+            max_poll_interval_ms: Some(1000), // 1000ms 空闲退避上限
+            eager_window_ms: Some(2000), // 2s 积极轮询窗口
+            concurrency: Some(4),        // 4 并发读写槽（防 429 限流保护）
         }
     }
 
@@ -1800,9 +1800,9 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
         );
         assert!(config.s3.is_none());
         assert_eq!(config.segment_bytes, Some(65536));
-        assert_eq!(config.flush_interval_ms, Some(80));
-        assert_eq!(config.poll_interval_ms, Some(200));
-        assert_eq!(config.max_poll_interval_ms, Some(1200));
+        assert_eq!(config.flush_interval_ms, Some(30));
+        assert_eq!(config.poll_interval_ms, Some(100));
+        assert_eq!(config.max_poll_interval_ms, Some(1000));
         assert_eq!(config.eager_window_ms, Some(2000));
         assert_eq!(config.concurrency, Some(4));
         assert!(config.validate().is_ok());
@@ -1829,9 +1829,9 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
         );
         assert!(config.s3.is_none());
         assert_eq!(config.segment_bytes, Some(65536));
-        assert_eq!(config.flush_interval_ms, Some(80));
-        assert_eq!(config.poll_interval_ms, Some(200));
-        assert_eq!(config.max_poll_interval_ms, Some(1200));
+        assert_eq!(config.flush_interval_ms, Some(30));
+        assert_eq!(config.poll_interval_ms, Some(100));
+        assert_eq!(config.max_poll_interval_ms, Some(1000));
         assert_eq!(config.eager_window_ms, Some(2000));
         assert_eq!(config.concurrency, Some(4));
         assert!(config.validate().is_ok());
