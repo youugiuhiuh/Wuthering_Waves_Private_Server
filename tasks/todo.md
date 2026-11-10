@@ -1,6 +1,6 @@
 # Task Breakdown & Checklist
 
-- [ ] Task 1: i18n Localization Keys in `zh.yml`, `en.yml`, `ja.yml`
+- [x] Task 1: i18n Localization Keys in `zh.yml`, `en.yml`, `ja.yml`
   - Acceptance: 在 `zh.yml`、`en.yml`、`ja.yml` 中新增地区入口按钮文案（`xdrive_region_cn`、`xdrive_region_ru`、`xdrive_region_ir`、`xdrive_region_global`）及各二级子菜单标题文案（`xdrive_submenu_cn_title` 等），三语完全对齐。
   - Verify: `cargo test --package aegis --lib resources`
   - Files: `rust/aegis/src/resources/i18n/zh.yml`, `rust/aegis/src/resources/i18n/en.yml`, `rust/aegis/src/resources/i18n/ja.yml`
