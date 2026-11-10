@@ -113,7 +113,9 @@ impl XdriveConfig {
             remote_folder: folder.to_string(),
             secrets: vec![access_key_id.to_string(), secret_access_key.to_string()],
             s3: Some(S3Config {
-                endpoint: format!("https://{namespace}.compat.objectstorage.{region}.oraclecloud.com"),
+                endpoint: format!(
+                    "https://{namespace}.compat.objectstorage.{region}.oraclecloud.com"
+                ),
                 region: region.to_string(),
                 bucket: bucket.to_string(),
                 path_style: true,
@@ -1098,13 +1100,19 @@ impl XdriveConfig {
                 let cleaned = clean_val(word);
                 if cleaned.contains("compat.objectstorage") && cleaned.contains("oraclecloud.com") {
                     let (n_val, r_val, b_val) = parse_oci_url(&cleaned);
-                    if ns.is_none() && let Some(n) = n_val {
+                    if ns.is_none()
+                        && let Some(n) = n_val
+                    {
                         ns = Some(n);
                     }
-                    if region.is_none() && let Some(r) = r_val {
+                    if region.is_none()
+                        && let Some(r) = r_val
+                    {
                         region = Some(r);
                     }
-                    if bucket.is_none() && let Some(b) = b_val {
+                    if bucket.is_none()
+                        && let Some(b) = b_val
+                    {
                         bucket = Some(b);
                     }
                 }
@@ -1219,12 +1227,11 @@ impl XdriveConfig {
 
             for word in line.split_whitespace() {
                 let cleaned = clean_val(word);
-                if cleaned.contains("backblazeb2.com") {
-                    if region.is_none()
-                        && let Some(r) = parse_b2_url(&cleaned)
-                    {
-                        region = Some(r);
-                    }
+                if cleaned.contains("backblazeb2.com")
+                    && region.is_none()
+                    && let Some(r) = parse_b2_url(&cleaned)
+                {
+                    region = Some(r);
                 }
                 if key_id.is_none()
                     && cleaned.len() == 25
@@ -1642,7 +1649,10 @@ admin,AKIAI44QH8DHBEXAMPLE,je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY"#;
         assert_eq!(config.remote_folder, "b2-folder");
         assert_eq!(
             config.secrets,
-            vec!["004a1b2c3d4e5f60000000001", "K004abcdef1234567890abcdef12345"]
+            vec![
+                "004a1b2c3d4e5f60000000001",
+                "K004abcdef1234567890abcdef12345"
+            ]
         );
         let s3 = config.s3.expect("s3 config must be set");
         assert_eq!(s3.endpoint, "https://s3.us-west-004.backblazeb2.com");

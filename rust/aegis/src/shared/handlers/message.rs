@@ -899,6 +899,22 @@ async fn handle_xdrive_wizard_input(
 
     match session.step {
         XdriveWizardStep::AccountId => {
+            if session.region == "oracle" {
+                session.account_id = Some(raw_input.to_string());
+                session.step = XdriveWizardStep::Region;
+                state.update_xdrive_wizard(&target.0, session).await;
+                adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: t!("xray.xdrive_guide_oracle_step2").to_string(),
+                            markup: cancel_markup,
+                        },
+                    )
+                    .await?;
+                return Ok(MessageAction::Handled);
+            }
+
             if raw_input.starts_with("cfat_") {
                 adapter
                     .send_message(
@@ -960,6 +976,10 @@ async fn handle_xdrive_wizard_input(
             session.step = XdriveWizardStep::Bucket;
             let prompt = if session.region == "aws" {
                 t!("xray.xdrive_guide_aws_step2")
+            } else if session.region == "oracle" {
+                t!("xray.xdrive_guide_oracle_step3")
+            } else if session.region == "b2" {
+                t!("xray.xdrive_guide_b2_step2")
             } else {
                 t!("xray.xdrive_guide_custom_step3")
             };
@@ -990,9 +1010,37 @@ async fn handle_xdrive_wizard_input(
                     .await;
             }
 
+            if session.region == "oracle"
+                && let (Some(ns), Some(reg), Some(ak), Some(sk)) = (
+                    session.account_id.as_deref(),
+                    session.s3_region.as_deref(),
+                    session.access_key.as_deref(),
+                    session.secret_key.as_deref(),
+                )
+            {
+                let cfg =
+                    XdriveConfig::new_oracle_cloud_s3(ns, reg, raw_input, ak, sk, "aegis-xdrive");
+                return complete_xdrive_node(adapter, target, state, &session, &cfg, cancel_markup)
+                    .await;
+            }
+
+            if session.region == "b2"
+                && let (Some(reg), Some(ak), Some(sk)) = (
+                    session.s3_region.as_deref(),
+                    session.access_key.as_deref(),
+                    session.secret_key.as_deref(),
+                )
+            {
+                let cfg = XdriveConfig::new_backblaze_b2(reg, raw_input, ak, sk, "aegis-xdrive");
+                return complete_xdrive_node(adapter, target, state, &session, &cfg, cancel_markup)
+                    .await;
+            }
+
             session.step = XdriveWizardStep::AccessKey;
             let prompt = match session.region.as_str() {
                 "aws" => t!("xray.xdrive_guide_aws_step3"),
+                "oracle" => t!("xray.xdrive_guide_oracle_step4"),
+                "b2" => t!("xray.xdrive_guide_b2_step3"),
                 "cn" | "r2" => t!("xray.xdrive_guide_cn_step3"),
                 "ru" | "yandex" => t!("xray.xdrive_guide_ru_step2"),
                 "ir" | "arvan" => t!("xray.xdrive_guide_ir_step2"),
@@ -1028,6 +1076,8 @@ async fn handle_xdrive_wizard_input(
             session.step = XdriveWizardStep::SecretKey;
             let prompt = match session.region.as_str() {
                 "aws" => t!("xray.xdrive_guide_aws_step4"),
+                "oracle" => t!("xray.xdrive_guide_oracle_step5"),
+                "b2" => t!("xray.xdrive_guide_b2_step4"),
                 "cn" | "r2" => t!("xray.xdrive_guide_cn_step4"),
                 "ru" | "yandex" => t!("xray.xdrive_guide_ru_step3"),
                 "ir" | "arvan" => t!("xray.xdrive_guide_ir_step3"),
@@ -1054,6 +1104,21 @@ async fn handle_xdrive_wizard_input(
                     let ak = session.access_key.as_deref().unwrap_or_default();
                     let sk = session.secret_key.as_deref().unwrap_or_default();
                     XdriveConfig::new_aws_s3(region, bucket, ak, sk, "aegis-xdrive")
+                }
+                "oracle" => {
+                    let ns = session.account_id.as_deref().unwrap_or_default();
+                    let region = session.s3_region.as_deref().unwrap_or("ap-chuncheon-1");
+                    let bucket = session.bucket.as_deref().unwrap_or_default();
+                    let ak = session.access_key.as_deref().unwrap_or_default();
+                    let sk = session.secret_key.as_deref().unwrap_or_default();
+                    XdriveConfig::new_oracle_cloud_s3(ns, region, bucket, ak, sk, "aegis-xdrive")
+                }
+                "b2" => {
+                    let region = session.s3_region.as_deref().unwrap_or("us-west-004");
+                    let bucket = session.bucket.as_deref().unwrap_or_default();
+                    let ak = session.access_key.as_deref().unwrap_or_default();
+                    let sk = session.secret_key.as_deref().unwrap_or_default();
+                    XdriveConfig::new_backblaze_b2(region, bucket, ak, sk, "aegis-xdrive")
                 }
                 "cn" | "r2" => {
                     let account_id = session.account_id.as_deref().unwrap_or_default();
@@ -2673,5 +2738,83 @@ region = us-east-1
 
         // Since bucket was included in the JSON, it completes immediately and clears wizard
         assert!(state.get_xdrive_wizard("test_chat").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_oracle_conversational_flow() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "oracle".to_string(),
+            step: XdriveWizardStep::AccountId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        // Step 1: User sends Namespace
+        let action = handle_message(&adapter, &target, Some("ax1234567890"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::Region);
+        assert_eq!(session.account_id.as_deref(), Some("ax1234567890"));
+
+        // Step 2: User sends Region
+        let action = handle_message(&adapter, &target, Some("ap-chuncheon-1"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::Bucket);
+        assert_eq!(session.s3_region.as_deref(), Some("ap-chuncheon-1"));
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_b2_conversational_flow() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "b2".to_string(),
+            step: XdriveWizardStep::Region,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        // Step 1: User sends Region
+        let action = handle_message(&adapter, &target, Some("us-west-004"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::Bucket);
+        assert_eq!(session.s3_region.as_deref(), Some("us-west-004"));
     }
 }
