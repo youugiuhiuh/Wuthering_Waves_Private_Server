@@ -10,9 +10,9 @@
   - [x] 2.2: Add wizard conversational flow in `message.rs`
   - [x] 2.3: Add i18n entries in `zh.yml`, `en.yml`, `ja.yml`
   - [x] 2.4: Integration unit tests for conversational flow
-- [ ] Task 3: Client `aegis_v2rayN` Presets
-  - [ ] 3.1: Add `Oracle Cloud S3` and `Backblaze B2` in `Global.cs` & `AddServerViewModel.cs`
-  - [ ] 3.2: Verify via `dotnet test`
+- [x] Task 3: Client `aegis_v2rayN` Presets
+  - [x] 3.1: Add `Oracle Cloud S3` and `Backblaze B2` in `Global.cs` & `AddServerViewModel.cs`
+  - [x] 3.2: Verify via `dotnet test`
 - [ ] Task 4: Lint, Review & Merge
   - [ ] 4.1: Run `cargo fmt`, `clippy`, and `nextest`
   - [ ] 4.2: Merge to main and clean up worktree
