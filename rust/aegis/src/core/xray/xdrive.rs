@@ -85,12 +85,12 @@ impl XdriveConfig {
                 bucket: bucket.to_string(),
                 path_style: true,
             }),
-            segment_bytes: Some(256 * 1024), // 256KB 激进极速首包
-            poll_interval_ms: Some(10),      // 10ms 极低轮询
-            max_poll_interval_ms: Some(120), // 120ms 最大轮询上限
-            flush_interval_ms: Some(10),     // 10ms 快速刷出
-            eager_window_ms: Some(1000),     // 1s 积极轮询窗口
-            concurrency: Some(64),           // 64 满血边缘并发
+            segment_bytes: Some(512 * 1024), // 512KB 黄金平衡分片 (避免小分片导致的 API 往返与签名开销膨胀)
+            poll_interval_ms: Some(30),      // 30ms 稳健轮询 (匹配边缘网络常规延迟，避免空轮询风暴)
+            max_poll_interval_ms: Some(400), // 400ms 最大轮询上限 (空闲合理退避，保护配额)
+            flush_interval_ms: Some(30),     // 30ms 快速刷出 (避免高频生成几字节碎片对象)
+            eager_window_ms: Some(1500),     // 1.5s 积极轮询窗口 (稳定持续传输)
+            concurrency: Some(16),           // 16 适度并发 (避免触发 R2 429 限流与 TCP 队头阻塞)
         }
     }
 
@@ -1358,12 +1358,12 @@ mod tests {
         assert_eq!(s3.bucket, "my-bucket");
         assert_eq!(s3.region, "auto");
         assert!(s3.path_style);
-        assert_eq!(config.poll_interval_ms, Some(10));
-        assert_eq!(config.segment_bytes, Some(256 * 1024));
-        assert_eq!(config.max_poll_interval_ms, Some(120));
-        assert_eq!(config.flush_interval_ms, Some(10));
-        assert_eq!(config.eager_window_ms, Some(1000));
-        assert_eq!(config.concurrency, Some(64));
+        assert_eq!(config.poll_interval_ms, Some(30));
+        assert_eq!(config.segment_bytes, Some(512 * 1024));
+        assert_eq!(config.max_poll_interval_ms, Some(400));
+        assert_eq!(config.flush_interval_ms, Some(30));
+        assert_eq!(config.eager_window_ms, Some(1500));
+        assert_eq!(config.concurrency, Some(16));
         assert!(config.validate().is_ok());
     }
 
@@ -1376,12 +1376,12 @@ mod tests {
             "my-sk",
             "aegis-xdrive",
         );
-        assert_eq!(config.segment_bytes, Some(262144));
-        assert_eq!(config.concurrency, Some(64));
-        assert_eq!(config.poll_interval_ms, Some(10));
-        assert_eq!(config.max_poll_interval_ms, Some(120));
-        assert_eq!(config.flush_interval_ms, Some(10));
-        assert_eq!(config.eager_window_ms, Some(1000));
+        assert_eq!(config.segment_bytes, Some(524288));
+        assert_eq!(config.concurrency, Some(16));
+        assert_eq!(config.poll_interval_ms, Some(30));
+        assert_eq!(config.max_poll_interval_ms, Some(400));
+        assert_eq!(config.flush_interval_ms, Some(30));
+        assert_eq!(config.eager_window_ms, Some(1500));
         assert!(config.validate().is_ok());
     }
 
@@ -1400,12 +1400,12 @@ mod tests {
         assert_eq!(s3.bucket, "my-bucket");
         assert_eq!(s3.region, "auto");
         assert!(s3.path_style);
-        assert_eq!(config_url.segment_bytes, Some(262144));
-        assert_eq!(config_url.concurrency, Some(64));
-        assert_eq!(config_url.poll_interval_ms, Some(10));
-        assert_eq!(config_url.max_poll_interval_ms, Some(120));
-        assert_eq!(config_url.flush_interval_ms, Some(10));
-        assert_eq!(config_url.eager_window_ms, Some(1000));
+        assert_eq!(config_url.segment_bytes, Some(524288));
+        assert_eq!(config_url.concurrency, Some(16));
+        assert_eq!(config_url.poll_interval_ms, Some(30));
+        assert_eq!(config_url.max_poll_interval_ms, Some(400));
+        assert_eq!(config_url.flush_interval_ms, Some(30));
+        assert_eq!(config_url.eager_window_ms, Some(1500));
         assert!(config_url.validate().is_ok());
 
         // Test with raw domain (without https://)
