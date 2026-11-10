@@ -545,6 +545,14 @@ async fn handle_xdrive_menu(event: &CallbackEvent) -> HandlerResult {
             data: "u_xdrive_p:aws".into(),
         }],
         vec![InlineButton {
+            text: t!("xray.xdrive_btn_oracle").into(),
+            data: "u_xdrive_p:oracle".into(),
+        }],
+        vec![InlineButton {
+            text: t!("xray.xdrive_btn_b2").into(),
+            data: "u_xdrive_p:b2".into(),
+        }],
+        vec![InlineButton {
             text: t!("xray.xdrive_btn_yandex").into(),
             data: "u_xdrive_p:yandex".into(),
         }],
@@ -588,6 +596,8 @@ async fn handle_xdrive_provider_prompt(
 
     let prompt_text = match provider {
         "aws" => t!("xray.xdrive_guide_aws_step1"),
+        "oracle" => t!("xray.xdrive_guide_oracle_step1"),
+        "b2" => t!("xray.xdrive_guide_b2_step1"),
         "r2" | "cn" => t!("xray.xdrive_guide_cn_step1"),
         "gdrive" | "google-drive" => t!("xray.xdrive_guide_gdrive_step1"),
         "ru" | "yandex" => t!("xray.xdrive_guide_ru_step1"),
@@ -3962,6 +3972,8 @@ mod tests {
                 "u_xdrive_p:r2",
                 "u_xdrive_p:gdrive",
                 "u_xdrive_p:aws",
+                "u_xdrive_p:oracle",
+                "u_xdrive_p:b2",
                 "u_xdrive_p:yandex",
                 "u_xdrive_p:arvan",
                 "u_xdrive_p:s3",

@@ -723,6 +723,8 @@ impl AppState {
         let step = match region.to_ascii_lowercase().as_str() {
             "gdrive" | "google-drive" => XdriveWizardStep::FolderId,
             "aws" => XdriveWizardStep::Region,
+            "oracle" => XdriveWizardStep::AccountId,
+            "b2" => XdriveWizardStep::Region,
             "cn" | "r2" => XdriveWizardStep::AccountId,
             "custom" | "s3" => XdriveWizardStep::Endpoint,
             _ => XdriveWizardStep::Bucket,

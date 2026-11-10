@@ -99,6 +99,63 @@ impl XdriveConfig {
         }
     }
 
+    /// 预设构建器：Oracle Cloud (甲骨文云) Object Storage
+    pub fn new_oracle_cloud_s3(
+        namespace: &str,
+        region: &str,
+        bucket: &str,
+        access_key_id: &str,
+        secret_access_key: &str,
+        folder: &str,
+    ) -> Self {
+        Self {
+            service: XdriveService::S3,
+            remote_folder: folder.to_string(),
+            secrets: vec![access_key_id.to_string(), secret_access_key.to_string()],
+            s3: Some(S3Config {
+                endpoint: format!(
+                    "https://{namespace}.compat.objectstorage.{region}.oraclecloud.com"
+                ),
+                region: region.to_string(),
+                bucket: bucket.to_string(),
+                path_style: true,
+            }),
+            segment_bytes: Some(1024 * 1024),
+            poll_interval_ms: Some(25),
+            max_poll_interval_ms: Some(800),
+            flush_interval_ms: None,
+            eager_window_ms: None,
+            concurrency: None,
+        }
+    }
+
+    /// 预设构建器：Backblaze B2 (S3 兼容模式)
+    pub fn new_backblaze_b2(
+        region: &str,
+        bucket: &str,
+        key_id: &str,
+        application_key: &str,
+        folder: &str,
+    ) -> Self {
+        Self {
+            service: XdriveService::S3,
+            remote_folder: folder.to_string(),
+            secrets: vec![key_id.to_string(), application_key.to_string()],
+            s3: Some(S3Config {
+                endpoint: format!("https://s3.{region}.backblazeb2.com"),
+                region: region.to_string(),
+                bucket: bucket.to_string(),
+                path_style: false,
+            }),
+            segment_bytes: Some(1024 * 1024),
+            poll_interval_ms: Some(25),
+            max_poll_interval_ms: Some(800),
+            flush_interval_ms: None,
+            eager_window_ms: None,
+            concurrency: None,
+        }
+    }
+
     /// 预设构建器：标准 S3 兼容对象存储
     pub fn new_s3(
         endpoint: &str,
@@ -931,6 +988,286 @@ impl XdriveConfig {
             _ => None,
         }
     }
+
+    /// 智能解析 Oracle Cloud (甲骨文云) 凭据全文
+    /// 返回 (namespace, region, access_key_id, secret_access_key, bucket)
+    pub fn extract_oracle_cloud_tokens(
+        text: &str,
+    ) -> Option<(String, String, String, String, Option<String>)> {
+        let mut ns = None;
+        let mut region = None;
+        let mut ak = None;
+        let mut sk = None;
+        let mut bucket = None;
+
+        let clean_val = |raw: &str| -> String {
+            raw.trim()
+                .trim_matches(|c| {
+                    c == '"'
+                        || c == '\''
+                        || c == ','
+                        || c == ';'
+                        || c == '['
+                        || c == ']'
+                        || c == '{'
+                        || c == '}'
+                })
+                .trim()
+                .to_string()
+        };
+
+        let parse_oci_url = |url_str: &str| -> (Option<String>, Option<String>, Option<String>) {
+            let mut found_ns = None;
+            let mut found_region = None;
+            let mut found_bucket = None;
+
+            let without_proto = if let Some(pos) = url_str.find("://") {
+                &url_str[pos + 3..]
+            } else {
+                url_str
+            };
+
+            let (host, path) = match without_proto.find('/') {
+                Some(idx) => (&without_proto[..idx], &without_proto[idx + 1..]),
+                None => (without_proto, ""),
+            };
+
+            if host.contains("oraclecloud.com") && host.contains("compat.objectstorage") {
+                let parts: Vec<&str> = host.split('.').collect();
+                if parts.len() >= 5 {
+                    found_ns = Some(parts[0].to_string());
+                    found_region = Some(parts[3].to_string());
+                }
+            }
+
+            if !path.is_empty() {
+                let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+                if let Some(pos) = segments.iter().position(|&s| s == "bucket") {
+                    if pos + 1 < segments.len() {
+                        found_bucket = Some(segments[pos + 1].to_string());
+                    }
+                } else if !segments.is_empty() && !segments[0].starts_with("v1") {
+                    found_bucket = Some(segments[0].to_string());
+                }
+            }
+
+            (found_ns, found_region, found_bucket)
+        };
+
+        let lines: Vec<&str> = text
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
+
+        for line in &lines {
+            let (key_part, val_part) = if let Some(pos) = line.find(['=', ':']) {
+                let k = line[..pos].trim().to_ascii_lowercase();
+                let v = line[pos + 1..].trim();
+                (Some(k), Some(v))
+            } else {
+                (None, None)
+            };
+
+            if let (Some(k), Some(v)) = (&key_part, val_part) {
+                let cleaned = clean_val(v);
+                if (k.contains("namespace") || k == "ns") && !cleaned.is_empty() {
+                    ns = Some(cleaned.clone());
+                } else if (k.contains("region") || k == "location") && !cleaned.is_empty() {
+                    region = Some(cleaned.clone());
+                } else if (k.contains("secret_key")
+                    || k.contains("secret_access_key")
+                    || k.contains("secretaccesskey")
+                    || k.contains("secret key")
+                    || k == "sk")
+                    && !cleaned.is_empty()
+                {
+                    sk = Some(cleaned.clone());
+                } else if (k.contains("access_key")
+                    || k.contains("access_key_id")
+                    || k.contains("accesskeyid")
+                    || k.contains("access key")
+                    || k == "ak")
+                    && !cleaned.is_empty()
+                {
+                    ak = Some(cleaned.clone());
+                } else if k.contains("bucket") && !cleaned.is_empty() {
+                    bucket = Some(cleaned.clone());
+                }
+            }
+
+            for word in line.split_whitespace() {
+                let cleaned = clean_val(word);
+                if cleaned.contains("compat.objectstorage") && cleaned.contains("oraclecloud.com") {
+                    let (n_val, r_val, b_val) = parse_oci_url(&cleaned);
+                    if ns.is_none()
+                        && let Some(n) = n_val
+                    {
+                        ns = Some(n);
+                    }
+                    if region.is_none()
+                        && let Some(r) = r_val
+                    {
+                        region = Some(r);
+                    }
+                    if bucket.is_none()
+                        && let Some(b) = b_val
+                    {
+                        bucket = Some(b);
+                    }
+                }
+            }
+        }
+
+        match (ns, ak, sk) {
+            (Some(n), Some(a), Some(s)) => {
+                let n = clean_val(&n);
+                let a = clean_val(&a);
+                let s = clean_val(&s);
+                if !n.is_empty() && !a.is_empty() && !s.is_empty() {
+                    let r = region
+                        .map(|r| clean_val(&r))
+                        .filter(|r| !r.is_empty())
+                        .unwrap_or_else(|| "ap-chuncheon-1".to_string());
+                    let b = bucket.map(|b| clean_val(&b)).filter(|b| !b.is_empty());
+                    Some((n, r, a, s, b))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// 智能解析 Backblaze B2 凭据全文
+    /// 返回 (region, key_id, application_key, bucket)
+    pub fn extract_backblaze_b2_tokens(
+        text: &str,
+    ) -> Option<(String, String, String, Option<String>)> {
+        let mut key_id = None;
+        let mut app_key = None;
+        let mut region = None;
+        let mut bucket = None;
+
+        let clean_val = |raw: &str| -> String {
+            raw.trim()
+                .trim_matches(|c| {
+                    c == '"'
+                        || c == '\''
+                        || c == ','
+                        || c == ';'
+                        || c == '['
+                        || c == ']'
+                        || c == '{'
+                        || c == '}'
+                })
+                .trim()
+                .to_string()
+        };
+
+        let parse_b2_url = |url_str: &str| -> Option<String> {
+            let without_proto = if let Some(pos) = url_str.find("://") {
+                &url_str[pos + 3..]
+            } else {
+                url_str
+            };
+
+            let host = match without_proto.find('/') {
+                Some(idx) => &without_proto[..idx],
+                None => without_proto,
+            };
+
+            if host.contains("backblazeb2.com") {
+                let parts: Vec<&str> = host.split('.').collect();
+                if parts.len() >= 4 && parts[0] == "s3" {
+                    return Some(parts[1].to_string());
+                } else if parts.len() >= 5 && parts[1] == "s3" {
+                    return Some(parts[2].to_string());
+                }
+            }
+            None
+        };
+
+        let lines: Vec<&str> = text
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
+
+        for line in &lines {
+            let (key_part, val_part) = if let Some(pos) = line.find(['=', ':']) {
+                let k = line[..pos].trim().to_ascii_lowercase();
+                let v = line[pos + 1..].trim();
+                (Some(k), Some(v))
+            } else {
+                (None, None)
+            };
+
+            if let (Some(k), Some(v)) = (&key_part, val_part) {
+                let cleaned = clean_val(v);
+                if (k.contains("keyid") || k.contains("key_id") || k.contains("key id"))
+                    && !cleaned.is_empty()
+                {
+                    key_id = Some(cleaned.clone());
+                } else if (k.contains("applicationkey")
+                    || k.contains("application_key")
+                    || k.contains("application key")
+                    || k.contains("appkey")
+                    || k.contains("app_key")
+                    || k.contains("app key"))
+                    && !cleaned.is_empty()
+                {
+                    app_key = Some(cleaned.clone());
+                } else if k.contains("region") && !cleaned.is_empty() {
+                    region = Some(cleaned.clone());
+                } else if k.contains("bucket") && !cleaned.is_empty() {
+                    bucket = Some(cleaned.clone());
+                }
+            }
+
+            for word in line.split_whitespace() {
+                let cleaned = clean_val(word);
+                if cleaned.contains("backblazeb2.com")
+                    && region.is_none()
+                    && let Some(r) = parse_b2_url(&cleaned)
+                {
+                    region = Some(r);
+                }
+                if key_id.is_none()
+                    && cleaned.len() == 25
+                    && cleaned.chars().all(|c| c.is_ascii_alphanumeric())
+                    && cleaned.starts_with("00")
+                {
+                    key_id = Some(cleaned.clone());
+                }
+                if app_key.is_none()
+                    && cleaned.len() == 31
+                    && cleaned.chars().all(|c| c.is_ascii_alphanumeric())
+                    && cleaned.starts_with('K')
+                {
+                    app_key = Some(cleaned.clone());
+                }
+            }
+        }
+
+        match (key_id, app_key) {
+            (Some(k), Some(a)) => {
+                let k = clean_val(&k);
+                let a = clean_val(&a);
+                if !k.is_empty() && !a.is_empty() {
+                    let r = region
+                        .map(|r| clean_val(&r))
+                        .filter(|r| !r.is_empty())
+                        .unwrap_or_else(|| "us-west-004".to_string());
+                    let b = bucket.map(|b| clean_val(&b)).filter(|b| !b.is_empty());
+                    Some((r, k, a, b))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1274,5 +1611,97 @@ admin,AKIAI44QH8DHBEXAMPLE,je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY"#;
         // 5. 缺失必需凭据应返回 None
         let text_missing = "region = us-west-2\naws_access_key_id = AKIAIOSFODNN7EXAMPLE\n";
         assert!(XdriveConfig::extract_aws_s3_tokens(text_missing).is_none());
+    }
+
+    #[test]
+    fn test_new_oracle_cloud_s3() {
+        let config = XdriveConfig::new_oracle_cloud_s3(
+            "ax1234567890",
+            "ap-chuncheon-1",
+            "my-oracle-bucket",
+            "my_access_key",
+            "my_secret_key",
+            "xray-folder",
+        );
+        assert_eq!(config.service, XdriveService::S3);
+        assert_eq!(config.remote_folder, "xray-folder");
+        assert_eq!(config.secrets, vec!["my_access_key", "my_secret_key"]);
+        let s3 = config.s3.expect("s3 config must be set");
+        assert_eq!(
+            s3.endpoint,
+            "https://ax1234567890.compat.objectstorage.ap-chuncheon-1.oraclecloud.com"
+        );
+        assert_eq!(s3.region, "ap-chuncheon-1");
+        assert_eq!(s3.bucket, "my-oracle-bucket");
+        assert!(s3.path_style);
+    }
+
+    #[test]
+    fn test_new_backblaze_b2() {
+        let config = XdriveConfig::new_backblaze_b2(
+            "us-west-004",
+            "my-b2-bucket",
+            "004a1b2c3d4e5f60000000001",
+            "K004abcdef1234567890abcdef12345",
+            "b2-folder",
+        );
+        assert_eq!(config.service, XdriveService::S3);
+        assert_eq!(config.remote_folder, "b2-folder");
+        assert_eq!(
+            config.secrets,
+            vec![
+                "004a1b2c3d4e5f60000000001",
+                "K004abcdef1234567890abcdef12345"
+            ]
+        );
+        let s3 = config.s3.expect("s3 config must be set");
+        assert_eq!(s3.endpoint, "https://s3.us-west-004.backblazeb2.com");
+        assert_eq!(s3.region, "us-west-004");
+        assert_eq!(s3.bucket, "my-b2-bucket");
+        assert!(!s3.path_style);
+    }
+
+    #[test]
+    fn test_extract_oracle_cloud_tokens() {
+        let text_ini = r#"
+[DEFAULT]
+user=ocid1.user.oc1..aaaaaaaaxxx
+fingerprint=aa:bb:cc:dd
+key_file=~/.oci/oci_api_key.pem
+tenancy=ocid1.tenancy.oc1..aaaaaaaayyy
+region=ap-chuncheon-1
+namespace=ax1234567890
+access_key_id=my_oci_access_key
+secret_access_key=my_oci_secret_key
+bucket=my-backup-bucket
+"#;
+        let (ns, region, ak, sk, bucket) =
+            XdriveConfig::extract_oracle_cloud_tokens(text_ini).expect("OCI parse failed");
+        assert_eq!(ns, "ax1234567890");
+        assert_eq!(region, "ap-chuncheon-1");
+        assert_eq!(ak, "my_oci_access_key");
+        assert_eq!(sk, "my_oci_secret_key");
+        assert_eq!(bucket, Some("my-backup-bucket".to_string()));
+
+        // Also test endpoint URL parsing
+        let text_url = "Endpoint: https://mytestns.compat.objectstorage.ap-tokyo-1.oraclecloud.com/v1/bucket/mybucket\nAK: test_ak\nSK: test_sk";
+        let (ns, region, ak, sk, bucket) =
+            XdriveConfig::extract_oracle_cloud_tokens(text_url).expect("OCI URL parse failed");
+        assert_eq!(ns, "mytestns");
+        assert_eq!(region, "ap-tokyo-1");
+        assert_eq!(ak, "test_ak");
+        assert_eq!(sk, "test_sk");
+        assert_eq!(bucket, Some("mybucket".to_string()));
+    }
+
+    #[test]
+    fn test_extract_backblaze_b2_tokens() {
+        let text = "keyID: 004a1b2c3d4e5f60000000001\napplicationKey: K004abcdef1234567890abcdef12345\nEndpoint: s3.us-west-004.backblazeb2.com\nBucket: my-b2-vault";
+        let (region, key_id, app_key, bucket) =
+            XdriveConfig::extract_backblaze_b2_tokens(text).expect("B2 parse failed");
+        assert_eq!(region, "us-west-004");
+        assert_eq!(key_id, "004a1b2c3d4e5f60000000001");
+        assert_eq!(app_key, "K004abcdef1234567890abcdef12345");
+        assert_eq!(bucket, Some("my-b2-vault".to_string()));
     }
 }
