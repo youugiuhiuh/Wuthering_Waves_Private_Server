@@ -533,36 +533,20 @@ async fn handle_batch_menu(event: &CallbackEvent) -> HandlerResult {
 async fn handle_xdrive_menu(event: &CallbackEvent) -> HandlerResult {
     let rows = vec![
         vec![InlineButton {
-            text: t!("xray.xdrive_btn_r2").into(),
-            data: "u_xdrive_p:r2".into(),
+            text: t!("xray.xdrive_region_cn").into(),
+            data: "u_xdrive_r:cn".into(),
         }],
         vec![InlineButton {
-            text: t!("xray.xdrive_btn_onedrive").into(),
-            data: "u_xdrive_p:onedrive".into(),
+            text: t!("xray.xdrive_region_ru").into(),
+            data: "u_xdrive_r:ru".into(),
         }],
         vec![InlineButton {
-            text: t!("xray.xdrive_btn_gdrive").into(),
-            data: "u_xdrive_p:gdrive".into(),
+            text: t!("xray.xdrive_region_ir").into(),
+            data: "u_xdrive_r:ir".into(),
         }],
         vec![InlineButton {
-            text: t!("xray.xdrive_btn_aws").into(),
-            data: "u_xdrive_p:aws".into(),
-        }],
-        vec![InlineButton {
-            text: t!("xray.xdrive_btn_oracle").into(),
-            data: "u_xdrive_p:oracle".into(),
-        }],
-        vec![InlineButton {
-            text: t!("xray.xdrive_btn_b2").into(),
-            data: "u_xdrive_p:b2".into(),
-        }],
-        vec![InlineButton {
-            text: t!("xray.xdrive_btn_yandex").into(),
-            data: "u_xdrive_p:yandex".into(),
-        }],
-        vec![InlineButton {
-            text: t!("xray.xdrive_btn_arvan").into(),
-            data: "u_xdrive_p:arvan".into(),
+            text: t!("xray.xdrive_region_global").into(),
+            data: "u_xdrive_r:global".into(),
         }],
         vec![InlineButton {
             text: t!("xray.xdrive_btn_custom_s3").into(),
@@ -582,6 +566,98 @@ async fn handle_xdrive_menu(event: &CallbackEvent) -> HandlerResult {
             MessageContent {
                 text: t!("xray.xdrive_menu_title").into_owned(),
                 markup: Some(Markup { buttons: rows }),
+            },
+        )
+        .await?;
+
+    Ok(HandlerAction::Done)
+}
+
+async fn handle_xdrive_region_submenu(event: &CallbackEvent, region: &str) -> HandlerResult {
+    let (title, buttons) = match region {
+        "cn" => (
+            t!("xray.xdrive_submenu_cn_title"),
+            vec![
+                vec![InlineButton {
+                    text: t!("xray.xdrive_btn_r2").into(),
+                    data: "u_xdrive_p:r2".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("xray.xdrive_btn_b2").into(),
+                    data: "u_xdrive_p:b2".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("xray.xdrive_btn_onedrive").into(),
+                    data: "u_xdrive_p:onedrive".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("xray.xdrive_back_to_regions").into(),
+                    data: "u_xdrive_r:menu".into(),
+                }],
+            ],
+        ),
+        "ru" => (
+            t!("xray.xdrive_submenu_ru_title"),
+            vec![
+                vec![InlineButton {
+                    text: t!("xray.xdrive_btn_yandex").into(),
+                    data: "u_xdrive_p:yandex".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("xray.xdrive_btn_gdrive").into(),
+                    data: "u_xdrive_p:gdrive".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("xray.xdrive_back_to_regions").into(),
+                    data: "u_xdrive_r:menu".into(),
+                }],
+            ],
+        ),
+        "ir" => (
+            t!("xray.xdrive_submenu_ir_title"),
+            vec![
+                vec![InlineButton {
+                    text: t!("xray.xdrive_btn_arvan").into(),
+                    data: "u_xdrive_p:arvan".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("xray.xdrive_btn_gdrive").into(),
+                    data: "u_xdrive_p:gdrive".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("xray.xdrive_back_to_regions").into(),
+                    data: "u_xdrive_r:menu".into(),
+                }],
+            ],
+        ),
+        "global" => (
+            t!("xray.xdrive_submenu_global_title"),
+            vec![
+                vec![InlineButton {
+                    text: t!("xray.xdrive_btn_aws").into(),
+                    data: "u_xdrive_p:aws".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("xray.xdrive_btn_oracle").into(),
+                    data: "u_xdrive_p:oracle".into(),
+                }],
+                vec![InlineButton {
+                    text: t!("xray.xdrive_back_to_regions").into(),
+                    data: "u_xdrive_r:menu".into(),
+                }],
+            ],
+        ),
+        _ => return handle_xdrive_menu(event).await,
+    };
+
+    event
+        .adapter
+        .edit_message(
+            &event.target,
+            &event.msg_id,
+            MessageContent {
+                text: title.into_owned(),
+                markup: Some(Markup { buttons }),
             },
         )
         .await?;
@@ -3380,15 +3456,12 @@ pub async fn handle(event: &CallbackEvent, state: &AppState) -> HandlerResult {
             handle_xdrive_provider_prompt(event, state, provider).await
         }
         d if d.starts_with("u_xdrive_r:") => {
-            let region = d.strip_prefix("u_xdrive_r:").unwrap_or("ru");
-            let provider = match region {
-                "cn" => "r2",
-                "ru" => "yandex",
-                "ir" => "arvan",
-                "custom" => "s3",
-                other => other,
-            };
-            handle_xdrive_provider_prompt(event, state, provider).await
+            let region = d.strip_prefix("u_xdrive_r:").unwrap_or("menu");
+            if region == "menu" {
+                handle_xdrive_menu(event).await
+            } else {
+                handle_xdrive_region_submenu(event, region).await
+            }
         }
         "m_pq_mgmt" => handle_pq_mgmt(event).await,
         "m_pq_del" => handle_pq_del(event).await,
@@ -3955,7 +4028,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_xdrive_menu_renders_six_providers() {
+    async fn test_xdrive_region_menu_renders_regions() {
         let adapter = Arc::new(XdriveMockAdapter::default());
         let event = CallbackEvent {
             adapter: adapter.clone(),
@@ -3974,18 +4047,133 @@ mod tests {
         assert_eq!(
             buttons,
             vec![
-                "u_xdrive_p:r2",
-                "u_xdrive_p:onedrive",
-                "u_xdrive_p:gdrive",
-                "u_xdrive_p:aws",
-                "u_xdrive_p:oracle",
-                "u_xdrive_p:b2",
-                "u_xdrive_p:yandex",
-                "u_xdrive_p:arvan",
+                "u_xdrive_r:cn",
+                "u_xdrive_r:ru",
+                "u_xdrive_r:ir",
+                "u_xdrive_r:global",
                 "u_xdrive_p:s3",
                 "m_batch_menu",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_region_submenus() {
+        let test_cases = [
+            (
+                "cn",
+                vec![
+                    "u_xdrive_p:r2",
+                    "u_xdrive_p:b2",
+                    "u_xdrive_p:onedrive",
+                    "u_xdrive_r:menu",
+                ],
+            ),
+            (
+                "ru",
+                vec!["u_xdrive_p:yandex", "u_xdrive_p:gdrive", "u_xdrive_r:menu"],
+            ),
+            (
+                "ir",
+                vec!["u_xdrive_p:arvan", "u_xdrive_p:gdrive", "u_xdrive_r:menu"],
+            ),
+            (
+                "global",
+                vec!["u_xdrive_p:aws", "u_xdrive_p:oracle", "u_xdrive_r:menu"],
+            ),
+        ];
+
+        for (region, expected_buttons) in test_cases {
+            let adapter = Arc::new(XdriveMockAdapter::default());
+            let event = CallbackEvent {
+                adapter: adapter.clone(),
+                target: TargetId("42".into()),
+                user_id: "42".into(),
+                msg_id: MessageId("100".into()),
+                data: format!("u_xdrive_r:{region}"),
+                callback_id: "cb_1".into(),
+                session_timeout_secs: 60,
+            };
+
+            let res = handle_xdrive_region_submenu(&event, region).await.unwrap();
+            assert_eq!(res, HandlerAction::Done);
+
+            let buttons = adapter.button_data.lock().unwrap().clone();
+            assert_eq!(
+                buttons, expected_buttons,
+                "Failed assertion for region: {region}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_region_callback_routing() {
+        let test_cases = [
+            (
+                "u_xdrive_r:cn",
+                vec![
+                    "u_xdrive_p:r2",
+                    "u_xdrive_p:b2",
+                    "u_xdrive_p:onedrive",
+                    "u_xdrive_r:menu",
+                ],
+            ),
+            (
+                "u_xdrive_r:ru",
+                vec!["u_xdrive_p:yandex", "u_xdrive_p:gdrive", "u_xdrive_r:menu"],
+            ),
+            (
+                "u_xdrive_r:ir",
+                vec!["u_xdrive_p:arvan", "u_xdrive_p:gdrive", "u_xdrive_r:menu"],
+            ),
+            (
+                "u_xdrive_r:global",
+                vec!["u_xdrive_p:aws", "u_xdrive_p:oracle", "u_xdrive_r:menu"],
+            ),
+            (
+                "u_xdrive_r:menu",
+                vec![
+                    "u_xdrive_r:cn",
+                    "u_xdrive_r:ru",
+                    "u_xdrive_r:ir",
+                    "u_xdrive_r:global",
+                    "u_xdrive_p:s3",
+                    "m_batch_menu",
+                ],
+            ),
+        ];
+
+        for (data, expected_buttons) in test_cases {
+            let adapter = Arc::new(XdriveMockAdapter::default());
+            let state = AppState::new(
+                Some(42),
+                None,
+                None,
+                Arc::new(NoopDestruct),
+                None,
+                60,
+                adapter.clone(),
+            );
+
+            let event = CallbackEvent {
+                adapter: adapter.clone(),
+                target: TargetId("user_routing".into()),
+                user_id: "42".into(),
+                msg_id: MessageId("100".into()),
+                data: data.into(),
+                callback_id: "cb_test".into(),
+                session_timeout_secs: 60,
+            };
+
+            let res = handle(&event, &state).await.unwrap();
+            assert_eq!(res, HandlerAction::Done);
+
+            let buttons = adapter.button_data.lock().unwrap().clone();
+            assert_eq!(
+                buttons, expected_buttons,
+                "Failed callback routing assertion for: {data}"
+            );
+        }
     }
 
     #[test]
@@ -4087,13 +4275,13 @@ mod tests {
         assert_eq!(session.region, "gdrive");
         assert_eq!(session.step, crate::app::state::XdriveWizardStep::FolderId);
 
-        // 2. Legacy callback: u_xdrive_r:cn -> maps to r2
+        // 2. Provider callback: r2
         let event_cn = CallbackEvent {
             adapter: adapter.clone(),
             target: TargetId("user_cn".into()),
             user_id: "42".into(),
             msg_id: MessageId("102".into()),
-            data: "u_xdrive_r:cn".into(),
+            data: "u_xdrive_p:r2".into(),
             callback_id: "cb_cn".into(),
             session_timeout_secs: 60,
         };
@@ -4104,13 +4292,13 @@ mod tests {
         assert_eq!(session.region, "r2");
         assert_eq!(session.step, crate::app::state::XdriveWizardStep::AccountId);
 
-        // 3. Legacy callback: u_xdrive_r:ru -> maps to yandex
+        // 3. Provider callback: yandex
         let event_ru = CallbackEvent {
             adapter: adapter.clone(),
             target: TargetId("user_ru".into()),
             user_id: "42".into(),
             msg_id: MessageId("103".into()),
-            data: "u_xdrive_r:ru".into(),
+            data: "u_xdrive_p:yandex".into(),
             callback_id: "cb_ru".into(),
             session_timeout_secs: 60,
         };
