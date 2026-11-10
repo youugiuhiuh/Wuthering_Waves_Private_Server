@@ -9,6 +9,8 @@ pub enum XdriveService {
     Local,
     #[serde(rename = "google-drive")]
     GoogleDrive,
+    #[serde(rename = "onedrive")]
+    OneDrive,
     #[serde(rename = "template")]
     Template,
 }
@@ -232,6 +234,35 @@ impl XdriveConfig {
         }
     }
 
+    /// 预设构建器：Microsoft OneDrive 国际版（遵循官方防 429 与限流指南调优参数）
+    pub fn new_onedrive(
+        client_id: &str,
+        client_secret: &str,
+        refresh_token: &str,
+        folder: &str,
+    ) -> Self {
+        Self {
+            service: XdriveService::OneDrive,
+            remote_folder: folder.to_string(),
+            secrets: if client_secret.is_empty() {
+                vec![client_id.to_string(), refresh_token.to_string()]
+            } else {
+                vec![
+                    client_id.to_string(),
+                    client_secret.to_string(),
+                    refresh_token.to_string(),
+                ]
+            },
+            s3: None,
+            segment_bytes: Some(524288),     // 512KB
+            flush_interval_ms: Some(10),     // 10ms
+            poll_interval_ms: Some(50),      // 50ms
+            max_poll_interval_ms: Some(300), // 300ms
+            eager_window_ms: Some(10000),    // 10s
+            concurrency: Some(8),            // 严格限制在 8 并发以防 429 限流
+        }
+    }
+
     /// 校验配置合法性（对齐 Xray-core transport/internet/xdrive/s3.go 规范）
     pub fn validate(&self) -> Result<()> {
         if self.remote_folder.trim().is_empty() {
@@ -271,6 +302,22 @@ impl XdriveConfig {
                 }
                 if self.secrets.iter().any(|s| s.trim().is_empty()) {
                     bail!("Google Drive Client ID, Client Secret 与 Refresh Token 均不能为空");
+                }
+                Ok(())
+            }
+            XdriveService::OneDrive => {
+                if self.s3.is_some() {
+                    bail!("OneDrive 服务模式不支持配置 s3 对象");
+                }
+                if self.secrets.len() < 2 {
+                    bail!(
+                        "OneDrive 密钥参数 secrets 数量必须至少为 2（Client ID, Refresh Token，或包含 Client Secret）"
+                    );
+                }
+                if self.secrets.iter().any(|s| s.trim().is_empty()) {
+                    bail!(
+                        "OneDrive 凭据参数（Client ID / Client Secret / Refresh Token）均不能为空"
+                    );
                 }
                 Ok(())
             }
@@ -1638,6 +1685,75 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
         // remote_folder 为空
         let config3 = XdriveConfig::new_google_drive("cid", "secret", "refresh", "   ");
         assert!(config3.validate().is_err());
+    }
+
+    #[test]
+    fn test_valid_onedrive_preset() {
+        let config = XdriveConfig::new_onedrive(
+            "client-id-123",
+            "client-secret-abc",
+            "refresh-token-xyz",
+            "/xray_tunnel",
+        );
+
+        assert_eq!(config.service, XdriveService::OneDrive);
+        assert_eq!(config.remote_folder, "/xray_tunnel");
+        assert_eq!(
+            config.secrets,
+            vec!["client-id-123", "client-secret-abc", "refresh-token-xyz"]
+        );
+        assert!(config.s3.is_none());
+        assert_eq!(config.segment_bytes, Some(524288));
+        assert_eq!(config.flush_interval_ms, Some(10));
+        assert_eq!(config.poll_interval_ms, Some(50));
+        assert_eq!(config.max_poll_interval_ms, Some(300));
+        assert_eq!(config.eager_window_ms, Some(10000));
+        assert_eq!(config.concurrency, Some(8));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_valid_onedrive_public_client() {
+        let config =
+            XdriveConfig::new_onedrive("public-client-id", "", "refresh-token-xyz", "/xray_tunnel");
+
+        assert_eq!(config.service, XdriveService::OneDrive);
+        assert_eq!(
+            config.secrets,
+            vec!["public-client-id", "refresh-token-xyz"]
+        );
+        assert_eq!(config.secrets.len(), 2);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_onedrive_validation_rejects_missing_secrets() {
+        // 少于 2 个凭据参数
+        let mut config = XdriveConfig::new_onedrive("cid", "secret", "refresh", "/tunnel");
+        config.secrets = vec!["cid".to_string()];
+        assert!(config.validate().is_err());
+
+        // 包含空/纯空白凭据
+        let config2 = XdriveConfig::new_onedrive("cid", "   ", "refresh", "/tunnel");
+        assert!(config2.validate().is_err());
+
+        let mut config3 = XdriveConfig::new_onedrive("cid", "", "refresh", "/tunnel");
+        config3.secrets[0] = "".to_string();
+        assert!(config3.validate().is_err());
+
+        // remote_folder 为空
+        let config4 = XdriveConfig::new_onedrive("cid", "secret", "refresh", "   ");
+        assert!(config4.validate().is_err());
+
+        // 配置了 S3 对象
+        let mut config5 = XdriveConfig::new_onedrive("cid", "secret", "refresh", "/tunnel");
+        config5.s3 = Some(S3Config {
+            endpoint: "https://example.com".to_string(),
+            region: "auto".to_string(),
+            bucket: "bucket".to_string(),
+            path_style: true,
+        });
+        assert!(config5.validate().is_err());
     }
 
     #[test]

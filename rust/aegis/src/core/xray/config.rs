@@ -748,11 +748,17 @@ impl ConfigManager {
                 "vless://{}@www.google.com:443?type=xdrive&service=google-drive&remoteFolder={}&encryption={}&security=tls&sni=www.google.com&alpn=h2&mux=true",
                 uuid, encoded_folder, encoded_encryption
             )
+        } else if xdrive.service == crate::core::xray::xdrive::XdriveService::OneDrive {
+            format!(
+                "vless://{}@graph.microsoft.com:443?type=xdrive&service=onedrive&remoteFolder={}&encryption={}&security=tls&sni=graph.microsoft.com&alpn=h2&mux=true",
+                uuid, encoded_folder, encoded_encryption
+            )
         } else {
             let service_str = match xdrive.service {
                 crate::core::xray::xdrive::XdriveService::S3 => "s3",
                 crate::core::xray::xdrive::XdriveService::Local => "local",
                 crate::core::xray::xdrive::XdriveService::GoogleDrive => "google-drive",
+                crate::core::xray::xdrive::XdriveService::OneDrive => "onedrive",
                 crate::core::xray::xdrive::XdriveService::Template => "template",
             };
 
@@ -1284,6 +1290,37 @@ mod tests {
         assert!(link.contains("encryption=x25519-secret-key"));
         assert!(link.contains("security=tls"));
         assert!(link.contains("sni=www.google.com"));
+        assert!(link.contains("alpn=h2"));
+        assert!(link.contains("mux=true"));
+        assert!(link.ends_with("#admin%40aegis"));
+    }
+
+    #[test]
+    fn test_generate_client_link_xdrive_onedrive() {
+        use crate::core::xray::xdrive::XdriveConfig;
+
+        let uuid = "test-uuid-onedrive";
+        let email = "admin@aegis";
+        let encryption = "x25519-secret-key";
+        let port = 10086;
+        let xdrive = XdriveConfig::new_onedrive(
+            "test-client-id",
+            "test-client-secret",
+            "test-refresh-token",
+            "/xray_tunnel",
+        );
+
+        let link =
+            ConfigManager::generate_xdrive_client_link(uuid, email, port, &xdrive, encryption);
+
+        assert!(link.contains("secrets=test-client-id,test-client-secret,test-refresh-token"));
+        assert!(link.contains("graph.microsoft.com:443"));
+        assert!(link.contains("type=xdrive"));
+        assert!(link.contains("service=onedrive"));
+        assert!(link.contains("remoteFolder=%2Fxray_tunnel"));
+        assert!(link.contains("encryption=x25519-secret-key"));
+        assert!(link.contains("security=tls"));
+        assert!(link.contains("sni=graph.microsoft.com"));
         assert!(link.contains("alpn=h2"));
         assert!(link.contains("mux=true"));
         assert!(link.ends_with("#admin%40aegis"));
