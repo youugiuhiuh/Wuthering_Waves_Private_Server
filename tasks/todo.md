@@ -5,7 +5,7 @@
   - Verify: `cargo test --package aegis --lib resources`
   - Files: `rust/aegis/src/resources/i18n/zh.yml`, `rust/aegis/src/resources/i18n/en.yml`, `rust/aegis/src/resources/i18n/ja.yml`
 
-- [ ] Task 2: TDD Red Phase — Unit Tests for Region Menu and Submenu in `xray.rs`
+- [x] Task 2: TDD Red Phase — Unit Tests for Region Menu and Submenu in `xray.rs`
   - Acceptance: 编写测试用例 `test_xdrive_region_menu_renders_regions`、`test_xdrive_region_submenus` 与回调路由测试；在未实施前运行应失败（RED）。
   - Verify: `cargo test --package aegis --lib shared::handlers::xray::tests::test_xdrive_region` (期望 FAIL)
   - Files: `rust/aegis/src/shared/handlers/xray.rs`
