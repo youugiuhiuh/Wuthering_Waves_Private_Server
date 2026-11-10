@@ -589,6 +589,11 @@ async fn handle_xdrive_menu(event: &CallbackEvent) -> HandlerResult {
     Ok(HandlerAction::Done)
 }
 
+#[allow(dead_code)]
+async fn handle_xdrive_region_submenu(_event: &CallbackEvent, _region: &str) -> HandlerResult {
+    Ok(HandlerAction::Done)
+}
+
 async fn handle_xdrive_provider_prompt(
     event: &CallbackEvent,
     state: &AppState,
@@ -3955,7 +3960,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_xdrive_menu_renders_six_providers() {
+    async fn test_xdrive_region_menu_renders_regions() {
         let adapter = Arc::new(XdriveMockAdapter::default());
         let event = CallbackEvent {
             adapter: adapter.clone(),
@@ -3974,18 +3979,133 @@ mod tests {
         assert_eq!(
             buttons,
             vec![
-                "u_xdrive_p:r2",
-                "u_xdrive_p:onedrive",
-                "u_xdrive_p:gdrive",
-                "u_xdrive_p:aws",
-                "u_xdrive_p:oracle",
-                "u_xdrive_p:b2",
-                "u_xdrive_p:yandex",
-                "u_xdrive_p:arvan",
+                "u_xdrive_r:cn",
+                "u_xdrive_r:ru",
+                "u_xdrive_r:ir",
+                "u_xdrive_r:global",
                 "u_xdrive_p:s3",
                 "m_batch_menu",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_region_submenus() {
+        let test_cases = [
+            (
+                "cn",
+                vec![
+                    "u_xdrive_p:r2",
+                    "u_xdrive_p:b2",
+                    "u_xdrive_p:onedrive",
+                    "u_xdrive_r:menu",
+                ],
+            ),
+            (
+                "ru",
+                vec!["u_xdrive_p:yandex", "u_xdrive_p:gdrive", "u_xdrive_r:menu"],
+            ),
+            (
+                "ir",
+                vec!["u_xdrive_p:arvan", "u_xdrive_p:gdrive", "u_xdrive_r:menu"],
+            ),
+            (
+                "global",
+                vec!["u_xdrive_p:aws", "u_xdrive_p:oracle", "u_xdrive_r:menu"],
+            ),
+        ];
+
+        for (region, expected_buttons) in test_cases {
+            let adapter = Arc::new(XdriveMockAdapter::default());
+            let event = CallbackEvent {
+                adapter: adapter.clone(),
+                target: TargetId("42".into()),
+                user_id: "42".into(),
+                msg_id: MessageId("100".into()),
+                data: format!("u_xdrive_r:{region}"),
+                callback_id: "cb_1".into(),
+                session_timeout_secs: 60,
+            };
+
+            let res = handle_xdrive_region_submenu(&event, region).await.unwrap();
+            assert_eq!(res, HandlerAction::Done);
+
+            let buttons = adapter.button_data.lock().unwrap().clone();
+            assert_eq!(
+                buttons, expected_buttons,
+                "Failed assertion for region: {region}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_region_callback_routing() {
+        let test_cases = [
+            (
+                "u_xdrive_r:cn",
+                vec![
+                    "u_xdrive_p:r2",
+                    "u_xdrive_p:b2",
+                    "u_xdrive_p:onedrive",
+                    "u_xdrive_r:menu",
+                ],
+            ),
+            (
+                "u_xdrive_r:ru",
+                vec!["u_xdrive_p:yandex", "u_xdrive_p:gdrive", "u_xdrive_r:menu"],
+            ),
+            (
+                "u_xdrive_r:ir",
+                vec!["u_xdrive_p:arvan", "u_xdrive_p:gdrive", "u_xdrive_r:menu"],
+            ),
+            (
+                "u_xdrive_r:global",
+                vec!["u_xdrive_p:aws", "u_xdrive_p:oracle", "u_xdrive_r:menu"],
+            ),
+            (
+                "u_xdrive_r:menu",
+                vec![
+                    "u_xdrive_r:cn",
+                    "u_xdrive_r:ru",
+                    "u_xdrive_r:ir",
+                    "u_xdrive_r:global",
+                    "u_xdrive_p:s3",
+                    "m_batch_menu",
+                ],
+            ),
+        ];
+
+        for (data, expected_buttons) in test_cases {
+            let adapter = Arc::new(XdriveMockAdapter::default());
+            let state = AppState::new(
+                Some(42),
+                None,
+                None,
+                Arc::new(NoopDestruct),
+                None,
+                60,
+                adapter.clone(),
+            );
+
+            let event = CallbackEvent {
+                adapter: adapter.clone(),
+                target: TargetId("user_routing".into()),
+                user_id: "42".into(),
+                msg_id: MessageId("100".into()),
+                data: data.into(),
+                callback_id: "cb_test".into(),
+                session_timeout_secs: 60,
+            };
+
+            let res = handle(&event, &state).await.unwrap();
+            assert_eq!(res, HandlerAction::Done);
+
+            let buttons = adapter.button_data.lock().unwrap().clone();
+            assert_eq!(
+                buttons, expected_buttons,
+                "Failed callback routing assertion for: {data}"
+            );
+        }
     }
 
     #[test]

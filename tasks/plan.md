@@ -19,23 +19,74 @@
 3. **测试驱动安全**:
    - 先行添加/更新测试断言验证红灯（RED），实施代码转绿（GREEN），代码精简重构（REFACTOR）。
 
-## Task List & Dependency Graph
+## Global Constraints
+- 严格保持 `u_xdrive_p:<provider>` 路由行为和入参向导流程完全不变。
+- zh/en/ja 语言包必须完整补齐，不能遗漏任何语言文件。
+- 全部测试必须通过：`cargo test`、`cargo clippy`、`cargo fmt`。
 
-```
-Task 1: i18n 多语言文案 (zh/en/ja)
-    │
-    ▼
-Task 2: TDD 编写菜单渲染与路由单元测试 (RED)
-    │
-    ▼
-Task 3: 实施一级地区菜单与二级子菜单及路由分发 (GREEN & REFACTOR)
-    │
-    ▼
-Task 4: 全量质量门禁与集成测试验证
-```
+## Task 1: i18n Localization Keys in zh.yml, en.yml, ja.yml
+**Description:** 在 `zh.yml`、`en.yml`、`ja.yml` 中新增地区入口按钮文案、二级子菜单标题文案以及返回地区菜单文案。
+- 地区按钮：`xdrive_region_cn`、`xdrive_region_ru`、`xdrive_region_ir`、`xdrive_region_global`
+- 子菜单标题：`xdrive_submenu_cn_title`、`xdrive_submenu_ru_title`、`xdrive_submenu_ir_title`、`xdrive_submenu_global_title`
+- 返回上一级按钮：`xdrive_back_to_regions` 或类似键值
 
-## Risks and Mitigations
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| 旧回调数据兼容性 | Low | 保留所有 `u_xdrive_p:` 与原有取消逻辑；`u_xdrive_menu` 仍指向一级菜单 |
-| 多语言缺失导致运行期报错 | Med | 三语文件同步添加对应键值，并有 i18n parity 单元测试保障 |
+**Acceptance criteria:**
+- `zh.yml`, `en.yml`, `ja.yml` 均包含全部新增键值，翻译地道准确。
+- 语言包键值对齐测试通过。
+
+**Verification:**
+- `cargo test --package aegis --lib resources`
+
+**Files:**
+- `rust/aegis/src/resources/i18n/zh.yml`
+- `rust/aegis/src/resources/i18n/en.yml`
+- `rust/aegis/src/resources/i18n/ja.yml`
+
+## Task 2: TDD Red Phase — Unit Tests for Region Menu and Submenu in xray.rs
+**Description:** 在 `rust/aegis/src/shared/handlers/xray.rs` 的测试模块中编写针对一级地区菜单和二级子菜单的断言用例。
+- 编写 `test_xdrive_region_menu_renders_regions`，验证渲染 5 个主按钮（CN/RU/IR/Global/S3）和 1 个返回按钮。
+- 编写 `test_xdrive_region_submenus`，分别测试 `cn`, `ru`, `ir`, `global` 渲染对应的存储提供商与返回上一级按钮。
+- 编写回调路由测试，测试 `u_xdrive_r:cn` 等路由行为。
+- 执行测试，验证在新功能实施前测试用例呈红灯（RED）。
+
+**Acceptance criteria:**
+- 完整包含一级菜单与四个二级子菜单的测试用例。
+- 运行测试期望失败（RED），证明测试用例有效且非假阳性。
+
+**Verification:**
+- `cargo test --package aegis --lib shared::handlers::xray::tests::test_xdrive_region` (FAIL)
+
+**Files:**
+- `rust/aegis/src/shared/handlers/xray.rs`
+
+## Task 3: Green & Refactor Phase — Implement Region Menu & Submenu Navigation in xray.rs
+**Description:** 实施一级地区菜单和二级子菜单的渲染与事件分发。
+- 重构 `handle_xdrive_menu` 为一级地区专区选择菜单（CN/RU/IR/Global/S3/返回）。
+- 新增 `handle_xdrive_region_submenu(event: &CallbackEvent, region: &str) -> HandlerResult` 渲染对应地区的存储提供商。
+- 在 `handle()` 的 callback 分发中，匹配 `u_xdrive_r:menu` 回退一级菜单，匹配 `u_xdrive_r:cn` / `ru` / `ir` / `global` 进入子菜单，原有 `u_xdrive_cancel` 取消后返回一级菜单。
+- 运行测试用例全部转绿（GREEN），进行格式化和代码精简（REFACTOR）。
+
+**Acceptance criteria:**
+- Task 2 编写的所有测试用例 100% 绿灯。
+- 原有 XDRIVE 相关测试不退化。
+
+**Verification:**
+- `cargo test --package aegis --lib shared::handlers::xray::tests`
+
+**Files:**
+- `rust/aegis/src/shared/handlers/xray.rs`
+
+## Task 4: Full Quality Gates & Clean Baseline Verification
+**Description:** 执行全量质量门禁检查和集成测试。
+- 执行 `cargo fmt --check`
+- 执行 `cargo clippy --workspace --all-targets -- -D warnings`
+- 执行 `cargo nextest run` 全量测试验证
+
+**Acceptance criteria:**
+- 格式、Clippy、Nextest 全量无警告无报错。
+
+**Verification:**
+- `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo nextest run`
+
+**Files:**
+- All workspace files
