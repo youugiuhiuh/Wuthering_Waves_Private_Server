@@ -31,6 +31,9 @@ pub enum Proto {
 #[derive(Debug, Clone)]
 pub struct ConfigManager;
 
+/// Xray Inbound 构建器类型别名（方便集成与测试引用）
+pub type XrayInbound = ConfigManager;
+
 const XHTTP_PATH_BASES: &[&str] = &[
     "/events",
     "/event-stream",
@@ -502,6 +505,17 @@ impl ConfigManager {
         xdrive: &crate::core::xray::xdrive::XdriveConfig,
         decryption_key: &str,
     ) -> Value {
+        let mut xdrive_settings = serde_json::to_value(xdrive).unwrap_or(json!({}));
+        if xdrive.service == crate::core::xray::xdrive::XdriveService::OneDrive
+            && let Some(map) = xdrive_settings.as_object_mut()
+        {
+            map.insert("service".to_string(), json!("template"));
+            map.insert(
+                "template".to_string(),
+                xdrive.generate_onedrive_template_value(),
+            );
+        }
+
         json!({
             "tag": tag,
             "listen": "127.0.0.1",
@@ -517,9 +531,21 @@ impl ConfigManager {
             },
             "streamSettings": {
                 "network": "xdrive",
-                "xdriveSettings": serde_json::to_value(xdrive).unwrap_or(json!({}))
+                "xdriveSettings": xdrive_settings
             }
         })
+    }
+
+    /// 便捷别名：构建 XDRIVE 入站配置（对齐 `XrayInbound::build_xdrive_inbound` 规范）
+    pub fn build_xdrive_inbound(
+        tag: &str,
+        uuid: &str,
+        email: &str,
+        port: u16,
+        xdrive: &crate::core::xray::xdrive::XdriveConfig,
+        decryption_key: &str,
+    ) -> Value {
+        Self::build_xdrive_vless_inbound(tag, uuid, email, port, xdrive, decryption_key)
     }
 
     pub(crate) fn resolve_public_hosts(
@@ -1303,7 +1329,7 @@ mod tests {
         let email = "admin@aegis";
         let encryption = "x25519-secret-key";
         let port = 10086;
-        let xdrive = XdriveConfig::new_onedrive(
+        let xdrive = XdriveConfig::new_onedrive_custom(
             "test-client-id",
             "test-client-secret",
             "test-refresh-token",
@@ -1317,13 +1343,83 @@ mod tests {
         assert!(link.contains("graph.microsoft.com:443"));
         assert!(link.contains("type=xdrive"));
         assert!(link.contains("service=onedrive"));
-        assert!(link.contains("remoteFolder=%2Fxray_tunnel"));
+        assert!(link.contains("remoteFolder=xray_tunnel"));
         assert!(link.contains("encryption=x25519-secret-key"));
         assert!(link.contains("security=tls"));
         assert!(link.contains("sni=graph.microsoft.com"));
         assert!(link.contains("alpn=h2"));
         assert!(link.contains("mux=true"));
         assert!(link.ends_with("#admin%40aegis"));
+    }
+
+    #[test]
+    fn test_build_xdrive_vless_inbound_onedrive_template() {
+        use crate::core::xray::xdrive::XdriveConfig;
+
+        let tag = "inbound-vless-onedrive";
+        let uuid = "test-uuid-onedrive-1234";
+        let email = "onedrive@aegis";
+        let decryption = "test-decryption-key";
+        let port = 10087;
+        let xdrive = XdriveConfig::new_onedrive_custom(
+            "test-client-id",
+            "test-client-secret",
+            "test-refresh-token",
+            "/xray_tunnel",
+        );
+
+        let inbound =
+            ConfigManager::build_xdrive_vless_inbound(tag, uuid, email, port, &xdrive, decryption);
+
+        // 基础网络与协议断言
+        assert_eq!(inbound["listen"], "127.0.0.1");
+        assert_eq!(inbound["port"], 10087);
+        assert_eq!(inbound["protocol"], "vless");
+        assert_eq!(inbound["settings"]["decryption"], "test-decryption-key");
+        assert_eq!(
+            inbound["settings"]["clients"][0]["id"],
+            "test-uuid-onedrive-1234"
+        );
+        assert_eq!(inbound["streamSettings"]["network"], "xdrive");
+
+        let xdrive_settings = &inbound["streamSettings"]["xdriveSettings"];
+        assert_eq!(
+            xdrive_settings["service"], "template",
+            "OneDrive 必须转换为 Xray template 服务"
+        );
+        assert_eq!(xdrive_settings["remoteFolder"], "xray_tunnel");
+        assert_eq!(
+            xdrive_settings["secrets"],
+            json!(["test-client-id", "test-client-secret", "test-refresh-token"])
+        );
+        assert_eq!(xdrive_settings["segmentBytes"], 65536);
+        assert_eq!(xdrive_settings["flushIntervalMs"], 80);
+        assert_eq!(xdrive_settings["pollIntervalMs"], 200);
+        assert_eq!(xdrive_settings["maxPollIntervalMs"], 1200);
+        assert_eq!(xdrive_settings["concurrency"], 4);
+
+        // 验证 template 字段及其核心结构
+        let template = &xdrive_settings["template"];
+        assert_eq!(template["flatten"], true, "template.flatten 必须为 true");
+        assert_eq!(
+            template["auth"]["tokenUrl"],
+            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+            "template.auth.tokenUrl 必须为微软 OAuth 端点"
+        );
+        let names_regex = template["list"]["namesRegex"].as_str().unwrap();
+        assert!(
+            names_regex.contains("([^\"]+)"),
+            "template.list.namesRegex 必须包含捕获组"
+        );
+
+        // 验证 VLESS 分享链接生成正常
+        let link = ConfigManager::generate_xdrive_client_link(uuid, email, port, &xdrive, "none");
+        assert!(link.starts_with("vless://test-uuid-onedrive-1234@graph.microsoft.com:443?"));
+        assert!(link.contains("type=xdrive"));
+        assert!(link.contains("service=onedrive"));
+        assert!(link.contains("remoteFolder=xray_tunnel"));
+        assert!(link.contains("secrets=test-client-id,test-client-secret,test-refresh-token"));
+        assert!(link.ends_with("#onedrive%40aegis"));
     }
 
     #[test]

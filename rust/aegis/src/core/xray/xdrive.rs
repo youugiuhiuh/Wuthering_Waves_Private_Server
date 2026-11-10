@@ -1,6 +1,13 @@
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
+pub use crate::shared::handlers::message::extract_onedrive_tokens;
+
+/// rclone 默认公开 Client ID（适用于个人免费版 OneDrive）
+pub const ONEDRIVE_DEFAULT_CLIENT_ID: &str = "b15665d9-eda6-4092-8539-0eec376afd59";
+/// rclone 默认公开 Client Secret（解密值）
+pub const ONEDRIVE_DEFAULT_CLIENT_SECRET: &str = "qtyfaBBYA403=unZUP40~_#";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum XdriveService {
     #[serde(rename = "s3")]
@@ -273,8 +280,18 @@ impl XdriveConfig {
         }
     }
 
-    /// 预设构建器：Microsoft OneDrive 国际版（遵循官方防 429 与限流指南调优参数）
-    pub fn new_onedrive(
+    /// 预设构建器：Microsoft OneDrive 个人版（自动装配公开凭证与经过验证的平衡流控参数）
+    pub fn new_onedrive(refresh_token: &str, folder: &str) -> Self {
+        Self::new_onedrive_custom(
+            ONEDRIVE_DEFAULT_CLIENT_ID,
+            ONEDRIVE_DEFAULT_CLIENT_SECRET,
+            refresh_token,
+            folder,
+        )
+    }
+
+    /// 支持自定义凭证的高级构建器
+    pub fn new_onedrive_custom(
         client_id: &str,
         client_secret: &str,
         refresh_token: &str,
@@ -282,24 +299,67 @@ impl XdriveConfig {
     ) -> Self {
         Self {
             service: XdriveService::OneDrive,
-            remote_folder: folder.to_string(),
-            secrets: if client_secret.is_empty() {
-                vec![client_id.to_string(), refresh_token.to_string()]
-            } else {
-                vec![
-                    client_id.to_string(),
-                    client_secret.to_string(),
-                    refresh_token.to_string(),
-                ]
-            },
+            remote_folder: folder.trim_matches('/').to_string(),
+            secrets: vec![
+                client_id.to_string(),
+                client_secret.to_string(),
+                refresh_token.to_string(),
+            ],
             s3: None,
-            segment_bytes: Some(524288),     // 512KB
-            flush_interval_ms: Some(10),     // 10ms
-            poll_interval_ms: Some(50),      // 50ms
-            max_poll_interval_ms: Some(300), // 300ms
-            eager_window_ms: Some(10000),    // 10s
-            concurrency: Some(8),            // 严格限制在 8 并发以防 429 限流
+            segment_bytes: Some(65536),       // 64KB 分片
+            flush_interval_ms: Some(80),      // 80ms 缓冲刷出
+            poll_interval_ms: Some(200),      // 200ms 轮询间隔（与公网 RTT 匹配）
+            max_poll_interval_ms: Some(1200), // 1200ms 空闲退避上限
+            eager_window_ms: Some(2000),      // 2s 积极轮询窗口
+            concurrency: Some(4),             // 4 并发读写槽（防 429 限流保护）
         }
+    }
+
+    /// 生成完整的 Microsoft Graph API XDRIVE Template JSON 对象
+    pub fn generate_onedrive_template_value(&self) -> serde_json::Value {
+        serde_json::json!({
+            "flatten": true,
+            "concurrency": self.concurrency.unwrap_or(4),
+            "auth": {
+                "type": "oauth2",
+                "tokenUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+                "form": {
+                    "client_id": "{secret0}",
+                    "client_secret": "{secret1}",
+                    "refresh_token": "{secret2}",
+                    "grant_type": "refresh_token"
+                },
+                "tokenPath": "access_token",
+                "expiryPath": "expires_in",
+                "header": {
+                    "Authorization": "Bearer {token}"
+                }
+            },
+            "put": {
+                "method": "PUT",
+                "url": "https://graph.microsoft.com/v1.0/me/drive/root:/{folder}/{name}:/content",
+                "headers": {
+                    "Content-Type": "application/octet-stream"
+                }
+            },
+            "get": {
+                "method": "GET",
+                "url": "https://graph.microsoft.com/v1.0/me/drive/root:/{folder}/{name}:/content"
+            },
+            "delete": {
+                "method": "DELETE",
+                "url": "https://graph.microsoft.com/v1.0/me/drive/root:/{folder}/{name}"
+            },
+            "list": {
+                "method": "GET",
+                "url": "https://graph.microsoft.com/v1.0/me/drive/root:/{folder}:/children?select=name",
+                "namesRegex": "\"name\"\\s*:\\s*\"([^\"]+)\""
+            },
+            "retry": {
+                "status": [429, 500, 502, 503, 504],
+                "rateReason": "error.code"
+            }
+        })
     }
 
     /// 校验配置合法性（对齐 Xray-core transport/internet/xdrive/s3.go 规范）
@@ -348,10 +408,8 @@ impl XdriveConfig {
                 if self.s3.is_some() {
                     bail!("OneDrive 服务模式不支持配置 s3 对象");
                 }
-                if self.secrets.len() < 2 {
-                    bail!(
-                        "OneDrive 密钥参数 secrets 数量必须至少为 2（Client ID, Refresh Token，或包含 Client Secret）"
-                    );
+                if self.secrets.is_empty() {
+                    bail!("OneDrive 密钥参数 secrets 不能为空（至少包含 Refresh Token）");
                 }
                 if self.secrets.iter().any(|s| s.trim().is_empty()) {
                     bail!(
@@ -1728,64 +1786,156 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
 
     #[test]
     fn test_valid_onedrive_preset() {
-        let config = XdriveConfig::new_onedrive(
-            "client-id-123",
-            "client-secret-abc",
-            "refresh-token-xyz",
-            "/xray_tunnel",
-        );
+        let config = XdriveConfig::new_onedrive("refresh-token-xyz", "/xray_tunnel");
 
         assert_eq!(config.service, XdriveService::OneDrive);
-        assert_eq!(config.remote_folder, "/xray_tunnel");
+        assert_eq!(config.remote_folder, "xray_tunnel");
         assert_eq!(
             config.secrets,
-            vec!["client-id-123", "client-secret-abc", "refresh-token-xyz"]
+            vec![
+                ONEDRIVE_DEFAULT_CLIENT_ID.to_string(),
+                ONEDRIVE_DEFAULT_CLIENT_SECRET.to_string(),
+                "refresh-token-xyz".to_string()
+            ]
         );
         assert!(config.s3.is_none());
-        assert_eq!(config.segment_bytes, Some(524288));
-        assert_eq!(config.flush_interval_ms, Some(10));
-        assert_eq!(config.poll_interval_ms, Some(50));
-        assert_eq!(config.max_poll_interval_ms, Some(300));
-        assert_eq!(config.eager_window_ms, Some(10000));
-        assert_eq!(config.concurrency, Some(8));
+        assert_eq!(config.segment_bytes, Some(65536));
+        assert_eq!(config.flush_interval_ms, Some(80));
+        assert_eq!(config.poll_interval_ms, Some(200));
+        assert_eq!(config.max_poll_interval_ms, Some(1200));
+        assert_eq!(config.eager_window_ms, Some(2000));
+        assert_eq!(config.concurrency, Some(4));
         assert!(config.validate().is_ok());
     }
 
     #[test]
-    fn test_valid_onedrive_public_client() {
-        let config =
-            XdriveConfig::new_onedrive("public-client-id", "", "refresh-token-xyz", "/xray_tunnel");
+    fn test_valid_onedrive_custom() {
+        let config = XdriveConfig::new_onedrive_custom(
+            "custom-client-id",
+            "custom-client-secret",
+            "refresh-token-xyz",
+            "/xray_tunnel/",
+        );
 
         assert_eq!(config.service, XdriveService::OneDrive);
+        assert_eq!(config.remote_folder, "xray_tunnel");
         assert_eq!(
             config.secrets,
-            vec!["public-client-id", "refresh-token-xyz"]
+            vec![
+                "custom-client-id".to_string(),
+                "custom-client-secret".to_string(),
+                "refresh-token-xyz".to_string(),
+            ]
         );
-        assert_eq!(config.secrets.len(), 2);
+        assert!(config.s3.is_none());
+        assert_eq!(config.segment_bytes, Some(65536));
+        assert_eq!(config.flush_interval_ms, Some(80));
+        assert_eq!(config.poll_interval_ms, Some(200));
+        assert_eq!(config.max_poll_interval_ms, Some(1200));
+        assert_eq!(config.eager_window_ms, Some(2000));
+        assert_eq!(config.concurrency, Some(4));
         assert!(config.validate().is_ok());
     }
 
     #[test]
-    fn test_onedrive_validation_rejects_missing_secrets() {
-        // 少于 2 个凭据参数
-        let mut config = XdriveConfig::new_onedrive("cid", "secret", "refresh", "/tunnel");
-        config.secrets = vec!["cid".to_string()];
+    fn test_onedrive_template_generation() {
+        let config = XdriveConfig::new_onedrive("refresh-token-xyz", "my_tunnel");
+        let template = config.generate_onedrive_template_value();
+
+        assert_eq!(template["flatten"], true);
+        assert_eq!(template["concurrency"], 4);
+        assert_eq!(template["auth"]["type"], "oauth2");
+        assert_eq!(
+            template["auth"]["tokenUrl"],
+            "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+        );
+        assert_eq!(template["auth"]["form"]["client_id"], "{secret0}");
+        assert_eq!(template["auth"]["form"]["client_secret"], "{secret1}");
+        assert_eq!(template["auth"]["form"]["refresh_token"], "{secret2}");
+        assert_eq!(template["auth"]["form"]["grant_type"], "refresh_token");
+        assert_eq!(template["auth"]["tokenPath"], "access_token");
+        assert_eq!(template["auth"]["expiryPath"], "expires_in");
+        assert_eq!(
+            template["auth"]["header"]["Authorization"],
+            "Bearer {token}"
+        );
+
+        assert_eq!(template["put"]["method"], "PUT");
+        assert_eq!(
+            template["put"]["url"],
+            "https://graph.microsoft.com/v1.0/me/drive/root:/{folder}/{name}:/content"
+        );
+        assert_eq!(
+            template["put"]["headers"]["Content-Type"],
+            "application/octet-stream"
+        );
+
+        assert_eq!(template["get"]["method"], "GET");
+        assert_eq!(
+            template["get"]["url"],
+            "https://graph.microsoft.com/v1.0/me/drive/root:/{folder}/{name}:/content"
+        );
+
+        assert_eq!(template["delete"]["method"], "DELETE");
+        assert_eq!(
+            template["delete"]["url"],
+            "https://graph.microsoft.com/v1.0/me/drive/root:/{folder}/{name}"
+        );
+
+        assert_eq!(template["list"]["method"], "GET");
+        assert_eq!(
+            template["list"]["url"],
+            "https://graph.microsoft.com/v1.0/me/drive/root:/{folder}:/children?select=name"
+        );
+        assert_eq!(
+            template["list"]["namesRegex"],
+            "\"name\"\\s*:\\s*\"([^\"]+)\""
+        );
+
+        assert_eq!(
+            template["retry"]["status"],
+            serde_json::json!([429, 500, 502, 503, 504])
+        );
+        assert_eq!(template["retry"]["rateReason"], "error.code");
+
+        // 测试并发覆盖
+        let mut custom_concurrency_config = config.clone();
+        custom_concurrency_config.concurrency = Some(16);
+        let custom_template = custom_concurrency_config.generate_onedrive_template_value();
+        assert_eq!(custom_template["concurrency"], 16);
+    }
+
+    #[test]
+    fn test_onedrive_validation_rules() {
+        // 正常情况：包含 refresh_token 即可通过
+        let mut config = XdriveConfig::new_onedrive("refresh", "/tunnel");
+        assert!(config.validate().is_ok());
+
+        // 单凭据（仅含有 refresh_token）允许通过
+        config.secrets = vec!["refresh-token-only".to_string()];
+        assert!(config.validate().is_ok());
+
+        // 空 secrets 列表拒绝
+        config.secrets = vec![];
         assert!(config.validate().is_err());
 
-        // 包含空/纯空白凭据
-        let config2 = XdriveConfig::new_onedrive("cid", "   ", "refresh", "/tunnel");
+        // 包含空/纯空白凭据拒绝
+        config.secrets = vec!["cid".to_string(), "   ".to_string(), "refresh".to_string()];
+        assert!(config.validate().is_err());
+
+        let mut config2 = XdriveConfig::new_onedrive("refresh", "/tunnel");
+        config2.secrets[0] = "".to_string();
         assert!(config2.validate().is_err());
 
-        let mut config3 = XdriveConfig::new_onedrive("cid", "", "refresh", "/tunnel");
-        config3.secrets[0] = "".to_string();
+        // remote_folder 为空拒绝
+        let config3 = XdriveConfig::new_onedrive("refresh", "   ");
         assert!(config3.validate().is_err());
 
-        // remote_folder 为空
-        let config4 = XdriveConfig::new_onedrive("cid", "secret", "refresh", "   ");
+        let config4 = XdriveConfig::new_onedrive("refresh", "///");
         assert!(config4.validate().is_err());
 
-        // 配置了 S3 对象
-        let mut config5 = XdriveConfig::new_onedrive("cid", "secret", "refresh", "/tunnel");
+        // 配置了 S3 对象拒绝
+        let mut config5 = XdriveConfig::new_onedrive("refresh", "/tunnel");
         config5.s3 = Some(S3Config {
             endpoint: "https://example.com".to_string(),
             region: "auto".to_string(),
