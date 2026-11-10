@@ -215,12 +215,12 @@ impl XdriveConfig {
                 bucket: bucket.to_string(),
                 path_style,
             }),
-            segment_bytes: Some(1024 * 1024),
-            poll_interval_ms: Some(1000), // 1000ms 保守防刷爆轮询（保护 B2 免费每日 2500 次限额）
-            max_poll_interval_ms: Some(8000), // 8000ms 空闲深度退避
-            flush_interval_ms: Some(200), // 200ms 批量写入
-            eager_window_ms: Some(1000),  // 1s 积极轮询窗口
-            concurrency: Some(2),         // 2 适度并发
+            segment_bytes: Some(512 * 1024),  // 512KB 黄金分片
+            poll_interval_ms: Some(500),      // 500ms 中度稳健轮询 (破2秒线，日调用安全)
+            max_poll_interval_ms: Some(3000), // 3000ms 最大退避
+            flush_interval_ms: Some(100),     // 100ms 快速刷出
+            eager_window_ms: Some(1500),      // 1.5s 积极轮询窗口
+            concurrency: Some(4),             // 4 并发读写槽 (实测吞吐提升至 2.35 Mbps)
         }
     }
 
@@ -2118,6 +2118,11 @@ admin,AKIAI44QH8DHBEXAMPLE,je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY"#;
         assert_eq!(s3.region, "us-west-004");
         assert_eq!(s3.bucket, "my-b2-bucket");
         assert!(!s3.path_style);
+        assert_eq!(config.segment_bytes, Some(512 * 1024));
+        assert_eq!(config.poll_interval_ms, Some(500));
+        assert_eq!(config.max_poll_interval_ms, Some(3000));
+        assert_eq!(config.flush_interval_ms, Some(100));
+        assert_eq!(config.concurrency, Some(4));
     }
 
     #[test]
