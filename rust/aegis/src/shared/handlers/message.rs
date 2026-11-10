@@ -741,6 +741,189 @@ async fn complete_xdrive_node(
     Ok(MessageAction::Handled)
 }
 
+/// 智能提取 Microsoft OneDrive 凭据（支持 JSON 或 Key-Value / 多行文本）
+/// 返回 (client_id, client_secret, refresh_token, folder_id)
+fn extract_onedrive_tokens(text: &str) -> Option<(String, String, String, Option<String>)> {
+    let mut client_id = None;
+    let mut client_secret = None;
+    let mut refresh_token = None;
+    let mut folder_id = None;
+
+    let clean_val = |raw: &str| -> String {
+        raw.trim()
+            .trim_matches(|c| c == '"' || c == '\'' || c == ',' || c == ';')
+            .trim()
+            .to_string()
+    };
+
+    // 1. JSON 格式支持
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+        if let Some(cid) = v
+            .get("client_id")
+            .or_else(|| v.get("clientId"))
+            .or_else(|| v.get("appId"))
+            .or_else(|| v.get("app_id"))
+            .and_then(|s| s.as_str())
+        {
+            client_id = Some(clean_val(cid));
+        }
+        if let Some(cs) = v
+            .get("client_secret")
+            .or_else(|| v.get("clientSecret"))
+            .or_else(|| v.get("secret"))
+            .and_then(|s| s.as_str())
+        {
+            let s = clean_val(cs);
+            if s == "-" || s.eq_ignore_ascii_case("none") {
+                client_secret = Some("".to_string());
+            } else {
+                client_secret = Some(s);
+            }
+        }
+        if let Some(rt) = v
+            .get("refresh_token")
+            .or_else(|| v.get("refreshToken"))
+            .or_else(|| v.get("token").and_then(|t| t.get("refresh_token")))
+            .and_then(|s| s.as_str())
+        {
+            refresh_token = Some(clean_val(rt));
+        }
+        if let Some(fid) = v
+            .get("folder")
+            .or_else(|| v.get("folder_id"))
+            .or_else(|| v.get("remote_folder"))
+            .and_then(|s| s.as_str())
+        {
+            folder_id = Some(clean_val(fid));
+        }
+    }
+
+    // 2. 逐行分析
+    let lines: Vec<&str> = text
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    for (i, line) in lines.iter().enumerate() {
+        let lower = line.to_ascii_lowercase();
+
+        let (key_part, val_part) = if let Some(pos) = line.find(['=', ':']) {
+            let k = line[..pos].trim().to_ascii_lowercase();
+            let v = line[pos + 1..].trim();
+            (Some(k), Some(v))
+        } else {
+            (None, None)
+        };
+
+        // Client ID 提取
+        if client_id.is_none() {
+            if let (Some(k), Some(v)) = (&key_part, val_part)
+                && (k.contains("client_id")
+                    || k.contains("client id")
+                    || k.contains("clientid")
+                    || k.contains("app_id")
+                    || k.contains("appid")
+                    || k.contains("客户端 id")
+                    || k.contains("客户端id")
+                    || k.contains("应用程序 id")
+                    || k.contains("应用程序id"))
+                && !v.is_empty()
+            {
+                client_id = Some(clean_val(v));
+            }
+            if client_id.is_none()
+                && (lower == "client id"
+                    || lower == "client_id"
+                    || lower == "app id"
+                    || lower == "appid"
+                    || lower == "客户端 id"
+                    || lower == "应用程序 id")
+                && let Some(next) = lines.get(i + 1)
+            {
+                client_id = Some(clean_val(next));
+            }
+        }
+
+        // Client Secret 提取
+        if client_secret.is_none() {
+            if let (Some(k), Some(v)) = (&key_part, val_part)
+                && (k.contains("client_secret")
+                    || k.contains("client secret")
+                    || k.contains("clientsecret")
+                    || k.contains("客户端密码")
+                    || k.contains("客户端密钥")
+                    || k.contains("客户端机密")
+                    || k == "secret")
+                && !v.is_empty()
+            {
+                let s = clean_val(v);
+                if s == "-" || s.eq_ignore_ascii_case("none") {
+                    client_secret = Some("".to_string());
+                } else {
+                    client_secret = Some(s);
+                }
+            }
+            if client_secret.is_none()
+                && (lower == "client secret"
+                    || lower == "client_secret"
+                    || lower == "客户端密码"
+                    || lower == "客户端密钥"
+                    || lower == "secret")
+                && let Some(next) = lines.get(i + 1)
+            {
+                let s = clean_val(next);
+                if s == "-" || s.eq_ignore_ascii_case("none") {
+                    client_secret = Some("".to_string());
+                } else {
+                    client_secret = Some(s);
+                }
+            }
+        }
+
+        // Refresh Token 提取
+        if refresh_token.is_none() {
+            if let (Some(k), Some(v)) = (&key_part, val_part)
+                && (k.contains("refresh_token")
+                    || k.contains("refresh token")
+                    || k.contains("refreshtoken")
+                    || k.contains("刷新令牌"))
+                && !v.is_empty()
+            {
+                refresh_token = Some(clean_val(v));
+            }
+            if refresh_token.is_none()
+                && (lower == "refresh token" || lower == "refresh_token" || lower == "刷新令牌")
+                && let Some(next) = lines.get(i + 1)
+            {
+                refresh_token = Some(clean_val(next));
+            }
+        }
+
+        // Folder 提取
+        if folder_id.is_none()
+            && let (Some(k), Some(v)) = (&key_part, val_part)
+            && (k.contains("folder")
+                || k.contains("remote_folder")
+                || k.contains("中转文件夹")
+                || k.contains("文件夹"))
+            && !v.is_empty()
+        {
+            folder_id = Some(clean_val(v));
+        }
+    }
+
+    match (client_id, refresh_token) {
+        (Some(cid), Some(rt)) if !cid.is_empty() && !rt.is_empty() => Some((
+            cid,
+            client_secret.unwrap_or_default(),
+            rt,
+            folder_id.filter(|f| !f.is_empty()),
+        )),
+        _ => None,
+    }
+}
+
 async fn handle_xdrive_wizard_input(
     adapter: &dyn BotAdapter,
     target: &TargetId,
@@ -812,10 +995,75 @@ async fn handle_xdrive_wizard_input(
         return Ok(MessageAction::Handled);
     }
 
-    // Google Drive 全文凭据智能提取（支持 playground URL、JSON 或 client_id + refresh_token 文本）
+    // Microsoft OneDrive 全文凭据智能提取（支持 JSON 或 client_id + refresh_token 文本）
     let raw_lower = raw_input.to_ascii_lowercase();
-    let is_gdrive_tokens = raw_lower.contains("developers.google.com/oauthplayground")
-        || (raw_lower.contains("client_id") && raw_lower.contains("refresh_token"));
+    let is_onedrive_explicit = raw_lower.contains("login.microsoftonline.com")
+        || raw_lower.contains("graph.microsoft.com")
+        || raw_lower.contains("onedrive")
+        || ((raw_lower.contains("microsoft")
+            || raw_lower.contains("azure")
+            || raw_lower.contains("entra"))
+            && (raw_lower.contains("client_id") || raw_lower.contains("appid"))
+            && raw_lower.contains("refresh_token"));
+    let is_onedrive_session = session.region == "onedrive"
+        && (raw_lower.contains("client_id")
+            || raw_lower.contains("appid")
+            || raw_lower.contains("clientid"))
+        && (raw_lower.contains("refresh_token") || raw_lower.contains("refreshtoken"));
+    let is_onedrive_tokens = is_onedrive_explicit || is_onedrive_session;
+
+    if is_onedrive_tokens
+        && let Some((cid, sec, ref_tok, opt_folder)) = extract_onedrive_tokens(raw_input)
+    {
+        session.region = "onedrive".to_string();
+        session.client_id = Some(cid.clone());
+        session.client_secret = Some(sec.clone());
+        session.refresh_token = Some(ref_tok.clone());
+        if let Some(folder) = opt_folder {
+            session.folder_id = Some(folder.clone());
+            let cfg = XdriveConfig::new_onedrive(&cid, &sec, &ref_tok, &folder);
+            return complete_xdrive_node(adapter, target, state, &session, &cfg, cancel_markup)
+                .await;
+        } else {
+            session.step = XdriveWizardStep::FolderId;
+            state.update_xdrive_wizard(&target.0, session).await;
+
+            let masked_sk = if sec.is_empty() {
+                "-".to_string()
+            } else if sec.len() > 8 {
+                format!("{}...", &sec[..8])
+            } else {
+                "***".to_string()
+            };
+            let masked_rf = if ref_tok.len() > 12 {
+                format!("{}...", &ref_tok[..12])
+            } else {
+                "***".to_string()
+            };
+            adapter
+                .send_message(
+                    target,
+                    MessageContent {
+                        text: t!(
+                            "xray.xdrive_onedrive_auto_detected",
+                            "0" => cid,
+                            "1" => masked_sk,
+                            "2" => masked_rf
+                        )
+                        .to_string(),
+                        markup: cancel_markup,
+                    },
+                )
+                .await?;
+            return Ok(MessageAction::Handled);
+        }
+    }
+
+    // Google Drive 全文凭据智能提取（支持 playground URL、JSON 或 client_id + refresh_token 文本）
+    let is_gdrive_tokens = !is_onedrive_tokens
+        && (session.region != "onedrive")
+        && (raw_lower.contains("developers.google.com/oauthplayground")
+            || (raw_lower.contains("client_id") && raw_lower.contains("refresh_token")));
 
     if is_gdrive_tokens
         && let Some((cid, sec, ref_tok, opt_folder)) =
@@ -1198,7 +1446,48 @@ async fn handle_xdrive_wizard_input(
                 raw_input.trim().to_string()
             };
 
-            session.folder_id = Some(clean_folder);
+            let folder_val = if session.region == "onedrive"
+                && (clean_folder.is_empty() || clean_folder == "-" || clean_folder == "default")
+            {
+                "/xray_tunnel".to_string()
+            } else {
+                clean_folder
+            };
+
+            session.folder_id = Some(folder_val.clone());
+
+            if session.region == "onedrive" {
+                // 如果此前已成功自动提取了 Client ID 与凭据
+                if let (Some(cid), Some(ref_tok)) = (
+                    session.client_id.as_deref(),
+                    session.refresh_token.as_deref(),
+                ) {
+                    let sec = session.client_secret.as_deref().unwrap_or_default();
+                    let cfg = XdriveConfig::new_onedrive(cid, sec, ref_tok, &folder_val);
+                    return complete_xdrive_node(
+                        adapter,
+                        target,
+                        state,
+                        &session,
+                        &cfg,
+                        cancel_markup,
+                    )
+                    .await;
+                }
+
+                session.step = XdriveWizardStep::ClientId;
+                state.update_xdrive_wizard(&target.0, session).await;
+                adapter
+                    .send_message(
+                        target,
+                        MessageContent {
+                            text: t!("xray.xdrive_guide_onedrive_step2").to_string(),
+                            markup: cancel_markup,
+                        },
+                    )
+                    .await?;
+                return Ok(MessageAction::Handled);
+            }
 
             // 如果此前已成功自动提取了 Client ID 与凭据
             if let (Some(cid), Some(sec), Some(ref_tok), Some(folder)) = (
@@ -1227,26 +1516,45 @@ async fn handle_xdrive_wizard_input(
         XdriveWizardStep::ClientId => {
             session.client_id = Some(raw_input.to_string());
             session.step = XdriveWizardStep::ClientSecret;
+            let prompt = if session.region == "onedrive" {
+                t!("xray.xdrive_guide_onedrive_step3")
+            } else {
+                t!("xray.xdrive_guide_gdrive_step3")
+            };
             state.update_xdrive_wizard(&target.0, session).await;
             adapter
                 .send_message(
                     target,
                     MessageContent {
-                        text: t!("xray.xdrive_guide_gdrive_step3").to_string(),
+                        text: prompt.to_string(),
                         markup: cancel_markup,
                     },
                 )
                 .await?;
         }
         XdriveWizardStep::ClientSecret => {
-            session.client_secret = Some(raw_input.to_string());
+            let secret_val = if session.region == "onedrive"
+                && (raw_input == "-"
+                    || raw_input.eq_ignore_ascii_case("none")
+                    || raw_input.is_empty())
+            {
+                "".to_string()
+            } else {
+                raw_input.to_string()
+            };
+            session.client_secret = Some(secret_val);
             session.step = XdriveWizardStep::RefreshToken;
+            let prompt = if session.region == "onedrive" {
+                t!("xray.xdrive_guide_onedrive_step4")
+            } else {
+                t!("xray.xdrive_guide_gdrive_step4")
+            };
             state.update_xdrive_wizard(&target.0, session).await;
             adapter
                 .send_message(
                     target,
                     MessageContent {
-                        text: t!("xray.xdrive_guide_gdrive_step4").to_string(),
+                        text: prompt.to_string(),
                         markup: cancel_markup,
                     },
                 )
@@ -1260,7 +1568,21 @@ async fn handle_xdrive_wizard_input(
             let ref_tok = session.refresh_token.as_deref().unwrap_or_default();
             let folder = session.folder_id.as_deref().unwrap_or_default();
 
-            let cfg = XdriveConfig::new_google_drive(cid, sec, ref_tok, folder);
+            let cfg = if session.region == "onedrive" {
+                let sec_val = if sec == "-" || sec.eq_ignore_ascii_case("none") {
+                    ""
+                } else {
+                    sec
+                };
+                let folder_val = if folder.is_empty() || folder == "-" || folder == "default" {
+                    "/xray_tunnel"
+                } else {
+                    folder
+                };
+                XdriveConfig::new_onedrive(cid, sec_val, ref_tok, folder_val)
+            } else {
+                XdriveConfig::new_google_drive(cid, sec, ref_tok, folder)
+            };
             return complete_xdrive_node(adapter, target, state, &session, &cfg, cancel_markup)
                 .await;
         }
@@ -1732,6 +2054,7 @@ mod tests {
         assert!(!rendered.contains("domain.acme_install_fail"));
     }
 
+    #[serial]
     #[test]
     fn new_issuance_uses_existing_issuance_message() {
         assert_eq!(
@@ -1740,6 +2063,7 @@ mod tests {
         );
     }
 
+    #[serial]
     #[test]
     fn renewal_uses_existing_renewal_message() {
         assert_eq!(
@@ -2942,5 +3266,211 @@ region = us-east-1
         let session = state.get_xdrive_wizard("test_chat").await.unwrap();
         assert_eq!(session.step, XdriveWizardStep::Bucket);
         assert_eq!(session.s3_region.as_deref(), Some("us-west-004"));
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_onedrive_conversational_flow() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "onedrive".to_string(),
+            step: XdriveWizardStep::FolderId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        // Step 1: User sends Folder Path
+        let action = handle_message(&adapter, &target, Some("/xray_tunnel"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::ClientId);
+        assert_eq!(session.folder_id.as_deref(), Some("/xray_tunnel"));
+
+        // Step 2: User sends Client ID
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("11111111-2222-3333-4444-555555555555"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::ClientSecret);
+        assert_eq!(
+            session.client_id.as_deref(),
+            Some("11111111-2222-3333-4444-555555555555")
+        );
+
+        // Step 3: User sends Client Secret
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("my_onedrive_secret_abc"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::RefreshToken);
+        assert_eq!(
+            session.client_secret.as_deref(),
+            Some("my_onedrive_secret_abc")
+        );
+
+        // Step 4: User sends Refresh Token and completes node creation
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("0.A.sample_refresh_token_xyz"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+        // Wizard session is cleared upon successful completion
+        assert!(state.get_xdrive_wizard("test_chat").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_onedrive_public_client_skip_secret() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "onedrive".to_string(),
+            step: XdriveWizardStep::FolderId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        // Step 1: User sends Folder Path
+        let action = handle_message(&adapter, &target, Some("/xray_tunnel"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        // Step 2: User sends Client ID
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("public-client-id-uuid"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        // Step 3: User sends "-" to skip client secret (public client)
+        let action = handle_message(&adapter, &target, Some("-"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::RefreshToken);
+        assert_eq!(session.client_secret.as_deref(), Some(""));
+
+        // Step 4: User sends Refresh Token and completes node creation
+        let action = handle_message(
+            &adapter,
+            &target,
+            Some("public_refresh_token_abc"),
+            false,
+            &state,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+        // Wizard session is cleared upon successful completion
+        assert!(state.get_xdrive_wizard("test_chat").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_xdrive_wizard_onedrive_auto_extract() {
+        let adapter = RecordingAdapter::new();
+        let state = FakeState::domain(DomainInputStep::AwaitDomain);
+        let target = TargetId("test_chat".into());
+
+        let session = XdriveWizardSession {
+            region: "onedrive".to_string(),
+            step: XdriveWizardStep::FolderId,
+            account_id: None,
+            endpoint: None,
+            s3_region: None,
+            bucket: None,
+            access_key: None,
+            secret_key: None,
+            client_id: None,
+            client_secret: None,
+            refresh_token: None,
+            folder_id: None,
+            started_at: std::time::Instant::now(),
+        };
+        state.update_xdrive_wizard("test_chat", session).await;
+
+        let sample = r#"{
+            "client_id": "auto-od-client-id",
+            "client_secret": "-",
+            "refresh_token": "auto-od-refresh-token"
+        }"#;
+
+        let action = handle_message(&adapter, &target, Some(sample), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+
+        let session = state.get_xdrive_wizard("test_chat").await.unwrap();
+        assert_eq!(session.step, XdriveWizardStep::FolderId);
+        assert_eq!(session.client_id.as_deref(), Some("auto-od-client-id"));
+        assert_eq!(session.client_secret.as_deref(), Some(""));
+        assert_eq!(
+            session.refresh_token.as_deref(),
+            Some("auto-od-refresh-token")
+        );
+
+        let last_msg = adapter.last_text();
+        assert!(last_msg.contains("OneDrive") && last_msg.contains("auto-od-client-id"));
+
+        // Follow up with folder to complete
+        let action = handle_message(&adapter, &target, Some("/my_tunnel"), false, &state)
+            .await
+            .unwrap();
+        assert!(matches!(action, MessageAction::Handled));
+        assert!(state.get_xdrive_wizard("test_chat").await.is_none());
     }
 }

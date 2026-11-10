@@ -367,6 +367,7 @@ xray:
   xdrive_menu_btn: "☁️ XDRIVE 存储中转"
   xdrive_menu_title: "☁️ <b>XDRIVE 存储中转向导</b>\n\n利用合法网盘与云存储穿透 IP 白名单与封锁，请选择您的云存储平台："
   xdrive_btn_r2: "☁️ Cloudflare R2 (免备案/零流量费/10G免费)"
+  xdrive_btn_onedrive: "🟦 Microsoft OneDrive (国际版/E5开发者5TB/免Secret支持)"
   xdrive_btn_gdrive: "📁 Google Drive (谷歌云盘/域前置直连)"
   xdrive_btn_aws: "🟠 AWS S3 (国际企业通道)"
   xdrive_btn_oracle: "🏛️ Oracle Cloud S3 (甲骨文云/永久免费20G)"
@@ -410,6 +411,12 @@ xray:
   xdrive_guide_custom_step3: "⚙️ <b>第 3 步 / 共 5 步：</b>请输入 <b>存储桶名称 (Bucket)</b>："
   xdrive_guide_custom_step4: "⚙️ <b>第 4 步 / 共 5 步：</b>请输入 <b>Access Key ID</b>："
   xdrive_guide_custom_step5: "⚙️ <b>第 5 步 / 共 5 步：</b>请输入 <b>Secret Access Key</b>："
+
+  xdrive_onedrive_auto_detected: "🎉 <b>已成功自动识别 Microsoft OneDrive 凭据！</b>\n• Client ID: <code>%{0}</code>\n• Client Secret: <code>%{1}</code>\n• Refresh Token: <code>%{2}</code>\n\n👉 <b>最后一步：</b>请输入您的 <b>OneDrive 中转文件夹名</b>（默认推荐 <code>/xray_tunnel</code>）即可立即创建："
+  xdrive_guide_onedrive_step1: "🟦 <b>XDRIVE Microsoft OneDrive 网盘向导</b>\n• 支持国际版/个人版/E5开发者5TB / 微软骨干网直连 / 支持免Secret公共客户端\n\n📖 <b>Azure/Entra 应用注册指引：</b>\n1. 登录 Azure/Entra 门户：https://portal.azure.com/\n2. 注册应用：受支持的帐户类型选择多租户与个人 Microsoft 帐户。\n3. ⚠️ <b>关键注意：</b>重定向 URI 平台类型务必选择「移动和桌面应用程序 (Mobile and desktop applications)」，重定向 URI 设为 <code>https://login.microsoftonline.com/common/oauth2/nativeclient</code>（⚠️ 绝对不可选单页应用 SPA，否则 Refresh Token 仅有 24 小时寿命）。\n4. API 权限：添加委托权限 <code>Files.ReadWrite</code> 与 <code>offline_access</code>。\n\n👉 <b>第 1 步 / 共 4 步：</b>请输入您的 <b>中转文件夹名</b>（默认可输入回车或 <code>/xray_tunnel</code>）："
+  xdrive_guide_onedrive_step2: "🟦 <b>第 2 步 / 共 4 步 (Microsoft OneDrive)</b>\n✅ 中转文件夹已记录！\n\n👉 请输入您的 <b>应用程序 (客户端) ID (Application / Client ID)</b>："
+  xdrive_guide_onedrive_step3: "🟦 <b>第 3 步 / 共 4 步 (Microsoft OneDrive)</b>\n✅ Client ID 已记录！\n\n👉 请输入您的 <b>客户端密码 (Client Secret)</b>\n（💡 <i>若注册为免 Secret 的公共客户端，请直接发送 <code>-</code> 或 <code>none</code> 跳过</i>）："
+  xdrive_guide_onedrive_step4: "🟦 <b>第 4 步 / 共 4 步 (Microsoft OneDrive)</b>\n✅ Client Secret 已记录！\n\n👉 请输入您的 <b>刷新令牌 (Refresh Token)</b>："
 
   xdrive_gdrive_auto_detected: "🎉 <b>已成功自动识别 Google Drive 凭据！</b>\n• Client ID: <code>%{0}</code>\n• Client Secret: <code>%{1}</code>\n• Refresh Token: <code>%{2}</code>\n\n👉 <b>最后一步：</b>请输入您的 <b>Google Drive 文件夹 ID (Folder ID)</b> 即可立即创建："
   xdrive_guide_gdrive_step1: "📁 <b>XDRIVE Google Drive 网盘向导</b>\n• 原生支持 google.com 域前置 / 个人项目无限免费 / 抗封锁\n\n📖 <b>Google Drive 极速开通指引（约需15分钟）：</b>\n1. 登录控制台：https://console.cloud.google.com/ 创建项目并启用 <b>Google Drive API</b>\n2. 配置 OAuth 同意屏幕并<b>发布应用 (Publish App)</b>，添加范围 <code>https://www.googleapis.com/auth/drive</code>\n3. 创建 OAuth 客户端（Web 应用），重定向 URI 填：<code>https://developers.google.com/oauthplayground</code>\n4. 在 OAuth 2.0 Playground 授权获取 <b>Refresh Token</b>\n5. 在 Google Drive 新建专用空文件夹并获取 <b>Folder ID</b>\n\n👉 <b>第 1 步 / 共 4 步：</b>请输入您的 <b>Google Drive 文件夹 ID (Folder ID)</b>\n（💡 <i>即 Drive URL 中 /folders/ 后面的那一串字符</i>）："

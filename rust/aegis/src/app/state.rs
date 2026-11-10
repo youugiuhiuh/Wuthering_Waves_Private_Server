@@ -721,7 +721,7 @@ impl AppState {
 
     pub async fn start_xdrive_wizard(&self, target: String, region: &str) -> XdriveWizardStep {
         let step = match region.to_ascii_lowercase().as_str() {
-            "gdrive" | "google-drive" => XdriveWizardStep::FolderId,
+            "onedrive" | "gdrive" | "google-drive" => XdriveWizardStep::FolderId,
             "aws" => XdriveWizardStep::Region,
             "oracle" => XdriveWizardStep::AccountId,
             "b2" => XdriveWizardStep::Region,
@@ -1453,6 +1453,14 @@ mod tests {
         assert_eq!(gdrive_step, XdriveWizardStep::FolderId);
         let gdrive_session = state.get_xdrive_wizard("user4").await.unwrap();
         assert_eq!(gdrive_session.step, XdriveWizardStep::FolderId);
+
+        // OneDrive starts at FolderId
+        let onedrive_step = state
+            .start_xdrive_wizard("user_od".into(), "onedrive")
+            .await;
+        assert_eq!(onedrive_step, XdriveWizardStep::FolderId);
+        let onedrive_session = state.get_xdrive_wizard("user_od").await.unwrap();
+        assert_eq!(onedrive_session.step, XdriveWizardStep::FolderId);
 
         // R2 starts at AccountId
         let r2_step = state.start_xdrive_wizard("user5".into(), "r2").await;

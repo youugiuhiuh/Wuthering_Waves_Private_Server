@@ -537,6 +537,10 @@ async fn handle_xdrive_menu(event: &CallbackEvent) -> HandlerResult {
             data: "u_xdrive_p:r2".into(),
         }],
         vec![InlineButton {
+            text: t!("xray.xdrive_btn_onedrive").into(),
+            data: "u_xdrive_p:onedrive".into(),
+        }],
+        vec![InlineButton {
             text: t!("xray.xdrive_btn_gdrive").into(),
             data: "u_xdrive_p:gdrive".into(),
         }],
@@ -599,6 +603,7 @@ async fn handle_xdrive_provider_prompt(
         "oracle" => t!("xray.xdrive_guide_oracle_step1"),
         "b2" => t!("xray.xdrive_guide_b2_step1"),
         "r2" | "cn" => t!("xray.xdrive_guide_cn_step1"),
+        "onedrive" => t!("xray.xdrive_guide_onedrive_step1"),
         "gdrive" | "google-drive" => t!("xray.xdrive_guide_gdrive_step1"),
         "ru" | "yandex" => t!("xray.xdrive_guide_ru_step1"),
         "ir" | "arvan" => t!("xray.xdrive_guide_ir_step1"),
@@ -3970,6 +3975,7 @@ mod tests {
             buttons,
             vec![
                 "u_xdrive_p:r2",
+                "u_xdrive_p:onedrive",
                 "u_xdrive_p:gdrive",
                 "u_xdrive_p:aws",
                 "u_xdrive_p:oracle",
@@ -3980,6 +3986,32 @@ mod tests {
                 "m_batch_menu",
             ]
         );
+    }
+
+    #[test]
+    fn test_xdrive_onedrive_i18n_keys_and_menu() {
+        assert!(!t!("xray.xdrive_btn_onedrive", locale = "zh").is_empty());
+        assert!(!t!("xray.xdrive_btn_onedrive", locale = "en").is_empty());
+        assert!(!t!("xray.xdrive_btn_onedrive", locale = "ja").is_empty());
+
+        assert!(!t!("xray.xdrive_onedrive_auto_detected", locale = "zh").is_empty());
+        assert!(!t!("xray.xdrive_onedrive_auto_detected", locale = "en").is_empty());
+        assert!(!t!("xray.xdrive_onedrive_auto_detected", locale = "ja").is_empty());
+
+        assert!(!t!("xray.xdrive_guide_onedrive_step1", locale = "zh").is_empty());
+        assert!(!t!("xray.xdrive_guide_onedrive_step2", locale = "zh").is_empty());
+        assert!(!t!("xray.xdrive_guide_onedrive_step3", locale = "zh").is_empty());
+        assert!(!t!("xray.xdrive_guide_onedrive_step4", locale = "zh").is_empty());
+
+        assert!(!t!("xray.xdrive_guide_onedrive_step1", locale = "en").is_empty());
+        assert!(!t!("xray.xdrive_guide_onedrive_step2", locale = "en").is_empty());
+        assert!(!t!("xray.xdrive_guide_onedrive_step3", locale = "en").is_empty());
+        assert!(!t!("xray.xdrive_guide_onedrive_step4", locale = "en").is_empty());
+
+        assert!(!t!("xray.xdrive_guide_onedrive_step1", locale = "ja").is_empty());
+        assert!(!t!("xray.xdrive_guide_onedrive_step2", locale = "ja").is_empty());
+        assert!(!t!("xray.xdrive_guide_onedrive_step3", locale = "ja").is_empty());
+        assert!(!t!("xray.xdrive_guide_onedrive_step4", locale = "ja").is_empty());
     }
 
     #[test]
@@ -4020,6 +4052,23 @@ mod tests {
             60,
             adapter.clone(),
         );
+
+        // 0. Provider callback: onedrive
+        let event_od = CallbackEvent {
+            adapter: adapter.clone(),
+            target: TargetId("user_od".into()),
+            user_id: "42".into(),
+            msg_id: MessageId("100".into()),
+            data: "u_xdrive_p:onedrive".into(),
+            callback_id: "cb_od".into(),
+            session_timeout_secs: 60,
+        };
+        let res = handle(&event_od, &state).await.unwrap();
+        assert_eq!(res, HandlerAction::Done);
+
+        let session = state.get_xdrive_wizard("user_od").await.unwrap();
+        assert_eq!(session.region, "onedrive");
+        assert_eq!(session.step, crate::app::state::XdriveWizardStep::FolderId);
 
         // 1. New provider callback: gdrive
         let event_gdrive = CallbackEvent {

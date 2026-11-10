@@ -393,6 +393,7 @@ xray:
   xdrive_menu_btn: "☁️ XDRIVE ストレージ中継"
   xdrive_menu_title: "☁️ <b>XDRIVE ストレージ中継ウィザード</b>\n\nクラウドストレージを活用してIPホワイトリストや通信制限を回避します。プラットフォームを選択してください："
   xdrive_btn_r2: "☁️ Cloudflare R2 (ICP不要/転送料金無料/10GB無料)"
+  xdrive_btn_onedrive: "🟦 Microsoft OneDrive (グローバル版/E5 5TB/Public Client)"
   xdrive_btn_gdrive: "📁 Google Drive (Googleドライブ/ドメインフロント直接接続)"
   xdrive_btn_aws: "🟠 AWS S3 (国際エンタープライズ)"
   xdrive_btn_oracle: "🏛️ Oracle Cloud S3 (永久無料20GB)"
@@ -436,6 +437,12 @@ xray:
   xdrive_guide_custom_step3: "⚙️ <b>ステップ 3 / 5：</b><b>バケット名 (Bucket)</b> を入力してください："
   xdrive_guide_custom_step4: "⚙️ <b>ステップ 4 / 5：</b><b>Access Key ID</b> を入力してください："
   xdrive_guide_custom_step5: "⚙️ <b>ステップ 5 / 5：</b><b>Secret Access Key</b> を入力してください："
+
+  xdrive_onedrive_auto_detected: "🎉 <b>Microsoft OneDrive 認証情報を自動検出しました！</b>\n• Client ID: <code>%{0}</code>\n• Client Secret: <code>%{1}</code>\n• Refresh Token: <code>%{2}</code>\n\n👉 <b>最終ステップ：</b><b>OneDrive 中継フォルダー名</b>（デフォルト <code>/xray_tunnel</code>）を入力して作成を完了してください："
+  xdrive_guide_onedrive_step1: "🟦 <b>XDRIVE Microsoft OneDrive ウィザード</b>\n• グローバル版/個人版/E5 開発者 5TB / マイクロソフト骨幹網直通 / パブリッククライアント対応\n\n📖 <b>Azure/Entra アプリ登録ガイド：</b>\n1. Azure/Entra ポータルにログイン：https://portal.azure.com/ 「アプリの登録」へ\n2. アプリの登録：サポートされているアカウントの種類でマルチテナントおよび個人の Microsoft アカウントを選択\n3. ⚠️ <b>重要：</b>リダイレクト URI プラットフォームは必ず「モバイル アプリケーションとデスクトップ アプリケーション」を選択し、URI に <code>https://login.microsoftonline.com/common/oauth2/nativeclient</code> を設定（⚠️ SPA 単一ページアプリケーションは絶対に選択しないでください。Refresh Token の有効期限が24時間に制限されます）\n4. API のアクセス許可：委任されたアクセス許可 <code>Files.ReadWrite</code> と <code>offline_access</code> を追加\n\n👉 <b>ステップ 1 / 4：</b><b>中継フォルダー名</b>を入力してください（デフォルト <code>/xray_tunnel</code>）："
+  xdrive_guide_onedrive_step2: "🟦 <b>ステップ 2 / 4 (Microsoft OneDrive)</b>\n✅ 中継フォルダーを保存しました！\n\n👉 <b>アプリケーション (クライアント) ID (Application / Client ID)</b> を入力してください："
+  xdrive_guide_onedrive_step3: "🟦 <b>ステップ 3 / 4 (Microsoft OneDrive)</b>\n✅ Client ID を保存しました！\n\n👉 <b>クライアント シークレット (Client Secret)</b> を入力してください\n（💡 <i>免 Secret のパブリック クライアントとして登録した場合は、<code>-</code> または <code>none</code> を送信してスキップしてください</i>）："
+  xdrive_guide_onedrive_step4: "🟦 <b>ステップ 4 / 4 (Microsoft OneDrive)</b>\n✅ Client Secret を保存しました！\n\n👉 <b>リフレッシュトークン (Refresh Token)</b> を入力してください："
 
   xdrive_gdrive_auto_detected: "🎉 <b>Google Drive 認証情報を自動検出しました！</b>\n• Client ID: <code>%{0}</code>\n• Client Secret: <code>%{1}</code>\n• Refresh Token: <code>%{2}</code>\n\n👉 <b>最終ステップ：</b><b>Google Drive フォルダー ID (Folder ID)</b> を入力して作成を完了してください："
   xdrive_guide_gdrive_step1: "📁 <b>XDRIVE Google Drive ウィザード</b>\n• google.com ドメインフロント直接接続対応 / 個人枠無制限無料 / 検閲耐性\n\n📖 <b>Google Drive クイックセットアップガイド（所要時間約15分）：</b>\n1. コンソールにアクセス：https://console.cloud.google.com/ プロジェクトを作成し、<b>Google Drive API</b> を有効化\n2. OAuth 同意画面を設定し、<b>アプリを公開 (Publish App)</b>、スコープ <code>https://www.googleapis.com/auth/drive</code> を追加\n3. OAuth クライアント (Web アプリケーション) を作成、リダイレクト URI に <code>https://developers.google.com/oauthplayground</code> を指定\n4. OAuth 2.0 Playground で認証を行い、<b>Refresh Token (リフレッシュトークン)</b> を取得\n5. Google Drive で専用の空フォルダーを新規作成し、<b>Folder ID (フォルダーID)</b> を取得\n\n👉 <b>ステップ 1 / 4：</b><b>Google Drive フォルダー ID (Folder ID)</b> を入力してください\n（💡 <i>Drive URL の /folders/ 以降の文字列です</i>）："
