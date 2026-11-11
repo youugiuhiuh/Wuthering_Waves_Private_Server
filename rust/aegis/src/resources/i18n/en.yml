@@ -392,7 +392,7 @@ xray:
   batch_menu_title: "🚀 <b>Batch Creation Management</b>\n\nSelect protocol to create or manage:"
   xdrive_menu_btn: "☁️ XDRIVE Storage Relay"
   xdrive_menu_title: "☁️ <b>XDRIVE Storage Relay Wizard</b>\n\nBypass IP whitelists and censorship using legitimate cloud drives and storage. Please select your cloud storage platform:"
-  xdrive_region_cn: "🇨🇳 China Optimized (R2 / B2 / OneDrive)"
+  xdrive_region_cn: "🇨🇳 China Optimized (R2 / 4EVERLAND / B2 / OneDrive)"
   xdrive_region_ru: "🇷🇺 Russia Region (Yandex / Google Drive)"
   xdrive_region_ir: "🇮🇷 Iran Region (ArvanCloud / Google Drive)"
   xdrive_region_global: "🌍 Global Standard (AWS S3 / Oracle Cloud)"
@@ -402,6 +402,7 @@ xray:
   xdrive_submenu_global_title: "🌍 <b>XDRIVE Global Standard Region</b>\n\nSelected major global enterprise cloud infrastructure object storage:"
   xdrive_back_to_regions: "🔙 Back to Regions"
   xdrive_btn_r2: "☁️ Cloudflare R2 (No ICP / Zero Egress / 10GB Free)"
+  xdrive_btn_4everland: "🌐 4EVERLAND S3 (Web3 No-KYC / Global CDN / Low Latency)"
   xdrive_btn_onedrive: "🟦 Microsoft OneDrive (Global/E5 5TB/Public Client)"
   xdrive_btn_gdrive: "📁 Google Drive (Direct Connection / Domain Fronting)"
   xdrive_btn_aws: "🟠 AWS S3 (Global Enterprise Backbone)"
@@ -432,6 +433,10 @@ xray:
   xdrive_guide_cn_step2: "🇨🇳 <b>Step 2 / 4 (Cloudflare R2)</b>\n✅ Account ID saved!\n\n👉 Please enter your <b>Bucket Name</b>:"
   xdrive_guide_cn_step3: "🇨🇳 <b>Step 3 / 4 (Cloudflare R2)</b>\n✅ Bucket saved!\n\n👉 Please enter your <b>Access Key ID</b>:"
   xdrive_guide_cn_step4: "🇨🇳 <b>Step 4 / 4 (Cloudflare R2)</b>\n✅ Access Key saved!\n\n👉 Please enter your <b>Secret Access Key</b>:"
+
+  xdrive_guide_4everland_step1: "🌐 <b>XDRIVE 4EVERLAND (Web3 S3) Wizard</b>\n• Features: Web3 Wallet No-KYC / Cloudflare Anycast CDN / Fast RTT\n• Endpoint: https://endpoint.4everland.co | Region: us-east-1\n\n📖 <b>Setup Guide:</b>\n1. Sign in: https://dashboard.4everland.org/ (Connect with Web3 wallet)\n2. Navigate to 'Bucket' -> 'Storage' and create a bucket (e.g. <code>my-tunnel</code>)\n3. Go to 'Bucket' -> 'Access Keys' -> click 'Generate' to obtain S3 Access Key & Secret\n\n👉 <b>Step 1 / 3:</b> Please enter your <b>Bucket Name</b>:"
+  xdrive_guide_4everland_step2: "🌐 <b>Step 2 / 3 (4EVERLAND S3)</b>\n✅ Bucket saved!\n\n👉 Please enter your <b>Access Key ID</b> (⚠️ Note: Make sure to get from Bucket -> Access Keys, not AI RPC!):"
+  xdrive_guide_4everland_step3: "🌐 <b>Step 3 / 3 (4EVERLAND S3)</b>\n✅ Access Key saved!\n\n👉 Please enter your <b>Secret Access Key</b> (40 characters):"
 
   xdrive_guide_ru_step1: "🇷🇺 <b>XDRIVE Russia Wizard (Yandex Cloud S3)</b>\n• Endpoint: https://storage.yandexcloud.net\n• Region: ru-central1 | Path-Style: enabled\n\n📖 <b>Setup Guide:</b>\n1. Console: https://console.yandex.cloud/\n2. Object Storage -> Create bucket\n3. Service Accounts -> Create account & generate Static Access Key\n\n👉 <b>Step 1 / 3:</b> Please enter your <b>Bucket Name</b>:"
   xdrive_guide_ru_step2: "🇷🇺 <b>Step 2 / 3 (Yandex S3)</b>\n✅ Bucket saved!\n\n👉 Please enter your <b>Access Key ID</b>:"

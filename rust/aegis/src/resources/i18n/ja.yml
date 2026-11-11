@@ -392,7 +392,7 @@ xray:
   batch_menu_title: "🚀 <b>一括作成管理</b>\n\n作成・管理するプロトコルを選択してください："
   xdrive_menu_btn: "☁️ XDRIVE ストレージ中継"
   xdrive_menu_title: "☁️ <b>XDRIVE ストレージ中継ウィザード</b>\n\nクラウドストレージを活用してIPホワイトリストや通信制限を回避します。プラットフォームを選択してください："
-  xdrive_region_cn: "🇨🇳 中国本土最適化 (R2 / B2 / OneDrive)"
+  xdrive_region_cn: "🇨🇳 中国本土最適化 (R2 / 4EVERLAND / B2 / OneDrive)"
   xdrive_region_ru: "🇷🇺 ロシア専用エリア (Yandex / Google Drive)"
   xdrive_region_ir: "🇮🇷 イラン専用エリア (ArvanCloud / Google Drive)"
   xdrive_region_global: "🌍 国際標準 (AWS S3 / Oracle Cloud)"
@@ -402,6 +402,7 @@ xray:
   xdrive_submenu_global_title: "🌍 <b>XDRIVE 国際標準エリア</b>\n\n世界主要エンタープライズクラウドインフラオブジェクトストレージ："
   xdrive_back_to_regions: "🔙 地域選択に戻る"
   xdrive_btn_r2: "☁️ Cloudflare R2 (ICP不要/転送料金無料/10GB無料)"
+  xdrive_btn_4everland: "🌐 4EVERLAND S3 (Web3本人確認不要/グローバルCDN/低遅延)"
   xdrive_btn_onedrive: "🟦 Microsoft OneDrive (グローバル版/E5 5TB/Public Client)"
   xdrive_btn_gdrive: "📁 Google Drive (Googleドライブ/ドメインフロント直接接続)"
   xdrive_btn_aws: "🟠 AWS S3 (国際エンタープライズ)"
@@ -432,6 +433,10 @@ xray:
   xdrive_guide_cn_step2: "🇨🇳 <b>ステップ 2 / 4 (Cloudflare R2)</b>\n✅ アカウント ID を保存しました！\n\n👉 作成した <b>バケット名 (Bucket)</b> を入力してください："
   xdrive_guide_cn_step3: "🇨🇳 <b>ステップ 3 / 4 (Cloudflare R2)</b>\n✅ バケット名を保存しました！\n\n👉 <b>Access Key ID</b> を入力してください："
   xdrive_guide_cn_step4: "🇨🇳 <b>ステップ 4 / 4 (Cloudflare R2)</b>\n✅ Access Key を保存しました！\n\n👉 <b>Secret Access Key</b> を入力してください："
+
+  xdrive_guide_4everland_step1: "🌐 <b>XDRIVE 4EVERLAND (Web3 S3) ウィザード</b>\n• 特徴: Web3ウォレット本人確認不要 / Cloudflare Anycast CDN / 低遅延\n• エンドポイント: https://endpoint.4everland.co | リージョン: us-east-1\n\n📖 <b>設定手順:</b>\n1. サインイン: https://dashboard.4everland.org/ (Web3ウォレットで接続)\n2. 'Bucket' -> 'Storage' からバケットを作成 (例: <code>my-tunnel</code>)\n3. 'Bucket' -> 'Access Keys' -> 'Generate' から S3 Access Key & Secret を生成\n\n👉 <b>ステップ 1 / 3:</b> <b>バケット名 (Bucket)</b> を入力してください:"
+  xdrive_guide_4everland_step2: "🌐 <b>ステップ 2 / 3 (4EVERLAND S3)</b>\n✅ バケット名を記録しました！\n\n👉 <b>Access Key ID</b> を入力してください (⚠️ 注意: Bucket -> Access Keys から取得してください。AI RPCキーではありません！):"
+  xdrive_guide_4everland_step3: "🌐 <b>ステップ 3 / 3 (4EVERLAND S3)</b>\n✅ Access Key を記録しました！\n\n👉 <b>Secret Access Key</b> を入力してください:"
 
   xdrive_guide_ru_step1: "🇷🇺 <b>XDRIVE ロシア地域ウィザード (Yandex Cloud S3)</b>\n• エンドポイント：https://storage.yandexcloud.net\n• リージョン：ru-central1 | Path-Style: 有効\n\n📖 <b>ガイド：</b>\n1. コンソール：https://console.yandex.cloud/\n2. Object Storage -> バケットを作成 (Bucket)\n3. Service Accounts -> アカウントを作成して Static Access Key を発行\n\n👉 <b>ステップ 1 / 3：</b><b>バケット名 (Bucket)</b> を入力してください："
   xdrive_guide_ru_step2: "🇷🇺 <b>ステップ 2 / 3 (Yandex S3)</b>\n✅ バケット名を保存しました！\n\n👉 <b>Access Key ID</b> を入力してください："

@@ -583,6 +583,10 @@ async fn handle_xdrive_region_submenu(event: &CallbackEvent, region: &str) -> Ha
                     data: "u_xdrive_p:r2".into(),
                 }],
                 vec![InlineButton {
+                    text: t!("xray.xdrive_btn_4everland").into(),
+                    data: "u_xdrive_p:4everland".into(),
+                }],
+                vec![InlineButton {
                     text: t!("xray.xdrive_btn_b2").into(),
                     data: "u_xdrive_p:b2".into(),
                 }],
@@ -678,6 +682,7 @@ async fn handle_xdrive_provider_prompt(
         "aws" => t!("xray.xdrive_guide_aws_step1"),
         "oracle" => t!("xray.xdrive_guide_oracle_step1"),
         "b2" => t!("xray.xdrive_guide_b2_step1"),
+        "4everland" => t!("xray.xdrive_guide_4everland_step1"),
         "r2" | "cn" => t!("xray.xdrive_guide_cn_step1"),
         "onedrive" => t!("xray.xdrive_guide_onedrive_step1"),
         "gdrive" | "google-drive" => t!("xray.xdrive_guide_gdrive_step1"),
@@ -4064,6 +4069,7 @@ mod tests {
                 "cn",
                 vec![
                     "u_xdrive_p:r2",
+                    "u_xdrive_p:4everland",
                     "u_xdrive_p:b2",
                     "u_xdrive_p:onedrive",
                     "u_xdrive_r:menu",
@@ -4113,6 +4119,7 @@ mod tests {
                 "u_xdrive_r:cn",
                 vec![
                     "u_xdrive_p:r2",
+                    "u_xdrive_p:4everland",
                     "u_xdrive_p:b2",
                     "u_xdrive_p:onedrive",
                     "u_xdrive_r:menu",

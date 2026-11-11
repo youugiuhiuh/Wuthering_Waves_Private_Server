@@ -1372,6 +1372,7 @@ async fn handle_xdrive_wizard_input(
 
             session.step = XdriveWizardStep::AccessKey;
             let prompt = match session.region.as_str() {
+                "4everland" => t!("xray.xdrive_guide_4everland_step2"),
                 "aws" => t!("xray.xdrive_guide_aws_step3"),
                 "oracle" => t!("xray.xdrive_guide_oracle_step4"),
                 "b2" => t!("xray.xdrive_guide_b2_step3"),
@@ -1409,6 +1410,7 @@ async fn handle_xdrive_wizard_input(
             session.access_key = Some(raw_input.to_string());
             session.step = XdriveWizardStep::SecretKey;
             let prompt = match session.region.as_str() {
+                "4everland" => t!("xray.xdrive_guide_4everland_step3"),
                 "aws" => t!("xray.xdrive_guide_aws_step4"),
                 "oracle" => t!("xray.xdrive_guide_oracle_step5"),
                 "b2" => t!("xray.xdrive_guide_b2_step4"),
@@ -1432,6 +1434,12 @@ async fn handle_xdrive_wizard_input(
             session.secret_key = Some(raw_input.to_string());
 
             let cfg = match session.region.as_str() {
+                "4everland" => {
+                    let bucket = session.bucket.as_deref().unwrap_or_default();
+                    let ak = session.access_key.as_deref().unwrap_or_default();
+                    let sk = session.secret_key.as_deref().unwrap_or_default();
+                    XdriveConfig::new_4everland(bucket, ak, sk, "tunnel")
+                }
                 "aws" => {
                     let region = session.s3_region.as_deref().unwrap_or("us-east-1");
                     let bucket = session.bucket.as_deref().unwrap_or_default();

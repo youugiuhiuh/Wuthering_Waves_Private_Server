@@ -106,6 +106,33 @@ impl XdriveConfig {
         }
     }
 
+    /// 预设构建器：4EVERLAND (Web3 S3 去中心化存储，Cloudflare Anycast 全球 CDN 直连)
+    pub fn new_4everland(
+        bucket: &str,
+        access_key_id: &str,
+        secret_access_key: &str,
+        folder: &str,
+    ) -> Self {
+        Self {
+            service: XdriveService::S3,
+            remote_folder: folder.trim_matches('/').to_string(),
+            secrets: vec![access_key_id.to_string(), secret_access_key.to_string()],
+            s3: Some(S3Config {
+                endpoint: "https://endpoint.4everland.co".to_string(),
+                region: "us-east-1".to_string(),
+                bucket: bucket.to_string(),
+                path_style: true,
+            }),
+            segment_bytes: Some(512 * 1024), // 512KB 黄金平衡分片
+            poll_interval_ms: Some(40),      // 40ms 极速轮询
+            max_poll_interval_ms: Some(400), // 400ms 退避
+            flush_interval_ms: Some(30),     // 30ms 快速刷出
+            eager_window_ms: Some(1500),     // 1.5s 积极轮询窗口
+            concurrency: Some(16),           // 16 高速并发
+            hole_timeout_ms: None,
+        }
+    }
+
     /// 检查 S3 存储桶名是否适用于虚拟主机寻址 (Virtual-Hosted Style: `https://{bucket}.s3.{region}...`).
     ///
     /// 根据 S3 与 DNS 规范，虚拟主机寻址要求桶名必须是完全兼容 DNS 的：
@@ -529,6 +556,21 @@ impl XdriveConfig {
                 };
 
                 let config = Self::new_cloudflare_r2(account_id, bucket, ak, sk, folder);
+                config.validate()?;
+                Ok(config)
+            }
+            "4everland" => {
+                if lines.len() < 3 {
+                    bail!(
+                        "4EVERLAND 向导至少需要 3 行参数：Bucket名称、AccessKeyID、SecretAccessKey"
+                    );
+                }
+                let bucket = lines[0];
+                let ak = lines[1];
+                let sk = lines[2];
+                let folder = if lines.len() > 3 { lines[3] } else { "tunnel" };
+
+                let config = Self::new_4everland(bucket, ak, sk, folder);
                 config.validate()?;
                 Ok(config)
             }
@@ -1815,6 +1857,27 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
         // remote_folder 为空
         let config3 = XdriveConfig::new_google_drive("cid", "secret", "refresh", "   ");
         assert!(config3.validate().is_err());
+    }
+
+    #[test]
+    fn test_valid_4everland_preset() {
+        let config = XdriveConfig::new_4everland("my-bucket", "test-ak", "test-sk", "/tunnel/");
+
+        assert_eq!(config.service, XdriveService::S3);
+        assert_eq!(config.remote_folder, "tunnel");
+        assert_eq!(config.secrets, vec!["test-ak", "test-sk"]);
+        let s3 = config.s3.as_ref().unwrap();
+        assert_eq!(s3.endpoint, "https://endpoint.4everland.co");
+        assert_eq!(s3.region, "us-east-1");
+        assert_eq!(s3.bucket, "my-bucket");
+        assert!(s3.path_style);
+        assert_eq!(config.segment_bytes, Some(512 * 1024));
+        assert_eq!(config.poll_interval_ms, Some(40));
+        assert_eq!(config.max_poll_interval_ms, Some(400));
+        assert_eq!(config.flush_interval_ms, Some(30));
+        assert_eq!(config.eager_window_ms, Some(1500));
+        assert_eq!(config.concurrency, Some(16));
+        assert!(config.validate().is_ok());
     }
 
     #[test]
