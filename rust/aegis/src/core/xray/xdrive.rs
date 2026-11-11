@@ -98,7 +98,7 @@ impl XdriveConfig {
             }),
             segment_bytes: Some(512 * 1024), // 512KB 黄金平衡分片 (避免小分片导致的 API 往返与签名开销膨胀)
             poll_interval_ms: Some(50),      // 50ms 稳健轮询 (匹配边缘网络常规延迟，避免空轮询风暴)
-            max_poll_interval_ms: Some(3000), // 3秒深度退避，全月在 100 万次免费额度内，彻底杜绝扣费账单
+            max_poll_interval_ms: Some(4000), // 4秒空闲退避 (整月空载仅 ~64.8 万次 Class A 操作，远低于 R2 100 万次上限，留足 35+ 万次裕量给数据传输，实现全年永久 100% 稳定免费零扣费)
             flush_interval_ms: Some(30),      // 30ms 快速刷出 (避免高频生成几字节碎片对象)
             eager_window_ms: Some(3000),      // 3秒积极突发窗口，一旦唤醒即刻满血极速传输
             concurrency: Some(16),            // 16 适度并发 (避免触发 R2 429 限流与 TCP 队头阻塞)
@@ -1558,7 +1558,7 @@ mod tests {
         assert!(s3.path_style);
         assert_eq!(config.poll_interval_ms, Some(50));
         assert_eq!(config.segment_bytes, Some(512 * 1024));
-        assert_eq!(config.max_poll_interval_ms, Some(3000));
+        assert_eq!(config.max_poll_interval_ms, Some(4000));
         assert_eq!(config.flush_interval_ms, Some(30));
         assert_eq!(config.eager_window_ms, Some(3000));
         assert_eq!(config.concurrency, Some(16));
@@ -1577,7 +1577,7 @@ mod tests {
         assert_eq!(config.segment_bytes, Some(524288));
         assert_eq!(config.concurrency, Some(16));
         assert_eq!(config.poll_interval_ms, Some(50));
-        assert_eq!(config.max_poll_interval_ms, Some(3000));
+        assert_eq!(config.max_poll_interval_ms, Some(4000));
         assert_eq!(config.flush_interval_ms, Some(30));
         assert_eq!(config.eager_window_ms, Some(3000));
         assert!(config.validate().is_ok());
@@ -1601,7 +1601,7 @@ mod tests {
         assert_eq!(config_url.segment_bytes, Some(524288));
         assert_eq!(config_url.concurrency, Some(16));
         assert_eq!(config_url.poll_interval_ms, Some(50));
-        assert_eq!(config_url.max_poll_interval_ms, Some(3000));
+        assert_eq!(config_url.max_poll_interval_ms, Some(4000));
         assert_eq!(config_url.flush_interval_ms, Some(30));
         assert_eq!(config_url.eager_window_ms, Some(3000));
         assert!(config_url.validate().is_ok());
@@ -1707,7 +1707,7 @@ mod tests {
         assert_eq!(s3.region, "auto");
         assert_eq!(s3.bucket, "r2-bucket");
         assert_eq!(config.poll_interval_ms, Some(50));
-        assert_eq!(config.max_poll_interval_ms, Some(3000));
+        assert_eq!(config.max_poll_interval_ms, Some(4000));
         assert_eq!(config.flush_interval_ms, Some(30));
         assert_eq!(config.eager_window_ms, Some(3000));
         assert_eq!(config.concurrency, Some(16));
