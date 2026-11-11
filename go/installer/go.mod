@@ -7,7 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.1.1
 	github.com/awnumar/memguard v0.23.0
 	golang.org/x/sys v0.50.0
-	golang.org/x/term v0.47.0
+	golang.org/x/term v0.48.0
 )
 
 require (
