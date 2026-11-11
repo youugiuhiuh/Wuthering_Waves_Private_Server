@@ -1392,11 +1392,12 @@ mod tests {
             xdrive_settings["secrets"],
             json!(["test-client-id", "test-client-secret", "test-refresh-token"])
         );
-        assert_eq!(xdrive_settings["segmentBytes"], 65536);
-        assert_eq!(xdrive_settings["flushIntervalMs"], 30);
-        assert_eq!(xdrive_settings["pollIntervalMs"], 100);
-        assert_eq!(xdrive_settings["maxPollIntervalMs"], 1000);
-        assert_eq!(xdrive_settings["concurrency"], 4);
+        assert_eq!(xdrive_settings["segmentBytes"], 1048576);
+        assert_eq!(xdrive_settings["flushIntervalMs"], 100);
+        assert_eq!(xdrive_settings["pollIntervalMs"], 1500);
+        assert_eq!(xdrive_settings["maxPollIntervalMs"], 15000);
+        assert_eq!(xdrive_settings["concurrency"], 2);
+        assert_eq!(xdrive_settings["holeTimeoutMs"], 60000);
 
         // 验证 template 字段及其核心结构
         let template = &xdrive_settings["template"];

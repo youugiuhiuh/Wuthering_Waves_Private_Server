@@ -51,6 +51,8 @@ pub struct XdriveConfig {
     pub eager_window_ms: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub concurrency: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hole_timeout_ms: Option<u32>,
 }
 
 impl XdriveConfig {
@@ -100,6 +102,7 @@ impl XdriveConfig {
             flush_interval_ms: Some(30),      // 30ms 快速刷出 (避免高频生成几字节碎片对象)
             eager_window_ms: Some(3000),      // 3秒积极突发窗口，一旦唤醒即刻满血极速传输
             concurrency: Some(16),            // 16 适度并发 (避免触发 R2 429 限流与 TCP 队头阻塞)
+            hole_timeout_ms: None,
         }
     }
 
@@ -161,6 +164,7 @@ impl XdriveConfig {
             flush_interval_ms: Some(50),
             eager_window_ms: Some(2000),
             concurrency: Some(16),
+            hole_timeout_ms: None,
         }
     }
 
@@ -191,6 +195,7 @@ impl XdriveConfig {
             flush_interval_ms: Some(50),
             eager_window_ms: Some(2000),
             concurrency: Some(8),
+            hole_timeout_ms: None,
         }
     }
 
@@ -221,6 +226,7 @@ impl XdriveConfig {
             flush_interval_ms: Some(100),     // 100ms 快速刷出
             eager_window_ms: Some(1500),      // 1.5s 积极轮询窗口
             concurrency: Some(4),             // 4 并发读写槽 (实测吞吐提升至 2.35 Mbps)
+            hole_timeout_ms: None,
         }
     }
 
@@ -252,6 +258,7 @@ impl XdriveConfig {
             flush_interval_ms: Some(50),
             eager_window_ms: Some(2000),
             concurrency: Some(8),
+            hole_timeout_ms: None,
         }
     }
 
@@ -277,6 +284,7 @@ impl XdriveConfig {
             max_poll_interval_ms: Some(200),
             eager_window_ms: Some(10000), // 10s
             concurrency: Some(64),
+            hole_timeout_ms: None,
         }
     }
 
@@ -306,12 +314,13 @@ impl XdriveConfig {
                 refresh_token.to_string(),
             ],
             s3: None,
-            segment_bytes: Some(65536),       // 64KB 分片
-            flush_interval_ms: Some(30),      // 30ms 快速刷出（降低往返缓冲等待时延）
-            poll_interval_ms: Some(100), // 100ms 灵敏轮询（实测可提升响应速度约 1 秒且安全不触碰 429）
-            max_poll_interval_ms: Some(1000), // 1000ms 空闲退避上限
-            eager_window_ms: Some(2000), // 2s 积极轮询窗口
-            concurrency: Some(4),        // 4 并发读写槽（防 429 限流保护）
+            segment_bytes: Some(1048576), // 1MB 分片（大幅降低 API 调用频次）
+            flush_interval_ms: Some(100), // 100ms 缓冲刷出
+            poll_interval_ms: Some(1500), // 1500ms 稳态轮询（匹配微软 1~3s 索引延迟防 429）
+            max_poll_interval_ms: Some(15000), // 15000ms 空闲深度退避
+            eager_window_ms: Some(5000),  // 5s 积极轮询窗口
+            concurrency: Some(2),         // 2 并发槽（防目录锁与 429 限流）
+            hole_timeout_ms: Some(60000), // 60s 乱序空洞容忍上限
         }
     }
 
@@ -319,7 +328,7 @@ impl XdriveConfig {
     pub fn generate_onedrive_template_value(&self) -> serde_json::Value {
         serde_json::json!({
             "flatten": true,
-            "concurrency": self.concurrency.unwrap_or(4),
+            "concurrency": self.concurrency.unwrap_or(2),
             "auth": {
                 "type": "oauth2",
                 "tokenUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
@@ -462,6 +471,7 @@ impl XdriveConfig {
                     flush_interval_ms: Some(50),
                     eager_window_ms: Some(2000),
                     concurrency: Some(8),
+                    hole_timeout_ms: None,
                 };
                 config.validate()?;
                 Ok(config)
@@ -497,6 +507,7 @@ impl XdriveConfig {
                     flush_interval_ms: Some(50),
                     eager_window_ms: Some(2000),
                     concurrency: Some(8),
+                    hole_timeout_ms: None,
                 };
                 config.validate()?;
                 Ok(config)
@@ -554,6 +565,7 @@ impl XdriveConfig {
                     flush_interval_ms: Some(50),
                     eager_window_ms: Some(2000),
                     concurrency: Some(8),
+                    hole_timeout_ms: None,
                 };
                 config.validate()?;
                 Ok(config)
@@ -1580,6 +1592,7 @@ mod tests {
             flush_interval_ms: None,
             eager_window_ms: None,
             concurrency: None,
+            hole_timeout_ms: None,
         };
         assert!(config.validate().is_err());
     }
@@ -1819,12 +1832,13 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
             ]
         );
         assert!(config.s3.is_none());
-        assert_eq!(config.segment_bytes, Some(65536));
-        assert_eq!(config.flush_interval_ms, Some(30));
-        assert_eq!(config.poll_interval_ms, Some(100));
-        assert_eq!(config.max_poll_interval_ms, Some(1000));
-        assert_eq!(config.eager_window_ms, Some(2000));
-        assert_eq!(config.concurrency, Some(4));
+        assert_eq!(config.segment_bytes, Some(1048576));
+        assert_eq!(config.flush_interval_ms, Some(100));
+        assert_eq!(config.poll_interval_ms, Some(1500));
+        assert_eq!(config.max_poll_interval_ms, Some(15000));
+        assert_eq!(config.eager_window_ms, Some(5000));
+        assert_eq!(config.concurrency, Some(2));
+        assert_eq!(config.hole_timeout_ms, Some(60000));
         assert!(config.validate().is_ok());
     }
 
@@ -1848,12 +1862,13 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
             ]
         );
         assert!(config.s3.is_none());
-        assert_eq!(config.segment_bytes, Some(65536));
-        assert_eq!(config.flush_interval_ms, Some(30));
-        assert_eq!(config.poll_interval_ms, Some(100));
-        assert_eq!(config.max_poll_interval_ms, Some(1000));
-        assert_eq!(config.eager_window_ms, Some(2000));
-        assert_eq!(config.concurrency, Some(4));
+        assert_eq!(config.segment_bytes, Some(1048576));
+        assert_eq!(config.flush_interval_ms, Some(100));
+        assert_eq!(config.poll_interval_ms, Some(1500));
+        assert_eq!(config.max_poll_interval_ms, Some(15000));
+        assert_eq!(config.eager_window_ms, Some(5000));
+        assert_eq!(config.concurrency, Some(2));
+        assert_eq!(config.hole_timeout_ms, Some(60000));
         assert!(config.validate().is_ok());
     }
 
@@ -1863,7 +1878,7 @@ https://a5be0a9d14aa44e51692d81782d83fe6.r2.cloudflarestorage.com
         let template = config.generate_onedrive_template_value();
 
         assert_eq!(template["flatten"], true);
-        assert_eq!(template["concurrency"], 4);
+        assert_eq!(template["concurrency"], 2);
         assert_eq!(template["auth"]["type"], "oauth2");
         assert_eq!(
             template["auth"]["tokenUrl"],

@@ -56,29 +56,34 @@ fn test_onedrive_config_default_initialization() {
     // 4. 流控参数校验
     assert_eq!(
         config.segment_bytes,
-        Some(65536),
-        "segment_bytes 必须为 65536 (64KB)"
+        Some(1048576),
+        "segment_bytes 必须为 1048576 (1MB)"
     );
     assert_eq!(
         config.flush_interval_ms,
-        Some(30),
-        "flush_interval_ms 必须为 30ms"
+        Some(100),
+        "flush_interval_ms 必须为 100ms"
     );
     assert_eq!(
         config.poll_interval_ms,
-        Some(100),
-        "poll_interval_ms 必须为 100ms"
+        Some(1500),
+        "poll_interval_ms 必须为 1500ms"
     );
     assert_eq!(
         config.max_poll_interval_ms,
-        Some(1000),
-        "max_poll_interval_ms 必须为 1000ms"
+        Some(15000),
+        "max_poll_interval_ms 必须为 15000ms"
     );
-    assert_eq!(config.concurrency, Some(4), "concurrency 并发槽数必须为 4");
+    assert_eq!(config.concurrency, Some(2), "concurrency 并发槽数必须为 2");
     assert_eq!(
         config.eager_window_ms,
-        Some(2000),
-        "eager_window_ms 积极轮询窗口必须为 2000ms"
+        Some(5000),
+        "eager_window_ms 积极轮询窗口必须为 5000ms"
+    );
+    assert_eq!(
+        config.hole_timeout_ms,
+        Some(60000),
+        "hole_timeout_ms 必须为 60000ms"
     );
 
     // 5. 校验配置合法性
