@@ -37,7 +37,7 @@ zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
 zbus = { version = "6.2.1", features = ["tokio"] }
 x25519-dalek = { version = "3.0.0", features = ["static_secrets", "getrandom"] }
 log = "0.4.35"
-rust-embed = "8.13.0"
+rust-embed = "8.14.0"
 obfstr = "0.4.6"
 goldberg = "0.1.0"
 chrono-tz = "0.10.4"
