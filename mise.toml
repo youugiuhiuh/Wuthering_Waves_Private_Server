@@ -2,6 +2,6 @@
 rust = "latest"
 protoc = "latest"
 upx = "latest"
-go = "1.27"
+go = "1.27.4"
 "go:mvdan.cc/garble" = "v0.18.0"
 cmake = "latest"
