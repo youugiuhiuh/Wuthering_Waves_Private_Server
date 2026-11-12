@@ -9,7 +9,7 @@ require (
 	github.com/oschwald/maxminddb-golang/v2 v2.9.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/schollz/progressbar/v3 v3.19.1
-	golang.org/x/net v0.57.0
+	golang.org/x/net v0.62.0
 	golang.org/x/time v0.16.0
 	google.golang.org/protobuf v1.36.12
 )
@@ -29,7 +29,7 @@ require (
 	go.opentelemetry.io/otel v1.41.0 // indirect
 	go.opentelemetry.io/otel/metric v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/term v0.45.0 // indirect
+	golang.org/x/term v0.47.0 // indirect
 )
