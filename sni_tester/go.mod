@@ -5,7 +5,6 @@ go 1.27.4
 require (
 	github.com/dgraph-io/badger/v4 v4.9.6
 	github.com/miekg/dns v1.1.73
-	github.com/oschwald/geoip2-golang/v2 v2.5.0
 	github.com/oschwald/maxminddb-golang/v2 v2.9.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/schollz/progressbar/v3 v3.19.1
@@ -22,7 +21,7 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
