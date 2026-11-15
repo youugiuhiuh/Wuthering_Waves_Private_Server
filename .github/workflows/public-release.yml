@@ -316,7 +316,7 @@ jobs:
       - name: Create Release
         run: |
           OWNER_REPO="$GITHUB_REPOSITORY"
-          BODY=$(printf 'Release `v%s`.\n\n### Included Files\n- `installer-linux-amd64` / `installer-linux-arm64`: bootstrap executable\n- `aegis-linux-amd64` / `aegis-linux-arm64`: runtime management executable\n- `installer` / `aegis`: amd64 aliases (kept for existing one-line installs)\n' "${{ needs.build.outputs.version }}")
+          BODY=$(printf 'Release `v%s`.\n\n### Included Files\n- `installer-linux-amd64` / `installer-linux-arm64`: bootstrap executable\n- `aegis-linux-amd64` / `aegis-linux-arm64`: runtime management executable\n- ' "${{ needs.build.outputs.version }}")
 
           TAG="v${{ needs.build.outputs.version }}"
           # 显式固定 tag 指向 workflow 检出的那个 commit。
