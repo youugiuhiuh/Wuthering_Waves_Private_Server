@@ -370,7 +370,7 @@ jobs:
           # （硬编码 .../releases/latest/download/installer）继续可用。
           for f in dist/aegis-linux-amd64 dist/aegis-linux-arm64 \
                    dist/installer-linux-amd64 dist/installer-linux-arm64
-                   ; do
+                   do
             [ -f "$f" ] || { echo "::error::缺少产物 $f"; exit 1; }
             NAME=$(basename "$f")
             echo "uploading $NAME -> $UPLOAD_URL?name=$NAME"
