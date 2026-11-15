@@ -55,6 +55,14 @@ minisign-verify = "0.3.0"
 mockall = "0.15.0" # Needed at runtime for binary-crate tests (MockBotAdapter shared across lib/bin)
 simploxide-client = { version = "=0.14.0", default-features = false, features = ["websocket"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
+# sqlite 静态编译（bundled）：
+#   1) 去掉对系统 libsqlite3.so.0 的运行时依赖 —— 安装器实际从不安装它，
+#      目前只是靠在已有环境里，是个隐含前置条件。
+#   2) 交叉编译 arm64 必需：aarch64 的 libsqlite3-dev 在 Ubuntu ports 源，
+#      x86 上 multiarch 拿不到。
+# 这里只是因为 rusqlite 没把 bundled 透传出来才必须直依赖它；版本必须跟
+# Cargo.lock 里那份完全一致（links = "sqlite3" 不允许两份共存）。
+libsqlite3-sys = { version = "0.38.2", features = ["bundled"] }
 
 [dev-dependencies]
 env_logger = "0.11.11"
