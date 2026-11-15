@@ -67,12 +67,18 @@ build_arch() {
 }
 
 # rustup 管理的工具链不会自带交叉 std。
-if command -v rustup >/dev/null 2>&1; then
+# mise 的 rust 插件用 rustup-init 装，rustup 通常在 mise shims 或 ~/.cargo/bin；
+# 两处都找不到时不能静默继续，否则 arm64 构建会在链接阶段报个无关的错。
+RUSTUP="$(command -v rustup 2>/dev/null || true)"
+if [ -z "$RUSTUP" ] && [ -x "${CARGO_HOME:-$HOME/.cargo}/bin/rustup" ]; then
+  RUSTUP="${CARGO_HOME:-$HOME/.cargo}/bin/rustup"
+fi
+if [ -n "$RUSTUP" ]; then
   for t in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-    rustup target add "$t" >/dev/null 2>&1 || echo "::warning::rustup target add $t 失败（可能已安装或工具链非 rustup 管理）"
+    "$RUSTUP" target add "$t" >/dev/null 2>&1 || echo "::warning::rustup target add $t 失败（可能已安装）"
   done
 else
-  echo "::warning::未找到 rustup，假定目标 std 已就绪"
+  echo "::warning::未找到 rustup，假定 aarch64 目标 std 已就绪；若 arm64 构建报缺少 std 请先安装"
 fi
 
 # 可选参数：只构建指定架构（默认两个都建）。CI 不传；本地调试时可
