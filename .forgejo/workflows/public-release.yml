@@ -296,7 +296,9 @@ jobs:
   # 若将来本仓库退化为镜像站、需要重新禁用发布，改回判断即可：
   #   if: needs.merge.result == 'success' && vars.PUBLISH_ENABLED == 'true'
   publish:
-    needs: merge
+    # 必须同时列出 build：publish 全程引用 needs.build.outputs.version，
+    # 而 needs 只写 merge 时该表达式求值为空（artifact 名 "dist-"、tag "v"）。
+    needs: [build, merge]
     runs-on: ubuntu-latest
     # 仅剩「上游构建成功」这一必要条件。
     if: needs.build.result == 'success'

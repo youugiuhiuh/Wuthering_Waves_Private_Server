@@ -236,7 +236,9 @@ jobs:
   # 权威源 = 本仓库真正的「上游」。默认仅 GitHub；在 Forgejo 上若也要发布，
   # 设 repo 变量 PUBLISH_ENABLED=true 显式开启（避免镜像站分叉）。
   publish:
-    needs: merge
+    # 必须同时列出 build：publish 全程引用 needs.build.outputs.version，
+    # 而 needs 只写 merge 时该表达式求值为空（artifact 名 "dist-"、tag "v"）。
+    needs: [build, merge]
     runs-on: ubuntu-latest
     # 权威源守卫：
     #   - GitHub 上始终发布（github.server_url 含 github.com）
