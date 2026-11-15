@@ -248,42 +248,6 @@ jobs:
           path: dist/
           if-no-files-found: error
 
-  # ---- 阶段 1.5：合并两个架构的产物 ----
-  # matrix 每腿各上传一份，publish 需要一个完整的 dist/。
-  # Forgejo 无 artifact 后端时这几步静默降级，
-  # 由 publish 的 Ensure Dist Artifacts Present 就地重建兜底。
-  merge:
-    needs: build
-    runs-on: ubuntu-24.04
-    if: needs.build.result == 'success'
-    steps:
-      - name: Download All Arch Artifacts
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          pattern: dist-${{ needs.build.outputs.version }}-*
-          merge-multiple: true
-          path: dist
-
-      # 兼容别名：存量部署的一键指令硬编码了 /releases/latest/download/installer
-      # 与 asset 名 aegis，指向 amd64 产物。矩阵腿只建单架构，故在此生成。
-      - name: Create Compatibility Aliases
-        run: |
-          if [ -f dist/aegis-linux-amd64 ]; then
-            cp dist/aegis-linux-amd64 dist/aegis
-            cp dist/installer-linux-amd64 dist/installer
-          else
-            echo "::warning::未取到 amd64 产物，跳过兼容别名（publish 将就地重建）"
-          fi
-          ls -lh dist/ || true
-
-      - name: Upload Combined Artifacts
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist-${{ needs.build.outputs.version }}
-          path: dist/
-
   # ---- 阶段 2：发布 ----
   # 做两件有副作用的事：推 tag、建 release。
   #
@@ -294,9 +258,9 @@ jobs:
   # 长期「构建成功但没有发行版」的原因。
   #
   # 若将来本仓库退化为镜像站、需要重新禁用发布，改回判断即可：
-  #   if: needs.merge.result == 'success' && vars.PUBLISH_ENABLED == 'true'
+  #   if: needs.build.result == 'success' && vars.PUBLISH_ENABLED == 'true'
   publish:
-    needs: merge
+    needs: build
     runs-on: ubuntu-latest
     # 仅剩「上游构建成功」这一必要条件。
     if: needs.build.result == 'success'
@@ -322,12 +286,15 @@ jobs:
       # GitHub 上尝试。注意本文件只在 Forgejo 上跑，此步骤实际恒被跳过：
       # 保留是为了与 GitHub 版保持结构一致、便于对照。dist 由下面的
       # Ensure Dist Artifacts Present 就地重建兜底。
+      # 矩阵每腿各传一份 dist-<version>-<arch>，这里按 pattern 一次合并进
+      # dist/ —— 不需要额外的 merge job。
       - name: Download Build Artifacts
         if: "contains(github.server_url, 'github.com')"
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          name: dist-${{ needs.build.outputs.version }}
+          pattern: dist-${{ needs.build.outputs.version }}-*
+          merge-multiple: true
           path: dist
 
       # 若 artifact 后端不可用（Forgejo 无 upload/download-artifact），
@@ -337,16 +304,26 @@ jobs:
           if [ -f dist/aegis-linux-amd64 ] && [ -f dist/aegis-linux-arm64 ] \
              && [ -f dist/installer-linux-amd64 ] && [ -f dist/installer-linux-arm64 ]; then
             echo "artifacts 已就绪"
-            ls -lh dist/
-            exit 0
+          else
+            echo "::warning::dist 缺失，就地重建产物"
+            scripts/ensure-build-deps.sh
+            curl -fsSL https://mise.run | sh
+            export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+            mise install --yes
+            CGO_ENABLED=0 GOBIN="$(dirname "$(command -v go)")" go install "mvdan.cc/garble@v0.17.0"
+            # 不带参数 -> 交叉模式同时构出两个架构，并顺带生成兼容别名。
+            scripts/build-release-artifacts.sh
           fi
-          echo "::warning::dist 缺失，就地重建产物"
-          scripts/ensure-build-deps.sh
-          curl -fsSL https://mise.run | sh
-          export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
-          mise install --yes
-          CGO_ENABLED=0 GOBIN="$(dirname "$(command -v go)")" go install "mvdan.cc/garble@v0.17.0"
-          scripts/build-release-artifacts.sh
+
+          # 兼容别名：存量部署的一键指令硬编码了
+          # /releases/latest/download/installer 与 asset 名 aegis，指向 amd64。
+          # 从 artifact 下载时不带这两个名字，故统一在此补齐（重建分支已生成，
+          # 重复 cp 是幂等的）。
+          if [ -f dist/aegis-linux-amd64 ]; then
+            cp dist/aegis-linux-amd64 dist/aegis
+            cp dist/installer-linux-amd64 dist/installer
+          fi
+          ls -lh dist/
 
       # 权威源才回写版本号：避免镜像站自己 commit 造成分叉。
       # 版本号不再由 CI 回写。发布前请确保 rust/aegis/Cargo.toml 与
