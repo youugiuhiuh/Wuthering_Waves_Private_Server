@@ -195,48 +195,12 @@ jobs:
           path: dist/
           if-no-files-found: error
 
-  # ---- 阶段 1.5：合并两个架构的产物 ----
-  # matrix 每腿各上传一份，publish 需要一个完整的 dist/。
-  # Forgejo 无 artifact 后端时这几步静默降级，
-  # 由 publish 的 Ensure Dist Artifacts Present 就地重建兜底。
-  merge:
-    needs: build
-    runs-on: ubuntu-latest
-    if: needs.build.result == 'success'
-    steps:
-      - name: Download All Arch Artifacts
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          pattern: dist-${{ needs.build.outputs.version }}-*
-          merge-multiple: true
-          path: dist
-
-      # 兼容别名：存量部署的一键指令硬编码了 /releases/latest/download/installer
-      # 与 asset 名 aegis，指向 amd64 产物。矩阵腿只建单架构，故在此生成。
-      - name: Create Compatibility Aliases
-        run: |
-          if [ -f dist/aegis-linux-amd64 ]; then
-            cp dist/aegis-linux-amd64 dist/aegis
-            cp dist/installer-linux-amd64 dist/installer
-          else
-            echo "::warning::未取到 amd64 产物，跳过兼容别名（publish 将就地重建）"
-          fi
-          ls -lh dist/ || true
-
-      - name: Upload Combined Artifacts
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist-${{ needs.build.outputs.version }}
-          path: dist/
-
   # ---- 阶段 2：发布（只应在权威源上跑）----
   # 做三件有副作用的事：回写版本 commit、推 tag、建 release。
   # 权威源 = 本仓库真正的「上游」。默认仅 GitHub；在 Forgejo 上若也要发布，
   # 设 repo 变量 PUBLISH_ENABLED=true 显式开启（避免镜像站分叉）。
   publish:
-    needs: merge
+    needs: build
     runs-on: ubuntu-latest
     # 权威源守卫：
     #   - GitHub 上始终发布（github.server_url 含 github.com）
@@ -245,7 +209,7 @@ jobs:
     # 故意用 !contains(...) 而非 contains(...)：若 server_url 意外为空/不可用，
     # 表达式仍为 true → 默认发布（失败安全，不会静默永不发布）。
     if: |
-      needs.merge.result == 'success' &&
+      needs.build.result == 'success' &&
       (!contains(github.server_url, '/') || contains(github.server_url, 'github.com') || vars.PUBLISH_ENABLED == 'true')
     steps:
       - name: Checkout Source
@@ -260,11 +224,14 @@ jobs:
           git fetch -q --prune --tags origin || true
           git config --local http.extraheader ""
 
+      # 矩阵每腿各传一份 dist-<version>-<arch>，这里按 pattern 一次合并进
+      # dist/ —— 不需要额外的 merge job。
       - name: Download Build Artifacts
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          name: dist-${{ needs.build.outputs.version }}
+          pattern: dist-${{ needs.build.outputs.version }}-*
+          merge-multiple: true
           path: dist
 
       # 若 artifact 后端不可用（Forgejo 无 upload/download-artifact），
@@ -274,16 +241,26 @@ jobs:
           if [ -f dist/aegis-linux-amd64 ] && [ -f dist/aegis-linux-arm64 ] \
              && [ -f dist/installer-linux-amd64 ] && [ -f dist/installer-linux-arm64 ]; then
             echo "artifacts 已就绪"
-            ls -lh dist/
-            exit 0
+          else
+            echo "::warning::dist 缺失，就地重建产物"
+            scripts/ensure-build-deps.sh
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+            mise install --yes
+            # 不带参数 -> 交叉模式同时构出两个架构，并顺带生成兼容别名。
+            scripts/build-release-artifacts.sh
           fi
-          echo "::warning::dist 缺失，就地重建产物"
-          scripts/ensure-build-deps.sh
-          curl -fsSL https://mise.run | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
-          mise install --yes
-          scripts/build-release-artifacts.sh
+
+          # 兼容别名：存量部署的一键指令硬编码了
+          # /releases/latest/download/installer 与 asset 名 aegis，指向 amd64。
+          # 从 artifact 下载时不带这两个名字，故统一在此补齐（重建分支已生成，
+          # 重复 cp 是幂等的）。
+          if [ -f dist/aegis-linux-amd64 ]; then
+            cp dist/aegis-linux-amd64 dist/aegis
+            cp dist/installer-linux-amd64 dist/installer
+          fi
+          ls -lh dist/
 
       # 权威源才回写版本号：避免镜像站自己 commit 造成分叉。
       # 版本号不再由 CI 回写。发布前请确保 rust/aegis/Cargo.toml 与
