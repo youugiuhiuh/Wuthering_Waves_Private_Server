@@ -75,7 +75,21 @@ jobs:
   # 因此这个 job 在 GitHub / Forgejo / 本地 行为完全一致，
   # 也不会在镜像站上产生「自己 bump 版本」的分叉 commit。
   build:
-    runs-on: ubuntu-latest
+    # 架构矩阵：每个架构在**自己架构的 runner** 上原生构建，不做交叉编译。
+    #   好处：C 工具链 / libc 头文件 / sqlite 全是目标架构原生，交叉编不出来的
+    #         东西（aarch64 的 libsqlite3-dev 只在 Ubuntu ports 源）不再是问题；
+    #         两个架构并行、失败互不牵连。
+    #   兜底：publish 的回退重建仍走 scripts/build-release-artifacts.sh 的交叉
+    #         路径，所以只有单架构 runner 的环境也能出全套产物。
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore(deps)')"
     outputs:
       version: ${{ steps.ver.outputs.version }}
@@ -193,9 +207,9 @@ jobs:
             rust/aegis/target/release/.fingerprint
             rust/aegis/target/release/build
             rust/aegis/target/release/deps
-          key: ${{ runner.os }}-rust-aegis-${{ hashFiles('rust/aegis/Cargo.lock', 'rust/aegis/Cargo.toml') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-rust-aegis-${{ hashFiles('rust/aegis/Cargo.lock', 'rust/aegis/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-rust-aegis-
+            ${{ runner.os }}-${{ matrix.arch }}-rust-aegis-
 
       - name: Cache Go build outputs
         continue-on-error: true
@@ -205,9 +219,9 @@ jobs:
             ~/.cache/go-build
             ~/.cache/garble
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-installer-${{ hashFiles('go/installer/go.sum', 'go/installer/go.mod') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-go-installer-${{ hashFiles('go/installer/go.sum', 'go/installer/go.mod') }}
           restore-keys: |
-            ${{ runner.os }}-go-installer-
+            ${{ runner.os }}-${{ matrix.arch }}-go-installer-
 
       # 刻意不使用 sccache：其唯一后端 SCCACHE_GHA_ENABLED 是 GitHub 专有，
       # 与「跨平台」目标冲突；且 build-test.yml 已实测该后端在本仓库
@@ -215,8 +229,8 @@ jobs:
       # 发布频率低，直接编译即可；RUSTC_WRAPPER 留空。
       # 架构清单与编译基线只在 scripts/build-release-artifacts.sh 一处定义，
       # publish 阶段的回退重建调用同一脚本，避免两处漂移。
-      - name: Build Runtime And Bootstrap Binaries
-        run: scripts/build-release-artifacts.sh
+      - name: Build ${{ matrix.arch }} Artifacts
+        run: scripts/build-release-artifacts.sh ${{ matrix.arch }}
 
       # @actions/artifact v2+（upload-artifact@v4）在 GHES 型 artifact 后端上直接报
       # GHESNotSupportedError，Forgejo runner 正是这一类。continue-on-error 在 Forgejo
@@ -230,9 +244,45 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: dist-${{ steps.ver.outputs.version }}
+          name: dist-${{ steps.ver.outputs.version }}-${{ matrix.arch }}
           path: dist/
           if-no-files-found: error
+
+  # ---- 阶段 1.5：合并两个架构的产物 ----
+  # matrix 每腿各上传一份，publish 需要一个完整的 dist/。
+  # Forgejo 无 artifact 后端时这几步静默降级，
+  # 由 publish 的 Ensure Dist Artifacts Present 就地重建兜底。
+  merge:
+    needs: build
+    runs-on: ubuntu-24.04
+    if: needs.build.result == 'success'
+    steps:
+      - name: Download All Arch Artifacts
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dist-${{ needs.build.outputs.version }}-*
+          merge-multiple: true
+          path: dist
+
+      # 兼容别名：存量部署的一键指令硬编码了 /releases/latest/download/installer
+      # 与 asset 名 aegis，指向 amd64 产物。矩阵腿只建单架构，故在此生成。
+      - name: Create Compatibility Aliases
+        run: |
+          if [ -f dist/aegis-linux-amd64 ]; then
+            cp dist/aegis-linux-amd64 dist/aegis
+            cp dist/installer-linux-amd64 dist/installer
+          else
+            echo "::warning::未取到 amd64 产物，跳过兼容别名（publish 将就地重建）"
+          fi
+          ls -lh dist/ || true
+
+      - name: Upload Combined Artifacts
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ needs.build.outputs.version }}
+          path: dist/
 
   # ---- 阶段 2：发布 ----
   # 做两件有副作用的事：推 tag、建 release。
@@ -244,9 +294,9 @@ jobs:
   # 长期「构建成功但没有发行版」的原因。
   #
   # 若将来本仓库退化为镜像站、需要重新禁用发布，改回判断即可：
-  #   if: needs.build.result == 'success' && vars.PUBLISH_ENABLED == 'true'
+  #   if: needs.merge.result == 'success' && vars.PUBLISH_ENABLED == 'true'
   publish:
-    needs: build
+    needs: merge
     runs-on: ubuntu-latest
     # 仅剩「上游构建成功」这一必要条件。
     if: needs.build.result == 'success'
