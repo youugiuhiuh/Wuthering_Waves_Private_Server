@@ -75,9 +75,9 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-latest
           - arch: arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-latest-arm
     runs-on: ${{ matrix.runner }}
     if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore(deps)')"
     outputs:
@@ -201,7 +201,7 @@ jobs:
   # 由 publish 的 Ensure Dist Artifacts Present 就地重建兜底。
   merge:
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     if: needs.build.result == 'success'
     steps:
       - name: Download All Arch Artifacts
