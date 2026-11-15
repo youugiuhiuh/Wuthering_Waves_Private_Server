@@ -36,11 +36,10 @@ Recommended environment:
 - Debian 10+
 - `amd64` (x86-64) or `arm64` (aarch64) Linux VPS
 
-Release assets are built per architecture: `installer-linux-amd64`,
-`installer-linux-arm64`, `aegis-linux-amd64`, `aegis-linux-arm64`.
-The bare `installer` / `aegis` names are **amd64 aliases** kept for
-compatibility — on arm64 they will fail with `Exec format error`, so always
-pick the asset matching `uname -m`.
+Every release asset is architecture-qualified — there is no bare `installer`
+or `aegis`: `installer-linux-amd64`, `installer-linux-arm64`,
+`aegis-linux-amd64`, `aegis-linux-arm64`. Always pick the one matching
+`uname -m`; the wrong one fails with `Exec format error`.
 
 Install with:
 

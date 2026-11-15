@@ -143,16 +143,4 @@ if wanted arm64; then
   build_arch arm64 aarch64-unknown-linux-gnu arm64 "$ARM64_BASELINE_CFLAGS" aarch64-linux-gnu-gcc
 fi
 
-# 兼容别名：存量部署的一键指令硬编码了 /releases/latest/download/installer
-# 与 asset 名 `aegis`，指向 amd64 产物。
-#
-# 注意：arm64 机器**不能**用这两个别名 —— 裸二进制是 amd64，装上只会
-# Exec format error。README 已按架构分别给出下载地址。
-#
-# 矩阵腿只构建单个架构时，别名由 merge job 统一生成（见工作流）。
-if wanted amd64 && wanted arm64 && [ -f "$DIST/$ASSET_SLUG-linux-amd64" ]; then
-  cp "$DIST/$ASSET_SLUG-linux-amd64" "$DIST/$ASSET_SLUG"
-  cp "$DIST/$INSTALLER_SLUG-linux-amd64" "$DIST/$INSTALLER_SLUG"
-fi
-
 ls -lh "$DIST"
