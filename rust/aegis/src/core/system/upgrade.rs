@@ -22,7 +22,9 @@ use crate::core::utils::{format_download_progress, human_readable_size, should_r
 
 const DEFAULT_RELEASE_REPOSITORIES: &[(&str, &str)] =
     &[("youugiuhiuh", "Wuthering_Waves_Private_Server")];
-const DEFAULT_ASSET_NAME: &str = "aegis";
+// 发布同时产出带架构后缀的资产；裸 `aegis` 仅作 amd64 兼容别名保留
+// （2.5.1 及更早的 release 只有它，存量部署靠它继续升级）。
+const DEFAULT_ASSET_SLUG: &str = "aegis";
 const USER_AGENT_VALUE: &str = "wwps-runtime-updater/1.0";
 
 const RELEASE_API_BASE: &str = "https://api.github.com";
@@ -92,6 +94,33 @@ fn configured_release_repositories() -> Vec<ReleaseRepo> {
         .collect()
 }
 
+/// 指定架构对应的发布资产名候选，按优先级降序。
+///
+/// 未知架构返回空 —— 调用方必须据此**硬失败**，不能退回到「随便选一个」。
+/// 与 `core/usque/pin.rs::asset_name` 同一套 arch 别名约定。
+pub(crate) fn asset_candidates_for_arch(arch: &str) -> Vec<String> {
+    match arch {
+        "x86_64" | "amd64" => vec![
+            format!("{DEFAULT_ASSET_SLUG}-linux-amd64"),
+            DEFAULT_ASSET_SLUG.to_string(),
+        ],
+        // 刻意不含裸 aegis：那是 x86_64 二进制。
+        "aarch64" | "arm64" => vec![format!("{DEFAULT_ASSET_SLUG}-linux-arm64")],
+        _ => Vec::new(),
+    }
+}
+
+/// 按候选名顺序在 assets 中**精确**匹配。
+///
+/// 不用 `starts_with` 也不用 `assets.first()`：前者会把
+/// `aegis-linux-amd64-old` 之类近似名错认成目标资产，后者在架构不匹配时
+/// 会装上一个根本跑不起来的二进制。
+fn pick_asset<'a>(assets: &'a [ReleaseAsset], candidates: &[String]) -> Option<&'a ReleaseAsset> {
+    candidates
+        .iter()
+        .find_map(|name| assets.iter().find(|a| &a.name == name))
+}
+
 fn now_nanos() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -114,7 +143,8 @@ fn is_current_version(tag: &str) -> bool {
 pub struct UpgradeManager {
     client: reqwest::Client,
     repositories: Vec<ReleaseRepo>,
-    asset_name: String,
+    /// `AEGIS_RELEASE_ASSET` 显式覆盖；`None` 表示按当前架构推导。
+    asset_name: Option<String>,
     token: Option<String>,
 }
 
@@ -132,8 +162,9 @@ pub struct ReleaseArtifact {
 impl UpgradeManager {
     pub fn new() -> Result<Self> {
         let repositories = configured_release_repositories();
-        let asset_name =
-            env::var("AEGIS_RELEASE_ASSET").unwrap_or_else(|_| DEFAULT_ASSET_NAME.to_string());
+        let asset_name = env::var("AEGIS_RELEASE_ASSET")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
         let token = env::var("GITHUB_TOKEN").ok().filter(|s| !s.is_empty());
 
         crate::bootstrap::install_crypto_provider();
@@ -297,9 +328,13 @@ impl UpgradeManager {
             anyhow::bail!("Release 缺少 tag_name");
         }
 
-        let asset = self
-            .select_asset(&release.assets)
-            .ok_or_else(|| anyhow!("未找到匹配的 Release 产物 ({})", self.asset_name))?;
+        let asset = self.select_asset(&release.assets).ok_or_else(|| {
+            anyhow!(
+                "未找到匹配的 Release 产物（架构 {}，候选 {}）",
+                env::consts::ARCH,
+                self.asset_candidates().join(" / ")
+            )
+        })?;
 
         let download_url = asset.download_url().to_string();
         if download_url.is_empty() {
@@ -335,11 +370,17 @@ impl UpgradeManager {
     }
 
     fn select_asset<'a>(&self, assets: &'a [ReleaseAsset]) -> Option<&'a ReleaseAsset> {
-        assets
-            .iter()
-            .find(|a| a.name == self.asset_name)
-            .or_else(|| assets.iter().find(|a| a.name.starts_with(&self.asset_name)))
-            .or_else(|| assets.first())
+        pick_asset(assets, &self.asset_candidates())
+    }
+
+    /// 本次升级可接受的资产名列表。
+    ///
+    /// 显式覆盖（`AEGIS_RELEASE_ASSET`）优先且只认精确匹配；否则按本机架构推导。
+    fn asset_candidates(&self) -> Vec<String> {
+        match &self.asset_name {
+            Some(explicit) => vec![explicit.clone()],
+            None => asset_candidates_for_arch(env::consts::ARCH),
+        }
     }
 
     async fn download_sha256_manifest(
@@ -812,6 +853,99 @@ mod tests {
             size: None,
             digest: None,
         }
+    }
+
+    // ---- 架构 → 资产名 ----
+    // 现状：发布同时产出 aegis-linux-amd64 / aegis-linux-arm64，另把裸 aegis
+    // 保留为 amd64 的兼容别名（存量部署靠它继续升级）。
+    #[test]
+    fn test_asset_candidates_for_arch_known() {
+        for arch in ["x86_64", "amd64"] {
+            assert_eq!(
+                asset_candidates_for_arch(arch),
+                vec!["aegis-linux-amd64".to_string(), "aegis".to_string()],
+                "arch {arch}"
+            );
+        }
+        for arch in ["aarch64", "arm64"] {
+            // 刻意不含裸 aegis：那是 x86_64 二进制，装上必然 Exec format error。
+            assert_eq!(
+                asset_candidates_for_arch(arch),
+                vec!["aegis-linux-arm64".to_string()],
+                "arch {arch}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_asset_candidates_for_arch_unknown_is_empty() {
+        for arch in ["riscv64", "mips", ""] {
+            assert!(
+                asset_candidates_for_arch(arch).is_empty(),
+                "未知架构 {arch:?} 必须返回空，调用方据此硬失败"
+            );
+        }
+    }
+
+    fn asset_names(names: &[&str]) -> Vec<ReleaseAsset> {
+        names
+            .iter()
+            .map(|n| test_release_asset(n, "https://example.com/x"))
+            .collect()
+    }
+
+    #[test]
+    fn test_pick_asset_prefers_arch_specific() {
+        let assets = asset_names(&[
+            "installer-linux-amd64",
+            "aegis-linux-amd64",
+            "aegis-linux-arm64",
+            "aegis",
+        ]);
+
+        let amd64 = pick_asset(&assets, &asset_candidates_for_arch("x86_64")).unwrap();
+        assert_eq!(amd64.name, "aegis-linux-amd64");
+
+        let arm64 = pick_asset(&assets, &asset_candidates_for_arch("aarch64")).unwrap();
+        assert_eq!(arm64.name, "aegis-linux-arm64");
+    }
+
+    #[test]
+    fn test_pick_asset_legacy_fallback_only_for_amd64() {
+        // 2.5.1 及更早的 release 只有裸 aegis。
+        let assets = asset_names(&["aegis", "aegis.minisig"]);
+
+        let picked = pick_asset(&assets, &asset_candidates_for_arch("x86_64")).unwrap();
+        assert_eq!(picked.name, "aegis");
+
+        // 安全关键：arm64 绝不能回退到 x86_64 二进制。
+        assert!(
+            pick_asset(&assets, &asset_candidates_for_arch("aarch64")).is_none(),
+            "arm64 遇到只有裸 aegis 的旧 release 必须失败，而不是装 x86_64 二进制"
+        );
+    }
+
+    // 回归：旧实现用 starts_with 模糊匹配，会把 aegis-linux-amd64 之类
+    // 近似名错认成目标资产。改为精确匹配后此处必须选不到。
+    #[test]
+    fn test_pick_asset_is_exact_match_not_prefix() {
+        let assets = asset_names(&["aegis-linux-amd64-old", "aegis-linux-arm64-lts"]);
+        assert!(pick_asset(&assets, &["aegis-linux-amd64".to_string()]).is_none());
+        assert!(pick_asset(&assets, &["aegis-linux-arm64".to_string()]).is_none());
+    }
+
+    #[test]
+    fn test_pick_asset_never_crosses_arch() {
+        // amd64 机器面对只有 arm64 资产的 release 必须失败。
+        let assets = asset_names(&["aegis-linux-arm64", "installer-linux-arm64"]);
+        assert!(pick_asset(&assets, &asset_candidates_for_arch("x86_64")).is_none());
+    }
+
+    #[test]
+    fn test_pick_asset_empty_candidates_never_falls_back_to_first_asset() {
+        // 旧实现的第三级回退是 assets.first()，架构不匹配时会装错二进制。
+        let assets = asset_names(&["aegis", "aegis-linux-amd64"]);
+        assert!(pick_asset(&assets, &[]).is_none());
     }
 
     // 威胁模型：防中间人替换。若签名缺失时仍继续安装/升级，
