@@ -220,9 +220,10 @@ func checkArch() string {
 
 // aegisAssetCandidates 返回指定架构可接受的 aegis 资产名，按优先级降序。
 //
-// amd64 保留裸 "aegis"：2.5.1 及更早的 release 只有无后缀资产，存量部署
-// 靠它才能继续升级。arm64 只认带后缀的名字——旧 release 的裸 aegis 是
-// x86_64 二进制，装上只会在启动时 Exec format error，静默回退比装不上更糟。
+// 新 release 一律只发带架构后缀的资产（没有裸 aegis）。
+// amd64 的裸 "aegis" 候选唯一用途是装**旧版本**：2.5.2 及更早的 release
+// 只发过无后缀资产，回滚时需要它。arm64 绝不能有这一项——那些裸资产是
+// x86_64 二进制，装上只会在启动时 Exec format error。
 func aegisAssetCandidates(arch string) []string {
 	switch arch {
 	case "amd64":

@@ -311,17 +311,8 @@ jobs:
             export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
             mise install --yes
             CGO_ENABLED=0 GOBIN="$(dirname "$(command -v go)")" go install "mvdan.cc/garble@v0.17.0"
-            # 不带参数 -> 交叉模式同时构出两个架构，并顺带生成兼容别名。
+            # 不带参数 -> 交叉模式同时构出两个架构。
             scripts/build-release-artifacts.sh
-          fi
-
-          # 兼容别名：存量部署的一键指令硬编码了
-          # /releases/latest/download/installer 与 asset 名 aegis，指向 amd64。
-          # 从 artifact 下载时不带这两个名字，故统一在此补齐（重建分支已生成，
-          # 重复 cp 是幂等的）。
-          if [ -f dist/aegis-linux-amd64 ]; then
-            cp dist/aegis-linux-amd64 dist/aegis
-            cp dist/installer-linux-amd64 dist/installer
           fi
           ls -lh dist/
 

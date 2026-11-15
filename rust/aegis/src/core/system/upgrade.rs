@@ -104,7 +104,7 @@ pub(crate) fn asset_candidates_for_arch(arch: &str) -> Vec<String> {
             format!("{DEFAULT_ASSET_SLUG}-linux-amd64"),
             DEFAULT_ASSET_SLUG.to_string(),
         ],
-        // 刻意不含裸 aegis：那是 x86_64 二进制。
+        // 刻意不含裸 aegis：新 release 不产出它，旧 release 那份是 x86_64 二进制。
         "aarch64" | "arm64" => vec![format!("{DEFAULT_ASSET_SLUG}-linux-arm64")],
         _ => Vec::new(),
     }
