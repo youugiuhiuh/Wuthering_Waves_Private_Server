@@ -44,7 +44,7 @@ REQUIRED_HEADERS=(/usr/include/stdlib.h /usr/include/pthread.h)
 # check_deps 仍返回 0 并谎报「已就绪」跳过安装。
 # 来源：rust/aegis/Cargo.toml 的 matrix-sdk sqlite feature ->
 #   matrix-sdk-sqlite -> rusqlite -> libsqlite3-sys（非 bundled 时走 pkg-config）
-REQUIRED_CMDS=(pkg-config)
+REQUIRED_CMDS=(pkg-config aarch64-linux-gnu-gcc)
 REQUIRED_PKGCONFIG_FILES=(openssl sqlite3)
 
 check_deps() {
@@ -67,7 +67,7 @@ if check_deps; then
   exit 0
 fi
 
-echo "缺少构建依赖，尝试安装 libc6-dev pkg-config libssl-dev libsqlite3-dev"
+echo "缺少构建依赖，尝试安装 libc6-dev pkg-config libssl-dev libsqlite3-dev gcc-aarch64-linux-gnu"
 
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "::warning::无 apt-get，跳过安装。将依赖 CGO_ENABLED=0 降级构建"
@@ -86,7 +86,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 $SUDO apt-get update -qq || echo "::warning::apt-get update 失败，继续尝试安装"
-$SUDO apt-get install -y -qq --no-install-recommends libc6-dev pkg-config libssl-dev libsqlite3-dev || {
+$SUDO apt-get install -y -qq --no-install-recommends libc6-dev pkg-config libssl-dev libsqlite3-dev gcc-aarch64-linux-gnu || {
   echo "::warning::构建依赖安装失败。将依赖 CGO_ENABLED=0 降级构建（cargo 侧可能仍失败）"
   exit 0
 }
@@ -99,6 +99,17 @@ if check_deps; then
 else
   echo "::warning::依赖已安装但检查未通过（路径异常？）"
   pkg-config --exists openssl 2>/dev/null || echo "  openssl.pc 不可见"
+fi
+
+# ── arm64 交叉编译器复查 ────────────────────────────────────────────
+# 发布产出 aegis-linux-arm64（scripts/build-release-artifacts.sh）。
+# ring 含 C 代码，交叉编译必须有 aarch64 的 gcc；缺它在链接阶段必炸。
+# 已并入上面的 REQUIRED_CMDS，因此缺它时不会走早退。
+AARCH64_CC=aarch64-linux-gnu-gcc
+if command -v "$AARCH64_CC" >/dev/null 2>&1; then
+  echo "  ✅ $AARCH64_CC: $($AARCH64_CC --version | head -1)"
+else
+  echo "::warning::$AARCH64_CC 仍不可用，arm64 产物将无法构建"
 fi
 
 exit 0
