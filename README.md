@@ -1,7 +1,7 @@
 # WWPS Control Stack
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20x86__64-blue)](#quick-start)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20amd64%20%7C%20arm64-blue)](#quick-start)
 [![Status](https://img.shields.io/badge/Status-Experimental-orange)](#disclaimer)
 
 ## Overview
@@ -34,14 +34,22 @@ Recommended environment:
 
 - Ubuntu 20.04+
 - Debian 10+
-- `amd64` or `arm64` Linux VPS
+- `amd64` (x86-64) or `arm64` (aarch64) Linux VPS
+
+Release assets are built per architecture: `installer-linux-amd64`,
+`installer-linux-arm64`, `aegis-linux-amd64`, `aegis-linux-arm64`.
+The bare `installer` / `aegis` names are **amd64 aliases** kept for
+compatibility — on arm64 they will fail with `Exec format error`, so always
+pick the asset matching `uname -m`.
 
 Install with:
 
 **Interactive (simplest):** SSH into your server and run:
 
 ```bash
-wget -O /root/installer "https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer" && chmod +x /root/installer && ./installer
+ARCH=$(uname -m); \
+  case "$ARCH" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; esac; \
+  wget -O /root/installer "https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer-linux-$ARCH" && chmod +x /root/installer && ./installer
 ```
 
 Follow the prompts to enter your Telegram Bot Token and Admin ID. Optionally configure Matrix or SimpleX for sensitive notification routing — the installer lets you pick Telegram, Matrix, SimpleX, Telegram + Matrix, or Telegram + SimpleX.
@@ -52,7 +60,9 @@ To update an existing installation, just run the same command again — the inst
 
 JSON format (best for simple ASCII values):
 ```bash
-ssh root@YOUR_SERVER_IP "wget -qO /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer"
+# 架构在本地判定，再把对应资产的 URL 交给远端
+ARCH=$(uname -m); case "$ARCH" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; esac
+ssh root@YOUR_SERVER_IP "wget -qO /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer-linux-$ARCH' && chmod +x /root/installer"
 ssh -T root@YOUR_SERVER_IP /root/installer --setup-stdin <<'JSONEOF'
 {"token":"YOUR_BOT_TOKEN","admin_id":"YOUR_ADMIN_ID","totp_secret":"","matrix_homeserver":"https://matrix.org","matrix_username":"@bot:matrix.org","matrix_password":"YOUR_PASSWORD","matrix_room_id":"!room:matrix.org"}
 JSONEOF
@@ -60,7 +70,9 @@ JSONEOF
 
 Key=value format (avoids JSON quoting, recommended for passwords with special/non-ASCII characters):
 ```bash
-ssh root@YOUR_SERVER_IP "wget -qO /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer' && chmod +x /root/installer"
+# 架构在本地判定，再把对应资产的 URL 交给远端
+ARCH=$(uname -m); case "$ARCH" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; esac
+ssh root@YOUR_SERVER_IP "wget -qO /root/installer 'https://github.com/youugiuhiuh/Wuthering_Waves_Private_Server/releases/latest/download/installer-linux-$ARCH' && chmod +x /root/installer"
 ssh -T root@YOUR_SERVER_IP /root/installer --setup-keyval <<'KVEOF'
 token=YOUR_BOT_TOKEN
 admin_id=YOUR_ADMIN_ID

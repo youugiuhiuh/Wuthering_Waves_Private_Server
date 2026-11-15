@@ -154,6 +154,7 @@
   "release.fetch_failed": "Failed to fetch latest release info: %s",
   "release.target_version": "Target version: %s",
   "release.tmpdir_failed": "Failed to create temp directory: %s",
+  "release.arch_missing": "Release %s has no aegis binary for architecture %s; upgrade to a release that supports it",
   "input.read_failed": "\nFailed to read input: %s",
   "firsttime.platform_selector_simplex": "SimpleX",
   "firsttime.platform_prompt": "Select platform (1=Telegram, 2=Matrix, 4=Telegram + Matrix, 5=SimpleX, 6=Telegram + SimpleX): ",

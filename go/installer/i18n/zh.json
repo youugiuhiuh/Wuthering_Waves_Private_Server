@@ -170,6 +170,7 @@
   "release.fetch_failed": "获取最新版本信息失败: %s",
   "release.target_version": "目标版本: %s",
   "release.tmpdir_failed": "创建临时目录失败: %s",
+  "release.arch_missing": "版本 %s 没有适用于当前架构 %s 的 aegis 二进制，请升级到支持该架构的版本",
   "input.read_failed": "\n读取输入失败: %s",
   "firsttime.platform_selector_simplex": "SimpleX",
   "firsttime.platform_prompt": "选择平台 (1=Telegram, 2=Matrix, 4=Telegram + Matrix, 5=SimpleX, 6=Telegram + SimpleX): ",

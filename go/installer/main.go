@@ -216,6 +216,34 @@ func checkArch() string {
 	}
 }
 
+// ======================== 资产架构选择 ===========================
+
+// aegisAssetCandidates 返回指定架构可接受的 aegis 资产名，按优先级降序。
+//
+// amd64 保留裸 "aegis"：2.5.1 及更早的 release 只有无后缀资产，存量部署
+// 靠它才能继续升级。arm64 只认带后缀的名字——旧 release 的裸 aegis 是
+// x86_64 二进制，装上只会在启动时 Exec format error，静默回退比装不上更糟。
+func aegisAssetCandidates(arch string) []string {
+	switch arch {
+	case "amd64":
+		return []string{"aegis-linux-amd64", "aegis"}
+	case "arm64":
+		return []string{"aegis-linux-arm64"}
+	}
+	return nil
+}
+
+// selectAegisAsset 按 aegisAssetCandidates 的优先级从 release 中选出资产。
+// 无匹配时返回 ("", nil)，调用方必须当作硬错误处理。
+func selectAegisAsset(release *latestRelease, arch string) (string, *releaseAsset) {
+	for _, name := range aegisAssetCandidates(arch) {
+		if asset := findAsset(release, name); asset != nil {
+			return name, asset
+		}
+	}
+	return "", nil
+}
+
 // ======================== 命令执行 ===========================
 
 func runCmdSilent(name string, args ...string) error {
@@ -1229,6 +1257,14 @@ func downloadAndDeployAegis() string {
 	ver := release.TagName
 	printYellow(i18n.T("release.target_version", ver))
 
+	// 架构判定必须在下载前完成：arm64 拿到 x86_64 二进制只会白下载一次。
+	arch := runtime.GOARCH
+	assetName, asset := selectAegisAsset(release, arch)
+	if assetName == "" {
+		printRed(i18n.T("release.arch_missing", ver, arch))
+		return ""
+	}
+
 	tmpDir, err := os.MkdirTemp("", "wwps-installer-*")
 	if err != nil {
 		printRed(i18n.T("release.tmpdir_failed", err.Error()))
@@ -1236,19 +1272,18 @@ func downloadAndDeployAegis() string {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	binaryPath := filepath.Join(tmpDir, binaryName)
+	// tmp 文件名跟资产名走（便于定位），落盘路径仍用 binaryName ——
+	// systemd 单元与既有部署都指向 installDir/aegis。
+	binaryPath := filepath.Join(tmpDir, assetName)
 	repositories := configuredReleaseRepositories()
 	primaryRepo := defaultReleaseRepositories[0]
 	if len(repositories) > 0 {
 		primaryRepo = repositories[0]
 	}
-	fallbackDownload := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", primaryRepo.Owner, primaryRepo.Name, ver, binaryName)
-	asset := findAsset(release, binaryName)
+	fallbackDownload := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", primaryRepo.Owner, primaryRepo.Name, ver, assetName)
 	downloadURL := fallbackDownload
-	if asset != nil {
-		if u := assetDownloadURL(asset, fallbackDownload); u != "" {
-			downloadURL = u
-		}
+	if u := assetDownloadURL(asset, fallbackDownload); u != "" {
+		downloadURL = u
 	}
 
 	if err := downloadFile(newHTTPClient(10*time.Minute), downloadURL, binaryPath); err != nil {
@@ -1264,12 +1299,12 @@ func downloadAndDeployAegis() string {
 
 	// --- Minisign verification ---
 	printYellow(i18n.T("minisign.download_start"))
-	assetMinisig := findMinisigAsset(release, binaryName)
+	assetMinisig := findMinisigAsset(release, assetName)
 	var minisigPassed bool
 	if assetMinisig != nil {
 		sigURL := assetDownloadURL(assetMinisig, fallbackDownload+".minisig")
 		if sigURL != "" {
-			sigPath := filepath.Join(tmpDir, binaryName+".minisig")
+			sigPath := filepath.Join(tmpDir, assetName+".minisig")
 			if err := downloadFile(newHTTPClient(30*time.Second), sigURL, sigPath); err != nil {
 				printRed(i18n.T("minisign.verify_failed", err.Error()))
 				return ""
@@ -1286,7 +1321,7 @@ func downloadAndDeployAegis() string {
 				printRed(i18n.T("minisign.verify_failed", err.Error()))
 				return ""
 			}
-			if err := matchTrustedComment(gotVersion, gotAsset, expectedVersion, binaryName); err != nil {
+			if err := matchTrustedComment(gotVersion, gotAsset, expectedVersion, assetName); err != nil {
 				printRed(err.Error())
 				return ""
 			}
@@ -1303,7 +1338,7 @@ func downloadAndDeployAegis() string {
 	}
 
 	// --- SHA256 verification ---
-	expectedHash, err := findExpectedSHA256(release, binaryName)
+	expectedHash, err := findExpectedSHA256(release, assetName)
 	if err != nil {
 		printRed(i18n.T("sha256.fetch_failed", err.Error()))
 		return ""
