@@ -5,7 +5,7 @@ go 1.27.4
 require (
 	github.com/dgraph-io/badger/v4 v4.9.6
 	github.com/miekg/dns v1.1.73
-	github.com/oschwald/maxminddb-golang/v2 v2.9.0
+	github.com/oschwald/maxminddb-golang/v2 v2.9.1
 	github.com/refraction-networking/utls v1.8.2
 	github.com/schollz/progressbar/v3 v3.19.1
 	golang.org/x/net v0.62.0
@@ -30,6 +30,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 )
