@@ -88,7 +88,7 @@ jobs:
       # 真正花时间的是编译，所以下面另外用 actions/cache 缓存 ~/.cache/go-build。
       - name: Setup Go
         if: matrix.project.language == 'go'
-        uses: actions/setup-go@v7.0.0
+        uses: actions/setup-go@v7.1.0
         with:
           go-version: "stable"
           cache: true
