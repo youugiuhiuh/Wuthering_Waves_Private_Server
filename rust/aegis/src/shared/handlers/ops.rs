@@ -1,8 +1,6 @@
 use crate::common::{BotAdapter, InlineButton, Markup, MessageContent};
 use crate::core::security::acme::XhttpDeployMode;
 use crate::core::singbox::SingBoxInstaller;
-use crate::core::singbox::hysteria2::{Hy2LinkStyle, Hysteria2ObfsType};
-
 use crate::core::system::SystemMonitor;
 use crate::core::system::maintenance::MaintenanceManager;
 use crate::core::system::operations::{Operations, REBOOT_FLAG};
@@ -538,7 +536,7 @@ pub async fn run_one_click(
     let mut failed = false;
     let mut all_links: Vec<String> = Vec::new();
 
-    send_progress(&tx, 1, 8, t!("ops.deploy_step_tune"));
+    send_progress(&tx, 1, 7, t!("ops.deploy_step_tune"));
     if MaintenanceManager::tune_vps_generic().await.is_err() {
         let _ = tx.send(t!("ops.deploy_fail", "0" => t!("ops.deploy_fail_tune")).to_string());
         failed = true;
@@ -551,11 +549,11 @@ pub async fn run_one_click(
         send_progress(
             &tx,
             2,
-            8,
+            7,
             t!("ops.deploy_skip", "0" => t!("ops.deploy_step_xray_init")),
         );
     } else if !failed {
-        send_progress(&tx, 2, 8, t!("ops.deploy_step_xray_init"));
+        send_progress(&tx, 2, 7, t!("ops.deploy_step_xray_init"));
         if let Err(e) = RealityInstallerInternal::install_minimal_environment().await {
             let _ = tx.send(
                 t!("ops.deploy_fail",
@@ -568,7 +566,7 @@ pub async fn run_one_click(
     }
 
     if !failed {
-        send_progress(&tx, 3, 8, t!("ops.deploy_step_pq"));
+        send_progress(&tx, 3, 7, t!("ops.deploy_step_pq"));
         if let Err(e) = ConfigManager::generate_reality_pq_keys().await {
             let _ = tx.send(
                 t!("ops.deploy_fail",
@@ -602,7 +600,7 @@ pub async fn run_one_click(
                 send_progress(
                     &tx,
                     4,
-                    8,
+                    7,
                     format!("{} ({})", t!("ops.deploy_step_xhttp"), ip_version.label()),
                 );
                 match ConfigManager::batch_create_xhttp_reality_enhanced(20, ip_version, true).await
@@ -638,7 +636,7 @@ pub async fn run_one_click(
                 send_progress(
                     &tx,
                     4,
-                    8,
+                    7,
                     format!(
                         "{} ({})",
                         t!("ops.deploy_step_xhttp_tls"),
@@ -719,7 +717,7 @@ pub async fn run_one_click(
         send_progress(
             &tx,
             5,
-            8,
+            7,
             format!("{} ({})", t!("ops.deploy_step_vision"), ip_version.label()),
         );
         match ConfigManager::batch_create_reality_vision_enhanced(20, ip_version).await {
@@ -755,11 +753,11 @@ pub async fn run_one_click(
         send_progress(
             &tx,
             6,
-            8,
+            7,
             t!("ops.deploy_skip", "0" => t!("ops.deploy_step_singbox_init")),
         );
     } else if !failed {
-        send_progress(&tx, 6, 8, t!("ops.deploy_step_singbox_init"));
+        send_progress(&tx, 6, 7, t!("ops.deploy_step_singbox_init"));
         if let Err(e) = SingBoxInstaller::install().await {
             let _ = tx.send(
                 t!("ops.deploy_fail",
@@ -771,159 +769,16 @@ pub async fn run_one_click(
         }
     }
 
-    if !failed {
-        send_progress(
-            &tx,
-            7,
-            8,
-            format!("{} ({})", t!("ops.deploy_step_h2"), ip_version.label()),
-        );
-        // 一键部署默认使用 gecko 混淆，但不开启端口跳跃。
-        //
-        // 注意：这里走的是 Xray 的 Hysteria2 创建路径
-        // (`ConfigManager::batch_create_hysteria2_xray`)，而不是 sing-box 的
-        // `SingBoxConfigManager::batch_create_hysteria2`。两者都叫 Hysteria2，
-        // 但写出的协议标识不同 —— Xray 写 `"protocol": "hysteria"`（配置落在
-        // `xray::CONF_DIR`），sing-box 写 `"type": "hysteria2"`（配置落在
-        // `singbox::CONF_DIR`）。因此改这里不会影响 sing-box 侧行为，反之亦然。
-        match ConfigManager::batch_create_hysteria2_xray(
-            3,
-            ip_version,
-            Some(Hysteria2ObfsType::Gecko),
-            false,
-            Hy2LinkStyle::Official,
-        )
-        .await
-        {
-            Ok(result) => {
-                all_links.extend(result.links);
-                let _ = adapter
-                    .send_message(
-                        &target,
-                        MessageContent {
-                            text: t!("ops.deploy_created_h2",
-                                    "0" => ip_version.label(),
-                                    "1" => result.created_count.to_string(),
-                                    "2" => result.config_file.as_deref().unwrap_or("?"))
-                            .into_owned(),
-                            markup: None,
-                        },
-                    )
-                    .await;
-            }
-            Err(e) => {
-                let _ = tx.send(
-                    t!("ops.deploy_fail",
-                        "0" => format!("{}: {}", t!("ops.deploy_fail_h2"), e)
-                    )
-                    .to_string(),
-                );
-                failed = true;
-            }
-        }
-    }
+    // ── 已移除：Xray Hysteria2 创建（原步骤 7）────────────────────────────
+    // 同一 IP 上 REALITY/XHTTP 与 Hysteria2 共存本身就是可识别特征，反而削弱
+    // 抗封锁效果，故一键部署不再创建。手动入口 `u_hy2_batch_*`
+    // （`ConfigManager::batch_create_hysteria2_xray`）与其菜单文案保留。
 
-    // ── 已移除：mKCP 创建（原步骤 8 与步骤 9）────────────────────────────
-    //
-    // 一键部署不再创建 mKCP 配置。原因见下方说明；如需恢复，取消注释整段即可
-    // （`ConfigManager::batch_create_kcp` 与 `KcpMask` 均仍保留，未被删除）。
-    //
-    // 原步骤 8：mKCP + DNS 伪装（遮罩码 `mld`），创建 5 个配置
-    // 原步骤 9：mKCP + 微信伪装（遮罩码 `mlw`），创建 5 个配置
-    //
-    // 移除理由：
-    //   1. mKCP 依赖 UDP。运营商或目标网络对 UDP 做 QoS/限速/封锁时，
-    //      该线路直接不可用，且失败表现为「连不上」而非「慢」，排查成本高。
-    //   2. mKCP 以牺牲带宽换取低延迟，传输同等内容比 TCP 多消耗 20–50% 流量，
-    //      在大流量场景下成本明显。
-    //   3. Xray 官方文档将 mKCP 归类为「不适合直接用于过墙」：它没有 TLS/REALITY
-    //      提供的正常 HTTPS 外观，`finalmask` 的 udp 混淆层只是固定长度混淆，
-    //      不具备抗主动探测能力。
-    //   4. 本项目一键部署已提供抗封锁能力更强的替代方案：
-    //      XHTTP+REALITY/TLS（步骤 4）、REALITY+Vision（步骤 5）、Hysteria2（步骤 7）。
-    //      其中 Hysteria2 同样基于 UDP 且具备 Brutal 拥塞控制，在高丢包线路上
-    //      表现优于 mKCP，可作为 UDP 路线的替代。
-    //
-    // 保留的能力：Bot 菜单中的独立 KCP 入口（`handle_kcp_ok`）与
-    // `ConfigManager::batch_create_kcp` 完整保留，用户仍可按需手动创建 mKCP 配置。
-    //
-    // 相关 i18n 键（`ops.deploy_step_kcp_dns`、`ops.deploy_step_kcp_wechat`、
-    // `ops.deploy_fail_kcp_dns`、`ops.deploy_fail_kcp_wechat`、
-    // `ops.deploy_created_kcp_dns`、`ops.deploy_created_kcp_wechat`）同样保留，
-    // 以便恢复时无需额外改动。
-    //
-    // if !failed {
-    //     let _ = adapter
-    //         .send_message(
-    //             &target,
-    //             MessageContent {
-    //                 text: t!("ops.deploy_step_kcp_dns").into_owned(),
-    //                 markup: None,
-    //             },
-    //         )
-    //         .await;
-    // }
-    //
-    // if !failed {
-    //     send_progress(&tx, 8, 10, t!("ops.deploy_step_kcp_dns"));
-    //     match ConfigManager::batch_create_kcp(5, ip_version, &["mld"]).await {
-    //         Ok(result) => {
-    //             all_links.extend(result.links);
-    //             let _ = adapter
-    //                 .send_message(
-    //                     &target,
-    //                     MessageContent {
-    //                         text: t!("ops.deploy_created_kcp_dns",
-    //                                 "0" => result.created_count.to_string(),
-    //                                 "1" => result.config_file.as_deref().unwrap_or("?"))
-    //                         .into_owned(),
-    //                         markup: None,
-    //                     },
-    //                 )
-    //                 .await;
-    //         }
-    //         Err(e) => {
-    //             let _ = tx.send(
-    //                 t!("ops.deploy_fail",
-    //                     "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_dns"), e)
-    //                 )
-    //                 .to_string(),
-    //             );
-    //             failed = true;
-    //         }
-    //     }
-    // }
-    //
-    // if !failed {
-    //     send_progress(&tx, 9, 10, t!("ops.deploy_step_kcp_wechat"));
-    //     match ConfigManager::batch_create_kcp(5, ip_version, &["mlw"]).await {
-    //         Ok(result) => {
-    //             all_links.extend(result.links);
-    //             let _ = adapter
-    //                 .send_message(
-    //                     &target,
-    //                     MessageContent {
-    //                         text: t!("ops.deploy_created_kcp_wechat",
-    //                                 "0" => result.created_count.to_string(),
-    //                                 "1" => result.config_file.as_deref().unwrap_or("?"))
-    //                         .into_owned(),
-    //                         markup: None,
-    //                     },
-    //                 )
-    //                 .await;
-    //         }
-    //         Err(e) => {
-    //             let _ = tx.send(
-    //                 t!("ops.deploy_fail",
-    //                     "0" => format!("{}: {}", t!("ops.deploy_fail_kcp_wechat"), e)
-    //                 )
-    //                 .to_string(),
-    //             );
-    //             failed = true;
-    //         }
-    //     }
-    // }
-    // ── 移除段落结束 ─────────────────────────────────────────────────────
+    // ── 已移除：mKCP 创建（原步骤 8 mld / 步骤 9 mlw）────────────────────
+    // mKCP 依赖 UDP：被运营商 QoS 时线路直接不可用，且没有 TLS/REALITY 的正常
+    // HTTPS 外观，抗主动探测能力弱（Xray 官方亦不建议直接用于过墙）。
+    // 手动入口保留：`handle_kcp_ok` → `ConfigManager::batch_create_kcp`。
+    // 如需恢复一键部署里的这两步，创建代码需从 git 历史取回。
 
     if !failed && !all_links.is_empty() {
         let combined = all_links.join("\n\n");
@@ -949,7 +804,7 @@ pub async fn run_one_click(
     }
 
     if !failed {
-        send_progress(&tx, 8, 8, t!("ops.deploy_step_security"));
+        send_progress(&tx, 7, 7, t!("ops.deploy_step_security"));
         if let Err(e) =
             Operations::perform_maintenance_with_reboot_time(Operations::DEFAULT_REBOOT_TIME).await
         {
@@ -1029,44 +884,90 @@ mod tests {
         ));
     }
 
-    /// 一键部署的进度总步数。
+    /// `run_one_click` 的可执行代码（剔除注释行）。
     ///
-    /// 移除 mKCP 创建（原步骤 8 与 9）后，1→8 步：
-    /// 1 调优、2 Xray 初始化、3 PQ 密钥、4 XHTTP、5 Vision、
-    /// 6 sing-box 初始化、7 Hysteria2、8 安全维护。
-    const ONE_CLICK_TOTAL_STEPS: u8 = 8;
-
-    #[test]
-    fn one_click_progress_has_eight_steps() {
-        assert_eq!(ONE_CLICK_TOTAL_STEPS, 8);
-    }
-
-    /// 回归：一键部署不得再引用任何 mKCP 创建入口与相关 i18n 键。
-    ///
-    /// 仅注释保留原文，不应出现未注释的调用。
-    ///
-    /// 说明：扫描时须剔除本测试函数自身（它含有这些字符串字面量），
-    /// 否则断言会因自引用而永远失败。
-    #[test]
-    fn one_click_does_not_create_mkcp() {
+    /// 剔除注释是必要的：移除说明与文档里会出现待测的 key 名 / 函数名，
+    /// 不剔除就会误计为真实引用。
+    fn one_click_code() -> String {
         let src = include_str!("ops.rs");
-
-        // 只保留 run_one_click 函数体：其余部分（包括本测试）不参与判定。
         let start = src
             .find("pub async fn run_one_click")
             .expect("run_one_click 应存在");
         let body = &src[start..];
         let end = body
             .find("\nasync fn handle_one_click")
-            .unwrap_or(body.len());
-        let body = &body[..end];
-
-        // 剔除注释行，仅检查真正的可执行代码。
-        let code = body
+            .expect("one_click_code 找不到 handle_one_click 边界");
+        body[..end]
             .lines()
             .filter(|l| !l.trim_start().starts_with("//"))
             .collect::<Vec<_>>()
-            .join("\n");
+            .join("\n")
+    }
+
+    /// 回归：一键部署的进度步数与总步数必须与实现里真正发送的一致（当前 1→7：
+    /// 1 调优、2 Xray 初始化、3 PQ 密钥、4 XHTTP、5 Vision、6 sing-box 初始化、
+    /// 7 安全维护）。曾经用一个没人读的常量去「测」步数，把某一步改回 `/8` 时
+    /// 测试依旧全绿，而 Telegram 里的进度会跳。
+    #[test]
+    fn one_click_progress_totals_are_seven() {
+        let calls = send_progress_calls(&one_click_code());
+
+        assert!(
+            !calls.is_empty(),
+            "run_one_click 应至少调用一次 send_progress"
+        );
+        for (step, total) in &calls {
+            assert_eq!(*total, 7, "步骤 {step} 的总步数必须是 7");
+        }
+        let mut steps: Vec<u8> = calls.iter().map(|(s, _)| *s).collect();
+        steps.dedup();
+        assert_eq!(
+            steps,
+            (1..=7).collect::<Vec<u8>>(),
+            "步骤号必须是 1→7，不得跳号"
+        );
+        assert_eq!(calls.last().map(|(s, _)| *s), Some(7), "最后一步应为 7/7");
+    }
+
+    /// 取出所有 `send_progress(&tx, 步号, 总步数, ...)` 的 `(步号, 总步数)`。
+    ///
+    /// 只读每个调用的前两个数字参数，不再用全局字符串搜索 —— 否则代码里任何
+    /// `foo(3, 8, x)` 都会被误判成「总步数是 8」。
+    fn send_progress_calls(code: &str) -> Vec<(u8, u8)> {
+        code.split("send_progress(")
+            .skip(1)
+            .filter_map(|seg| {
+                let args = seg.split(')').next()?;
+                let mut nums = args
+                    .split(|c: char| !c.is_ascii_digit())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.parse::<u8>().ok());
+                Some((nums.next()??, nums.next()??))
+            })
+            .collect()
+    }
+
+    /// 回归：一键部署不得再创建 Xray Hysteria2 配置。
+    ///
+    /// 单独关闭一个协议比堆叠协议更耐封锁：REALITY/XHTTP 与 Hysteria2 共用同一
+    /// 台主机的同一个 IP 时，共存本身就是可识别的特征。
+    #[test]
+    fn one_click_does_not_create_xray_hy2() {
+        let code = one_click_code();
+
+        assert!(
+            !code.contains("batch_create_hysteria2"),
+            "一键部署不应调用 batch_create_hysteria2_xray"
+        );
+        for key in ["deploy_step_h2", "deploy_fail_h2", "deploy_created_h2"] {
+            assert!(!code.contains(key), "一键部署不应引用 i18n 键 {key}");
+        }
+    }
+
+    /// 回归：一键部署不得再引用任何 mKCP 创建入口与相关 i18n 键。
+    #[test]
+    fn one_click_does_not_create_mkcp() {
+        let code = one_click_code();
 
         assert!(
             !code.contains("batch_create_kcp"),
@@ -1084,29 +985,11 @@ mod tests {
         }
     }
 
-    /// 取出 `run_one_click` 的可执行代码（剔除注释行），并裁到 `match &mode` 为止。
+    /// 取出 `run_one_click` 的可执行代码，并裁到 `match &mode` 为止。
     ///
-    /// 返回 `(match 之前的代码, match 之后的代码)`。两者都不含注释，
-    /// 以免文档里出现的 key 名被误计为真实引用。
+    /// 返回 `(match 之前的代码, match 之后的代码)`。
     fn one_click_mode_split() -> (String, String) {
-        let src = include_str!("ops.rs");
-
-        let start = src
-            .find("pub async fn run_one_click")
-            .expect("run_one_click 应存在");
-        let body = &src[start..];
-        let end = body
-            .find("\nasync fn handle_one_click")
-            .unwrap_or(body.len());
-        let body = &body[..end];
-
-        // 剔除注释行，仅检查真正的可执行代码。
-        let code = body
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-
+        let code = one_click_code();
         let (before, after) = code
             .split_once("match &mode")
             .expect("run_one_click 应包含 match &mode 分支");
