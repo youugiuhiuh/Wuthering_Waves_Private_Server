@@ -931,13 +931,18 @@ mod tests {
 
     /// 取出所有 `send_progress(&tx, 步号, 总步数, ...)` 的 `(步号, 总步数)`。
     ///
-    /// 只读每个调用的前两个数字参数，不再用全局字符串搜索 —— 否则代码里任何
-    /// `foo(3, 8, x)` 都会被误判成「总步数是 8」。
+    /// 只取消息参数之前的两个数字：`t!(...)` / `format!(...)` 之后出现的数字
+    /// 属于文案（例如标题键里带数字），不能当成步号；也不用全局字符串搜索 ——
+    /// 否则代码里任何 `foo(3, 8, x)` 都会被误判成「总步数是 8」。
     fn send_progress_calls(code: &str) -> Vec<(u8, u8)> {
         code.split("send_progress(")
             .skip(1)
             .filter_map(|seg| {
-                let args = seg.split(')').next()?;
+                let args = ["t!(", "format!("]
+                    .iter()
+                    .filter_map(|m| seg.find(m))
+                    .min()
+                    .map_or(seg, |at| &seg[..at]);
                 let mut nums = args
                     .split(|c: char| !c.is_ascii_digit())
                     .filter(|s| !s.is_empty())
@@ -965,6 +970,9 @@ mod tests {
     }
 
     /// 回归：一键部署不得再引用任何 mKCP 创建入口与相关 i18n 键。
+    /// 回归：一键部署不得再创建 mKCP 配置。
+    ///
+    /// 相关的 6 个 `ops.deploy_*kcp_*` 键已全部删除，因此无需再断言键名。
     #[test]
     fn one_click_does_not_create_mkcp() {
         let code = one_click_code();
@@ -973,16 +981,6 @@ mod tests {
             !code.contains("batch_create_kcp"),
             "一键部署不应调用 batch_create_kcp"
         );
-        for key in [
-            "deploy_step_kcp_dns",
-            "deploy_step_kcp_wechat",
-            "deploy_fail_kcp_dns",
-            "deploy_fail_kcp_wechat",
-            "deploy_created_kcp_dns",
-            "deploy_created_kcp_wechat",
-        ] {
-            assert!(!code.contains(key), "一键部署不应引用 i18n 键 {key}");
-        }
     }
 
     /// 取出 `run_one_click` 的可执行代码，并裁到 `match &mode` 为止。
