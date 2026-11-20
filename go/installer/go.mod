@@ -4,7 +4,7 @@ go 1.27.4
 
 require (
 	aead.dev/minisign v0.3.0
-	charm.land/bubbletea/v2 v2.1.1
+	charm.land/bubbletea/v2 v2.1.2
 	github.com/awnumar/memguard v0.23.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/term v0.48.0
