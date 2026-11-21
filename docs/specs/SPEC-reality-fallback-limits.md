@@ -270,6 +270,40 @@ pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
 
 未完成项（需真实节点，不在本次环境内）：`xray -test`、fallback 限速实测、已认证用户 A/B。
 
+### 13.1 真机验收（2026-11-21 16:39–16:45，x86_64 / Debian GLIBC 2.41 / Xray 26.11.9）
+
+部署产物：本地 release 构建 sha256 `1b8265e797ec01b690fe811aa96ae584fe8f3f906d1315ffc3ec9c2bc81a3868`
+（所需最高符号 `GLIBC_2.39` ≤ 宿主机 2.41，可运行）。备份：`/root/deploy-20261121-163826/`
+（`aegis.bak` + `conf.bak` + `config.enc`）。
+
+| 验收项 | 结果 |
+|---|---|
+| 自愈触发 | ✅ `[WARN] REALITY fallback 限速已补齐：40 个入站 / 2 个文件` |
+| 覆盖完整性 | ✅ 40/40 REALITY 入站均含两字段 |
+| 配置合法性 | ✅ `wwps-core -test -confdir ...` → `Configuration OK.` |
+| 权限保留 | ✅ 原文件 0644 不变 |
+| 服务状态 | ✅ `wwps-core` / `wwps-aegis` 均 active |
+
+**限速实测**（临时入站 `port 49777` → `127.0.0.1:18443` 的 `openssl s_server -WWW`，测完已删除）：
+
+| 场景 | 大小 | 耗时 | 平均速率 |
+|---|---:|---:|---:|
+| 直连 s_server（基线） | 32 MiB | 0.25 s | 133 MB/s |
+| 经 REALITY fallback | 8 MiB | 10.01 s | 0.84 MB/s |
+| 经 REALITY fallback | 32 MiB | **58.07 s** | **578 KB/s** |
+
+与配置完全对得上：1 MiB 全速宽限 + 2 MiB 初始 burst + 剩余 29 MiB ÷ 512 KiB/s = 58 s。
+即 **持续速率就 512 KiB/s**，4K/1080p 视频中继不可用。
+
+未做真机测试的两项（附理由）：
+
+- **已认证用户 A/B**：限速器只在 `hs.c.conn != conn` 与 target ServerHello 异常两个分支包裹（`xtls/reality tls.go:290/452`），
+  已认证流量不走这两条路径；代码路径已核，端到端需另起 VLESS 客户端。
+- **上传方向**：`openssl s_server -WWW` 不收大 body，无法稳定测。
+
+回滚：`cp /root/deploy-20261121-163826/aegis.bak /etc/wwps/aegis/aegis && systemctl restart wwps-aegis`，
+并把 `conf.bak` 拷回 `conf/` 后重启 `wwps-core`。
+
 实现中修正的 spec 偏差：
 
 1. **不做 reload**（原 §4 写“单次 reload”）：`reload_core()` 会回调 `ensure_base_config()`，形成递归。
@@ -285,7 +319,7 @@ pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
 - [x] 畸形输入不 panic
 - [x] 权限保留（0600 不变）
 - [x] fmt / nextest / release build 通过（clippy 本变更零诊断）
-- [ ] `xray -test` 通过（需真实节点）
-- [ ] fallback 限速实测达标（需真实节点）
-- [ ] 已认证用户吞吐 A/B 无回退（需真实节点）
+- [x] `xray -test` 通过（需真实节点）
+- [x] fallback 限速实测达标（需真实节点）
+- [ ] 已认证用户吞吐 A/B 无回退（仅代码路径核实，未端到端）
 - [x] 单次提交 ≤ 200 行（最大一笔 +124）
