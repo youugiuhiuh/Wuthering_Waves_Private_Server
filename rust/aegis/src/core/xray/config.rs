@@ -1193,13 +1193,13 @@ impl ConfigManager {
     /// - 正好等于旧版本写死的值 → 迁移成随机值（否则存量节点永远停在旧常量）；
     /// - 其余（运维手工设置，含 `bytesPerSec: 0` 显式关闭）→ 不碰。
     ///
-    /// 返回 `true` 表示产生了实质性修改。畸形输入一律返回 `false` 且不 panic。
-    pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
+    /// 返回被改动的入站数量（0 = 无改动）。畸形输入一律返回 0 且不 panic。
+    pub fn patch_reality_fallback_limits(config: &mut Value) -> usize {
         let Some(inbounds) = config.get_mut("inbounds").and_then(Value::as_array_mut) else {
-            return false;
+            return 0;
         };
 
-        let mut modified = false;
+        let mut patched = 0usize;
         for inbound in inbounds {
             let Some(rs) = inbound
                 .get_mut("streamSettings")
@@ -1210,6 +1210,7 @@ impl ConfigManager {
             };
 
             let (up, down) = random_fallback_limits();
+            let mut changed = false;
             for (key, (after, rate, burst), legacy) in [
                 ("limitFallbackUpload", up, LEGACY_FALLBACK_UPLOAD),
                 ("limitFallbackDownload", down, LEGACY_FALLBACK_DOWNLOAD),
@@ -1230,10 +1231,13 @@ impl ConfigManager {
                         "burstBytesPerSec": burst,
                     }),
                 );
-                modified = true;
+                changed = true;
+            }
+            if changed {
+                patched += 1;
             }
         }
-        modified
+        patched
     }
 
     /// 扫描目录下的入站片段，给缺限速的 REALITY 入站补齐 fallback 限速。
@@ -1243,6 +1247,81 @@ impl ConfigManager {
     ///
     /// `00_base.json` 与非 `*_inbounds.json` 文件不在扫描范围（见
     /// `list_inbound_files_in`），避免误改基础配置与路由文件。
+    /// 是否需要重启核心：本次补了东西，**或**磁盘配置比核心进程新。
+    ///
+    /// 后一条是兜底：存量节点可能被旧版本写过、但从未重启过核心，此时本次补丁
+    /// 数量为 0，只看 `patched` 会永远漏掉。
+    fn needs_core_restart(
+        patched: usize,
+        core_running: bool,
+        core_started: Option<u64>,
+        conf_mtime: Option<u64>,
+    ) -> bool {
+        if !core_running {
+            return false;
+        }
+        if patched > 0 {
+            return true;
+        }
+        matches!((core_started, conf_mtime), (Some(start), Some(mtime)) if mtime > start)
+    }
+
+    /// 目录下 `*_inbounds.json` 的最新修改时间（Unix 秒）。
+    async fn newest_conf_mtime(dir: &Path) -> Option<u64> {
+        let mut newest: Option<u64> = None;
+        for file in Self::list_inbound_files_in(dir).await {
+            let Ok(meta) = fs::metadata(&file).await else {
+                continue;
+            };
+            let Ok(modified) = meta.modified() else {
+                continue;
+            };
+            let Ok(elapsed) = modified.duration_since(std::time::UNIX_EPOCH) else {
+                continue;
+            };
+            let secs = elapsed.as_secs();
+            newest = Some(newest.map_or(secs, |n| n.max(secs)));
+        }
+        newest
+    }
+
+    /// 核心进程的启动时间（Unix 秒）。通过 `/proc/<pid>/stat` 第 22 字段
+    /// （自开机以来的时钟节拍）加开机时间换算，避开 `systemctl show` 的本地化输出。
+    fn core_start_unix() -> Option<u64> {
+        // SAFETY: `sysconf` 是纯查询，失败返回 -1 或 0，无副作用。
+        let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+        if ticks <= 0 {
+            return None;
+        }
+        let ticks = ticks as f64;
+
+        let uptime: f64 = std::fs::read_to_string("/proc/uptime")
+            .ok()?
+            .split_whitespace()
+            .next()?
+            .parse()
+            .ok()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs_f64();
+        let boot = now - uptime;
+
+        for entry in std::fs::read_dir("/proc").ok()? {
+            let Ok(entry) = entry else { continue };
+            let path = entry.path();
+            if std::fs::read_to_string(path.join("comm")).is_ok_and(|c| c.trim() == "wwps-core") {
+                let stat = std::fs::read_to_string(path.join("stat")).ok()?;
+                // 进程名可能含空格，按最后一个 ")" 切分更稳。
+                let rest = stat.rsplit_once(") ")?.1;
+                // 第 22 字段 starttime = comm 之后第 20 个字段（state 是第 3 个）。
+                let start_ticks: f64 = rest.split_whitespace().nth(19)?.parse().ok()?;
+                return Some((boot + start_ticks / ticks) as u64);
+            }
+        }
+        None
+    }
+
     pub(crate) async fn ensure_reality_fallback_limits_in(dir: &Path) -> (usize, usize) {
         let mut files_changed = 0usize;
         let mut inbounds_patched = 0usize;
@@ -1258,26 +1337,9 @@ impl ConfigManager {
                 continue;
             };
 
-            let pending = config
-                .get("inbounds")
-                .and_then(Value::as_array)
-                .map(|inbounds| {
-                    inbounds
-                        .iter()
-                        .filter(|i| {
-                            i.get("streamSettings")
-                                .and_then(|s| s.get("realitySettings"))
-                                .and_then(Value::as_object)
-                                .is_some_and(|rs| {
-                                    !rs.contains_key("limitFallbackUpload")
-                                        || !rs.contains_key("limitFallbackDownload")
-                                })
-                        })
-                        .count()
-                })
-                .unwrap_or(0);
-
-            if !Self::patch_reality_fallback_limits(&mut config) {
+            // 计数直接取补丁的返回值：迁移（旧值→随机值）也算改动，单独预数会漏。
+            let patched = Self::patch_reality_fallback_limits(&mut config);
+            if patched == 0 {
                 continue;
             }
 
@@ -1326,7 +1388,7 @@ impl ConfigManager {
             }
 
             files_changed += 1;
-            inbounds_patched += pending;
+            inbounds_patched += patched;
         }
 
         (files_changed, inbounds_patched)
@@ -1343,34 +1405,41 @@ impl ConfigManager {
         // 存量自愈：早期版本生成的 REALITY 入站没有 fallback 限速，等于把 VPS
         // 变成不限速的公开中继。
         //
-        // 只写文件不够：运行中的核心不会重读配置。2026-11-21 实测，一台只重启了
-        // aegis 的机器文件已补齐，但核心进程还是三天前启动的旧配置 —— 限速等于
-        // 没生效。所以补丁有改动且核心在跑时，立即重启一次核心。
+        // 只写文件不够：运行中的核心不会重读配置。2026-11-21 两次实测都撞到
+        // 「文件已改、进程还是旧的」，所以这里不仅看「本次补了多少」，还比较
+        // 「磁盘最新 mtime vs 核心启动时间」——后者能兜住上一个版本补过、但从未
+        // 重启过的存量节点（换二进制时不会再有字段缺失，只靠 patched 永远为 0）。
         //
         // 不能调 `reload_core()`：它自身会回调本函数，形成递归。直接控制服务。
         let (files, inbounds) =
             Self::ensure_reality_fallback_limits_in(Path::new(xray::CONF_DIR)).await;
-        if inbounds > 0 {
-            let (core_running, _) = crate::core::system::SystemMonitor::get_core_status().await;
-            if core_running {
-                match crate::core::system::maintenance::MaintenanceManager::control_service(
-                    "wwps-core",
-                    crate::core::cmd_action::ServiceAction::Restart,
-                )
-                .await
-                {
-                    Ok(()) => log::warn!(
-                        "REALITY fallback 限速已补齐并重启核心生效：{inbounds} 个入站 / {files} 个文件"
-                    ),
-                    Err(e) => log::warn!(
-                        "REALITY fallback 限速已补齐：{inbounds} 个入站 / {files} 个文件；重启 wwps-core 失败（{e}），需手动重启后生效"
-                    ),
+        let (core_running, _) = crate::core::system::SystemMonitor::get_core_status().await;
+        let core_start = Self::core_start_unix();
+        let conf_mtime = Self::newest_conf_mtime(Path::new(xray::CONF_DIR)).await;
+        if Self::needs_core_restart(inbounds, core_running, core_start, conf_mtime) {
+            match crate::core::system::maintenance::MaintenanceManager::control_service(
+                "wwps-core",
+                crate::core::cmd_action::ServiceAction::Restart,
+            )
+            .await
+            {
+                Ok(()) => {
+                    if inbounds > 0 {
+                        log::warn!(
+                            "REALITY fallback 限速已收敛并重启核心生效：{inbounds} 个入站 / {files} 个文件"
+                        );
+                    } else {
+                        log::warn!("检测到核心运行的是旧配置，已重启 wwps-core 收敛");
+                    }
                 }
-            } else {
-                log::warn!(
-                    "REALITY fallback 限速已补齐：{inbounds} 个入站 / {files} 个文件（核心未运行，下次启动生效）"
-                );
+                Err(e) => log::warn!(
+                    "REALITY fallback 限速已收敛：{inbounds} 个入站 / {files} 个文件；重启 wwps-core 失败（{e}），需手动重启后生效"
+                ),
             }
+        } else if inbounds > 0 {
+            log::warn!(
+                "REALITY fallback 限速已补齐：{inbounds} 个入站 / {files} 个文件（核心未运行，下次启动生效）"
+            );
         }
 
         let base_path = format!("{}/00_base.json", xray::CONF_DIR);
@@ -2316,12 +2385,13 @@ mod tests {
     fn reality_fallback_patch_is_idempotent() {
         let mut config = json!({"inbounds": [reality_inbound("reality")]});
         assert!(
-            ConfigManager::patch_reality_fallback_limits(&mut config),
+            ConfigManager::patch_reality_fallback_limits(&mut config) > 0,
             "首次必须补齐"
         );
         let once = config.to_string();
-        assert!(
-            !ConfigManager::patch_reality_fallback_limits(&mut config),
+        assert_eq!(
+            ConfigManager::patch_reality_fallback_limits(&mut config),
+            0,
             "二次必须无改动"
         );
         assert_eq!(config.to_string(), once, "二次序列化必须逐字节相同");
@@ -2338,7 +2408,7 @@ mod tests {
                 }}
             }]
         });
-        assert!(!ConfigManager::patch_reality_fallback_limits(&mut config));
+        assert_eq!(ConfigManager::patch_reality_fallback_limits(&mut config), 0);
         assert_eq!(
             limit_tuple(
                 &config["inbounds"][0]["streamSettings"]["realitySettings"]["limitFallbackUpload"]
@@ -2358,7 +2428,7 @@ mod tests {
                 }}
             }]
         });
-        assert!(ConfigManager::patch_reality_fallback_limits(&mut half));
+        assert!(ConfigManager::patch_reality_fallback_limits(&mut half) > 0);
         let rs = &half["inbounds"][0]["streamSettings"]["realitySettings"];
         let up = limit_tuple(&rs["limitFallbackUpload"]);
         assert_eq!(up.0, UP_AFTER);
@@ -2376,7 +2446,7 @@ mod tests {
             {"port": 2, "protocol": "vless"},
             {"streamSettings": {"security": "reality"}},
         ]});
-        assert!(!ConfigManager::patch_reality_fallback_limits(&mut config));
+        assert_eq!(ConfigManager::patch_reality_fallback_limits(&mut config), 0);
     }
 
     #[test]
@@ -2387,8 +2457,9 @@ mod tests {
             json!({"inbounds": [1, 2, null]}),
             json!({"inbounds": [{"streamSettings": {"security": "reality", "realitySettings": []}}]}),
         ] {
-            assert!(
-                !ConfigManager::patch_reality_fallback_limits(&mut bad),
+            assert_eq!(
+                ConfigManager::patch_reality_fallback_limits(&mut bad),
+                0,
                 "畸形输入必须返回 false 且不 panic"
             );
         }
@@ -2401,7 +2472,7 @@ mod tests {
             .as_object()
             .unwrap()
             .len();
-        assert!(ConfigManager::patch_reality_fallback_limits(&mut config));
+        assert!(ConfigManager::patch_reality_fallback_limits(&mut config) > 0);
         let rs = config["inbounds"][0]["streamSettings"]["realitySettings"]
             .as_object()
             .unwrap();
@@ -2547,6 +2618,37 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reality_fallback_restart_decision() {
+        // 核心没在跑 → 永远不重启。
+        assert!(!ConfigManager::needs_core_restart(
+            0,
+            false,
+            Some(1),
+            Some(2)
+        ));
+        assert!(!ConfigManager::needs_core_restart(
+            1,
+            false,
+            Some(1),
+            Some(2)
+        ));
+        // 本次补过 → 重启。
+        assert!(ConfigManager::needs_core_restart(1, true, Some(1), Some(1)));
+        // 没补，但磁盘比进程新 → 重启（存量“补过但没重启”的兜底）。
+        assert!(ConfigManager::needs_core_restart(0, true, Some(1), Some(2)));
+        // 没补，磁盘比进程旧 → 不重启。
+        assert!(!ConfigManager::needs_core_restart(
+            0,
+            true,
+            Some(2),
+            Some(1)
+        ));
+        // 时间读不到 → 不冒险。
+        assert!(!ConfigManager::needs_core_restart(0, true, None, Some(2)));
+        assert!(!ConfigManager::needs_core_restart(0, true, Some(1), None));
     }
 
     #[test]
