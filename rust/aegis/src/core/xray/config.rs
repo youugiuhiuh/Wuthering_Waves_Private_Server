@@ -1144,6 +1144,121 @@ impl ConfigManager {
         modified
     }
 
+    /// 给所有 REALITY 入站补齐 fallback 限速（幂等）。
+    ///
+    /// 语义：**对象级存在即视为已配置** —— 只要 `limitFallbackUpload` /
+    /// `limitFallbackDownload` 任一键存在就整块跳过，不做 key 级补全。
+    /// 这样运维手写的部分配置（含 `bytesPerSec: 0` 显式关闭）不会被覆盖。
+    ///
+    /// 返回 `true` 表示产生了实质性修改。畸形输入一律返回 `false` 且不 panic。
+    pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
+        let Some(inbounds) = config.get_mut("inbounds").and_then(Value::as_array_mut) else {
+            return false;
+        };
+
+        let mut modified = false;
+        for inbound in inbounds {
+            let Some(rs) = inbound
+                .get_mut("streamSettings")
+                .and_then(|s| s.get_mut("realitySettings"))
+                .and_then(Value::as_object_mut)
+            else {
+                continue;
+            };
+
+            for (key, (after, rate, burst)) in [
+                ("limitFallbackUpload", FALLBACK_UPLOAD_LIMIT),
+                ("limitFallbackDownload", FALLBACK_DOWNLOAD_LIMIT),
+            ] {
+                if rs.contains_key(key) {
+                    continue;
+                }
+                rs.insert(
+                    key.to_string(),
+                    json!({
+                        "afterBytes": after,
+                        "bytesPerSec": rate,
+                        "burstBytesPerSec": burst,
+                    }),
+                );
+                modified = true;
+            }
+        }
+        modified
+    }
+
+    /// 扫描目录下的入站片段，给缺限速的 REALITY 入站补齐 fallback 限速。
+    ///
+    /// 返回 `(改写文件数, 补齐入站数)`。best-effort：单个文件读/解析/写失败
+    /// 只记 warn 并继续，绝不阻断启动（存量节点可能被运维改到一半）。
+    ///
+    /// `00_base.json` 与非 `*_inbounds.json` 文件不在扫描范围（见
+    /// `list_inbound_files_in`），避免误改基础配置与路由文件。
+    pub(crate) async fn ensure_reality_fallback_limits_in(dir: &Path) -> (usize, usize) {
+        let mut files_changed = 0usize;
+        let mut inbounds_patched = 0usize;
+
+        for file in Self::list_inbound_files_in(dir).await {
+            let path = Path::new(&file);
+            let Ok(content) = fs::read_to_string(path).await else {
+                log::warn!("REALITY fallback 自愈：无法读取 {file}");
+                continue;
+            };
+            let Ok(mut config) = serde_json::from_str::<Value>(&content) else {
+                log::warn!("REALITY fallback 自愈：JSON 解析失败，跳过 {file}");
+                continue;
+            };
+
+            let pending = config
+                .get("inbounds")
+                .and_then(Value::as_array)
+                .map(|inbounds| {
+                    inbounds
+                        .iter()
+                        .filter(|i| {
+                            i.get("streamSettings")
+                                .and_then(|s| s.get("realitySettings"))
+                                .and_then(Value::as_object)
+                                .is_some_and(|rs| {
+                                    !rs.contains_key("limitFallbackUpload")
+                                        || !rs.contains_key("limitFallbackDownload")
+                                })
+                        })
+                        .count()
+                })
+                .unwrap_or(0);
+
+            if !Self::patch_reality_fallback_limits(&mut config) {
+                continue;
+            }
+
+            let Ok(out) = serde_json::to_string_pretty(&config) else {
+                log::warn!("REALITY fallback 自愈：序列化失败，跳过 {file}");
+                continue;
+            };
+
+            // 先写临时文件再 rename：中断不会留下半个配置。
+            let tmp = path.with_extension("json.tmp");
+            if let Err(e) = fs::write(&tmp, out).await {
+                log::warn!(
+                    "REALITY fallback 自愈：写临时文件 {} 失败: {e}",
+                    tmp.display()
+                );
+                continue;
+            }
+            if let Err(e) = fs::rename(&tmp, path).await {
+                log::warn!("REALITY fallback 自愈：替换 {file} 失败: {e}");
+                let _ = fs::remove_file(&tmp).await;
+                continue;
+            }
+
+            files_changed += 1;
+            inbounds_patched += pending;
+        }
+
+        (files_changed, inbounds_patched)
+    }
+
     pub async fn ensure_base_config() -> Result<()> {
         use crate::core::paths::xray;
 
