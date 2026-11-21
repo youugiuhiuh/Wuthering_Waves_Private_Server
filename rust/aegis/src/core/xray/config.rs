@@ -1238,6 +1238,17 @@ impl ConfigManager {
             };
 
             // 先写临时文件再 rename：中断不会留下半个配置。
+            // rename 会带过临时文件的权限位，所以先按原文件权限设好，
+            // 避免把含 privateKey 的配置从 0600 放宽成 0644。
+            #[cfg(unix)]
+            let prev_mode = {
+                use std::os::unix::fs::PermissionsExt;
+                fs::metadata(path)
+                    .await
+                    .ok()
+                    .map(|m| m.permissions().mode())
+            };
+
             let tmp = path.with_extension("json.tmp");
             if let Err(e) = fs::write(&tmp, out).await {
                 log::warn!(
@@ -1245,6 +1256,19 @@ impl ConfigManager {
                     tmp.display()
                 );
                 continue;
+            }
+
+            #[cfg(unix)]
+            if let Some(mode) = prev_mode {
+                use std::os::unix::fs::PermissionsExt;
+                if let Err(e) =
+                    fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode)).await
+                {
+                    log::warn!(
+                        "REALITY fallback 自愈：设置临时文件权限失败 {}: {e}",
+                        tmp.display()
+                    );
+                }
             }
             if let Err(e) = fs::rename(&tmp, path).await {
                 log::warn!("REALITY fallback 自愈：替换 {file} 失败: {e}");
@@ -2381,6 +2405,34 @@ mod tests {
             ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
             (0, 0)
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reality_fallback_selfheal_preserves_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = temp_conf_dir("mode");
+        let target = dir.join("batch_mode_eeee_inbounds.json");
+        std::fs::write(
+            &target,
+            json!({"inbounds": [reality_inbound("reality")]}).to_string(),
+        )
+        .unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        assert_eq!(
+            ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
+            (1, 1)
+        );
+
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "rename 后必须保留原权限（配置含 privateKey，不能被放宽）"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
