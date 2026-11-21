@@ -65,7 +65,7 @@ reqwest = { version = "0.13.5", default-features = false, features = ["json", "r
 libsqlite3-sys = { version = "0.38.2", features = ["bundled"] }
 
 [dev-dependencies]
-env_logger = "0.11.11"
+env_logger = "0.11.12"
 serial_test = "4.0.1"
 
 [build-dependencies]
