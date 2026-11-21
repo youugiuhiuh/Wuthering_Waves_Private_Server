@@ -338,3 +338,14 @@ pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
 - [x] fallback 限速实测达标（需真实节点）
 - [ ] 已认证用户吞吐 A/B 无回退（仅代码路径核实，未端到端）
 - [x] 单次提交 ≤ 200 行（最大一笔 +124）
+
+**修复验证（2026-11-21 18:44，`otxmdmoz`）**：先手动剥掉 1 个入站的两个字段（备份
+`/root/deploy-fix-20261121-184355/`），再换新二进制并只重启 `wwps-aegis`：
+
+```
+[WARN] REALITY fallback 限速已补齐并重启核心生效：1 个入站 / 1 个文件
+核心进程启动：Wed Nov 18 11:11:51  →  Sat Nov 21 18:44:41
+40/40 入站含两字段；wwps-core -test -confdir → Configuration OK.
+```
+
+对照 `aqtwqmgx`（文件本来就齐）：只重启 aegis 时**不**触发核心重启，无多余中断。
