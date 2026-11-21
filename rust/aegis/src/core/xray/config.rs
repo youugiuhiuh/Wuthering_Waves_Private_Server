@@ -2165,6 +2165,101 @@ mod tests {
     }
 
     #[test]
+    fn reality_fallback_patch_is_idempotent() {
+        let mut config = json!({"inbounds": [reality_inbound("reality")]});
+        assert!(
+            ConfigManager::patch_reality_fallback_limits(&mut config),
+            "首次必须补齐"
+        );
+        let once = config.to_string();
+        assert!(
+            !ConfigManager::patch_reality_fallback_limits(&mut config),
+            "二次必须无改动"
+        );
+        assert_eq!(config.to_string(), once, "二次序列化必须逐字节相同");
+    }
+
+    #[test]
+    fn reality_fallback_patch_respects_manual_values() {
+        // 对象级存在即视为已配置：哪怕 bytesPerSec=0（显式关闭）也不碰。
+        let mut config = json!({
+            "inbounds": [{
+                "streamSettings": {"security": "reality", "realitySettings": {
+                    "limitFallbackUpload": {"afterBytes": 1, "bytesPerSec": 2, "burstBytesPerSec": 3},
+                    "limitFallbackDownload": {"bytesPerSec": 0}
+                }}
+            }]
+        });
+        assert!(!ConfigManager::patch_reality_fallback_limits(&mut config));
+        assert_eq!(
+            limit_tuple(
+                &config["inbounds"][0]["streamSettings"]["realitySettings"]["limitFallbackUpload"]
+            ),
+            (1, 2, 3)
+        );
+        assert_eq!(
+            config["inbounds"][0]["streamSettings"]["realitySettings"]["limitFallbackDownload"],
+            json!({"bytesPerSec": 0})
+        );
+
+        // 只缺 upload 时，仅补 upload。
+        let mut half = json!({
+            "inbounds": [{
+                "streamSettings": {"security": "reality", "realitySettings": {
+                    "limitFallbackDownload": {"bytesPerSec": 7}
+                }}
+            }]
+        });
+        assert!(ConfigManager::patch_reality_fallback_limits(&mut half));
+        let rs = &half["inbounds"][0]["streamSettings"]["realitySettings"];
+        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
+        assert_eq!(rs["limitFallbackDownload"]["bytesPerSec"], 7);
+    }
+
+    #[test]
+    fn reality_fallback_patch_ignores_non_reality() {
+        let mut config = json!({"inbounds": [
+            {"port": 1, "protocol": "vless", "streamSettings": {
+                "network": "tcp", "security": "tls"
+            }},
+            {"port": 2, "protocol": "vless"},
+            {"streamSettings": {"security": "reality"}},
+        ]});
+        assert!(!ConfigManager::patch_reality_fallback_limits(&mut config));
+    }
+
+    #[test]
+    fn reality_fallback_patch_tolerates_garbage() {
+        for mut bad in [
+            json!({}),
+            json!({"inbounds": "not-an-array"}),
+            json!({"inbounds": [1, 2, null]}),
+            json!({"inbounds": [{"streamSettings": {"security": "reality", "realitySettings": []}}]}),
+        ] {
+            assert!(
+                !ConfigManager::patch_reality_fallback_limits(&mut bad),
+                "畸形输入必须返回 false 且不 panic"
+            );
+        }
+    }
+
+    #[test]
+    fn reality_fallback_patch_preserves_other_fields() {
+        let mut config = json!({"inbounds": [reality_inbound("reality")]});
+        let before_len = config["inbounds"][0]["streamSettings"]["realitySettings"]
+            .as_object()
+            .unwrap()
+            .len();
+        assert!(ConfigManager::patch_reality_fallback_limits(&mut config));
+        let rs = config["inbounds"][0]["streamSettings"]["realitySettings"]
+            .as_object()
+            .unwrap();
+        assert_eq!(rs.len(), before_len + 2, "只允许新增两个 key");
+        assert_eq!(rs["target"], "example.com:443");
+        assert_eq!(rs["serverNames"][0], "example.com");
+    }
+
+    #[test]
     fn test_proto_hysteria2_variant_exists_and_is_copy() {
         let p = Proto::Hysteria2;
         let q = p; // Copy, not move
