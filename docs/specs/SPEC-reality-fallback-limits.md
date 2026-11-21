@@ -91,7 +91,8 @@ openssl s_client -connect <vps>:<port> -servername <sni> -quiet < /dev/zero   # 
 
 - `ConfigManager::list_all_inbound_files()`（`config.rs:85`）枚举存量文件。
 - `ConfigManager::ensure_base_config()`（`config.rs:1119`，被 `main.rs:168`、`installer.rs:584`、`maintenance.rs:127` 调用）作为自愈接入点。
-- **不调用 `reload_core()`**：`reload_core()` 自身就调用 `ensure_base_config()`，在其中 reload 会形成递归；且三个调用方都会在之后启动或重启核心，配置自然生效。
+- **补丁生效后直接重启核心**：只写文件不够 —— 运行中的核心不会重读配置（2026-11-21 已在真机复现，见 §13.2）。补丁有改动且核心在跑时，调用
+  `MaintenanceManager::control_service("wwps-core", Restart)` 一次；**不调 `reload_core()`**：它会回调本函数，形成递归。
 
 ---
 
@@ -307,6 +308,20 @@ pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
 实现中修正的 spec 偏差：
 
 1. **不做 reload**（原 §4 写“单次 reload”）：`reload_core()` 会回调 `ensure_base_config()`，形成递归。
+
+### 13.2 复核发现的真实缺陷与修复（2026-11-21）
+
+两台节点对照（都是 40 个入站、都是补丁成功）：
+
+| 节点 | aegis 启动 | 补丁写入 | 核心进程启动 | 结果 |
+|---|---|---|---|---|
+| `aqtwqmgx` | 17:24:03 | 16:39:25 | **16:45:40**（补丁后手动重启） | 生效，实测 512 KiB/s |
+| `otxmdmoz` | 17:24:42 | 17:24:46 | **11-18 11:11:51**（早于补丁 3 天） | ❌ 文件已改，运行态未生效 |
+
+原实现只写文件、不重启核心，`otxmdmoz` 上日志写着“已补齐”，实际仍在无限速中继。
+
+修复：`ensure_base_config()` 在补丁有改动且核心在跑时重启 `wwps-core` 一次，日志区分
+「已补齐并重启核心生效」/「重启失败，需手动重启」/「核心未运行，下次启动生效」。
 2. **新增权限保留**（原 spec 未覆盖）：`rename` 会把临时文件的 0644 带过去，使原本 0600 的配置被放宽；已改为写前按原 mode 设好，并加 `#[cfg(unix)]` 用例锁定。
 
 ---

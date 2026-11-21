@@ -1292,15 +1292,36 @@ impl ConfigManager {
         }
 
         // 存量自愈：早期版本生成的 REALITY 入站没有 fallback 限速，等于把 VPS
-        // 变成不限速的公开中继。这里只改文件、**不 reload**：三个调用方
-        // （main / installer / reload_core）之后都会启动或重启核心；而
-        // `reload_core()` 自身会回调本函数，在这里 reload 会形成递归。
+        // 变成不限速的公开中继。
+        //
+        // 只写文件不够：运行中的核心不会重读配置。2026-11-21 实测，一台只重启了
+        // aegis 的机器文件已补齐，但核心进程还是三天前启动的旧配置 —— 限速等于
+        // 没生效。所以补丁有改动且核心在跑时，立即重启一次核心。
+        //
+        // 不能调 `reload_core()`：它自身会回调本函数，形成递归。直接控制服务。
         let (files, inbounds) =
             Self::ensure_reality_fallback_limits_in(Path::new(xray::CONF_DIR)).await;
         if inbounds > 0 {
-            log::warn!(
-                "REALITY fallback 限速已补齐：{inbounds} 个入站 / {files} 个文件（此前这些入站可被任意人当作不限速中继）"
-            );
+            let (core_running, _) = crate::core::system::SystemMonitor::get_core_status().await;
+            if core_running {
+                match crate::core::system::maintenance::MaintenanceManager::control_service(
+                    "wwps-core",
+                    crate::core::cmd_action::ServiceAction::Restart,
+                )
+                .await
+                {
+                    Ok(()) => log::warn!(
+                        "REALITY fallback 限速已补齐并重启核心生效：{inbounds} 个入站 / {files} 个文件"
+                    ),
+                    Err(e) => log::warn!(
+                        "REALITY fallback 限速已补齐：{inbounds} 个入站 / {files} 个文件；重启 wwps-core 失败（{e}），需手动重启后生效"
+                    ),
+                }
+            } else {
+                log::warn!(
+                    "REALITY fallback 限速已补齐：{inbounds} 个入站 / {files} 个文件（核心未运行，下次启动生效）"
+                );
+            }
         }
 
         let base_path = format!("{}/00_base.json", xray::CONF_DIR);
