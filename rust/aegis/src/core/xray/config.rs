@@ -1267,6 +1267,18 @@ impl ConfigManager {
             log::warn!("确保 geodata 文件失败: {}", e);
         }
 
+        // 存量自愈：早期版本生成的 REALITY 入站没有 fallback 限速，等于把 VPS
+        // 变成不限速的公开中继。这里只改文件、**不 reload**：三个调用方
+        // （main / installer / reload_core）之后都会启动或重启核心；而
+        // `reload_core()` 自身会回调本函数，在这里 reload 会形成递归。
+        let (files, inbounds) =
+            Self::ensure_reality_fallback_limits_in(Path::new(xray::CONF_DIR)).await;
+        if inbounds > 0 {
+            log::warn!(
+                "REALITY fallback 限速已补齐：{inbounds} 个入站 / {files} 个文件（此前这些入站可被任意人当作不限速中继）"
+            );
+        }
+
         let base_path = format!("{}/00_base.json", xray::CONF_DIR);
 
         let exists = match tokio::fs::try_exists(&base_path).await {
@@ -2257,6 +2269,118 @@ mod tests {
         assert_eq!(rs.len(), before_len + 2, "只允许新增两个 key");
         assert_eq!(rs["target"], "example.com:443");
         assert_eq!(rs["serverNames"][0], "example.com");
+    }
+
+    fn temp_conf_dir(tag: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "aegis-reality-fallback-{tag}-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+        dir
+    }
+
+    #[tokio::test]
+    async fn reality_fallback_selfheal_patches_files() {
+        let dir = temp_conf_dir("patch");
+        let target = dir.join("batch_vision_aaaa_inbounds.json");
+        let non_target = dir.join("batch_hy2_bbbb_inbounds.json");
+        let base = dir.join("00_base.json");
+
+        std::fs::write(
+            &target,
+            json!({"inbounds": [reality_inbound("reality")]}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            &non_target,
+            json!({"inbounds": [{"port": 1, "protocol": "vless"}]}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            &base,
+            json!({"inbounds": [reality_inbound("reality")]}).to_string(),
+        )
+        .unwrap();
+
+        let (files, inbounds) = ConfigManager::ensure_reality_fallback_limits_in(&dir).await;
+        assert_eq!((files, inbounds), (1, 1), "只改一个文件、一个入站");
+
+        let patched: Value =
+            serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
+        let rs = &patched["inbounds"][0]["streamSettings"]["realitySettings"];
+        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
+        assert_eq!(limit_tuple(&rs["limitFallbackDownload"]), EXPECT_DOWNLOAD);
+
+        assert!(
+            !std::fs::read_to_string(&non_target)
+                .unwrap()
+                .contains("limitFallback"),
+            "非 REALITY 文件不得被改写"
+        );
+        assert!(
+            !std::fs::read_to_string(&base)
+                .unwrap()
+                .contains("limitFallback"),
+            "00_ 前缀文件不得被改写"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn reality_fallback_selfheal_is_idempotent() {
+        let dir = temp_conf_dir("idem");
+        let target = dir.join("batch_xhttp_cccc_inbounds.json");
+        std::fs::write(
+            &target,
+            json!({"inbounds": [reality_inbound("reality")]}).to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
+            (1, 1)
+        );
+        let once = std::fs::read_to_string(&target).unwrap();
+
+        assert_eq!(
+            ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
+            (0, 0),
+            "二次运行必须无改动"
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), once);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn reality_fallback_selfheal_skips_garbage() {
+        let dir = temp_conf_dir("garbage");
+        let bad = dir.join("batch_bad_dddd_inbounds.json");
+        std::fs::write(&bad, "{not json").unwrap();
+
+        assert_eq!(
+            ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
+            (0, 0)
+        );
+        assert_eq!(std::fs::read_to_string(&bad).unwrap(), "{not json");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn reality_fallback_selfheal_missing_dir() {
+        let dir = std::env::temp_dir().join("aegis-reality-fallback-definitely-missing");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
+            (0, 0)
+        );
     }
 
     #[test]
