@@ -15,16 +15,57 @@ use crate::core::xray::routing::{ROUTING_RULES, RoutingManager};
 
 use super::reality::{REALITY_PQ_SEED, REALITY_PQ_VERIFY, reality_pq_verify_as_base64url};
 
-/// REALITY fallback 限速默认值：(after_bytes, bytes_per_sec, burst_bytes_per_sec)。
+/// REALITY fallback 限速参数**区间**（单位：字节 / 字节每秒）。
 ///
-/// 依据 `docs/specs/SPEC-reality-fallback-limits.md` §11 实测：1 MiB 宽限覆盖约 p85
-/// 的整页体积（不至于主动探测/真实浏览器首屏被中途限速）；512 KiB/s（≈4.2 Mbps）
-/// 低于 1080p 常见码率，使视频中继不可用。
+/// 为什么不是固定值：回落限速本身就是一种可识别特征。上游 PR（XTLS/Xray-core#4553）
+/// 明确要求「面板/一键脚本开发者务必让这些参数随机化」。每个入站取一组区间内的
+/// 随机值，避免全网 200 个入站用同一组常量。
+///
+/// 区间取自该 PR 的示例配置：下载前 5–10 MiB 全速、之后 192–384 KiB/s、突发 1–3 MiB/s；
+/// 上传 48–96 KiB/s，不给突发。宽限足够大是为了让主动探测/真实页面加载不会在途中
+/// 被降速——“加载到一半突然变慢”正是可被识别的特征。
 ///
 /// 只作用于**未认证 fallback 连接**（xtls/reality 的 `RatelimitedConn`），
 /// 已认证的 VLESS 用户流量不经过该限速器。
-const FALLBACK_UPLOAD_LIMIT: (u64, u64, u64) = (64 * 1024, 256 * 1024, 1024 * 1024);
-const FALLBACK_DOWNLOAD_LIMIT: (u64, u64, u64) = (1024 * 1024, 512 * 1024, 2 * 1024 * 1024);
+const FALLBACK_UPLOAD_AFTER: u64 = 0;
+const FALLBACK_UPLOAD_RATE: (u64, u64) = (48 * 1024, 96 * 1024);
+const FALLBACK_DOWNLOAD_AFTER: (u64, u64) = (5 * 1024 * 1024, 10 * 1024 * 1024);
+const FALLBACK_DOWNLOAD_RATE: (u64, u64) = (192 * 1024, 384 * 1024);
+const FALLBACK_DOWNLOAD_BURST: (u64, u64) = (1024 * 1024, 3 * 1024 * 1024);
+
+/// 旧版本写死的默认值。**只**用于识别“这是我们的旧值，可以迁移到随机值”；
+/// 与它们不相等的配置一律视为运维手工设置，不覆盖。
+const LEGACY_FALLBACK_UPLOAD: (u64, u64, u64) = (64 * 1024, 256 * 1024, 1024 * 1024);
+const LEGACY_FALLBACK_DOWNLOAD: (u64, u64, u64) = (1024 * 1024, 512 * 1024, 2 * 1024 * 1024);
+
+/// 生成一组随机 fallback 限速：`(upload, download)`，每项为 `(after, rate, burst)`。
+///
+/// 速率对齐到 KiB、突发对齐到 256 KiB，避免出现过于取整的数字。
+fn random_fallback_limits() -> ((u64, u64, u64), (u64, u64, u64)) {
+    let mut r = rand::rng();
+    let up_rate = r.random_range(FALLBACK_UPLOAD_RATE.0..=FALLBACK_UPLOAD_RATE.1) & !1023;
+    let down_after = r.random_range(FALLBACK_DOWNLOAD_AFTER.0..=FALLBACK_DOWNLOAD_AFTER.1) & !1023;
+    let down_rate = r.random_range(FALLBACK_DOWNLOAD_RATE.0..=FALLBACK_DOWNLOAD_RATE.1) & !1023;
+    let down_burst =
+        r.random_range(FALLBACK_DOWNLOAD_BURST.0..=FALLBACK_DOWNLOAD_BURST.1) & !((256 * 1024) - 1);
+    (
+        (FALLBACK_UPLOAD_AFTER, up_rate, 0),
+        (down_after, down_rate, down_burst),
+    )
+}
+
+/// 配置里已有的限速对象是否**正好**等于旧版本的写死值。
+///
+/// 要求键数也相等（只多不少都不算），这样带额外字段的手工配置不会被误迁移。
+fn is_legacy_limit(value: &Value, legacy: (u64, u64, u64)) -> bool {
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    obj.len() == 3
+        && obj.get("afterBytes").and_then(Value::as_u64) == Some(legacy.0)
+        && obj.get("bytesPerSec").and_then(Value::as_u64) == Some(legacy.1)
+        && obj.get("burstBytesPerSec").and_then(Value::as_u64) == Some(legacy.2)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Proto {
@@ -455,6 +496,7 @@ impl ConfigManager {
             })
         };
 
+        let (up_limit, down_limit) = random_fallback_limits();
         let mut stream_settings = json!({
             "network": match proto {
                 Proto::Vision => "tcp",
@@ -479,14 +521,14 @@ impl ConfigManager {
                 "minClientVer": "1.0.0",
                 "shortIds": ["", short_id],
                 "limitFallbackUpload": {
-                    "afterBytes": FALLBACK_UPLOAD_LIMIT.0,
-                    "bytesPerSec": FALLBACK_UPLOAD_LIMIT.1,
-                    "burstBytesPerSec": FALLBACK_UPLOAD_LIMIT.2
+                    "afterBytes": up_limit.0,
+                    "bytesPerSec": up_limit.1,
+                    "burstBytesPerSec": up_limit.2
                 },
                 "limitFallbackDownload": {
-                    "afterBytes": FALLBACK_DOWNLOAD_LIMIT.0,
-                    "bytesPerSec": FALLBACK_DOWNLOAD_LIMIT.1,
-                    "burstBytesPerSec": FALLBACK_DOWNLOAD_LIMIT.2
+                    "afterBytes": down_limit.0,
+                    "bytesPerSec": down_limit.1,
+                    "burstBytesPerSec": down_limit.2
                 }
             }
         });
@@ -1146,9 +1188,10 @@ impl ConfigManager {
 
     /// 给所有 REALITY 入站补齐 fallback 限速（幂等）。
     ///
-    /// 语义：**对象级存在即视为已配置** —— 只要 `limitFallbackUpload` /
-    /// `limitFallbackDownload` 任一键存在就整块跳过，不做 key 级补全。
-    /// 这样运维手写的部分配置（含 `bytesPerSec: 0` 显式关闭）不会被覆盖。
+    /// 语义：
+    /// - 缺失 → 写入一组区间内的随机值；
+    /// - 正好等于旧版本写死的值 → 迁移成随机值（否则存量节点永远停在旧常量）；
+    /// - 其余（运维手工设置，含 `bytesPerSec: 0` 显式关闭）→ 不碰。
     ///
     /// 返回 `true` 表示产生了实质性修改。畸形输入一律返回 `false` 且不 panic。
     pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
@@ -1166,11 +1209,17 @@ impl ConfigManager {
                 continue;
             };
 
-            for (key, (after, rate, burst)) in [
-                ("limitFallbackUpload", FALLBACK_UPLOAD_LIMIT),
-                ("limitFallbackDownload", FALLBACK_DOWNLOAD_LIMIT),
+            let (up, down) = random_fallback_limits();
+            for (key, (after, rate, burst), legacy) in [
+                ("limitFallbackUpload", up, LEGACY_FALLBACK_UPLOAD),
+                ("limitFallbackDownload", down, LEGACY_FALLBACK_DOWNLOAD),
             ] {
-                if rs.contains_key(key) {
+                // 缺失 → 补；正好等于旧版本的写死值 → 迁移；其余（手工值）→ 保留。
+                let needs_write = match rs.get(key) {
+                    None => true,
+                    Some(v) => is_legacy_limit(v, legacy),
+                };
+                if !needs_write {
                     continue;
                 }
                 rs.insert(
@@ -2144,9 +2193,13 @@ mod tests {
 
     // ---- REALITY fallback 限速（spec: docs/specs/SPEC-reality-fallback-limits.md）----
 
-    /// 期望值在此硬编码，**不要**引用生产常量：常量写错时测试必须失败。
-    const EXPECT_UPLOAD: (u64, u64, u64) = (65_536, 262_144, 1_048_576);
-    const EXPECT_DOWNLOAD: (u64, u64, u64) = (1_048_576, 524_288, 2_097_152);
+    // 区间在此独立硬编码（不引用生产常量）：常量被改错时测试必须失败。
+    const UP_AFTER: u64 = 0;
+    const UP_RATE: (u64, u64) = (48 * 1024, 96 * 1024);
+    const UP_BURST: u64 = 0;
+    const DOWN_AFTER: (u64, u64) = (5 * 1024 * 1024, 10 * 1024 * 1024);
+    const DOWN_RATE: (u64, u64) = (192 * 1024, 384 * 1024);
+    const DOWN_BURST: (u64, u64) = (1024 * 1024, 3 * 1024 * 1024);
 
     fn limit_tuple(v: &Value) -> (u64, u64, u64) {
         (
@@ -2154,6 +2207,31 @@ mod tests {
             v["bytesPerSec"].as_u64().expect("bytesPerSec"),
             v["burstBytesPerSec"].as_u64().expect("burstBytesPerSec"),
         )
+    }
+
+    /// 断言一组 REALITY 限速落在允许区间内，返回 `(upload, download)`。
+    fn assert_limits_in_range(rs: &Value) -> ((u64, u64, u64), (u64, u64, u64)) {
+        let up = limit_tuple(&rs["limitFallbackUpload"]);
+        let down = limit_tuple(&rs["limitFallbackDownload"]);
+        assert_eq!(up.0, UP_AFTER, "upload afterBytes 必须为 0");
+        assert_eq!(up.2, UP_BURST, "upload 不允许突发");
+        assert!(
+            (UP_RATE.0..=UP_RATE.1).contains(&up.1),
+            "upload rate {up:?} 超出 {UP_RATE:?}"
+        );
+        assert!(
+            (DOWN_AFTER.0..=DOWN_AFTER.1).contains(&down.0),
+            "download afterBytes {down:?} 超出 {DOWN_AFTER:?}"
+        );
+        assert!(
+            (DOWN_RATE.0..=DOWN_RATE.1).contains(&down.1),
+            "download rate {down:?} 超出 {DOWN_RATE:?}"
+        );
+        assert!(
+            (DOWN_BURST.0..=DOWN_BURST.1).contains(&down.2),
+            "download burst {down:?} 超出 {DOWN_BURST:?}"
+        );
+        (up, down)
     }
 
     fn reality_inbound(security: &str) -> Value {
@@ -2196,8 +2274,22 @@ mod tests {
     fn reality_fallback_generator_emits_limits() {
         let inbound = build_vision_inbound();
         let rs = &inbound["streamSettings"]["realitySettings"];
-        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
-        assert_eq!(limit_tuple(&rs["limitFallbackDownload"]), EXPECT_DOWNLOAD);
+        assert_limits_in_range(rs);
+    }
+
+    /// 参数必须随机化：全网 200 个入站用同一组常量本身就是可识别特征。
+    #[test]
+    fn reality_fallback_generator_params_vary() {
+        let mut rates = std::collections::HashSet::new();
+        let mut afters = std::collections::HashSet::new();
+        for _ in 0..8 {
+            let inbound = build_vision_inbound();
+            let (_, down) = assert_limits_in_range(&inbound["streamSettings"]["realitySettings"]);
+            rates.insert(down.1);
+            afters.insert(down.0);
+        }
+        assert!(rates.len() > 1, "download rate 必须随机化");
+        assert!(afters.len() > 1, "afterBytes 必须随机化");
     }
 
     #[test]
@@ -2217,8 +2309,7 @@ mod tests {
             false,
         );
         let rs = &inbound["streamSettings"]["realitySettings"];
-        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
-        assert_eq!(limit_tuple(&rs["limitFallbackDownload"]), EXPECT_DOWNLOAD);
+        assert_limits_in_range(rs);
     }
 
     #[test]
@@ -2238,7 +2329,7 @@ mod tests {
 
     #[test]
     fn reality_fallback_patch_respects_manual_values() {
-        // 对象级存在即视为已配置：哪怕 bytesPerSec=0（显式关闭）也不碰。
+        // 旧默认值会被迁移成随机值；手工值（含 bytesPerSec=0）一律不碰。
         let mut config = json!({
             "inbounds": [{
                 "streamSettings": {"security": "reality", "realitySettings": {
@@ -2269,7 +2360,10 @@ mod tests {
         });
         assert!(ConfigManager::patch_reality_fallback_limits(&mut half));
         let rs = &half["inbounds"][0]["streamSettings"]["realitySettings"];
-        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
+        let up = limit_tuple(&rs["limitFallbackUpload"]);
+        assert_eq!(up.0, UP_AFTER);
+        assert_eq!(up.2, UP_BURST);
+        assert!((UP_RATE.0..=UP_RATE.1).contains(&up.1));
         assert_eq!(rs["limitFallbackDownload"]["bytesPerSec"], 7);
     }
 
@@ -2358,8 +2452,7 @@ mod tests {
         let patched: Value =
             serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
         let rs = &patched["inbounds"][0]["streamSettings"]["realitySettings"];
-        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
-        assert_eq!(limit_tuple(&rs["limitFallbackDownload"]), EXPECT_DOWNLOAD);
+        assert_limits_in_range(rs);
 
         assert!(
             !std::fs::read_to_string(&non_target)

@@ -101,41 +101,24 @@ openssl s_client -connect <vps>:<port> -servername <sni> -quiet < /dev/zero   # 
 沿用仓内既有范式（`patch_direct_outbound_ipv6` 的幂等 + 返回 `bool`）：
 
 ```rust
-/// 默认 fallback 限速。单位：字节 / 字节每秒。（依据见 §11 实测）
-const FALLBACK_UPLOAD_LIMIT: (u64, u64, u64) = (64 * 1024, 256 * 1024, 1024 * 1024);
-const FALLBACK_DOWNLOAD_LIMIT: (u64, u64, u64) = (1024 * 1024, 512 * 1024, 2 * 1024 * 1024);
+// 区间而非固定值：回落限速本身是可识别特征，上游 PR #4553 要求参数随机化。
+const FALLBACK_UPLOAD_AFTER: u64 = 0;
+const FALLBACK_UPLOAD_RATE: (u64, u64) = (48 * 1024, 96 * 1024);
+const FALLBACK_DOWNLOAD_AFTER: (u64, u64) = (5 * 1024 * 1024, 10 * 1024 * 1024);
+const FALLBACK_DOWNLOAD_RATE: (u64, u64) = (192 * 1024, 384 * 1024);
+const FALLBACK_DOWNLOAD_BURST: (u64, u64) = (1024 * 1024, 3 * 1024 * 1024);
 
-/// 给所有 REALITY 入站补齐 fallback 限速。返回 `true` 表示有改动。
-pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
-    let Some(inbounds) = config.get_mut("inbounds").and_then(Value::as_array_mut) else {
-        return false;
-    };
-    let mut modified = false;
-    for inbound in inbounds {
-        let Some(rs) = inbound
-            .get_mut("streamSettings")
-            .and_then(|s| s.get_mut("realitySettings"))
-            .and_then(Value::as_object_mut)
-        else {
-            continue;
-        };
-        for (key, (after, rate, burst)) in [
-            ("limitFallbackUpload", FALLBACK_UPLOAD_LIMIT),
-            ("limitFallbackDownload", FALLBACK_DOWNLOAD_LIMIT),
-        ] {
-            if rs.contains_key(key) {
-                continue; // 对象级存在即尊重
-            }
-            rs.insert(
-                key.to_string(),
-                json!({ "afterBytes": after, "bytesPerSec": rate, "burstBytesPerSec": burst }),
-            );
-            modified = true;
-        }
-    }
-    modified
-}
+// 旧版本写死的值：只用于识别“这是我们的旧值，可迁移”，其余手工值一律不碰。
+const LEGACY_FALLBACK_UPLOAD: (u64, u64, u64) = (64 * 1024, 256 * 1024, 1024 * 1024);
+const LEGACY_FALLBACK_DOWNLOAD: (u64, u64, u64) = (1024 * 1024, 512 * 1024, 2 * 1024 * 1024);
+
+/// 给所有 REALITY 入站补齐/迁移 fallback 限速。返回 `true` 表示有改动。
+/// 缺失 → 写随机值；等于旧默认值 → 迁移；其余（手工值）→ 保留。
+pub fn patch_reality_fallback_limits(config: &mut Value) -> bool { /* ... */ }
 ```
+
+区间依据：上游 `XTLS/Xray-core#4553`（已合并）的示例配置为「下载前 10 MiB + 2 MiB 突发、
+之后 256 KiB/s；上传 64 KiB/s」，并明确要求脚本/面板**随机化**参数。
 
 约定：
 
@@ -196,7 +179,7 @@ pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
 3. 对已存在 `limitFallbackUpload`（哪怕只是 `{"bytesPerSec":0}`）的入站，文件**不变**。
 4. 畸形 JSON、只读文件、目录不存在：仅告警，不阻断启动。
 5. `xray -test -config <file>` 通过（手动验收）。
-6. 未认证 fallback 连接：前 1 MiB 全速，之后下载稳定 ≤ 512 KiB/s（手动验收，记录实测值）。
+6. 未认证 fallback 连接：前 5–10 MiB（随机）全速，之后下载稳定在 192–384 KiB/s（手动验收，记录实测值）。
    注：这是 per-connection 限速，不是总额度；加压路径见 §12。
 7. 已认证 VLESS 用户下载吞吐与变更前一致（同机同文件 A/B，误差 ±10% 内）。
 8. 自愈改写后原文件 mode 保持不变（含 0600）。
@@ -222,8 +205,8 @@ pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
 
 | # | 问题 | 决定 |
 |---|---|---|
-| 1 | 默认值是否按节点类型分档 | **不分**。统一一套常量，先观测流量曲线再调 |
-| 2 | 下载 `afterBytes` 取值 | **1 MiB**，依据 §11 实测（覆盖约 p85 的整页体积） |
+| 1 | 默认值是否按节点类型分档 | **不分**，但每个入站从区间内随机取值（上游要求随机化） |
+| 2 | 下载 `afterBytes` 取值 | **5–10 MiB 随机**。原定 1 MiB（§11 实测），后按上游 `#4553` 改为大宽限 + 参数随机化：宽限太小会让探测看到“加载到一半变慢”，本身就是特征 |
 | 3 | 自愈接入点 | **`ensure_base_config()` 内部**，复用 3 处调用点，避免漏接 |
 | 4 | `bytesPerSec: 0` 语义 | **确认**：视为“已配置 / 显式关闭”，不覆盖 |
 | 5 | 日志级别 | **`warn`** 一条汇总，仅在有改动时输出 |
@@ -349,3 +332,20 @@ pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
 ```
 
 对照 `aqtwqmgx`（文件本来就齐）：只重启 aegis 时**不**触发核心重启，无多余中断。
+
+### 13.3 特征降低：参数随机化（2026-11-21）
+
+依据上游 `XTLS/Xray-core#4553`（2025-06-08 合并）作者的明确要求：
+
+> 回落限速是一种特征，不建议启用……如果是面板/一键脚本开发者，务必让这些参数随机化。
+
+原实现是全网同一组常量（1 MiB / 512 KiB/s / 2 MiB），200 个入站完全一致。改为每个入站
+从区间取随机值：
+
+| 方向 | afterBytes | bytesPerSec | burst |
+|---|---|---|---|
+| upload | 0 | 48–96 KiB/s | 0 |
+| download | 5–10 MiB | 192–384 KiB/s | 1–3 MiB/s |
+
+存量迁移：`patch_reality_fallback_limits` 只在「字段缺失」或「值正好等于旧常量」时写入；
+其余（运维手工值，含 `bytesPerSec: 0`）保持不动。
