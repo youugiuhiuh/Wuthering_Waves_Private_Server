@@ -15,6 +15,17 @@ use crate::core::xray::routing::{ROUTING_RULES, RoutingManager};
 
 use super::reality::{REALITY_PQ_SEED, REALITY_PQ_VERIFY, reality_pq_verify_as_base64url};
 
+/// REALITY fallback 限速默认值：(after_bytes, bytes_per_sec, burst_bytes_per_sec)。
+///
+/// 依据 `docs/specs/SPEC-reality-fallback-limits.md` §11 实测：1 MiB 宽限覆盖约 p85
+/// 的整页体积（不至于主动探测/真实浏览器首屏被中途限速）；512 KiB/s（≈4.2 Mbps）
+/// 低于 1080p 常见码率，使视频中继不可用。
+///
+/// 只作用于**未认证 fallback 连接**（xtls/reality 的 `RatelimitedConn`），
+/// 已认证的 VLESS 用户流量不经过该限速器。
+const FALLBACK_UPLOAD_LIMIT: (u64, u64, u64) = (64 * 1024, 256 * 1024, 1024 * 1024);
+const FALLBACK_DOWNLOAD_LIMIT: (u64, u64, u64) = (1024 * 1024, 512 * 1024, 2 * 1024 * 1024);
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Proto {
     Vision,
@@ -83,9 +94,16 @@ impl ConfigManager {
     }
 
     pub async fn list_all_inbound_files() -> Result<Vec<String>> {
+        Ok(Self::list_inbound_files_in(Path::new(xray::CONF_DIR)).await)
+    }
+
+    /// 目录版枚举：只认 `*_inbounds.json`，且排除 `00_` 前缀（基础配置）。
+    ///
+    /// 抽出来是为了让自愈逻辑能用临时目录测试，而不必碰 `/etc/wwps`。
+    pub(crate) async fn list_inbound_files_in(dir: &Path) -> Vec<String> {
         let mut out = Vec::new();
 
-        if let Ok(mut rd) = fs::read_dir(xray::CONF_DIR).await {
+        if let Ok(mut rd) = fs::read_dir(dir).await {
             while let Ok(Some(entry)) = rd.next_entry().await {
                 if let Some(name) = entry.file_name().to_str()
                     && name.ends_with("_inbounds.json")
@@ -96,7 +114,7 @@ impl ConfigManager {
             }
         }
 
-        Ok(out)
+        out
     }
 
     pub async fn collect_all_ports() -> Result<std::collections::HashSet<u16>> {
@@ -459,7 +477,17 @@ impl ConfigManager {
                 "serverNames": [sni],
                 "privateKey": priv_key,
                 "minClientVer": "1.0.0",
-                "shortIds": ["", short_id]
+                "shortIds": ["", short_id],
+                "limitFallbackUpload": {
+                    "afterBytes": FALLBACK_UPLOAD_LIMIT.0,
+                    "bytesPerSec": FALLBACK_UPLOAD_LIMIT.1,
+                    "burstBytesPerSec": FALLBACK_UPLOAD_LIMIT.2
+                },
+                "limitFallbackDownload": {
+                    "afterBytes": FALLBACK_DOWNLOAD_LIMIT.0,
+                    "bytesPerSec": FALLBACK_DOWNLOAD_LIMIT.1,
+                    "burstBytesPerSec": FALLBACK_DOWNLOAD_LIMIT.2
+                }
             }
         });
 
@@ -1940,6 +1968,85 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    // ---- REALITY fallback 限速（spec: docs/specs/SPEC-reality-fallback-limits.md）----
+
+    /// 期望值在此硬编码，**不要**引用生产常量：常量写错时测试必须失败。
+    const EXPECT_UPLOAD: (u64, u64, u64) = (65_536, 262_144, 1_048_576);
+    const EXPECT_DOWNLOAD: (u64, u64, u64) = (1_048_576, 524_288, 2_097_152);
+
+    fn limit_tuple(v: &Value) -> (u64, u64, u64) {
+        (
+            v["afterBytes"].as_u64().expect("afterBytes"),
+            v["bytesPerSec"].as_u64().expect("bytesPerSec"),
+            v["burstBytesPerSec"].as_u64().expect("burstBytesPerSec"),
+        )
+    }
+
+    fn reality_inbound(security: &str) -> Value {
+        json!({
+            "listen": "0.0.0.0",
+            "port": 12345,
+            "protocol": "vless",
+            "tag": "t",
+            "settings": {"clients": [{"id": "u"}]},
+            "streamSettings": {
+                "network": "tcp",
+                "security": security,
+                "realitySettings": {
+                    "target": "example.com:443",
+                    "serverNames": ["example.com"],
+                    "shortIds": [""]
+                }
+            }
+        })
+    }
+
+    fn build_vision_inbound() -> Value {
+        ConfigManager::build_reality_vless_inbound(
+            "tag-vision",
+            443,
+            "uuid",
+            "e@x",
+            "example.com",
+            "pub",
+            "priv",
+            "sid",
+            IpVersion::IPv4,
+            Proto::Vision,
+            None,
+            false,
+        )
+    }
+
+    #[test]
+    fn reality_fallback_generator_emits_limits() {
+        let inbound = build_vision_inbound();
+        let rs = &inbound["streamSettings"]["realitySettings"];
+        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
+        assert_eq!(limit_tuple(&rs["limitFallbackDownload"]), EXPECT_DOWNLOAD);
+    }
+
+    #[test]
+    fn reality_fallback_xhttp_path_emits_limits() {
+        let inbound = ConfigManager::build_reality_vless_inbound(
+            "tag-xhttp",
+            8443,
+            "uuid",
+            "e@x",
+            "example.com",
+            "pub",
+            "priv",
+            "sid",
+            IpVersion::IPv6,
+            Proto::XHTTP,
+            Some("/p"),
+            false,
+        );
+        let rs = &inbound["streamSettings"]["realitySettings"];
+        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
+        assert_eq!(limit_tuple(&rs["limitFallbackDownload"]), EXPECT_DOWNLOAD);
     }
 
     #[test]
