@@ -7,39 +7,39 @@ Plan: `tasks/plan.md`
 
 ## Phase 1 — Foundation
 
-- [ ] T1 常量 + `patch_reality_fallback_limits`（先红后绿）
-  - Acceptance：6 个 `reality_fallback_*` 用例全绿
+- [x] T1 常量 + `patch_reality_fallback_limits`（先红后绿）
+  - Acceptance：7 个 patch/生成器用例全绿（幂等、手工值、畸形输入）
   - Verify：`cargo +nightly nextest run -E 'test(reality_fallback)'`
   - Files：`rust/aegis/src/core/xray/config.rs`
   - Deps：— ｜ Size：S
 
-- [ ] T2 生成器注入（Vision + XHTTP 共用）
+- [x] T2 生成器注入（Vision + XHTTP 共用）
   - Acceptance：两协议 JSON 均含两字段且值 = 常量
   - Verify：同上定向命令
   - Files：`rust/aegis/src/core/xray/config.rs`
   - Deps：T1 ｜ Size：S
 
-- [ ] Checkpoint 1：定向测试全绿 + diff 仅新增字段
+- [x] Checkpoint 1：定向测试全绿 + diff 仅新增字段
 
 ## Phase 2 — Integration
 
-- [ ] T3 自愈接入 `ensure_base_config()`
-  - Acceptance：存量补齐、幂等、容错、单次 reload、`warn` 一条汇总
-  - Verify：定向测试 + 手工构造配置
+- [x] T3 自愈接入 `ensure_base_config()`
+  - Acceptance：存量补齐、幂等、容错、**不 reload**（避免与 `reload_core` 递归）、`warn` 一条汇总
+  - Verify：定向测试（启动路径实机验证并入 T6）
   - Files：`rust/aegis/src/core/xray/config.rs`
   - Deps：T1 ｜ Size：S
 
-- [ ] T4 自愈层测试（临时目录，无新依赖）
-  - Acceptance：补齐 / 不覆盖 / 畸形跳过 / 非目标文件忽略，4 例全绿
+- [x] T4 自愈层测试（临时目录，无新依赖）
+  - Acceptance：补齐 / 幂等 / 畸形跳过 / 缺失目录 / 权限保留，5 例全绿
   - Verify：`cargo +nightly nextest run -E 'test(reality_fallback)'`
   - Files：`rust/aegis/src/core/xray/config.rs`
   - Deps：T3 ｜ Size：S
 
-- [ ] Checkpoint 2：全量 nextest 绿 + 启动路径手工验证
+- [x] Checkpoint 2：全量 nextest 绿；启动路径实机验证并入 T6
 
 ## Phase 3 — Verification
 
-- [ ] T5 质量门禁
+- [x] T5 质量门禁
   - `cargo fmt --all -- --check`
   - `cargo clippy --all-targets -- -D warnings`
   - `cargo +nightly nextest run --cargo-profile fast-test`

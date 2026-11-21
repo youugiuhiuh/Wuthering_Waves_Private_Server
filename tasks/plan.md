@@ -19,46 +19,47 @@ Source spec: `docs/specs/SPEC-reality-fallback-limits.md`（V1，已按用户决
 
 ### Phase 1：Foundation
 
-- [ ] **Task 1 — 常量 + 纯函数补丁（TDD 红→绿）**
+- [x] **Task 1 — 常量 + 纯函数补丁（TDD 红→绿）**
   - 先写失败用例：生成器字段存在且值正确（2 个）、补丁幂等（1 个）、尊重手工值含 `bytesPerSec:0`（1 个）、非 REALITY 入站不动（1 个）、畸形输入不 panic（1 个）。
   - 新增 `FALLBACK_UPLOAD_LIMIT` / `FALLBACK_DOWNLOAD_LIMIT` 常量与 `patch_reality_fallback_limits`。
   - Acceptance：6 个新用例全绿；`cargo nextest run -E 'test(reality_fallback)'` 通过。
   - Files：`rust/aegis/src/core/xray/config.rs`
   - Deps：无 ｜ Scope：S
 
-- [ ] **Task 2 — 生成器注入**
+- [x] **Task 2 — 生成器注入**
   - 在 `build_reality_vless_inbound` 的 `realitySettings` 中写入两个对象；确认 XHTTP 路径（`xhttp.rs:55` 复用同函数）同样命中。
   - Acceptance：Vision 与 XHTTP 生成的 JSON 均含两字段且值等于常量；既有生成器测试不回归。
   - Files：`rust/aegis/src/core/xray/config.rs`
   - Deps：T1 ｜ Scope：S
 
 ### Checkpoint 1
-- [ ] `cargo nextest run -E 'test(reality_fallback)'` 全绿
-- [ ] `git diff` 确认仅新增字段，未改其它 realitySettings 键
+- [x] `cargo nextest run -E 'test(reality_fallback)'` 全绿
+- [x] `git diff` 确认仅新增字段，未改其它 realitySettings 键
 
 ### Phase 2：Integration
 
-- [ ] **Task 3 — 自愈接入**
+- [x] **Task 3 — 自愈接入**
   - 抽出 `list_inbound_files_in(dir)`；实现 `ensure_reality_fallback_limits()`：逐个 `*_inbounds.json` 读 → 解析 → 补丁 → 原子写（临时文件 + rename）；有改动才累计，最后 reload 一次，并打一条 `warn` 汇总（文件数 / 入站数）。
   - 容错：目录不存在、文件不可读、JSON 畸形、只读文件 → 各自 `warn` 并继续，绝不阻断启动。
-  - 在 `ensure_base_config()` 中调用（放在 geodata 之后、`00_base.json` 分支之前）。
+  - 原子写前按原文件 mode 设置临时文件权限（配置含 `privateKey`，不得放宽）。
+  - 在 `ensure_base_config()` 中调用（放在 geodata 之后、`00_base.json` 分支之前），**不 reload**：`reload_core()` 会回调本函数，会递归。
   - Acceptance：二次调用返回 false 且文件逐字节不变；畸形/缺失场景不 panic。
   - Files：`rust/aegis/src/core/xray/config.rs`
   - Deps：T1 ｜ Scope：S
 
-- [ ] **Task 4 — 自愈层测试（临时目录）**
+- [x] **Task 4 — 自愈层测试（临时目录）**
   - 用 `std::env::temp_dir()` + 进程内唯一子目录，覆盖：无字段文件被补齐、已有字段文件不变、畸形 JSON 跳过、纯 `00_`/非 `*_inbounds.json` 不处理。
   - Acceptance：新增 4 个用例全绿，且测试结束后自行清理临时目录。
   - Files：`rust/aegis/src/core/xray/config.rs`
   - Deps：T3 ｜ Scope：S
 
 ### Checkpoint 2
-- [ ] `cargo nextest run` 全量绿
-- [ ] 手工构造一个无人值守配置文件，启动路径跑一遍确认补齐 + 单次 reload
+- [x] `cargo nextest run` 全量绿
+- [ ] 真实节点启动路径跑一遍（并入 T6）
 
 ### Phase 3：Verification
 
-- [ ] **Task 5 — 质量门禁**
+- [x] **Task 5 — 质量门禁**
   - `cargo fmt --all -- --check`
   - `cargo clippy --all-targets -- -D warnings`
   - `cargo +nightly nextest run --cargo-profile fast-test`

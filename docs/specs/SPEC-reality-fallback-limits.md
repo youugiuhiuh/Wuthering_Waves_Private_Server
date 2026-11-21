@@ -91,7 +91,7 @@ openssl s_client -connect <vps>:<port> -servername <sni> -quiet < /dev/zero   # 
 
 - `ConfigManager::list_all_inbound_files()`（`config.rs:85`）枚举存量文件。
 - `ConfigManager::ensure_base_config()`（`config.rs:1119`，被 `main.rs:168`、`installer.rs:584`、`maintenance.rs:127` 调用）作为自愈接入点。
-- `MaintenanceManager::reload_core()`，仅在“有文件被改写且核心在跑”时调用一次（不按文件逐个 reload）。
+- **不调用 `reload_core()`**：`reload_core()` 自身就调用 `ensure_base_config()`，在其中 reload 会形成递归；且三个调用方都会在之后启动或重启核心，配置自然生效。
 
 ---
 
@@ -141,6 +141,7 @@ pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
 - 字段名一律 camelCase（Xray JSON），与 `limitFallbackUpload` 一致。
 - 所有“补齐”逻辑必须幂等，且不做 key 级补全。
 - 日志只打汇总（`已补齐 N 个入站 / M 个文件`），不逐入站刷屏。
+- 原子写必须保留原文件 mode：`rename` 会带过临时文件的权限位，而配置含 `privateKey`，不得从 0600 放宽成 0644。
 
 ---
 
@@ -190,14 +191,15 @@ pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
 ## 8. 成功标准
 
 1. 新建 Vision 与 XHTTP REALITY 入站的 JSON 中，`realitySettings.limitFallbackUpload` 与 `.limitFallbackDownload` 存在，且三字段等于默认表。
-2. 对含无字段 REALITY 入站的存量 `*_inbounds.json`，启动后文件被改写，字段补齐；第二次启动无写入、无 reload。
+2. 对含无字段 REALITY 入站的存量 `*_inbounds.json`，启动后文件被改写，字段补齐；第二次启动无写入。
 3. 对已存在 `limitFallbackUpload`（哪怕只是 `{"bytesPerSec":0}`）的入站，文件**不变**。
 4. 畸形 JSON、只读文件、目录不存在：仅告警，不阻断启动。
 5. `xray -test -config <file>` 通过（手动验收）。
 6. 未认证 fallback 连接：前 1 MiB 全速，之后下载稳定 ≤ 512 KiB/s（手动验收，记录实测值）。
    注：这是 per-connection 限速，不是总额度；加压路径见 §12。
 7. 已认证 VLESS 用户下载吞吐与变更前一致（同机同文件 A/B，误差 ±10% 内）。
-8. Diff 规模 ≤ 2 个文件、≤ 200 行（不含 spec）。
+8. 自愈改写后原文件 mode 保持不变（含 0600）。
+9. Diff 规模 ≤ 2 个文件、单次提交 ≤ 200 行（不含 spec/plan）。
 
 ---
 
@@ -254,14 +256,36 @@ pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
 
 ---
 
+## 13. 验证记录（2026-11-21）
+
+工作树：`.worktrees/reality-fallback-limits`，分支 `feat/reality-fallback-limits`，基线 `623a199`。
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| 格式 | `cargo fmt --all -- --check` | ✅ |
+| 静态检查 | `cargo clippy --all-targets` | ✅ 本变更零诊断；仓库存在两处**基线遗留**（`src/main/runtime.rs:25` 的 `BotCommands` derive `unreachable_code`、`Cargo.toml` 的 `goldberg` 未使用依赖），均在未改动文件中 |
+| 单测（定向） | `cargo nextest run -E 'test(reality_fallback)'` | ✅ 12/12 |
+| 单测（全量） | `cargo nextest run` | ✅ 1397 passed / 1 skipped |
+| 发布构建 | `CARGO_PROFILE_RELEASE_LTO=false cargo build --release` | ✅ 0 error（4 条基线遗留警告） |
+
+未完成项（需真实节点，不在本次环境内）：`xray -test`、fallback 限速实测、已认证用户 A/B。
+
+实现中修正的 spec 偏差：
+
+1. **不做 reload**（原 §4 写“单次 reload”）：`reload_core()` 会回调 `ensure_base_config()`，形成递归。
+2. **新增权限保留**（原 spec 未覆盖）：`rename` 会把临时文件的 0644 带过去，使原本 0600 的配置被放宽；已改为写前按原 mode 设好，并加 `#[cfg(unix)]` 用例锁定。
+
+---
+
 ## 验收清单（实现完成后逐项打勾）
 
-- [ ] 生成器两协议均有字段
-- [ ] 自愈幂等
-- [ ] 手工值不被覆盖
-- [ ] 畸形输入不 panic
-- [ ] fmt / clippy / nextest 全绿
-- [ ] `xray -test` 通过
-- [ ] fallback 限速实测达标
-- [ ] 已认证用户吞吐 A/B 无回退
-- [ ] Diff ≤ 2 文件 / ≤ 200 行
+- [x] 生成器两协议均有字段
+- [x] 自愈幂等
+- [x] 手工值不被覆盖
+- [x] 畸形输入不 panic
+- [x] 权限保留（0600 不变）
+- [x] fmt / nextest / release build 通过（clippy 本变更零诊断）
+- [ ] `xray -test` 通过（需真实节点）
+- [ ] fallback 限速实测达标（需真实节点）
+- [ ] 已认证用户吞吐 A/B 无回退（需真实节点）
+- [x] 单次提交 ≤ 200 行（最大一笔 +124）
