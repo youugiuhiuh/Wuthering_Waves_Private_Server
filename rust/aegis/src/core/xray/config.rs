@@ -15,6 +15,17 @@ use crate::core::xray::routing::{ROUTING_RULES, RoutingManager};
 
 use super::reality::{REALITY_PQ_SEED, REALITY_PQ_VERIFY, reality_pq_verify_as_base64url};
 
+/// REALITY fallback 限速默认值：(after_bytes, bytes_per_sec, burst_bytes_per_sec)。
+///
+/// 依据 `docs/specs/SPEC-reality-fallback-limits.md` §11 实测：1 MiB 宽限覆盖约 p85
+/// 的整页体积（不至于主动探测/真实浏览器首屏被中途限速）；512 KiB/s（≈4.2 Mbps）
+/// 低于 1080p 常见码率，使视频中继不可用。
+///
+/// 只作用于**未认证 fallback 连接**（xtls/reality 的 `RatelimitedConn`），
+/// 已认证的 VLESS 用户流量不经过该限速器。
+const FALLBACK_UPLOAD_LIMIT: (u64, u64, u64) = (64 * 1024, 256 * 1024, 1024 * 1024);
+const FALLBACK_DOWNLOAD_LIMIT: (u64, u64, u64) = (1024 * 1024, 512 * 1024, 2 * 1024 * 1024);
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Proto {
     Vision,
@@ -83,9 +94,16 @@ impl ConfigManager {
     }
 
     pub async fn list_all_inbound_files() -> Result<Vec<String>> {
+        Ok(Self::list_inbound_files_in(Path::new(xray::CONF_DIR)).await)
+    }
+
+    /// 目录版枚举：只认 `*_inbounds.json`，且排除 `00_` 前缀（基础配置）。
+    ///
+    /// 抽出来是为了让自愈逻辑能用临时目录测试，而不必碰 `/etc/wwps`。
+    pub(crate) async fn list_inbound_files_in(dir: &Path) -> Vec<String> {
         let mut out = Vec::new();
 
-        if let Ok(mut rd) = fs::read_dir(xray::CONF_DIR).await {
+        if let Ok(mut rd) = fs::read_dir(dir).await {
             while let Ok(Some(entry)) = rd.next_entry().await {
                 if let Some(name) = entry.file_name().to_str()
                     && name.ends_with("_inbounds.json")
@@ -96,7 +114,7 @@ impl ConfigManager {
             }
         }
 
-        Ok(out)
+        out
     }
 
     pub async fn collect_all_ports() -> Result<std::collections::HashSet<u16>> {
@@ -459,7 +477,17 @@ impl ConfigManager {
                 "serverNames": [sni],
                 "privateKey": priv_key,
                 "minClientVer": "1.0.0",
-                "shortIds": ["", short_id]
+                "shortIds": ["", short_id],
+                "limitFallbackUpload": {
+                    "afterBytes": FALLBACK_UPLOAD_LIMIT.0,
+                    "bytesPerSec": FALLBACK_UPLOAD_LIMIT.1,
+                    "burstBytesPerSec": FALLBACK_UPLOAD_LIMIT.2
+                },
+                "limitFallbackDownload": {
+                    "afterBytes": FALLBACK_DOWNLOAD_LIMIT.0,
+                    "bytesPerSec": FALLBACK_DOWNLOAD_LIMIT.1,
+                    "burstBytesPerSec": FALLBACK_DOWNLOAD_LIMIT.2
+                }
             }
         });
 
@@ -1116,12 +1144,163 @@ impl ConfigManager {
         modified
     }
 
+    /// 给所有 REALITY 入站补齐 fallback 限速（幂等）。
+    ///
+    /// 语义：**对象级存在即视为已配置** —— 只要 `limitFallbackUpload` /
+    /// `limitFallbackDownload` 任一键存在就整块跳过，不做 key 级补全。
+    /// 这样运维手写的部分配置（含 `bytesPerSec: 0` 显式关闭）不会被覆盖。
+    ///
+    /// 返回 `true` 表示产生了实质性修改。畸形输入一律返回 `false` 且不 panic。
+    pub fn patch_reality_fallback_limits(config: &mut Value) -> bool {
+        let Some(inbounds) = config.get_mut("inbounds").and_then(Value::as_array_mut) else {
+            return false;
+        };
+
+        let mut modified = false;
+        for inbound in inbounds {
+            let Some(rs) = inbound
+                .get_mut("streamSettings")
+                .and_then(|s| s.get_mut("realitySettings"))
+                .and_then(Value::as_object_mut)
+            else {
+                continue;
+            };
+
+            for (key, (after, rate, burst)) in [
+                ("limitFallbackUpload", FALLBACK_UPLOAD_LIMIT),
+                ("limitFallbackDownload", FALLBACK_DOWNLOAD_LIMIT),
+            ] {
+                if rs.contains_key(key) {
+                    continue;
+                }
+                rs.insert(
+                    key.to_string(),
+                    json!({
+                        "afterBytes": after,
+                        "bytesPerSec": rate,
+                        "burstBytesPerSec": burst,
+                    }),
+                );
+                modified = true;
+            }
+        }
+        modified
+    }
+
+    /// 扫描目录下的入站片段，给缺限速的 REALITY 入站补齐 fallback 限速。
+    ///
+    /// 返回 `(改写文件数, 补齐入站数)`。best-effort：单个文件读/解析/写失败
+    /// 只记 warn 并继续，绝不阻断启动（存量节点可能被运维改到一半）。
+    ///
+    /// `00_base.json` 与非 `*_inbounds.json` 文件不在扫描范围（见
+    /// `list_inbound_files_in`），避免误改基础配置与路由文件。
+    pub(crate) async fn ensure_reality_fallback_limits_in(dir: &Path) -> (usize, usize) {
+        let mut files_changed = 0usize;
+        let mut inbounds_patched = 0usize;
+
+        for file in Self::list_inbound_files_in(dir).await {
+            let path = Path::new(&file);
+            let Ok(content) = fs::read_to_string(path).await else {
+                log::warn!("REALITY fallback 自愈：无法读取 {file}");
+                continue;
+            };
+            let Ok(mut config) = serde_json::from_str::<Value>(&content) else {
+                log::warn!("REALITY fallback 自愈：JSON 解析失败，跳过 {file}");
+                continue;
+            };
+
+            let pending = config
+                .get("inbounds")
+                .and_then(Value::as_array)
+                .map(|inbounds| {
+                    inbounds
+                        .iter()
+                        .filter(|i| {
+                            i.get("streamSettings")
+                                .and_then(|s| s.get("realitySettings"))
+                                .and_then(Value::as_object)
+                                .is_some_and(|rs| {
+                                    !rs.contains_key("limitFallbackUpload")
+                                        || !rs.contains_key("limitFallbackDownload")
+                                })
+                        })
+                        .count()
+                })
+                .unwrap_or(0);
+
+            if !Self::patch_reality_fallback_limits(&mut config) {
+                continue;
+            }
+
+            let Ok(out) = serde_json::to_string_pretty(&config) else {
+                log::warn!("REALITY fallback 自愈：序列化失败，跳过 {file}");
+                continue;
+            };
+
+            // 先写临时文件再 rename：中断不会留下半个配置。
+            // rename 会带过临时文件的权限位，所以先按原文件权限设好，
+            // 避免把含 privateKey 的配置从 0600 放宽成 0644。
+            #[cfg(unix)]
+            let prev_mode = {
+                use std::os::unix::fs::PermissionsExt;
+                fs::metadata(path)
+                    .await
+                    .ok()
+                    .map(|m| m.permissions().mode())
+            };
+
+            let tmp = path.with_extension("json.tmp");
+            if let Err(e) = fs::write(&tmp, out).await {
+                log::warn!(
+                    "REALITY fallback 自愈：写临时文件 {} 失败: {e}",
+                    tmp.display()
+                );
+                continue;
+            }
+
+            #[cfg(unix)]
+            if let Some(mode) = prev_mode {
+                use std::os::unix::fs::PermissionsExt;
+                if let Err(e) =
+                    fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode)).await
+                {
+                    log::warn!(
+                        "REALITY fallback 自愈：设置临时文件权限失败 {}: {e}",
+                        tmp.display()
+                    );
+                }
+            }
+            if let Err(e) = fs::rename(&tmp, path).await {
+                log::warn!("REALITY fallback 自愈：替换 {file} 失败: {e}");
+                let _ = fs::remove_file(&tmp).await;
+                continue;
+            }
+
+            files_changed += 1;
+            inbounds_patched += pending;
+        }
+
+        (files_changed, inbounds_patched)
+    }
+
     pub async fn ensure_base_config() -> Result<()> {
         use crate::core::paths::xray;
 
         if let Err(e) = crate::core::system::maintenance::MaintenanceManager::ensure_geodata().await
         {
             log::warn!("确保 geodata 文件失败: {}", e);
+        }
+
+        // 存量自愈：早期版本生成的 REALITY 入站没有 fallback 限速，等于把 VPS
+        // 变成不限速的公开中继。这里只改文件、**不 reload**：三个调用方
+        // （main / installer / reload_core）之后都会启动或重启核心；而
+        // `reload_core()` 自身会回调本函数，在这里 reload 会形成递归。
+        let (files, inbounds) =
+            Self::ensure_reality_fallback_limits_in(Path::new(xray::CONF_DIR)).await;
+        if inbounds > 0 {
+            log::warn!(
+                "REALITY fallback 限速已补齐：{inbounds} 个入站 / {files} 个文件（此前这些入站可被任意人当作不限速中继）"
+            );
         }
 
         let base_path = format!("{}/00_base.json", xray::CONF_DIR);
@@ -1940,6 +2119,320 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    // ---- REALITY fallback 限速（spec: docs/specs/SPEC-reality-fallback-limits.md）----
+
+    /// 期望值在此硬编码，**不要**引用生产常量：常量写错时测试必须失败。
+    const EXPECT_UPLOAD: (u64, u64, u64) = (65_536, 262_144, 1_048_576);
+    const EXPECT_DOWNLOAD: (u64, u64, u64) = (1_048_576, 524_288, 2_097_152);
+
+    fn limit_tuple(v: &Value) -> (u64, u64, u64) {
+        (
+            v["afterBytes"].as_u64().expect("afterBytes"),
+            v["bytesPerSec"].as_u64().expect("bytesPerSec"),
+            v["burstBytesPerSec"].as_u64().expect("burstBytesPerSec"),
+        )
+    }
+
+    fn reality_inbound(security: &str) -> Value {
+        json!({
+            "listen": "0.0.0.0",
+            "port": 12345,
+            "protocol": "vless",
+            "tag": "t",
+            "settings": {"clients": [{"id": "u"}]},
+            "streamSettings": {
+                "network": "tcp",
+                "security": security,
+                "realitySettings": {
+                    "target": "example.com:443",
+                    "serverNames": ["example.com"],
+                    "shortIds": [""]
+                }
+            }
+        })
+    }
+
+    fn build_vision_inbound() -> Value {
+        ConfigManager::build_reality_vless_inbound(
+            "tag-vision",
+            443,
+            "uuid",
+            "e@x",
+            "example.com",
+            "pub",
+            "priv",
+            "sid",
+            IpVersion::IPv4,
+            Proto::Vision,
+            None,
+            false,
+        )
+    }
+
+    #[test]
+    fn reality_fallback_generator_emits_limits() {
+        let inbound = build_vision_inbound();
+        let rs = &inbound["streamSettings"]["realitySettings"];
+        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
+        assert_eq!(limit_tuple(&rs["limitFallbackDownload"]), EXPECT_DOWNLOAD);
+    }
+
+    #[test]
+    fn reality_fallback_xhttp_path_emits_limits() {
+        let inbound = ConfigManager::build_reality_vless_inbound(
+            "tag-xhttp",
+            8443,
+            "uuid",
+            "e@x",
+            "example.com",
+            "pub",
+            "priv",
+            "sid",
+            IpVersion::IPv6,
+            Proto::XHTTP,
+            Some("/p"),
+            false,
+        );
+        let rs = &inbound["streamSettings"]["realitySettings"];
+        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
+        assert_eq!(limit_tuple(&rs["limitFallbackDownload"]), EXPECT_DOWNLOAD);
+    }
+
+    #[test]
+    fn reality_fallback_patch_is_idempotent() {
+        let mut config = json!({"inbounds": [reality_inbound("reality")]});
+        assert!(
+            ConfigManager::patch_reality_fallback_limits(&mut config),
+            "首次必须补齐"
+        );
+        let once = config.to_string();
+        assert!(
+            !ConfigManager::patch_reality_fallback_limits(&mut config),
+            "二次必须无改动"
+        );
+        assert_eq!(config.to_string(), once, "二次序列化必须逐字节相同");
+    }
+
+    #[test]
+    fn reality_fallback_patch_respects_manual_values() {
+        // 对象级存在即视为已配置：哪怕 bytesPerSec=0（显式关闭）也不碰。
+        let mut config = json!({
+            "inbounds": [{
+                "streamSettings": {"security": "reality", "realitySettings": {
+                    "limitFallbackUpload": {"afterBytes": 1, "bytesPerSec": 2, "burstBytesPerSec": 3},
+                    "limitFallbackDownload": {"bytesPerSec": 0}
+                }}
+            }]
+        });
+        assert!(!ConfigManager::patch_reality_fallback_limits(&mut config));
+        assert_eq!(
+            limit_tuple(
+                &config["inbounds"][0]["streamSettings"]["realitySettings"]["limitFallbackUpload"]
+            ),
+            (1, 2, 3)
+        );
+        assert_eq!(
+            config["inbounds"][0]["streamSettings"]["realitySettings"]["limitFallbackDownload"],
+            json!({"bytesPerSec": 0})
+        );
+
+        // 只缺 upload 时，仅补 upload。
+        let mut half = json!({
+            "inbounds": [{
+                "streamSettings": {"security": "reality", "realitySettings": {
+                    "limitFallbackDownload": {"bytesPerSec": 7}
+                }}
+            }]
+        });
+        assert!(ConfigManager::patch_reality_fallback_limits(&mut half));
+        let rs = &half["inbounds"][0]["streamSettings"]["realitySettings"];
+        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
+        assert_eq!(rs["limitFallbackDownload"]["bytesPerSec"], 7);
+    }
+
+    #[test]
+    fn reality_fallback_patch_ignores_non_reality() {
+        let mut config = json!({"inbounds": [
+            {"port": 1, "protocol": "vless", "streamSettings": {
+                "network": "tcp", "security": "tls"
+            }},
+            {"port": 2, "protocol": "vless"},
+            {"streamSettings": {"security": "reality"}},
+        ]});
+        assert!(!ConfigManager::patch_reality_fallback_limits(&mut config));
+    }
+
+    #[test]
+    fn reality_fallback_patch_tolerates_garbage() {
+        for mut bad in [
+            json!({}),
+            json!({"inbounds": "not-an-array"}),
+            json!({"inbounds": [1, 2, null]}),
+            json!({"inbounds": [{"streamSettings": {"security": "reality", "realitySettings": []}}]}),
+        ] {
+            assert!(
+                !ConfigManager::patch_reality_fallback_limits(&mut bad),
+                "畸形输入必须返回 false 且不 panic"
+            );
+        }
+    }
+
+    #[test]
+    fn reality_fallback_patch_preserves_other_fields() {
+        let mut config = json!({"inbounds": [reality_inbound("reality")]});
+        let before_len = config["inbounds"][0]["streamSettings"]["realitySettings"]
+            .as_object()
+            .unwrap()
+            .len();
+        assert!(ConfigManager::patch_reality_fallback_limits(&mut config));
+        let rs = config["inbounds"][0]["streamSettings"]["realitySettings"]
+            .as_object()
+            .unwrap();
+        assert_eq!(rs.len(), before_len + 2, "只允许新增两个 key");
+        assert_eq!(rs["target"], "example.com:443");
+        assert_eq!(rs["serverNames"][0], "example.com");
+    }
+
+    fn temp_conf_dir(tag: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "aegis-reality-fallback-{tag}-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+        dir
+    }
+
+    #[tokio::test]
+    async fn reality_fallback_selfheal_patches_files() {
+        let dir = temp_conf_dir("patch");
+        let target = dir.join("batch_vision_aaaa_inbounds.json");
+        let non_target = dir.join("batch_hy2_bbbb_inbounds.json");
+        let base = dir.join("00_base.json");
+
+        std::fs::write(
+            &target,
+            json!({"inbounds": [reality_inbound("reality")]}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            &non_target,
+            json!({"inbounds": [{"port": 1, "protocol": "vless"}]}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            &base,
+            json!({"inbounds": [reality_inbound("reality")]}).to_string(),
+        )
+        .unwrap();
+
+        let (files, inbounds) = ConfigManager::ensure_reality_fallback_limits_in(&dir).await;
+        assert_eq!((files, inbounds), (1, 1), "只改一个文件、一个入站");
+
+        let patched: Value =
+            serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
+        let rs = &patched["inbounds"][0]["streamSettings"]["realitySettings"];
+        assert_eq!(limit_tuple(&rs["limitFallbackUpload"]), EXPECT_UPLOAD);
+        assert_eq!(limit_tuple(&rs["limitFallbackDownload"]), EXPECT_DOWNLOAD);
+
+        assert!(
+            !std::fs::read_to_string(&non_target)
+                .unwrap()
+                .contains("limitFallback"),
+            "非 REALITY 文件不得被改写"
+        );
+        assert!(
+            !std::fs::read_to_string(&base)
+                .unwrap()
+                .contains("limitFallback"),
+            "00_ 前缀文件不得被改写"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn reality_fallback_selfheal_is_idempotent() {
+        let dir = temp_conf_dir("idem");
+        let target = dir.join("batch_xhttp_cccc_inbounds.json");
+        std::fs::write(
+            &target,
+            json!({"inbounds": [reality_inbound("reality")]}).to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
+            (1, 1)
+        );
+        let once = std::fs::read_to_string(&target).unwrap();
+
+        assert_eq!(
+            ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
+            (0, 0),
+            "二次运行必须无改动"
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), once);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn reality_fallback_selfheal_skips_garbage() {
+        let dir = temp_conf_dir("garbage");
+        let bad = dir.join("batch_bad_dddd_inbounds.json");
+        std::fs::write(&bad, "{not json").unwrap();
+
+        assert_eq!(
+            ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
+            (0, 0)
+        );
+        assert_eq!(std::fs::read_to_string(&bad).unwrap(), "{not json");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn reality_fallback_selfheal_missing_dir() {
+        let dir = std::env::temp_dir().join("aegis-reality-fallback-definitely-missing");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
+            (0, 0)
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reality_fallback_selfheal_preserves_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = temp_conf_dir("mode");
+        let target = dir.join("batch_mode_eeee_inbounds.json");
+        std::fs::write(
+            &target,
+            json!({"inbounds": [reality_inbound("reality")]}).to_string(),
+        )
+        .unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        assert_eq!(
+            ConfigManager::ensure_reality_fallback_limits_in(&dir).await,
+            (1, 1)
+        );
+
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "rename 后必须保留原权限（配置含 privateKey，不能被放宽）"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
