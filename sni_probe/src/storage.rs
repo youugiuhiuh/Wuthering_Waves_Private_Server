@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use redb::{Database, ReadableTable, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
 const FAILED: TableDefinition<&str, u64> = TableDefinition::new("failed");
 const FAILED_EXPIRY: TableDefinition<&str, u64> = TableDefinition::new("failed_expiry");
@@ -208,7 +208,7 @@ impl Storage {
         };
 
         let now = now_secs();
-        let Ok(iter) = t.range::<&str>(..) else {
+        let Ok(iter) = t.range(..) else {
             return out;
         };
         for row in iter.flatten() {
@@ -257,7 +257,7 @@ impl Storage {
             let Ok(t) = tx.open_table(table) else {
                 continue;
             };
-            let Ok(iter) = t.range::<&str>(..) else {
+            let Ok(iter) = t.range(..) else {
                 continue;
             };
             for row in iter.flatten() {
@@ -319,7 +319,7 @@ impl Storage {
         let (Ok(t), Ok(e)) = (tx.open_table(ASN), tx.open_table(ASN_EXPIRY)) else {
             return out;
         };
-        let Ok(iter) = t.range::<&str>(..) else {
+        let Ok(iter) = t.range(..) else {
             return out;
         };
         for row in iter.flatten() {
