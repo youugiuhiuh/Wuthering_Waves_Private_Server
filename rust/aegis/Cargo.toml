@@ -45,7 +45,7 @@ prost = "0.14.6"
 thiserror = "2.0.21"
 tempfile = "3.27"
 async-trait = "0.1.92"
-matrix-sdk = { version = "0.19.1", default-features = false, features = [
+matrix-sdk = { version = "0.20.0", default-features = false, features = [
     "sqlite",
     "e2e-encryption",
 ] }
