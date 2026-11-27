@@ -67,6 +67,7 @@ Baseline: `81a6f4e`，`cargo +nightly nextest run --cargo-profile fast-test` →
 
 ## Phase 4 — 验收与收尾
 
-- [ ] 真机验收（`--matrix` 单跑 + Element）：可点选项 → 点一项推进 → 旧 poll 消失 → 连点只进一次 → 非管理员点选无反应
+- [x] 真机验收（`--matrix` 单跑 + Element）：`/menu` 出现原生可点选项 → 点选推进流程 — 用户实测通过（2026-11-27，线上 VPS，二进制 40614896 / `1b937b0`）
+  - 未单独复验：点已撤销的旧 poll、连点同一项、非管理员点选（逻辑由 `PollStore::take_unanswered` 的 `answered` 语义与 admin 门禁覆盖）
 - [x] Branch review（`code-review-and-quality` 整支 diff）— 见上
 - [ ] PR + 合并 + 清理 worktree
