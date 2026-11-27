@@ -218,11 +218,42 @@ impl BotAdapter for MatrixAdapter {
             .0
             .parse()
             .map_err(|e| anyhow::anyhow!("Invalid event ID: {}", e))?;
-        let new_content = RoomMessageEventContent::text_html(&content.text, &content.text)
+        let (body_text, poll_spec) = crate::gateways::matrix::poll::plan_send(&content);
+        let new_content = RoomMessageEventContent::text_html(&body_text, &body_text)
             .make_replacement(
                 matrix_sdk::ruma::events::room::message::ReplacementMetadata::new(event_id, None),
             );
         self.room.send(new_content).await?;
+
+        // 菜单变成非菜单消息时旧 poll 也必须撤掉，所以这一步不看 poll_spec。
+        if let Some(old_poll) = self.polls.take_by_anchor(&msg_id.0) {
+            match old_poll.parse::<OwnedEventId>() {
+                Ok(old_id) => {
+                    if let Err(e) = self.room.redact(&old_id, Some("superseded"), None).await {
+                        log::warn!("撤销旧 poll 失败（不影响后续新 poll）: {e}");
+                    }
+                }
+                Err(e) => log::warn!("旧 poll event id 无法解析，跳过 redact: {e}"),
+            }
+        }
+
+        if let Some(spec) = poll_spec
+            && let Some(poll_content) = crate::gateways::matrix::poll::poll_start_content(&spec)
+        {
+            match self.room.send(poll_content).await {
+                Ok(resp) => self.polls.insert(
+                    resp.response.event_id.to_string(),
+                    PollBinding::new(
+                        msg_id.clone(),
+                        crate::gateways::matrix::poll::flatten(&content.markup),
+                    ),
+                ),
+                Err(e) => {
+                    log::warn!("Matrix poll 发送失败（编辑已送达，仅缺可点选项）: {e}")
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -232,6 +263,7 @@ impl BotAdapter for MatrixAdapter {
             .parse()
             .map_err(|e| anyhow::anyhow!("Invalid event ID: {}", e))?;
         self.room.redact(&event_id, None, None).await?;
+        let _ = self.polls.take_by_anchor(&msg_id.0);
         Ok(())
     }
 

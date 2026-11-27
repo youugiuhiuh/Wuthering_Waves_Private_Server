@@ -143,6 +143,17 @@ impl PollStore {
             .map(|(k, _)| k.clone())
     }
 
+    /// 找到并移除某条 anchor（正文消息）名下的 poll，返回它的 poll event id。
+    pub fn take_by_anchor(&self, anchor: &str) -> Option<String> {
+        let mut map = self.lock();
+        let key = map
+            .iter()
+            .find(|(_, b)| b.anchor.0 == anchor)
+            .map(|(k, _)| k.clone())?;
+        map.remove(&key);
+        Some(key)
+    }
+
     pub fn remove(&self, poll_event_id: &str) {
         self.lock().remove(poll_event_id);
     }
@@ -407,6 +418,27 @@ mod tests {
         assert!(s.find_by_anchor("$a2").is_none());
         s.remove("$p1");
         assert!(s.find_by_anchor("$a1").is_none());
+    }
+
+    #[test]
+    fn take_by_anchor_returns_and_removes_old_poll_once() {
+        let s = PollStore::new();
+        s.insert("$old".into(), binding("$anchor", vec![button("a", "/a")]));
+        assert_eq!(s.take_by_anchor("$anchor").as_deref(), Some("$old"));
+        assert!(
+            s.take_by_anchor("$anchor").is_none(),
+            "同一个 anchor 只能取一次"
+        );
+    }
+
+    #[test]
+    fn take_by_anchor_leaves_other_anchors_alone() {
+        let s = PollStore::new();
+        s.insert("$p1".into(), binding("$a1", vec![button("a", "/a")]));
+        s.insert("$p2".into(), binding("$a2", vec![button("b", "/b")]));
+        assert_eq!(s.take_by_anchor("$a1").as_deref(), Some("$p1"));
+        assert_eq!(s.find_by_anchor("$a2").as_deref(), Some("$p2"));
+        assert!(s.take_by_anchor("$unknown").is_none());
     }
 
     #[test]
