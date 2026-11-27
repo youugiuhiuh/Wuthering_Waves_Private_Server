@@ -339,7 +339,61 @@ func TestExtractBase32Secret(t *testing.T) {
 	}
 }
 
+func TestNeedsGeneratedTOTP(t *testing.T) {
+	tests := []struct {
+		name    string
+		tg      bool
+		matrix  bool
+		simplex bool
+	}{
+		{name: "telegram only", tg: true},
+		{name: "matrix only", matrix: true},
+		{name: "simplex only", simplex: true},
+		{name: "matrix and simplex", matrix: true, simplex: true},
+		{name: "all platforms", tg: true, matrix: true, simplex: true},
+		{name: "none selected"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !needsGeneratedTOTP(tt.tg, tt.matrix, tt.simplex) {
+				t.Errorf("needsGeneratedTOTP(%v, %v, %v) = false, want true", tt.tg, tt.matrix, tt.simplex)
+			}
+		})
+	}
+}
+
 func TestBuildSetupPayload(t *testing.T) {
+	t.Run("omits empty totp secret", func(t *testing.T) {
+		payload := buildSetupPayload(
+			nil, nil, nil,
+			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", nil, nil, "",
+			"", "",
+		)
+		var parsed map[string]json.RawMessage
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			t.Fatalf("无效 JSON: %v", err)
+		}
+		if _, ok := parsed["totp_secret"]; ok {
+			t.Error("totp_secret 为空时不应包含该键")
+		}
+	})
+
+	t.Run("includes non-empty totp secret", func(t *testing.T) {
+		payload := buildSetupPayload(
+			nil, nil, []byte(`SE"CRET\`),
+			"https://matrix.org", "@bot:matrix.org", "!room:matrix.org", nil, nil, "",
+			"", "",
+		)
+		var parsed map[string]string
+		if err := json.Unmarshal(payload, &parsed); err != nil {
+			t.Fatalf("无效 JSON: %v", err)
+		}
+		if got, ok := parsed["totp_secret"]; !ok || got != `SE"CRET\` {
+			t.Errorf("totp_secret = %q (present=%v), want %q", got, ok, `SE"CRET\`)
+		}
+	})
+
 	t.Run("without matrix", func(t *testing.T) {
 		payload := buildSetupPayload(
 			[]byte("token:abc"), []byte("123"), []byte("SECRET"),
