@@ -429,11 +429,10 @@ jobs:
 
       - name: Upload Release Assets
         run: |
-          # 四个架构产物 + 两个 amd64 兼容别名。别名让存量部署的一键指令
-          # （硬编码 .../releases/latest/download/installer）继续可用。
+          # 只发带架构后缀的四个产物（#480：裸 aegis / installer 已不再生成，
+          # 裸名对 arm64 就是 Exec format error）。
           for f in dist/aegis-linux-amd64 dist/aegis-linux-arm64 \
-                   dist/installer-linux-amd64 dist/installer-linux-arm64 \
-                   dist/aegis dist/installer; do
+                   dist/installer-linux-amd64 dist/installer-linux-arm64; do
             [ -f "$f" ] || { echo "::error::缺少产物 $f"; exit 1; }
             NAME=$(basename "$f")
             echo "uploading $NAME -> $UPLOAD_URL?name=$NAME"
