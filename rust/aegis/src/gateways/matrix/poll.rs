@@ -1,10 +1,15 @@
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard};
+use std::time::Instant;
+
 use ruma::events::poll::unstable_start::{
     NewUnstablePollStartEventContent, UnstablePollAnswer, UnstablePollAnswers,
     UnstablePollStartContentBlock, UnstablePollStartEventContent,
 };
 
 use crate::common::markup::render_markup_buttons;
-use crate::common::{InlineButton, Markup, MessageContent};
+use crate::common::{InlineButton, Markup, MessageContent, MessageId};
 
 /// A poll to send: one question and 1..=`MAX_POLL_ANSWERS` answers.
 pub struct PollSpec {
@@ -72,6 +77,97 @@ fn answer_label(label: &str, data: &str) -> String {
     let label = label.trim();
     let label = if label.is_empty() { data } else { label };
     label.chars().take(MAX_ANSWER_LABEL_CHARS).collect()
+}
+
+/// 一次发送的 poll 与其按钮：`buttons` 按 row-major 拍平，下标即 poll answer id。
+pub struct PollBinding {
+    /// 承载正文的 `m.room.message` event id；派发时作为 `CallbackEvent::msg_id`。
+    pub anchor: MessageId,
+    pub buttons: Vec<InlineButton>,
+    created: Instant,
+    answered: bool,
+    /// 插入次序，由 `PollStore` 分配；`created` 并列时保证淘汰确定。
+    seq: u64,
+}
+
+impl PollBinding {
+    pub fn new(anchor: MessageId, buttons: Vec<InlineButton>) -> Self {
+        Self {
+            anchor,
+            buttons,
+            created: Instant::now(),
+            answered: false,
+            seq: 0,
+        }
+    }
+}
+
+/// poll event id → binding。所有方法同步：调用方不得持锁跨 `.await`。
+#[derive(Default)]
+pub struct PollStore {
+    bindings: Mutex<HashMap<String, PollBinding>>,
+    next_seq: AtomicU64,
+}
+
+impl PollStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 内存表没有跨调用的不变量，锁中毒时取回内部值比 panic 更合适。
+    fn lock(&self) -> MutexGuard<'_, HashMap<String, PollBinding>> {
+        self.bindings.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 超出 `MAX_POLL_BINDINGS` 时按 `(created, seq)` 逐个淘汰最旧。
+    pub fn insert(&self, poll_event_id: String, mut binding: PollBinding) {
+        binding.seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        let mut map = self.lock();
+        map.insert(poll_event_id, binding);
+        while map.len() > MAX_POLL_BINDINGS {
+            let oldest = map
+                .iter()
+                .min_by_key(|(_, b)| (b.created, b.seq))
+                .map(|(k, _)| k.clone());
+            match oldest {
+                Some(key) => map.remove(&key),
+                None => break,
+            };
+        }
+    }
+
+    pub fn find_by_anchor(&self, anchor: &str) -> Option<String> {
+        self.lock()
+            .iter()
+            .find(|(_, b)| b.anchor.0 == anchor)
+            .map(|(k, _)| k.clone())
+    }
+
+    pub fn remove(&self, poll_event_id: &str) {
+        self.lock().remove(poll_event_id);
+    }
+
+    /// 返回 `(anchor, button.data)`；未知 poll / 已 answered / 下标越界 → `None`。
+    pub fn take_unanswered(
+        &self,
+        poll_event_id: &str,
+        index: usize,
+    ) -> Option<(MessageId, String)> {
+        let mut map = self.lock();
+        let binding = map.get_mut(poll_event_id)?;
+        if binding.answered {
+            return None;
+        }
+        // 越界是调用方的错，不能因此把这条 poll 标成已消费。
+        let data = binding.buttons.get(index)?.data.clone();
+        binding.answered = true;
+        Some((binding.anchor.clone(), data))
+    }
+}
+
+/// poll 响应里的 answer id（`"2"`）→ 下标。非数字/负数/空 → `None`。
+pub fn answer_index(answer_id: &str, total: usize) -> Option<usize> {
+    answer_id.parse::<usize>().ok().filter(|i| *i < total)
 }
 
 #[cfg(test)]
@@ -250,5 +346,82 @@ mod tests {
             answers: vec![],
         };
         assert!(poll_start_content(&spec).is_none());
+    }
+
+    fn button(t: &str, d: &str) -> InlineButton {
+        InlineButton {
+            text: t.into(),
+            data: d.into(),
+        }
+    }
+
+    fn binding(anchor: &str, buttons: Vec<InlineButton>) -> PollBinding {
+        PollBinding::new(MessageId(anchor.into()), buttons)
+    }
+
+    #[test]
+    fn answer_index_parses_and_bounds() {
+        assert_eq!(answer_index("0", 3), Some(0));
+        assert_eq!(answer_index("2", 3), Some(2));
+        assert_eq!(answer_index("3", 3), None);
+        assert_eq!(answer_index("x", 3), None);
+        assert_eq!(answer_index("", 3), None);
+        assert_eq!(answer_index("-1", 3), None);
+    }
+
+    #[test]
+    fn take_unanswered_returns_anchor_and_data_once() {
+        let s = PollStore::new();
+        s.insert(
+            "$poll".into(),
+            binding("$anchor", vec![button("Search", "/search")]),
+        );
+        assert_eq!(
+            s.take_unanswered("$poll", 0).map(|(m, d)| (m.0, d)),
+            Some(("$anchor".into(), "/search".into()))
+        );
+        assert!(
+            s.take_unanswered("$poll", 0).is_none(),
+            "第二次不得再派发（连点/改票）"
+        );
+    }
+
+    #[test]
+    fn take_unanswered_ignores_unknown_poll_and_out_of_range() {
+        let s = PollStore::new();
+        assert!(s.take_unanswered("$nope", 0).is_none());
+        s.insert("$poll".into(), binding("$anchor", vec![button("a", "/a")]));
+        assert!(s.take_unanswered("$poll", 5).is_none());
+        assert_eq!(
+            s.take_unanswered("$poll", 0).map(|(_, d)| d),
+            Some("/a".into()),
+            "越界失败不得把 answered 置位"
+        );
+    }
+
+    #[test]
+    fn find_by_anchor_and_remove() {
+        let s = PollStore::new();
+        s.insert("$p1".into(), binding("$a1", vec![button("a", "/a")]));
+        assert_eq!(s.find_by_anchor("$a1").as_deref(), Some("$p1"));
+        assert!(s.find_by_anchor("$a2").is_none());
+        s.remove("$p1");
+        assert!(s.find_by_anchor("$a1").is_none());
+    }
+
+    #[test]
+    fn insert_evicts_oldest_beyond_capacity() {
+        let s = PollStore::new();
+        for i in 0..=MAX_POLL_BINDINGS {
+            s.insert(
+                format!("$p{i}"),
+                binding(&format!("$a{i}"), vec![button("a", "/a")]),
+            );
+        }
+        assert_eq!(s.find_by_anchor("$a0"), None, "最旧的必须被淘汰");
+        assert!(
+            s.find_by_anchor(&format!("$a{MAX_POLL_BINDINGS}"))
+                .is_some()
+        );
     }
 }
