@@ -3,6 +3,7 @@ use crate::common::routing::is_sensitive;
 use crate::common::{
     BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
+use crate::gateways::matrix::poll::{PollBinding, PollStore};
 use anyhow::Result;
 use async_trait::async_trait;
 use matrix_sdk::attachment::AttachmentConfig;
@@ -19,15 +20,23 @@ use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 /// is ignored since the room is fixed at construction time.
 pub struct MatrixAdapter {
     room: Room,
+    polls: PollStore,
 }
 
 impl MatrixAdapter {
     pub fn new(room: Room) -> Self {
-        Self { room }
+        Self {
+            room,
+            polls: PollStore::new(),
+        }
     }
 
     pub fn inner_room(&self) -> &Room {
         &self.room
+    }
+
+    pub fn polls(&self) -> &PollStore {
+        &self.polls
     }
 }
 
@@ -65,11 +74,10 @@ mod tests {
 
 #[cfg(test)]
 mod matrix_adapter_tests {
-    use crate::common::markup::render_markup_buttons;
     use crate::common::{InlineButton, Markup};
 
     #[test]
-    fn send_message_with_markup_appends_command_list() {
+    fn send_message_with_markup_no_longer_inlines_command_list() {
         let markup = Markup {
             buttons: vec![
                 vec![
@@ -88,20 +96,42 @@ mod matrix_adapter_tests {
                 }],
             ],
         };
-        let result = render_markup_buttons("Hello".to_string(), &markup);
-        assert!(result.contains("Hello"));
-        assert!(result.contains("1. Search"));
-        assert!(result.contains("/search"));
-        assert!(result.contains("2. Help"));
-        assert!(result.contains("/help"));
-        assert!(result.contains("3. Cancel"));
-        assert!(result.contains("/cancel"));
+        let (body, poll) =
+            crate::gateways::matrix::poll::plan_send(&crate::common::MessageContent {
+                text: "Hello".into(),
+                markup: Some(markup),
+            });
+        assert_eq!(body, "Hello", "正文不得再拼编号清单");
+        assert!(!body.contains("send:"), "正文不得暴露内部命令串");
+        assert!(!body.contains("/search"), "正文不得暴露内部命令串");
+        let spec = poll.expect("3 个按钮应产出 poll");
+        assert_eq!(spec.answers.len(), 3);
+        assert_eq!(
+            spec.answers
+                .iter()
+                .map(|a| a.text.as_str())
+                .collect::<Vec<_>>(),
+            ["Search", "Help", "Cancel"]
+        );
     }
 
     #[test]
     fn send_message_without_markup_returns_plain_text() {
-        let result = render_markup_buttons("plain".into(), &Markup { buttons: vec![] });
-        assert_eq!(result, "plain");
+        let (body, poll) =
+            crate::gateways::matrix::poll::plan_send(&crate::common::MessageContent {
+                text: "plain".into(),
+                markup: None,
+            });
+        assert_eq!(body, "plain");
+        assert!(poll.is_none());
+    }
+
+    #[test]
+    fn new_adapter_starts_with_empty_poll_store() {
+        // PollStore 的插入/查询已在 poll.rs 覆盖；这里只钉「每个 adapter 自带独立空表」的契约。
+        // Room 无法在单测里构造，故用类型级断言 + PollStore 默认构造确认。
+        let store = crate::gateways::matrix::poll::PollStore::new();
+        assert!(store.find_by_anchor("$nothing").is_none());
     }
 }
 
@@ -112,28 +142,48 @@ impl BotAdapter for MatrixAdapter {
     }
 
     async fn send_message(&self, _target: &TargetId, content: MessageContent) -> Result<MessageId> {
-        let body_text = match &content.markup {
-            Some(markup) => render_markup_buttons(content.text, markup),
-            None => content.text,
-        };
+        let (body_text, poll_spec) = crate::gateways::matrix::poll::plan_send(&content);
+        let buttons = crate::gateways::matrix::poll::flatten(&content.markup);
 
-        if is_sensitive(&body_text) {
-            let data = body_text.into_bytes();
+        // 敏感判定必须覆盖按钮 data（正文已不含命令串）
+        let mut probe = body_text.clone();
+        for b in &buttons {
+            probe.push('\n');
+            probe.push_str(&b.data);
+        }
+
+        let anchor = if is_sensitive(&probe) {
             let response = self
                 .room
                 .send_attachment(
                     "batch_result.txt",
                     &mime::TEXT_PLAIN,
-                    data,
+                    body_text.into_bytes(),
                     AttachmentConfig::new(),
                 )
                 .await?;
-            Ok(MessageId(response.event_id.to_string()))
+            response.event_id.to_string()
         } else {
             let body = RoomMessageEventContent::text_plain(&body_text);
             let response = self.room.send(body).await?;
-            Ok(MessageId(response.response.event_id.to_string()))
+            response.response.event_id.to_string()
+        };
+
+        if let Some(spec) = poll_spec
+            && let Some(poll_content) = crate::gateways::matrix::poll::poll_start_content(&spec)
+        {
+            match self.room.send(poll_content).await {
+                Ok(resp) => self.polls.insert(
+                    resp.response.event_id.to_string(),
+                    PollBinding::new(MessageId(anchor.clone()), buttons),
+                ),
+                Err(e) => {
+                    log::warn!("Matrix poll 发送失败（正文已送达，仅缺可点选项）: {e}")
+                }
+            }
         }
+
+        Ok(MessageId(anchor))
     }
 
     async fn edit_message(
