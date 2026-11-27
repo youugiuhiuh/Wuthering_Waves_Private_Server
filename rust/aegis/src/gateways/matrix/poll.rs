@@ -140,9 +140,25 @@ impl PollStore {
     }
 
     /// 超出 `MAX_POLL_BINDINGS` 时按 `(created, seq)` 逐个淘汰最旧。
-    pub fn insert(&self, poll_event_id: String, mut binding: PollBinding) {
+    /// 登记一条新 poll。
+    ///
+    /// **同一 anchor 上只能存一个 binding**：插入时若已有旧 binding，就地摘掉并由返回值
+    /// 交回它的 poll event id，调用方拿它去发 `poll.end`。
+    ///
+    /// 这个不变式是刻意的：呼叫方曾经先 `insert(新)`、再按 anchor `take_by_anchor` 找「旧」的，
+    /// 而 `HashMap` 迭代顺序任意 —— 一半概率会摘到刚发出去的新 poll，把它自己结束掉，
+    /// 同时删掉 binding 使后续点选全部无声失败。把置换收进 insert 内部，呼叫方就没有顺序可写错。
+    pub fn insert(&self, poll_event_id: String, mut binding: PollBinding) -> Option<String> {
         binding.seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
+        let anchor = binding.anchor.0.clone();
         let mut map = self.lock();
+        let displaced = map
+            .iter()
+            .find(|(_, b)| b.anchor.0 == anchor)
+            .map(|(k, _)| k.clone());
+        if let Some(old) = &displaced {
+            map.remove(old);
+        }
         map.insert(poll_event_id, binding);
         while map.len() > MAX_POLL_BINDINGS {
             let oldest = map
@@ -154,6 +170,7 @@ impl PollStore {
                 None => break,
             };
         }
+        displaced
     }
 
     pub fn find_by_anchor(&self, anchor: &str) -> Option<String> {
@@ -417,9 +434,46 @@ mod tests {
     }
 
     #[test]
+    fn insert_returns_displaced_poll_for_same_anchor() {
+        let s = PollStore::new();
+        assert_eq!(
+            s.insert("$p1".into(), binding("$a", vec![button("a", "/a")])),
+            None,
+            "首次插入没有可置换的旧 poll"
+        );
+        assert_eq!(
+            s.insert("$p2".into(), binding("$a", vec![button("b", "/b")])),
+            Some("$p1".into()),
+            "同一 anchor 再插入必须交回旧 poll，供调用方发 poll.end"
+        );
+        assert_eq!(
+            s.take_unanswered("$p2", 0).map(|(_, d)| d),
+            Some("/b".into()),
+            "生效的必须是新 binding"
+        );
+        assert!(
+            s.take_unanswered("$p1", 0).is_none(),
+            "旧 poll 已被置换，不得还能点选"
+        );
+    }
+
+    #[test]
+    fn insert_does_not_displace_other_anchors() {
+        let s = PollStore::new();
+        let _ = s.insert("$p1".into(), binding("$a1", vec![button("a", "/a")]));
+        assert_eq!(
+            s.insert("$p2".into(), binding("$a2", vec![button("b", "/b")])),
+            None,
+            "不同 anchor 互不置换"
+        );
+        assert_eq!(s.find_by_anchor("$a1").as_deref(), Some("$p1"));
+        assert_eq!(s.find_by_anchor("$a2").as_deref(), Some("$p2"));
+    }
+
+    #[test]
     fn take_unanswered_returns_anchor_and_data_once() {
         let s = PollStore::new();
-        s.insert(
+        let _ = s.insert(
             "$poll".into(),
             binding("$anchor", vec![button("Search", "/search")]),
         );
@@ -437,7 +491,7 @@ mod tests {
     fn take_unanswered_ignores_unknown_poll_and_out_of_range() {
         let s = PollStore::new();
         assert!(s.take_unanswered("$nope", 0).is_none());
-        s.insert("$poll".into(), binding("$anchor", vec![button("a", "/a")]));
+        let _ = s.insert("$poll".into(), binding("$anchor", vec![button("a", "/a")]));
         assert!(s.take_unanswered("$poll", 5).is_none());
         assert_eq!(
             s.take_unanswered("$poll", 0).map(|(_, d)| d),
@@ -449,7 +503,7 @@ mod tests {
     #[test]
     fn find_by_anchor_and_take() {
         let s = PollStore::new();
-        s.insert("$p1".into(), binding("$a1", vec![button("a", "/a")]));
+        let _ = s.insert("$p1".into(), binding("$a1", vec![button("a", "/a")]));
         assert_eq!(s.find_by_anchor("$a1").as_deref(), Some("$p1"));
         assert!(s.find_by_anchor("$a2").is_none());
         assert_eq!(s.take_by_anchor("$a1").as_deref(), Some("$p1"));
@@ -459,7 +513,7 @@ mod tests {
     #[test]
     fn take_by_anchor_returns_and_removes_old_poll_once() {
         let s = PollStore::new();
-        s.insert("$old".into(), binding("$anchor", vec![button("a", "/a")]));
+        let _ = s.insert("$old".into(), binding("$anchor", vec![button("a", "/a")]));
         assert_eq!(s.take_by_anchor("$anchor").as_deref(), Some("$old"));
         assert!(
             s.take_by_anchor("$anchor").is_none(),
@@ -470,8 +524,8 @@ mod tests {
     #[test]
     fn take_by_anchor_leaves_other_anchors_alone() {
         let s = PollStore::new();
-        s.insert("$p1".into(), binding("$a1", vec![button("a", "/a")]));
-        s.insert("$p2".into(), binding("$a2", vec![button("b", "/b")]));
+        let _ = s.insert("$p1".into(), binding("$a1", vec![button("a", "/a")]));
+        let _ = s.insert("$p2".into(), binding("$a2", vec![button("b", "/b")]));
         assert_eq!(s.take_by_anchor("$a1").as_deref(), Some("$p1"));
         assert_eq!(s.find_by_anchor("$a2").as_deref(), Some("$p2"));
         assert!(s.take_by_anchor("$unknown").is_none());
@@ -481,7 +535,7 @@ mod tests {
     fn insert_evicts_oldest_beyond_capacity() {
         let s = PollStore::new();
         for i in 0..=MAX_POLL_BINDINGS {
-            s.insert(
+            let _ = s.insert(
                 format!("$p{i}"),
                 binding(&format!("$a{i}"), vec![button("a", "/a")]),
             );
