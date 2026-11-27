@@ -36,6 +36,18 @@ impl MatrixAdapter {
     }
 
     /// poll 发不出去时的兜底：把按钮降级成正文里的编号命令清单，保证菜单仍可操作。
+    /// 发 `poll.end` 结束一条 poll（取代 redact：redact 在 Element 里留「消息已被删除」墓碑）。
+    async fn end_poll(&self, poll_id: &str) {
+        match crate::gateways::matrix::poll::poll_end_content(poll_id) {
+            Some(end) => {
+                if let Err(e) = self.room.send(end).await {
+                    log::warn!("结束旧 poll 失败（不影响后续）: {e}");
+                }
+            }
+            None => log::warn!("poll event id 无法解析，跳过 poll.end: {poll_id}"),
+        }
+    }
+
     async fn send_command_list_fallback(&self, text: &str, markup: &Option<Markup>, reason: &str) {
         log::warn!("Matrix poll {reason}，回退为编号命令清单");
         if let Some(m) = markup {
@@ -177,10 +189,16 @@ impl BotAdapter for MatrixAdapter {
         {
             // plan_send 已过滤 0 与 >MAX_POLL_ANSWERS，此处 None 属防御性分支。
             match self.room.send(poll_content).await {
-                Ok(resp) => self.polls.insert(
-                    resp.response.event_id.to_string(),
-                    PollBinding::new(MessageId(anchor.clone()), buttons),
-                ),
+                Ok(resp) => {
+                    // 新消息，同一 anchor 不应有旧 poll；有就结束它。
+                    let displaced = self.polls.insert(
+                        resp.response.event_id.to_string(),
+                        PollBinding::new(MessageId(anchor.clone()), buttons),
+                    );
+                    if let Some(old) = displaced {
+                        self.end_poll(&old).await;
+                    }
+                }
                 Err(e) => {
                     self.send_command_list_fallback(&body_text, &content.markup, "发送失败")
                         .await;
@@ -213,24 +231,26 @@ impl BotAdapter for MatrixAdapter {
             );
         self.room.send(new_content).await?;
 
-        // 先发新 poll 再撤旧：新 poll 发失败时旧 poll 仍在时间线（也在映射表）里、仍可点，
-        // 菜单不至于被彻底清空。菜单变成非菜单消息（无 spec）时则必须撤掉旧 poll。
+        // 先发新 poll 再结束旧 poll：新 poll 发失败时旧 poll 仍在时间线（也在映射表）里、仍可点。
         let has_poll = poll_spec.is_some();
-        let mut sent_new_poll = false;
         if let Some(spec) = poll_spec
             && let Some(poll_content) = crate::gateways::matrix::poll::poll_start_content(&spec)
         {
             // plan_send 已过滤 0 与 >MAX_POLL_ANSWERS，此处 None 属防御性分支。
             match self.room.send(poll_content).await {
                 Ok(resp) => {
-                    sent_new_poll = true;
-                    self.polls.insert(
+                    // `insert` 自己就地把同 anchor 的旧 binding 置掉并交回其 poll id。
+                    // 绝不在这里按 anchor 反查旧 poll：HashMap 迭代顺序任意，会搞到刚发的这个。
+                    let displaced = self.polls.insert(
                         resp.response.event_id.to_string(),
                         PollBinding::new(
                             msg_id.clone(),
                             crate::gateways::matrix::poll::flatten(&content.markup),
                         ),
                     );
+                    if let Some(old) = displaced {
+                        self.end_poll(&old).await;
+                    }
                 }
                 Err(e) => {
                     self.send_command_list_fallback(&body_text, &content.markup, "发送失败")
@@ -240,17 +260,10 @@ impl BotAdapter for MatrixAdapter {
             }
         }
 
-        if (!has_poll || sent_new_poll)
-            && let Some(old_poll) = self.polls.take_by_anchor(&msg_id.0)
-        {
-            match crate::gateways::matrix::poll::poll_end_content(&old_poll) {
-                Some(end) => {
-                    if let Err(e) = self.room.send(end).await {
-                        log::warn!("结束旧 poll 失败（不影响后续）: {e}");
-                    }
-                }
-                None => log::warn!("旧 poll event id 无法解析，跳过 poll.end: {old_poll}"),
-            }
+        // 菜单变成非菜单消息（无 spec）：这条 anchor 名下的旧 poll 必须结束。
+        // 有 spec 时已由上面 insert 的置换完成，此处不得再按 anchor 反查。
+        if !has_poll && let Some(old_poll) = self.polls.take_by_anchor(&msg_id.0) {
+            self.end_poll(&old_poll).await;
         }
 
         Ok(())
@@ -264,14 +277,7 @@ impl BotAdapter for MatrixAdapter {
         // poll 是独立事件，redact 正文带不走它；用 poll.end 结束它，
         // 否则房间里会留下点不动的幽灵选项。
         if let Some(poll_id) = self.polls.take_by_anchor(&msg_id.0) {
-            match crate::gateways::matrix::poll::poll_end_content(&poll_id) {
-                Some(end) => {
-                    if let Err(e) = self.room.send(end).await {
-                        log::warn!("结束 poll 失败（正文仍删除）: {e}");
-                    }
-                }
-                None => log::warn!("poll event id 无法解析，跳过 poll.end: {poll_id}"),
-            }
+            self.end_poll(&poll_id).await;
         }
         self.room.redact(&event_id, None, None).await?;
         Ok(())
