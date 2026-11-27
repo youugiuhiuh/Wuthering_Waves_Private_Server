@@ -1771,6 +1771,13 @@ func platformForNonInteractive(hasToken, hasMatrix, hasSimplex bool) (string, er
 	}
 }
 
+// needsGeneratedTOTP 表示交互式安装是否需要生成并写回 totp_secret。
+// TOTP 是 aegis 所有形态的命令授权前置，与平台选择无关；保留此函数是为了让
+// 「所有平台形态都必须生成 TOTP」成为被测试断言的行为，而不是隐含约定。
+func needsGeneratedTOTP(enableTG, enableMatrix, enableSimplex bool) bool {
+	return true
+}
+
 func firstTimeSetup(binaryPath string) (string, string, error) {
 	printSkyBlue(i18n.T("firsttime.title"))
 
@@ -1806,7 +1813,7 @@ func firstTimeSetup(binaryPath string) (string, string, error) {
 
 	var totpSecretEnclave *memguard.Enclave
 
-	if enableTG {
+	if needsGeneratedTOTP(enableTG, enableMatrix, enableSimplex) {
 		totpSecretOutput, err := runCmdOutputBytes(binaryPath, "--generate-totp-secret")
 		if err != nil {
 			printRed(i18n.T("totp.generate_failed", err.Error()))
