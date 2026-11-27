@@ -840,6 +840,7 @@ help:
       destruct            - Self-destruct
 
 matrix:
+  poll_question: "Choose an action"
   markup_header: "📋 **Available operations:**\n"
 
 simplex:

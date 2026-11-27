@@ -201,6 +201,12 @@ pub trait BotAdapter: Send + Sync {
         anyhow::bail!("当前平台不支持获取连接安全码")
     }
 
+    /// Matrix：取一次 poll 点选结果并标记已消费。默认不支持。
+    /// 同步是因为 `PollStore` 的 `take_unanswered` 本身同步。
+    fn take_poll_answer(&self, _poll_id: &str, _index: usize) -> Option<(MessageId, String)> {
+        None
+    }
+
     /// 强制经 primary 发送，绕开 `RoutingAdapter` 的敏感内容分流。
     ///
     /// 用于**安全通知**：其文本包含攻击者可控内容（如 SimpleX 显示名），若走
@@ -226,6 +232,47 @@ pub trait BotAdapter: Send + Sync {
 // send_typing, send_reaction, send_message_threaded, accept_contact_request,
 // reject_contact_request have default implementations so mockall does NOT require
 // setting expectations for them.
+
+// mockall 会为每个 trait 方法生成 mock 体，走不到默认实现，所以这里用一个最小适配器直接验证默认值。
+#[cfg(test)]
+mod default_take_poll_answer_tests {
+    use super::*;
+
+    struct PlainAdapter;
+
+    #[async_trait]
+    impl BotAdapter for PlainAdapter {
+        fn platform(&self) -> Platform {
+            Platform::Matrix
+        }
+
+        async fn send_message(&self, _t: &TargetId, _c: MessageContent) -> Result<MessageId> {
+            anyhow::bail!("unsupported")
+        }
+
+        async fn edit_message(
+            &self,
+            _t: &TargetId,
+            _m: &MessageId,
+            _c: MessageContent,
+        ) -> Result<()> {
+            anyhow::bail!("unsupported")
+        }
+
+        async fn delete_message(&self, _t: &TargetId, _m: &MessageId) -> Result<()> {
+            anyhow::bail!("unsupported")
+        }
+
+        fn capabilities(&self) -> PlatformCapabilities {
+            PlatformCapabilities::MATRIX
+        }
+    }
+
+    #[test]
+    fn default_take_poll_answer_is_none() {
+        assert!(PlainAdapter.take_poll_answer("$poll", 0).is_none());
+    }
+}
 
 #[cfg(test)]
 mod simplex_capabilities_tests {

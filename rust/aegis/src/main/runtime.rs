@@ -8,6 +8,7 @@ use anyhow::Result;
 use futures_util::StreamExt;
 use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::Room as MatrixRoom;
+use matrix_sdk::ruma::events::poll::unstable_response::OriginalSyncUnstablePollResponseEvent;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::encrypted;
 use matrix_sdk::ruma::events::room::message::{
@@ -167,6 +168,10 @@ pub async fn run(
                     .unwrap_or(0)
             }
 
+            let polls_state = state.clone();
+            let polls_adapter = matrix_adapter.clone();
+            let polls_target = target.clone();
+
             let matrix_state = state.clone();
             let matrix_adapter_sync = matrix_adapter;
             let matrix_target = target.clone();
@@ -243,6 +248,48 @@ pub async fn run(
                 }
             },
         );
+
+            // poll 点选走与 TG 回调同一个入口：门禁、handler 重定向全部复用。
+            client.add_event_handler(
+                move |event: OriginalSyncUnstablePollResponseEvent,
+                      room: MatrixRoom,
+                      _client: MatrixClient| {
+                    let state = polls_state.clone();
+                    let adapter = polls_adapter.clone();
+                    let target = polls_target.clone();
+                    async move {
+                        if room.room_id().as_str() != target.0.as_str() {
+                            return;
+                        }
+                        let user_id = parse_user_id(event.sender.as_str());
+                        if !state.is_admin_user(user_id) {
+                            log::debug!("Matrix poll 响应来自非管理员，丢弃");
+                            return;
+                        }
+                        let poll_id = event.content.relates_to.event_id.as_str();
+                        let Some(idx) = response_index(&event.content.poll_response.answers) else {
+                            return;
+                        };
+                        // take_poll_answer 同步且自带「已答过 / 未知 poll / 越界」三重丢弃。
+                        let Some((anchor, data)) = adapter.take_poll_answer(poll_id, idx) else {
+                            return;
+                        };
+                        let _ = dispatch_event(
+                            BotEvent::Callback(CallbackEvent {
+                                adapter: adapter.clone(),
+                                target: target.clone(),
+                                user_id: user_id.to_string(),
+                                msg_id: anchor,
+                                data,
+                                callback_id: format!("poll:{poll_id}"),
+                                session_timeout_secs: state.session_timeout_secs().await,
+                            }),
+                            &state,
+                        )
+                        .await;
+                    }
+                },
+            );
         } else {
             // spec §7 的缓解措施：Matrix 入站被关闭时留下可观测痕迹，否则房间里的
             // 消息会完全静默（用户只会看到「没反应」，无从排查）。
@@ -743,9 +790,28 @@ pub(crate) fn classify_simplex_inbound(
     }
 }
 
+/// poll 响应里的 answers（MSC3381 允许多选，我们只取第一个）→ 下标。
+/// 非数字/负数/空 → None。
+pub(crate) fn response_index(selections: &[String]) -> Option<usize> {
+    selections.first().and_then(|s| s.parse::<usize>().ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn response_index_uses_first_selection() {
+        assert_eq!(response_index(&["1".to_string()]), Some(1));
+        assert_eq!(response_index(&["0".to_string(), "2".to_string()]), Some(0));
+    }
+
+    #[test]
+    fn response_index_ignores_empty_or_unparsable() {
+        assert!(response_index(&[]).is_none());
+        assert!(response_index(&["x".to_string(), "1".to_string()]).is_none());
+        assert!(response_index(&["-1".to_string()]).is_none());
+    }
 
     /// 斜杠菜单描述必须走 i18n：同一个命令在不同语言下描述文本必须不同，
     /// 且不得残留硬编码英文。

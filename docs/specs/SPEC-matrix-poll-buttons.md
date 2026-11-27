@@ -73,7 +73,7 @@ MSC3381（Chat Polls）是 Matrix 里唯一被 Element 原生渲染成「可点�
 | `CallbackEvent { adapter, target, user_id, msg_id, data, callback_id, session_timeout_secs }` | `shared/types.rs:14-22` |
 | 派发入口 `dispatch_event`（含 auth 门禁 + handler 重定向循环） | `shared/dispatch.rs:18` |
 | Matrix 入站注册点（`OriginalSyncRoomMessageEvent`，room 匹配 + admin 门禁） | `runtime.rs:185-241` |
-| 纯 `--matrix` 时 `adapter` 就是 `Arc<MatrixAdapter>` 具体类型 | `main/adapter.rs:32-35` |
+| 纯 `--matrix` 时 `state.adapter` 是 `Arc<dyn BotAdapter>`（**不是**具体类型） | `main/matrix.rs:18` `type MatrixHandle = (MatrixClient, Room, Arc<dyn BotAdapter>)`；`main/adapter.rs:32-35` |
 | `ruma-events 0.36` 的 `pub mod poll` 受 `unstable-msc3381` 控制 | `ruma-events/src/lib.rs:179-180` |
 | `matrix-sdk 0.20` 未透传 `unstable-msc3381` | `matrix-sdk-0.20.0/Cargo.toml` `[features]` |
 | 依赖图中已固定 `ruma 0.18.0` / `ruma-events 0.36.0` | `rust/aegis/Cargo.lock:4041,4115` |
@@ -159,6 +159,17 @@ struct PollSpec { question: String, answers: Vec<(String /*id*/, String /*label*
 
 ### 5.4 入站路径（`runtime.rs`）
 
+**前提修正（T4 后发现）**：`runtime.rs` 拿到的 adapter 是 `Arc<dyn BotAdapter>`（`type MatrixHandle = (MatrixClient, Room, Arc<dyn BotAdapter>)`，`main/matrix.rs:18`），**不能**直接调 `MatrixAdapter::polls()`。因此在 `BotAdapter` trait 上加一个带默认 `None` 的平台专属方法（与既有 `accept_contact_request` / `contact_security_code` 同一风格）：
+
+```rust
+/// Matrix：取一次 poll 点选结果并标记已消费。默认不支持。
+async fn take_poll_answer(&self, _poll_id: &str, _index: usize) -> Option<(MessageId, String)> {
+    None
+}
+```
+
+`MatrixAdapter` 实现它，内部转调 `self.polls.take_unanswered(poll_id, index)`。`shared/` 层不做任何平台判断。
+
 在现有 Matrix 段（`secondary_handles_inbound` 内）注册一个 `UnstablePollResponseEvent` handler：
 
 门禁与现有文本 handler 完全一致：room id 必须等于目标、`state.is_admin_user(user_id)`、否则静默丢弃并留一条 `log::debug!`。
@@ -199,6 +210,7 @@ BotEvent::Callback(CallbackEvent {
 3. 用户在 Element 里改票不会二次推进流程（`answered` 只消费一次）。
 4. 线程内（thread）的 markup 仍回退编号清单。
 5. 仅 Element 等实现了 MSC3381 的客户端可点；不支持 poll 的客户端会看到「问题 + 选项」文本，比现状仍不差。
+6. 进程重启后房间里的旧 poll 会失效（映射表是内存态），需重新发送 `/menu`。
 
 ---
 

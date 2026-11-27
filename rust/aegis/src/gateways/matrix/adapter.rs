@@ -1,8 +1,9 @@
 use crate::common::markup::render_markup_buttons;
 use crate::common::routing::is_sensitive;
 use crate::common::{
-    BotAdapter, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
+    BotAdapter, Markup, MessageContent, MessageId, Platform, PlatformCapabilities, TargetId,
 };
+use crate::gateways::matrix::poll::{PollBinding, PollStore};
 use anyhow::Result;
 use async_trait::async_trait;
 use matrix_sdk::attachment::AttachmentConfig;
@@ -19,15 +20,34 @@ use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 /// is ignored since the room is fixed at construction time.
 pub struct MatrixAdapter {
     room: Room,
+    polls: PollStore,
 }
 
 impl MatrixAdapter {
     pub fn new(room: Room) -> Self {
-        Self { room }
+        Self {
+            room,
+            polls: PollStore::new(),
+        }
     }
 
     pub fn inner_room(&self) -> &Room {
         &self.room
+    }
+
+    /// poll 发不出去时的兜底：把按钮降级成正文里的编号命令清单，保证菜单仍可操作。
+    async fn send_command_list_fallback(&self, text: &str, markup: &Option<Markup>, reason: &str) {
+        log::warn!("Matrix poll {reason}，回退为编号命令清单");
+        if let Some(m) = markup {
+            let body = render_markup_buttons(text.to_string(), m);
+            if let Err(e) = self
+                .room
+                .send(RoomMessageEventContent::text_plain(&body))
+                .await
+            {
+                log::warn!("回退编号清单也发送失败: {e}");
+            }
+        }
     }
 }
 
@@ -65,11 +85,10 @@ mod tests {
 
 #[cfg(test)]
 mod matrix_adapter_tests {
-    use crate::common::markup::render_markup_buttons;
     use crate::common::{InlineButton, Markup};
 
     #[test]
-    fn send_message_with_markup_appends_command_list() {
+    fn send_message_with_markup_no_longer_inlines_command_list() {
         let markup = Markup {
             buttons: vec![
                 vec![
@@ -88,20 +107,34 @@ mod matrix_adapter_tests {
                 }],
             ],
         };
-        let result = render_markup_buttons("Hello".to_string(), &markup);
-        assert!(result.contains("Hello"));
-        assert!(result.contains("1. Search"));
-        assert!(result.contains("/search"));
-        assert!(result.contains("2. Help"));
-        assert!(result.contains("/help"));
-        assert!(result.contains("3. Cancel"));
-        assert!(result.contains("/cancel"));
+        let (body, poll) =
+            crate::gateways::matrix::poll::plan_send(&crate::common::MessageContent {
+                text: "Hello".into(),
+                markup: Some(markup),
+            });
+        assert_eq!(body, "Hello", "正文不得再拼编号清单");
+        assert!(!body.contains("send:"), "正文不得暴露内部命令串");
+        assert!(!body.contains("/search"), "正文不得暴露内部命令串");
+        let spec = poll.expect("3 个按钮应产出 poll");
+        assert_eq!(spec.answers.len(), 3);
+        assert_eq!(
+            spec.answers
+                .iter()
+                .map(|a| a.text.as_str())
+                .collect::<Vec<_>>(),
+            ["Search", "Help", "Cancel"]
+        );
     }
 
     #[test]
     fn send_message_without_markup_returns_plain_text() {
-        let result = render_markup_buttons("plain".into(), &Markup { buttons: vec![] });
-        assert_eq!(result, "plain");
+        let (body, poll) =
+            crate::gateways::matrix::poll::plan_send(&crate::common::MessageContent {
+                text: "plain".into(),
+                markup: None,
+            });
+        assert_eq!(body, "plain");
+        assert!(poll.is_none());
     }
 }
 
@@ -112,28 +145,55 @@ impl BotAdapter for MatrixAdapter {
     }
 
     async fn send_message(&self, _target: &TargetId, content: MessageContent) -> Result<MessageId> {
-        let body_text = match &content.markup {
-            Some(markup) => render_markup_buttons(content.text, markup),
-            None => content.text,
-        };
+        let (body_text, poll_spec) = crate::gateways::matrix::poll::plan_send(&content);
+        let buttons = crate::gateways::matrix::poll::flatten(&content.markup);
 
-        if is_sensitive(&body_text) {
-            let data = body_text.into_bytes();
+        // 敏感判定必须覆盖按钮 data（正文已不含命令串）
+        let mut probe = body_text.clone();
+        for b in &buttons {
+            probe.push('\n');
+            probe.push_str(&b.data);
+        }
+
+        let anchor = if is_sensitive(&probe) {
             let response = self
                 .room
                 .send_attachment(
                     "batch_result.txt",
                     &mime::TEXT_PLAIN,
-                    data,
+                    body_text.clone().into_bytes(),
                     AttachmentConfig::new(),
                 )
                 .await?;
-            Ok(MessageId(response.event_id.to_string()))
+            response.event_id.to_string()
         } else {
             let body = RoomMessageEventContent::text_plain(&body_text);
             let response = self.room.send(body).await?;
-            Ok(MessageId(response.response.event_id.to_string()))
+            response.response.event_id.to_string()
+        };
+
+        if let Some(spec) = poll_spec
+            && let Some(poll_content) = crate::gateways::matrix::poll::poll_start_content(&spec)
+        {
+            // plan_send 已过滤 0 与 >MAX_POLL_ANSWERS，此处 None 属防御性分支。
+            match self.room.send(poll_content).await {
+                Ok(resp) => self.polls.insert(
+                    resp.response.event_id.to_string(),
+                    PollBinding::new(MessageId(anchor.clone()), buttons),
+                ),
+                Err(e) => {
+                    self.send_command_list_fallback(&body_text, &content.markup, "发送失败")
+                        .await;
+                    log::warn!("Matrix poll 发送失败: {e}");
+                }
+            }
         }
+
+        Ok(MessageId(anchor))
+    }
+
+    fn take_poll_answer(&self, poll_id: &str, index: usize) -> Option<(MessageId, String)> {
+        self.polls.take_unanswered(poll_id, index)
     }
 
     async fn edit_message(
@@ -146,11 +206,53 @@ impl BotAdapter for MatrixAdapter {
             .0
             .parse()
             .map_err(|e| anyhow::anyhow!("Invalid event ID: {}", e))?;
-        let new_content = RoomMessageEventContent::text_html(&content.text, &content.text)
+        let (body_text, poll_spec) = crate::gateways::matrix::poll::plan_send(&content);
+        let new_content = RoomMessageEventContent::text_html(&body_text, &body_text)
             .make_replacement(
                 matrix_sdk::ruma::events::room::message::ReplacementMetadata::new(event_id, None),
             );
         self.room.send(new_content).await?;
+
+        // 先发新 poll 再撤旧：新 poll 发失败时旧 poll 仍在时间线（也在映射表）里、仍可点，
+        // 菜单不至于被彻底清空。菜单变成非菜单消息（无 spec）时则必须撤掉旧 poll。
+        let has_poll = poll_spec.is_some();
+        let mut sent_new_poll = false;
+        if let Some(spec) = poll_spec
+            && let Some(poll_content) = crate::gateways::matrix::poll::poll_start_content(&spec)
+        {
+            // plan_send 已过滤 0 与 >MAX_POLL_ANSWERS，此处 None 属防御性分支。
+            match self.room.send(poll_content).await {
+                Ok(resp) => {
+                    sent_new_poll = true;
+                    self.polls.insert(
+                        resp.response.event_id.to_string(),
+                        PollBinding::new(
+                            msg_id.clone(),
+                            crate::gateways::matrix::poll::flatten(&content.markup),
+                        ),
+                    );
+                }
+                Err(e) => {
+                    self.send_command_list_fallback(&body_text, &content.markup, "发送失败")
+                        .await;
+                    log::warn!("Matrix poll 发送失败: {e}");
+                }
+            }
+        }
+
+        if (!has_poll || sent_new_poll)
+            && let Some(old_poll) = self.polls.take_by_anchor(&msg_id.0)
+        {
+            match old_poll.parse::<OwnedEventId>() {
+                Ok(old_id) => {
+                    if let Err(e) = self.room.redact(&old_id, Some("superseded"), None).await {
+                        log::warn!("撤销旧 poll 失败（不影响后续新 poll）: {e}");
+                    }
+                }
+                Err(e) => log::warn!("旧 poll event id 无法解析，跳过 redact: {e}"),
+            }
+        }
+
         Ok(())
     }
 
@@ -159,6 +261,21 @@ impl BotAdapter for MatrixAdapter {
             .0
             .parse()
             .map_err(|e| anyhow::anyhow!("Invalid event ID: {}", e))?;
+        // poll 是独立事件，redact 正文带不走它；不撤会在房间里留下点不动的僵尸 poll。
+        if let Some(poll_id) = self.polls.take_by_anchor(&msg_id.0) {
+            match poll_id.parse::<OwnedEventId>() {
+                Ok(id) => {
+                    if let Err(e) = self
+                        .room
+                        .redact(&id, Some("parent message deleted"), None)
+                        .await
+                    {
+                        log::warn!("撤销 poll 失败（正文仍删除）: {e}");
+                    }
+                }
+                Err(e) => log::warn!("poll event id 无法解析，跳过 redact: {e}"),
+            }
+        }
         self.room.redact(&event_id, None, None).await?;
         Ok(())
     }

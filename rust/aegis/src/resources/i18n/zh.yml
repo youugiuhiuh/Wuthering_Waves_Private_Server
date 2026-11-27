@@ -860,6 +860,7 @@ help:
       destruct            - 自毁流程
 
 matrix:
+  poll_question: "选择一个操作"
   markup_header: "📋 **可用操作:**\n"
 
 simplex:

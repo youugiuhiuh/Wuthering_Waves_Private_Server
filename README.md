@@ -160,6 +160,8 @@ Supported management platforms:
 | Telegram + Matrix | `--all` | sensitive messages are routed to the Matrix room |
 | Telegram + SimpleX | `--tg-simplex` | Telegram is the control surface; sensitive messages are routed to the SimpleX admin contact |
 
+> On Matrix, messages with buttons render those buttons as an MSC3381 poll (clickable in Element and similar clients); a selection goes through the same callback path as Telegram. Note: with the `--all` launch shape (Telegram + Matrix), Matrix ingress is disabled, so this interaction does not apply. 进程重启后房间里的旧 poll 会失效（映射表是内存态），需重新发送 /menu。
+
 ## Disclaimer
 
 This project is intended for educational and technical research purposes only.
