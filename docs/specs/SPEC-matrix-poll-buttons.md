@@ -149,13 +149,13 @@ struct PollSpec { question: String, answers: Vec<(String /*id*/, String /*label*
 
 `edit_message`：若存在 `PollSpec` →
 1. 编辑 anchor 正文（不带编号清单）；
-2. 按 anchor 找到旧 binding → `room.redact(old_poll_id, Some("superseded"), None)` → 从表中移除；
+2. 按 anchor 找到旧 binding → 发 MSC3381 `poll.end` 结束旧 poll（`UnstablePollEndEventContent`，Element 显示「已结束」，不留 redact 墓碑）→ 从表中移除；
 3. 发新 poll 并登记新 binding。
 无 `PollSpec` 时完全走原逻辑。
 
 `send_message_threaded` 带 markup：暂不承载（poll 有 thread relation 未建模）→ 回退编号清单。记为已知限制。
 
-`delete_message`：删掉 anchor 时顺带移除其 binding（不 redact，消息本身已删）。
+`delete_message`：删掉 anchor 时先发 `poll.end` 结束其 poll（父消息本身仍 redact），再从表中移除 binding。
 
 ### 5.4 入站路径（`runtime.rs`）
 
@@ -206,11 +206,12 @@ BotEvent::Callback(CallbackEvent {
 ## 6. 已知限制（写进代码注释与 README）
 
 1. 组合形态（`--all`）下不生效（§0）。
-2. 每步菜单刷新会「改正文 + 撤旧 poll + 发新 poll」，时间线里 poll 会往下跳一次；这是 Matrix 没有内联键盘的固有代价。
+2. 每步菜单刷新会「改正文 + 用 `poll.end` 结束旧 poll + 发新 poll」，时间线里 poll 会往下跳一次；这是 Matrix 没有内联键盘的固有代价。旧 poll 用 `poll.end` 结束（Element 显示「已结束」），不再 redact。
 3. 用户在 Element 里改票不会二次推进流程（`answered` 只消费一次）。
 4. 线程内（thread）的 markup 仍回退编号清单。
 5. 仅 Element 等实现了 MSC3381 的客户端可点；不支持 poll 的客户端会看到「问题 + 选项」文本，比现状仍不差。
 6. 进程重启后房间里的旧 poll 会失效（映射表是内存态），需重新发送 `/menu`。
+7. poll 以 `Disclosed` 发送，会显示投票结果与投票者——若将来放进有他人的房间需重新评估票型。
 
 ---
 

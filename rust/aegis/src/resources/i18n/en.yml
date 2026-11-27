@@ -841,6 +841,7 @@ help:
 
 matrix:
   poll_question: "Choose an action"
+  poll_ended: "Poll ended"
   markup_header: "📋 **Available operations:**\n"
 
 simplex:

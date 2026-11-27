@@ -243,13 +243,13 @@ impl BotAdapter for MatrixAdapter {
         if (!has_poll || sent_new_poll)
             && let Some(old_poll) = self.polls.take_by_anchor(&msg_id.0)
         {
-            match old_poll.parse::<OwnedEventId>() {
-                Ok(old_id) => {
-                    if let Err(e) = self.room.redact(&old_id, Some("superseded"), None).await {
-                        log::warn!("撤销旧 poll 失败（不影响后续新 poll）: {e}");
+            match crate::gateways::matrix::poll::poll_end_content(&old_poll) {
+                Some(end) => {
+                    if let Err(e) = self.room.send(end).await {
+                        log::warn!("结束旧 poll 失败（不影响后续）: {e}");
                     }
                 }
-                Err(e) => log::warn!("旧 poll event id 无法解析，跳过 redact: {e}"),
+                None => log::warn!("旧 poll event id 无法解析，跳过 poll.end: {old_poll}"),
             }
         }
 
@@ -261,19 +261,16 @@ impl BotAdapter for MatrixAdapter {
             .0
             .parse()
             .map_err(|e| anyhow::anyhow!("Invalid event ID: {}", e))?;
-        // poll 是独立事件，redact 正文带不走它；不撤会在房间里留下点不动的僵尸 poll。
+        // poll 是独立事件，redact 正文带不走它；用 poll.end 结束它，
+        // 否则房间里会留下点不动的幽灵选项。
         if let Some(poll_id) = self.polls.take_by_anchor(&msg_id.0) {
-            match poll_id.parse::<OwnedEventId>() {
-                Ok(id) => {
-                    if let Err(e) = self
-                        .room
-                        .redact(&id, Some("parent message deleted"), None)
-                        .await
-                    {
-                        log::warn!("撤销 poll 失败（正文仍删除）: {e}");
+            match crate::gateways::matrix::poll::poll_end_content(&poll_id) {
+                Some(end) => {
+                    if let Err(e) = self.room.send(end).await {
+                        log::warn!("结束 poll 失败（正文仍删除）: {e}");
                     }
                 }
-                Err(e) => log::warn!("poll event id 无法解析，跳过 redact: {e}"),
+                None => log::warn!("poll event id 无法解析，跳过 poll.end: {poll_id}"),
             }
         }
         self.room.redact(&event_id, None, None).await?;
