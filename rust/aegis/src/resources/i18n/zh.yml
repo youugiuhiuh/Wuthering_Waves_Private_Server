@@ -861,6 +861,7 @@ help:
 
 matrix:
   poll_question: "选择一个操作"
+  poll_ended: "投票已结束"
   markup_header: "📋 **可用操作:**\n"
 
 simplex:

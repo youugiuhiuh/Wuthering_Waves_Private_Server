@@ -3,6 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::Instant;
 
+use ruma::OwnedEventId;
+use ruma::events::poll::start::PollKind;
+use ruma::events::poll::unstable_end::UnstablePollEndEventContent;
 use ruma::events::poll::unstable_start::{
     NewUnstablePollStartEventContent, UnstablePollAnswer, UnstablePollAnswers,
     UnstablePollStartContentBlock, UnstablePollStartEventContent,
@@ -35,11 +38,24 @@ pub fn poll_start_content(spec: &PollSpec) -> Option<UnstablePollStartEventConte
         .iter()
         .map(|a| UnstablePollAnswer::new(a.id.clone(), a.text.clone()))
         .collect();
-    let block = UnstablePollStartContentBlock::new(
+    let mut block = UnstablePollStartContentBlock::new(
         spec.question.clone(),
         UnstablePollAnswers::try_from(answers).ok()?,
     );
+    // 菜单型 poll 不隐藏票型：Undisclosed 会让 Element 显示「结果将于投票结束后可见」。
+    block.kind = PollKind::Disclosed;
     Some(NewUnstablePollStartEventContent::plain_text(spec.question.clone(), block).into())
+}
+
+/// 结束一条 poll：发 MSC3381 poll.end 而不是 redact。
+/// redact 在 Element 里留「消息已被删除」墓碑；end 渲染成「投票已结束」，语义也对（选项失效）。
+/// None = poll event id 非法，调用方只 warn。
+pub fn poll_end_content(poll_event_id: &str) -> Option<UnstablePollEndEventContent> {
+    let id: OwnedEventId = poll_event_id.parse().ok()?;
+    Some(UnstablePollEndEventContent::new(
+        rust_i18n::t!("matrix.poll_ended").to_string(),
+        id,
+    ))
 }
 
 /// 返回 (正文, 可选 poll)。有 poll 时正文**不拼**编号清单。
@@ -333,6 +349,37 @@ mod tests {
         assert_eq!(block["answers"][0]["id"], "0");
         assert_eq!(block["answers"][1]["org.matrix.msc1767.text"], "Help");
         assert_eq!(json["org.matrix.msc1767.text"], "选择一个操作");
+    }
+
+    #[test]
+    fn poll_start_content_marks_poll_disclosed() {
+        let spec = PollSpec {
+            question: "q".into(),
+            answers: vec![PollAnswer {
+                id: "0".into(),
+                text: "a".into(),
+            }],
+        };
+        let json = serde_json::to_value(poll_start_content(&spec).unwrap()).unwrap();
+        assert_eq!(
+            json["org.matrix.msc3381.poll.start"]["kind"], "org.matrix.msc3381.poll.disclosed",
+            "菜单型 poll 必须是 disclosed，否则 Element 显示「结果将于投票结束后可见」"
+        );
+    }
+
+    #[test]
+    fn poll_end_content_builds_end_event_for_the_start() {
+        let json = serde_json::to_value(poll_end_content("$poll:matrix.org").unwrap()).unwrap();
+        assert_eq!(json["m.relates_to"]["event_id"], "$poll:matrix.org");
+        assert!(json.get("org.matrix.msc3381.poll.end").is_some());
+        let text = json["org.matrix.msc1767.text"].as_str().unwrap();
+        assert!(!text.is_empty(), "end 事件必须带兜底文本");
+    }
+
+    #[test]
+    fn poll_end_content_rejects_invalid_event_id() {
+        assert!(poll_end_content("not an event id").is_none());
+        assert!(poll_end_content("").is_none());
     }
 
     #[test]
