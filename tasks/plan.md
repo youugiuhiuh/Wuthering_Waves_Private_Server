@@ -454,6 +454,67 @@ git commit -am "feat(matrix): send_message 用 poll 承载按钮，新增 PollSt
 
 ---
 
+### Task 4b: `BotAdapter::take_poll_answer` 接缝（串行，必须先于 T5/T6）
+
+**Files:**
+- Modify: `rust/aegis/src/common/trait.rs`（trait 默认方法）
+- Modify: `rust/aegis/src/gateways/matrix/adapter.rs`（实现）
+
+**Interfaces:**
+- Consumes: T3 的 `PollStore::take_unanswered`、T4 的 `self.polls`
+- Produces: `async fn take_poll_answer(&self, poll_id: &str, index: usize) -> Option<(MessageId, String)>` —— trait 默认返回 `None`，`MatrixAdapter` 转发到 `self.polls.take_unanswered`
+
+**为什么需要**：`runtime.rs` 拿到的是 `Arc<dyn BotAdapter>`（`main/matrix.rs:18`），调不到具体类型的 `polls()`。trait 上已有 `accept_contact_request` / `contact_security_code` 这类带默认实现的平台专属方法，照这个风格加。
+
+- [ ] **Step 1: 写失败测试（`adapter.rs`）**
+
+```rust
+#[test]
+fn take_poll_answer_is_wired_to_the_store_via_trait_object() {
+    // 只能验证 trait 默认实现返回 None（true negative）；MatrixAdapter 的正向路径
+    // 已在 poll.rs 的 take_unanswered 用例中覆盖，adapter 侧只是转发。
+    fn assert_has_method<T: crate::common::BotAdapter>() {}
+    assert_has_method::<MatrixAdapter>();
+}
+```
+
+- [ ] **Step 2: 确认失败**
+
+Run: `cargo +nightly nextest run -E 'test(take_poll_answer)' --cargo-profile fast-test`
+Expected: 编译失败（`take_poll_answer` 未在 trait 上定义时调用它才会错；此用例本身只验证存在性，故需先在 Step 3 前用一个临时 `async` 调用点确认方法缺失 —— 若编译直接通过则补一个 `adapter.take_poll_answer("$x", 0).await` 的编译期引用后再删）
+
+- [ ] **Step 3: 实现**
+
+`common/trait.rs` 的 `BotAdapter` 里加（放在 `contact_security_code` 之后）：
+
+```rust
+/// Matrix：取一次 poll 点选结果并标记已消费。默认不支持。
+async fn take_poll_answer(&self, _poll_id: &str, _index: usize) -> Option<(MessageId, String)> {
+    None
+}
+```
+
+`adapter.rs` 的 `impl BotAdapter for MatrixAdapter` 里加：
+
+```rust
+async fn take_poll_answer(&self, poll_id: &str, index: usize) -> Option<(MessageId, String)> {
+    self.polls.take_unanswered(poll_id, index)
+}
+```
+
+- [ ] **Step 4: 确认通过**
+
+Run: `cargo +nightly nextest run -E 'test(take_poll_answer)' --cargo-profile fast-test`
+Expected: passed
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -am "feat(matrix): BotAdapter 加 take_poll_answer 接缝"
+```
+
+---
+
 ### Task 5: `edit_message` / `delete_message` 接入（可与 Task 6 并行）
 
 **Files:**
@@ -522,7 +583,7 @@ git commit -am "feat(matrix): edit_message 刷新 poll（redact 旧的 + 发新�
 - Modify: `rust/aegis/src/main/runtime.rs:185-260`（在现有 Matrix 段内追加 handler）
 
 **Interfaces:**
-- Consumes: `MatrixAdapter::polls()`（T4）、`PollStore::take_unanswered`/`answer_index`（T3）、既有 `dispatch_event`、`state.is_admin_user`、`state.session_timeout_secs`
+- Consumes: `BotAdapter::take_poll_answer`（T4b）、`PollStore::answer_index`（T3）、既有 `dispatch_event`、`state.is_admin_user`、`state.session_timeout_secs`
 - Produces: 无（终端行为）
 
 - [ ] **Step 1: 写失败测试**
@@ -567,7 +628,7 @@ pub(crate) fn response_index(selections: &[String]) -> Option<usize> {
 client.add_event_handler(move |event: OriginalSyncUnstablePollResponseEvent,
                                room: MatrixRoom, _client: MatrixClient| {
     let state = polls_state.clone();
-    let adapter = polls_adapter.clone();     // Arc<MatrixAdapter>
+    let adapter = polls_adapter.clone();     // Arc<dyn BotAdapter>
     let target = polls_target.clone();
     async move {
         if room.room_id().as_str() != target.0.as_str() { return; }
@@ -575,7 +636,7 @@ client.add_event_handler(move |event: OriginalSyncUnstablePollResponseEvent,
         if !state.is_admin_user(user_id) { log::debug!("Matrix poll 响应来自非管理员，丢弃"); return; }
         let poll_id = event.content.relates_to.event_id.as_str();
         let Some(idx) = response_index(&event.content.poll_response.answers) else { return; };
-        let Some((anchor, data)) = adapter.polls().take_unanswered(poll_id, idx) else { return; };
+        let Some((anchor, data)) = adapter.take_poll_answer(poll_id, idx).await else { return; };
         let _ = dispatch_event(BotEvent::Callback(CallbackEvent {
             adapter: adapter.clone(),
             target: target.clone(),
@@ -617,6 +678,7 @@ git commit -am "feat(matrix): poll 响应合成 CallbackEvent 走同一派发路
 | --- | --- | --- | --- |
 | 串行 | T1 → T2 → T3 | 全在 `gateways/matrix/poll.rs` | 同一文件，禁止并发写（AGENTS.md 并发铁律） |
 | 串行 | T4 | `gateways/matrix/adapter.rs` | 依赖 T1–T3 的全部接口 |
+| 串行 | T4b | `common/trait.rs` + `adapter.rs` | 接缝，必须先于 T5/T6 |
 | **并行** | T5 ｜ T6 | `adapter.rs` ｜ `runtime.rs` | 不同文件；T6 只依赖 T3/T4 的接口，不碰 adapter 内部 |
 
 只有一个可并行组（T5/T6）。其余单文件改动一律串行。

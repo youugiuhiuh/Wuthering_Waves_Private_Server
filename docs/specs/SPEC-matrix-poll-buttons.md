@@ -73,7 +73,7 @@ MSC3381（Chat Polls）是 Matrix 里唯一被 Element 原生渲染成「可点�
 | `CallbackEvent { adapter, target, user_id, msg_id, data, callback_id, session_timeout_secs }` | `shared/types.rs:14-22` |
 | 派发入口 `dispatch_event`（含 auth 门禁 + handler 重定向循环） | `shared/dispatch.rs:18` |
 | Matrix 入站注册点（`OriginalSyncRoomMessageEvent`，room 匹配 + admin 门禁） | `runtime.rs:185-241` |
-| 纯 `--matrix` 时 `adapter` 就是 `Arc<MatrixAdapter>` 具体类型 | `main/adapter.rs:32-35` |
+| 纯 `--matrix` 时 `state.adapter` 是 `Arc<dyn BotAdapter>`（**不是**具体类型） | `main/matrix.rs:18` `type MatrixHandle = (MatrixClient, Room, Arc<dyn BotAdapter>)`；`main/adapter.rs:32-35` |
 | `ruma-events 0.36` 的 `pub mod poll` 受 `unstable-msc3381` 控制 | `ruma-events/src/lib.rs:179-180` |
 | `matrix-sdk 0.20` 未透传 `unstable-msc3381` | `matrix-sdk-0.20.0/Cargo.toml` `[features]` |
 | 依赖图中已固定 `ruma 0.18.0` / `ruma-events 0.36.0` | `rust/aegis/Cargo.lock:4041,4115` |
@@ -158,6 +158,17 @@ struct PollSpec { question: String, answers: Vec<(String /*id*/, String /*label*
 `delete_message`：删掉 anchor 时顺带移除其 binding（不 redact，消息本身已删）。
 
 ### 5.4 入站路径（`runtime.rs`）
+
+**前提修正（T4 后发现）**：`runtime.rs` 拿到的 adapter 是 `Arc<dyn BotAdapter>`（`type MatrixHandle = (MatrixClient, Room, Arc<dyn BotAdapter>)`，`main/matrix.rs:18`），**不能**直接调 `MatrixAdapter::polls()`。因此在 `BotAdapter` trait 上加一个带默认 `None` 的平台专属方法（与既有 `accept_contact_request` / `contact_security_code` 同一风格）：
+
+```rust
+/// Matrix：取一次 poll 点选结果并标记已消费。默认不支持。
+async fn take_poll_answer(&self, _poll_id: &str, _index: usize) -> Option<(MessageId, String)> {
+    None
+}
+```
+
+`MatrixAdapter` 实现它，内部转调 `self.polls.take_unanswered(poll_id, index)`。`shared/` 层不做任何平台判断。
 
 在现有 Matrix 段（`secondary_handles_inbound` 内）注册一个 `UnstablePollResponseEvent` handler：
 

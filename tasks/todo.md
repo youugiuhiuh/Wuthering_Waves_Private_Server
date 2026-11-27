@@ -18,13 +18,13 @@ Baseline: `81a6f4e`，`cargo +nightly nextest run --cargo-profile fast-test` →
 
 ## Phase 1 — 纯函数与状态表
 
-- [ ] T2 `plan_send` 判定 + i18n `matrix.poll_question`
+- [x] T2 `plan_send` 判定 + i18n `matrix.poll_question` — done `3c829de`
   - Acceptance：6 例（无 markup / 有 markup / row-major 拍平 / 20 边界 / 21 回退 / 长 label 截断 / 空 label 兜底）
   - Verify：`cargo +nightly nextest run -E 'test(plan_send)' --cargo-profile fast-test`
   - Files：`poll.rs`、`src/resources/i18n/{en,zh,ja}.yml`
   - Deps：T1 ｜ Size：M
 
-- [ ] T3 `PollStore` + `answer_index`
+- [x] T3 `PollStore` + `answer_index` — done `3bb32c5`
   - Acceptance：5 例（解析边界 / 一次性消费 / 未知 poll 与越界不置位 / anchor 查找 / 64 上限淘汰）
   - Verify：`cargo +nightly nextest run -E 'test(take_unanswered) or test(find_by_anchor) or test(insert_evicts) or test(answer_index)'`
   - Files：`poll.rs`
@@ -34,11 +34,18 @@ Baseline: `81a6f4e`，`cargo +nightly nextest run --cargo-profile fast-test` →
 
 ## Phase 2 — adapter 接入
 
-- [ ] T4 `send_message` 接入 + 既有降级测试改造 + README 已知限制
+- [x] T4 `send_message` 接入 + 既有降级测试改造 + README 已知限制 — done `d27cc5f`
   - Acceptance：既有「编号清单」断言改为「正文不含内部命令 + 产出 poll」；poll 发送失败只 warn
   - Verify：`cargo +nightly nextest run -E 'test(send_message)' --cargo-profile fast-test`
   - Files：`adapter.rs`、`README.md`
   - Deps：T1–T3 ｜ Size：M
+
+- [ ] T4b `BotAdapter::take_poll_answer` 接缝（**串行，必须先于 T5/T6**）
+  - Acceptance：trait 默认返回 `None`，`MatrixAdapter` 转发到 `self.polls.take_unanswered`
+  - Verify：`cargo +nightly nextest run -E 'test(take_poll_answer)' --cargo-profile fast-test`
+  - Files：`src/common/trait.rs`、`adapter.rs`
+  - Deps：T4 ｜ Size：XS
+  - 原因：`runtime.rs` 拿到的是 `Arc<dyn BotAdapter>`（`main/matrix.rs:18`），调不到具体类型的 `polls()`
 
 ## Phase 3 — 刷新与入站（并行组）
 
