@@ -840,6 +840,7 @@ help:
       destruct            - 自己破壊
 
 matrix:
+  poll_question: "操作を選択"
   markup_header: "📋 **利用可能な操作:**\n"
 
 simplex:
