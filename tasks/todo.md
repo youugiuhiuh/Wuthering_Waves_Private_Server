@@ -1,56 +1,64 @@
-# TODO: REALITY fallback 流量兜底
+# TODO: Matrix 原生可点菜单（MSC3381 poll 承载 inline keyboard）
 
-Source spec: `docs/specs/SPEC-reality-fallback-limits.md`
+Source spec: `docs/specs/SPEC-matrix-poll-buttons.md`
 Plan: `tasks/plan.md`
+Baseline: `81a6f4e`，`cargo +nightly nextest run --cargo-profile fast-test` → **1400 passed, 1 skipped**
 
-> 全部任务落在同一文件 `rust/aegis/src/core/xray/config.rs` → **串行执行，不并行派发**。
+> 并发边界：T1→T2→T3 同在 `poll.rs`、T4 在 `adapter.rs`，**串行**；
+> 只有 **T5 ｜ T6 可并行**（`adapter.rs` ｜ `runtime.rs`，互不写同一文件）。
 
-## Phase 1 — Foundation
+## Phase 0 — 依赖可行性（硬门禁）
 
-- [x] T1 常量 + `patch_reality_fallback_limits`（先红后绿）
-  - Acceptance：7 个 patch/生成器用例全绿（幂等、手工值、畸形输入）
-  - Verify：`cargo +nightly nextest run -E 'test(reality_fallback)'`
-  - Files：`rust/aegis/src/core/xray/config.rs`
-  - Deps：— ｜ Size：S
+- [ ] T1 加 `ruma@0.18 + unstable-msc3381`，`poll_start_content` 构造器（先红后绿）
+  - Acceptance：MSER3381 形状序列化断言 3 例全绿；`Cargo.lock` 只有一份 ruma
+  - Verify：`cargo +nightly nextest run -E 'test(poll_start_content)' --cargo-profile fast-test`
+  - Files：`Cargo.toml`、`Cargo.lock`、`src/gateways/matrix/poll.rs`、`src/gateways/matrix/mod.rs`
+  - Deps：— ｜ Size：M
+  - **门禁不通过 → 停，回退 spec §4 方案 A（自建 EventContent），不得继续**
 
-- [x] T2 生成器注入（Vision + XHTTP 共用）
-  - Acceptance：两协议 JSON 均含两字段且值 = 常量
-  - Verify：同上定向命令
-  - Files：`rust/aegis/src/core/xray/config.rs`
-  - Deps：T1 ｜ Size：S
+## Phase 1 — 纯函数与状态表
 
-- [x] Checkpoint 1：定向测试全绿 + diff 仅新增字段
+- [ ] T2 `plan_send` 判定 + i18n `matrix.poll_question`
+  - Acceptance：6 例（无 markup / 有 markup / row-major 拍平 / 20 边界 / 21 回退 / 长 label 截断 / 空 label 兜底）
+  - Verify：`cargo +nightly nextest run -E 'test(plan_send)' --cargo-profile fast-test`
+  - Files：`poll.rs`、`src/resources/i18n/{en,zh,ja}.yml`
+  - Deps：T1 ｜ Size：M
 
-## Phase 2 — Integration
+- [ ] T3 `PollStore` + `answer_index`
+  - Acceptance：5 例（解析边界 / 一次性消费 / 未知 poll 与越界不置位 / anchor 查找 / 64 上限淘汰）
+  - Verify：`cargo +nightly nextest run -E 'test(take_unanswered) or test(find_by_anchor) or test(insert_evicts) or test(answer_index)'`
+  - Files：`poll.rs`
+  - Deps：T2 ｜ Size：M
 
-- [x] T3 自愈接入 `ensure_base_config()`
-  - Acceptance：存量补齐、幂等、容错、**不 reload**（避免与 `reload_core` 递归）、`warn` 一条汇总
-  - Verify：定向测试（启动路径实机验证并入 T6）
-  - Files：`rust/aegis/src/core/xray/config.rs`
-  - Deps：T1 ｜ Size：S
+- [ ] Checkpoint 1：`cargo clippy --all-targets -- -D warnings` 无新警告
 
-- [x] T4 自愈层测试（临时目录，无新依赖）
-  - Acceptance：补齐 / 幂等 / 畸形跳过 / 缺失目录 / 权限保留，5 例全绿
-  - Verify：`cargo +nightly nextest run -E 'test(reality_fallback)'`
-  - Files：`rust/aegis/src/core/xray/config.rs`
-  - Deps：T3 ｜ Size：S
+## Phase 2 — adapter 接入
 
-- [x] Checkpoint 2：全量 nextest 绿；启动路径实机验证并入 T6
+- [ ] T4 `send_message` 接入 + 既有降级测试改造 + README 已知限制
+  - Acceptance：既有「编号清单」断言改为「正文不含内部命令 + 产出 poll」；poll 发送失败只 warn
+  - Verify：`cargo +nightly nextest run -E 'test(send_message)' --cargo-profile fast-test`
+  - Files：`adapter.rs`、`README.md`
+  - Deps：T1–T3 ｜ Size：M
 
-## Phase 3 — Verification
+## Phase 3 — 刷新与入站（并行组）
 
-- [x] T5 质量门禁
-  - `cargo fmt --all -- --check`
-  - `cargo clippy --all-targets -- -D warnings`
-  - `cargo +nightly nextest run --cargo-profile fast-test`
-  - `CARGO_PROFILE_RELEASE_LTO=false cargo +nightly build --release`
-  - Deps：T1–T4 ｜ Size：XS
+- [ ] T5 `take_by_anchor` + `edit_message`/`delete_message` 接入
+  - Acceptance：2 例（返回并移除一次 / 不误删别的 anchor）；redact 失败只 warn
+  - Verify：`cargo +nightly nextest run -E 'test(take_by_anchor)' --cargo-profile fast-test`
+  - Files：`poll.rs`、`adapter.rs`
+  - Deps：T4 ｜ Size：S
 
-- [ ] T6 手动验收（真实节点）
-  - `xray -test` 通过
-  - fallback：前 1 MiB 全速，之后 ≤512 KiB/s
-  - 已认证用户 A/B 差异 ≤10%
-  - 实测数值回填 spec §11
-  - Deps：T5 ｜ Size：S
+- [ ] T6 入站 poll 响应 → `CallbackEvent`
+  - Acceptance：2 例（取第一个选择 / 空或非数字返回 None）；非管理员只留 debug 日志
+  - Verify：`cargo +nightly nextest run -E 'test(response_index)' --cargo-profile fast-test`
+  - Files：`src/main/runtime.rs`
+  - Deps：T3、T4 ｜ Size：M
+  - **可与 T5 并行**（不同文件）
 
-- [ ] Checkpoint 3：spec 验收清单全勾 + `code-review-and-quality` + `doubt-driven-development` 覆核
+- [ ] Checkpoint 2：全量 `cargo +nightly nextest run --cargo-profile fast-test` + `cargo fmt --check` 绿
+
+## Phase 4 — 验收与收尾
+
+- [ ] 真机验收（`--matrix` 单跑 + Element）：可点选项 → 点一项推进 → 旧 poll 消失 → 连点只进一次 → 非管理员点选无反应
+- [ ] Branch review（`code-review-and-quality` 整支 diff）
+- [ ] PR + 合并 + 清理 worktree
