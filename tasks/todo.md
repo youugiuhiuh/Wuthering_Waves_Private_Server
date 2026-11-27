@@ -40,7 +40,7 @@ Baseline: `81a6f4e`，`cargo +nightly nextest run --cargo-profile fast-test` →
   - Files：`adapter.rs`、`README.md`
   - Deps：T1–T3 ｜ Size：M
 
-- [ ] T4b `BotAdapter::take_poll_answer` 接缝（**串行，必须先于 T5/T6**）
+- [x] T4b `BotAdapter::take_poll_answer` 接缝（**串行，必须先于 T5/T6**）— done `02978aa`（同步签名）
   - Acceptance：trait 默认返回 `None`，`MatrixAdapter` 转发到 `self.polls.take_unanswered`
   - Verify：`cargo +nightly nextest run -E 'test(take_poll_answer)' --cargo-profile fast-test`
   - Files：`src/common/trait.rs`、`adapter.rs`
@@ -49,23 +49,24 @@ Baseline: `81a6f4e`，`cargo +nightly nextest run --cargo-profile fast-test` →
 
 ## Phase 3 — 刷新与入站（并行组）
 
-- [ ] T5 `take_by_anchor` + `edit_message`/`delete_message` 接入
+- [x] T5 `take_by_anchor` + `edit_message`/`delete_message` 接入 — done `0269df4`
   - Acceptance：2 例（返回并移除一次 / 不误删别的 anchor）；redact 失败只 warn
   - Verify：`cargo +nightly nextest run -E 'test(take_by_anchor)' --cargo-profile fast-test`
   - Files：`poll.rs`、`adapter.rs`
   - Deps：T4 ｜ Size：S
 
-- [ ] T6 入站 poll 响应 → `CallbackEvent`
+- [x] T6 入站 poll 响应 → `CallbackEvent` — done `6c72630`
   - Acceptance：2 例（取第一个选择 / 空或非数字返回 None）；非管理员只留 debug 日志
   - Verify：`cargo +nightly nextest run -E 'test(response_index)' --cargo-profile fast-test`
   - Files：`src/main/runtime.rs`
   - Deps：T3、T4 ｜ Size：M
   - **可与 T5 并行**（不同文件）
 
-- [ ] Checkpoint 2：全量 `cargo +nightly nextest run --cargo-profile fast-test` + `cargo fmt --check` 绿
+- [x] Checkpoint 2：全量 **1420 passed / 1 skipped** + `cargo fmt --check` 绿 — done `a560976`
+- [x] Code review（reviewer，`81a6f4e..6c72630`）：0 blocker / 2 should-fix / 8 nit；S1+S2+N1/N2/N4/N6 已修，N5 明确不修（已知上限内可接受）
 
 ## Phase 4 — 验收与收尾
 
 - [ ] 真机验收（`--matrix` 单跑 + Element）：可点选项 → 点一项推进 → 旧 poll 消失 → 连点只进一次 → 非管理员点选无反应
-- [ ] Branch review（`code-review-and-quality` 整支 diff）
+- [x] Branch review（`code-review-and-quality` 整支 diff）— 见上
 - [ ] PR + 合并 + 清理 worktree
