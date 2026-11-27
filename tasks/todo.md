@@ -9,7 +9,7 @@ Baseline: `81a6f4e`，`cargo +nightly nextest run --cargo-profile fast-test` →
 
 ## Phase 0 — 依赖可行性（硬门禁）
 
-- [ ] T1 加 `ruma@0.18 + unstable-msc3381`，`poll_start_content` 构造器（先红后绿）
+- [x] T1 加 `ruma@0.18 + unstable-msc3381`，`poll_start_content` 构造器（先红后绿）— done `8e69ea1`
   - Acceptance：MSER3381 形状序列化断言 3 例全绿；`Cargo.lock` 只有一份 ruma
   - Verify：`cargo +nightly nextest run -E 'test(poll_start_content)' --cargo-profile fast-test`
   - Files：`Cargo.toml`、`Cargo.lock`、`src/gateways/matrix/poll.rs`、`src/gateways/matrix/mod.rs`
@@ -30,7 +30,7 @@ Baseline: `81a6f4e`，`cargo +nightly nextest run --cargo-profile fast-test` →
   - Files：`poll.rs`
   - Deps：T2 ｜ Size：M
 
-- [ ] Checkpoint 1：`cargo clippy --all-targets -- -D warnings` 无新警告
+- [ ] Checkpoint 1：`cargo clippy --all-targets -- -D warnings` **不新增**警告（基线已有 `runtime.rs:25` UnreachableCall + `goldberg` unused-dep，不修）
 
 ## Phase 2 — adapter 接入
 

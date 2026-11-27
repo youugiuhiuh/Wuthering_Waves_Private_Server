@@ -14,6 +14,7 @@
 
 - 只允许 `cargo add` 改依赖，禁止手改 `Cargo.toml` 依赖段（AGENTS.md §3）。
 - Rust 门禁：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo +nightly nextest run --cargo-profile fast-test`。
+  - **clippy 基线已红**：`src/main/runtime.rs:25` 的 `UnreachableCall`（`BotCommands` derive 产物）与 `goldberg` unused-dependency 警告在 `81a6f4e` 上就存在（已用 `git stash -u` 对基线复验）。门禁口径 = **不新增**，不是「全绿」。不要顺手去修它们。
 - `ruma` 版本必须锁 `0.18`（与 `matrix-sdk 0.20` 一致），`Cargo.lock` 中不得出现第二份 ruma。
 - `MAX_POLL_ANSWERS = 20`（= `ruma_events` 的 `PollAnswers::MAX_LENGTH`），`MAX_POLL_BINDINGS = 64`，`MAX_ANSWER_LABEL_CHARS = 64`。
 - 不改 `shared/` 层任何文件；不加 `if platform == Matrix` 分支。
@@ -107,6 +108,10 @@ Run: `cargo +nightly nextest run -E 'test(poll_start_content)' --cargo-profile f
 Expected: 编译失败（`PollSpec` / `poll_start_content` 未定义）
 
 - [ ] **Step 4: 实现**
+
+`ruma-events 0.36` 的实测 API（T1 已踩过一次，照这里写）：
+- `UnstablePollStartEventContent` 是**枚举**（`New` / `Replacement`），**没有** `new(block)`。
+- 用 `NewUnstablePollStartEventContent::plain_text(question, block).into()`：它同时填 `org.matrix.msc1767.text` 兜底字段；`::new(block)` 那条路 `text` 为 `None`，↑ 的序列化断言会挂。
 
 `poll.rs`：
 
