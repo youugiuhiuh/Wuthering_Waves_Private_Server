@@ -233,6 +233,47 @@ pub trait BotAdapter: Send + Sync {
 // reject_contact_request have default implementations so mockall does NOT require
 // setting expectations for them.
 
+// mockall 会为每个 trait 方法生成 mock 体，走不到默认实现，所以这里用一个最小适配器直接验证默认值。
+#[cfg(test)]
+mod default_take_poll_answer_tests {
+    use super::*;
+
+    struct PlainAdapter;
+
+    #[async_trait]
+    impl BotAdapter for PlainAdapter {
+        fn platform(&self) -> Platform {
+            Platform::Matrix
+        }
+
+        async fn send_message(&self, _t: &TargetId, _c: MessageContent) -> Result<MessageId> {
+            anyhow::bail!("unsupported")
+        }
+
+        async fn edit_message(
+            &self,
+            _t: &TargetId,
+            _m: &MessageId,
+            _c: MessageContent,
+        ) -> Result<()> {
+            anyhow::bail!("unsupported")
+        }
+
+        async fn delete_message(&self, _t: &TargetId, _m: &MessageId) -> Result<()> {
+            anyhow::bail!("unsupported")
+        }
+
+        fn capabilities(&self) -> PlatformCapabilities {
+            PlatformCapabilities::MATRIX
+        }
+    }
+
+    #[test]
+    fn default_take_poll_answer_is_none() {
+        assert!(PlainAdapter.take_poll_answer("$poll", 0).is_none());
+    }
+}
+
 #[cfg(test)]
 mod simplex_capabilities_tests {
     use super::*;

@@ -210,6 +210,7 @@ BotEvent::Callback(CallbackEvent {
 3. 用户在 Element 里改票不会二次推进流程（`answered` 只消费一次）。
 4. 线程内（thread）的 markup 仍回退编号清单。
 5. 仅 Element 等实现了 MSC3381 的客户端可点；不支持 poll 的客户端会看到「问题 + 选项」文本，比现状仍不差。
+6. 进程重启后房间里的旧 poll 会失效（映射表是内存态），需重新发送 `/menu`。
 
 ---
 

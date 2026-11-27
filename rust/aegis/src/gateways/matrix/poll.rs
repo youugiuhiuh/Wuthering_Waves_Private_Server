@@ -49,18 +49,24 @@ pub fn plan_send(content: &MessageContent) -> (String, Option<PollSpec>) {
         .enumerate()
         .map(|(index, button)| PollAnswer {
             id: index.to_string(),
-            text: answer_label(&button.text, &button.data),
+            text: answer_label(&button.text),
         })
         .collect();
     match &content.markup {
         None => (content.text.clone(), None),
-        Some(_) if (1..=MAX_POLL_ANSWERS).contains(&answers.len()) => (
-            content.text.clone(),
-            Some(PollSpec {
-                question: rust_i18n::t!("matrix.poll_question").to_string(),
-                answers,
-            }),
-        ),
+        // 空 label 时不能落回 data：那会把内部命令串暴露成可点选项。
+        Some(_)
+            if (1..=MAX_POLL_ANSWERS).contains(&answers.len())
+                && answers.iter().all(|a| !a.text.is_empty()) =>
+        {
+            (
+                content.text.clone(),
+                Some(PollSpec {
+                    question: rust_i18n::t!("matrix.poll_question").to_string(),
+                    answers,
+                }),
+            )
+        }
         Some(markup) => (render_markup_buttons(content.text.clone(), markup), None),
     }
 }
@@ -73,10 +79,8 @@ pub fn flatten(markup: &Option<Markup>) -> Vec<InlineButton> {
         .unwrap_or_default()
 }
 
-fn answer_label(label: &str, data: &str) -> String {
-    let label = label.trim();
-    let label = if label.is_empty() { data } else { label };
-    label.chars().take(MAX_ANSWER_LABEL_CHARS).collect()
+fn answer_label(label: &str) -> String {
+    label.trim().chars().take(MAX_ANSWER_LABEL_CHARS).collect()
 }
 
 /// 一次发送的 poll 与其按钮：`buttons` 按 row-major 拍平，下标即 poll answer id。
@@ -154,10 +158,6 @@ impl PollStore {
         Some(key)
     }
 
-    pub fn remove(&self, poll_event_id: &str) {
-        self.lock().remove(poll_event_id);
-    }
-
     /// 返回 `(anchor, button.data)`；未知 poll / 已 answered / 下标越界 → `None`。
     pub fn take_unanswered(
         &self,
@@ -174,11 +174,6 @@ impl PollStore {
         binding.answered = true;
         Some((binding.anchor.clone(), data))
     }
-}
-
-/// poll 响应里的 answer id（`"2"`）→ 下标。非数字/负数/空 → `None`。
-pub fn answer_index(answer_id: &str, total: usize) -> Option<usize> {
-    answer_id.parse::<usize>().ok().filter(|i| *i < total)
 }
 
 #[cfg(test)]
@@ -296,9 +291,13 @@ mod tests {
     }
 
     #[test]
-    fn plan_send_uses_data_when_label_is_blank() {
-        let (_, poll) = plan_send(&content("t", vec![vec![("   ", "/fallback")]]));
-        assert_eq!(poll.unwrap().answers[0].text, "/fallback");
+    fn plan_send_falls_back_when_a_label_is_blank() {
+        let (body, poll) = plan_send(&content("t", vec![vec![("   ", "/fallback")]]));
+        assert!(
+            poll.is_none(),
+            "空 label 不得产出 poll（会把命令串暴露成选项）"
+        );
+        assert!(body.contains("/fallback"), "回退清单里应包含该命令");
     }
 
     #[test]
@@ -371,16 +370,6 @@ mod tests {
     }
 
     #[test]
-    fn answer_index_parses_and_bounds() {
-        assert_eq!(answer_index("0", 3), Some(0));
-        assert_eq!(answer_index("2", 3), Some(2));
-        assert_eq!(answer_index("3", 3), None);
-        assert_eq!(answer_index("x", 3), None);
-        assert_eq!(answer_index("", 3), None);
-        assert_eq!(answer_index("-1", 3), None);
-    }
-
-    #[test]
     fn take_unanswered_returns_anchor_and_data_once() {
         let s = PollStore::new();
         s.insert(
@@ -411,12 +400,12 @@ mod tests {
     }
 
     #[test]
-    fn find_by_anchor_and_remove() {
+    fn find_by_anchor_and_take() {
         let s = PollStore::new();
         s.insert("$p1".into(), binding("$a1", vec![button("a", "/a")]));
         assert_eq!(s.find_by_anchor("$a1").as_deref(), Some("$p1"));
         assert!(s.find_by_anchor("$a2").is_none());
-        s.remove("$p1");
+        assert_eq!(s.take_by_anchor("$a1").as_deref(), Some("$p1"));
         assert!(s.find_by_anchor("$a1").is_none());
     }
 
