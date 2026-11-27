@@ -127,6 +127,24 @@ mod matrix_adapter_tests {
     }
 
     #[test]
+    fn matrix_adapter_exposes_take_poll_answer() {
+        fn assert_impl<T: crate::common::BotAdapter>() {}
+        assert_impl::<super::MatrixAdapter>();
+    }
+
+    #[test]
+    fn take_poll_answer_default_is_none_for_non_matrix_adapters() {
+        // 编译期钉住签名契约；转发路径由 poll.rs 的 take_unanswered 用例覆盖。
+        fn assert_signature<A: crate::common::BotAdapter>(
+            _: fn(&A, &str, usize) -> Option<(crate::common::MessageId, String)>,
+        ) {
+        }
+        assert_signature::<super::MatrixAdapter>(
+            <super::MatrixAdapter as crate::common::BotAdapter>::take_poll_answer,
+        );
+    }
+
+    #[test]
     fn new_adapter_starts_with_empty_poll_store() {
         // PollStore 的插入/查询已在 poll.rs 覆盖；这里只钉「每个 adapter 自带独立空表」的契约。
         // Room 无法在单测里构造，故用类型级断言 + PollStore 默认构造确认。
@@ -184,6 +202,10 @@ impl BotAdapter for MatrixAdapter {
         }
 
         Ok(MessageId(anchor))
+    }
+
+    fn take_poll_answer(&self, poll_id: &str, index: usize) -> Option<(MessageId, String)> {
+        self.polls.take_unanswered(poll_id, index)
     }
 
     async fn edit_message(

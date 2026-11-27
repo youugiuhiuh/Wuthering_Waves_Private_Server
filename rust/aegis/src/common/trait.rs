@@ -201,6 +201,12 @@ pub trait BotAdapter: Send + Sync {
         anyhow::bail!("当前平台不支持获取连接安全码")
     }
 
+    /// Matrix：取一次 poll 点选结果并标记已消费。默认不支持。
+    /// 同步是因为 `PollStore` 的 `take_unanswered` 本身同步。
+    fn take_poll_answer(&self, _poll_id: &str, _index: usize) -> Option<(MessageId, String)> {
+        None
+    }
+
     /// 强制经 primary 发送，绕开 `RoutingAdapter` 的敏感内容分流。
     ///
     /// 用于**安全通知**：其文本包含攻击者可控内容（如 SimpleX 显示名），若走
