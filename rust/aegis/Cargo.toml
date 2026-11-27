@@ -63,6 +63,7 @@ reqwest = { version = "0.13.5", default-features = false, features = ["json", "r
 # 这里只是因为 rusqlite 没把 bundled 透传出来才必须直依赖它；版本必须跟
 # Cargo.lock 里那份完全一致（links = "sqlite3" 不允许两份共存）。
 libsqlite3-sys = { version = "0.39.1", features = ["bundled"] }
+ruma = { version = "0.18", features = ["unstable-msc3381"] }
 
 [dev-dependencies]
 env_logger = "0.11.12"

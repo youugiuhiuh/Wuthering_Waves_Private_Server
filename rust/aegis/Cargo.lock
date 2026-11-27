@@ -61,6 +61,7 @@ dependencies = [
  "regex",
  "reqwest 0.13.5",
  "rmp-serde",
+ "ruma",
  "rust-embed",
  "rust-i18n",
  "rustls",
