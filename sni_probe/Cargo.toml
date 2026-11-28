@@ -12,7 +12,7 @@ path = "src/main.rs"
 tokio = { version = "1.54.1", features = ["full"] }
 clap = { version = "4.6.10", features = ["derive"] }
 anyhow = "1.0.105"
-boring = { version = "5.6.0", features = ["pq-experimental"] }
+boring = { version = "5.6.1", features = ["pq-experimental"] }
 hickory-resolver = "0.26.4"
 maxminddb = "0.33.0"
 serde = { version = "1.0.229", features = ["derive"] }
